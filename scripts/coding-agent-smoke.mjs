@@ -3,8 +3,8 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export const codingAgentName = "@earendil-works/pi-coding-agent";
-const developmentPackages = new Set(["pi-client", "pi-protocol", "pi-server"].map((name) => `@earendil-works/${name}`));
+export const codingAgentName = "@blxzer/nyan";
+const developmentPackages = new Set(["nyan-client", "nyan-protocol", "nyan-server"].map((name) => `@blxzer/${name}`));
 
 function checkInstalledPackages(nodeModules, seen = new Set()) {
 	if (!existsSync(nodeModules)) return;

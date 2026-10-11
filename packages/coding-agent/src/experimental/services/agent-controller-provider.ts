@@ -1,12 +1,12 @@
-import type { Context } from "@earendil-works/chord";
-import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
+import type { ImageContent, TextContent } from "@blxzer/nyan-ai";
+import type { Context } from "@blxzer/nyan-chord";
 import {
 	type Conversation,
 	ConversationBusy,
 	type Harness,
 	type SubmissionId,
 	type UserInput,
-} from "@earendil-works/pi-durable";
+} from "@blxzer/nyan-durable";
 import type {
 	AgentController as AgentControllerService,
 	AgentOperationError,

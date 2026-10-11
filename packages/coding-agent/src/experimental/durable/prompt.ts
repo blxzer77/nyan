@@ -1,4 +1,4 @@
-import { defineExtension, type PromptInput, section } from "@earendil-works/pi-durable";
+import { defineExtension, type PromptInput, section } from "@blxzer/nyan-durable";
 import { getAgentDir } from "../../config.ts";
 import { loadProjectContextFiles } from "../../core/resource-loader.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";

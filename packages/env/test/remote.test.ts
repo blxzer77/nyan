@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
-import { getOrThrow, type ShellOutputInfo } from "@earendil-works/pi-durable/env";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@blxzer/nyan-chord/context";
+import { getOrThrow, type ShellOutputInfo } from "@blxzer/nyan-durable/env";
 import { afterAll, describe, expect, it } from "vitest";
 import { Connection } from "../src/connection.ts";
 import { RemoteExecutionEnv } from "../src/remote-env.ts";

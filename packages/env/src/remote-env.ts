@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { type PlatformPath, posix, win32 } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
-import type { Context } from "@earendil-works/chord";
+import type { Context } from "@blxzer/nyan-chord";
 import {
 	type BinaryReader,
 	type DirReader,
@@ -25,7 +25,7 @@ import {
 	type TextLineReader,
 	type WatchChange,
 	type WatchTarget,
-} from "@earendil-works/pi-durable/env";
+} from "@blxzer/nyan-durable/env";
 import { type Connection, type Json, RemoteError, type RemoteInfo } from "./connection.ts";
 import { abortResult, toFileError } from "./errors.ts";
 import { RemoteWatcher, type RemoteWatchOptions } from "./watch.ts";

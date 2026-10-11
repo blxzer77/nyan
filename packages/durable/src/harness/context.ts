@@ -1,5 +1,5 @@
-import type { Context } from "@earendil-works/chord";
-import type { AssistantMessage, Message, ToolCall, ToolResultMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Message, ToolCall, ToolResultMessage } from "@blxzer/nyan-ai";
+import type { Context } from "@blxzer/nyan-chord";
 import { idFromNumber } from "../ids.ts";
 import type { SessionImpl } from "../session/session.ts";
 import type { ContextEdit, ConversationId, Cursor, EntryId, EntryQuery, EntryRecord, Storage } from "../types.ts";

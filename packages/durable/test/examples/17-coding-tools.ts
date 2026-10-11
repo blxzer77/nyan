@@ -6,10 +6,10 @@
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { ToolResultMessage } from "@earendil-works/pi-ai";
-import { createModels } from "@earendil-works/pi-ai/models";
-import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+import type { ToolResultMessage } from "@blxzer/nyan-ai";
+import { createModels } from "@blxzer/nyan-ai/models";
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@blxzer/nyan-ai/providers/faux";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
 import { NodeExecutionEnv } from "../../src/env/node.ts";
 import {
 	AssistantEntry,

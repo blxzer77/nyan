@@ -1,7 +1,6 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Op } from "@earendil-works/chord/delta";
 import {
 	type AssistantMessage,
 	type FauxResponseStep,
@@ -11,7 +10,8 @@ import {
 	type ToolResultMessage,
 	Type,
 	type Usage,
-} from "@earendil-works/pi-ai";
+} from "@blxzer/nyan-ai";
+import type { Op } from "@blxzer/nyan-chord/delta";
 import {
 	type Conversation,
 	defineDoc,
@@ -29,7 +29,7 @@ import {
 	type ToolExecutionResult,
 	ToolTask,
 	UsageDoc,
-} from "@earendil-works/pi-durable";
+} from "@blxzer/nyan-durable";
 import { afterEach, describe, expect, it } from "vitest";
 import { recordUsage } from "../src/harness/usage.ts";
 import { openNodeSqliteStorage } from "../src/storage/sqlite/node.ts";

@@ -1,5 +1,5 @@
-import type { AttachedReplicatedState, Context, JsonValue } from "@earendil-works/chord";
-import { withAbortSignal, withoutAbortSignal } from "@earendil-works/chord/context";
+import type { AttachedReplicatedState, Context, JsonValue } from "@blxzer/nyan-chord";
+import { withAbortSignal, withoutAbortSignal } from "@blxzer/nyan-chord/context";
 import { ResetEntry } from "../entries.ts";
 import type { ExecutionEnv } from "../env/index.ts";
 import { contained, SessionImpl } from "../session/session.ts";

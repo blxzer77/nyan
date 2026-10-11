@@ -11,7 +11,7 @@ import {
 	type TuiMouseEvent,
 	type TuiMouseEventResult,
 	visibleWidth,
-} from "@earendil-works/pi-tui";
+} from "@blxzer/nyan-tui";
 import { theme } from "../theme/theme.ts";
 import { ARMIN_HEIGHT, ARMIN_WIDTH, isArminPixel } from "./armin.ts";
 import { formatKeyText } from "./keybinding-hints.ts";

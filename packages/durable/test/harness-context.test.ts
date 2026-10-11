@@ -1,5 +1,5 @@
-import type { Context } from "@earendil-works/chord";
-import { createModels, type Message } from "@earendil-works/pi-ai";
+import { createModels, type Message } from "@blxzer/nyan-ai";
+import type { Context } from "@blxzer/nyan-chord";
 import {
 	type ContextView,
 	createRegistry,
@@ -11,7 +11,7 @@ import {
 	type HarnessSettings,
 	MemoryStorage,
 	type Storage,
-} from "@earendil-works/pi-durable";
+} from "@blxzer/nyan-durable";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { addTask, assistant, describeMessage, openHarness, system, toolResult, user } from "./harness-support.ts";
 import { context } from "./session-support.ts";

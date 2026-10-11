@@ -19,8 +19,8 @@
  * Usage: pi -e ./jev-router.ts --model jev/auto
  */
 
-import type { Message } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionContext, ModelRoute, ModelRouteRequest } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ModelRoute, ModelRouteRequest } from "@blxzer/nyan";
+import type { Message } from "@blxzer/nyan-ai";
 
 const PROVIDER = "openai-codex";
 const SOL = "gpt-5.6-sol";

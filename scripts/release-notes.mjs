@@ -5,7 +5,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const DEFAULT_REPO = "earendil-works/pi";
+const DEFAULT_REPO = "blxzer77/nyan";
+// Links to the retired pi-mono repository point at upstream Pi, where those issues and commits live.
+const UPSTREAM_REPO = "earendil-works/pi";
 const DEFAULT_BASE_PATH = "packages/coding-agent";
 const DEFAULT_CHANGELOG = "packages/coding-agent/CHANGELOG.md";
 const DEFAULT_FIX_SINCE_TAG = "v0.74.0";
@@ -195,7 +197,7 @@ function isDirectoryTarget(originalPath, repositoryPath) {
 }
 
 function normalizeLinkTarget(target, options) {
-	let canonicalTarget = target.replace(LEGACY_REPO_RE, `https://github.com/${options.repo}`);
+	let canonicalTarget = target.replace(LEGACY_REPO_RE, `https://github.com/${UPSTREAM_REPO}`);
 	const repoUrl = `https://github.com/${options.repo}`;
 
 	for (const route of ["blob", "tree"]) {

@@ -10,9 +10,9 @@ import {
 	type RemoteServiceEndpoint,
 	type ServiceCall,
 	type ServiceProviderUpdate,
-} from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { Conversation, Harness } from "@earendil-works/pi-durable";
+} from "@blxzer/nyan-chord";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
+import type { Conversation, Harness } from "@blxzer/nyan-durable";
 import type { ModelRuntime } from "../../core/model-runtime.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { AgentController } from "./agent-controller.ts";

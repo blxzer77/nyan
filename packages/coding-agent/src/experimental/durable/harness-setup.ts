@@ -1,14 +1,14 @@
-import type { Context } from "@earendil-works/chord";
-import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { ModelThinkingLevel } from "@blxzer/nyan-ai";
+import type { Context } from "@blxzer/nyan-chord";
 import {
 	createRegistry,
 	type EnvTarget,
 	type HarnessSettings,
 	type ModelRef,
 	type Registry,
-} from "@earendil-works/pi-durable";
-import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
-import { CodingTools } from "@earendil-works/pi-durable/tools";
+} from "@blxzer/nyan-durable";
+import { NodeExecutionEnv } from "@blxzer/nyan-durable/env/node";
+import { CodingTools } from "@blxzer/nyan-durable/tools";
 import { applyHttpProxySettings, configureHttpDispatcher } from "../../core/http-dispatcher.ts";
 import { findInitialModel, resolveCliModel } from "../../core/model-resolver.ts";
 import type { ModelRuntime } from "../../core/model-runtime.ts";

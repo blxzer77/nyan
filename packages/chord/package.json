@@ -1,5 +1,5 @@
 {
-	"name": "@earendil-works/chord",
+	"name": "@blxzer/nyan-chord",
 	"version": "1.1.0",
 	"description": "Application composition runtime for services, replicated state, RPC, and plugins",
 	"type": "module",
@@ -56,7 +56,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/earendil-works/pi.git",
+		"url": "git+https://github.com/blxzer77/nyan.git",
 		"directory": "packages/chord"
 	},
 	"engines": {

@@ -1,8 +1,6 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { JsonValue } from "@earendil-works/chord";
-import { withAbortSignal } from "@earendil-works/chord/context";
 import {
 	type AssistantMessage,
 	fauxAssistantMessage,
@@ -11,7 +9,9 @@ import {
 	type ToolResultMessage,
 	Type,
 	type Usage,
-} from "@earendil-works/pi-ai";
+} from "@blxzer/nyan-ai";
+import type { JsonValue } from "@blxzer/nyan-chord";
+import { withAbortSignal } from "@blxzer/nyan-chord/context";
 import {
 	type AgentEvent,
 	AssistantEntry,
@@ -31,7 +31,7 @@ import {
 	type ToolTaskResult,
 	UsageDoc,
 	watchEvents,
-} from "@earendil-works/pi-durable";
+} from "@blxzer/nyan-durable";
 import { afterEach, describe, expect, it } from "vitest";
 import { openNodeSqliteStorage } from "../src/storage/sqlite/node.ts";
 import { allEntries, type ChatSetup, chatSetup, openChat } from "./chat-support.ts";

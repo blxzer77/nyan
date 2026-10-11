@@ -1,7 +1,8 @@
 // The Session's document cache is bounded by use: unattached documents leave it after the retention period and load
 // from Storage again; documents with a watch or a document state never leave it.
-import type { Context } from "@earendil-works/chord";
-import { fauxAssistantMessage, fauxText, fauxToolCall, Type } from "@earendil-works/pi-ai";
+
+import { fauxAssistantMessage, fauxText, fauxToolCall, Type } from "@blxzer/nyan-ai";
+import type { Context } from "@blxzer/nyan-chord";
 import {
 	type AgentEvent,
 	type ConversationId,
@@ -12,7 +13,7 @@ import {
 	MemoryStorage,
 	type StorageWrite,
 	watchEvents,
-} from "@earendil-works/pi-durable";
+} from "@blxzer/nyan-durable";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { SessionImpl, setDefaultDocumentRetention } from "../src/session/session.ts";
 import { chatSetup, openChat } from "./chat-support.ts";

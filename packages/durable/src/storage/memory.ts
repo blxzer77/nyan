@@ -1,5 +1,5 @@
-import type { Context, JsonValue } from "@earendil-works/chord";
-import { applyImmutableBatches, type Op } from "@earendil-works/chord/delta";
+import type { Context, JsonValue } from "@blxzer/nyan-chord";
+import { applyImmutableBatches, type Op } from "@blxzer/nyan-chord/delta";
 import { StorageRequestError } from "../errors.ts";
 import { idFromNumber, seqFromNumber } from "../ids.ts";
 import type {

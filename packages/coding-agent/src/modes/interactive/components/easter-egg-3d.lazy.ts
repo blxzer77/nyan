@@ -1,4 +1,4 @@
-import { type TUI, TuiAltScreen } from "@earendil-works/pi-tui";
+import { type TUI, TuiAltScreen } from "@blxzer/nyan-tui";
 import type { EasterEgg3d } from "./easter-egg-3d.ts";
 
 /**

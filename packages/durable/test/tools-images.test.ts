@@ -2,11 +2,11 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import type { Model } from "@earendil-works/pi-ai";
-import type { ToolDiagnostic, ToolExecutionApi, ToolExecutionResult } from "@earendil-works/pi-durable";
-import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
-import { createCodingTools } from "@earendil-works/pi-durable/tools";
+import type { Model } from "@blxzer/nyan-ai";
+import { BACKGROUND_CONTEXT as context } from "@blxzer/nyan-chord/context";
+import type { ToolDiagnostic, ToolExecutionApi, ToolExecutionResult } from "@blxzer/nyan-durable";
+import { createNodePhotonImages } from "@blxzer/nyan-durable/images/node";
+import { createCodingTools } from "@blxzer/nyan-durable/tools";
 import { initSync, PhotonImage } from "@silvia-odwyer/photon/photon_rs.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getOrThrow } from "../src/env/index.ts";

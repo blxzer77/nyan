@@ -1,6 +1,6 @@
-import { type AttachedReplicatedState, type Context, type JsonValue, replicatedState } from "@earendil-works/chord";
-import { withoutAbortSignal } from "@earendil-works/chord/context";
-import { applyImmutable, type NonEmptyPath, type Op, type Path } from "@earendil-works/chord/delta";
+import { type AttachedReplicatedState, type Context, type JsonValue, replicatedState } from "@blxzer/nyan-chord";
+import { withoutAbortSignal } from "@blxzer/nyan-chord/context";
+import { applyImmutable, type NonEmptyPath, type Op, type Path } from "@blxzer/nyan-chord/delta";
 import { CommittedStateSource, CommittedWatch } from "../session/observation.ts";
 import { contained, type SessionImpl } from "../session/session.ts";
 import type {

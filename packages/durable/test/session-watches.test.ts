@@ -1,13 +1,13 @@
-import type { Context } from "@earendil-works/chord";
+import type { Context } from "@blxzer/nyan-chord";
 import {
 	BACKGROUND_CONTEXT,
 	createContextKey,
 	withAbortSignal,
 	withCancel,
 	withContextValue,
-} from "@earendil-works/chord/context";
-import { applyImmutable } from "@earendil-works/chord/delta";
-import { defineDoc } from "@earendil-works/pi-durable";
+} from "@blxzer/nyan-chord/context";
+import { applyImmutable } from "@blxzer/nyan-chord/delta";
+import { defineDoc } from "@blxzer/nyan-durable";
 import { describe, expect, it } from "vitest";
 import { context, documentChanges, flush, openTestSession } from "./session-support.ts";
 

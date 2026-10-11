@@ -1,5 +1,5 @@
-import type { Context } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
+import type { Context } from "@blxzer/nyan-chord";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@blxzer/nyan-chord/context";
 import {
 	type ExecutionEnv,
 	type FileInfo,

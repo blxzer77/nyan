@@ -7,8 +7,8 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
+import type { AgentMessage, ThinkingLevel } from "@blxzer/nyan-agent-core";
+import type { AuthEvent, AuthPrompt } from "@blxzer/nyan-ai";
 import {
 	type AssistantMessage,
 	type ImageContent,
@@ -16,7 +16,7 @@ import {
 	type Message,
 	type Model,
 	type Usage,
-} from "@earendil-works/pi-ai/compat";
+} from "@blxzer/nyan-ai/compat";
 import type {
 	AutocompleteItem,
 	AutocompleteProvider,
@@ -28,8 +28,8 @@ import type {
 	OverlayOptions,
 	SlashCommand,
 	TuiMainScreenRenderState,
-} from "@earendil-works/pi-tui";
-import * as TuiLayouts from "@earendil-works/pi-tui";
+} from "@blxzer/nyan-tui";
+import * as TuiLayouts from "@blxzer/nyan-tui";
 import {
 	CombinedAutocompleteProvider,
 	type Component,
@@ -51,7 +51,7 @@ import {
 	type TuiMouseEvent,
 	type TuiMouseEventResult,
 	visibleWidth,
-} from "@earendil-works/pi-tui";
+} from "@blxzer/nyan-tui";
 import chalk from "chalk";
 import { spawn } from "child_process";
 import {

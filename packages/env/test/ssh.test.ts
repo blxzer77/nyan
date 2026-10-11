@@ -13,8 +13,8 @@ import {
 import { createServer, Socket } from "node:net";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { getOrThrow } from "@earendil-works/pi-durable/env";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
+import { getOrThrow } from "@blxzer/nyan-durable/env";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { RemoteExecutionEnv } from "../src/remote-env.ts";
 import {

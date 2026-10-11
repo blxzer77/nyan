@@ -31,7 +31,7 @@ Context usage uses the limits of the physical model that produced the latest res
 ## Register a virtual model
 
 ```typescript
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@blxzer/nyan";
 
 export default function (pi: ExtensionAPI) {
   pi.registerVirtualModel({

@@ -1,5 +1,5 @@
 {
-	"name": "@earendil-works/pi-coding-agent",
+	"name": "@blxzer/nyan",
 	"version": "1.1.0",
 	"description": "Coding agent CLI with read, bash, edit, write tools and session management",
 	"type": "module",
@@ -49,12 +49,12 @@
 		"prepublishOnly": "npm run clean && npm run build"
 	},
 	"dependencies": {
-		"@earendil-works/chord": "^1.1.0",
-		"@earendil-works/pi-agent-core": "^1.1.0",
-		"@earendil-works/pi-ai": "^1.1.0",
-		"@earendil-works/pi-codemode": "^1.1.0",
-		"@earendil-works/pi-mcp": "^1.1.0",
-		"@earendil-works/pi-tui": "^1.1.0",
+		"@blxzer/nyan-chord": "^1.1.0",
+		"@blxzer/nyan-agent-core": "^1.1.0",
+		"@blxzer/nyan-ai": "^1.1.0",
+		"@blxzer/nyan-codemode": "^1.1.0",
+		"@blxzer/nyan-mcp": "^1.1.0",
+		"@blxzer/nyan-tui": "^1.1.0",
 		"@silvia-odwyer/photon-node": "0.3.4",
 		"brace-expansion": "5.0.12",
 		"chalk": "6.0.0",
@@ -77,9 +77,9 @@
 		"protobufjs": "7.6.6"
 	},
 	"devDependencies": {
-		"@earendil-works/pi-client": "^1.1.0",
-		"@earendil-works/pi-protocol": "^1.1.0",
-		"@earendil-works/pi-server": "^1.1.0",
+		"@blxzer/nyan-client": "^1.1.0",
+		"@blxzer/nyan-protocol": "^1.1.0",
+		"@blxzer/nyan-server": "^1.1.0",
 		"@types/cross-spawn": "6.0.6",
 		"@types/hosted-git-info": "3.0.5",
 		"@types/node": "22.19.19",
@@ -101,7 +101,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/earendil-works/pi.git",
+		"url": "git+https://github.com/blxzer77/nyan.git",
 		"directory": "packages/coding-agent"
 	},
 	"engines": {

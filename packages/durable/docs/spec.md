@@ -11,8 +11,8 @@ import type {
   JsonRepresentation,
   JsonValue,
   ReplicatedState,
-} from "@earendil-works/chord";
-import type { Op } from "@earendil-works/chord/delta";
+} from "@blxzer/nyan-chord";
+import type { Op } from "@blxzer/nyan-chord/delta";
 import type {
   AssistantMessage,
   CacheRetention,
@@ -27,8 +27,8 @@ import type {
   ToolResultMessage,
   Transport,
   UserMessage,
-} from "@earendil-works/pi-ai";
-import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
+} from "@blxzer/nyan-ai";
+import type { ExecutionEnv } from "@blxzer/nyan-durable/env";
 
 type JsonObject = { [key: string]: JsonValue };
 type TaskOutcomeError = { message: string; detail?: JsonValue };
@@ -3317,7 +3317,7 @@ diagnostic with one of the codes `tool_unavailable`, `invalid_arguments`,
 and the error text as its message. Their content is the durable partial output,
 if any, and `details` is the tool's last reported value, if any.
 
-`@earendil-works/pi-durable/tools` provides `read`, `write`, `edit`, and `bash`
+`@blxzer/nyan-durable/tools` provides `read`, `write`, `edit`, and `bash`
 factories, ported from the agent harness tools, the `CodingTools` extension
 with all four, and `createCodingTools({ images })`, the same with an image
 processor for `read`. They use only `api.env`; nothing installs them
@@ -3337,7 +3337,7 @@ With one, `await processor.prepare(bytes, mimeType, limits)` returns the image f
 diagnostic says when its format changed or it was resized, with the factor that
 maps coordinates back. The Photon processor decodes every image, returns it as
 it is when it is upright, inline, and within the limits, and otherwise
-re-encodes it as PNG or JPEG (JPEG first for JPEG sources). `@earendil-works/pi-durable/images` provides `createPhotonImages(wasm)`,
+re-encodes it as PNG or JPEG (JPEG first for JPEG sources). `@blxzer/nyan-durable/images` provides `createPhotonImages(wasm)`,
 on Photon's WebAssembly, given its module or bytes; `/images/node` reads the
 wasm from the installed package and prepares images in a worker thread, which
 exits after 30 s without images (`{ worker: false }` prepares them inline);

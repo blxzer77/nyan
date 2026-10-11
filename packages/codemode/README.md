@@ -1,4 +1,4 @@
-# @earendil-works/pi-codemode
+# @blxzer/nyan-codemode
 
 Runs model-written JavaScript in a QuickJS VM (compiled to WebAssembly) where the only capability is calling injected tools. Nested tool calls never enter the LLM context; only the script's output and return value do.
 
@@ -8,15 +8,15 @@ The package runs in two kinds of environments. Each has its own sandbox class, b
 
 | Environment | Sandbox | Import from | Where scripts run |
 | --- | --- | --- | --- |
-| Node and Bun | `CodemodeSandbox` | `@earendil-works/pi-codemode` | a worker thread per execution |
-| Cloudflare Workers and Durable Objects | `RemoteCodemodeSandbox` | `@earendil-works/pi-codemode/portable` | a Durable Object in a separately deployed Worker |
+| Node and Bun | `CodemodeSandbox` | `@blxzer/nyan-codemode` | a worker thread per execution |
+| Cloudflare Workers and Durable Objects | `RemoteCodemodeSandbox` | `@blxzer/nyan-codemode/portable` | a Durable Object in a separately deployed Worker |
 
 See [Usage on Node and Bun](#usage-on-node-and-bun) and [Usage on Cloudflare Workers](#usage-on-cloudflare-workers). A third sandbox, `InlineCodemodeSandbox`, runs scripts on the calling thread for other runtimes, or on Cloudflare when blocking the caller is acceptable.
 
 ## Usage on Node and Bun
 
 ```ts
-import { CodemodeSandbox } from "@earendil-works/pi-codemode";
+import { CodemodeSandbox } from "@blxzer/nyan-codemode";
 
 const sandbox = new CodemodeSandbox({
 	timeoutMs: 60_000,
@@ -38,7 +38,7 @@ const result = await sandbox.execute(`
 `);
 
 console.log(result.output); // [{ type: "text", text: "bytes 1234" }]
-if (result.ok) console.log(result.value); // "@earendil-works/pi-codemode"
+if (result.ok) console.log(result.value); // "@blxzer/nyan-codemode"
 else console.error(result.error.kind, result.error.message);
 
 await sandbox.close();
@@ -83,20 +83,20 @@ const source = await tools.read({ path: "package.json" });
 text(JSON.parse(source).name);
 ```
 
-Supported fields are `max_output_tokens`, a token budget for the output, and `timeout_ms`, a hard deadline. The sandbox does not act on them; the caller decides. The options line is replaced by an empty line, so line numbers in stack traces still match the input. Empty input, invalid JSON, unknown fields, or an options line without code throw `CodemodeSourceError`. `CODEMODE_SOURCE_GRAMMAR` is a Lark grammar for providers that support grammar-constrained tool input. Both are also available from the lightweight `@earendil-works/pi-codemode/source` entry.
+Supported fields are `max_output_tokens`, a token budget for the output, and `timeout_ms`, a hard deadline. The sandbox does not act on them; the caller decides. The options line is replaced by an empty line, so line numbers in stack traces still match the input. Empty input, invalid JSON, unknown fields, or an options line without code throw `CodemodeSourceError`. `CODEMODE_SOURCE_GRAMMAR` is a Lark grammar for providers that support grammar-constrained tool input. Both are also available from the lightweight `@blxzer/nyan-codemode/source` entry.
 
 ## Bundled Node and Bun hosts
 
 By default `CodemodeSandbox` loads `quickjs-wasi/quickjs.wasm` from the installed package and starts the worker file that sits next to this package's module. Neither exists on disk when the host is bundled, so pass both:
 
 ```ts
-import { CodemodeSandbox, loadQuickJSWasm } from "@earendil-works/pi-codemode";
+import { CodemodeSandbox, loadQuickJSWasm } from "@blxzer/nyan-codemode";
 
 const sandbox = new CodemodeSandbox({
 	tools,
 	// Compiled once per path and cached.
 	wasm: loadQuickJSWasm(pathToQuickJSWasm),
-	// A file of your build containing `import "@earendil-works/pi-codemode/worker";`
+	// A file of your build containing `import "@blxzer/nyan-codemode/worker";`
 	workerUrl: new URL("./codemode-worker.js", import.meta.url),
 });
 ```
@@ -115,7 +115,7 @@ additional build entrypoint and pass its relative source path as a string, for e
 | `RemoteCodemodeSandbox` | another isolate, usually a Durable Object in a separate Worker | a Durable Object that runs an agent session |
 | `InlineCodemodeSandbox` | the calling thread | anywhere else with WebAssembly, when blocking the caller is acceptable |
 
-Import the last two from `@earendil-works/pi-codemode/portable`, which has no Node imports. On Cloudflare, `@earendil-works/pi-codemode/cloudflare` adds the deployable Durable Object and the QuickJS module compiled by Wrangler.
+Import the last two from `@blxzer/nyan-codemode/portable`, which has no Node imports. On Cloudflare, `@blxzer/nyan-codemode/cloudflare` adds the deployable Durable Object and the QuickJS module compiled by Wrangler.
 
 ### Why a separate Worker
 
@@ -132,7 +132,7 @@ A complete setup is in [`examples/cloudflare`](https://github.com/earendil-works
 
 ```ts
 // sandbox/src/index.ts
-export { CodemodeSandboxDurableObject as CodemodeSandbox } from "@earendil-works/pi-codemode/cloudflare";
+export { CodemodeSandboxDurableObject as CodemodeSandbox } from "@blxzer/nyan-codemode/cloudflare";
 
 export default {
 	fetch: () => new Response("Not found", { status: 404 }),
@@ -152,7 +152,7 @@ export default {
 }
 ```
 
-Install `@earendil-works/pi-codemode` in the sandbox Worker's project and run `npx wrangler deploy`. Wrangler bundles QuickJS (about 640 KB) as a compiled WebAssembly module. The object has no routes and keeps no state, and it never uses its storage.
+Install `@blxzer/nyan-codemode` in the sandbox Worker's project and run `npx wrangler deploy`. Wrangler bundles QuickJS (about 640 KB) as a compiled WebAssembly module. The object has no routes and keeps no state, and it never uses its storage.
 
 ### Using it from the agent's Worker
 
@@ -170,8 +170,8 @@ Bind the class with `script_name`. Binding a class exported from the agent's own
 Then replace the sandbox. Tools, options other than `wasm` and `workerUrl`, and results stay the same:
 
 ```ts
-import type { CodemodeSandboxDurableObject } from "@earendil-works/pi-codemode/cloudflare";
-import { RemoteCodemodeSandbox } from "@earendil-works/pi-codemode/portable";
+import type { CodemodeSandboxDurableObject } from "@blxzer/nyan-codemode/cloudflare";
+import { RemoteCodemodeSandbox } from "@blxzer/nyan-codemode/portable";
 
 interface Env {
 	CODEMODE_SANDBOX: DurableObjectNamespace<CodemodeSandboxDurableObject>;
@@ -202,7 +202,7 @@ Run both Workers locally with `wrangler dev -c agent/wrangler.jsonc -c sandbox/w
 - **Changing the limits.** The Durable Object caps every request at its own limits, whatever the client asks for. To change them, subclass it in the sandbox Worker:
 
 ```ts
-import { CodemodeSandboxDurableObject } from "@earendil-works/pi-codemode/cloudflare";
+import { CodemodeSandboxDurableObject } from "@blxzer/nyan-codemode/cloudflare";
 
 export class CodemodeSandbox extends CodemodeSandboxDurableObject {
 	protected maxInterruptBudget = 200_000;
@@ -218,7 +218,7 @@ export class CodemodeSandbox extends CodemodeSandboxDurableObject {
 When blocking the caller is acceptable, for example in a stateless Worker that serves one request, run the VM on the caller's thread instead. Nothing extra needs to be deployed:
 
 ```ts
-import { createInlineCodemodeSandbox } from "@earendil-works/pi-codemode/cloudflare";
+import { createInlineCodemodeSandbox } from "@blxzer/nyan-codemode/cloudflare";
 
 const sandbox = createInlineCodemodeSandbox({ tools, timeoutMs: 60_000, interruptBudget: 50_000 });
 const result = await sandbox.execute(code);
@@ -250,13 +250,13 @@ Schemas only shape the declarations; values are not validated against them. Loca
 To give an `Agent` a codemode tool, expose its other tools to the sandbox and wrap `execute()` as an `AgentTool`:
 
 ```ts
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentTool } from "@blxzer/nyan-agent-core";
 import {
 	type CodemodeJsonSchema,
 	CodemodeSandbox,
 	type CodemodeTool,
 	renderDeclarations,
-} from "@earendil-works/pi-codemode";
+} from "@blxzer/nyan-codemode";
 import { Type } from "typebox";
 
 const sandboxTools: CodemodeTool[] = agentTools.map((tool) => ({
@@ -291,7 +291,7 @@ const codemodeTool: AgentTool = {
 };
 ```
 
-`result.output` items already have the shape of `@earendil-works/pi-ai`'s `TextContent` and `ImageContent`. Calling `tool.execute()` directly skips the agent's `beforeToolCall` and `afterToolCall` hooks. To apply them to nested calls too, run each call through `runToolCall()` from `@earendil-works/pi-agent-core`, as the [mcp-codemode example](https://github.com/earendil-works/pi/tree/main/packages/agent/examples/mcp-codemode) does. That example also rejects failed nested calls inside the script and combines codemode with MCP tools.
+`result.output` items already have the shape of `@blxzer/nyan-ai`'s `TextContent` and `ImageContent`. Calling `tool.execute()` directly skips the agent's `beforeToolCall` and `afterToolCall` hooks. To apply them to nested calls too, run each call through `runToolCall()` from `@blxzer/nyan-agent-core`, as the [mcp-codemode example](https://github.com/earendil-works/pi/tree/main/packages/agent/examples/mcp-codemode) does. That example also rejects failed nested calls inside the script and combines codemode with MCP tools.
 
 ## Results
 

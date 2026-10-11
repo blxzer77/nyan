@@ -1,6 +1,6 @@
 # durable
 
-A small local coding agent on `@earendil-works/pi-durable`. One process owns the model runtime, the durable
+A small local coding agent on `@blxzer/nyan-durable`. One process owns the model runtime, the durable
 Harness, its SQLite storage, and the TUI. It reuses pi's model runtime, auth, settings, system prompt, keybindings,
 theme, and interactive components; the agent itself is the durable Harness with its built-in `CodingTools`.
 

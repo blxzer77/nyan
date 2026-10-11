@@ -1,8 +1,8 @@
-import { type Context, copyJson, type Draft, type JsonRepresentation, type JsonValue } from "@earendil-works/chord";
-import { awaitWithContext } from "@earendil-works/chord/context";
-import { overlap } from "@earendil-works/chord/delta";
-import type { ImageContent, TextContent, ToolCall, ToolResultMessage } from "@earendil-works/pi-ai";
-import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
+import type { ImageContent, TextContent, ToolCall, ToolResultMessage } from "@blxzer/nyan-ai";
+import { validateToolArguments } from "@blxzer/nyan-ai/utils/validation";
+import { type Context, copyJson, type Draft, type JsonRepresentation, type JsonValue } from "@blxzer/nyan-chord";
+import { awaitWithContext } from "@blxzer/nyan-chord/context";
+import { overlap } from "@blxzer/nyan-chord/delta";
 import { Compile } from "typebox/compile";
 import { defineDocFamily } from "../documents.ts";
 import { AssistantEntry, ToolResultEntry } from "../entries.ts";
