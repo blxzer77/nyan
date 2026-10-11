@@ -1,125 +1,93 @@
-# Development Rules
+# AGENTS.md
 
-## Conversational Style
+nyan is a TypeScript npm-workspaces monorepo for an LLM agent harness: a model API, an agent loop, a terminal coding agent (the `pi` CLI), a durable session runtime, and supporting libraries. It started as a fork of Pi (earendil-works/pi) and does not track upstream. Do not cite or follow upstream issues, workflows, or release processes.
 
-- Keep answers short and concise
-- No emojis in commits, issues, PR comments, or code
-- No fluff or cheerful filler text (e.g., "Thanks @user" not "Thanks so much @user!")
-- Technical prose only, be direct
-- Use concise, clear, simple language. Define unavoidable jargon before using it.
-- Explain non-trivial designs and problems as: problem, concrete example or short trace, then solution. State why the solution is necessary and distinguish it from optional complexity.
-- Prefer concrete behavior and small illustrations over abstract summaries, dense terminology, or unexplained lists of changes.
-- When the user asks a question, answer it first before making edits or running implementation commands.
-- When responding to user feedback or an analysis, explicitly say whether you agree or disagree before saying what you changed.
+## Hard rules
 
-## Code Quality
-
-- Read files in full before wide-ranging changes, before editing files you have not fully inspected, and when asked to investigate or audit. Do not rely on search snippets for broad changes.
-- No `any` unless absolutely necessary.
-- Inline single-line helpers that have only one call site.
-- Check node_modules for external API types; don't guess.
-- **No inline imports** (`await import()`, `import("pkg").Type`, dynamic type imports). Top-level imports only.
-- In `packages/coding-agent`, resolve package assets through helpers in `src/config.ts`. Do not use `__dirname` directly; the helpers account for source checkouts, npm installations, and standalone binaries.
-- Never remove or downgrade code to fix type errors from outdated deps; upgrade the dep instead.
-- Use only erasable TypeScript syntax (Node strip-only mode) in code checked by the root config (`packages/*/src`, `packages/*/test`, `packages/coding-agent/examples`): no parameter properties, `enum`, `namespace`/`module`, `import =`, `export =`, or other constructs needing JS emit. Use explicit fields with constructor assignments.
+- Never commit, push, or open a PR unless the user asks.
 - Always ask before removing functionality or code that appears intentional.
-- Do not preserve backward compatibility unless the user asks for it.
-- Never hardcode key checks (e.g. `matchesKey(keyData, "ctrl+x")`). Add defaults to `DEFAULT_EDITOR_KEYBINDINGS` or `DEFAULT_APP_KEYBINDINGS` so they stay configurable.
-- Never modify `packages/ai/src/models.generated.ts` directly; update `packages/ai/scripts/generate-models.ts` instead, then regenerate. Including the resulting `models.generated.ts` diff is always OK, even if regeneration includes unrelated upstream model metadata changes.
+- Never run `git reset --hard`, `git checkout .`, `git clean -fd`, `git stash`, `git add -A`, `git add .`, or `git commit --no-verify`. Other sessions may share this worktree.
+- Treat npm dependency and lockfile changes as reviewed code. Direct external deps stay pinned to exact versions.
+- Never run lifecycle scripts unless the user asks. Install with `npm install --ignore-scripts`, or `npm ci --ignore-scripts` for a clean install.
+- Before updating `undici`, read its release notes for the target version and evaluate the impact.
+- After dependency metadata changes, refresh the lockfile with `npm install --package-lock-only --ignore-scripts`. Pre-commit blocks lockfile commits unless `PI_ALLOW_LOCKFILE_CHANGE=1`; set it only when the user wants the lockfile committed.
+- If `packages/coding-agent/install-lock/` needs regeneration, run `node scripts/generate-coding-agent-install-lock.mjs`. New deps with lifecycle scripts need review and an explicit allowlist entry in that script.
+
+## Repository layout
+
+Before editing a package that has its own AGENTS.md, read it. Pi loads context files only from the working directory and its ancestors, so a session started at the repo root does not load package files automatically.
+
+```
+packages/
+  ai/            Unified LLM API, providers, model catalog       -> packages/ai/AGENTS.md
+  agent/         Agent loop, transport abstraction, state
+  coding-agent/  pi CLI: tools, sessions, interactive mode       -> packages/coding-agent/AGENTS.md
+  tui/           Terminal UI library with differential rendering -> packages/tui/AGENTS.md
+  durable/       Durable conversation, task, and document runtime -> packages/durable/AGENTS.md
+  chord/         Composition runtime: services, replicated state, RPC, plugins
+  codemode/      Sandboxed JavaScript whose only capability is calling injected tools
+  mcp/           Model Context Protocol client
+  protocol/      Transport-neutral CBOR protocol for remote sessions
+  client/        Client for remote sessions over protocol/
+  server/        Server for remote sessions (experimental)
+  env/           Remote execution environments for durable: SSH-deployed daemon and client
+  telemetry/     Telemetry contracts and typed schemas
+  evals/         Evaluation harness
+scripts/         Repository checks, generators, release tooling
+.agents/skills/  On-demand workflows, one SKILL.md per directory
+.agents/notes/   Design decisions: why, and what was rejected
+.pi/prompts/     pi slash-command templates
+.pi/extensions/  Repository-local pi extensions
+```
 
 ## Commands
 
-- After code changes (not docs): `npm run check` (full output, no tail). Fix all errors, warnings, and infos before committing. Does not run tests.
-- Never run `npm run build` or `npm test` unless requested by the user.
-- Never run the full vitest suite directly: it includes e2e tests that activate when endpoint/auth env vars are present. For all non-e2e tests, run `./test.sh` from the repo root. Otherwise run specific tests from the package root:
-  - Vitest: `node "$(git rev-parse --show-toplevel)/node_modules/vitest/dist/cli.js" --run test/specific.test.ts`
-  - `packages/tui` (`node:test`): `node --test test/specific.test.ts`
-- If you create or modify a test file, run it and iterate on test or implementation until it passes.
-- For `packages/coding-agent/test/suite/`, use `test/suite/harness.ts` + the faux provider. No real provider APIs, keys, or paid tokens.
-- When regressions tests for fixing a github issue, add a comment with the github issue number next to the test.
-- For ad-hoc scripts, `write` them to a temp file (e.g. `/tmp`), run, edit if needed, remove when done. Don't embed multi-line scripts in `bash` commands.
-- Never commit unless the user asks.
+- After code changes (not docs): `npm run check` (full output, no tail). Fix all errors, warnings, and infos. It does not run tests.
+- Non-e2e tests: `./test.sh` from the repo root. Never run the full vitest suite directly: e2e tests activate when provider endpoint or auth env vars are present.
+- One vitest file, from the package root: `node "$(git rev-parse --show-toplevel)/node_modules/vitest/dist/cli.js" --run test/specific.test.ts`.
+- Choose the narrowest check that covers the change: follow [nyan-checks](.agents/skills/nyan-checks/SKILL.md).
+- Never run `npm run build` or `npm test` unless the user asks.
+- If you create or modify a test file, run it and iterate until it passes.
+- When adding a regression test for a GitHub issue, put the issue number in a comment next to the test.
+- Write ad-hoc scripts to a temp file, run them, and remove them when done. Do not embed multi-line scripts in `bash` commands.
 
-## Dependency and Install Security
+## Conventions
 
-- Treat npm dep and lockfile changes as reviewed code. Direct external deps stay pinned to exact versions.
-- When updating `undici`, you MUST read its changelog/release notes for the target version and evaluate whether any changes may affect functionality before applying the update.
-- Hydrate/update locally with `npm install --ignore-scripts`; clean/CI-style with `npm ci --ignore-scripts`. Don't run lifecycle scripts unless the user asks.
-- If dep metadata changes, refresh `package-lock.json` with `npm install --package-lock-only --ignore-scripts`.
-- If `packages/coding-agent/install-lock/` needs regen, run `node scripts/generate-coding-agent-install-lock.mjs` (verify with `--check` or `npm run check`). New deps with lifecycle scripts require review and an explicit allowlist entry in that script; never add one silently.
-- Pre-commit blocks lockfile commits unless `PI_ALLOW_LOCKFILE_CHANGE=1`. Don't bypass unless the user wants the lockfile change committed.
+- No `any` unless narrowing is infeasible.
+- **No inline imports** (`await import()`, `import("pkg").Type`, dynamic type imports). Top-level imports only.
+- Use only erasable TypeScript syntax in code checked by the root config (`packages/*/src`, `packages/*/test`, `packages/coding-agent/examples`): no parameter properties, `enum`, `namespace`/`module`, `import =`, `export =`, or other constructs that need JS emit. Node runs these files in strip-only mode. Use explicit fields with constructor assignments.
+- Check `node_modules` for external API types; don't guess.
+- Never remove or downgrade code to fix type errors from outdated deps; upgrade the dep instead.
+- Inline single-line helpers that have only one call site.
+- Read files in full before wide-ranging changes, before editing files you have not fully inspected, and when asked to investigate or audit. Search snippets are not enough.
+- Do not preserve backward compatibility unless the user asks.
+- Record a lasting design decision in `.agents/notes/` when code, tests, and docs cannot explain why. See the [notes README](.agents/notes/README.md).
+
+## Conversational style
+
+- Keep answers short and concise. Technical prose only, be direct.
+- No emojis in commits, issues, PR comments, or code. No filler text.
+- Use concise, clear, simple language. Define unavoidable jargon before using it.
+- Explain non-trivial designs and problems as: problem, concrete example or short trace, then solution. State why the solution is necessary and distinguish it from optional complexity.
+- Prefer concrete behavior and small illustrations over abstract summaries or unexplained lists of changes.
+- When the user asks a question, answer it before making edits or running implementation commands.
+- When responding to feedback or an analysis, say whether you agree or disagree before saying what you changed.
 
 ## Git
 
-Multiple pi sessions may be running in this cwd at the same time, each modifying different files. Git operations that touch unstaged, staged, or untracked files outside your own changes will stomp on other sessions' work. Follow these rules:
-
-Committing:
-
-- Only commit files YOU changed in THIS session.
-- Stage explicit paths (`git add <path1> <path2>`); never `git add -A` / `git add .`.
-- Before committing, run `git status` and verify you are only staging your files.
-- `packages/ai/src/models.generated.ts` may always be included alongside your files.
-- Message format: `{feat,fix,docs}[(ai,tui,agent,coding-agent)]: <commit message> (optionally multiple lines)`. Message is informative and concise.
-
-Never run (destroys other agents' work or bypasses checks):
-
-- `git reset --hard`, `git checkout .`, `git clean -fd`, `git stash`, `git add -A`, `git add .`, `git commit --no-verify`.
-
-If rebase conflicts occur:
-
-- Resolve conflicts only in files you modified.
-- If a conflict is in a file you did not modify, abort and ask the user.
-- Never force push.
-
-## Issues and PRs
-
-See `CONTRIBUTING.md` for the contributor gate (auto-close workflows, `lgtm`/`lgtmi`, quality bar).
-
-When reviewing PRs:
-
-- Do not run `gh pr checkout`, `git switch`, or otherwise move the worktree to the PR branch unless the user explicitly asks.
-- Use `gh pr view`, `gh pr diff`, `gh api`, and local `git show`/`git diff` against fetched refs to inspect PR metadata, commits, and patches without changing branches.
-- If you need PR file contents, fetch/read them into temporary files or use `git show <ref>:<path>` without switching branches.
-
-When creating issues:
-
-- Add `pkg:*` labels for affected packages (`pkg:agent`, `pkg:ai`, `pkg:coding-agent`, `pkg:tui`); use all that apply.
-
-When posting issue/PR comments:
-
-- Write the comment to a temp file and post with `gh issue/pr comment --body-file` (never multi-line markdown via `--body`).
-- Keep comments concise, technical, in the user's tone.
-- End every AI-posted comment with the AI-generated disclaimer line specified by the originating prompt (e.g. `This comment is AI-generated by `/wr``).
-
-When closing issues via commit:
-
-- Include `fixes #<number>` or `closes #<number>` in the message so merging auto-closes the issue. For multiple issues, repeat the keyword per issue (`closes #1, closes #2`); a shared keyword (`closes #1, #2`) only closes the first.
-
-## Testing pi Interactive Mode with tmux
-
-For testing pi's interactive mode, load and follow [.pi/skills/interactive-testing.md](.pi/skills/interactive-testing.md).
+- Only commit files you changed in this session. Stage explicit paths and run `git status` first.
+- Message format: `{feat,fix,docs,refactor,test,chore}(<package>): <message>`, where `<package>` is a directory name under `packages/`. Omit the scope for repository-wide changes.
+- When a commit closes an issue, include `fixes #<number>`. Repeat the keyword per issue (`closes #1, closes #2`).
+- On rebase conflicts, resolve only files you modified. If a conflict is in a file you did not modify, abort and ask. Never force push.
 
 ## Changelog
 
-Location: `packages/*/CHANGELOG.md` (one per package).
+Each package keeps `packages/*/CHANGELOG.md`. New entries go under `## [Unreleased]` in `### Breaking Changes`, `### Added`, `### Changed`, `### Fixed`, or `### Removed`. Read the whole section first and append to existing subsections. Released version sections are immutable. Add entries only on `main` or in a pull request branch. Link issues as `([#123](https://github.com/blxzer77/nyan/issues/123))`.
 
-Sections under `## [Unreleased]`: `### Breaking Changes` (API changes requiring migration), `### Added`, `### Changed`, `### Fixed`, `### Removed`.
+## Editing these instructions
 
-Rules:
+`CLAUDE.md` is a symlink to this file; edit `AGENTS.md`. Keep each rule one self-contained sentence or short paragraph. Put package-specific rules in that package's AGENTS.md and rationale in `.agents/notes/`, and link them from here.
 
-- All new entries go under `## [Unreleased]`. Read the full section first and append to existing subsections; never duplicate them.
-- Released version sections (e.g. `## [0.12.2]`) are immutable; never modify them.
-- Do not create changelog entries when working on a branch other than `main` or pull request
+## User override
 
-Attribution:
-
-- Internal (from issues): `Fixed foo bar ([#123](https://github.com/earendil-works/pi/issues/123))`
-- External contributions: `Added feature X ([#456](https://github.com/earendil-works/pi/pull/456) by [@username](https://github.com/username))`
-
-## Releasing
-
-For release preparation, publishing, verification, or recovery, load and follow [.pi/skills/release.md](.pi/skills/release.md).
-
-## User Override
-
-If the user's instructions conflict with any rule in this document, ask for explicit confirmation before overriding. Only then execute their instructions.
+If the user's instructions conflict with a rule in this file, ask for explicit confirmation before overriding it.
