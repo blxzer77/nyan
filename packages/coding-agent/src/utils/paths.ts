@@ -25,6 +25,14 @@ export interface PathInputOptions {
  * not exist yet), so that callers never crash on missing filesystem
  * entries.
  */
+/**
+ * Settings patterns and package sources are shared between machines, so they are written with `/` on every platform.
+ * Matching code converts back with the same function, which leaves a pattern that already uses `/` unchanged.
+ */
+export function toPosixPath(path: string): string {
+	return path.split(sep).join("/");
+}
+
 export function canonicalizePath(path: string): string {
 	try {
 		return realpathSync(path);

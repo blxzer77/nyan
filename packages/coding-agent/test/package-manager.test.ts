@@ -80,6 +80,9 @@ describe("DefaultPackageManager", () => {
 		delete process.env.NYAN_OFFLINE;
 		tempDir = join(tmpdir(), `pm-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		mkdirSync(tempDir, { recursive: true });
+		// A repository root ends the search for ancestor `.agents/skills`. Without it the walk continues up the real
+		// directory tree, and on Windows the temp dir sits under the developer's own home and finds their skills.
+		mkdirSync(join(tempDir, ".git"));
 		agentDir = join(tempDir, "agent");
 		mkdirSync(agentDir, { recursive: true });
 

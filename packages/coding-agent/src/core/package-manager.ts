@@ -40,7 +40,7 @@ import { gt, maxSatisfying, rcompare, satisfies, valid, validRange } from "semve
 import { CONFIG_DIR_NAME } from "../config.ts";
 import { spawnProcess, spawnProcessSync } from "../utils/child-process.ts";
 import { type GitSource, parseGitUrl } from "../utils/git.ts";
-import { canonicalizePath, isLocalPath, markPathIgnoredByCloudSync, resolvePath } from "../utils/paths.ts";
+import { canonicalizePath, isLocalPath, markPathIgnoredByCloudSync, resolvePath, toPosixPath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
 import { type NyanManifest, readNyanManifest } from "./nyan-manifest.ts";
 import { isStdoutTakenOver } from "./output-guard.ts";
@@ -219,10 +219,6 @@ const FILE_PATTERNS: Record<ResourceType, RegExp> = {
 const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
 
 type IgnoreMatcher = ReturnType<typeof ignore>;
-
-function toPosixPath(p: string): string {
-	return p.split(sep).join("/");
-}
 
 function getHomeDir(): string {
 	return process.env.HOME || homedir();

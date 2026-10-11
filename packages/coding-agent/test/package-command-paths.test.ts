@@ -134,6 +134,19 @@ if (process.platform !== "win32") fs.chmodSync(nyanPath, 0o755);
 		};
 	}
 
+	/**
+	 * Keep the developer's own `~/.agents/skills` out of a resource list under test. A fake home replaces it, and the
+	 * repository root ends the search for ancestor skill directories (on Windows the temp dir sits under the real home).
+	 * Only for tests that list resources: trust checks walk to the filesystem root and would then find the real one.
+	 */
+	function isolateUserSkills(): void {
+		const homeDir = join(tempDir, "home");
+		mkdirSync(homeDir, { recursive: true });
+		mkdirSync(join(projectDir, ".git"), { recursive: true });
+		vi.stubEnv("HOME", homeDir);
+		vi.stubEnv("USERPROFILE", homeDir);
+	}
+
 	beforeEach(() => {
 		allowNetwork();
 		process.env.NYAN_LATEST_VERSION_URL = "https://releases.example.test/api/latest-version";
@@ -529,6 +542,7 @@ if (process.platform !== "win32") fs.chmodSync(nyanPath, 0o755);
 	});
 
 	it("toggles built-in extensions in config global mode", async () => {
+		isolateUserSkills();
 		const settingsManager = SettingsManager.fromStorage(new InMemorySettingsStorage(), { projectTrusted: true });
 		const resolvedPaths = await new DefaultPackageManager({
 			cwd: projectDir,
@@ -559,6 +573,7 @@ if (process.platform !== "win32") fs.chmodSync(nyanPath, 0o755);
 	});
 
 	it("cycles project built-in extension overrides in config local mode", async () => {
+		isolateUserSkills();
 		const storage = new InMemorySettingsStorage();
 		storage.withLock("global", () => JSON.stringify({ extensions: ["-builtin:mcp"] }));
 		const settingsManager = SettingsManager.fromStorage(storage, { projectTrusted: true });
@@ -943,7 +958,7 @@ else {
 		writeFileSync(join(selfPackageDir, "package.json"), JSON.stringify({ name: PACKAGE_NAME, version: VERSION }));
 		const fakePnpmScript =
 			process.platform === "win32"
-				? `@echo off\r\nif "%1"=="root" if "%2"=="-g" (echo ${globalRoot} & exit /b 0)\r\nexit /b 23\r\n`
+				? `@echo off\r\nif "%~1"=="root" if "%~2"=="-g" (echo ${globalRoot} & exit /b 0)\r\nexit /b 23\r\n`
 				: `#!/bin/sh\nif [ "$1" = "root" ] && [ "$2" = "-g" ]; then\n\tprintf '%s\\n' '${globalRoot.replaceAll("'", "'\\''")}'\n\texit 0\nfi\nexit 23\n`;
 		writeFileSync(fakePnpmPath, fakePnpmScript);
 		chmodSync(fakePnpmPath, 0o755);
