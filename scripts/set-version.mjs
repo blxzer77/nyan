@@ -6,10 +6,9 @@
  *   npm run version:set -- 1.2.0
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { execNpmSync } from "./npm-command.mjs";
-import { findPackageDirectories } from "./package-workspaces.mjs";
 
 const version = process.argv[2];
 if (!version || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
@@ -17,10 +16,22 @@ if (!version || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
 	process.exit(1);
 }
 
-const generated = join("coding-agent", "install-lock");
-for (const directory of findPackageDirectories("packages")) {
-	if (directory.endsWith(generated)) continue;
+// Only the packages npm treats as workspace members take the release version. Fixtures such as the example plugin carry
+// their own, and tests assert on them. The generated install-lock package is versioned by its generator.
+function workspaceDirectories() {
+	const { workspaces } = JSON.parse(readFileSync("package.json", "utf8"));
+	return workspaces.flatMap((pattern) =>
+		pattern.endsWith("/*")
+			? readdirSync(pattern.slice(0, -2), { withFileTypes: true })
+					.filter((entry) => entry.isDirectory())
+					.map((entry) => join(pattern.slice(0, -2), entry.name))
+			: [pattern],
+	);
+}
+
+for (const directory of workspaceDirectories()) {
 	const path = join(directory, "package.json");
+	if (!existsSync(path)) continue;
 	const text = readFileSync(path, "utf8");
 	const next = text.replace(/("version":\s*")[^"]+(")/, `$1${version}$2`);
 	if (next !== text) writeFileSync(path, next);
