@@ -1,8 +1,8 @@
 # Nyan current-state architecture
 
-**Snapshot date:** 2026-10-11  
+**Snapshot date:** 2026-10-12  
 **Source baseline:** Pi Agent v1.1.0, commit `abe508e1b89912adde45528136c3221eb69acdd7` (record: [`.agents/upstream/pi-v1.1.0.json`](../../.agents/upstream/pi-v1.1.0.json))  
-**Evidence status:** measured on the working tree with the commands below. Nothing here is committed, published or tested on a platform other than Windows 11 with Node 24.
+**Evidence status:** measured on the working tree with the commands below, on Windows 11 with Node 24. Nothing here has run on Linux or macOS, in GitHub Actions, or against the npm registry.
 
 This document states current behavior. Decisions and their reasons are in [`.agents/notes/`](../../.agents/notes/); the enforced policy is [`layers.json`](layers.json).
 
@@ -15,7 +15,7 @@ npm run build:offline       clean dist for all packages
 node scripts/check-architecture-layers.mjs    layers, stability, entries, module layers, cycles
 ```
 
-Package test suites were run against an unmodified export of Pi v1.1.0 built and tested the same way; the failures that remain on Windows are identical on both sides (Unix socket permissions, path separators, the environment daemon not built, TUI path assertions, remote model-price drift). The Ubuntu CI job builds the daemon first and runs the full suite.
+`npm test` passes on Windows: every package suite reports no failures (`coding-agent` 2659 passed, `ai` 1299, `durable` 970, `tui` and the root script tests included). Tests that cannot apply on Windows are skipped with a stated reason in the test file: the Unix-domain-socket transport (the client rejects it and the listener publishes sockets with `link(2)`), Ctrl-Z suspend, file permission bits, and two checks that need a home directory with no `.agents/skills` above the temp dir. `ai` skips 865 live-provider tests that need credentials.
 
 ## Repository shape
 
@@ -92,6 +92,6 @@ Nyan includes no default address for any hosted service. The installer, share vi
 - Local commits only: nothing is pushed, tagged or published. `origin` still points at `blxzer77/pi`; repository links in documents and manifests assume `blxzer77/nyan`.
 - The committed native prebuilds (`packages/tui/native/*/prebuilds`) predate the rename; the release workflow rebuilds them on each platform and ships the fresh binaries, so published packages do not carry the old ones.
 - The release workflow is written but has not run: it needs the `NPM_TOKEN` secret, the `npm` environment, and the `@nyan` scope on npm. `npm run release:dry` packs all 12 packages locally.
-- `AGENTS.md` lists `npm test` as a local command; on Windows the full run has the platform baseline failures above.
+- The hosted Windows CI job builds and runs `npm run check` but not the test suite; the suite has only been run on one Windows machine.
 - `npm run build` in `ai` runs `generate-models`, which fetches the public model catalogs from the network; the generator no longer includes a Radius catalog, so the aggregator lists one provider fewer than Pi v1.1.0.
 - Experimental and example code stays candidate code until verified through a Nyan entry path.

@@ -4,7 +4,7 @@
 
 import assert from "node:assert";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { Image, setImageTranscoder } from "../src/components/image.ts";
 import {
@@ -320,7 +320,6 @@ describe("detectCapabilities", () => {
 		});
 	});
 
-	// #10573
 	it("enables hyperlinks without images for Herdr", () => {
 		withEnv({ TERM_PROGRAM: "herdr", TERM: "xterm-256color", COLORTERM: "truecolor", KITTY_WINDOW_ID: "1" }, () => {
 			const caps = detectCapabilities();
@@ -652,7 +651,7 @@ describe("Kitty image cursor movement", () => {
 	});
 });
 
-// #8938: reduce Kitty placement distortion without shrinking iTerm2 reservations.
+// Reduce Kitty placement distortion without shrinking iTerm2 reservations.
 describe("image cell sizing", () => {
 	afterEach(() => {
 		resetCapabilitiesCache();
@@ -790,13 +789,16 @@ describe("image cell sizing", () => {
 	});
 });
 
+// The home prefix becomes "~" and the rest keeps the platform separator.
+const shortenedShot = ["~", ".nyan", "agent", "shot.png"].join(sep);
+
 describe("imageFallback", () => {
 	it("shortens home-prefixed absolute paths without hyperlinks", () => {
 		setCapabilities({ images: null, trueColor: false, hyperlinks: false });
 		try {
 			const abs = join(homedir(), ".nyan", "agent", "shot.png");
 			const result = imageFallback("image/png", { widthPx: 1280, heightPx: 720 }, abs);
-			assert.strictEqual(result, "[Image: ~/.nyan/agent/shot.png [image/png] 1280x720]");
+			assert.strictEqual(result, `[Image: ${shortenedShot} [image/png] 1280x720]`);
 		} finally {
 			resetCapabilitiesCache();
 		}
@@ -814,7 +816,7 @@ describe("imageFallback", () => {
 			);
 			// Visible text must use ~/... not the expanded home path.
 			const visible = result.replace(/\x1b\]8;;.*?\x1b\\/g, "");
-			assert.strictEqual(visible, "[Image: ~/.nyan/agent/shot.png [image/png] 10x10]");
+			assert.strictEqual(visible, `[Image: ${shortenedShot} [image/png] 10x10]`);
 		} finally {
 			resetCapabilitiesCache();
 		}
@@ -841,7 +843,7 @@ describe("imageFallback", () => {
 	});
 });
 
-// Kitty only accepts PNG (f=100); non-PNG images must be transcoded (#10292)
+// Kitty only accepts PNG (f=100); non-PNG images must be transcoded
 describe("Image transcoding", () => {
 	const jpeg = Buffer.from("jpeg").toString("base64");
 	// Minimal PNG header (signature + IHDR) for a 40x10 image. Enough for getPngDimensions.

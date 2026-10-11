@@ -10,7 +10,7 @@ The upstream release tooling (version bumping, tag-driven publishing, binary bui
 
 Three workflows in `.github/workflows/`, and two scripts that hold the logic so it can run locally.
 
-- **`ci.yml`** — on every push and pull request to `main`: build, `npm run check` and `npm test` on Ubuntu; build and `npm run check` on Windows (the full suite has known Windows platform failures, so only build and check gate there); a production-dependency audit (`scripts/npm-audit.mjs`); MCP conformance.
+- **`ci.yml`** — on every push and pull request to `main`: build, `npm run check` and `npm test` on Ubuntu; build and `npm run check` on Windows (the suite passes locally on Windows but the hosted runner has not run it, so only build and check gate there for now); a production-dependency audit (`scripts/npm-audit.mjs`); MCP conformance.
 - **`native.yml`** — builds the native modules where they run: Linux x64 and arm64 on matching runners, macOS (the script cross-compiles both architectures), Windows (the script builds x64 and arm64). Reusable by the release workflow and runnable by hand.
 - **`release.yml`** — on a pushed `vX.Y.Z` tag: verify (build, check, test), build the native modules, then publish. The tag must equal the package version. A pre-release suffix publishes under the `next` dist-tag. It creates a GitHub release with generated notes. A manual run defaults to a dry run.
 - **`scripts/publish-packages.mjs`** — publishes the public packages in dependency order, requires one lockstep version (`--expect-version` pins it to the tag), skips versions already on the registry so a failed release can be re-run, and uses `npm publish --provenance` under GitHub Actions. `--dry-run` packs every tarball.
