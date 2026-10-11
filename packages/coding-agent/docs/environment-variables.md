@@ -82,11 +82,12 @@ These variables are read by Nyan itself:
 | `NYAN_CODING_AGENT_SESSION_DIR` | Override session storage; overridden by `--session-dir` |
 | `NYAN_PACKAGE_DIR` | Override the package directory, useful for Nix/Guix store paths |
 | `NYAN_OFFLINE` | Disable automatic network activity, including model catalog refreshes |
-| `NYAN_SKIP_VERSION_CHECK` | Disable the latest-version request (it only runs when `NYAN_LATEST_VERSION_URL` is set) |
+| `NYAN_SKIP_VERSION_CHECK` | Disable the latest-version request |
+| `NYAN_LATEST_VERSION_URL` | Ask this release feed instead of the npm registry; it answers `{ version, packageName?, note? }` |
+| `NYAN_NPM_REGISTRY` | Registry used for the latest-version lookup (default `https://registry.npmjs.org`) |
 | `NYAN_TELEMETRY` | Override install/update telemetry and provider attribution headers: `1`/`true`/`yes` or `0`/`false`/`no` |
 | `NYAN_CACHE_RETENTION` | Set to `long` for extended provider prompt caching where supported |
 | `NYAN_SHARE_VIEWER_URL` | Override the base URL used by `/share` |
-| `NYAN_RADIUS_GATEWAY` | Override the Radius gateway origin used by `/bug` uploads and Radius relay connections |
 | `NYAN_HARDWARE_CURSOR` | Set to `1` to show the hardware cursor; see [Terminal setup](terminal-setup.md) |
 | `NYAN_HYPERLINKS` | Override OSC 8 hyperlink detection with `1`, `0`, or `auto` |
 | `NYAN_PROGRAM_STATUS` | Override OSC 7501 program status detection: `1` always reports, `0` never reports; otherwise Nyan reports only after the terminal confirms support. See [Terminal setup](terminal-setup.md#program-status) |

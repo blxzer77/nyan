@@ -1,9 +1,23 @@
 import { compare, valid } from "semver";
+import { PACKAGE_NAME } from "../config.ts";
 import { fetchWithRetry } from "./management-http.ts";
 import { getNyanUserAgent } from "./nyan-user-agent.ts";
 
-/** Release feed that answers `{ version, packageName?, note? }`. Nyan assumes no hosted feed, so the check is off until this is set. */
+/**
+ * Where the latest release comes from. By default the npm registry answers for this package's `latest` dist-tag.
+ * `NYAN_LATEST_VERSION_URL` replaces it with a feed that answers `{ version, packageName?, note? }`, and
+ * `NYAN_NPM_REGISTRY` points the default lookup at another registry.
+ */
 export const ENV_LATEST_VERSION_URL = "NYAN_LATEST_VERSION_URL";
+export const ENV_NPM_REGISTRY = "NYAN_NPM_REGISTRY";
+const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org";
+
+function latestVersionUrl(): string {
+	const feed = process.env[ENV_LATEST_VERSION_URL]?.trim();
+	if (feed) return feed;
+	const registry = (process.env[ENV_NPM_REGISTRY]?.trim() || DEFAULT_NPM_REGISTRY).replace(/\/+$/, "");
+	return `${registry}/${PACKAGE_NAME.replace("/", "%2F")}/latest`;
+}
 const DEFAULT_VERSION_CHECK_TIMEOUT_MS = 10000;
 
 export interface LatestNyanRelease {
@@ -54,11 +68,9 @@ export async function getLatestNyanRelease(
 	options: { timeoutMs?: number; retry?: boolean } = {},
 ): Promise<LatestNyanRelease | undefined> {
 	if (process.env.NYAN_OFFLINE) return undefined;
-	const latestVersionUrl = process.env[ENV_LATEST_VERSION_URL]?.trim();
-	if (!latestVersionUrl) return undefined;
 
 	const response = await fetchWithRetry(
-		latestVersionUrl,
+		latestVersionUrl(),
 		{
 			headers: {
 				"User-Agent": getNyanUserAgent(currentVersion),
