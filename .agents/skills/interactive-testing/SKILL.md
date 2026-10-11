@@ -5,7 +5,7 @@ description: Test and debug pi's interactive mode in a controlled tmux terminal.
 
 # Testing pi Interactive Mode with tmux
 
-Run the TUI in a controlled terminal (from the repo root, two directories above this skill):
+Run the TUI in a controlled terminal (from the repo root, three directories above this skill):
 
 ```bash
 tmux new-session -d -s pi-test -x 80 -y 24
