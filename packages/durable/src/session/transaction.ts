@@ -48,6 +48,7 @@ import type {
 	TaskOptions,
 	TaskQuery,
 	TaskRecord,
+	TaskReference,
 	Tx,
 	TypedEntry,
 	TypedEntryDraft,
@@ -382,6 +383,16 @@ export class Transaction implements Tx {
 
 	createTask<I, S extends { phase: string }, R, H extends object>(
 		task: Task<I, S, R, H>,
+		input: I,
+		options: TaskOptions,
+	): Promise<TaskId<R>>;
+	createTask<I, S extends { phase: string }, R>(
+		task: TaskReference<I, S, R>,
+		input: I,
+		options: TaskOptions,
+	): Promise<TaskId<R>>;
+	createTask<I, S extends { phase: string }, R>(
+		task: Task<I, S, R, object> | TaskReference<I, S, R>,
 		input: I,
 		options: TaskOptions,
 	): Promise<TaskId<R>> {

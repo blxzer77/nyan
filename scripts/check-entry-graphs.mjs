@@ -45,8 +45,9 @@ const BUDGETS = {
 		".": {
 			// Tool argument validation reaches TypeBox; provider-session creation reaches nyan-ai's lean UUID utility; the
 			// memory and SQLite storages share scan order and cursor handling; chord's delta barrel and its definitions
-			// are separate files so the diff and tracker modules do not import their own barrel.
-			maxFiles: 64,
+			// are separate files so the diff and tracker modules do not import their own barrel; run control and assistant
+			// appends are separate files so the run lifecycle has no import cycle.
+			maxFiles: 66,
 			forbid: ["packages/ai/src/index.ts", "packages/ai/src/utils/typebox-helpers.ts"],
 		},
 	},

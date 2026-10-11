@@ -3,7 +3,7 @@ import type { Draft, JsonRepresentation, JsonValue } from "@nyan/chord";
 import { defineDoc } from "../documents.ts";
 import type { Transaction } from "../session/transaction.ts";
 import type { EntryId, SubmissionId, SubmissionSettlement, TaskId, TaskRecord, Tx } from "../types.ts";
-import { convertPartial } from "./generation.ts";
+import { convertPartial } from "./assistant.ts";
 import type { SchedulerOutcome } from "./scheduler.ts";
 import type { CompactionReason, CompactionResult, ToolDiagnostic } from "./types.ts";
 

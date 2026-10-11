@@ -11,9 +11,9 @@ import type {
 	SubmissionRecord,
 	Tx,
 } from "../types.ts";
-import { startRun } from "./generation.ts";
 import { applyBoundary, InboxDoc, isStale, prepareBoundary, type QueueModes, removeInboxItem } from "./inbox.ts";
 import { LiveDoc } from "./live.ts";
+import { startRun } from "./run.ts";
 import type { SettledSubmissionRecord, Submission, SubmissionDraft, UserInput } from "./types.ts";
 import { closedError, Waiters } from "./util.ts";
 

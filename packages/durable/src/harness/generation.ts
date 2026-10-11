@@ -15,23 +15,16 @@ import { type Context, copyJson, type Draft, type JsonValue } from "@nyan/chord"
 import { AssistantEntry, ResetEntry, SystemEntry, UserEntry } from "../entries.ts";
 import type { ExecutionEnv } from "../env/index.ts";
 import { defineTask } from "../tasks.ts";
-import type {
-	ConversationId,
-	EntryId,
-	NextTaskState,
-	SubmissionId,
-	TaskId,
-	TaskRuntime,
-	Tx,
-	TypedEntry,
-} from "../types.ts";
+import type { EntryId, NextTaskState, TaskId, TaskRuntime, Tx } from "../types.ts";
 import { addTools } from "./agent.ts";
+import { appendAssistant, convertPartial } from "./assistant.ts";
 import { createCompaction, estimateContext, selectCut } from "./compaction.ts";
 import { applyBoundary, prepareBoundary } from "./inbox.ts";
 import { assignJson } from "./json.ts";
-import { endRun, LiveDoc, type LiveState, type ToolSlot } from "./live.ts";
+import { endRun, LiveDoc, type ToolSlot } from "./live.ts";
 import { planSystemEntries, renderSections, replaySections } from "./prompt.ts";
 import { ensureProviderSessionId } from "./provider.ts";
+import { createGeneration, generationTaskReference, handOver, startRun } from "./run.ts";
 import { appendToolResult, harnessError, ToolTask, type ToolTaskResult } from "./tool.ts";
 import type {
 	CompactionPolicy,
@@ -44,7 +37,6 @@ import type {
 	ToolControl,
 	UserInput,
 } from "./types.ts";
-import { recordUsage } from "./usage.ts";
 
 export type GenerationInput = Record<string, never>;
 
@@ -113,9 +105,9 @@ const DEFAULT_POLL_AFTER_MS = 5000;
  * retries, and classifies the response. The run's inputs live in `nyan.live.run`.
  */
 export const GenerationTask = defineTask<GenerationInput, GenerationCheckpoint, GenerationResult, GenerationHooks>({
-	name: "nyan.generation",
-	version: 1,
-	initial: () => ({ phase: "prepare", attempt: 1 }),
+	name: generationTaskReference.definition.name,
+	version: generationTaskReference.definition.version,
+	initial: generationTaskReference.definition.initial,
 	phases: {
 		/**
 		 * Render the system prompt and tool loadout and append the positional `nyan.system` entries they need, then move to
@@ -343,17 +335,6 @@ async function failNoModel(runtime: Runtime, ref: ModelRef | undefined, context:
 		endRun(tx, live, runtime.taskId, { status: "unanswered", reason: "no_model" });
 		return { status: "terminal", outcome: { status: "failed", error: { message, detail: { reason: "no_model" } } } };
 	}, context);
-}
-
-/**
- * Append a committed partial left by an interrupted, aborted, faulted, or orphaned attempt as an aborted assistant
- * entry; the caller replaces or removes `generation`.
- */
-export async function convertPartial(tx: Tx, live: Draft<LiveState>, conversationId: ConversationId): Promise<void> {
-	const partial = live.generation?.message;
-	if (partial === undefined) return;
-	const message = copyJson(partial) as unknown as AssistantMessage;
-	await appendAssistant(tx, conversationId, { ...message, stopReason: "aborted" });
 }
 
 /**
@@ -645,37 +626,4 @@ async function finishToolRound(
 		}
 		return { status: "terminal", outcome: { status: "completed", result: { entryId: assistant } } };
 	}, context);
-}
-
-/**
- * Append a provider result and add its usage to `nyan.usage` in the same commit.
- * REMINDER: every built-in writer of assistant entries goes through here, so the usage ledger stays complete.
- */
-async function appendAssistant(
-	tx: Tx,
-	conversationId: ConversationId,
-	message: AssistantMessage,
-): Promise<TypedEntry<never>> {
-	await recordUsage(tx, conversationId, "models", `${message.provider}/${message.model}`, message.usage);
-	return tx.appendEntry(AssistantEntry, conversationId, { model: [message] });
-}
-
-/** Start a run for `inputs`, placed input submissions: a new generation takes `nyan.live.run`. */
-export async function startRun(
-	tx: Tx,
-	conversationId: ConversationId,
-	live: Draft<LiveState>,
-	inputs: SubmissionId[],
-): Promise<void> {
-	live.run = { taskId: await createGeneration(tx, conversationId), inputs };
-}
-
-/** A generation owned by its conversation. */
-function createGeneration(tx: Tx, conversationId: ConversationId): Promise<TaskId<GenerationResult>> {
-	return tx.createTask(GenerationTask, {}, { ownership: { kind: "conversation" }, conversationId });
-}
-
-/** Hand run control from `from` to `to`; the run's inputs move with it. */
-export function handOver(live: Draft<LiveState>, from: TaskId, to: TaskId): void {
-	if (live.run?.taskId === from) live.run.taskId = to;
 }

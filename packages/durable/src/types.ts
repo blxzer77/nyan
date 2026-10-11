@@ -260,6 +260,20 @@ export interface Task<I, S extends { phase: string }, R, H extends object> {
 	readonly definition: TaskDefinition<I, S, R, H>;
 }
 
+/**
+ * What creating a task needs: its identity and first checkpoint. The executable definition is found by `name` in the
+ * registry when the task runs, so a module that only starts a task need not import the module that implements it.
+ */
+export interface TaskReference<I, S extends { phase: string }, R> {
+	readonly definition: {
+		readonly name: string;
+		readonly version: number;
+		initial(input: I): S;
+	};
+	/** Carries the result type of the referenced task; never present at runtime. */
+	readonly result?: R;
+}
+
 /** Who owns a task: its conversation (a top-level task) or another task of the same conversation (a child task). */
 export type TaskOwnership = { readonly kind: "conversation" } | { readonly kind: "task"; readonly taskId: TaskId };
 
@@ -803,6 +817,11 @@ export interface Tx {
 	): Promise<TypedEntry<D>>;
 	createTask<I, S extends { phase: string }, R, H extends object>(
 		task: Task<I, S, R, H>,
+		input: I,
+		options: TaskOptions,
+	): Promise<TaskId<R>>;
+	createTask<I, S extends { phase: string }, R>(
+		task: TaskReference<I, S, R>,
 		input: I,
 		options: TaskOptions,
 	): Promise<TaskId<R>>;
