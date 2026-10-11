@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { resolveSessionDirectory } from "../src/experimental/server.ts";
 
@@ -9,7 +9,7 @@ describe("experimental server session directory", () => {
 	test("uses the experimental directory under the configured agent directory by default", () => {
 		vi.stubEnv("NYAN_CODING_AGENT_DIR", "/tmp/nyan-agent-config");
 
-		expect(resolveSessionDirectory()).toBe("/tmp/nyan-agent-config/experimental/sessions");
+		expect(resolveSessionDirectory()).toBe(join(resolve("/tmp/nyan-agent-config"), "experimental", "sessions"));
 	});
 
 	test("resolves an explicit relative directory from the current working directory", () => {

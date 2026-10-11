@@ -81,7 +81,9 @@ afterEach(async () => {
 	directories.clear();
 });
 
-describe("experimental durable server composition", () => {
+// Unix-domain sockets are a POSIX transport here: the client refuses them on Windows and the listener publishes its
+// socket with link(2).
+describe.skipIf(process.platform === "win32")("experimental durable server composition", () => {
 	test("uses NYAN_SERVER_DIR and NYAN_SERVER_ID", async () => {
 		const directory = await mkdtemp(join("/tmp", "nyan-server-dir-"));
 		directories.add(directory);

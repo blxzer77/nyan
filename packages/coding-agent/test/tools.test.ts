@@ -440,7 +440,8 @@ describe("Coding Agent Tools", () => {
 			expect(readFileSync(testFile, "utf-8")).toBe(originalContent);
 		});
 
-		it("should include EACCES for read-only files", async () => {
+		// Windows has no permission bits: chmod only toggles a read-only attribute and reads of a 0o222 file succeed.
+		it.skipIf(process.platform === "win32")("should include EACCES for read-only files", async () => {
 			const testFile = join(testDir, "edit-readonly.txt");
 			writeFileSync(testFile, "hello\n");
 			chmodSync(testFile, 0o444);
@@ -479,15 +480,18 @@ describe("Coding Agent Tools", () => {
 			expect(result).toEqual({ error: `Could not edit file: ${missingFile}. Error code: ENOENT.` });
 		});
 
-		it("should include EACCES in diff preview for unreadable files", async () => {
-			const unreadableFile = join(testDir, "unreadable-preview.txt");
-			writeFileSync(unreadableFile, "hello\n");
-			chmodSync(unreadableFile, 0o222);
+		it.skipIf(process.platform === "win32")(
+			"should include EACCES in diff preview for unreadable files",
+			async () => {
+				const unreadableFile = join(testDir, "unreadable-preview.txt");
+				writeFileSync(unreadableFile, "hello\n");
+				chmodSync(unreadableFile, 0o222);
 
-			const result = await computeEditsDiff(unreadableFile, [{ oldText: "hello", newText: "world" }], testDir);
+				const result = await computeEditsDiff(unreadableFile, [{ oldText: "hello", newText: "world" }], testDir);
 
-			expect(result).toEqual({ error: `Could not edit file: ${unreadableFile}. Error code: EACCES.` });
-		});
+				expect(result).toEqual({ error: `Could not edit file: ${unreadableFile}. Error code: EACCES.` });
+			},
+		);
 	});
 
 	describe("bash tool", () => {
@@ -916,7 +920,7 @@ describe("Coding Agent Tools", () => {
 			writeFileSync(testFile, "target\n");
 
 			const result = await grepTool.execute("test-call-grep-injection", {
-				pattern: `--pre=${payload}`,
+				pattern: `--pre=${payload.replaceAll("\\", "/")}`,
 				path: testDir,
 			});
 
@@ -1094,13 +1098,14 @@ describe("tool cwd resolution", () => {
 		const tool = createBashToolDefinition("/", { exposeSessionEnvironment: false });
 		const result = await tool.execute(
 			"test-bash-ctx-cwd",
-			{ command: "pwd" },
+			// Git Bash prints MSYS paths (`/tmp/...`) unless asked for the Windows form.
+			{ command: process.platform === "win32" ? "pwd -W" : "pwd" },
 			undefined,
 			undefined,
 			fakeCtx(testDir),
 		);
 		const output = getTextOutput(result);
-		expect(output).toContain(testDir);
+		expect(output).toContain(process.platform === "win32" ? testDir.replaceAll("\\", "/") : testDir);
 	});
 });
 

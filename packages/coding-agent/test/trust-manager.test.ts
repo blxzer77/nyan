@@ -1,8 +1,15 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../src/core/trust-manager.ts";
+
+function hasSkillsAbove(dir: string): boolean {
+	for (let current = dirname(dir); ; current = dirname(current)) {
+		if (existsSync(join(current, ".agents", "skills"))) return true;
+		if (dirname(current) === current) return false;
+	}
+}
 
 describe("ProjectTrustStore", () => {
 	let tempDir: string;
@@ -36,7 +43,7 @@ describe("ProjectTrustStore", () => {
 		expect(store.get(childDir)).toBe(true);
 	});
 
-	it("detects trust-requiring project resources", () => {
+	it.skipIf(hasSkillsAbove(tmpdir()))("detects trust-requiring project resources", () => {
 		const originalHome = process.env.HOME;
 		process.env.HOME = tempDir;
 		try {

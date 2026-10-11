@@ -38,33 +38,38 @@ afterEach(async () => {
 	tempDirectories.clear();
 });
 
-test("creates an in-memory server ID and derives its explicit Unix socket path", async () => {
-	const directory = await mkdtemp(join("/tmp", "nyan-server-"));
-	tempDirectories.add(directory);
-	const serverId = "00000000-0000-4000-8000-000000000001";
-	const path = getUnixSocketPath(serverId, directory);
+// Unix-domain sockets are a POSIX transport here: the client refuses them on Windows and the listener publishes its
+// socket with link(2).
+test.skipIf(process.platform === "win32")(
+	"creates an in-memory server ID and derives its explicit Unix socket path",
+	async () => {
+		const directory = await mkdtemp(join("/tmp", "nyan-server-"));
+		tempDirectories.add(directory);
+		const serverId = "00000000-0000-4000-8000-000000000001";
+		const path = getUnixSocketPath(serverId, directory);
 
-	expect(path).toBe(join(directory, `${serverId}.sock`));
-	const first = createUnixServer(new TestServerHost(), { serverId, path });
-	servers.add(first);
-	await first.start();
-	const firstClient = await connectUnixTestClient(path);
-	clients.add(firstClient);
-	expect(await firstClient.hello()).toMatchObject({ serverId });
-	await firstClient.close();
-	clients.delete(firstClient);
-	await first.close();
-	servers.delete(first);
+		expect(path).toBe(join(directory, `${serverId}.sock`));
+		const first = createUnixServer(new TestServerHost(), { serverId, path });
+		servers.add(first);
+		await first.start();
+		const firstClient = await connectUnixTestClient(path);
+		clients.add(firstClient);
+		expect(await firstClient.hello()).toMatchObject({ serverId });
+		await firstClient.close();
+		clients.delete(firstClient);
+		await first.close();
+		servers.delete(first);
 
-	const replacement = createUnixServer(new TestServerHost(), { serverId, path });
-	servers.add(replacement);
-	await replacement.start();
-	const replacementClient = await connectUnixTestClient(path);
-	clients.add(replacementClient);
-	expect(await replacementClient.hello()).toMatchObject({ serverId });
-});
+		const replacement = createUnixServer(new TestServerHost(), { serverId, path });
+		servers.add(replacement);
+		await replacement.start();
+		const replacementClient = await connectUnixTestClient(path);
+		clients.add(replacementClient);
+		expect(await replacementClient.hello()).toMatchObject({ serverId });
+	},
+);
 
-describe("Unix listener filesystem lifecycle", () => {
+describe.skipIf(process.platform === "win32")("Unix listener filesystem lifecycle", () => {
 	test("rejects a live listener without unlinking it", async () => {
 		const path = await makeSocketPath();
 		const first = makeServer(path);

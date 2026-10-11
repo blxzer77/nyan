@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
@@ -30,7 +31,7 @@ afterEach(async () => {
 
 describe("server-selected presentation facets", () => {
 	test("restores plugin package selections for later server generations", async () => {
-		const directory = await mkdtemp("/tmp/nyan-presentation-profile-");
+		const directory = await mkdtemp(join(tmpdir(), "nyan-presentation-profile-"));
 		directories.add(directory);
 		const serverId = randomUUID();
 		const packagePaths = [join(directory, "first-plugin"), join(directory, "second-plugin")];
@@ -41,7 +42,7 @@ describe("server-selected presentation facets", () => {
 	});
 
 	test("builds conventional plugin entries into the server-owned plugin cache", async () => {
-		const directory = await mkdtemp("/tmp/nyan-presentation-package-");
+		const directory = await mkdtemp(join(tmpdir(), "nyan-presentation-package-"));
 		directories.add(directory);
 		const serverId = randomUUID();
 		const packagePath = join(directory, "nyan-example-plugin");
@@ -67,7 +68,10 @@ describe("server-selected presentation facets", () => {
 		const first = await plugin.build();
 		expect(first).toHaveLength(1);
 		expect(plugin.manifestPath).toMatch(
-			new RegExp(`/plugin-builds/${serverId}/nyan-example-plugin-[a-f0-9]{12}/chord-facets\\.json$`, "u"),
+			new RegExp(
+				`[\\\\/]plugin-builds[\\\\/]${serverId}[\\\\/]nyan-example-plugin-[a-f0-9]{12}[\\\\/]chord-facets\\.json$`,
+				"u",
+			),
 		);
 		expect(first[0]?.plugin).toEqual({ id: "@nyan/test-plugin", version: "1.0.0" });
 		const firstLoaded = await createPresentationFacetLoaders(createPresentationFacetData(first))[0]!.load();
@@ -83,6 +87,9 @@ describe("server-selected presentation facets", () => {
 		const secondLoaded = await createPresentationFacetLoaders(createPresentationFacetData(second))[0]!.load();
 		expect(secondLoaded.facets.map(({ id }) => id)).toEqual(["built-b"]);
 		await secondLoaded.dispose();
+
+		// What follows starts a server on a Unix socket, which Windows does not support.
+		if (process.platform === "win32") return;
 
 		const secondPackagePath = join(directory, "second-plugin");
 		await mkdir(join(secondPackagePath, "src"), { recursive: true });
@@ -146,7 +153,7 @@ describe("server-selected presentation facets", () => {
 	});
 
 	test("builds the example plugin package without a package-owned build script", async () => {
-		const directory = await mkdtemp("/tmp/nyan-example-plugin-");
+		const directory = await mkdtemp(join(tmpdir(), "nyan-example-plugin-"));
 		directories.add(directory);
 		const serverId = randomUUID();
 		const packagePath = fileURLToPath(new URL("../examples/plugins/nyan-example-plugin", import.meta.url));

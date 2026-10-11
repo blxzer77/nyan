@@ -50,9 +50,12 @@ afterEach(() => {
 	}
 });
 
-function createNpmPrefixInstall(template = "nyan-prefix-"): { prefix: string; packageDir: string } {
+function createNpmPrefixInstall(
+	template = "nyan-prefix-",
+	layout: "posix" | "windows" = "posix",
+): { prefix: string; packageDir: string } {
 	const prefix = mkdtempSync(join(tmpdir(), template));
-	const root = join(prefix, "lib", "node_modules");
+	const root = layout === "windows" ? join(prefix, "node_modules") : join(prefix, "lib", "node_modules");
 	const scopeDir = join(root, "@nyan");
 	const packageDir = join(scopeDir, "coding-agent");
 	mkdirSync(packageDir, { recursive: true });
@@ -125,7 +128,7 @@ function createBunGlobalInstall(): { packageDir: string } {
 
 function createFakePnpmScript(root: string): string {
 	if (process.platform === "win32") {
-		return `@echo off\r\nif "%1"=="root" if "%2"=="-g" echo ${root}\r\n`;
+		return `@echo off\r\nif "%~1"=="root" if "%~2"=="-g" echo ${root}\r\n`;
 	}
 	const escapedRoot = root.replaceAll("'", "'\\''");
 	return `#!/bin/sh\nif [ "$1" = "root" ] && [ "$2" = "-g" ]; then\n\tprintf '%s\\n' '${escapedRoot}'\n\texit 0\nfi\nexit 1\n`;
@@ -133,7 +136,7 @@ function createFakePnpmScript(root: string): string {
 
 function createFakeYarnScript(globalDir: string): string {
 	if (process.platform === "win32") {
-		return `@echo off\r\nif "%1"=="global" if "%2"=="dir" echo ${globalDir}\r\n`;
+		return `@echo off\r\nif "%~1"=="global" if "%~2"=="dir" echo ${globalDir}\r\n`;
 	}
 	const escapedGlobalDir = globalDir.replaceAll("'", "'\\''");
 	return `#!/bin/sh\nif [ "$1" = "global" ] && [ "$2" = "dir" ]; then\n\tprintf '%s\\n' '${escapedGlobalDir}'\n\texit 0\nfi\nexit 1\n`;
@@ -141,7 +144,7 @@ function createFakeYarnScript(globalDir: string): string {
 
 function createFakeBunScript(bunBin: string): string {
 	if (process.platform === "win32") {
-		return `@echo off\r\nif "%1"=="pm" if "%2"=="bin" if "%3"=="-g" echo ${bunBin}\r\n`;
+		return `@echo off\r\nif "%~1"=="pm" if "%~2"=="bin" if "%~3"=="-g" echo ${bunBin}\r\n`;
 	}
 	const escapedBunBin = bunBin.replaceAll("'", "'\\''");
 	return `#!/bin/sh\nif [ "$1" = "pm" ] && [ "$2" = "bin" ] && [ "$3" = "-g" ]; then\n\tprintf '%s\\n' '${escapedBunBin}'\n\texit 0\nfi\nexit 1\n`;
@@ -251,7 +254,8 @@ describe("detectInstallMethod", () => {
 	});
 
 	test("self-update respects configured npmCommand", () => {
-		const { prefix } = createNpmPrefixInstall();
+		// `npm --prefix <p> root -g` is what a configured command is checked against, and it differs by platform.
+		const { prefix } = createNpmPrefixInstall("nyan-prefix-", process.platform === "win32" ? "windows" : "posix");
 
 		const command = getSelfUpdateCommand("@nyan/coding-agent", ["npm", "--prefix", prefix]);
 
@@ -432,7 +436,8 @@ describe("detectInstallMethod", () => {
 		});
 	});
 
-	test("does not self-update when npm install path is not writable", () => {
+	// Windows ignores directory permission bits, so a read-only mode cannot make the install path unwritable there.
+	test.skipIf(process.platform === "win32")("does not self-update when npm install path is not writable", () => {
 		const { packageDir } = createNpmPrefixInstall();
 		chmodSync(packageDir, 0o500);
 

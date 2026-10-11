@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 /**
@@ -37,7 +38,8 @@ describe("issue #2791 fs.watch error event crashes process", () => {
 	});
 
 	it("process should survive an error event on the theme FSWatcher", () => {
-		const themeModulePath = join(__dirname, "../../../src/ui/theme/theme.ts").replace(/\\/g, "/");
+		// The child imports it by URL: a bare absolute path is not a valid specifier on Windows.
+		const themeModuleUrl = pathToFileURL(join(__dirname, "../../../src/ui/theme/theme.ts")).href;
 		const agentDir = join(tempRoot, "agent").replace(/\\/g, "/");
 
 		// Script that sets up the watcher and emits a synthetic error on it.
@@ -47,7 +49,7 @@ describe("issue #2791 fs.watch error event crashes process", () => {
 		writeFileSync(
 			scriptPath,
 			`
-import { setTheme, stopThemeWatcher } from "${themeModulePath}";
+import { setTheme, stopThemeWatcher } from "${themeModuleUrl}";
 
 process.env.NYAN_CODING_AGENT_DIR = "${agentDir}";
 

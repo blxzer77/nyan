@@ -90,7 +90,9 @@ afterEach(async () => {
 	tempDirectories.clear();
 });
 
-describe("discoverUnixServers", () => {
+// Unix-domain sockets are a POSIX transport here: the client refuses them on Windows and the listener publishes its
+// socket with link(2).
+describe.skipIf(process.platform === "win32")("discoverUnixServers", () => {
 	test("returns no routes when the server directory is missing", async () => {
 		const directory = join(await makeDirectory(), "missing");
 		await expect(discoverUnixServers({ directory })).resolves.toEqual([]);
