@@ -1,6 +1,6 @@
-import { type Context, copyJson, type JsonValue } from "@earendil-works/chord";
-import { awaitWithContext, withAbortSignal } from "@earendil-works/chord/context";
-import type { Models } from "@earendil-works/pi-ai";
+import type { Models } from "@blxzer/nyan-ai";
+import { type Context, copyJson, type JsonValue } from "@blxzer/nyan-chord";
+import { awaitWithContext, withAbortSignal } from "@blxzer/nyan-chord/context";
 import type { ExecutionEnv } from "../env/index.ts";
 import { errorMessage } from "../errors.ts";
 import type { SessionImpl } from "../session/session.ts";

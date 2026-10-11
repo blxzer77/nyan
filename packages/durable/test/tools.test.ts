@@ -4,14 +4,9 @@ import { appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Context, JsonValue } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
-import type {
-	ToolDiagnostic,
-	ToolExecutionApi,
-	ToolExecutionResult,
-	ToolRegistration,
-} from "@earendil-works/pi-durable";
+import type { Context, JsonValue } from "@blxzer/nyan-chord";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@blxzer/nyan-chord/context";
+import type { ToolDiagnostic, ToolExecutionApi, ToolExecutionResult, ToolRegistration } from "@blxzer/nyan-durable";
 import { applyPatch } from "diff";
 import { afterAll, describe, expect, it } from "vitest";
 import {

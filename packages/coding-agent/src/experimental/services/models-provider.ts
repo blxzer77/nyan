@@ -1,13 +1,7 @@
-import { type Context, defineFacet, type Facet, type MutableReplicatedState } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel } from "@earendil-works/pi-ai";
-import {
-	AgentDoc,
-	type AgentState,
-	type Conversation,
-	type DocumentState,
-	type Harness,
-} from "@earendil-works/pi-durable";
+import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel } from "@blxzer/nyan-ai";
+import { type Context, defineFacet, type Facet, type MutableReplicatedState } from "@blxzer/nyan-chord";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
+import { AgentDoc, type AgentState, type Conversation, type DocumentState, type Harness } from "@blxzer/nyan-durable";
 import type { ModelRuntime } from "../../core/model-runtime.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { Models, type Models as ModelsService, type ModelsState } from "./models.ts";

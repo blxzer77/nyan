@@ -2,19 +2,19 @@ import { randomUUID } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import type { Context } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { FacetBundleArtifact } from "@earendil-works/chord/node";
-import { Client, ServerError as ClientServerError, DisconnectedError } from "@earendil-works/pi-client";
-import { createUnixTransportFactory, type UnixServerRoute } from "@earendil-works/pi-client/unix";
-import { isServerId, type ServerId } from "@earendil-works/pi-protocol";
+import type { Context } from "@blxzer/nyan-chord";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
+import type { FacetBundleArtifact } from "@blxzer/nyan-chord/node";
+import { Client, ServerError as ClientServerError, DisconnectedError } from "@blxzer/nyan-client";
+import { createUnixTransportFactory, type UnixServerRoute } from "@blxzer/nyan-client/unix";
+import { isServerId, type ServerId } from "@blxzer/nyan-protocol";
 import {
 	ServerError as RoutedServerError,
 	type Server,
 	type ServerHost,
 	SessionNotFoundError,
-} from "@earendil-works/pi-server";
-import { createUnixServer, getUnixSocketPath } from "@earendil-works/pi-server/unix";
+} from "@blxzer/nyan-server";
+import { createUnixServer, getUnixSocketPath } from "@blxzer/nyan-server/unix";
 import lockfile from "proper-lockfile";
 import type { AuthInput } from "../cli/experimental/command-options.ts";
 import { getAgentDir } from "../config.ts";

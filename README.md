@@ -5,7 +5,7 @@
 </p>
 <p align="center">
   <a href="https://discord.com/invite/3cU7Bz4UPx"><img alt="Discord" src="https://img.shields.io/badge/discord-community-5865F2?style=flat-square&logo=discord&logoColor=white" /></a>
-  <a href="https://www.npmjs.com/package/@earendil-works/pi-coding-agent"><img alt="npm" src="https://img.shields.io/npm/v/@earendil-works/pi-coding-agent?style=flat-square" /></a>
+  <a href="https://www.npmjs.com/package/@blxzer/nyan"><img alt="npm" src="https://img.shields.io/npm/v/@blxzer/nyan?style=flat-square" /></a>
 </p>
 
 # Pi
@@ -35,7 +35,7 @@ powershell -c "irm https://pi.dev/install.ps1 | iex"
 The installer pins all dependencies and updates Pi with `pi update`. Alternatively, install directly with npm, which does not pin transitive dependencies:
 
 ```bash
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+npm install -g --ignore-scripts @blxzer/nyan
 ```
 
 Pi requires Node.js 22.19 or newer. The macOS, Linux, and Windows installers can install it if needed. Pi does not require dependency lifecycle scripts for a normal npm installation.
@@ -57,13 +57,13 @@ This monorepo contains the Pi CLI and its supporting libraries.
 
 | Package | Description |
 |---------|-------------|
-| **[@earendil-works/chord](packages/chord)** | Standalone application-composition runtime for services, replicated state, RPC, and plugins |
-| **[@earendil-works/pi-telemetry](packages/telemetry)** | Vendor-neutral telemetry contracts, reference adapter, conformance tests, and typed schemas |
-| **[@earendil-works/pi-ai](packages/ai)** | Unified multi-provider LLM API (OpenAI, Anthropic, Google, etc.) |
-| **[@earendil-works/pi-durable](packages/durable)** | Durable conversation, task, and document runtime |
-| **[@earendil-works/pi-agent-core](packages/agent)** | Agent runtime with tool calling and state management |
-| **[@earendil-works/pi-coding-agent](packages/coding-agent)** | Interactive coding agent CLI |
-| **[@earendil-works/pi-tui](packages/tui)** | Terminal UI library with differential rendering |
+| **[@blxzer/nyan-chord](packages/chord)** | Standalone application-composition runtime for services, replicated state, RPC, and plugins |
+| **[@blxzer/nyan-telemetry](packages/telemetry)** | Vendor-neutral telemetry contracts, reference adapter, conformance tests, and typed schemas |
+| **[@blxzer/nyan-ai](packages/ai)** | Unified multi-provider LLM API (OpenAI, Anthropic, Google, etc.) |
+| **[@blxzer/nyan-durable](packages/durable)** | Durable conversation, task, and document runtime |
+| **[@blxzer/nyan-agent-core](packages/agent)** | Agent runtime with tool calling and state management |
+| **[@blxzer/nyan](packages/coding-agent)** | Interactive coding agent CLI |
+| **[@blxzer/nyan-tui](packages/tui)** | Terminal UI library with differential rendering |
 
 For Slack/chat automation and workflows see [earendil-works/pi-chat](https://github.com/earendil-works/pi-chat).
 
@@ -110,8 +110,8 @@ its Pi dependencies from the same artifact set. npm is the default:
 node scripts/use-local-packages.mjs \
   --manifest .artifacts/pi-packages/manifest.json \
   --consumer ../my-project \
-  --package @earendil-works/pi-durable \
-  --package @earendil-works/pi-agent-core
+  --package @blxzer/nyan-durable \
+  --package @blxzer/nyan-agent-core
 cd ../my-project
 npm install --ignore-scripts
 ```
@@ -122,7 +122,7 @@ For a pnpm project, point `--consumer` at the workspace root:
 node scripts/use-local-packages.mjs \
   --manifest .artifacts/pi-packages/manifest.json \
   --consumer ../my-project \
-  --package @earendil-works/pi-agent-core \
+  --package @blxzer/nyan-agent-core \
   --package-manager pnpm
 cd ../my-project
 pnpm install --ignore-scripts

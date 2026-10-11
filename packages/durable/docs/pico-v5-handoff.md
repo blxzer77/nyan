@@ -106,7 +106,7 @@ never reclaimed and default no-fsync behavior matches the specification.
 
 ## 6–7. Tracker transaction core, definitions, and typed access
 
-**Prerequisite:** `@earendil-works/chord/delta` exports the canonical
+**Prerequisite:** `@blxzer/nyan-chord/delta` exports the canonical
 Astra-immutable-optimized `track`, `Tracker`, `Change`, and `Prepared`, and its
 draft placements reject values that are not strict JSON.
 Experimental variants under other Delta directories are not Pico APIs.
@@ -472,7 +472,7 @@ Neither side uses a production fake successor.
   `ToolRegistration.executionMode`, the `toolExecution` configuration field with
   its getter/setter, `TaskRuntime.getTask()` and `entry()`, `HookApi`, and the
   exported `GenerationTask`, `ToolTask`, and `PostToolsTask` tokens.
-- `@earendil-works/pi-durable/tools`: copy `read`, `bash`, `edit`, and `write`
+- `@blxzer/nyan-durable/tools`: copy `read`, `bash`, `edit`, and `write`
   with their helpers from `packages/agent/src/harness/tools` and adapt them to
   `ToolRegistration` (`api.env`, `api.output`, `api.details`). Image reading in
   `read` is deferred; note it where the tool rejects or skips images. The env

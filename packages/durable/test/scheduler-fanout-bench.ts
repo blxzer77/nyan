@@ -5,9 +5,10 @@
  *
  *   node --conditions=source --experimental-strip-types test/scheduler-fanout-bench.ts [calls...]
  */
-import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import { createModels } from "@earendil-works/pi-ai/models";
-import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+
+import { createModels } from "@blxzer/nyan-ai/models";
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@blxzer/nyan-ai/providers/faux";
+import { BACKGROUND_CONTEXT as context } from "@blxzer/nyan-chord/context";
 import { Type } from "typebox";
 import { createRegistry, defineExtension, defineTool, Harness, ToolResultEntry } from "../src/index.ts";
 import { MemoryStorage } from "../src/storage/memory.ts";

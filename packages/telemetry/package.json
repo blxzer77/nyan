@@ -1,5 +1,5 @@
 {
-	"name": "@earendil-works/pi-telemetry",
+	"name": "@blxzer/nyan-telemetry",
 	"version": "1.1.0",
 	"description": "Vendor-neutral telemetry contracts and typed schema utilities for pi",
 	"type": "module",

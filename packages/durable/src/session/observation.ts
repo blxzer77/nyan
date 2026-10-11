@@ -4,9 +4,9 @@ import type {
 	ReplicatedStateSource,
 	ReplicatedStateSourceAttachment,
 	ReplicatedStateSourceFrame,
-} from "@earendil-works/chord";
-import { withoutAbortSignal } from "@earendil-works/chord/context";
-import type { Op } from "@earendil-works/chord/delta";
+} from "@blxzer/nyan-chord";
+import { withoutAbortSignal } from "@blxzer/nyan-chord/context";
+import type { Op } from "@blxzer/nyan-chord/delta";
 import { errorMessage } from "../errors.ts";
 import type { JsonObject, WatchEnd, WatchHandle } from "../types.ts";
 

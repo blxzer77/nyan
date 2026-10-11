@@ -1,5 +1,5 @@
 {
-	"name": "@earendil-works/pi-mcp",
+	"name": "@blxzer/nyan-mcp",
 	"version": "1.1.0",
 	"description": "Standalone Model Context Protocol client for pi and other applications",
 	"type": "module",

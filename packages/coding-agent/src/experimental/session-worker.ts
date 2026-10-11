@@ -10,10 +10,10 @@ import {
 	type RemoteServiceErrorCode,
 	type ServiceCall,
 	type ServiceProviderUpdate,
-} from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT, TODO_CONTEXT, withCancel } from "@earendil-works/chord/context";
-import { Harness, ROOT_CONVERSATION_ID, type TaskGraph } from "@earendil-works/pi-durable";
-import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+} from "@blxzer/nyan-chord";
+import { BACKGROUND_CONTEXT, TODO_CONTEXT, withCancel } from "@blxzer/nyan-chord/context";
+import { Harness, ROOT_CONVERSATION_ID, type TaskGraph } from "@blxzer/nyan-durable";
+import { openNodeSqliteStorage } from "@blxzer/nyan-durable/storage/sqlite/node";
 import lockfile from "proper-lockfile";
 import Type, { type Static } from "typebox";
 import { Check } from "typebox/value";

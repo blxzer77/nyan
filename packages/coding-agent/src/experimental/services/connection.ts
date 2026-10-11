@@ -10,10 +10,10 @@ import {
 	replicatedState,
 	type Service,
 	type ServiceCatalogueEntry,
-} from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { type Client, createClientServiceTransport } from "@earendil-works/pi-client";
-import type { SessionTarget } from "@earendil-works/pi-protocol";
+} from "@blxzer/nyan-chord";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
+import { type Client, createClientServiceTransport } from "@blxzer/nyan-client";
+import type { SessionTarget } from "@blxzer/nyan-protocol";
 
 export type ServerConnectionState =
 	| { status: "connecting"; attempt: number }

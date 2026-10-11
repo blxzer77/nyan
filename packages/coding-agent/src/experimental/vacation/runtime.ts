@@ -1,6 +1,6 @@
-import type { AttachedReplicatedState } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel } from "@blxzer/nyan-ai";
+import type { AttachedReplicatedState } from "@blxzer/nyan-chord";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
 import {
 	type AgentState,
 	type Conversation,
@@ -13,8 +13,8 @@ import {
 	ROOT_CONVERSATION_ID,
 	type Submission,
 	type TaskGraph,
-} from "@earendil-works/pi-durable";
-import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+} from "@blxzer/nyan-durable";
+import { openNodeSqliteStorage } from "@blxzer/nyan-durable/storage/sqlite/node";
 import { ModelRuntime } from "../../core/model-runtime.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import {

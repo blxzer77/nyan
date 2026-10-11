@@ -19,7 +19,7 @@ import {
 	getAgentDir,
 	SessionManager,
 	SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+} from "@blxzer/nyan";
 
 const cwd = process.cwd();
 

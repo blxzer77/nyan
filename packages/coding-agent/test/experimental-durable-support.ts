@@ -1,6 +1,6 @@
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { createModels, type FauxProviderHandle, type FauxResponseStep, fauxProvider } from "@earendil-works/pi-ai";
-import { type Conversation, createRegistry, Harness, MemoryStorage } from "@earendil-works/pi-durable";
+import { createModels, type FauxProviderHandle, type FauxResponseStep, fauxProvider } from "@blxzer/nyan-ai";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
+import { type Conversation, createRegistry, Harness, MemoryStorage } from "@blxzer/nyan-durable";
 
 export interface FauxConversation {
 	readonly faux: FauxProviderHandle;

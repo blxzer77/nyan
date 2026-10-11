@@ -12,9 +12,9 @@ import {
 	type FacetHost,
 	type RemoteServiceTransport,
 	type ReplicatedState,
-} from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { Op } from "@earendil-works/chord/delta";
+} from "@blxzer/nyan-chord";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
+import type { Op } from "@blxzer/nyan-chord/delta";
 import {
 	type ConversationId,
 	type DocumentObserver,
@@ -26,7 +26,7 @@ import {
 	type Session,
 	type TaskId,
 	type TaskRuntime,
-} from "@earendil-works/pi-durable";
+} from "@blxzer/nyan-durable";
 import { describe, expect, it } from "vitest";
 import { context } from "./session-support.ts";
 import { completed, deferred, eventually, openTasks } from "./task-support.ts";

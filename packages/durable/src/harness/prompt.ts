@@ -1,6 +1,6 @@
-import type { Context } from "@earendil-works/chord";
-import type { Message, SystemMessage, Tool, ToolReference } from "@earendil-works/pi-ai";
-import { declarationsEqual, getCurrentTools, toToolDeclaration } from "@earendil-works/pi-ai/utils/transcript";
+import type { Message, SystemMessage, Tool, ToolReference } from "@blxzer/nyan-ai";
+import { declarationsEqual, getCurrentTools, toToolDeclaration } from "@blxzer/nyan-ai/utils/transcript";
+import type { Context } from "@blxzer/nyan-chord";
 import { SystemEntry } from "../entries.ts";
 import type { ContextEdit, TypedEntryDraft } from "../types.ts";
 import type { ContextView, PromptInput, PromptSection, ToolRegistration } from "./types.ts";

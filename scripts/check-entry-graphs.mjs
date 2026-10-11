@@ -19,14 +19,14 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Workspace package name -> its source root, so cross-package imports are followed. */
 const WORKSPACE = {
-	"@earendil-works/chord": "packages/chord/src",
-	"@earendil-works/pi-ai": "packages/ai/src",
-	"@earendil-works/pi-durable": "packages/durable/src",
-	"@earendil-works/pi-agent-core": "packages/agent/src",
-	"@earendil-works/pi-codemode": "packages/codemode/src",
-	"@earendil-works/pi-telemetry": "packages/telemetry/src",
-	"@earendil-works/pi-mcp": "packages/mcp/src",
-	"@earendil-works/pi-tui": "packages/tui/src",
+	"@blxzer/nyan-chord": "packages/chord/src",
+	"@blxzer/nyan-ai": "packages/ai/src",
+	"@blxzer/nyan-durable": "packages/durable/src",
+	"@blxzer/nyan-agent-core": "packages/agent/src",
+	"@blxzer/nyan-codemode": "packages/codemode/src",
+	"@blxzer/nyan-telemetry": "packages/telemetry/src",
+	"@blxzer/nyan-mcp": "packages/mcp/src",
+	"@blxzer/nyan-tui": "packages/tui/src",
 };
 
 /**

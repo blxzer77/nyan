@@ -7,8 +7,8 @@ import {
 	RemoteServiceError,
 	type ServiceCall,
 	type ServiceProviderUpdate,
-} from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT, TODO_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
+} from "@blxzer/nyan-chord";
+import { BACKGROUND_CONTEXT, TODO_CONTEXT, withAbortSignal } from "@blxzer/nyan-chord/context";
 import {
 	type CancelEnvelope,
 	type ClientHello,
@@ -27,7 +27,7 @@ import {
 	type ServerHello,
 	type ServerHelloError,
 	type ServerMessage,
-} from "@earendil-works/pi-protocol";
+} from "@blxzer/nyan-protocol";
 import {
 	type ByteConnection,
 	type ByteConnectionHandler,

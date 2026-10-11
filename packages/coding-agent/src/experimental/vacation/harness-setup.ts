@@ -1,5 +1,5 @@
-import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
-import { createRegistry, type HarnessSettings, type ModelRef, type Registry } from "@earendil-works/pi-durable";
+import type { ModelThinkingLevel } from "@blxzer/nyan-ai";
+import { createRegistry, type HarnessSettings, type ModelRef, type Registry } from "@blxzer/nyan-durable";
 import { applyHttpProxySettings, configureHttpDispatcher } from "../../core/http-dispatcher.ts";
 import { findInitialModel, resolveCliModel } from "../../core/model-resolver.ts";
 import type { ModelRuntime } from "../../core/model-runtime.ts";

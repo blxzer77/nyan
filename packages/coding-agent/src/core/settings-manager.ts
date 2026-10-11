@@ -1,6 +1,6 @@
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Model } from "@earendil-works/pi-ai";
-import type { ScrollViewScrollbar, TerminalCapabilities, WheelScrollLines } from "@earendil-works/pi-tui";
+import type { ThinkingLevel } from "@blxzer/nyan-agent-core";
+import type { Model } from "@blxzer/nyan-ai";
+import type { ScrollViewScrollbar, TerminalCapabilities, WheelScrollLines } from "@blxzer/nyan-tui";
 import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";

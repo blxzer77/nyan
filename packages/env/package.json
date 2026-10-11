@@ -1,5 +1,5 @@
 {
-	"name": "@earendil-works/pi-env",
+	"name": "@blxzer/nyan-env",
 	"version": "1.1.0",
 	"description": "Remote execution environments for Pi Durable: a small daemon deployed over SSH and its ExecutionEnv client",
 	"type": "module",
@@ -45,8 +45,8 @@
 		"node": ">=22.19.0"
 	},
 	"dependencies": {
-		"@earendil-works/chord": "^1.1.0",
-		"@earendil-works/pi-durable": "^1.1.0"
+		"@blxzer/nyan-chord": "^1.1.0",
+		"@blxzer/nyan-durable": "^1.1.0"
 	},
 	"devDependencies": {
 		"shx": "0.3.4",

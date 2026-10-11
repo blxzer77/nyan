@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createModels } from "@earendil-works/pi-ai";
+import { createModels } from "@blxzer/nyan-ai";
 import {
 	AgentDoc,
 	type Conversation,
@@ -20,7 +20,7 @@ import {
 	ProviderDoc,
 	ROOT_CONVERSATION_ID,
 	type ScanOrder,
-} from "@earendil-works/pi-durable";
+} from "@blxzer/nyan-durable";
 import { afterEach, describe, expect, it } from "vitest";
 import { openNodeSqliteStorage } from "../src/storage/sqlite/node.ts";
 import { addTool, openHarness, tool, user } from "./harness-support.ts";

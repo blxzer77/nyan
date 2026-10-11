@@ -1,8 +1,8 @@
-import { Client } from "@earendil-works/pi-client";
-import { createAssistantMessageEventStream, Type } from "@earendil-works/pi-ai";
-import { complete, getModel, getProviders, streamSimple } from "@earendil-works/pi-ai/compat";
-import { Agent, streamProxy } from "@earendil-works/pi-agent-core";
-import { decodeCbor, encodeCbor, PROTOCOL_VERSION } from "@earendil-works/pi-protocol";
+import { Client } from "@blxzer/nyan-client";
+import { createAssistantMessageEventStream, Type } from "@blxzer/nyan-ai";
+import { complete, getModel, getProviders, streamSimple } from "@blxzer/nyan-ai/compat";
+import { Agent, streamProxy } from "@blxzer/nyan-agent-core";
+import { decodeCbor, encodeCbor, PROTOCOL_VERSION } from "@blxzer/nyan-protocol";
 
 // Keep this entry browser-safe. It is bundled by scripts/check-browser-smoke.mjs
 // to catch accidental Node-only runtime imports in browser-facing package exports.

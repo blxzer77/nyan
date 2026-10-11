@@ -7,8 +7,8 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Provider } from "@earendil-works/pi-ai";
-import type { KeyId } from "@earendil-works/pi-tui";
+import type { Provider } from "@blxzer/nyan-ai";
+import type { KeyId } from "@blxzer/nyan-tui";
 import type { createJiti } from "jiti";
 import { CONFIG_DIR_NAME, getAgentDir, isBunBinary, isBundledNode } from "../../config.ts";
 import { resolvePath } from "../../utils/paths.ts";
@@ -86,19 +86,23 @@ function getAliases(): Record<string, string> {
 	};
 
 	const piCodingAgentEntry = packageIndex;
-	const piAgentCoreEntry = resolveWorkspaceOrImport("agent/dist/index.js", "@earendil-works/pi-agent-core");
-	const piTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@earendil-works/pi-tui");
+	const piAgentCoreEntry = resolveWorkspaceOrImport("agent/dist/index.js", "@blxzer/nyan-agent-core");
+	const piTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@blxzer/nyan-tui");
 	// Extensions resolve the pi-ai root to the compat entrypoint (a strict
 	// superset of the core entrypoint): existing extensions using the old
 	// global API keep working at runtime until compat is removed.
-	const piAiCompatEntry = resolveWorkspaceOrImport("ai/dist/compat.js", "@earendil-works/pi-ai/compat");
-	const piAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@earendil-works/pi-ai/oauth");
-	const piAiProvidersEntry = resolveWorkspaceOrImport(
-		"ai/dist/providers/all.js",
-		"@earendil-works/pi-ai/providers/all",
-	);
+	const piAiCompatEntry = resolveWorkspaceOrImport("ai/dist/compat.js", "@blxzer/nyan-ai/compat");
+	const piAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@blxzer/nyan-ai/oauth");
+	const piAiProvidersEntry = resolveWorkspaceOrImport("ai/dist/providers/all.js", "@blxzer/nyan-ai/providers/all");
 
 	_aliases = {
+		"@blxzer/nyan": piCodingAgentEntry,
+		"@blxzer/nyan-agent-core": piAgentCoreEntry,
+		"@blxzer/nyan-tui": piTuiEntry,
+		"@blxzer/nyan-ai/providers/all": piAiProvidersEntry,
+		"@blxzer/nyan-ai/compat": piAiCompatEntry,
+		"@blxzer/nyan-ai/oauth": piAiOauthEntry,
+		"@blxzer/nyan-ai": piAiCompatEntry,
 		"@earendil-works/pi-coding-agent": piCodingAgentEntry,
 		"@earendil-works/pi-agent-core": piAgentCoreEntry,
 		"@earendil-works/pi-tui": piTuiEntry,

@@ -1,6 +1,6 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentTool } from "@blxzer/nyan-agent-core";
 import {
 	type AssistantImages,
 	type ClassifierModel,
@@ -12,8 +12,8 @@ import {
 	type ImageModel,
 	type ImagesContext,
 	type TranscriptContext,
-} from "@earendil-works/pi-ai";
-import type { ToolResultMessage, Usage } from "@earendil-works/pi-ai/compat";
+} from "@blxzer/nyan-ai";
+import type { ToolResultMessage, Usage } from "@blxzer/nyan-ai/compat";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/types.ts";

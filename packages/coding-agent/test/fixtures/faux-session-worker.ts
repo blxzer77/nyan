@@ -1,10 +1,10 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createStaticFacetLoader, defineFacet } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { createModels, fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
-import { createRegistry, Harness } from "@earendil-works/pi-durable";
-import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { createModels, fauxAssistantMessage, fauxProvider } from "@blxzer/nyan-ai";
+import { createStaticFacetLoader, defineFacet } from "@blxzer/nyan-chord";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
+import { createRegistry, Harness } from "@blxzer/nyan-durable";
+import { openNodeSqliteStorage } from "@blxzer/nyan-durable/storage/sqlite/node";
 import { consumeInternalProcessRole } from "../../src/experimental/process.ts";
 import { runSessionWorkerWithHarness } from "../../src/experimental/session-worker.ts";
 import { KeyedProbe } from "./keyed-service.ts";

@@ -7,9 +7,9 @@ import {
 	type FacetLoader,
 	type JsonValue,
 	type LoadedFacets,
-} from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { AgentState, ConversationView } from "@earendil-works/pi-durable";
+} from "@blxzer/nyan-chord";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
+import type { AgentState, ConversationView } from "@blxzer/nyan-durable";
 import {
 	CombinedAutocompleteProvider,
 	type Component,
@@ -19,7 +19,7 @@ import {
 	setKeybindings,
 	Text,
 	type TUI,
-} from "@earendil-works/pi-tui";
+} from "@blxzer/nyan-tui";
 import type { ClientCommand } from "../cli/experimental/commands/client.ts";
 import { getAgentDir } from "../config.ts";
 import { KeybindingsManager } from "../core/keybindings.ts";

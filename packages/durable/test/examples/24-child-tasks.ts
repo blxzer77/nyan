@@ -5,8 +5,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { createModels } from "@earendil-works/pi-ai/models";
+import { createModels } from "@blxzer/nyan-ai/models";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
 import {
 	type Conversation,
 	createRegistry,

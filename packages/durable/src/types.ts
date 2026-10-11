@@ -1,6 +1,6 @@
-import type { AttachedReplicatedState, Context, Draft, JsonValue } from "@earendil-works/chord";
-import type { Op } from "@earendil-works/chord/delta";
-import type { Message, Models } from "@earendil-works/pi-ai";
+import type { Message, Models } from "@blxzer/nyan-ai";
+import type { AttachedReplicatedState, Context, Draft, JsonValue } from "@blxzer/nyan-chord";
+import type { Op } from "@blxzer/nyan-chord/delta";
 import type { ExecutionEnv } from "./env/index.ts";
 import type {
 	Agent,

@@ -8,11 +8,11 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { type AssistantMessage, type FauxResponseStep, Type } from "@earendil-works/pi-ai";
-import { createModels } from "@earendil-works/pi-ai/models";
-import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
-import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+import { type AssistantMessage, type FauxResponseStep, Type } from "@blxzer/nyan-ai";
+import { createModels } from "@blxzer/nyan-ai/models";
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@blxzer/nyan-ai/providers/faux";
+import { openaiProvider } from "@blxzer/nyan-ai/providers/openai";
+import { BACKGROUND_CONTEXT } from "@blxzer/nyan-chord/context";
 import {
 	type AgentEvent,
 	AssistantEntry,
