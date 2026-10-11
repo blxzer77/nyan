@@ -260,5 +260,3 @@ remain incarnation-specific and replacements receive fresh generations. The
 bundler writes a complete temporary directory before replacing the previous
 output, so loaders do not observe partially built generations.
 
-See [PLANNING.md](PLANNING.md) for the broader RPC and generation-loading
-architecture.

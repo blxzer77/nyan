@@ -21,8 +21,7 @@
 	},
 	"files": [
 		"dist",
-		"README.md",
-		"CHANGELOG.md"
+		"README.md"
 	],
 	"scripts": {
 		"clean": "shx rm -rf dist",
@@ -36,7 +35,7 @@
 		"nyan",
 		"server"
 	],
-	"author": "Earendil Works",
+	"author": "Nyan",
 	"license": "MIT",
 	"repository": {
 		"type": "git",

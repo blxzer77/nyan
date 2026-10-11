@@ -131,7 +131,6 @@ describe("script execution", () => {
 		]);
 	});
 
-	// https://github.com/earendil-works/pi/issues/10215
 	it("accepts wrapped and large base64 image data", async () => {
 		const sandbox = createSandbox();
 		const large = `iVBORw0KGgoA${"QUJD".repeat(256 * 1024)}`;

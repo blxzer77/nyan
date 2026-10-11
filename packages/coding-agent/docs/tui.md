@@ -120,6 +120,5 @@ The checked extension examples cover the main patterns:
 - [`modal-editor.ts`](../examples/extensions/modal-editor.ts) replaces the editor.
 - [`custom-footer.ts`](../examples/extensions/custom-footer.ts) replaces the footer.
 - [`widget-placement.ts`](../examples/extensions/widget-placement.ts) places persistent content around the editor.
-- [`doom-overlay/`](../examples/extensions/doom-overlay/) demonstrates a continuously rendered overlay.
 
 The public exports are defined in [`packages/tui/src/index.ts`](https://github.com/blxzer77/nyan/blob/main/packages/tui/src/index.ts). See [Extensions](extensions.md) for extension lifecycle, state, tools, events, and mode behavior.

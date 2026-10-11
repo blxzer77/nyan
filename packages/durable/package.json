@@ -77,8 +77,7 @@
 	"sideEffects": false,
 	"files": [
 		"dist",
-		"README.md",
-		"CHANGELOG.md"
+		"README.md"
 	],
 	"scripts": {
 		"clean": "shx rm -rf dist",
@@ -95,7 +94,7 @@
 		"conversations",
 		"tasks"
 	],
-	"author": "Earendil Works",
+	"author": "Nyan",
 	"license": "MIT",
 	"repository": {
 		"type": "git",

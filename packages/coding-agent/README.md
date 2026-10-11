@@ -29,18 +29,6 @@ For a built-in AI provider, run `/login` inside Nyan to connect a subscription o
 
 See the [documentation](docs/index.md) for full setup and usage instructions.
 
-## Share your OSS coding agent sessions
-
-If you use Nyan for open source work, please share your coding agent sessions.
-
-Public OSS session data helps improve models, prompts, tools, and evaluations using real development workflows.
-
-For the full explanation, see [this post on X](https://x.com/badlogicgames/status/2037811643774652911).
-
-To publish sessions, use [`badlogic/pi-share-hf`](https://github.com/badlogic/pi-share-hf) using a Hugging Face account and the Hugging Face CLI.
-
-- [Demo video](https://x.com/badlogicgames/status/2041151967695634619) on how to publish Nyan sessions
-- Published Nyan development sessions: [`badlogicgames/nyan-mono` on Hugging Face](https://huggingface.co/datasets/badlogicgames/nyan-mono).
 
 ## Development
 

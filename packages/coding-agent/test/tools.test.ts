@@ -218,7 +218,7 @@ describe("Coding Agent Tools", () => {
 			expect(imageBlock?.mimeType).toBe("image/png");
 			expect(typeof imageBlock?.data).toBe("string");
 			expect((imageBlock?.data ?? "").length).toBeGreaterThan(0);
-			// Programmatic callers get the same image as a block. https://github.com/earendil-works/pi/issues/10251
+			// Programmatic callers get the same image as a block.
 			expect(result.structuredContent).toEqual({
 				type: "image",
 				data: imageBlock?.data,
@@ -543,7 +543,6 @@ describe("Coding Agent Tools", () => {
 			expect(readFileSync(largeOutput.full_output_path!, "utf-8").endsWith("300000\n")).toBe(true);
 		});
 
-		// Regression tests for https://github.com/earendil-works/pi/issues/9577
 		it.skipIf(process.platform === "win32")(
 			"should map signal-killed commands to 128 plus the signal number",
 			async () => {

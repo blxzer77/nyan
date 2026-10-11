@@ -26,7 +26,6 @@
 	"files": [
 		"dist",
 		"README.md",
-		"CHANGELOG.md",
 		"LICENSES"
 	],
 	"scripts": {
@@ -40,7 +39,7 @@
 		"model-context-protocol",
 		"client"
 	],
-	"author": "Earendil Works",
+	"author": "Nyan",
 	"license": "MIT",
 	"repository": {
 		"type": "git",

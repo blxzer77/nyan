@@ -90,4 +90,4 @@ Run Nyan from a location where the skill is discoverable, then inspect the start
 
 Use a [Nyan package](packages.md) to distribute one or more skills through npm or git. Keep environment setup inside the skill and declare any required runtime dependencies in the package.
 
-For examples, see the [Anthropic skills collection](https://github.com/anthropics/skills) and [Nyan skills collection](https://github.com/badlogic/pi-skills).
+For examples, see the [Anthropic skills collection](https://github.com/anthropics/skills).

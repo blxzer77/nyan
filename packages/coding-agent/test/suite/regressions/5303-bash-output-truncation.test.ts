@@ -5,8 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { waitForChildProcess } from "../../../src/utils/child-process.ts";
 
 /**
- * Regression test for https://github.com/earendil-works/pi/issues/5303
- *
  * waitForChildProcess armed a fixed 100ms timer on `exit` and destroyed the
  * stdio streams when it fired. When a short-lived detached descendant kept the
  * stdout pipe open, `close` never fired, so that timer was the only thing that

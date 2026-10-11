@@ -28,7 +28,7 @@ import { spawn } from "child_process";
 let globalToggleHandle: OverlayHandle | null = null;
 
 export default function (nyan: ExtensionAPI) {
-	// Animation demo - proves overlays can handle real-time updates (like nyan-doom would need)
+	// Animation demo - proves overlays can handle real-time updates
 	nyan.registerCommand("overlay-animation", {
 		description: "Test real-time animation in overlay (~30 FPS)",
 		handler: async (_args: string, ctx: ExtensionCommandContext) => {
@@ -836,7 +836,7 @@ class AnimationDemoComponent extends BaseOverlay {
 		lines.push(border("│") + padLine(``) + border("│"));
 		lines.push(border("│") + padLine(th.fg("dim", " This proves overlays can handle")) + border("│"));
 		lines.push(border("│") + padLine(th.fg("dim", " real-time game-like rendering.")) + border("│"));
-		lines.push(border("│") + padLine(th.fg("dim", " (nyan-doom uses same approach)")) + border("│"));
+		lines.push(border("│") + padLine(th.fg("dim", " (continuous rendering)")) + border("│"));
 		lines.push(border("│") + padLine(``) + border("│"));
 		lines.push(border("│") + padLine(th.fg("dim", " Press Esc to close")) + border("│"));
 		lines.push(border(`╰${"─".repeat(innerW)}╯`));

@@ -99,7 +99,6 @@ afterEach(() => {
 	mockState.createParams = undefined;
 });
 
-// https://github.com/earendil-works/pi/issues/10177
 describe("Anthropic workload identity federation", () => {
 	it("resolves the federation variables as provider env with no request auth", async () => {
 		expect(await resolveWithEnv(federationEnv)).toEqual({
