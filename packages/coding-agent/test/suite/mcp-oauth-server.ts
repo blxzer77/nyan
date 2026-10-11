@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { LATEST_PROTOCOL_VERSION } from "@nyan/mcp";
+import { LATEST_PROTOCOL_VERSION } from "@ny4n/mcp";
 
 async function readBody(request: IncomingMessage): Promise<string> {
 	const chunks: Buffer[] = [];

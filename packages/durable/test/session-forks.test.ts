@@ -7,7 +7,7 @@ import {
 	StorageRejected,
 	type StorageWrite,
 	type TaskId,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import {
 	context,

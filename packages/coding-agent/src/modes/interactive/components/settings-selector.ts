@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "@nyan/agent-core";
-import { getSupportedThinkingLevels, type Model, type Transport } from "@nyan/ai";
+import type { ThinkingLevel } from "@ny4n/agent-core";
+import { getSupportedThinkingLevels, type Model, type Transport } from "@ny4n/ai";
 import {
 	type Component,
 	Container,
@@ -11,7 +11,7 @@ import {
 	Spacer,
 	Text,
 	type WheelScrollLines,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../../../core/http-dispatcher.ts";
 import {
 	CACHE_WARMING_MODES,

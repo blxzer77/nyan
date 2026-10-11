@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import { pathToFileURL } from "node:url";
-import type { ImageContent, TextContent } from "@nyan/ai";
-import { getCapabilities, getImageDimensions, hyperlink, imageFallback } from "@nyan/tui";
+import type { ImageContent, TextContent } from "@ny4n/ai";
+import { getCapabilities, getImageDimensions, hyperlink, imageFallback } from "@ny4n/tui";
 import type { Theme } from "../../ui/theme/theme.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
 import { resolvePath } from "../../utils/paths.ts";

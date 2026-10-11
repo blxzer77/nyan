@@ -1,11 +1,11 @@
-# @nyan/durable
+# @ny4n/durable
 
 > **Experimental.** The API changes without notice between releases.
 
 A durable agent harness. Conversations, model turns, tool calls, and your own state are committed to storage before anything is shown. If the process dies mid-turn, reopening the storage picks the work up where it stopped.
 
-Built on [`@nyan/ai`](../ai/README.md) for model access and `@nyan/chord` for document state.
-The durable runtime consumes the provider-neutral model operations from the `@nyan/ai/contracts` entry point; provider
+Built on [`@ny4n/ai`](../ai/README.md) for model access and `@ny4n/chord` for document state.
+The durable runtime consumes the provider-neutral model operations from the `@ny4n/ai/contracts` entry point; provider
 catalogs, credentials, and OAuth remain owned by the host that supplies the model runtime.
 
 ## Table of Contents
@@ -40,16 +40,16 @@ catalogs, credentials, and OAuth remain owned by the host that supplies the mode
 ## Installation
 
 ```bash
-npm install @nyan/durable @nyan/ai @nyan/chord
+npm install @ny4n/durable @ny4n/ai @ny4n/chord
 ```
 
 ## Quick Start
 
 ```typescript
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import { createModels } from "@nyan/ai/models";
-import { openaiProvider } from "@nyan/ai/providers/openai";
-import { AssistantEntry, createRegistry, Harness, MemoryStorage } from "@nyan/durable";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import { createModels } from "@ny4n/ai/models";
+import { openaiProvider } from "@ny4n/ai/providers/openai";
+import { AssistantEntry, createRegistry, Harness, MemoryStorage } from "@ny4n/durable";
 
 const context = BACKGROUND_CONTEXT;
 
@@ -105,14 +105,14 @@ submit(input) → nyan.user
 Use SQLite or JSONL storage to keep conversations across restarts:
 
 ```typescript
-import { openNodeSqliteStorage } from "@nyan/durable/storage/sqlite/node";
+import { openNodeSqliteStorage } from "@ny4n/durable/storage/sqlite/node";
 
 const harness = await Harness.open(await openNodeSqliteStorage("./session.sqlite"), { models, registry }, context);
 const root = await harness.root(context); // the same root as last time
 harness.resume(); // continue any run the last process left unfinished
 ```
 
-Work interrupted by a crash or close stays pending. `resume()` starts the task scheduler; submitting or waiting starts it too. Each conversation has its own persisted UUIDv7 in `nyan.provider`, forwarded to @nyan/ai as `sessionId` for provider prompt-cache and session affinity. It survives reopen, retries, reset, compaction, and model changes; a child or fork receives a fresh identity. A legacy conversation receives and persists one before its first generation or compaction request.
+Work interrupted by a crash or close stays pending. `resume()` starts the task scheduler; submitting or waiting starts it too. Each conversation has its own persisted UUIDv7 in `nyan.provider`, forwarded to @ny4n/ai as `sessionId` for provider prompt-cache and session affinity. It survives reopen, retries, reset, compaction, and model changes; a child or fork receives a fresh identity. A legacy conversation receives and persists one before its first generation or compaction request.
 
 A retried submission with the same `requestId` returns the existing submission instead of submitting twice:
 
@@ -130,8 +130,8 @@ const again = await root.submit({ type: "input", content: "Hello", requestId: "g
 Code the Harness runs, other than its built-in tasks, comes in named extensions installed in a registry your process owns:
 
 ```typescript
-import { createRegistry, defineExtension, defineTool, hook, section, ToolTask } from "@nyan/durable";
-import { CodingTools } from "@nyan/durable/tools";
+import { createRegistry, defineExtension, defineTool, hook, section, ToolTask } from "@ny4n/durable";
+import { CodingTools } from "@ny4n/durable/tools";
 
 const Coding = defineExtension({
 	name: "coding",
@@ -148,12 +148,12 @@ An extension may bring `tools`, `sections`, `hooks`, `wraps` (decorators of a to
 
 ## Tools
 
-`@nyan/durable/tools` provides `read`, `write`, `edit`, and `bash`, and the `CodingTools` extension with all four. They touch files and processes only through the call's environment (see [Environment](#environment)). Reading images is not supported yet.
+`@ny4n/durable/tools` provides `read`, `write`, `edit`, and `bash`, and the `CodingTools` extension with all four. They touch files and processes only through the call's environment (see [Environment](#environment)). Reading images is not supported yet.
 
 Define your own tool with a TypeBox schema. `defineTool()` types `args` from `parameters`, which the Harness validates before `execute()`. `api.output()` streams running output, which becomes the result when `execute()` returns no `content`:
 
 ```typescript
-import { Type } from "@nyan/ai";
+import { Type } from "@ny4n/ai";
 
 const count = defineTool({
 	name: "count",
@@ -239,7 +239,7 @@ const harness = await Harness.open(storage, {
 `env` builds the execution environment for each tool call, section rendering, and `runtime.env()`. It receives the conversation's ID, its agent `cwd`, and committed reads, so one function serves a directory per conversation or a container per conversation:
 
 ```typescript
-import { NodeExecutionEnv } from "@nyan/durable/env/node";
+import { NodeExecutionEnv } from "@ny4n/durable/env/node";
 
 const harness = await Harness.open(storage, {
 	models,
@@ -261,7 +261,7 @@ await env.exec(["git", "status", "--porcelain=v2", "-z"], {
 }, context);
 ```
 
-Abort the context to stop one call; `cleanup()` is for shutting the environment down. A custom environment can check itself with `registerEnvConformance()` from `@nyan/durable/testing`, like storage below.
+Abort the context to stop one call; `cleanup()` is for shutting the environment down. A custom environment can check itself with `registerEnvConformance()` from `@ny4n/durable/testing`, like storage below.
 
 ## Reload
 
@@ -372,7 +372,7 @@ Running compactions are listed in `docs["nyan.live"].compactions` with their rea
 For consumers that want coding-agent style events (`message_start`, `message_update`, `tool_execution_start`, ...) instead of structural state:
 
 ```typescript
-import { watchEvents } from "@nyan/durable";
+import { watchEvents } from "@ny4n/durable";
 
 const stream = await watchEvents(harness, root.id, context);
 initialize(stream.snapshot); // entries, run, in-flight generation, tools, compactions, inbox, agent, usage
@@ -388,7 +388,7 @@ Events are derived from commits, one batch per commit, and apply on top of the s
 Hooks let extensions observe or adjust the built-in tasks, in the conversations that select them:
 
 ```typescript
-import { GenerationTask, hook, ToolTask } from "@nyan/durable";
+import { GenerationTask, hook, ToolTask } from "@ny4n/durable";
 
 const Guard = defineExtension({
 	name: "guard",
@@ -508,7 +508,7 @@ A task appears with the commit that creates it and leaves with the commit that m
 Documents are typed JSON objects committed together with entries. Define one, and edit it in a commit:
 
 ```typescript
-import { defineDoc } from "@nyan/durable";
+import { defineDoc } from "@ny4n/durable";
 
 const Todos = defineDoc<{ items: string[] }>({
 	kind: "app.todos",
@@ -540,11 +540,11 @@ const usage = await harness.usage(context); // { models: { "openai/gpt-6-sol": U
 | Backend | Import | Notes |
 |---|---|---|
 | Memory | `MemoryStorage` from the package root | Nothing is persisted. |
-| SQLite | `openNodeSqliteStorage(file)` from `@nyan/durable/storage/sqlite/node` | One database file. WAL mode with `synchronous = NORMAL`: commits survive process crashes; the newest may be lost on power or host failure. |
-| JSONL | `openNodeJsonlStorage(directory, context)` from `@nyan/durable/storage/jsonl/node` | Append-only files in one directory. Pass `{ fsync: true }` to flush before each commit marker. |
-| Cloudflare Durable Object | `openDurableObjectSqliteStorage(ctx.storage)` from `@nyan/durable/storage/sqlite/cloudflare` | The SQLite storage of one SQLite-backed Durable Object; commits are its storage transactions. |
+| SQLite | `openNodeSqliteStorage(file)` from `@ny4n/durable/storage/sqlite/node` | One database file. WAL mode with `synchronous = NORMAL`: commits survive process crashes; the newest may be lost on power or host failure. |
+| JSONL | `openNodeJsonlStorage(directory, context)` from `@ny4n/durable/storage/jsonl/node` | Append-only files in one directory. Pass `{ fsync: true }` to flush before each commit marker. |
+| Cloudflare Durable Object | `openDurableObjectSqliteStorage(ctx.storage)` from `@ny4n/durable/storage/sqlite/cloudflare` | The SQLite storage of one SQLite-backed Durable Object; commits are its storage transactions. |
 
-One process owns a storage at a time; there is no cross-process locking. The portable SQLite and JSONL cores (`/storage/sqlite`, `/storage/jsonl`) run without Node APIs, for example on Bun or in Cloudflare Durable Objects, given an asynchronous `SqliteDatabase` facade or a `FileSystem` from `@nyan/durable/env`.
+One process owns a storage at a time; there is no cross-process locking. The portable SQLite and JSONL cores (`/storage/sqlite`, `/storage/jsonl`) run without Node APIs, for example on Bun or in Cloudflare Durable Objects, given an asynchronous `SqliteDatabase` facade or a `FileSystem` from `@ny4n/durable/env`.
 
 SQLite adapters implement promise-based `exec`, `run`, `get`, `all`, `transaction`, and `close`. `run`, `get`, and `all` take SQL text plus positional bindings; adapters may cache prepared statements by SQL text. A transaction callback receives a transaction handle; all work in the transaction must use it, and the handle expires when the callback settles. Adapters must queue unrelated operations and other transactions until the transaction finishes, so calling `database` itself inside the callback never settles:
 
@@ -558,7 +558,7 @@ await database.transaction(async (transaction) => {
 Custom backends can run the shared conformance suite with any Vitest- or Jest-compatible runner:
 
 ```typescript
-import { registerStorageConformance } from "@nyan/durable/testing";
+import { registerStorageConformance } from "@ny4n/durable/testing";
 import { describe, expect, it } from "vitest";
 
 registerStorageConformance({ describe, expect, it }, "My Storage", async (use) => {
@@ -571,7 +571,7 @@ registerStorageConformance({ describe, expect, it }, "My Storage", async (use) =
 });
 ```
 
-The package root loads TypeBox, because the tool task validates arguments with @nyan/ai's `validateToolArguments()`. That costs about 23 MB of peak RSS unbundled, about 4 MB in a tree-shaken bundle.
+The package root loads TypeBox, because the tool task validates arguments with @ny4n/ai's `validateToolArguments()`. That costs about 23 MB of peak RSS unbundled, about 4 MB in a tree-shaken bundle.
 
 ## Examples
 

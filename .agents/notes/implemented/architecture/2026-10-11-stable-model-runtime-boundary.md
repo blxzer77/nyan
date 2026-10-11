@@ -4,24 +4,24 @@ Status: implemented
 
 ## Problem
 
-The first layer guard identified `packages/agent` and `packages/durable` as consumers of the full `@nyan/ai` package root. That root also owns provider catalogs, credential stores, OAuth flows, API adapters, and compatibility exports. Letting runtime layers import it directly makes provider implementation details part of their source boundary and makes future package or provider changes harder to contain.
+The first layer guard identified `packages/agent` and `packages/durable` as consumers of the full `@ny4n/ai` package root. That root also owns provider catalogs, credential stores, OAuth flows, API adapters, and compatibility exports. Letting runtime layers import it directly makes provider implementation details part of their source boundary and makes future package or provider changes harder to contain.
 
 ## Decision
 
-Nyan now exposes `@nyan/ai/contracts` as the provider-neutral integration entry point. It contains shared message, tool, transcript, stream, and model types plus the narrow `ModelRuntime` interface required by durable execution:
+Nyan now exposes `@ny4n/ai/contracts` as the provider-neutral integration entry point. It contains shared message, tool, transcript, stream, and model types plus the narrow `ModelRuntime` interface required by durable execution:
 
 - resolve a model by provider and ID;
 - stream or complete a simple request;
 - fetch a deferred response;
 - cancel a deferred response.
 
-`packages/agent` and the durable runtime import shared types through `@nyan/ai/contracts`. Durable runtime-only helpers stay on explicit `@nyan/ai/utils/*` subpaths; they are allowed by the layer map because routing them through the aggregate contracts entry would expand the durable public entry graph beyond its budget. A host may continue to pass the full `Models` collection because it structurally satisfies `ModelRuntime`; provider catalogs, credentials, OAuth, and provider mutation remain outside durable's contract.
+`packages/agent` and the durable runtime import shared types through `@ny4n/ai/contracts`. Durable runtime-only helpers stay on explicit `@ny4n/ai/utils/*` subpaths; they are allowed by the layer map because routing them through the aggregate contracts entry would expand the durable public entry graph beyond its budget. A host may continue to pass the full `Models` collection because it structurally satisfies `ModelRuntime`; provider catalogs, credentials, OAuth, and provider mutation remain outside durable's contract.
 
 The executable layer check records both package direction and this source-import rule in [`docs/architecture/layers.json`](../../../../docs/architecture/layers.json). The root `check` command runs it.
 
 ## Alternatives considered
 
-**Re-export every durable helper from `@nyan/ai/contracts`.** Rejected because runtime exports from the aggregate facade pulled additional utility modules into the durable public entry graph and exceeded the existing entry-graph budget.
+**Re-export every durable helper from `@ny4n/ai/contracts`.** Rejected because runtime exports from the aggregate facade pulled additional utility modules into the durable public entry graph and exceeded the existing entry-graph budget.
 
 **Keep importing `Models` from the package root.** Rejected because it exposes provider catalog and auth ownership to durable callers and makes the layer boundary descriptive rather than enforceable.
 

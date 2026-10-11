@@ -1,5 +1,5 @@
-import type { Context } from "@nyan/chord";
-import { BACKGROUND_CONTEXT, withAbortSignal } from "@nyan/chord/context";
+import type { Context } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@ny4n/chord/context";
 import {
 	type ExecutionEnv,
 	type FileInfo,

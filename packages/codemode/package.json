@@ -1,5 +1,5 @@
 {
-	"name": "@nyan/codemode",
+	"name": "@ny4n/codemode",
 	"version": "1.1.0",
 	"description": "Sandboxed JavaScript execution where the only capability is calling injected tools",
 	"type": "module",

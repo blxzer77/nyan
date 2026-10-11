@@ -28,7 +28,7 @@ Published tarballs carry the native binaries built by the workflow, not the ones
 
 ## Consequences
 
-Nothing publishes until the repository has the `NPM_TOKEN` secret, a GitHub environment named `npm`, and the `@nyan` scope on npm; until then a tag push fails at the publish step after verification, and nothing is released. `npm run release:dry` was run locally: all 12 packages pack in dependency order (telemetry, ai, agent-core, chord, protocol, client, codemode, mcp, tui, coding-agent, durable, server).
+Nothing publishes until the repository has the `NPM_TOKEN` secret, a GitHub environment named `npm`, and the `@ny4n` scope on npm; until then a tag push fails at the publish step after verification, and nothing is released. `npm run release:dry` was run locally: all 12 packages pack in dependency order (telemetry, ai, agent-core, chord, protocol, client, codemode, mcp, tui, coding-agent, durable, server).
 
 ## Verification
 

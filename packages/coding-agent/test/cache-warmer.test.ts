@@ -6,8 +6,8 @@ import {
 	type ModelsSimpleStreamOptions,
 	normalizeContext,
 	type Usage,
-} from "@nyan/ai";
-import { getBuiltinModel } from "@nyan/ai/providers/all";
+} from "@ny4n/ai";
+import { getBuiltinModel } from "@ny4n/ai/providers/all";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import {

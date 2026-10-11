@@ -5,7 +5,7 @@
  * Useful to ensure work is committed before switching context.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@nyan/coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@ny4n/coding-agent";
 
 async function checkDirtyRepo(
 	nyan: ExtensionAPI,

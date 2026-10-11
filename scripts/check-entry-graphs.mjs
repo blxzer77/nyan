@@ -19,14 +19,14 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Workspace package name -> its source root, so cross-package imports are followed. */
 const WORKSPACE = {
-	"@nyan/chord": "packages/chord/src",
-	"@nyan/ai": "packages/ai/src",
-	"@nyan/durable": "packages/durable/src",
-	"@nyan/agent-core": "packages/agent/src",
-	"@nyan/codemode": "packages/codemode/src",
-	"@nyan/telemetry": "packages/telemetry/src",
-	"@nyan/mcp": "packages/mcp/src",
-	"@nyan/tui": "packages/tui/src",
+	"@ny4n/chord": "packages/chord/src",
+	"@ny4n/ai": "packages/ai/src",
+	"@ny4n/durable": "packages/durable/src",
+	"@ny4n/agent-core": "packages/agent/src",
+	"@ny4n/codemode": "packages/codemode/src",
+	"@ny4n/telemetry": "packages/telemetry/src",
+	"@ny4n/mcp": "packages/mcp/src",
+	"@ny4n/tui": "packages/tui/src",
 };
 
 /**

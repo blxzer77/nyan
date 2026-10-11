@@ -1,4 +1,4 @@
-import { Type } from "@nyan/ai";
+import { Type } from "@ny4n/ai";
 import {
 	type AgentState,
 	CompactionTask,
@@ -14,7 +14,7 @@ import {
 	ToolTask,
 	wrapSection,
 	wrapTool,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { agentHooks, resolveAgent, resolveSettings } from "../src/harness/agent.ts";
 import { context } from "./session-support.ts";

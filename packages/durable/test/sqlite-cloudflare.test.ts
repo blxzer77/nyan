@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { registerStorageConformance } from "@nyan/durable/testing";
+import { registerStorageConformance } from "@ny4n/durable/testing";
 import { describe, expect, it } from "vitest";
 import {
 	DurableObjectSqliteDatabase,

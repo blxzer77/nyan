@@ -1,6 +1,6 @@
 # vacation
 
-A durable vacation planning agent with a TUI, built on `@nyan/durable`. It is a copy of the durable coding
+A durable vacation planning agent with a TUI, built on `@ny4n/durable`. It is a copy of the durable coding
 agent in [`../durable`](../durable) with the coding tools and nyan's coding prompt replaced by a vacation planner. It only
 looks like a coding agent because it reuses nyan's interactive TUI components.
 

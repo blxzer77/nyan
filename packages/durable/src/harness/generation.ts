@@ -7,11 +7,11 @@ import type {
 	ModelThinkingLevel,
 	SimpleStreamOptions,
 	ToolCall,
-} from "@nyan/ai/contracts";
-import { isContextOverflow } from "@nyan/ai/utils/overflow";
-import { isRetryableAssistantError, retryDelayMs } from "@nyan/ai/utils/retry";
-import { getCurrentTools } from "@nyan/ai/utils/transcript";
-import { type Context, copyJson, type Draft, type JsonValue } from "@nyan/chord";
+} from "@ny4n/ai/contracts";
+import { isContextOverflow } from "@ny4n/ai/utils/overflow";
+import { isRetryableAssistantError, retryDelayMs } from "@ny4n/ai/utils/retry";
+import { getCurrentTools } from "@ny4n/ai/utils/transcript";
+import { type Context, copyJson, type Draft, type JsonValue } from "@ny4n/chord";
 import { AssistantEntry, ResetEntry, SystemEntry, UserEntry } from "../entries.ts";
 import type { ExecutionEnv } from "../env/index.ts";
 import { defineTask } from "../tasks.ts";

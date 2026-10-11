@@ -1,5 +1,5 @@
-import { type AssistantMessage, fauxAssistantMessage, fauxProvider } from "@nyan/ai";
-import { getApiProvider } from "@nyan/ai/compat";
+import { type AssistantMessage, fauxAssistantMessage, fauxProvider } from "@ny4n/ai";
+import { getApiProvider } from "@ny4n/ai/compat";
 import { expect, it } from "vitest";
 import { createHarness } from "../harness.ts";
 

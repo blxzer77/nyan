@@ -30,8 +30,8 @@ import {
 	type PrepareNextTurnContext,
 	runToolCall,
 	type ThinkingLevel,
-} from "@nyan/agent-core";
-import { contentText, getCurrentSystemMessage, retryDelayMs } from "@nyan/ai";
+} from "@ny4n/agent-core";
+import { contentText, getCurrentSystemMessage, retryDelayMs } from "@ny4n/ai";
 import type {
 	AssistantMessage,
 	AuthResult,
@@ -42,7 +42,7 @@ import type {
 	TextContent,
 	ToolResultMessage,
 	Usage,
-} from "@nyan/ai/compat";
+} from "@ny4n/ai/compat";
 import {
 	clampThinkingLevel,
 	cleanupSessionResources,
@@ -54,7 +54,7 @@ import {
 	type RetryCallbacks,
 	resetApiProviders,
 	streamSimple,
-} from "@nyan/ai/compat";
+} from "@ny4n/ai/compat";
 import { getThemeByName, theme } from "../ui/theme/theme.ts";
 import { stripFrontmatter } from "../utils/frontmatter.ts";
 import { processImage } from "../utils/image-process.ts";

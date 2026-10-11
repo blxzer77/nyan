@@ -18,7 +18,7 @@
  *   /thinking-label          Reset to the default label
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@nyan/coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@ny4n/coding-agent";
 
 const DEFAULT_LABEL = "Pondering...";
 

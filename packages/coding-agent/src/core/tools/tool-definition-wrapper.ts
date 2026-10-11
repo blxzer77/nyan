@@ -1,4 +1,4 @@
-import type { AgentTool } from "@nyan/agent-core";
+import type { AgentTool } from "@ny4n/agent-core";
 import type { ExtensionToolContext, ToolDefinition } from "../extensions/types.ts";
 
 /** Creates the context for one tool call. */

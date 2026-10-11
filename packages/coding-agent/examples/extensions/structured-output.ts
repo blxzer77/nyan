@@ -5,8 +5,8 @@
  * without paying for an extra follow-up LLM turn.
  */
 
-import { defineTool, type ExtensionAPI } from "@nyan/coding-agent";
-import { Text } from "@nyan/tui";
+import { defineTool, type ExtensionAPI } from "@ny4n/coding-agent";
+import { Text } from "@ny4n/tui";
 import { Type } from "typebox";
 
 interface StructuredOutputDetails {

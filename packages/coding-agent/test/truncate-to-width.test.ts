@@ -1,4 +1,4 @@
-import { truncateToWidth, visibleWidth } from "@nyan/tui";
+import { truncateToWidth, visibleWidth } from "@ny4n/tui";
 import { describe, expect, it } from "vitest";
 
 /**

@@ -16,7 +16,7 @@
  * Then use ctrl+o to toggle between minimal (collapsed) and full (expanded) views.
  */
 
-import type { ExtensionAPI } from "@nyan/coding-agent";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 import {
 	createBashToolDefinition,
 	createEditToolDefinition,
@@ -25,8 +25,8 @@ import {
 	createLsToolDefinition,
 	createReadToolDefinition,
 	createWriteToolDefinition,
-} from "@nyan/coding-agent";
-import { Text } from "@nyan/tui";
+} from "@ny4n/coding-agent";
+import { Text } from "@ny4n/tui";
 import { homedir } from "os";
 
 /**

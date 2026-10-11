@@ -5,7 +5,7 @@
  * Useful for preventing accidental modifications to sensitive files.
  */
 
-import type { ExtensionAPI } from "@nyan/coding-agent";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 
 export default function (nyan: ExtensionAPI) {
 	const protectedPaths = [".env", ".git/", "node_modules/"];

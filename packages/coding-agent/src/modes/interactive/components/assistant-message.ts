@@ -1,5 +1,5 @@
-import type { AssistantMessage } from "@nyan/ai";
-import { Container, Markdown, type MarkdownTheme, MouseRegion, Spacer, Text } from "@nyan/tui";
+import type { AssistantMessage } from "@ny4n/ai";
+import { Container, Markdown, type MarkdownTheme, MouseRegion, Spacer, Text } from "@ny4n/tui";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
 import { getMarkdownTheme, theme } from "../../../ui/theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";

@@ -1,5 +1,5 @@
-import type { AssistantMessage } from "@nyan/ai/contracts";
-import { copyJson, type Draft } from "@nyan/chord";
+import type { AssistantMessage } from "@ny4n/ai/contracts";
+import { copyJson, type Draft } from "@ny4n/chord";
 import { AssistantEntry } from "../entries.ts";
 import type { ConversationId, Tx, TypedEntry } from "../types.ts";
 import type { LiveState } from "./live.ts";

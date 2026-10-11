@@ -1,4 +1,4 @@
-import type { AgentTool } from "@nyan/agent-core";
+import type { AgentTool } from "@ny4n/agent-core";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "fs/promises";
 import { dirname } from "path";
 import { type Static, Type } from "typebox";

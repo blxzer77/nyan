@@ -1,12 +1,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxToolCall } from "@nyan/ai";
+import { fauxAssistantMessage, fauxToolCall } from "@ny4n/ai";
 import { describe, expect, it, vi } from "vitest";
 import subagentExtension from "../../../examples/extensions/subagent/index.ts";
 import type { ExtensionUIContext } from "../../../src/core/extensions/index.ts";
 import { createHarness, getMessageText } from "../harness.ts";
 
-vi.mock("@nyan/coding-agent", () => ({
+vi.mock("@ny4n/coding-agent", () => ({
 	CONFIG_DIR_NAME: ".nyan",
 	getAgentDir: () => "/missing-user-agent-dir",
 	getMarkdownTheme: () => ({}),

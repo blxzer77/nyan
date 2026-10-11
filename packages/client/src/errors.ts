@@ -1,4 +1,4 @@
-import type { ProtocolError, ProtocolErrorCode } from "@nyan/protocol";
+import type { ProtocolError, ProtocolErrorCode } from "@ny4n/protocol";
 
 export class ServerError extends Error {
 	readonly code: ProtocolErrorCode;

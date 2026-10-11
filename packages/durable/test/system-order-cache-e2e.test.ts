@@ -1,5 +1,5 @@
-import { type AssistantMessage, type Message, type Model, type Models, normalizeContext, Type, uuidv7 } from "@nyan/ai";
-import { builtinModels } from "@nyan/ai/providers/all";
+import { type AssistantMessage, type Message, type Model, type Models, normalizeContext, Type, uuidv7 } from "@ny4n/ai";
+import { builtinModels } from "@ny4n/ai/providers/all";
 import {
 	AssistantEntry,
 	createRegistry,
@@ -9,7 +9,7 @@ import {
 	Harness,
 	hook,
 	MemoryStorage,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { streamSimple as streamSimpleAnthropic } from "../../ai/src/api/anthropic-messages.ts";
 import { resolveApiKey } from "../../ai/test/oauth.ts";

@@ -1,10 +1,10 @@
 import { lstat, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Context, createFacetHost, defineFacet, defineService } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import { Client, ServerError as ClientServerError } from "@nyan/client";
-import { createUnixTransportFactory } from "@nyan/client/unix";
+import { type Context, createFacetHost, defineFacet, defineService } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import { Client, ServerError as ClientServerError } from "@ny4n/client";
+import { createUnixTransportFactory } from "@ny4n/client/unix";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ExampleFacetService } from "../examples/plugins/nyan-example-plugin/src/contract.ts";
 import { runClient } from "../src/experimental/client.ts";
@@ -212,7 +212,7 @@ describe.skipIf(process.platform === "win32")("experimental durable server compo
 			);
 			await activated.management.attach("demo-1", BACKGROUND_CONTEXT);
 			const loaded = await createPresentationFacetLoaders(presentationPlugins)[0]!.load();
-			expect(loaded.facets.map(({ id }) => id)).toEqual(["@nyan/example-plugin/tui"]);
+			expect(loaded.facets.map(({ id }) => id)).toEqual(["@ny4n/example-plugin/tui"]);
 			await loaded.dispose();
 		} finally {
 			await first.dispose();
@@ -392,14 +392,14 @@ describe.skipIf(process.platform === "win32")("experimental durable server compo
 			writeFile(
 				join(secondPackagePath, "package.json"),
 				`${JSON.stringify({
-					name: "@nyan/second-session-plugin",
+					name: "@ny4n/second-session-plugin",
 					version: "1.0.0",
-					peerDependencies: { "@nyan/chord": "^0.84.4" },
+					peerDependencies: { "@ny4n/chord": "^0.84.4" },
 				})}\n`,
 			),
 			writeFile(
 				join(secondPackagePath, "src", "session.ts"),
-				'import { defineFacet, defineService } from "@nyan/chord"; const Service = defineService("test.second-plugin"); export default defineFacet({ id: "second-session-plugin", setup(env) { env.provide(Service, { async read() { return "second"; } }); } });\n',
+				'import { defineFacet, defineService } from "@ny4n/chord"; const Service = defineService("test.second-plugin"); export default defineFacet({ id: "second-session-plugin", setup(env) { env.provide(Service, { async read() { return "second"; } }); } });\n',
 			),
 		]);
 		const runtime = await startServer({ ...sessionWorkerModel, directory });

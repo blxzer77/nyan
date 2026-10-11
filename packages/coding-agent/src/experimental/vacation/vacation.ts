@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { Type } from "@nyan/ai";
+import { Type } from "@ny4n/ai";
 import {
 	AssistantEntry,
 	type ConversationId,
@@ -8,7 +8,7 @@ import {
 	defineTask,
 	defineTool,
 	section,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 
 // ─── search: slow, fake, and safe to rerun ──────────────────────────────────
 

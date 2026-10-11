@@ -1,6 +1,6 @@
 # Extension Examples
 
-Example extensions for @nyan/coding-agent.
+Example extensions for @ny4n/coding-agent.
 
 ## Usage
 
@@ -127,7 +127,7 @@ cp permission-gate.ts ~/.nyan/agent/extensions/
 | Extension | Description |
 |-----------|-------------|
 | `custom-provider-anthropic/` | Custom Anthropic provider with OAuth support and custom streaming implementation |
-| `custom-provider-gitlab-duo/` | GitLab Duo provider using @nyan/ai's built-in Anthropic/OpenAI streaming via proxy |
+| `custom-provider-gitlab-duo/` | GitLab Duo provider using @ny4n/ai's built-in Anthropic/OpenAI streaming via proxy |
 | `jev-router.ts` | Virtual model via `registerVirtualModel` that plans on Codex Sol or Terra (picked by the Jev classifier) and switches to Luna after the first edit |
 
 ### External Dependencies
@@ -142,7 +142,7 @@ cp permission-gate.ts ~/.nyan/agent/extensions/
 See [docs/extensions.md](../../docs/extensions.md) for full documentation.
 
 ```typescript
-import type { ExtensionAPI } from "@nyan/coding-agent";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 import { Type } from "typebox";
 
 export default function (nyan: ExtensionAPI) {
@@ -184,7 +184,7 @@ export default function (nyan: ExtensionAPI) {
 
 **Use StringEnum for string parameters** (required for Google API compatibility):
 ```typescript
-import { StringEnum } from "@nyan/ai";
+import { StringEnum } from "@ny4n/ai";
 
 // Good
 action: StringEnum(["list", "add"] as const)

@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { JsonValue } from "@nyan/chord";
-import { applyImmutable, type Op } from "@nyan/chord/delta";
+import type { JsonValue } from "@ny4n/chord";
+import { applyImmutable, type Op } from "@ny4n/chord/delta";
 import {
 	type ConversationId,
 	defineTask,
@@ -10,7 +10,7 @@ import {
 	MemoryStorage,
 	type TaskGraph,
 	type TaskId,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { openNodeSqliteStorage } from "../src/storage/sqlite/node.ts";
 import { ControlledStorage, context, flush } from "./session-support.ts";

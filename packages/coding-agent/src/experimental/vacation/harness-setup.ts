@@ -1,5 +1,5 @@
-import type { ModelThinkingLevel } from "@nyan/ai";
-import { createRegistry, type HarnessSettings, type ModelRef, type Registry } from "@nyan/durable";
+import type { ModelThinkingLevel } from "@ny4n/ai";
+import { createRegistry, type HarnessSettings, type ModelRef, type Registry } from "@ny4n/durable";
 import { applyHttpProxySettings, configureHttpDispatcher } from "../../core/http-dispatcher.ts";
 import { findInitialModel, resolveCliModel } from "../../core/model-resolver.ts";
 import type { ModelRuntime } from "../../core/model-runtime.ts";

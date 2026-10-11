@@ -35,12 +35,12 @@ conversation object and `Entry`/`Task` are typed definitions. The imports:
 import {
   createFacetHost, createRemoteServiceBinding, defineFacet, defineService,
   type Context, type Facet, type FacetHost, type RemoteServiceTransport, type ReplicatedState,
-} from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+} from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import {
   type ConversationId, defineDoc, defineDocFamily, type DocumentObserver,
   type Harness, type Session, type TaskId, type TaskRuntime,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 ```
 
 A `Harness` is a `Session`, so every function below also takes an open Harness.

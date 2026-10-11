@@ -1,4 +1,4 @@
-import { defineDoc, defineDocFamily } from "@nyan/durable";
+import { defineDoc, defineDocFamily } from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { getReplicatedStateInternals } from "../../chord/src/services/state-internals.ts";
 import { context, createConversation, documentChanges, flush, openTestSession } from "./session-support.ts";

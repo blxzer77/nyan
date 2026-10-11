@@ -20,7 +20,7 @@ import {
 import { homedir, constants as osConstants, tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Context } from "@nyan/chord";
+import type { Context } from "@ny4n/chord";
 import { StreamDecoder } from "./decode.ts";
 import {
 	type BinaryReader,

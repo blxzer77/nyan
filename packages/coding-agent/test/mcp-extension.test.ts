@@ -9,8 +9,8 @@ import {
 	McpAuthRequiredError,
 	McpHttpError,
 	McpSessionExpiredError,
-} from "@nyan/mcp";
-import { createInMemoryTransportPair, type InMemoryTransport } from "@nyan/mcp/testing";
+} from "@ny4n/mcp";
+import { createInMemoryTransportPair, type InMemoryTransport } from "@ny4n/mcp/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryAuthStorageBackend } from "../src/core/auth-storage.ts";
 import { truncateMiddle } from "../src/core/tools/truncate.ts";

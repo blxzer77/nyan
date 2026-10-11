@@ -1,4 +1,4 @@
-import { type Context, copyJson, type JsonRepresentation } from "@nyan/chord";
+import { type Context, copyJson, type JsonRepresentation } from "@ny4n/chord";
 import { UserEntry } from "../entries.ts";
 import { ConversationBusy } from "../errors.ts";
 import type { SessionImpl } from "../session/session.ts";

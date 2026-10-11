@@ -1,4 +1,4 @@
-import { type Context, defineService, type JsonValue } from "@nyan/chord";
+import { type Context, defineService, type JsonValue } from "@ny4n/chord";
 
 /** Server-built plugin generations available to presentations. */
 export interface PresentationPlugins {

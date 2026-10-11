@@ -1,4 +1,4 @@
-import { type TUI, visibleWidth } from "@nyan/tui";
+import { type TUI, visibleWidth } from "@ny4n/tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";

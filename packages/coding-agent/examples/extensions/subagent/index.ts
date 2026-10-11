@@ -16,17 +16,17 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentToolResult, ThinkingLevel } from "@nyan/agent-core";
-import type { Message } from "@nyan/ai";
-import { StringEnum } from "@nyan/ai";
+import type { AgentToolResult, ThinkingLevel } from "@ny4n/agent-core";
+import type { Message } from "@ny4n/ai";
+import { StringEnum } from "@ny4n/ai";
 import {
 	CONFIG_DIR_NAME,
 	type ExtensionAPI,
 	getAgentDir,
 	getMarkdownTheme,
 	withFileMutationQueue,
-} from "@nyan/coding-agent";
-import { Container, Markdown, Spacer, Text } from "@nyan/tui";
+} from "@ny4n/coding-agent";
+import { Container, Markdown, Spacer, Text } from "@ny4n/tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 

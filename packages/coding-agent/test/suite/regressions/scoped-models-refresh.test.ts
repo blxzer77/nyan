@@ -1,5 +1,5 @@
-import type { Api, Model, ModelsRefreshResult } from "@nyan/ai";
-import { setKeybindings, type TUI } from "@nyan/tui";
+import type { Api, Model, ModelsRefreshResult } from "@ny4n/ai";
+import { setKeybindings, type TUI } from "@ny4n/tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../../src/core/keybindings.ts";
 import type { ScopedModelsSelectorComponent } from "../../../src/modes/interactive/components/scoped-models-selector.ts";

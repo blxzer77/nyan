@@ -1,6 +1,6 @@
-import type { JsonValue } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import type { Op } from "@nyan/chord/delta";
+import type { JsonValue } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import type { Op } from "@ny4n/chord/delta";
 import { idFromNumber } from "../ids.ts";
 import {
 	type ConversationId,

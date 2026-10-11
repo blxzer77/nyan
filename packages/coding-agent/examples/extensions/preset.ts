@@ -40,10 +40,10 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Api, Model } from "@nyan/ai";
-import type { ExtensionAPI, ExtensionContext } from "@nyan/coding-agent";
-import { CONFIG_DIR_NAME, DynamicBorder, getAgentDir } from "@nyan/coding-agent";
-import { Container, Key, type SelectItem, SelectList, Text } from "@nyan/tui";
+import type { Api, Model } from "@ny4n/ai";
+import type { ExtensionAPI, ExtensionContext } from "@ny4n/coding-agent";
+import { CONFIG_DIR_NAME, DynamicBorder, getAgentDir } from "@ny4n/coding-agent";
+import { Container, Key, type SelectItem, SelectList, Text } from "@ny4n/tui";
 
 // Preset configuration
 interface Preset {

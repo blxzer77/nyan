@@ -1,5 +1,5 @@
-import type { Op } from "@nyan/chord/delta";
-import { defineDoc, defineDocFamily, type EntryId, type JsonObject, type StorageWrite } from "@nyan/durable";
+import type { Op } from "@ny4n/chord/delta";
+import { defineDoc, defineDocFamily, type EntryId, type JsonObject, type StorageWrite } from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { context, createConversation, documentChanges, flush, openTestSession } from "./session-support.ts";
 

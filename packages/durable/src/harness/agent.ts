@@ -1,4 +1,4 @@
-import { copyJson, type Draft } from "@nyan/chord";
+import { copyJson, type Draft } from "@ny4n/chord";
 import { defineDoc } from "../documents.ts";
 import type { ConversationId, ConversationRecord, Tx } from "../types.ts";
 import type {

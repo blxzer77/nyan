@@ -1,4 +1,4 @@
-import { type Context, defineService, type ReplicatedState } from "@nyan/chord";
+import { type Context, defineService, type ReplicatedState } from "@ny4n/chord";
 
 export interface KeyedProbe {
 	readonly state: ReplicatedState<{ value: string }>;

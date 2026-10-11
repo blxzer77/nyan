@@ -1,4 +1,4 @@
-import { getNativeClipboard } from "@nyan/tui";
+import { getNativeClipboard } from "@ny4n/tui";
 import { randomUUID } from "crypto";
 import { readFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";

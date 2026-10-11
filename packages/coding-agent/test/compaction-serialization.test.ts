@@ -1,4 +1,4 @@
-import type { Message } from "@nyan/ai";
+import type { Message } from "@ny4n/ai";
 import { describe, expect, it } from "vitest";
 import { serializeConversation } from "../src/core/compaction/utils.ts";
 

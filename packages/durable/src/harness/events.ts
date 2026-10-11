@@ -1,6 +1,6 @@
-import type { AssistantMessage, Message, Usage } from "@nyan/ai/contracts";
-import type { Context, JsonValue } from "@nyan/chord";
-import type { Op, Path } from "@nyan/chord/delta";
+import type { AssistantMessage, Message, Usage } from "@ny4n/ai/contracts";
+import type { Context, JsonValue } from "@ny4n/chord";
+import type { Op, Path } from "@ny4n/chord/delta";
 import { CommittedWatch } from "../session/observation.ts";
 import type {
 	CommitChange,

@@ -6,8 +6,8 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 	UserMessage,
-} from "@nyan/ai";
-import { createModels, Type } from "@nyan/ai";
+} from "@ny4n/ai";
+import { createModels, Type } from "@ny4n/ai";
 import {
 	type AnyTask,
 	createRegistry,
@@ -22,7 +22,7 @@ import {
 	type Storage,
 	section,
 	type ToolRegistration,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { context } from "./session-support.ts";
 
 export function tool(name: string, description = `${name} tool`): ToolRegistration {

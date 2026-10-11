@@ -1,5 +1,5 @@
-import { defineFacet, type FacetLoader } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import { defineFacet, type FacetLoader } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import { describe, expect, test, vi } from "vitest";
 import { SessionPlugins } from "../src/experimental/services/plugins.ts";
 import { createSessionWorkerServices } from "../src/experimental/services/worker.ts";

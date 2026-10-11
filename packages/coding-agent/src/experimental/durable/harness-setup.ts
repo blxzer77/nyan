@@ -1,8 +1,8 @@
-import type { ModelThinkingLevel } from "@nyan/ai";
-import type { Context } from "@nyan/chord";
-import { createRegistry, type EnvTarget, type HarnessSettings, type ModelRef, type Registry } from "@nyan/durable";
-import { NodeExecutionEnv } from "@nyan/durable/env/node";
-import { CodingTools } from "@nyan/durable/tools";
+import type { ModelThinkingLevel } from "@ny4n/ai";
+import type { Context } from "@ny4n/chord";
+import { createRegistry, type EnvTarget, type HarnessSettings, type ModelRef, type Registry } from "@ny4n/durable";
+import { NodeExecutionEnv } from "@ny4n/durable/env/node";
+import { CodingTools } from "@ny4n/durable/tools";
 import { applyHttpProxySettings, configureHttpDispatcher } from "../../core/http-dispatcher.ts";
 import { findInitialModel, resolveCliModel } from "../../core/model-resolver.ts";
 import type { ModelRuntime } from "../../core/model-runtime.ts";

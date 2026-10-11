@@ -1,4 +1,4 @@
-# @nyan/telemetry
+# @ny4n/telemetry
 
 Vendor-neutral telemetry contracts and typed schema utilities for nyan packages.
 
@@ -33,7 +33,7 @@ Applications can use the in-memory reference or provide an adapter for OpenTelem
 ## Installation
 
 ```bash
-npm install @nyan/telemetry
+npm install @ny4n/telemetry
 ```
 
 ## Telemetry Concepts
@@ -69,7 +69,7 @@ A `TelemetryContext` starts a span around a callback. The callback receives a `T
 import {
   NOOP_TELEMETRY_CONTEXT,
   type TelemetryContext,
-} from '@nyan/telemetry';
+} from '@ny4n/telemetry';
 
 async function loadAccount(
   accountId: string,
@@ -136,7 +136,7 @@ Adapters may activate backend-native ambient context internally for automatic in
 Use `NOOP_TELEMETRY_CONTEXT` when telemetry is optional:
 
 ```typescript
-import { NOOP_TELEMETRY_CONTEXT } from '@nyan/telemetry';
+import { NOOP_TELEMETRY_CONTEXT } from '@ny4n/telemetry';
 
 const result = await NOOP_TELEMETRY_CONTEXT.startSpan(
   { name: 'example.operation' },
@@ -156,7 +156,7 @@ The no-op context:
 `InMemoryTelemetryContext` is the backend-neutral reference implementation. It is useful for tests, local diagnostics, and applications that intentionally want process-local capture without an exporter:
 
 ```typescript
-import { InMemoryTelemetryContext } from '@nyan/telemetry';
+import { InMemoryTelemetryContext } from '@ny4n/telemetry';
 
 const telemetry = new InMemoryTelemetryContext();
 
@@ -177,13 +177,13 @@ The adapter is safe to use as an ordinary `TelemetryContext`, but storage is unb
 
 ## Adapter Conformance
 
-`@nyan/telemetry/testing` exports a runner-independent conformance suite modeled as grouped cases. A fixture supplies a fresh context and converts its backend's finished spans into normalized `RecordedTelemetrySpan` snapshots:
+`@ny4n/telemetry/testing` exports a runner-independent conformance suite modeled as grouped cases. A fixture supplies a fresh context and converts its backend's finished spans into normalized `RecordedTelemetrySpan` snapshots:
 
 ```typescript
 import {
   createTelemetryAdapterConformance,
   type TelemetryAdapterFixture,
-} from '@nyan/telemetry/testing';
+} from '@ny4n/telemetry/testing';
 import { describe, it } from 'vitest';
 
 const conformance = createTelemetryAdapterConformance(async () => {
@@ -216,7 +216,7 @@ The low-level span API intentionally accepts open names and attribute bags so ad
 import {
   createTypedSpanStarter,
   defineTelemetrySchema,
-} from '@nyan/telemetry';
+} from '@ny4n/telemetry';
 
 export const EXAMPLE_TELEMETRY_SCHEMA = defineTelemetrySchema({
   version: 1,
@@ -323,7 +323,7 @@ Attributes do not end the span. Returning, resolving, throwing, or rejecting fro
 A starter can compose multiple independently versioned schemas:
 
 ```typescript
-import { AGENT_TELEMETRY_SCHEMAS } from '@nyan/agent-core';
+import { AGENT_TELEMETRY_SCHEMAS } from '@ny4n/agent-core';
 
 const startAgentSpan = createTypedSpanStarter(
   telemetryContext,
@@ -366,9 +366,9 @@ Adapters do not need to understand schema objects. Instrumentation helpers and t
 
 Package ownership is intentionally split:
 
-- `@nyan/telemetry` owns the vendor-neutral contract, no-op and in-memory reference contexts, schema utilities, and adapter conformance suite;
-- `@nyan/ai` accepts and propagates `telemetryContext` in provider request options but owns no telemetry schema;
-- `@nyan/agent-core` owns and exports the nyan AI-request and harness schemas, their combined readonly schema tuple, and typed span helpers.
+- `@ny4n/telemetry` owns the vendor-neutral contract, no-op and in-memory reference contexts, schema utilities, and adapter conformance suite;
+- `@ny4n/ai` accepts and propagates `telemetryContext` in provider request options but owns no telemetry schema;
+- `@ny4n/agent-core` owns and exports the nyan AI-request and harness schemas, their combined readonly schema tuple, and typed span helpers.
 
 ```typescript
 import {
@@ -377,7 +377,7 @@ import {
   HARNESS_TELEMETRY_SCHEMA,
   startAiSpan,
   startHarnessSpan,
-} from '@nyan/agent-core';
+} from '@ny4n/agent-core';
 ```
 
 The nyan schemas use nyan-owned `nyan.ai.*`, `nyan.harness.*`, and `nyan.session.*` names. Adapters may translate them to backend conventions without changing the emitted nyan vocabulary.

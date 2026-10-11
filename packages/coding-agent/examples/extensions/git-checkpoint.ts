@@ -5,7 +5,7 @@
  * When forking, offers to restore code to that point in history.
  */
 
-import type { ExtensionAPI } from "@nyan/coding-agent";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 
 export default function (nyan: ExtensionAPI) {
 	const checkpoints = new Map<string, string>();

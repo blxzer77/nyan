@@ -1,4 +1,4 @@
-import { type Context, defineService } from "@nyan/chord";
+import { type Context, defineService } from "@ny4n/chord";
 
 export interface AgentPromptImage {
 	type: "image";

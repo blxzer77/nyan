@@ -481,7 +481,7 @@ export interface TUI extends Component {
 	}): Promise<TerminalColors>;
 }
 
-export const VIEWPORT_TUI = Symbol.for("@nyan/tui/viewport");
+export const VIEWPORT_TUI = Symbol.for("@ny4n/tui/viewport");
 
 export interface ViewportTUI extends TUI {
 	readonly [VIEWPORT_TUI]: true;

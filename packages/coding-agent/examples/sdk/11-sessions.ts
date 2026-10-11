@@ -4,7 +4,7 @@
  * Control session persistence: in-memory, new file, continue, or open specific.
  */
 
-import { createAgentSession, SessionManager } from "@nyan/coding-agent";
+import { createAgentSession, SessionManager } from "@ny4n/coding-agent";
 
 // In-memory (no persistence)
 const { session: inMemory } = await createAgentSession({

@@ -5,7 +5,7 @@
  * Uses the last assistant message to generate a commit message.
  */
 
-import type { ExtensionAPI } from "@nyan/coding-agent";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 
 export default function (nyan: ExtensionAPI) {
 	nyan.on("session_shutdown", async (_event, ctx) => {

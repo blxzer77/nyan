@@ -1,8 +1,8 @@
-import type { ImageContent, TextContent, ToolCall, ToolResultMessage } from "@nyan/ai/contracts";
-import { validateToolArguments } from "@nyan/ai/utils/validation";
-import { type Context, copyJson, type JsonValue } from "@nyan/chord";
-import { awaitWithContext } from "@nyan/chord/context";
-import { overlap } from "@nyan/chord/delta";
+import type { ImageContent, TextContent, ToolCall, ToolResultMessage } from "@ny4n/ai/contracts";
+import { validateToolArguments } from "@ny4n/ai/utils/validation";
+import { type Context, copyJson, type JsonValue } from "@ny4n/chord";
+import { awaitWithContext } from "@ny4n/chord/context";
+import { overlap } from "@ny4n/chord/delta";
 import { AssistantEntry, ToolResultEntry } from "../entries.ts";
 import { defineTask } from "../tasks.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, utf8ByteLength } from "../truncate.ts";

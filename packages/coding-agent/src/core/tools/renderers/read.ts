@@ -7,8 +7,8 @@
  */
 
 import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep } from "node:path";
-import type { ImageContent, TextContent } from "@nyan/ai";
-import { Text } from "@nyan/tui";
+import type { ImageContent, TextContent } from "@ny4n/ai";
+import { Text } from "@ny4n/tui";
 import { getReadmePath } from "../../../config.ts";
 import { keyHint, keyText } from "../../../ui/components/keybinding-hints.ts";
 import { getLanguageFromPath, highlightCode, type Theme } from "../../../ui/theme/theme.ts";

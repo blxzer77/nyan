@@ -1,4 +1,4 @@
-import type { JsonValue } from "@nyan/chord";
+import type { JsonValue } from "@ny4n/chord";
 import Type, { type Static } from "typebox";
 import { Check } from "typebox/value";
 

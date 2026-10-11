@@ -1,4 +1,4 @@
-import type { ThinkingLevel } from "@nyan/agent-core";
+import type { ThinkingLevel } from "@ny4n/agent-core";
 import {
 	Container,
 	type Focusable,
@@ -10,7 +10,7 @@ import {
 	type SelectListLayoutOptions,
 	Spacer,
 	Text,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
 import { keyDisplayText } from "../../../ui/components/keybinding-hints.ts";
 import { getSelectListTheme, theme } from "../../../ui/theme/theme.ts";

@@ -7,8 +7,8 @@ import {
 	RemoteServiceError,
 	type ServiceCall,
 	type ServiceProviderUpdate,
-} from "@nyan/chord";
-import { BACKGROUND_CONTEXT, TODO_CONTEXT, withAbortSignal } from "@nyan/chord/context";
+} from "@ny4n/chord";
+import { BACKGROUND_CONTEXT, TODO_CONTEXT, withAbortSignal } from "@ny4n/chord/context";
 import {
 	type CancelEnvelope,
 	type ClientHello,
@@ -27,7 +27,7 @@ import {
 	type ServerHello,
 	type ServerHelloError,
 	type ServerMessage,
-} from "@nyan/protocol";
+} from "@ny4n/protocol";
 import {
 	type ByteConnection,
 	type ByteConnectionHandler,

@@ -5,7 +5,7 @@ import {
 	type KeyId,
 	TUI_KEYBINDINGS,
 	KeybindingsManager as TuiKeybindingsManager,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { getAgentDir } from "../config.ts";
@@ -66,7 +66,7 @@ export function useWindowsKeybindings(
 	return platform === "win32" || (platform === "linux" && Boolean(env.WSL_DISTRO_NAME || env.WSL_INTEROP));
 }
 
-declare module "@nyan/tui" {
+declare module "@ny4n/tui" {
 	interface Keybindings extends AppKeybindings {}
 }
 

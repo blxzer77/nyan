@@ -1,4 +1,4 @@
-import { Container, getKeybindings, Spacer, Text } from "@nyan/tui";
+import { Container, getKeybindings, Spacer, Text } from "@ny4n/tui";
 import { APP_NAME } from "../../../config.ts";
 import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
 import { keyHint, rawKeyHint } from "../../../ui/components/keybinding-hints.ts";

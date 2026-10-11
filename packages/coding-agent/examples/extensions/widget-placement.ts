@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@nyan/coding-agent";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 
 export default function widgetPlacementExtension(nyan: ExtensionAPI) {
 	nyan.on("session_start", (_event, ctx) => {

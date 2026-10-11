@@ -10,7 +10,7 @@
  * the model; binary resources are saved to temp files. Scripts get the JSON payloads.
  */
 
-import type { ImageContent, JsonValue, TextContent } from "@nyan/ai";
+import type { ImageContent, JsonValue, TextContent } from "@ny4n/ai";
 import type {
 	ContentBlock,
 	ListResourcesResult,
@@ -19,7 +19,7 @@ import type {
 	ReadResourceResult,
 	Resource,
 	ResourceTemplate,
-} from "@nyan/mcp";
+} from "@ny4n/mcp";
 import type { TSchema } from "typebox";
 import type { ToolAnnotations, ToolDefinition } from "../../core/extensions/types.ts";
 import {

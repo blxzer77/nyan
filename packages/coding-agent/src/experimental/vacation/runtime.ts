@@ -1,6 +1,6 @@
-import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel } from "@nyan/ai";
-import type { AttachedReplicatedState } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel } from "@ny4n/ai";
+import type { AttachedReplicatedState } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import {
 	type AgentState,
 	type Conversation,
@@ -13,8 +13,8 @@ import {
 	ROOT_CONVERSATION_ID,
 	type Submission,
 	type TaskGraph,
-} from "@nyan/durable";
-import { openNodeSqliteStorage } from "@nyan/durable/storage/sqlite/node";
+} from "@ny4n/durable";
+import { openNodeSqliteStorage } from "@ny4n/durable/storage/sqlite/node";
 import { ModelRuntime } from "../../core/model-runtime.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { createDurableModelRuntime } from "../model-runtime-adapter.ts";

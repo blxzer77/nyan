@@ -1,6 +1,6 @@
 # durable
 
-A small local coding agent on `@nyan/durable`. One process owns the model runtime, the durable
+A small local coding agent on `@ny4n/durable`. One process owns the model runtime, the durable
 Harness, its SQLite storage, and the TUI. It reuses nyan's model runtime, auth, settings, system prompt, keybindings,
 theme, and interactive components; the agent itself is the durable Harness with its built-in `CodingTools`.
 

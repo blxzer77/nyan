@@ -1,5 +1,5 @@
-import { type AssistantMessage, Type } from "@nyan/ai";
-import type { Context } from "@nyan/chord";
+import { type AssistantMessage, Type } from "@ny4n/ai";
+import type { Context } from "@ny4n/chord";
 import {
 	AssistantEntry,
 	configure,
@@ -8,7 +8,7 @@ import {
 	type EntryId,
 	type Extension,
 	type ToolExecutionApi,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 
 async function answerText(api: ToolExecutionApi, answer: EntryId, context: Context): Promise<string> {
 	const entry = await api.commit((tx) => tx.entry(AssistantEntry, answer), context);

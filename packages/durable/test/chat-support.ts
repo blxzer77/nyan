@@ -6,8 +6,8 @@ import {
 	type Message,
 	type Models,
 	type RegisterFauxProviderOptions,
-} from "@nyan/ai";
-import type { Context } from "@nyan/chord";
+} from "@ny4n/ai";
+import type { Context } from "@ny4n/chord";
 import {
 	type Conversation,
 	createRegistry,
@@ -18,7 +18,7 @@ import {
 	type Registry,
 	type Storage,
 	type ToolRegistration,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import type { ExecutionEnv } from "../src/env/index.ts";
 import { context } from "./session-support.ts";
 

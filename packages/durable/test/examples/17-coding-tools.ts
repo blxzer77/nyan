@@ -6,10 +6,10 @@
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ToolResultMessage } from "@nyan/ai";
-import { createModels } from "@nyan/ai/models";
-import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@nyan/ai/providers/faux";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import type { ToolResultMessage } from "@ny4n/ai";
+import { createModels } from "@ny4n/ai/models";
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@ny4n/ai/providers/faux";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import { NodeExecutionEnv } from "../../src/env/node.ts";
 import {
 	AssistantEntry,

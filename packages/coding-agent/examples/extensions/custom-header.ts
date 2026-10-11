@@ -5,8 +5,8 @@
  * (logo + keybinding hints) with a custom component showing the nyan mascot.
  */
 
-import type { ExtensionAPI, Theme } from "@nyan/coding-agent";
-import { VERSION } from "@nyan/coding-agent";
+import type { ExtensionAPI, Theme } from "@ny4n/coding-agent";
+import { VERSION } from "@ny4n/coding-agent";
 
 // --- NYAN MASCOT ---
 // Based on nyan_mascot.ts - the nyan agent character

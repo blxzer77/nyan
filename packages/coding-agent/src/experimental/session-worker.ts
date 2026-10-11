@@ -10,10 +10,10 @@ import {
 	type RemoteServiceErrorCode,
 	type ServiceCall,
 	type ServiceProviderUpdate,
-} from "@nyan/chord";
-import { BACKGROUND_CONTEXT, TODO_CONTEXT, withCancel } from "@nyan/chord/context";
-import { Harness, ROOT_CONVERSATION_ID, type TaskGraph } from "@nyan/durable";
-import { openNodeSqliteStorage } from "@nyan/durable/storage/sqlite/node";
+} from "@ny4n/chord";
+import { BACKGROUND_CONTEXT, TODO_CONTEXT, withCancel } from "@ny4n/chord/context";
+import { Harness, ROOT_CONVERSATION_ID, type TaskGraph } from "@ny4n/durable";
+import { openNodeSqliteStorage } from "@ny4n/durable/storage/sqlite/node";
 import lockfile from "proper-lockfile";
 import Type, { type Static } from "typebox";
 import { Check } from "typebox/value";

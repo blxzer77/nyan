@@ -5,10 +5,10 @@
  * a summary of the branch being left so context isn't lost.
  */
 
-import type { AgentMessage, StreamFn } from "@nyan/agent-core";
-import type { RetryCallbacks, RetryPolicy } from "@nyan/ai";
-import { contentText, normalizeContext } from "@nyan/ai";
-import type { Model, SimpleStreamOptions, Usage } from "@nyan/ai/compat";
+import type { AgentMessage, StreamFn } from "@ny4n/agent-core";
+import type { RetryCallbacks, RetryPolicy } from "@ny4n/ai";
+import { contentText, normalizeContext } from "@ny4n/ai";
+import type { Model, SimpleStreamOptions, Usage } from "@ny4n/ai/compat";
 import {
 	convertToLlm,
 	createBranchSummaryMessage,

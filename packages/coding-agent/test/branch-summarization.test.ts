@@ -1,11 +1,11 @@
-import type { StreamFn } from "@nyan/agent-core";
+import type { StreamFn } from "@ny4n/agent-core";
 import {
 	type AssistantMessage,
 	createAssistantMessageEventStream,
 	fauxAssistantMessage,
 	type Model,
 	type SimpleStreamOptions,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import { describe, expect, it } from "vitest";
 import { generateBranchSummary } from "../src/core/compaction/index.ts";
 import type { SessionEntry } from "../src/core/session-manager.ts";

@@ -2,8 +2,8 @@
  * Shared utilities for compaction and branch summarization.
  */
 
-import type { AgentMessage } from "@nyan/agent-core";
-import { contentText, type Message } from "@nyan/ai";
+import type { AgentMessage } from "@ny4n/agent-core";
+import { contentText, type Message } from "@ny4n/ai";
 
 // ============================================================================
 // File Operation Tracking

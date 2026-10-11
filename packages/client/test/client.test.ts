@@ -1,11 +1,11 @@
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import {
 	encodeCbor,
 	encodeFrame,
 	encodeServerMessage,
 	PROTOCOL_VERSION,
 	ProtocolValidationError,
-} from "@nyan/protocol";
+} from "@ny4n/protocol";
 import { describe, expect, test, vi } from "vitest";
 import {
 	type ByteTransportFactory,

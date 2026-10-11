@@ -55,8 +55,8 @@ import {
 	type ProviderRequestOptions,
 	type SimpleStreamOptions,
 	type StreamOptions,
-} from "@nyan/ai";
-import * as builtinProviderCatalog from "@nyan/ai/providers/all";
+} from "@ny4n/ai";
+import * as builtinProviderCatalog from "@ny4n/ai/providers/all";
 import {
 	assertChatModel,
 	assertClassifierInputSupported,
@@ -64,7 +64,7 @@ import {
 	assertImageModel,
 	classifierErrorResult,
 	imageErrorResult,
-} from "@nyan/ai/utils/model-operations";
+} from "@ny4n/ai/utils/model-operations";
 import { getAgentDir } from "../config.ts";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
 import { AuthStorage as DefaultAuthStorage } from "./auth-storage.ts";

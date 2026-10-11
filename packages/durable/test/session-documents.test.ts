@@ -1,5 +1,5 @@
-import type { Draft, JsonValue } from "@nyan/chord";
-import { type ConversationId, defineDoc, defineDocFamily, type JsonObject, type TaskId } from "@nyan/durable";
+import type { Draft, JsonValue } from "@ny4n/chord";
+import { type ConversationId, defineDoc, defineDocFamily, type JsonObject, type TaskId } from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { idFromNumber } from "../src/ids.ts";
 import { context, createConversation, documentChanges, flush, openTestSession } from "./session-support.ts";

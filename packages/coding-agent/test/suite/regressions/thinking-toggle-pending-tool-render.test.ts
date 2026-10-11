@@ -1,6 +1,6 @@
-import type { AgentMessage } from "@nyan/agent-core";
-import type { AssistantMessage, ToolResultMessage, Usage } from "@nyan/ai";
-import { Container, Text, type TUI } from "@nyan/tui";
+import type { AgentMessage } from "@ny4n/agent-core";
+import type { AssistantMessage, ToolResultMessage, Usage } from "@ny4n/ai";
+import { Container, Text, type TUI } from "@ny4n/tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import type { AgentSessionEvent } from "../../../src/core/agent-session.ts";
 import type { SessionEntry } from "../../../src/core/session-manager.ts";

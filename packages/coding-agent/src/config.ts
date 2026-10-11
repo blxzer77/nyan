@@ -576,7 +576,7 @@ try {
 }
 
 const configuredIdentity = resolveConfiguredProductIdentity(pkg.nyanConfig ?? {});
-export const PACKAGE_NAME: string = pkg.name || "@nyan/coding-agent";
+export const PACKAGE_NAME: string = pkg.name || "@ny4n/coding-agent";
 export { PRODUCT_IDENTITY };
 export const APP_NAME: string = configuredIdentity.appName;
 export const APP_TITLE: string = configuredIdentity.appTitle;

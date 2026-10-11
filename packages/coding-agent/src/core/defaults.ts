@@ -1,4 +1,4 @@
-import type { ThinkingLevel } from "@nyan/agent-core";
+import type { ThinkingLevel } from "@ny4n/agent-core";
 
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 export const THINKING_LEVEL_OPTIONS: readonly ThinkingLevel[] = [

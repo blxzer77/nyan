@@ -17,10 +17,10 @@ export default defineConfig({
 	resolve: {
 		conditions: ["source"],
 		alias: [
-			{ find: /^@nyan\/telemetry$/, replacement: telemetrySrcIndex },
-			{ find: /^@nyan\/agent-core$/, replacement: agentSrcIndex },
-			{ find: /^@nyan\/ai$/, replacement: aiSrcIndex },
-			{ find: /^@nyan\/ai\/compat$/, replacement: aiSrcCompat },
+			{ find: /^@ny4n\/telemetry$/, replacement: telemetrySrcIndex },
+			{ find: /^@ny4n\/agent-core$/, replacement: agentSrcIndex },
+			{ find: /^@ny4n\/ai$/, replacement: aiSrcIndex },
+			{ find: /^@ny4n\/ai\/compat$/, replacement: aiSrcCompat },
 		],
 	},
 	ssr: { resolve: { conditions: ["source"] } },

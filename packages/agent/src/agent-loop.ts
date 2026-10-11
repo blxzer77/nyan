@@ -14,7 +14,7 @@ import {
 	type ToolStateChanges,
 	toToolDeclaration,
 	validateToolArguments,
-} from "@nyan/ai/contracts";
+} from "@ny4n/ai/contracts";
 import { getDefaultStreamFn } from "./stream-fn.ts";
 import type {
 	AgentContext,

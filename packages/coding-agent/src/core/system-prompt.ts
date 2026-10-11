@@ -2,7 +2,7 @@
  * System prompt construction and project context loading
  */
 
-import { getSystemMessageText } from "@nyan/ai";
+import { getSystemMessageText } from "@ny4n/ai";
 import { getDocsPath, getExamplesPath, getReadmePath } from "../config.ts";
 import { formatSkillsForPrompt, type Skill } from "./skills.ts";
 

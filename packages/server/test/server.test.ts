@@ -1,7 +1,7 @@
 import { lstat, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ServerMessageDecoder } from "@nyan/protocol";
+import { ServerMessageDecoder } from "@ny4n/protocol";
 import { afterEach, expect, test } from "vitest";
 import type { ByteConnection } from "../src/connection.ts";
 import { Server } from "../src/index.ts";

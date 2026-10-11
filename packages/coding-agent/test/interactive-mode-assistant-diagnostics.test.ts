@@ -1,5 +1,5 @@
-import type { AssistantMessage } from "@nyan/ai";
-import { Container } from "@nyan/tui";
+import type { AssistantMessage } from "@ny4n/ai";
+import { Container } from "@ny4n/tui";
 import { describe, expect, test } from "vitest";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
 import { initTheme } from "../src/ui/theme/theme.ts";

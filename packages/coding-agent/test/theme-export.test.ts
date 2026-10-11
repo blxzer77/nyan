@@ -1,4 +1,4 @@
-import { colorToHex, okhslColor } from "@nyan/tui";
+import { colorToHex, okhslColor } from "@ny4n/tui";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";

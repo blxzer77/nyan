@@ -19,7 +19,7 @@ import {
 	getAgentDir,
 	SessionManager,
 	SettingsManager,
-} from "@nyan/coding-agent";
+} from "@ny4n/coding-agent";
 
 const cwd = process.cwd();
 

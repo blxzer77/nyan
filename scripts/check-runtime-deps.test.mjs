@@ -26,11 +26,11 @@ async function check(t, manifest, source, extraFiles = {}) {
 
 // Workspace resolution and installing every release package masked a missing runtime dependency.
 test("rejects undeclared imports even when the workspace package exists", async (t) => {
-	const result = await check(t, {}, 'export { createUnixServer } from "@nyan/server/unix";', {
-		"packages/server/package.json": JSON.stringify({ name: "@nyan/server", version: "1.0.0" }),
+	const result = await check(t, {}, 'export { createUnixServer } from "@ny4n/server/unix";', {
+		"packages/server/package.json": JSON.stringify({ name: "@ny4n/server", version: "1.0.0" }),
 	});
 	assert.equal(result.status, 1);
-	assert.match(result.stderr, /src[\\/]index\.ts:1: @nyan\/server\/unix is not declared/);
+	assert.match(result.stderr, /src[\\/]index\.ts:1: @ny4n\/server\/unix is not declared/);
 });
 
 test("accepts runtime declarations, builtins, self imports, relative imports, and erased types", async (t) => {

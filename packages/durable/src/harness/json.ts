@@ -1,4 +1,4 @@
-import type { JsonValue } from "@nyan/chord";
+import type { JsonValue } from "@ny4n/chord";
 
 type JsonContainer = Record<string, JsonValue> | JsonValue[];
 

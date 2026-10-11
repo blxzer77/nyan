@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxText, fauxToolCall, type Models, type ToolResultMessage, Type } from "@nyan/ai";
-import type { Context, JsonValue } from "@nyan/chord";
+import { fauxAssistantMessage, fauxText, fauxToolCall, type Models, type ToolResultMessage, Type } from "@ny4n/ai";
+import type { Context, JsonValue } from "@ny4n/chord";
 import {
 	type AgentEvent,
 	type Conversation,
@@ -27,7 +27,7 @@ import {
 	ToolResultEntry,
 	type Tx,
 	watchEvents,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { afterEach, describe, expect, it } from "vitest";
 import { openNodeSqliteStorage } from "../src/storage/sqlite/node.ts";
 import { allEntries, chatSetup, openChat, waitFor } from "./chat-support.ts";

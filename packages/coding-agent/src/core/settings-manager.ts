@@ -1,11 +1,11 @@
-import type { ThinkingLevel } from "@nyan/agent-core";
-import { DEFAULT_MAX_AGENT_RETRY_DELAY_MS, type Model, type Transport } from "@nyan/ai";
+import type { ThinkingLevel } from "@ny4n/agent-core";
+import { DEFAULT_MAX_AGENT_RETRY_DELAY_MS, type Model, type Transport } from "@ny4n/ai";
 import type {
 	TuiMode as RendererTuiMode,
 	ScrollViewScrollbar,
 	TerminalCapabilities,
 	WheelScrollLines,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";

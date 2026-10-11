@@ -9,7 +9,7 @@
  * separately and adds them to the provider's catalog with `withVirtualModels()`, so any provider,
  * including one with physical models, can list several virtual models.
  */
-import type { AgentMessage } from "@nyan/agent-core";
+import type { AgentMessage } from "@ny4n/agent-core";
 import {
 	type AnyModel,
 	type Api,
@@ -22,7 +22,7 @@ import {
 	type ModelThinkingLevel,
 	type Provider,
 	type ThinkingLevelMap,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import type { SessionEntry } from "./session-manager.ts";
 
 /** API id of virtual catalog entries. Requests for it fail unless routed first. */

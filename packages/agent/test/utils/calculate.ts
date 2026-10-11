@@ -1,4 +1,4 @@
-import type { Usage } from "@nyan/ai";
+import type { Usage } from "@ny4n/ai";
 import { type Static, Type } from "typebox";
 import type { AgentTool, AgentToolResult } from "../../src/types.ts";
 

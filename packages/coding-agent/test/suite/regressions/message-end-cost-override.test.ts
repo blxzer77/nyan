@@ -1,4 +1,4 @@
-import { fauxAssistantMessage } from "@nyan/ai";
+import { fauxAssistantMessage } from "@ny4n/ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, type Harness } from "../harness.ts";
 

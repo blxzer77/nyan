@@ -95,18 +95,18 @@
 	"entryRules": [
 		{
 			"from": "agent",
-			"package": "@nyan/ai",
+			"package": "@ny4n/ai",
 			"allow": [
-				"@nyan/ai/contracts"
+				"@ny4n/ai/contracts"
 			],
 			"reason": "The agent loop depends on the provider-neutral contract, never on provider catalogs, OAuth or API adapters."
 		},
 		{
 			"from": "durable",
-			"package": "@nyan/ai",
+			"package": "@ny4n/ai",
 			"allow": [
-				"@nyan/ai/contracts",
-				"@nyan/ai/utils"
+				"@ny4n/ai/contracts",
+				"@ny4n/ai/utils"
 			],
 			"reason": "Durable execution consumes the contract and the pure utility subpaths; routing utilities through the contract entry would exceed the durable entry-graph budget."
 		}

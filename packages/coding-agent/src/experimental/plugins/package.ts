@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { bundleFacetPackage } from "@nyan/chord/bundler";
-import { FACET_BUNDLE_MANIFEST_FILE, type FacetBundleArtifact, readFacetBundleArtifact } from "@nyan/chord/node";
-import type { ServerId } from "@nyan/protocol";
+import { bundleFacetPackage } from "@ny4n/chord/bundler";
+import { FACET_BUNDLE_MANIFEST_FILE, type FacetBundleArtifact, readFacetBundleArtifact } from "@ny4n/chord/node";
+import type { ServerId } from "@ny4n/protocol";
 
 const PLUGIN_PACKAGE_PROFILE_VERSION = 1;
 const DEFAULT_PLUGIN_FACETS = Object.freeze({ session: "src/session.ts", tui: "src/tui.ts" });

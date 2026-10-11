@@ -1,6 +1,6 @@
-import type { Message, SystemMessage, Tool, ToolReference } from "@nyan/ai/contracts";
-import { declarationsEqual, getCurrentTools, toToolDeclaration } from "@nyan/ai/utils/transcript";
-import type { Context } from "@nyan/chord";
+import type { Message, SystemMessage, Tool, ToolReference } from "@ny4n/ai/contracts";
+import { declarationsEqual, getCurrentTools, toToolDeclaration } from "@ny4n/ai/utils/transcript";
+import type { Context } from "@ny4n/chord";
 import { SystemEntry } from "../entries.ts";
 import type { ContextEdit, TypedEntryDraft } from "../types.ts";
 import type { ContextView, PromptInput, PromptSection, ToolRegistration } from "./types.ts";

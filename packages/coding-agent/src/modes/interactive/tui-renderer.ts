@@ -1,5 +1,5 @@
-import type { Terminal, WheelScrollLines } from "@nyan/tui";
-import { ProcessTerminal, type TUI, TuiAltScreen, TuiMainScreen } from "@nyan/tui";
+import type { Terminal, WheelScrollLines } from "@ny4n/tui";
+import { ProcessTerminal, type TUI, TuiAltScreen, TuiMainScreen } from "@ny4n/tui";
 import { keyDisplayText } from "../../ui/components/keybinding-hints.ts";
 import { theme } from "../../ui/theme/theme.ts";
 import { copyToClipboard } from "../../utils/clipboard.ts";

@@ -1,5 +1,5 @@
-import { fauxAssistantMessage, fauxToolCall, getCurrentTools, type TranscriptContext } from "@nyan/ai";
-import type { ToolResultMessage } from "@nyan/ai/compat";
+import { fauxAssistantMessage, fauxToolCall, getCurrentTools, type TranscriptContext } from "@ny4n/ai";
+import type { ToolResultMessage } from "@ny4n/ai/compat";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/types.ts";

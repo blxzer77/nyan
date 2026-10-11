@@ -1,6 +1,6 @@
-import type { AssistantMessage, ToolResultMessage, UserMessage } from "@nyan/ai";
-import type { ConversationView, EntryRecord, InboxState, LiveState } from "@nyan/durable";
-import { Container, Spacer, Text, TruncatedText, type TUI } from "@nyan/tui";
+import type { AssistantMessage, ToolResultMessage, UserMessage } from "@ny4n/ai";
+import type { ConversationView, EntryRecord, InboxState, LiveState } from "@ny4n/durable";
+import { Container, Spacer, Text, TruncatedText, type TUI } from "@ny4n/tui";
 import { createAllToolRenderers } from "../core/tools/renderers/index.ts";
 import { AssistantMessageComponent } from "../modes/interactive/components/assistant-message.ts";
 import { type StatusIndicator, WorkingStatusIndicator } from "../modes/interactive/components/status-indicator.ts";

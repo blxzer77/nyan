@@ -11,7 +11,7 @@ import {
 	type TuiMouseEvent,
 	type TuiMouseEventResult,
 	visibleWidth,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import { formatKeyText } from "../../../ui/components/keybinding-hints.ts";
 import { theme } from "../../../ui/theme/theme.ts";
 import { ARMIN_HEIGHT, ARMIN_WIDTH, isArminPixel } from "./armin.ts";

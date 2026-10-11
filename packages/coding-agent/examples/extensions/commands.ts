@@ -10,7 +10,7 @@
  * 3. Use /commands extensions to filter by source
  */
 
-import type { ExtensionAPI, SlashCommandInfo } from "@nyan/coding-agent";
+import type { ExtensionAPI, SlashCommandInfo } from "@ny4n/coding-agent";
 
 export default function commandsExtension(nyan: ExtensionAPI) {
 	nyan.registerCommand("commands", {

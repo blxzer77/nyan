@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Agent, type AgentEvent, type AgentTool } from "@nyan/agent-core";
-import { type AssistantMessage, createAssistantMessageEventStream, getModel } from "@nyan/ai/compat";
+import { Agent, type AgentEvent, type AgentTool } from "@ny4n/agent-core";
+import { type AssistantMessage, createAssistantMessageEventStream, getModel } from "@ny4n/ai/compat";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";

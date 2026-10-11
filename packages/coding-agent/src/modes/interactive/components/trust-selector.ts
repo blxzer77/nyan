@@ -1,4 +1,4 @@
-import { Container, getKeybindings, Spacer, Text } from "@nyan/tui";
+import { Container, getKeybindings, Spacer, Text } from "@ny4n/tui";
 import {
 	getProjectTrustOptions,
 	type ProjectTrustOption,

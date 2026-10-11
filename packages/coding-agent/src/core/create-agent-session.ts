@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import { Agent, type AgentMessage, setDefaultStreamFn, type ThinkingLevel } from "@nyan/agent-core";
-import type { ModelsSimpleStreamOptions } from "@nyan/ai";
-import { clampThinkingLevel, type Message, type Model, streamSimple } from "@nyan/ai/compat";
+import { Agent, type AgentMessage, setDefaultStreamFn, type ThinkingLevel } from "@ny4n/agent-core";
+import type { ModelsSimpleStreamOptions } from "@ny4n/ai";
+import { clampThinkingLevel, type Message, type Model, streamSimple } from "@ny4n/ai/compat";
 import { getAgentDir } from "../config.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { AgentSession } from "./agent-session.ts";
@@ -29,7 +29,7 @@ import { getBranchSelection } from "./virtual-models.ts";
 
 // Preserve the pre-0.81 fallback for extensions that construct Agent instances
 // or invoke low-level agent loops without supplying streamFn. Agent core remains
-// provider-agnostic and does not import @nyan/ai/compat itself.
+// provider-agnostic and does not import @ny4n/ai/compat itself.
 setDefaultStreamFn(streamSimple);
 
 export interface CreateAgentSessionOptions {
@@ -117,7 +117,7 @@ function getDefaultAgentDir(): string {
  * const { session } = await createAgentSession();
  *
  * // With explicit model
- * import { getModel } from '@nyan/ai';
+ * import { getModel } from '@ny4n/ai';
  * const { session } = await createAgentSession({
  *   model: getModel('anthropic', 'claude-opus-4-5'),
  *   thinkingLevel: 'high',

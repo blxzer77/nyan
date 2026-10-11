@@ -3,8 +3,8 @@
  * Validates that the faux provider and session factory work correctly.
  */
 
-import type { AgentTool } from "@nyan/agent-core";
-import type { AssistantMessage } from "@nyan/ai";
+import type { AgentTool } from "@ny4n/agent-core";
+import type { AssistantMessage } from "@ny4n/ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, createHarnessWithExtensions, type Harness } from "./test-harness.ts";

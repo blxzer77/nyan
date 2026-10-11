@@ -1,6 +1,6 @@
-import type { AgentTool } from "@nyan/agent-core";
-import { fauxAssistantMessage, fauxToolCall } from "@nyan/ai";
-import type { ExtensionAPI } from "@nyan/coding-agent";
+import type { AgentTool } from "@ny4n/agent-core";
+import { fauxAssistantMessage, fauxToolCall } from "@ny4n/ai";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHarness, getAssistantTexts, getUserTexts, type Harness } from "../harness.ts";

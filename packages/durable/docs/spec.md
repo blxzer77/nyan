@@ -11,8 +11,8 @@ import type {
   JsonRepresentation,
   JsonValue,
   ReplicatedState,
-} from "@nyan/chord";
-import type { Op } from "@nyan/chord/delta";
+} from "@ny4n/chord";
+import type { Op } from "@ny4n/chord/delta";
 import type {
   AssistantMessage,
   CacheRetention,
@@ -27,14 +27,14 @@ import type {
   ToolResultMessage,
   Transport,
   UserMessage,
-} from "@nyan/ai";
-import type { ExecutionEnv } from "@nyan/durable/env";
+} from "@ny4n/ai";
+import type { ExecutionEnv } from "@ny4n/durable/env";
 
 type JsonObject = { [key: string]: JsonValue };
 type TaskOutcomeError = { message: string; detail?: JsonValue };
 ```
 
-Pico5 targets the transcript `SystemMessage` contract of `@nyan/ai`, which
+Pico5 targets the transcript `SystemMessage` contract of `@ny4n/ai`, which
 `Message` includes.
 
 The core rule is:
@@ -117,7 +117,7 @@ type ConversationRecord = {
 };
 ```
 
-The referenced @nyan/ai member is:
+The referenced @ny4n/ai member is:
 
 ```ts
 interface SystemMessage {
@@ -130,7 +130,7 @@ interface SystemMessage {
 }
 ```
 
-In @nyan/ai, `content` is the base prompt on the leading message and additional
+In @ny4n/ai, `content` is the base prompt on the leading message and additional
 instruction text on later messages. `sections` is an ordered named patch: a
 string adds or replaces a section, while `null` removes it. `toolsRemoved` is
 applied before `toolsAdded` within one message. Replaying every system message
@@ -348,7 +348,7 @@ type AnyTask = {
 };
 
 type HarnessOptions<Tool extends ToolRegistration = ToolRegistration> = {
-  readonly models: Models; // the @nyan/ai Models interface
+  readonly models: Models; // the @ny4n/ai Models interface
   readonly registry: RegistryReader<Tool>; // section 7.1
   readonly settings?: HarnessSettings;
   /** Builds a conversation's environment. Never called on the Session line; may be async. */
@@ -363,7 +363,7 @@ type HarnessOptions<Tool extends ToolRegistration = ToolRegistration> = {
   readonly onReport?: (error: unknown) => void;
 };
 
-/** Curated @nyan/ai request options; absent fields use @nyan/ai defaults. */
+/** Curated @ny4n/ai request options; absent fields use @ny4n/ai defaults. */
 type ConversationStreamOptions = {
   transport?: Transport;
   timeoutMs?: number;
@@ -376,7 +376,7 @@ type ConversationStreamOptions = {
   deferred?: boolean | { window?: "15m" | "1h" | "24h" };
 };
 
-/** Durable generation attempt retries; the JSON shape of @nyan/ai `RetryPolicy`. */
+/** Durable generation attempt retries; the JSON shape of @ny4n/ai `RetryPolicy`. */
 type ConversationRetryPolicy = {
   enabled: boolean;
   maxRetries: number;
@@ -761,7 +761,7 @@ The UUID is a provider-facing conversation identity, not the numeric Durable
 `ConversationId` and not an enclosing application's Session ID. Every new,
 task-owned, raw-created, and forked conversation receives its own UUID in its
 creating commit; a fork never copies its parent's UUID. Generation requests and
-compaction summarization pass it to @nyan/ai as `options.sessionId`. Reset,
+compaction summarization pass it to @ny4n/ai as `options.sessionId`. Reset,
 compaction, model changes, and reopen do not change it. A legacy conversation without the document creates and persists it
 on the Session line before its first generation or compaction provider request.
 Concurrent callers therefore observe one winner. Provider behavior still
@@ -2402,7 +2402,7 @@ The `Tool` parameter lets an application attach metadata, such as prompt
 snippets, to its tools and read it typed in its section renderers. The Harness
 only relies on `ToolRegistration`; its own surfaces, such as `runtime.agent()`,
 use the default. Metadata fields must be optional: the registry does not check
-them, and a default-typed extension may be installed. Nyan-ai declarations derived from a tool keep only @nyan/ai `Tool`
+them, and a default-typed extension may be installed. Nyan-ai declarations derived from a tool keep only @ny4n/ai `Tool`
 fields (`toToolDeclaration`), so application metadata never enters the
 transcript.
 
@@ -2819,7 +2819,7 @@ pause. Changes made during the delay
 coalesce into the next commit. The throttle is Harness policy, not part of
 `outputLimits`, which only bounds what is retained. Explicit
 text in explicit result content is bounded by the same limits before transcript
-persistence; non-text content is retained as declared by its @nyan/ai type. When
+persistence; non-text content is retained as declared by its @ny4n/ai type. When
 bounding drops text, the Harness adds a `warn` diagnostic with code `truncated`
 stating the dropped lines and bytes.
 
@@ -3106,7 +3106,7 @@ diagnostic with one of the codes `tool_unavailable`, `invalid_arguments`,
 and the error text as its message. Their content is the durable partial output,
 if any, and `details` is the tool's last reported value, if any.
 
-`@nyan/durable/tools` provides `read`, `write`, `edit`, and `bash`
+`@ny4n/durable/tools` provides `read`, `write`, `edit`, and `bash`
 factories, ported from the agent harness tools, and the `CodingTools` extension
 with all four. They use only `api.env`; nothing
 installs them automatically. `read` does not return images yet. It reads a
@@ -3237,7 +3237,7 @@ values and `null` removals.
 
 Tool changes are planned separately and ride on the last planned entry, or on
 one entry of their own when sections are unchanged. Declarations are compared
-with @nyan/ai `declarationsEqual()` and written with `toToolDeclaration()`, so
+with @ny4n/ai `declarationsEqual()` and written with `toToolDeclaration()`, so
 application metadata never enters the transcript. A changed declaration is
 removed and re-added in the same message. Replay keeps retained tools in place
 and appends additions; when that would not yield the desired order, the message
@@ -3300,12 +3300,12 @@ The initial implementation provides:
 | `nyan.compaction` | select a transcript range, summarize, place a headed summary |
 
 Generation uses `HarnessOptions.models` without a Pico-specific model adapter. It
-resolves `models.getModel(ref.provider, ref.modelId)`, builds a @nyan/ai `Context`
+resolves `models.getModel(ref.provider, ref.modelId)`, builds a @ny4n/ai `Context`
 from the prepared prompt/messages/tools, and calls `models.streamSimple()` with
 the task invocation's abort signal, the agent's thinking level, and the
 settings' stream options. Deferred
 continuation calls `models.fetchDeferred()` and `models.cancelDeferred()` with
-that same model and signal. Missing models and synchronous/streamed @nyan/ai errors
+that same model and signal. Missing models and synchronous/streamed @ny4n/ai errors
 are classified into the durable generation outcomes below.
 
 Generation and tool progress are throttled durable document commits. A crash may
@@ -3497,7 +3497,7 @@ The run's inputs live in `nyan.live.run`, not in the task input.
   `contextWindow` is positive, and `compacted` is absent. The estimate starts at
   the newest assistant message in the committed model context whose entry was
   appended after the head marker (all qualify without one) and whose usage is
-  nonzero: @nyan/ai `calculateContextTokens()` of its usage, plus @nyan/ai
+  nonzero: @ny4n/ai `calculateContextTokens()` of its usage, plus @ny4n/ai
   `estimateMessageTokens()` of every context message after it and of the planned
   system messages. Its request included the marker, because a head is placed
   only while no request is in flight. Without such a message, every message is
@@ -3545,7 +3545,7 @@ The run's inputs live in `nyan.live.run`, not in the task input.
   - `toolUse` with at least one tool call: the commit appends the assistant
     entry and starts the tool round described below, moving to `waiting` in the
     `tools` phase. A `toolUse` message without calls is classified like `stop`.
-  - `error` that @nyan/ai `isContextOverflow()` recognizes, while the settings'
+  - `error` that @ny4n/ai `isContextOverflow()` recognizes, while the settings'
     compaction policy is enabled, `compacted` is absent, and range selection finds a cut:
     the commit appends the error entry, removes `generation`, creates a
     compaction owned by the generation with reason `overflow`, adds its status,
@@ -3574,7 +3574,7 @@ The run's inputs live in `nyan.live.run`, not in the task input.
 
 A tool round starts in the commit that appends the tool-calling answer:
 
-1. The offered tools are replayed with @nyan/ai `getCurrentTools()` from the
+1. The offered tools are replayed with @ny4n/ai `getCurrentTools()` from the
    committed model context through `cutoff`: `request` already holds it, and
    `poll` derives it again. A call to a tool not offered gets its
    `tool_unavailable` result entry here, without a task.
@@ -3613,7 +3613,7 @@ because the terminal record keeps it; the call is read from the assistant entry.
 
 - `call` reads the call with `runtime.entry()`, resolves the tool among the
   phase's agent `tools` (section 7.3), validates
-  the arguments with @nyan/ai
+  the arguments with @ny4n/ai
   `validateToolArguments()`, runs the `beforeTool` chain, and validates again
   (section 7.3). One commit then records intent: it moves to `execute` with the
   final arguments and the tool's replay policy and sets the slot `running`. The
@@ -3767,7 +3767,7 @@ markers, and the settings' `keepRecentTokens`.
    candidates, so a kept assistant message keeps its tool results. A user entry
    is not a candidate either while a result for a call of the assistant before
    it follows it, before the next assistant (section 2.1, rule 7).
-2. Walk the non-marker entries from newest to oldest, adding @nyan/ai
+2. Walk the non-marker entries from newest to oldest, adding @ny4n/ai
    `estimateMessageTokens()` of each contribution. At the first entry where the
    sum reaches `keepRecentTokens`, the cut is the first candidate at or after
    that entry in transcript order, or the newest candidate when none follows.
@@ -4624,7 +4624,7 @@ These are contracts, not invitations to add defensive machinery:
   that summary still describes 10-84. Place such writes before compacting.
 - **Summary timestamps:** a queued summary's user message carries the time its
   compaction finished, not its placement. Code that judges usage staleness by
-  message timestamps, such as @nyan/ai `estimateContextTokens()` over view
+  message timestamps, such as @ny4n/ai `estimateContextTokens()` over view
   messages, can misjudge; the Harness estimate uses entry order (section 8.3).
 - **Raw head writes into the past:** a head written directly with `tx.appendEntry()`
   that targets an entry before the conversation's active range changes model

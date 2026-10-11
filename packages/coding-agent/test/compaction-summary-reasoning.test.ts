@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@nyan/agent-core";
-import { type AssistantMessage, type Model, normalizeContext, type TranscriptContext } from "@nyan/ai";
+import type { AgentMessage } from "@ny4n/agent-core";
+import { type AssistantMessage, type Model, normalizeContext, type TranscriptContext } from "@ny4n/ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type CompactionPreparation,
@@ -13,8 +13,8 @@ const { completeSimpleMock } = vi.hoisted(() => ({
 	completeSimpleMock: vi.fn(),
 }));
 
-vi.mock("@nyan/ai/compat", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@nyan/ai/compat")>();
+vi.mock("@ny4n/ai/compat", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ny4n/ai/compat")>();
 	return {
 		...actual,
 		completeSimple: completeSimpleMock,

@@ -1,4 +1,4 @@
-import type { Component } from "@nyan/tui";
+import type { Component } from "@ny4n/tui";
 import { theme } from "../theme/theme.ts";
 
 /**

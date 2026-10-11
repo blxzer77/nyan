@@ -1,4 +1,4 @@
-import { getCapabilities, type ImageTranscoder, setImageTranscoder } from "@nyan/tui";
+import { getCapabilities, type ImageTranscoder, setImageTranscoder } from "@ny4n/tui";
 import { applyExifOrientation } from "./exif-orientation.ts";
 import { loadPhoton } from "./photon.ts";
 

@@ -1,4 +1,4 @@
-import type { Draft } from "@nyan/chord";
+import type { Draft } from "@ny4n/chord";
 import type { ConversationId, SubmissionId, TaskId, TaskReference, Tx } from "../types.ts";
 import type { GenerationCheckpoint, GenerationInput, GenerationResult } from "./generation.ts";
 import type { LiveState } from "./live.ts";

@@ -12,7 +12,7 @@ import {
 	Spacer,
 	Text,
 	type TUI,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
 import { keyHint } from "../../../ui/components/keybinding-hints.ts";

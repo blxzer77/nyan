@@ -31,7 +31,7 @@ Context usage uses the limits of the physical model that produced the latest res
 ## Register a virtual model
 
 ```typescript
-import type { ExtensionAPI } from "@nyan/coding-agent";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 
 export default function (nyan: ExtensionAPI) {
   nyan.registerVirtualModel({

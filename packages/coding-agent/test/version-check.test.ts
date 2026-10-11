@@ -46,12 +46,12 @@ describe("version checks", () => {
 
 	it("asks the npm registry for this package's latest version by default", async () => {
 		delete process.env.NYAN_LATEST_VERSION_URL;
-		const fetchMock = vi.fn(async () => Response.json({ name: "@nyan/coding-agent", version: "1.2.4" }));
+		const fetchMock = vi.fn(async () => Response.json({ name: "@ny4n/coding-agent", version: "1.2.4" }));
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(getLatestNyanVersion("1.2.3")).resolves.toBe("1.2.4");
 		expect(fetchMock).toHaveBeenCalledWith(
-			"https://registry.npmjs.org/@nyan%2Fcoding-agent/latest",
+			"https://registry.npmjs.org/@ny4n%2Fcoding-agent/latest",
 			expect.anything(),
 		);
 	});

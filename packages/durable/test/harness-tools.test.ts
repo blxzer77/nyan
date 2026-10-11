@@ -10,8 +10,8 @@ import {
 	type SystemMessage,
 	type ToolResultMessage,
 	Type,
-} from "@nyan/ai";
-import type { JsonValue } from "@nyan/chord";
+} from "@ny4n/ai";
+import type { JsonValue } from "@ny4n/chord";
 import {
 	AgentDoc,
 	type Conversation,
@@ -30,7 +30,7 @@ import {
 	type ToolRegistration,
 	ToolResultEntry,
 	ToolTask,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { NodeExecutionEnv } from "../src/env/node.ts";
 import { createBashTool, createEditTool, createReadTool } from "../src/tools/index.ts";

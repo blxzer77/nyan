@@ -1,5 +1,5 @@
-import { type AssistantMessage, type Model, type Models, normalizeContext, uuidv7 } from "@nyan/ai";
-import { builtinModels } from "@nyan/ai/providers/all";
+import { type AssistantMessage, type Model, type Models, normalizeContext, uuidv7 } from "@ny4n/ai";
+import { builtinModels } from "@ny4n/ai/providers/all";
 import {
 	AssistantEntry,
 	type ConversationId,
@@ -8,7 +8,7 @@ import {
 	Harness,
 	MemoryStorage,
 	ProviderDoc,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { streamSimple as streamSimpleOpenAICodexResponses } from "../../ai/src/api/openai-codex-responses.ts";
 import { resolveApiKey } from "../../ai/test/oauth.ts";

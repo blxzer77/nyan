@@ -5,7 +5,7 @@ import {
 	type ModelsStoreEntry,
 	type ModelType,
 	type Provider,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import { VERSION } from "../config.ts";
 import { fetchWithRetry } from "../utils/management-http.ts";
 import { getNyanUserAgent } from "../utils/nyan-user-agent.ts";

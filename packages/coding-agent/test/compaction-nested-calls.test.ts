@@ -1,4 +1,4 @@
-import type { ToolResultMessage } from "@nyan/ai/compat";
+import type { ToolResultMessage } from "@ny4n/ai/compat";
 import { describe, expect, it } from "vitest";
 import { computeFileLists, createFileOps, extractFileOpsFromMessage } from "../src/core/compaction/utils.ts";
 

@@ -1,5 +1,5 @@
-import type { AssistantMessage } from "@nyan/ai/contracts";
-import type { Draft, JsonRepresentation, JsonValue } from "@nyan/chord";
+import type { AssistantMessage } from "@ny4n/ai/contracts";
+import type { Draft, JsonRepresentation, JsonValue } from "@ny4n/chord";
 import { defineDoc } from "../documents.ts";
 import type { Transaction } from "../session/transaction.ts";
 import type { EntryId, SubmissionId, SubmissionSettlement, TaskId, TaskRecord, Tx } from "../types.ts";

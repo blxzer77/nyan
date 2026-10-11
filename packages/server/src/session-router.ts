@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { Context, JsonValue, ServiceCall, ServiceProviderUpdate } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import type { RpcTarget, SessionTarget } from "@nyan/protocol";
+import type { Context, JsonValue, ServiceCall, ServiceProviderUpdate } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import type { RpcTarget, SessionTarget } from "@ny4n/protocol";
 import { ServerDrainingError, SessionNotAttachedError } from "./errors.ts";
 import type { RoutedSessionAttachment, RoutedSessionHandle, ServerHost, SessionMetadata } from "./types.ts";
 

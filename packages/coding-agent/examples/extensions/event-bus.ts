@@ -7,7 +7,7 @@
  * Usage: /emit [event-name] [data] - emit an event on the bus
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@nyan/coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@ny4n/coding-agent";
 
 export default function (nyan: ExtensionAPI) {
 	// Store ctx for use in event handler

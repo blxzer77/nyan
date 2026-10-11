@@ -1,4 +1,4 @@
-import { complete, resetApiProviders } from "@nyan/ai/compat";
+import { complete, resetApiProviders } from "@ny4n/ai/compat";
 import { describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRegistry } from "../src/core/model-registry.ts";

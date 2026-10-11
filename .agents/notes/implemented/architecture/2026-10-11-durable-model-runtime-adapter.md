@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-`packages/coding-agent/src/experimental/model-runtime-adapter.ts` now creates the durable model port at the composition root. The former durable-local path remains a small re-export for source compatibility. The adapter exposes only `getModel`, `streamSimple`, `completeSimple`, `fetchDeferred`, and `cancelDeferred`, matching `@nyan/ai/contracts`.
+`packages/coding-agent/src/experimental/model-runtime-adapter.ts` now creates the durable model port at the composition root. The former durable-local path remains a small re-export for source compatibility. The adapter exposes only `getModel`, `streamSimple`, `completeSimple`, `fetchDeferred`, and `cancelDeferred`, matching `@ny4n/ai/contracts`.
 
 `openDurable()`, vacation, and the session worker keep the full `ModelRuntime` for product-shell concerns such as model selection and availability snapshots, while each `Harness.open()` receives only the narrow adapter. Durable therefore depends on the provider-neutral contract and cannot acquire catalog or authentication ownership through these integration points.
 

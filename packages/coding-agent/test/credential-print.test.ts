@@ -1,4 +1,4 @@
-import { InMemoryModelsStore } from "@nyan/ai";
+import { InMemoryModelsStore } from "@ny4n/ai";
 import { describe, expect, test, vi } from "vitest";
 import { parseArgs } from "../src/cli/args.ts";
 import { AuthCommandError, isAuthCommandHelp, parseAuthCommand } from "../src/cli/auth-command.ts";

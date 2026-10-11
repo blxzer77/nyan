@@ -3,10 +3,10 @@
 	"compilerOptions": {
 		"noEmit": true,
 		"paths": {
-			"@nyan/coding-agent": ["./src/index.ts"],
-			"@nyan/coding-agent/hooks": ["./src/core/hooks/index.ts"],
-			"@nyan/tui": ["../tui/src/index.ts"],
-			"@nyan/ai": ["../ai/src/index.ts"],
+			"@ny4n/coding-agent": ["./src/index.ts"],
+			"@ny4n/coding-agent/hooks": ["./src/core/hooks/index.ts"],
+			"@ny4n/tui": ["../tui/src/index.ts"],
+			"@ny4n/ai": ["../ai/src/index.ts"],
 			"typebox": ["../../node_modules/typebox"]
 		},
 		"skipLibCheck": true

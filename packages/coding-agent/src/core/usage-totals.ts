@@ -1,4 +1,4 @@
-import type { Usage } from "@nyan/ai/compat";
+import type { Usage } from "@ny4n/ai/compat";
 import type { SessionEntry } from "./session-manager.ts";
 
 export interface UsageTotals {

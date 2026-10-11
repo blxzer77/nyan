@@ -1,9 +1,9 @@
-import { defineFacet } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import { defineFacet } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import { ExampleFacetService } from "./contract.ts";
 
 export default defineFacet({
-	id: "@nyan/example-plugin/session",
+	id: "@ny4n/example-plugin/session",
 	setup(env) {
 		const workerActivations = env.replicatedState({ count: 0 });
 		env.provide(ExampleFacetService, {

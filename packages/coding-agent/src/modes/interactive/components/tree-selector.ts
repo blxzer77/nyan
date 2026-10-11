@@ -11,7 +11,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import type { SessionTreeNode } from "../../../core/session-manager.ts";
 import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
 import { formatKeyText, keyHint } from "../../../ui/components/keybinding-hints.ts";

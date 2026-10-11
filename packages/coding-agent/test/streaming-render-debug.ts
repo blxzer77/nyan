@@ -4,8 +4,8 @@
  * Run with: node --import ./src/experimental/source-resolver.ts test/streaming-render-debug.ts
  */
 
-import type { AssistantMessage } from "@nyan/ai";
-import { ProcessTerminal, type TUI, TuiMainScreen } from "@nyan/tui";
+import type { AssistantMessage } from "@ny4n/ai";
+import { ProcessTerminal, type TUI, TuiMainScreen } from "@ny4n/tui";
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";

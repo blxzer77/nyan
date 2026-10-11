@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentTool } from "@nyan/agent-core";
+import type { AgentTool } from "@ny4n/agent-core";
 import {
 	fauxAssistantMessage,
 	fauxToolCall,
@@ -9,8 +9,8 @@ import {
 	getCurrentSystemPrompt,
 	getSystemMessageText,
 	type TranscriptContext,
-} from "@nyan/ai";
-import { getModel } from "@nyan/ai/compat";
+} from "@ny4n/ai";
+import { getModel } from "@ny4n/ai/compat";
 import { Type } from "typebox";
 import { describe, expect, test } from "vitest";
 import { createAgentSession } from "../src/core/sdk.ts";

@@ -1,5 +1,5 @@
-import { type Context, defineService, type ReplicatedState } from "@nyan/chord";
-import type { ServerId } from "@nyan/protocol";
+import { type Context, defineService, type ReplicatedState } from "@ny4n/chord";
+import type { ServerId } from "@ny4n/protocol";
 
 export interface SessionAddress {
 	serverId: ServerId;

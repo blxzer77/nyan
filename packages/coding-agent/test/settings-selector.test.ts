@@ -1,4 +1,4 @@
-import { setKeybindings } from "@nyan/tui";
+import { setKeybindings } from "@ny4n/tui";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import {

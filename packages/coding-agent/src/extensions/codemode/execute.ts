@@ -3,7 +3,7 @@
  * execute.lazy.ts so the sandbox runtime only loads when a script runs.
  */
 
-import type { AgentTool, AgentToolCallOutcome, AgentToolResult } from "@nyan/agent-core";
+import type { AgentTool, AgentToolCallOutcome, AgentToolResult } from "@ny4n/agent-core";
 import type {
 	AnyModel,
 	ClassifierContext,
@@ -13,7 +13,7 @@ import type {
 	ModelTypeMap,
 	TextContent,
 	Usage,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import {
 	type CodemodeOutputItem,
 	type CodemodeResult,
@@ -23,7 +23,7 @@ import {
 	parseCodemodeSource,
 	renderToolSample,
 	toCodemodeIdentifier,
-} from "@nyan/codemode";
+} from "@ny4n/codemode";
 import { getCodemodeWorkerSpecifier, getQuickJSWasmPath } from "../../config.ts";
 import type { ExtensionToolContext, ToolNamespace } from "../../core/extensions/types.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";

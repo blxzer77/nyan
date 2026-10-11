@@ -1,5 +1,5 @@
-import type { Context } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import type { Context } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import {
 	type CommitPublication,
 	type ConversationId,
@@ -12,7 +12,7 @@ import {
 	MemoryStorage,
 	type Seq,
 	type StorageWrite,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { SessionImpl } from "../src/session/session.ts";
 
 export const context: Context = BACKGROUND_CONTEXT;

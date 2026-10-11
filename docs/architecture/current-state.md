@@ -41,26 +41,26 @@ Instability `I = Ce / (Ca + Ce)` is computed by the architecture check from sour
 
 | Layer | Package | Responsibility | Depends on | I |
 | --- | --- | --- | --- | --- |
-| foundation | `@nyan/chord` | Composition runtime, services, replicated state, RPC, plugins | — | 0.00 |
-| foundation | `@nyan/telemetry` | Vendor-neutral telemetry contracts | — | 0.00 |
-| capabilities | `@nyan/tui` | Terminal rendering and input widgets | — | 0.00 |
-| capabilities | `@nyan/codemode` | QuickJS/WASI tool sandbox | — | 0.00 |
-| capabilities | `@nyan/mcp` | MCP client, OAuth, testing helpers | — | 0.00 |
-| model | `@nyan/ai` | Providers, catalog, authentication, streams, cost | telemetry | 0.25 |
-| agent-core | `@nyan/agent-core` | Agent state, loop, tool calls | `ai/contracts` | 0.50 |
-| durable-runtime | `@nyan/durable` | Durable conversations, tasks, documents, storage, recovery | chord, `ai/contracts` + `ai/utils` | 0.67 |
-| transport | `@nyan/protocol` | Transport-neutral CBOR envelopes and framing | chord | 0.25 |
-| transport | `@nyan/client` | Remote-session client | chord, protocol | 0.67 |
-| transport | `@nyan/server` | Local session server and transports | chord, protocol | 0.67 |
-| product-shell | `@nyan/coding-agent` | CLI, SDK, sessions, modes, extensions, tools | chord, agent, ai, codemode, mcp, tui, durable, client, protocol, server | 1.00 |
+| foundation | `@ny4n/chord` | Composition runtime, services, replicated state, RPC, plugins | — | 0.00 |
+| foundation | `@ny4n/telemetry` | Vendor-neutral telemetry contracts | — | 0.00 |
+| capabilities | `@ny4n/tui` | Terminal rendering and input widgets | — | 0.00 |
+| capabilities | `@ny4n/codemode` | QuickJS/WASI tool sandbox | — | 0.00 |
+| capabilities | `@ny4n/mcp` | MCP client, OAuth, testing helpers | — | 0.00 |
+| model | `@ny4n/ai` | Providers, catalog, authentication, streams, cost | telemetry | 0.25 |
+| agent-core | `@ny4n/agent-core` | Agent state, loop, tool calls | `ai/contracts` | 0.50 |
+| durable-runtime | `@ny4n/durable` | Durable conversations, tasks, documents, storage, recovery | chord, `ai/contracts` + `ai/utils` | 0.67 |
+| transport | `@ny4n/protocol` | Transport-neutral CBOR envelopes and framing | chord | 0.25 |
+| transport | `@ny4n/client` | Remote-session client | chord, protocol | 0.67 |
+| transport | `@ny4n/server` | Local session server and transports | chord, protocol | 0.67 |
+| product-shell | `@ny4n/coding-agent` | CLI, SDK, sessions, modes, extensions, tools | chord, agent, ai, codemode, mcp, tui, durable, client, protocol, server | 1.00 |
 
-`coding-agent` is the only composition root for the runtime layers. `@nyan/durable` is a dev dependency of it because the `experimental/` tree that imports it is source-only and excluded from the build.
+`coding-agent` is the only composition root for the runtime layers. `@ny4n/durable` is a dev dependency of it because the `experimental/` tree that imports it is source-only and excluded from the build.
 
 ## Package entry points
 
-- **Executable:** `nyan` (`@nyan/coding-agent` → `dist/bundle/cli.js`). There is no `pi` alias. `@nyan/ai` ships a separate `nyan-ai` login helper; the standalone coding-agent binary build (`build:binary`, Bun) writes `dist/nyan`.
-- **Library entries:** each package declares its public subpaths in `exports`; the check rejects imports outside them. Notable subpaths: `@nyan/ai/contracts` (provider-neutral types, `ModelRuntime`, transcript and stream helpers), `@nyan/ai/utils/*`, `@nyan/coding-agent/{rpc-entry,client,experimental/plugin}`.
-- **Stable model boundary:** `agent` and `durable` use `@nyan/ai/contracts`; `coding-agent` hands `durable` a five-operation `ModelRuntime` port (`createDurableModelRuntime`), not the provider runtime.
+- **Executable:** `nyan` (`@ny4n/coding-agent` → `dist/bundle/cli.js`). There is no `pi` alias. `@ny4n/ai` ships a separate `nyan-ai` login helper; the standalone coding-agent binary build (`build:binary`, Bun) writes `dist/nyan`.
+- **Library entries:** each package declares its public subpaths in `exports`; the check rejects imports outside them. Notable subpaths: `@ny4n/ai/contracts` (provider-neutral types, `ModelRuntime`, transcript and stream helpers), `@ny4n/ai/utils/*`, `@ny4n/coding-agent/{rpc-entry,client,experimental/plugin}`.
+- **Stable model boundary:** `agent` and `durable` use `@ny4n/ai/contracts`; `coding-agent` hands `durable` a five-operation `ModelRuntime` port (`createDurableModelRuntime`), not the provider runtime.
 
 ## Module layers inside packages
 
@@ -79,7 +79,7 @@ Static runtime import cycles are forbidden and none exist (`cycles.known` is emp
 
 `packages/coding-agent/src/identity.ts` owns the identity (`cliName` `nyan`, `displayName` `Nyan`, `configDirName` `.nyan`); `config.ts` derives `APP_NAME`, `APP_TITLE`, `CONFIG_DIR_NAME` and the `NYAN_CODING_AGENT_DIR` / `NYAN_CODING_AGENT_SESSION_DIR` variables from it, and a package may override them through `nyanConfig`.
 
-Renamed: executable, `@nyan/*` packages, `NYAN_*` variables, `~/.nyan/agent` and `.nyan/`, the package manifest field `nyan` and keyword `nyan-package`, `nyan.*` document, entry and wire identifiers, `nyan-messages` API id, TUI cursor marker, daemon handshake, identifiers and file names. Details and the exclusions (provenance, third parties, `Math.PI`) are in the [productization note](../../.agents/notes/implemented/architecture/2026-10-11-nyan-productization.md).
+Renamed: executable, `@ny4n/*` packages, `NYAN_*` variables, `~/.nyan/agent` and `.nyan/`, the package manifest field `nyan` and keyword `nyan-package`, `nyan.*` document, entry and wire identifiers, `nyan-messages` API id, TUI cursor marker, daemon handshake, identifiers and file names. Details and the exclusions (provenance, third parties, `Math.PI`) are in the [productization note](../../.agents/notes/implemented/architecture/2026-10-11-nyan-productization.md).
 
 Still referring to Pi, by design: `CHANGELOG.md` files (release history to v1.1.0), links to upstream issues and pull requests, the `upstream` remote and manifest, and the notes that describe the fork.
 
@@ -91,7 +91,7 @@ Nyan includes no default address for any hosted service. The installer, share vi
 
 - Local commits only: nothing is pushed, tagged or published. `origin` now points at `blxzer77/nyan`, whose `main` has diverged from this tree: it carries Pi commits made after v1.1.0 and a partial rename to `@blxzer/nyan` whose binary is still `pi`. How the two histories are joined has not been decided.
 - The committed native prebuilds (`packages/tui/native/*/prebuilds`) predate the rename; the release workflow rebuilds them on each platform and ships the fresh binaries, so published packages do not carry the old ones.
-- The release workflow is written but has not run: it needs the `NPM_TOKEN` secret, the `npm` environment, and the `@nyan` scope on npm. `npm run release:dry` packs all 12 packages locally.
+- The release workflow is written but has not run: it needs the `NPM_TOKEN` secret, the `npm` environment, and the `@ny4n` scope on npm. `npm run release:dry` packs all 12 packages locally.
 - The hosted Windows CI job builds and runs `npm run check` but not the test suite; the suite has only been run on one Windows machine.
 - `npm run build` in `ai` runs `generate-models`, which fetches the public model catalogs from the network; the generator no longer includes a Radius catalog, so the aggregator lists one provider fewer than Pi v1.1.0.
 - Experimental and example code stays candidate code until verified through a Nyan entry path.

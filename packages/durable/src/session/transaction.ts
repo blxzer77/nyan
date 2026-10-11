@@ -1,5 +1,5 @@
-import { type Context, copyJson, type Draft, type JsonValue } from "@nyan/chord";
-import { type Change, type Op, type Prepared, type Tracker, track } from "@nyan/chord/delta";
+import { type Context, copyJson, type Draft, type JsonValue } from "@ny4n/chord";
+import { type Change, type Op, type Prepared, type Tracker, track } from "@ny4n/chord/delta";
 import {
 	type AnyDocDefinition,
 	type AnyDocToken,

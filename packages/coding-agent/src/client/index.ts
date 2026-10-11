@@ -1,1 +1,1 @@
-export * from "@nyan/client";
+export * from "@ny4n/client";

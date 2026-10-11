@@ -1,5 +1,5 @@
-import type { JsonValue } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import type { JsonValue } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import type {
 	ConversationId,
 	DocumentCreate,

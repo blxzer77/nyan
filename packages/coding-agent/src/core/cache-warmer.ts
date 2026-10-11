@@ -6,8 +6,8 @@ import {
 	type ModelsSimpleStreamOptions,
 	type SimpleStreamOptions,
 	type Usage,
-} from "@nyan/ai";
-import { getProviderEnvValue } from "@nyan/ai/utils/provider-env";
+} from "@ny4n/ai";
+import { getProviderEnvValue } from "@ny4n/ai/utils/provider-env";
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { SessionEntry, SessionManager, UsageEntry } from "./session-manager.ts";
 import type { CacheWarmingMode } from "./settings-manager.ts";

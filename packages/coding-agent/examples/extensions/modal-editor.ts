@@ -9,8 +9,8 @@
  * - ctrl+c, ctrl+d, etc. work in both modes
  */
 
-import { CustomEditor, type ExtensionAPI } from "@nyan/coding-agent";
-import { matchesKey, truncateToWidth, visibleWidth } from "@nyan/tui";
+import { CustomEditor, type ExtensionAPI } from "@ny4n/coding-agent";
+import { matchesKey, truncateToWidth, visibleWidth } from "@ny4n/tui";
 
 // Normal mode key mappings: key -> escape sequence (or null for mode switch)
 const NORMAL_KEYS: Record<string, string | null> = {

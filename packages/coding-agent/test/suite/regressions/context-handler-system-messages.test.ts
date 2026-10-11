@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@nyan/agent-core";
-import { fauxAssistantMessage, getCurrentSystemPrompt, getCurrentTools, type TranscriptContext } from "@nyan/ai";
+import type { AgentMessage } from "@ny4n/agent-core";
+import { fauxAssistantMessage, getCurrentSystemPrompt, getCurrentTools, type TranscriptContext } from "@ny4n/ai";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ExtensionFactory } from "../../../src/index.ts";
 import { createHarness, type Harness } from "../harness.ts";

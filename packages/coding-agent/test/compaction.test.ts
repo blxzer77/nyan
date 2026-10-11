@@ -1,6 +1,6 @@
-import type { AgentMessage } from "@nyan/agent-core";
-import type { AssistantMessage, Usage } from "@nyan/ai/compat";
-import { getModel } from "@nyan/ai/compat";
+import type { AgentMessage } from "@ny4n/agent-core";
+import type { AssistantMessage, Usage } from "@ny4n/ai/compat";
+import { getModel } from "@ny4n/ai/compat";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { beforeEach, describe, expect, it } from "vitest";

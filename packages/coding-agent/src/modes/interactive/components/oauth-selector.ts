@@ -1,5 +1,5 @@
-import type { ApiKeyAuth, AuthCheck, OAuthAuth } from "@nyan/ai";
-import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, Spacer, TruncatedText } from "@nyan/tui";
+import type { ApiKeyAuth, AuthCheck, OAuthAuth } from "@ny4n/ai";
+import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, Spacer, TruncatedText } from "@ny4n/tui";
 import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
 import { theme } from "../../../ui/theme/theme.ts";
 

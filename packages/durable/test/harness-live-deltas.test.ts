@@ -1,5 +1,5 @@
-import { fauxAssistantMessage, fauxText, fauxToolCall, Type } from "@nyan/ai";
-import type { Op } from "@nyan/chord/delta";
+import { fauxAssistantMessage, fauxText, fauxToolCall, Type } from "@ny4n/ai";
+import type { Op } from "@ny4n/chord/delta";
 import {
 	type CommitPublication,
 	defineTool,
@@ -9,7 +9,7 @@ import {
 	MemoryStorage,
 	type ToolExecutionApi,
 	type ToolRegistration,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { chatSetup, openChat, waitFor } from "./chat-support.ts";
 import { addTool } from "./harness-support.ts";

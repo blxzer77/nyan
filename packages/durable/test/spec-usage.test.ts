@@ -4,8 +4,8 @@
  * patterns end to end.
  */
 
-import { type AssistantMessage, type Models, type ToolCall, Type } from "@nyan/ai";
-import type { Context, Draft } from "@nyan/chord";
+import { type AssistantMessage, type Models, type ToolCall, Type } from "@ny4n/ai";
+import type { Context, Draft } from "@ny4n/chord";
 import {
 	type ConversationId,
 	configure,
@@ -31,7 +31,7 @@ import {
 	type Tx,
 	type UserInput,
 	wrapTool,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { expect, expectTypeOf, it } from "vitest";
 import type { ExecutionEnv } from "../src/env/index.ts";
 import { CodingTools, createBashTool, createEditTool, createReadTool } from "../src/tools/index.ts";

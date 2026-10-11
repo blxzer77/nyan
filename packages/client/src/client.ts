@@ -15,8 +15,8 @@ import {
 	type ServiceProviderUpdate,
 	type ServiceStateDecoder,
 	type ServiceSubscriptionSnapshot,
-} from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+} from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import {
 	type AttachmentEnvelope,
 	encodeClientMessage,
@@ -27,7 +27,7 @@ import {
 	type ServerHello,
 	type ServiceEventEnvelope,
 	type SessionTarget,
-} from "@nyan/protocol";
+} from "@ny4n/protocol";
 import { Connection } from "./connection.ts";
 import { ClientDisposedError, DisconnectedError, ServerError, toError } from "./errors.ts";
 import { createPromiseResolvers } from "./promise.ts";

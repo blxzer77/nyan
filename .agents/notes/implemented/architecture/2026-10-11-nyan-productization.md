@@ -15,7 +15,7 @@ Rename everything that is product identity, once, and keep nothing that exists o
 | Surface | Before | After |
 | --- | --- | --- |
 | Executable | `pi` | `nyan` (no `pi` alias) |
-| Packages | `@earendil-works/pi-*`, `@earendil-works/chord` | `@nyan/*` (`pi-agent-core` → `@nyan/agent-core`) |
+| Packages | `@earendil-works/pi-*`, `@earendil-works/chord` | `@ny4n/*` (`pi-agent-core` → `@ny4n/agent-core`) |
 | Environment | `PI_*` | `NYAN_*`, including those derived from the CLI name |
 | Directories | `~/.pi/agent`, `.pi/` | `~/.nyan/agent`, `.nyan/` |
 | Package manifest | `pi` / `piConfig` fields, `pi-package` keyword | `nyan` / `nyanConfig`, `nyan-package` |
@@ -42,7 +42,7 @@ Pi-operated hosts were not renamed to a new domain; see [no default hosted servi
 
 **Replace text with a plain `s/pi/nyan/`.** Rejected: it breaks `Math.PI`, `api`, `pipe`, upstream issue links and base64 lockfile hashes. The rename is delimiter-aware (a `pi` component bounded by non-alphanumerics, or a camel-case boundary) with explicit protection for provenance spans, then reviewed by token class.
 
-**Choose a different npm scope.** Considered; `@nyan` is the shortest honest name and the scope is one constant in the rename, so changing it later is mechanical. It has not been registered on npm.
+**Choose a different npm scope.** Considered; `@ny4n` is the shortest honest name and the scope is one constant in the rename, so changing it later is mechanical. It has not been registered on npm.
 
 ## Consequences
 

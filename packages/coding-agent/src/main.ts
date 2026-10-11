@@ -6,8 +6,8 @@
  */
 
 import { createInterface } from "node:readline";
-import { type ImageContent, modelsAreEqual } from "@nyan/ai";
-import { setCapabilityOverrides } from "@nyan/tui";
+import { type ImageContent, modelsAreEqual } from "@ny4n/ai";
+import { setCapabilityOverrides } from "@ny4n/tui";
 import chalk from "chalk";
 import { type Args, type Mode, normalizeSessionName, parseArgs, printHelp } from "./cli/args.ts";
 import {

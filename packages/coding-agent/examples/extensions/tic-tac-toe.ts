@@ -17,9 +17,9 @@
  * separate variables. Only the agent cursor is ever exposed to the agent.
  */
 
-import { StringEnum } from "@nyan/ai";
-import type { ExtensionAPI, ExtensionContext, Theme, ToolExecutionMode } from "@nyan/coding-agent";
-import { type Component, matchesKey, Text, truncateToWidth, visibleWidth } from "@nyan/tui";
+import { StringEnum } from "@ny4n/ai";
+import type { ExtensionAPI, ExtensionContext, Theme, ToolExecutionMode } from "@ny4n/coding-agent";
+import { type Component, matchesKey, Text, truncateToWidth, visibleWidth } from "@ny4n/tui";
 import { Type } from "typebox";
 
 // Thrown from the tool on illegal actions. The agent runtime surfaces thrown

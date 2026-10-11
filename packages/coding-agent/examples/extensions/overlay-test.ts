@@ -8,8 +8,8 @@
  * - Edge case tests (wide chars, styled text, emoji)
  */
 
-import type { ExtensionAPI, ExtensionCommandContext, Theme } from "@nyan/coding-agent";
-import { CURSOR_MARKER, type Focusable, matchesKey, visibleWidth } from "@nyan/tui";
+import type { ExtensionAPI, ExtensionCommandContext, Theme } from "@ny4n/coding-agent";
+import { CURSOR_MARKER, type Focusable, matchesKey, visibleWidth } from "@ny4n/tui";
 
 export default function (nyan: ExtensionAPI) {
 	nyan.registerCommand("overlay-test", {

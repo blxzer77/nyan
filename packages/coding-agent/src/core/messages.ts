@@ -5,8 +5,8 @@
  * and provides a transformer to convert them to LLM-compatible messages.
  */
 
-import type { AgentMessage } from "@nyan/agent-core";
-import type { ImageContent, Message, TextContent } from "@nyan/ai";
+import type { AgentMessage } from "@ny4n/agent-core";
+import type { ImageContent, Message, TextContent } from "@ny4n/ai";
 
 export const COMPACTION_SUMMARY_PREFIX = `The conversation history before this point was compacted into the following summary:
 
@@ -67,7 +67,7 @@ export interface CompactionSummaryMessage {
 }
 
 // Extend CustomAgentMessages via declaration merging
-declare module "@nyan/agent-core" {
+declare module "@ny4n/agent-core" {
 	interface CustomAgentMessages {
 		bashExecution: BashExecutionMessage;
 		custom: CustomMessage;

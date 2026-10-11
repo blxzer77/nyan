@@ -1,7 +1,7 @@
 import { lstat, readdir } from "node:fs/promises";
 import { createConnection, type Socket } from "node:net";
 import { join } from "node:path";
-import { DEFAULT_MAX_FRAME_LENGTH, isServerId, ProtocolValidationError, type ServerId } from "@nyan/protocol";
+import { DEFAULT_MAX_FRAME_LENGTH, isServerId, ProtocolValidationError, type ServerId } from "@ny4n/protocol";
 import { Client } from "./client.ts";
 import { DisconnectedError, ServerError } from "./errors.ts";
 import type { ByteTransport, ByteTransportFactory, ByteTransportHandlers } from "./transport.ts";

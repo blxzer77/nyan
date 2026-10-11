@@ -1,6 +1,6 @@
 # SDK Examples
 
-Programmatic usage of @nyan/coding-agent via `createAgentSession()` and `createAgentSessionRuntime()`.
+Programmatic usage of @ny4n/coding-agent via `createAgentSession()` and `createAgentSessionRuntime()`.
 
 The runtime example shows how to build a recreate function that closes over process-global fixed inputs and recreates cwd-bound services and sessions as the active session cwd changes.
 
@@ -33,14 +33,14 @@ node examples/sdk/01-minimal.ts
 ## Quick Reference
 
 ```typescript
-import { getModel } from "@nyan/ai";
+import { getModel } from "@ny4n/ai";
 import {
   createAgentSession,
   DefaultResourceLoader,
   ModelRuntime,
   SessionManager,
   SettingsManager,
-} from "@nyan/coding-agent";
+} from "@ny4n/coding-agent";
 
 const modelRuntime = await ModelRuntime.create();
 

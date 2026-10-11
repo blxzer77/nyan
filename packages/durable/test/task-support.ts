@@ -1,4 +1,4 @@
-import { createModels } from "@nyan/ai";
+import { createModels } from "@ny4n/ai";
 import {
 	type AnyTask,
 	createRegistry,
@@ -8,7 +8,7 @@ import {
 	type Registry,
 	type RegistryReader,
 	type Storage,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { context, flush } from "./session-support.ts";
 
 export type Deferred<T = void> = {

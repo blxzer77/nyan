@@ -1,8 +1,8 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Agent } from "@nyan/agent-core";
-import { fauxAssistantMessage, registerFauxProvider, streamSimple } from "@nyan/ai/compat";
+import { Agent } from "@ny4n/agent-core";
+import { fauxAssistantMessage, registerFauxProvider, streamSimple } from "@ny4n/ai/compat";
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentSession } from "../../../src/core/agent-session.ts";
 import { AuthStorage } from "../../../src/core/auth-storage.ts";

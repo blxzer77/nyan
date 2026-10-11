@@ -5,7 +5,7 @@ import {
 	type Models,
 	type SimpleStreamOptions,
 	type SystemMessage,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import {
 	AssistantEntry,
 	type CommitPublication,
@@ -24,7 +24,7 @@ import {
 	type TaskId,
 	UserEntry,
 	wrapSection,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { resolveSettings } from "../src/harness/agent.ts";
 import type { SessionImpl } from "../src/session/session.ts";

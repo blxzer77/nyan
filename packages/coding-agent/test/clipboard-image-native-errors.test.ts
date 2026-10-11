@@ -1,9 +1,9 @@
-import type * as Tui from "@nyan/tui";
+import type * as Tui from "@ny4n/tui";
 import { afterEach, expect, test, vi } from "vitest";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
 
 const readClipboardText = vi.hoisted(() => vi.fn<() => Promise<string | null>>());
-vi.mock("@nyan/tui", async (importOriginal) => ({
+vi.mock("@ny4n/tui", async (importOriginal) => ({
 	...(await importOriginal<typeof Tui>()),
 	getNativeClipboard: () => ({
 		async getImage() {

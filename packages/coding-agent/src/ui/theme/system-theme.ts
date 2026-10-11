@@ -29,7 +29,7 @@ import {
 	oklchColor,
 	type RgbColor,
 	rgbColor,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import type { ThemeAppearance, ThemeBg, ThemeColor, ThemeToken } from "./theme.ts";
 
 export const SYSTEM_THEME_NAME = "system";

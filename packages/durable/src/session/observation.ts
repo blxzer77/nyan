@@ -4,9 +4,9 @@ import type {
 	ReplicatedStateSource,
 	ReplicatedStateSourceAttachment,
 	ReplicatedStateSourceFrame,
-} from "@nyan/chord";
-import { withoutAbortSignal } from "@nyan/chord/context";
-import type { Op } from "@nyan/chord/delta";
+} from "@ny4n/chord";
+import { withoutAbortSignal } from "@ny4n/chord/context";
+import type { Op } from "@ny4n/chord/delta";
 import type { JsonObject, WatchEnd, WatchHandle } from "../types.ts";
 
 export type ObservedDocumentValue = Readonly<JsonObject> | null;

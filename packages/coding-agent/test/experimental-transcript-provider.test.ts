@@ -1,7 +1,7 @@
-import { fauxAssistantMessage } from "@nyan/ai";
-import { createFacetHost, defineFacet } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import type { ConversationView } from "@nyan/durable";
+import { fauxAssistantMessage } from "@ny4n/ai";
+import { createFacetHost, defineFacet } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import type { ConversationView } from "@ny4n/durable";
 import { describe, expect, test } from "vitest";
 import { Transcript } from "../src/experimental/services/transcript.ts";
 import { createTranscriptServiceFacet } from "../src/experimental/services/transcript-provider.ts";

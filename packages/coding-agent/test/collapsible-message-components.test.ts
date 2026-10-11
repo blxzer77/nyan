@@ -1,4 +1,4 @@
-import type { Box, TuiMouseEvent } from "@nyan/tui";
+import type { Box, TuiMouseEvent } from "@ny4n/tui";
 import { beforeAll, describe, expect, test } from "vitest";
 import { BranchSummaryMessageComponent } from "../src/modes/interactive/components/branch-summary-message.ts";
 import { CompactionSummaryMessageComponent } from "../src/modes/interactive/components/compaction-summary-message.ts";

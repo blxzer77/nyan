@@ -1,4 +1,4 @@
-import { type AuthType, type CredentialStore, InMemoryCredentialStore } from "@nyan/ai";
+import { type AuthType, type CredentialStore, InMemoryCredentialStore } from "@ny4n/ai";
 import { describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";

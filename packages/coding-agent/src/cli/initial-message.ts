@@ -1,4 +1,4 @@
-import type { ImageContent } from "@nyan/ai";
+import type { ImageContent } from "@ny4n/ai";
 import type { Args } from "./args.ts";
 
 export interface InitialMessageInput {

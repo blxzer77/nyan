@@ -1,4 +1,4 @@
-import { Container, Editor, getKeybindings, setKeybindings, stripTerminalSequences, TuiMainScreen } from "@nyan/tui";
+import { Container, Editor, getKeybindings, setKeybindings, stripTerminalSequences, TuiMainScreen } from "@ny4n/tui";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import type { AgentSession } from "../src/core/agent-session.ts";

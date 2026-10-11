@@ -1,6 +1,6 @@
-import { type Context, type JsonValue, replicatedState } from "@nyan/chord";
-import { awaitWithContext, withoutAbortSignal } from "@nyan/chord/context";
-import { type Op, track } from "@nyan/chord/delta";
+import { type Context, type JsonValue, replicatedState } from "@ny4n/chord";
+import { awaitWithContext, withoutAbortSignal } from "@ny4n/chord/context";
+import { type Op, track } from "@ny4n/chord/delta";
 import {
 	type AnyDocToken,
 	checkRecordScope,

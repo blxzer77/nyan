@@ -20,8 +20,8 @@
  *   nyan -e ./tool-override.ts
  */
 
-import type { TextContent } from "@nyan/ai";
-import { type ExtensionAPI, getAgentDir, withFileMutationQueue } from "@nyan/coding-agent";
+import type { TextContent } from "@ny4n/ai";
+import { type ExtensionAPI, getAgentDir, withFileMutationQueue } from "@ny4n/coding-agent";
 import { constants, readFileSync } from "fs";
 import { access, appendFile, readFile } from "fs/promises";
 import { join, resolve } from "path";

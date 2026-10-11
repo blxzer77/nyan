@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { normalizeContext } from "@nyan/ai";
-import type { AnthropicMessagesCompat, Api, Model, OpenAICompletionsCompat } from "@nyan/ai/compat";
-import { getApiProvider, getModels, getSupportedThinkingLevels } from "@nyan/ai/compat";
+import { normalizeContext } from "@ny4n/ai";
+import type { AnthropicMessagesCompat, Api, Model, OpenAICompletionsCompat } from "@ny4n/ai/compat";
+import { getApiProvider, getModels, getSupportedThinkingLevels } from "@ny4n/ai/compat";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { ModelsJsonProvider } from "../src/core/model-config.ts";

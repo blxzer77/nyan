@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createModels, Type } from "@nyan/ai";
-import type { Context, JsonValue } from "@nyan/chord";
+import { createModels, Type } from "@ny4n/ai";
+import type { Context, JsonValue } from "@ny4n/chord";
 import {
 	createRegistry,
 	defineDoc,
@@ -14,7 +14,7 @@ import {
 	type Task,
 	type TaskId,
 	type TaskRuntime,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { afterEach, describe, expect, it } from "vitest";
 import { openNodeSqliteStorage } from "../src/storage/sqlite/node.ts";
 import { addTask, addTool } from "./harness-support.ts";

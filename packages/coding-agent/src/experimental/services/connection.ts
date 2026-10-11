@@ -10,10 +10,10 @@ import {
 	replicatedState,
 	type Service,
 	type ServiceCatalogueEntry,
-} from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import { type Client, createClientServiceTransport } from "@nyan/client";
-import type { SessionTarget } from "@nyan/protocol";
+} from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import { type Client, createClientServiceTransport } from "@ny4n/client";
+import type { SessionTarget } from "@ny4n/protocol";
 
 export type ServerConnectionState =
 	| { status: "connecting"; attempt: number }

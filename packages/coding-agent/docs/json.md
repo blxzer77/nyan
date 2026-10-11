@@ -215,7 +215,7 @@ type JsonAgentSessionEvent =
     };
 ```
 
-Use the exported `JsonAgentSessionEvent` type from `@nyan/coding-agent`. Its implementation is in [`json-event.ts`](https://github.com/blxzer77/nyan/blob/main/packages/coding-agent/src/modes/json-event.ts).
+Use the exported `JsonAgentSessionEvent` type from `@ny4n/coding-agent`. Its implementation is in [`json-event.ts`](https://github.com/blxzer77/nyan/blob/main/packages/coding-agent/src/modes/json-event.ts).
 
 ## Example
 

@@ -16,7 +16,7 @@ import type {
 	AgentToolUpdateCallback,
 	ThinkingLevel,
 	ToolExecutionMode,
-} from "@nyan/agent-core";
+} from "@ny4n/agent-core";
 import type {
 	AnyModel,
 	Api,
@@ -42,7 +42,7 @@ import type {
 	ToolResultMessage,
 	TranscriptContext,
 	Usage,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import type {
 	AutocompleteItem,
 	AutocompleteProvider,
@@ -53,7 +53,7 @@ import type {
 	OverlayHandle,
 	OverlayOptions,
 	TUI,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import type { Static, TSchema } from "typebox";
 import type { Theme } from "../../ui/theme/theme.ts";
 import type { BashResult } from "../bash-executor.ts";
@@ -251,12 +251,12 @@ export interface ExtensionUIContext {
 	 * - `keybindings`: KeybindingsManager for app-level keybindings
 	 *
 	 * For full app keybinding support (escape, ctrl+d, model switching, etc.),
-	 * extend `CustomEditor` from `@nyan/coding-agent` and call
+	 * extend `CustomEditor` from `@ny4n/coding-agent` and call
 	 * `super.handleInput(data)` for keys you don't handle.
 	 *
 	 * @example
 	 * ```ts
-	 * import { CustomEditor } from "@nyan/coding-agent";
+	 * import { CustomEditor } from "@ny4n/coding-agent";
 	 *
 	 * class VimEditor extends CustomEditor {
 	 *   private mode: "normal" | "insert" = "insert";

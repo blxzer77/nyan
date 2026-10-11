@@ -3,15 +3,15 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"paths": {
-			"@nyan/chord": ["../chord/dist/index.d.ts"],
-			"@nyan/chord/bundler": ["../chord/dist/bundler.d.ts"],
-			"@nyan/chord/node": ["../chord/dist/node.d.ts"],
-			"@nyan/agent-core": ["../agent/dist/index.d.ts"],
-			"@nyan/agent-core/*": ["../agent/dist/*.d.ts"],
-			"@nyan/ai": ["../ai/dist/index.d.ts"],
-			"@nyan/ai/*": ["../ai/dist/*.d.ts", "../ai/dist/providers/*.d.ts"],
-			"@nyan/tui": ["../tui/dist/index.d.ts"],
-			"@nyan/tui/*": ["../tui/dist/*.d.ts", "../tui/dist/components/*.d.ts"]
+			"@ny4n/chord": ["../chord/dist/index.d.ts"],
+			"@ny4n/chord/bundler": ["../chord/dist/bundler.d.ts"],
+			"@ny4n/chord/node": ["../chord/dist/node.d.ts"],
+			"@ny4n/agent-core": ["../agent/dist/index.d.ts"],
+			"@ny4n/agent-core/*": ["../agent/dist/*.d.ts"],
+			"@ny4n/ai": ["../ai/dist/index.d.ts"],
+			"@ny4n/ai/*": ["../ai/dist/*.d.ts", "../ai/dist/providers/*.d.ts"],
+			"@ny4n/tui": ["../tui/dist/index.d.ts"],
+			"@ny4n/tui/*": ["../tui/dist/*.d.ts", "../tui/dist/components/*.d.ts"]
 		},
 		"rootDir": "./src"
 	},

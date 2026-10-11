@@ -1,4 +1,4 @@
-import { CancellableLoader, Container, Loader, Spacer, Text, type TUI } from "@nyan/tui";
+import { CancellableLoader, Container, Loader, Spacer, Text, type TUI } from "@ny4n/tui";
 import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
 import { keyHint } from "../../../ui/components/keybinding-hints.ts";
 import type { Theme } from "../../../ui/theme/theme.ts";

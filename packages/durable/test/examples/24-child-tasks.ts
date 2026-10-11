@@ -5,8 +5,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createModels } from "@nyan/ai/models";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import { createModels } from "@ny4n/ai/models";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import {
 	type Conversation,
 	createRegistry,

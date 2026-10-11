@@ -1,4 +1,4 @@
-# `@nyan/example-plugin`
+# `@ny4n/example-plugin`
 
 This package provides conventional `session` and `tui` Chord facets. The Session-worker facet provides a remote greeting service. The TUI facet contributes `/hello` and calls that service.
 

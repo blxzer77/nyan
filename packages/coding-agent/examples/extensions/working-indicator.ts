@@ -16,7 +16,7 @@
  *   /working-indicator reset     Restore nyan's default spinner
  */
 
-import type { ExtensionAPI, ExtensionContext, WorkingIndicatorOptions } from "@nyan/coding-agent";
+import type { ExtensionAPI, ExtensionContext, WorkingIndicatorOptions } from "@ny4n/coding-agent";
 
 type WorkingIndicatorMode = "dot" | "none" | "pulse" | "spinner" | "default";
 

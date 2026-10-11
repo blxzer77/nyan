@@ -45,8 +45,8 @@ import {
 	type ToolCall,
 	type ToolResultMessage,
 	type TranscriptContext,
-} from "@nyan/ai";
-import type { ExtensionAPI } from "@nyan/coding-agent";
+} from "@ny4n/ai";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 
 // =============================================================================
 // OAuth implementation adapted for the legacy extension compatibility interface.

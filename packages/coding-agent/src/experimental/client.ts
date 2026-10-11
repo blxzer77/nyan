@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import type { ClientCommand } from "../cli/experimental/commands/client.ts";
 import { activateBuiltinClientServices, openClientRuntime } from "./client-runtime.ts";
 import type { SessionAddress } from "./services/sessions.ts";

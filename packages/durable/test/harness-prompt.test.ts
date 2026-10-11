@@ -1,5 +1,5 @@
-import { type SystemMessage, type Tool, Type } from "@nyan/ai";
-import { getCurrentTools, toToolDeclaration } from "@nyan/ai/utils/transcript";
+import { type SystemMessage, type Tool, Type } from "@ny4n/ai";
+import { getCurrentTools, toToolDeclaration } from "@ny4n/ai/utils/transcript";
 import {
 	type Conversation,
 	createRegistry,
@@ -11,7 +11,7 @@ import {
 	SystemEntry,
 	type ToolRegistration,
 	wrapSection,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { resolveAgent, resolveSettings } from "../src/harness/agent.ts";
 import { planSystemEntries, renderSections, replaySections } from "../src/harness/prompt.ts";

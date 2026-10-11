@@ -1,4 +1,4 @@
-import { fauxAssistantMessage } from "@nyan/ai";
+import { fauxAssistantMessage } from "@ny4n/ai";
 import { describe, expect, it } from "vitest";
 import { userMsg } from "../../utilities.ts";
 import { createHarness } from "../harness.ts";

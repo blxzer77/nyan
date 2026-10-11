@@ -1,4 +1,4 @@
-import type { AgentTool, ThinkingLevel } from "@nyan/agent-core";
+import type { AgentTool, ThinkingLevel } from "@ny4n/agent-core";
 import {
 	fauxAssistantMessage,
 	fauxToolCall,
@@ -6,7 +6,7 @@ import {
 	type JsonObject,
 	type Model,
 	type Usage,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BuildSystemPromptOptions, ExtensionAPI } from "../../src/index.ts";

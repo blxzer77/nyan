@@ -12,6 +12,6 @@ export default defineConfig({
 		silent: "passed-only",
 	},
 	resolve: {
-		alias: [{ find: /^@nyan\/telemetry$/, replacement: telemetrySrcIndex }],
+		alias: [{ find: /^@ny4n\/telemetry$/, replacement: telemetrySrcIndex }],
 	},
 });

@@ -1,4 +1,4 @@
-import type { AgentMessage } from "@nyan/agent-core";
+import type { AgentMessage } from "@ny4n/agent-core";
 import {
 	type AssistantMessage,
 	getCurrentSystemMessage,
@@ -10,7 +10,7 @@ import {
 	type Usage,
 	type UserMessage,
 	uuidv7,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import { randomUUID } from "crypto";
 import {
 	appendFileSync,

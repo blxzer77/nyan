@@ -1,9 +1,9 @@
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import type { Context, JsonValue } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import { registerStorageConformance } from "@nyan/durable/testing";
+import type { Context, JsonValue } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import { registerStorageConformance } from "@ny4n/durable/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { err, FileError, type FileSystem, type Result } from "../src/env/index.ts";
 import { NodeExecutionEnv } from "../src/env/node.ts";

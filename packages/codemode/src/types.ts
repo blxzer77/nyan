@@ -118,7 +118,7 @@ export interface CodemodeSandboxOptions {
 	 */
 	wasm?: CodemodeWasmModule | Promise<CodemodeWasmModule>;
 	/**
-	 * Worker entry that imports `@nyan/codemode/worker`. Default: this package's own
+	 * Worker entry that imports `@ny4n/codemode/worker`. Default: this package's own
 	 * worker file. Pass it when this package is bundled, since the default is resolved relative to
 	 * the module that creates the sandbox. Bun compiled executables require the relative string
 	 * specifier of an embedded build entrypoint; other hosts usually use a URL.

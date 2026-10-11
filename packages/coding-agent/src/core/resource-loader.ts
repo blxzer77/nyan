@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import { detectCapabilities, getTerminalColorMode, type TerminalColorMode } from "@nyan/tui";
+import { detectCapabilities, getTerminalColorMode, type TerminalColorMode } from "@ny4n/tui";
 import chalk from "chalk";
 import { CONFIG_DIR_NAME } from "../config.ts";
 import { loadThemeFromPath, type Theme } from "../ui/theme/theme.ts";
@@ -51,10 +51,10 @@ export interface ResourceLoaderReloadOptions {
 }
 
 const HOST_PROVIDED_EXTENSION_PACKAGES = new Set([
-	"@nyan/agent-core",
-	"@nyan/ai",
-	"@nyan/coding-agent",
-	"@nyan/tui",
+	"@ny4n/agent-core",
+	"@ny4n/ai",
+	"@ny4n/coding-agent",
+	"@ny4n/tui",
 	"@sinclair/typebox",
 	"typebox",
 ]);

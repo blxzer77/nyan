@@ -4,7 +4,7 @@ import {
 	encodeServerMessage,
 	PROTOCOL_VERSION,
 	type ServerMessage,
-} from "@nyan/protocol";
+} from "@ny4n/protocol";
 import type { ByteTransport, ByteTransportHandlers } from "../src/index.ts";
 
 export class MemoryByteServer {

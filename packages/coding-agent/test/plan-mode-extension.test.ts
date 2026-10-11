@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@nyan/agent-core";
-import type { AssistantMessage } from "@nyan/ai";
+import type { AgentMessage } from "@ny4n/agent-core";
+import type { AssistantMessage } from "@ny4n/ai";
 import { describe, expect, it, vi } from "vitest";
 import planModeExtension from "../examples/extensions/plan-mode/index.ts";
 import type { ExtensionAPI, ExtensionContext } from "../src/core/extensions/index.ts";

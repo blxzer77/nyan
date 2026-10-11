@@ -1,4 +1,4 @@
-import type { ModelRuntime as DurableModelRuntime } from "@nyan/ai/contracts";
+import type { ModelRuntime as DurableModelRuntime } from "@ny4n/ai/contracts";
 import type { ModelRuntime as ProviderModelRuntime } from "../core/model-runtime.ts";
 
 /**

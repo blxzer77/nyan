@@ -1,4 +1,4 @@
-import { type Component, TuiMainScreen } from "@nyan/tui";
+import { type Component, TuiMainScreen } from "@ny4n/tui";
 import { Type } from "typebox";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";

@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@nyan/coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@ny4n/coding-agent";
 
 const COMPACT_THRESHOLD_TOKENS = 100_000;
 

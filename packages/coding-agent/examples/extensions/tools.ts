@@ -9,9 +9,9 @@
  * 2. Use /tools to open the tool selector
  */
 
-import type { ExtensionAPI, ExtensionContext, ToolInfo } from "@nyan/coding-agent";
-import { getSettingsListTheme } from "@nyan/coding-agent";
-import { Container, type SettingItem, SettingsList } from "@nyan/tui";
+import type { ExtensionAPI, ExtensionContext, ToolInfo } from "@ny4n/coding-agent";
+import { getSettingsListTheme } from "@ny4n/coding-agent";
+import { Container, type SettingItem, SettingsList } from "@ny4n/tui";
 
 // State persisted to session
 interface ToolsState {

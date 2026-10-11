@@ -7,8 +7,8 @@
  *   nyan -e ./bash-spawn-hook.ts
  */
 
-import type { ExtensionAPI } from "@nyan/coding-agent";
-import { createBashTool } from "@nyan/coding-agent";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
+import { createBashTool } from "@ny4n/coding-agent";
 
 export default function (nyan: ExtensionAPI) {
 	const cwd = process.cwd();

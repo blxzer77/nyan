@@ -4,7 +4,7 @@ import { access, chmod, type FileHandle, open, realpath, symlink } from "node:fs
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { BACKGROUND_CONTEXT, withAbortSignal } from "@nyan/chord/context";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@ny4n/chord/context";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FileError, getOrThrow, type ShellExecOptions } from "../src/env/index.ts";
 import { NodeExecutionEnv } from "../src/env/node.ts";

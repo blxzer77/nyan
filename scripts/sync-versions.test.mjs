@@ -29,20 +29,20 @@ test("synchronizes private dependencies without touching registry aliases, gener
 	const root = await mkdtemp(join(tmpdir(), "nyan-sync-versions-"));
 	try {
 		await writeManifest(root, "packages/ai", {
-			name: "@nyan/ai",
+			name: "@ny4n/ai",
 			version: "2.0.0",
 		});
 		await writeManifest(root, "packages/coding-agent", {
-			name: "@nyan/coding-agent",
+			name: "@ny4n/coding-agent",
 			version: "2.0.0",
 		});
 		await writeManifest(root, "packages/evals", {
-			name: "@nyan/evals",
+			name: "@ny4n/evals",
 			version: "9.9.9",
 			private: true,
 			dependencies: {
-				"@nyan/coding-agent": "^1.0.0",
-				"@old-scope/nyan-ai": "npm:@nyan/ai@1.0.0",
+				"@ny4n/coding-agent": "^1.0.0",
+				"@old-scope/nyan-ai": "npm:@ny4n/ai@1.0.0",
 			},
 		});
 		await writeManifest(root, "packages/coding-agent/install-lock", {
@@ -50,7 +50,7 @@ test("synchronizes private dependencies without touching registry aliases, gener
 			version: "0.0.0",
 			private: true,
 			dependencies: {
-				"@nyan/coding-agent": "^1.0.0",
+				"@ny4n/coding-agent": "^1.0.0",
 			},
 		});
 
@@ -58,13 +58,13 @@ test("synchronizes private dependencies without touching registry aliases, gener
 		assert.equal(result.status, 0, result.stderr);
 
 		const evalsManifest = await readManifest(root, "packages/evals");
-		assert.equal(evalsManifest.dependencies["@nyan/coding-agent"], "^2.0.0");
-		assert.equal(evalsManifest.dependencies["@old-scope/nyan-ai"], "npm:@nyan/ai@1.0.0");
+		assert.equal(evalsManifest.dependencies["@ny4n/coding-agent"], "^2.0.0");
+		assert.equal(evalsManifest.dependencies["@old-scope/nyan-ai"], "npm:@ny4n/ai@1.0.0");
 		const generatedManifest = await readManifest(root, "packages/coding-agent/install-lock");
-		assert.equal(generatedManifest.dependencies["@nyan/coding-agent"], "^1.0.0");
+		assert.equal(generatedManifest.dependencies["@ny4n/coding-agent"], "^1.0.0");
 
 		await writeManifest(root, "packages/ai", {
-			name: "@nyan/ai",
+			name: "@ny4n/ai",
 			version: "3.0.0",
 		});
 		const lockstepFailure = runSyncVersions(root);

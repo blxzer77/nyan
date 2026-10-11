@@ -2,8 +2,8 @@
  * Model resolution, scoping, and initial selection
  */
 
-import type { ThinkingLevel } from "@nyan/agent-core";
-import { type Api, type AuthOperationOptions, type KnownProvider, type Model, modelsAreEqual } from "@nyan/ai";
+import type { ThinkingLevel } from "@ny4n/agent-core";
+import { type Api, type AuthOperationOptions, type KnownProvider, type Model, modelsAreEqual } from "@ny4n/ai";
 import chalk from "chalk";
 import { minimatch } from "minimatch";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";

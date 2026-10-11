@@ -4,7 +4,7 @@
 		"outDir": "./dist",
 		"rootDir": "./src",
 		"paths": {
-			"@nyan/protocol": ["../protocol/dist/index.d.ts"]
+			"@ny4n/protocol": ["../protocol/dist/index.d.ts"]
 		}
 	},
 	"include": ["src/**/*.ts"],

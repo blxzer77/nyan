@@ -10,7 +10,7 @@
  * extensions system using nyan.registerTool().
  */
 
-import { createAgentSession, SessionManager } from "@nyan/coding-agent";
+import { createAgentSession, SessionManager } from "@ny4n/coding-agent";
 
 // Read-only mode (no edit/write)
 const { session: readOnlySession } = await createAgentSession({

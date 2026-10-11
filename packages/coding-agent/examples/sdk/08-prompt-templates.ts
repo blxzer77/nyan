@@ -11,7 +11,7 @@ import {
 	getAgentDir,
 	type PromptTemplate,
 	SessionManager,
-} from "@nyan/coding-agent";
+} from "@ny4n/coding-agent";
 
 // Define custom templates
 const deployTemplate: PromptTemplate = {

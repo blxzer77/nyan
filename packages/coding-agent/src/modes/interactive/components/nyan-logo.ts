@@ -1,4 +1,4 @@
-import { backgroundAnsi, foregroundAnsi, isAppleTerminalSession, rgbColor } from "@nyan/tui";
+import { backgroundAnsi, foregroundAnsi, isAppleTerminalSession, rgbColor } from "@ny4n/tui";
 import { theme } from "../../../ui/theme/theme.ts";
 
 const CORAL = rgbColor(228, 138, 122);

@@ -4,7 +4,7 @@ import {
 	getCurrentSystemPrompt,
 	getCurrentTools,
 	type TranscriptContext,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI, ExtensionFactory } from "../../../src/index.ts";

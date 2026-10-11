@@ -15,7 +15,7 @@
  */
 
 import { mkdtemp, writeFile } from "node:fs/promises";
-import type { ExtensionAPI } from "@nyan/coding-agent";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 import {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
@@ -23,8 +23,8 @@ import {
 	type TruncationResult,
 	truncateHead,
 	withFileMutationQueue,
-} from "@nyan/coding-agent";
-import { Text } from "@nyan/tui";
+} from "@ny4n/coding-agent";
+import { Text } from "@ny4n/tui";
 import { execSync } from "child_process";
 import { tmpdir } from "os";
 import { join } from "path";

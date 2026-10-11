@@ -1,5 +1,5 @@
-import { type AssistantMessage, type FauxResponseStep, fauxAssistantMessage, fauxText } from "@nyan/ai";
-import { applyImmutable, type Op } from "@nyan/chord/delta";
+import { type AssistantMessage, type FauxResponseStep, fauxAssistantMessage, fauxText } from "@ny4n/ai";
+import { applyImmutable, type Op } from "@ny4n/chord/delta";
 import {
 	AgentDoc,
 	type Conversation,
@@ -11,7 +11,7 @@ import {
 	MemoryStorage,
 	ProviderDoc,
 	UsageDoc,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { allEntries, chatSetup, openChat, waitFor } from "./chat-support.ts";
 import { context } from "./session-support.ts";

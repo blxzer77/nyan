@@ -1,4 +1,4 @@
-import type { Context, JsonValue, ServiceCall, ServiceProviderUpdate } from "@nyan/chord";
+import type { Context, JsonValue, ServiceCall, ServiceProviderUpdate } from "@ny4n/chord";
 import type { ServerListener } from "./listener.ts";
 
 export interface ServerOptions {

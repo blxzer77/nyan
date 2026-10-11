@@ -10,9 +10,9 @@
  * correct for that point in history.
  */
 
-import { StringEnum } from "@nyan/ai";
-import type { ExtensionAPI, ExtensionContext, Theme } from "@nyan/coding-agent";
-import { matchesKey, Text, truncateToWidth } from "@nyan/tui";
+import { StringEnum } from "@ny4n/ai";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@ny4n/coding-agent";
+import { matchesKey, Text, truncateToWidth } from "@ny4n/tui";
 import { Type } from "typebox";
 
 interface Todo {

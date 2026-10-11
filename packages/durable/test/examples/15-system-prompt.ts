@@ -2,9 +2,9 @@
 // Run from packages/durable:
 //   node --conditions=source --experimental-strip-types test/examples/15-system-prompt.ts
 
-import { createModels } from "@nyan/ai/models";
-import { fauxAssistantMessage, fauxProvider } from "@nyan/ai/providers/faux";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import { createModels } from "@ny4n/ai/models";
+import { fauxAssistantMessage, fauxProvider } from "@ny4n/ai/providers/faux";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import { NodeExecutionEnv } from "../../src/env/node.ts";
 import {
 	type Conversation,

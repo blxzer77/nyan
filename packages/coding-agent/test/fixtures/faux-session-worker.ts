@@ -1,10 +1,10 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createModels, fauxAssistantMessage, fauxProvider } from "@nyan/ai";
-import { createStaticFacetLoader, defineFacet } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import { createRegistry, Harness } from "@nyan/durable";
-import { openNodeSqliteStorage } from "@nyan/durable/storage/sqlite/node";
+import { createModels, fauxAssistantMessage, fauxProvider } from "@ny4n/ai";
+import { createStaticFacetLoader, defineFacet } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import { createRegistry, Harness } from "@ny4n/durable";
+import { openNodeSqliteStorage } from "@ny4n/durable/storage/sqlite/node";
 import { consumeInternalProcessRole } from "../../src/experimental/process.ts";
 import { runSessionWorkerWithHarness } from "../../src/experimental/session-worker.ts";
 import { KeyedProbe } from "./keyed-service.ts";

@@ -5,7 +5,7 @@
  * from cwd and ~/.nyan/agent. Model chosen from settings or first available.
  */
 
-import { createAgentSession } from "@nyan/coding-agent";
+import { createAgentSession } from "@ny4n/coding-agent";
 
 const { session } = await createAgentSession();
 

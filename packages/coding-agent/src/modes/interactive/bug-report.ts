@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import type { Container, EditorComponent, TUI } from "@nyan/tui";
+import type { Container, EditorComponent, TUI } from "@ny4n/tui";
 import type { AgentSession } from "../../core/agent-session.ts";
 import {
 	BUG_REPORT_CUSTOM_ENTRY_TYPE,

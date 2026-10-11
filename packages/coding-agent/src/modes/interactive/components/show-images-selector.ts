@@ -1,4 +1,4 @@
-import { Container, type SelectItem, SelectList, type SelectListLayoutOptions } from "@nyan/tui";
+import { Container, type SelectItem, SelectList, type SelectListLayoutOptions } from "@ny4n/tui";
 import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
 import { getSelectListTheme } from "../../../ui/theme/theme.ts";
 

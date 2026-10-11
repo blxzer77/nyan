@@ -1,4 +1,4 @@
-import type { Context } from "@nyan/chord";
+import type { Context } from "@ny4n/chord";
 
 /** Result of a fallible operation. Expected failures are returned instead of thrown. */
 export type Result<TValue, TError> = { ok: true; value: TValue } | { ok: false; error: TError };

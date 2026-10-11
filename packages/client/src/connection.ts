@@ -6,7 +6,7 @@ import {
 	type ServerHello,
 	type ServerMessage,
 	ServerMessageDecoder,
-} from "@nyan/protocol";
+} from "@ny4n/protocol";
 import { DisconnectedError, ServerError, toDisconnectedError, toError } from "./errors.ts";
 import { createPromiseResolvers, type PromiseResolvers } from "./promise.ts";
 import type { ByteTransport, ByteTransportFactory, ByteTransportHandlers } from "./transport.ts";

@@ -38,7 +38,7 @@ Source on GitHub ([nyan](https://github.com/blxzer77/nyan)):
 - [`packages/ai/src/types.ts`](https://github.com/blxzer77/nyan/blob/main/packages/ai/src/types.ts) - Base message and content-block types
 - [`packages/agent/src/types.ts`](https://github.com/blxzer77/nyan/blob/main/packages/agent/src/types.ts) - Extensible `AgentMessage` union
 
-For TypeScript definitions in your project, inspect `node_modules/@nyan/coding-agent/dist/` and `node_modules/@nyan/ai/dist/`.
+For TypeScript definitions in your project, inspect `node_modules/@ny4n/coding-agent/dist/` and `node_modules/@ny4n/ai/dist/`.
 
 ## Messages
 

@@ -1,5 +1,5 @@
-import type { AgentTool, AgentToolCall } from "@nyan/agent-core";
-import type { Usage } from "@nyan/ai";
+import type { AgentTool, AgentToolCall } from "@ny4n/agent-core";
+import type { Usage } from "@ny4n/ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import {

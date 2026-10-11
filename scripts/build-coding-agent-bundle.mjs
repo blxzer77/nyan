@@ -16,11 +16,11 @@ const banner = {
 	js: 'import { createRequire as __nyanCreateRequire } from "node:module"; const require = __nyanCreateRequire(import.meta.url);',
 };
 const allowedExternalPackages = new Set([
-	"@nyan/chord",
-	"@nyan/chord/bundler",
-	"@nyan/chord/context",
-	"@nyan/chord/delta",
-	"@nyan/chord/node",
+	"@ny4n/chord",
+	"@ny4n/chord/bundler",
+	"@ny4n/chord/context",
+	"@ny4n/chord/delta",
+	"@ny4n/chord/node",
 	"@silvia-odwyer/photon-node",
 	"jiti",
 	// Optional native accelerators. Their callers fall back to JavaScript when absent.
@@ -86,7 +86,7 @@ function commonBuildOptions() {
 		banner,
 		bundle: true,
 		define: { NYAN_BUNDLED_NODE: "true" },
-		external: ["@nyan/chord", "@silvia-odwyer/photon-node"],
+		external: ["@ny4n/chord", "@silvia-odwyer/photon-node"],
 		format: "esm",
 		legalComments: "none",
 		logLevel: "warning",

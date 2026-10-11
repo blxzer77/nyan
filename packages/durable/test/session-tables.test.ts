@@ -1,4 +1,4 @@
-import type { JsonValue } from "@nyan/chord";
+import type { JsonValue } from "@ny4n/chord";
 import {
 	type ConversationId,
 	defineDoc,
@@ -8,7 +8,7 @@ import {
 	ReadAfterWrite,
 	type TaskId,
 	type TaskRecord,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { idFromNumber } from "../src/ids.ts";
 import { context, createConversation, documentChanges, flush, openTestSession } from "./session-support.ts";

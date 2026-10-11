@@ -2,7 +2,7 @@
  * Simple text input component for extensions.
  */
 
-import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@nyan/tui";
+import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@ny4n/tui";
 import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
 import { keyHint } from "../../../ui/components/keybinding-hints.ts";
 import { theme } from "../../../ui/theme/theme.ts";

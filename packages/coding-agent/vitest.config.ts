@@ -21,8 +21,8 @@ export default mergeConfig(
 		},
 		resolve: {
 			alias: [
-				{ find: /^@nyan\/ai$/, replacement: workspaceSourcePaths.aiIndex },
-				{ find: /^@nyan\/agent-core$/, replacement: workspaceSourcePaths.agentIndex },
+				{ find: /^@ny4n\/ai$/, replacement: workspaceSourcePaths.aiIndex },
+				{ find: /^@ny4n\/agent-core$/, replacement: workspaceSourcePaths.agentIndex },
 			],
 		},
 	}),

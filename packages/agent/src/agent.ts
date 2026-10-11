@@ -10,7 +10,7 @@ import {
 	type ThinkingBudgets,
 	type Transport,
 	toToolDeclaration,
-} from "@nyan/ai/contracts";
+} from "@ny4n/ai/contracts";
 import { runAgentLoop, runAgentLoopContinue } from "./agent-loop.ts";
 import { getDefaultStreamFn } from "./stream-fn.ts";
 import type {

@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import { createConnection, type Socket } from "node:net";
-import type { JsonValue, ServiceCall } from "@nyan/chord";
+import type { JsonValue, ServiceCall } from "@ny4n/chord";
 import {
 	type ClientMessage,
 	encodeClientMessage,
@@ -9,7 +9,7 @@ import {
 	type RpcTarget,
 	type ServerMessage,
 	ServerMessageDecoder,
-} from "@nyan/protocol";
+} from "@ny4n/protocol";
 import { Deferred } from "./host.ts";
 
 interface MessageWaiter {

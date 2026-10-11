@@ -1,5 +1,5 @@
-import { createModels, type Message } from "@nyan/ai";
-import type { Context } from "@nyan/chord";
+import { createModels, type Message } from "@ny4n/ai";
+import type { Context } from "@ny4n/chord";
 import {
 	type ContextView,
 	createRegistry,
@@ -11,7 +11,7 @@ import {
 	type HarnessSettings,
 	MemoryStorage,
 	type Storage,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { addTask, assistant, describeMessage, openHarness, system, toolResult, user } from "./harness-support.ts";
 import { context } from "./session-support.ts";

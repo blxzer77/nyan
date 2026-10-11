@@ -8,8 +8,8 @@
  * Usage: /status-card [message]
  */
 
-import type { ExtensionAPI } from "@nyan/coding-agent";
-import { Box, Text } from "@nyan/tui";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
+import { Box, Text } from "@ny4n/tui";
 
 interface StatusCardData {
 	message: string;

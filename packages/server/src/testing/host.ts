@@ -1,4 +1,4 @@
-import type { Context, JsonValue, ServiceCall } from "@nyan/chord";
+import type { Context, JsonValue, ServiceCall } from "@ny4n/chord";
 import { SessionNotFoundError } from "../errors.ts";
 import type { RoutedServerServiceHost, RoutedSessionHandle, ServerHost, SessionMetadata } from "../types.ts";
 

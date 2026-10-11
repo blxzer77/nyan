@@ -1,13 +1,13 @@
-import { combineFacetLoaders, type FacetLoader, type JsonValue } from "@nyan/chord";
+import { combineFacetLoaders, type FacetLoader, type JsonValue } from "@ny4n/chord";
 import {
 	createFacetBundleArtifactLoader,
 	createFacetBundleLoader,
 	type FacetBundleArtifact,
 	readFacetBundleManifest,
-} from "@nyan/chord/node";
+} from "@ny4n/chord/node";
 
 const PRESENTATION_FACET_BUNDLES_KEY = "presentationFacetBundles";
-const NYAN_PLUGIN_API = "@nyan/coding-agent/experimental/plugin";
+const NYAN_PLUGIN_API = "@ny4n/coding-agent/experimental/plugin";
 
 export function createSessionPluginFacetLoader(manifestPaths: readonly string[]): FacetLoader | undefined {
 	if (manifestPaths.length === 0) return undefined;

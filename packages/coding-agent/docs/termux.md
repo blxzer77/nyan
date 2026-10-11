@@ -25,7 +25,7 @@ Install Termux from [GitHub or F-Droid](https://github.com/termux/termux-app#ins
 3. Install Nyan:
 
    ```bash
-   npm install -g --ignore-scripts @nyan/coding-agent
+   npm install -g --ignore-scripts @ny4n/coding-agent
    ```
 
 4. Verify the installation:

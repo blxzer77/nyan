@@ -1,6 +1,6 @@
-import type { ImageContent, TextContent } from "@nyan/ai";
-import type { Context } from "@nyan/chord";
-import { type Conversation, ConversationBusy, type Harness, type SubmissionId, type UserInput } from "@nyan/durable";
+import type { ImageContent, TextContent } from "@ny4n/ai";
+import type { Context } from "@ny4n/chord";
+import { type Conversation, ConversationBusy, type Harness, type SubmissionId, type UserInput } from "@ny4n/durable";
 import type {
 	AgentController as AgentControllerService,
 	AgentOperationError,

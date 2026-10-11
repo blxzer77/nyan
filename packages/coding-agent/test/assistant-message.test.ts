@@ -1,5 +1,5 @@
-import type { AssistantMessage } from "@nyan/ai";
-import type { TuiMouseEvent } from "@nyan/tui";
+import type { AssistantMessage } from "@ny4n/ai";
+import type { TuiMouseEvent } from "@ny4n/tui";
 import { describe, expect, test } from "vitest";
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.ts";
 import { UserMessageComponent } from "../src/modes/interactive/components/user-message.ts";

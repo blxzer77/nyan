@@ -1,6 +1,6 @@
-import { Agent } from "@nyan/agent-core";
-import { createModels } from "@nyan/ai";
-import { anthropicProvider } from "@nyan/ai/providers/anthropic";
+import { Agent } from "@ny4n/agent-core";
+import { createModels } from "@ny4n/ai";
+import { anthropicProvider } from "@ny4n/ai/providers/anthropic";
 
 const models = createModels();
 models.setProvider(anthropicProvider());

@@ -1,13 +1,13 @@
-import type { Context } from "@nyan/chord";
+import type { Context } from "@ny4n/chord";
 import {
 	BACKGROUND_CONTEXT,
 	createContextKey,
 	withAbortSignal,
 	withCancel,
 	withContextValue,
-} from "@nyan/chord/context";
-import { applyImmutable } from "@nyan/chord/delta";
-import { defineDoc } from "@nyan/durable";
+} from "@ny4n/chord/context";
+import { applyImmutable } from "@ny4n/chord/delta";
+import { defineDoc } from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { context, documentChanges, flush, openTestSession } from "./session-support.ts";
 

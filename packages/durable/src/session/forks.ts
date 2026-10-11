@@ -1,4 +1,4 @@
-import type { Context } from "@nyan/chord";
+import type { Context } from "@ny4n/chord";
 import { addressId } from "../documents.ts";
 import type {
 	ConversationId,

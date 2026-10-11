@@ -12,10 +12,10 @@
  * - Progress tracking widget during execution
  */
 
-import type { AgentMessage } from "@nyan/agent-core";
-import type { AssistantMessage, TextContent } from "@nyan/ai";
-import type { ExtensionAPI, ExtensionContext } from "@nyan/coding-agent";
-import { Key } from "@nyan/tui";
+import type { AgentMessage } from "@ny4n/agent-core";
+import type { AssistantMessage, TextContent } from "@ny4n/ai";
+import type { ExtensionAPI, ExtensionContext } from "@ny4n/coding-agent";
+import { Key } from "@ny4n/tui";
 import { extractTodoItems, isSafeCommand, markCompletedSteps, type TodoItem } from "./utils.ts";
 
 // Tools

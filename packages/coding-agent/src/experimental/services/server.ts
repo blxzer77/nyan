@@ -4,9 +4,9 @@ import {
 	type JsonValue,
 	RemoteServiceProvider,
 	replicatedState,
-} from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import type { RoutedServerServiceAttachment, RoutedServerServiceHost } from "@nyan/server";
+} from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import type { RoutedServerServiceAttachment, RoutedServerServiceHost } from "@ny4n/server";
 import { PresentationPlugins } from "./plugins.ts";
 import {
 	type SessionCreateOptions,

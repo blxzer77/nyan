@@ -1,6 +1,6 @@
-import type { Context, RemoteServices } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import type { Client } from "@nyan/client";
+import type { Context, RemoteServices } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import type { Client } from "@ny4n/client";
 import {
 	createServerServiceSource,
 	createSessionServiceSource,

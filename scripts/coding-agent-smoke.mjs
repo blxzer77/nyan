@@ -3,8 +3,8 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export const codingAgentName = "@nyan/coding-agent";
-const developmentPackages = new Set(["client", "protocol", "server"].map((name) => `@nyan/${name}`));
+export const codingAgentName = "@ny4n/coding-agent";
+const developmentPackages = new Set(["client", "protocol", "server"].map((name) => `@ny4n/${name}`));
 
 function checkInstalledPackages(nodeModules, seen = new Set()) {
 	if (!existsSync(nodeModules)) return;

@@ -25,14 +25,14 @@
  *   nyan -e ./built-in-tool-renderer.ts
  */
 
-import type { BashToolDetails, EditToolDetails, ExtensionAPI, ReadToolDetails } from "@nyan/coding-agent";
+import type { BashToolDetails, EditToolDetails, ExtensionAPI, ReadToolDetails } from "@ny4n/coding-agent";
 import {
 	createBashToolDefinition,
 	createEditToolDefinition,
 	createReadToolDefinition,
 	createWriteToolDefinition,
-} from "@nyan/coding-agent";
-import { Text } from "@nyan/tui";
+} from "@ny4n/coding-agent";
+import { Text } from "@ny4n/tui";
 
 export default function (nyan: ExtensionAPI) {
 	const cwd = process.cwd();

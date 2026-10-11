@@ -1,5 +1,5 @@
-import type { Component, Terminal, TUI, WheelScrollLines } from "@nyan/tui";
-import { Container, getKeybindings, isViewportTUI, ScrollView, setKeybindings, Text } from "@nyan/tui";
+import type { Component, Terminal, TUI, WheelScrollLines } from "@ny4n/tui";
+import { Container, getKeybindings, isViewportTUI, ScrollView, setKeybindings, Text } from "@ny4n/tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";

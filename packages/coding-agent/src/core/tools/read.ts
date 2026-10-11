@@ -1,5 +1,5 @@
-import type { AgentTool } from "@nyan/agent-core";
-import type { Api, ImageContent, Model, ModelImageResizeOptions, TextContent } from "@nyan/ai";
+import type { AgentTool } from "@ny4n/agent-core";
+import type { Api, ImageContent, Model, ModelImageResizeOptions, TextContent } from "@ny4n/ai";
 import { constants } from "fs";
 import { access as fsAccess, readFile as fsReadFile } from "fs/promises";
 import { type Static, Type } from "typebox";

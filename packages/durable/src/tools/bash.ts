@@ -1,4 +1,4 @@
-import type { Context } from "@nyan/chord";
+import type { Context } from "@ny4n/chord";
 import { type Static, Type } from "typebox";
 import { defineTool } from "../harness/define.ts";
 import type { ToolExecutionApi, ToolRegistration } from "../harness/types.ts";

@@ -1,6 +1,6 @@
-import { CustomEditor, type ExtensionAPI, type ExtensionContext, type KeybindingsManager } from "@nyan/coding-agent";
-import type { Component, EditorTheme, TUI } from "@nyan/tui";
-import { truncateToWidth, visibleWidth } from "@nyan/tui";
+import { CustomEditor, type ExtensionAPI, type ExtensionContext, type KeybindingsManager } from "@ny4n/coding-agent";
+import type { Component, EditorTheme, TUI } from "@ny4n/tui";
+import { truncateToWidth, visibleWidth } from "@ny4n/tui";
 
 function fitBorder(
 	left: string,

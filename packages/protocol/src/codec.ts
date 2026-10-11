@@ -1,4 +1,4 @@
-import { isJsonValue } from "@nyan/chord";
+import { isJsonValue } from "@ny4n/chord";
 import { Check } from "typebox/value";
 import { decodeCbor, encodeCbor } from "./cbor/index.ts";
 import { DEFAULT_MAX_FRAME_LENGTH, encodeFrame, FrameDecoder, type FrameDecoderOptions } from "./framing.ts";

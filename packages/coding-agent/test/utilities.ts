@@ -6,10 +6,10 @@ import { createModelRegistry, getModelRuntime } from "./model-runtime-test-utils
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Agent } from "@nyan/agent-core";
-import type { OAuthCredentials } from "@nyan/ai";
-import { getModel, streamSimple } from "@nyan/ai/compat";
-import { builtinProviders } from "@nyan/ai/providers/all";
+import { Agent } from "@ny4n/agent-core";
+import type { OAuthCredentials } from "@ny4n/ai";
+import { getModel, streamSimple } from "@ny4n/ai/compat";
+import { builtinProviders } from "@ny4n/ai/providers/all";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { createEventBus } from "../src/core/event-bus.ts";

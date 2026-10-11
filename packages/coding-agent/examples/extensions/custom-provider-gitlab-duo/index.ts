@@ -21,8 +21,8 @@ import {
 	type SimpleStreamOptions,
 	type ThinkingLevelMap,
 	type TranscriptContext,
-} from "@nyan/ai/compat";
-import type { ExtensionAPI } from "@nyan/coding-agent";
+} from "@ny4n/ai/compat";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 
 // =============================================================================
 // Constants

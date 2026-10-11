@@ -6,7 +6,7 @@
  * definition, so the tool's public shape is unchanged.
  */
 
-import { Container, Text } from "@nyan/tui";
+import { Container, Text } from "@ny4n/tui";
 import { keyHint } from "../../../ui/components/keybinding-hints.ts";
 import { getLanguageFromPath, highlightCode, type Theme } from "../../../ui/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";

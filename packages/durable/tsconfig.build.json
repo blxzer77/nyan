@@ -3,8 +3,8 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"paths": {
-			"@nyan/chord": ["../chord/dist/index.d.ts"],
-			"@nyan/ai": ["../ai/dist/index.d.ts"]
+			"@ny4n/chord": ["../chord/dist/index.d.ts"],
+			"@ny4n/ai": ["../ai/dist/index.d.ts"]
 		},
 		"rootDir": "./src"
 	},

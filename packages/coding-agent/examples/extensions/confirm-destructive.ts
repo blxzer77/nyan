@@ -5,7 +5,7 @@
  * Demonstrates how to cancel session events using the before_* events.
  */
 
-import type { ExtensionAPI, SessionBeforeSwitchEvent, SessionMessageEntry } from "@nyan/coding-agent";
+import type { ExtensionAPI, SessionBeforeSwitchEvent, SessionMessageEntry } from "@ny4n/coding-agent";
 
 export default function (nyan: ExtensionAPI) {
 	nyan.on("session_before_switch", async (event: SessionBeforeSwitchEvent, ctx) => {

@@ -2,9 +2,9 @@
 // Run from packages/durable:
 //   node --conditions=source --experimental-strip-types test/examples/09-context.ts
 
-import type { AssistantMessage, Message, StopReason, ToolResultMessage } from "@nyan/ai";
-import { createModels } from "@nyan/ai/models";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import type { AssistantMessage, Message, StopReason, ToolResultMessage } from "@ny4n/ai";
+import { createModels } from "@ny4n/ai/models";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import { createRegistry, Harness, MemoryStorage } from "../../src/index.ts";
 
 const context = BACKGROUND_CONTEXT;

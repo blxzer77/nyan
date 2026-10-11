@@ -2,7 +2,7 @@
  * Test that BashExecutionComponent's collapsed output respects the render-time width,
  * not a stale captured width. Regression test.
  */
-import { visibleWidth } from "@nyan/tui";
+import { visibleWidth } from "@ny4n/tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import { BashExecutionComponent } from "../src/modes/interactive/components/bash-execution.ts";
 import { initTheme } from "../src/ui/theme/theme.ts";

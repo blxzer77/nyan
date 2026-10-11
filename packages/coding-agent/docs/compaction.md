@@ -9,7 +9,7 @@ This reference describes automatic compaction, branch summarization, persisted e
 - [`packages/coding-agent/src/core/session-manager.ts`](https://github.com/blxzer77/nyan/blob/main/packages/coding-agent/src/core/session-manager.ts) - Entry types (`CompactionEntry`, `BranchSummaryEntry`)
 - [`packages/coding-agent/src/core/extensions/types.ts`](https://github.com/blxzer77/nyan/blob/main/packages/coding-agent/src/core/extensions/types.ts) - Extension event types
 
-For TypeScript definitions in your project, inspect `node_modules/@nyan/coding-agent/dist/`.
+For TypeScript definitions in your project, inspect `node_modules/@ny4n/coding-agent/dist/`.
 
 ## Overview
 
@@ -335,7 +335,7 @@ nyan.on("session_before_compact", async (event, ctx) => {
 To generate a summary with your own model, convert messages to text using `serializeConversation`:
 
 ```typescript
-import { convertToLlm, serializeConversation } from "@nyan/coding-agent";
+import { convertToLlm, serializeConversation } from "@ny4n/coding-agent";
 
 nyan.on("session_before_compact", async (event, ctx) => {
   const { preparation } = event;

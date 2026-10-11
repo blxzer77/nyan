@@ -94,7 +94,7 @@ async function bundleEntry(input: {
 		define: input.options.define,
 		entryNames: `${entryPrefix}-[hash]`,
 		entryPoints: [input.source],
-		external: [...new Set(["@nyan/chord", "@nyan/chord/*", ...(input.options.external ?? [])])],
+		external: [...new Set(["@ny4n/chord", "@ny4n/chord/*", ...(input.options.external ?? [])])],
 		format: "cjs",
 		legalComments: "none",
 		logLevel: "silent",

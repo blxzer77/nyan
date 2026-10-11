@@ -1,6 +1,6 @@
-import type { TextContent } from "@nyan/ai";
-import type { Component } from "@nyan/tui";
-import { Box, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@nyan/tui";
+import type { TextContent } from "@ny4n/ai";
+import type { Component } from "@ny4n/tui";
+import { Box, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@ny4n/tui";
 import type { MessageRenderer } from "../../../core/extensions/types.ts";
 import type { CustomMessage } from "../../../core/messages.ts";
 import { getMarkdownTheme, theme } from "../../../ui/theme/theme.ts";

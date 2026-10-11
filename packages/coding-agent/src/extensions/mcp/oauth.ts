@@ -13,8 +13,8 @@
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { oauthErrorHtml, oauthSuccessHtml } from "@nyan/ai/utils/oauth-page";
-import type { AuthProvider, McpFetch } from "@nyan/mcp";
+import { oauthErrorHtml, oauthSuccessHtml } from "@ny4n/ai/utils/oauth-page";
+import type { AuthProvider, McpFetch } from "@ny4n/mcp";
 import {
 	type AuthorizationServerMetadata,
 	authorizeMcp,
@@ -30,7 +30,7 @@ import {
 	type OAuthClientMetadataDocument,
 	parseWwwAuthenticate,
 	stepUpScope,
-} from "@nyan/mcp/oauth";
+} from "@ny4n/mcp/oauth";
 import lockfile from "proper-lockfile";
 import { APP_NAME, getAgentDir } from "../../config.ts";
 import { type AuthStorageBackend, FileAuthStorageBackend } from "../../core/auth-storage.ts";

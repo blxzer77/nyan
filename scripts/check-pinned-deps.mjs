@@ -4,7 +4,7 @@ import { join } from "node:path";
 const dependencySections = ["dependencies", "devDependencies", "optionalDependencies"];
 const exactVersionPattern = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const ignoredDirectories = new Set([".git", "dist", "node_modules"]);
-const internalPackageNames = new Set(["@nyan/chord"]);
+const internalPackageNames = new Set(["@ny4n/chord"]);
 const packageJsonFiles = [];
 
 function collectPackageJsonFiles(directory) {
@@ -23,7 +23,7 @@ function collectPackageJsonFiles(directory) {
 }
 
 function isInternalWorkspaceDependency(name) {
-	return name.startsWith("@nyan/") || internalPackageNames.has(name);
+	return name.startsWith("@ny4n/") || internalPackageNames.has(name);
 }
 
 function isNonRegistrySpecifier(specifier) {

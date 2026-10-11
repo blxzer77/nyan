@@ -1,10 +1,10 @@
 {
-	"name": "@nyan/example-plugin",
+	"name": "@ny4n/example-plugin",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
 	"peerDependencies": {
-		"@nyan/chord": "^0.84.4",
-		"@nyan/coding-agent": "^0.84.4"
+		"@ny4n/chord": "^0.84.4",
+		"@ny4n/coding-agent": "^0.84.4"
 	}
 }

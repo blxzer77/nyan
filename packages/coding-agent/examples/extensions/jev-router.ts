@@ -19,8 +19,8 @@
  * Usage: nyan -e ./jev-router.ts --model jev/auto
  */
 
-import type { Message } from "@nyan/ai";
-import type { ExtensionAPI, ExtensionContext, ModelRoute, ModelRouteRequest } from "@nyan/coding-agent";
+import type { Message } from "@ny4n/ai";
+import type { ExtensionAPI, ExtensionContext, ModelRoute, ModelRouteRequest } from "@ny4n/coding-agent";
 
 const PROVIDER = "openai-codex";
 const SOL = "gpt-5.6-sol";

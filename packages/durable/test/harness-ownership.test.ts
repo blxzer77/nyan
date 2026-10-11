@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type AssistantMessage, fauxAssistantMessage, fauxText, fauxToolCall, Type } from "@nyan/ai";
+import { type AssistantMessage, fauxAssistantMessage, fauxText, fauxToolCall, Type } from "@ny4n/ai";
 import {
 	type Conversation,
 	type ConversationHandle,
@@ -19,7 +19,7 @@ import {
 	StorageRejected,
 	type Submission,
 	type TaskId,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { afterEach, describe, expect, it } from "vitest";
 import { openNodeSqliteStorage } from "../src/storage/sqlite/node.ts";
 import { chatSetup, openChat } from "./chat-support.ts";

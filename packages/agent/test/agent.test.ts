@@ -5,7 +5,7 @@ import {
 	getModel,
 	toToolDeclaration,
 	type UserMessage,
-} from "@nyan/ai/compat";
+} from "@ny4n/ai/compat";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import {

@@ -6,7 +6,7 @@ import { getNativeModuleCandidates } from "../src/native-module-path.ts";
 
 describe("getNativeModuleCandidates", () => {
 	it("resolves native helpers from the installed TUI package when the module is bundled elsewhere", () => {
-		const packageRoot = resolve("virtual", "node_modules", "@nyan", "tui");
+		const packageRoot = resolve("virtual", "node_modules", "@ny4n", "tui");
 		const bundledModule = resolve("virtual", "nyan-coding-agent", "dist", "bundle", "chunks", "chunk.js");
 		const nativePath = join("native", "win32", "prebuilds", "win32-arm64", "win32-platform.node");
 
@@ -14,7 +14,7 @@ describe("getNativeModuleCandidates", () => {
 			moduleUrl: pathToFileURL(bundledModule).href,
 			execPath: resolve("virtual", "node", "node.exe"),
 			resolvePackage: (specifier) => {
-				assert.equal(specifier, "@nyan/tui");
+				assert.equal(specifier, "@ny4n/tui");
 				return join(packageRoot, "dist", "index.js");
 			},
 		});

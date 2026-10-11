@@ -7,7 +7,7 @@
  * separate tool rows because they never reach the model as tool calls.
  */
 
-import { Container, Spacer, Text } from "@nyan/tui";
+import { Container, Spacer, Text } from "@ny4n/tui";
 import type { ToolDefinition } from "../../core/extensions/types.ts";
 import { getTextOutput, replaceTabs, str } from "../../core/tools/render-utils.ts";
 import { keyHint } from "../../ui/components/keybinding-hints.ts";

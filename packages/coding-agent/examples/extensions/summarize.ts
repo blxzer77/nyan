@@ -1,7 +1,7 @@
-import { uuidv7 } from "@nyan/ai";
-import type { ExtensionAPI, ExtensionCommandContext } from "@nyan/coding-agent";
-import { DynamicBorder, getMarkdownTheme } from "@nyan/coding-agent";
-import { Container, Markdown, matchesKey, Text } from "@nyan/tui";
+import { uuidv7 } from "@ny4n/ai";
+import type { ExtensionAPI, ExtensionCommandContext } from "@ny4n/coding-agent";
+import { DynamicBorder, getMarkdownTheme } from "@ny4n/coding-agent";
+import { Container, Markdown, matchesKey, Text } from "@ny4n/tui";
 
 type ContentBlock = {
 	type?: string;

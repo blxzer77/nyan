@@ -1,4 +1,4 @@
-import { type Component, Loader, type TUI, truncateToWidth } from "@nyan/tui";
+import { type Component, Loader, type TUI, truncateToWidth } from "@ny4n/tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
 import { keyText } from "../../../ui/components/keybinding-hints.ts";
 import { theme } from "../../../ui/theme/theme.ts";

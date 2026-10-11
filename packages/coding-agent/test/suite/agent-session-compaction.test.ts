@@ -1,4 +1,4 @@
-import type { AgentMessage, AgentTool } from "@nyan/agent-core";
+import type { AgentMessage, AgentTool } from "@ny4n/agent-core";
 import {
 	type AssistantMessage,
 	createAssistantMessageEventStream,
@@ -9,7 +9,7 @@ import {
 	type Model,
 	type SimpleStreamOptions,
 	type TranscriptContext,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { estimateTokens } from "../../src/core/compaction/index.ts";

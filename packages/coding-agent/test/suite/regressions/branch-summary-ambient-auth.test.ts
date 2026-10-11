@@ -1,4 +1,4 @@
-import { createAssistantMessageEventStream } from "@nyan/ai";
+import { createAssistantMessageEventStream } from "@ny4n/ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { assistantMsg, userMsg } from "../../utilities.ts";
 import { createHarness, type Harness } from "../harness.ts";

@@ -1,5 +1,5 @@
-import type { Component } from "@nyan/tui";
-import { Box, Container, Spacer, Text } from "@nyan/tui";
+import type { Component } from "@ny4n/tui";
+import { Box, Container, Spacer, Text } from "@ny4n/tui";
 import type { EntryRenderer } from "../../../core/extensions/types.ts";
 import type { CustomEntry } from "../../../core/session-manager.ts";
 import { theme } from "../../../ui/theme/theme.ts";

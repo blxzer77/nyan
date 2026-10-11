@@ -1,4 +1,4 @@
-import { type Component, Container, getKeybindings, Spacer, Text, truncateToWidth } from "@nyan/tui";
+import { type Component, Container, getKeybindings, Spacer, Text, truncateToWidth } from "@ny4n/tui";
 import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
 import { theme } from "../../../ui/theme/theme.ts";
 

@@ -1,5 +1,5 @@
-import type { AssistantMessage } from "@nyan/ai";
-import type { ProgramStatus, Terminal } from "@nyan/tui";
+import type { AssistantMessage } from "@ny4n/ai";
+import type { ProgramStatus, Terminal } from "@ny4n/tui";
 import { describe, expect, it } from "vitest";
 import type { AgentSessionEvent } from "../src/core/agent-session.ts";
 import { ProgramStatusReporter } from "../src/modes/interactive/program-status-reporter.ts";

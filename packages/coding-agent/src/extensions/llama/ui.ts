@@ -11,7 +11,7 @@ import {
 	type TUI,
 	truncateToWidth,
 	visibleWidth,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import type { ExtensionCommandContext } from "../../core/extensions/types.ts";
 import type { KeybindingsManager } from "../../core/keybindings.ts";
 import { DynamicBorder } from "../../ui/components/dynamic-border.ts";

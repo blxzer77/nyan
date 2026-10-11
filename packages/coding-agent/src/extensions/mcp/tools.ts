@@ -11,16 +11,16 @@
  */
 
 import { createHash } from "node:crypto";
-import type { AgentToolResult } from "@nyan/agent-core";
-import type { ImageContent, JsonValue, TextContent } from "@nyan/ai";
+import type { AgentToolResult } from "@ny4n/agent-core";
+import type { ImageContent, JsonValue, TextContent } from "@ny4n/ai";
 import {
 	type CallToolResult,
 	type ContentBlock,
 	type McpRequestOptions,
 	type Tool as McpTool,
 	toLlmContent,
-} from "@nyan/mcp";
-import { Container, Spacer, Text } from "@nyan/tui";
+} from "@ny4n/mcp";
+import { Container, Spacer, Text } from "@ny4n/tui";
 import type { TSchema } from "typebox";
 import type {
 	ToolAnnotations,

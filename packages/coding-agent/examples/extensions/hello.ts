@@ -2,8 +2,8 @@
  * Hello Tool - Minimal custom tool example
  */
 
-import { Type } from "@nyan/ai";
-import { defineTool, type ExtensionAPI } from "@nyan/coding-agent";
+import { Type } from "@ny4n/ai";
+import { defineTool, type ExtensionAPI } from "@ny4n/coding-agent";
 
 const helloTool = defineTool({
 	name: "hello",

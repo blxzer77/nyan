@@ -1,5 +1,5 @@
 import { sep } from "node:path";
-import { visibleWidth } from "@nyan/tui";
+import { visibleWidth } from "@ny4n/tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
 import type { ReadonlyFooterDataProvider } from "../src/core/footer-data-provider.ts";

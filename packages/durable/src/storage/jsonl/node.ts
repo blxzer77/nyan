@@ -1,4 +1,4 @@
-import type { Context } from "@nyan/chord";
+import type { Context } from "@ny4n/chord";
 import { NodeExecutionEnv } from "../../env/node.ts";
 import { JsonlStorage, type JsonlStorageOptions } from "./storage.ts";
 

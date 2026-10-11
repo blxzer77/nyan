@@ -1,5 +1,5 @@
 {
-	"name": "@nyan/telemetry",
+	"name": "@ny4n/telemetry",
 	"version": "1.1.0",
 	"description": "Vendor-neutral telemetry contracts and typed schema utilities for nyan",
 	"type": "module",

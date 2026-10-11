@@ -1,5 +1,5 @@
-import type { AttachedReplicatedState, Context, JsonValue } from "@nyan/chord";
-import { withAbortSignal, withoutAbortSignal } from "@nyan/chord/context";
+import type { AttachedReplicatedState, Context, JsonValue } from "@ny4n/chord";
+import { withAbortSignal, withoutAbortSignal } from "@ny4n/chord/context";
 import { ResetEntry } from "../entries.ts";
 import type { ExecutionEnv } from "../env/index.ts";
 import { SessionImpl } from "../session/session.ts";

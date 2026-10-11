@@ -1,4 +1,4 @@
-import type { Api, Model, ProviderHeaders } from "@nyan/ai";
+import type { Api, Model, ProviderHeaders } from "@ny4n/ai";
 import type { SettingsManager } from "./settings-manager.ts";
 import { isInstallTelemetryEnabled } from "./telemetry.ts";
 

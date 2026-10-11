@@ -1,5 +1,5 @@
-import type { AssistantMessage, AssistantMessageEvent, Model } from "@nyan/ai";
-import { normalizeContext } from "@nyan/ai";
+import type { AssistantMessage, AssistantMessageEvent, Model } from "@ny4n/ai";
+import { normalizeContext } from "@ny4n/ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type ProxyAssistantMessageEvent, streamProxy } from "../src/proxy.ts";
 

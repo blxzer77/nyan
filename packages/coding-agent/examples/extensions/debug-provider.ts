@@ -6,8 +6,8 @@
  * as expandable custom entries.
  */
 
-import { type ExtensionAPI, keyHint } from "@nyan/coding-agent";
-import { Box, Text } from "@nyan/tui";
+import { type ExtensionAPI, keyHint } from "@ny4n/coding-agent";
+import { Box, Text } from "@ny4n/tui";
 
 const ENTRY_TYPE = "debug-provider-events";
 const STATUS_KEY = "debug-provider";

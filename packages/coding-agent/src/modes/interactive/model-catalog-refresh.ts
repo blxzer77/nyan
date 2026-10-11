@@ -1,4 +1,4 @@
-import type { ModelsRefreshResult } from "@nyan/ai";
+import type { ModelsRefreshResult } from "@ny4n/ai";
 import type { ModelRuntime } from "../../core/model-runtime.ts";
 import { raceWithAbortSignal } from "../../utils/abort.ts";
 

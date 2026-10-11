@@ -17,7 +17,7 @@ An extension exports a default factory that receives `ExtensionAPI`. The factory
 Create `~/.nyan/agent/extensions/hello.ts`:
 
 ```typescript
-import type { ExtensionAPI } from "@nyan/coding-agent";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 
 export default function (nyan: ExtensionAPI) {
   nyan.registerCommand("hello", {

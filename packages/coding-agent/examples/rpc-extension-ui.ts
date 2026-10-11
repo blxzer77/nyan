@@ -27,7 +27,7 @@ import {
 	SelectList,
 	type TUI,
 	TuiMainScreen,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

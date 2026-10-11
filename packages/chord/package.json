@@ -1,5 +1,5 @@
 {
-	"name": "@nyan/chord",
+	"name": "@ny4n/chord",
 	"version": "1.1.0",
 	"description": "Application composition runtime for services, replicated state, RPC, and plugins",
 	"type": "module",

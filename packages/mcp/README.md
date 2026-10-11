@@ -1,4 +1,4 @@
-# @nyan/mcp
+# @ny4n/mcp
 
 A small, standalone Model Context Protocol client. It does not depend on the official MCP SDK or other nyan packages.
 
@@ -7,7 +7,7 @@ The package provides a transport-neutral client core, stdio and Streamable HTTP 
 ## Usage
 
 ```typescript
-import { McpClient, StdioTransport } from "@nyan/mcp";
+import { McpClient, StdioTransport } from "@ny4n/mcp";
 
 const transport = new StdioTransport({
 	command: "npx",
@@ -29,13 +29,13 @@ For a remote server, use `new StreamableHttpTransport({ url, headers })`. Fetch 
 
 ### Tools for an LLM
 
-`toLlmContent(result)` converts a `CallToolResult` to text and image content for a model, in the shape of `@nyan/ai`'s `TextContent` and `ImageContent`. Text and images pass through, embedded text and image resources are unwrapped, and audio, resource links, and binary resources become short text placeholders. A result without content blocks but with `structuredContent` becomes its JSON.
+`toLlmContent(result)` converts a `CallToolResult` to text and image content for a model, in the shape of `@ny4n/ai`'s `TextContent` and `ImageContent`. Text and images pass through, embedded text and image resources are unwrapped, and audio, resource links, and binary resources become short text placeholders. A result without content blocks but with `structuredContent` becomes its JSON.
 
-Wrapping an MCP tool as a `@nyan/agent-core` `AgentTool`:
+Wrapping an MCP tool as a `@ny4n/agent-core` `AgentTool`:
 
 ```typescript
-import type { AgentTool } from "@nyan/agent-core";
-import { toLlmContent } from "@nyan/mcp";
+import type { AgentTool } from "@ny4n/agent-core";
+import { toLlmContent } from "@ny4n/mcp";
 import { Type } from "typebox";
 
 const tools: AgentTool[] = (await client.listTools()).map((tool) => ({
@@ -53,21 +53,21 @@ const tools: AgentTool[] = (await client.listTools()).map((tool) => ({
 }));
 ```
 
-The [mcp-codemode example](https://github.com/blxzer77/nyan/tree/main/packages/agent/examples/mcp-codemode) also forwards progress, passes `structuredContent` through, and lets `@nyan/codemode` scripts call the tools.
+The [mcp-codemode example](https://github.com/blxzer77/nyan/tree/main/packages/agent/examples/mcp-codemode) also forwards progress, passes `structuredContent` through, and lets `@ny4n/codemode` scripts call the tools.
 
 ### OAuth
 
-`@nyan/mcp/oauth` provides the MCP OAuth client subset without depending on the official SDK:
+`@ny4n/mcp/oauth` provides the MCP OAuth client subset without depending on the official SDK:
 
 ```typescript
-import { McpClient, StreamableHttpTransport } from "@nyan/mcp";
+import { McpClient, StreamableHttpTransport } from "@ny4n/mcp";
 import {
 	adaptOAuthProvider,
 	authorizeMcp,
 	McpOAuthAuthorizationRequiredError,
 	McpOAuthProvider,
 	OAuthCallbackServer,
-} from "@nyan/mcp/oauth";
+} from "@ny4n/mcp/oauth";
 
 const serverUrl = "https://mcp.example.com/mcp";
 const callback = await OAuthCallbackServer.listen();
@@ -133,4 +133,4 @@ Batch JSON-RPC messages, legacy HTTP+SSE, servers, sampling, and tasks are outsi
 
 ## Testing
 
-`@nyan/mcp/testing` exports `createInMemoryTransportPair()` for client and adapter tests.
+`@ny4n/mcp/testing` exports `createInMemoryTransportPair()` for client and adapter tests.

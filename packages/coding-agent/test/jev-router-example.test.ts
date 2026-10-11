@@ -1,4 +1,4 @@
-import type { AgentTool } from "@nyan/agent-core";
+import type { AgentTool } from "@ny4n/agent-core";
 import {
 	type AssistantMessage,
 	type ClassifierModel,
@@ -6,7 +6,7 @@ import {
 	fauxAssistantMessage,
 	fauxProvider,
 	fauxToolCall,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import jevRouter from "../examples/extensions/jev-router.ts";

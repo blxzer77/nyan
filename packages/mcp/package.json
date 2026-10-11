@@ -1,5 +1,5 @@
 {
-	"name": "@nyan/mcp",
+	"name": "@ny4n/mcp",
 	"version": "1.1.0",
 	"description": "Standalone Model Context Protocol client for nyan and other applications",
 	"type": "module",

@@ -1,6 +1,6 @@
 # Examples
 
-Example code for the @nyan/coding-agent SDK, process integration, and extensions.
+Example code for the @ny4n/coding-agent SDK, process integration, and extensions.
 
 ## CLI integration
 

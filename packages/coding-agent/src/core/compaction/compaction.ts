@@ -5,7 +5,7 @@
  * and after compaction the session is reloaded.
  */
 
-import type { AgentMessage, StreamFn, ThinkingLevel } from "@nyan/agent-core";
+import type { AgentMessage, StreamFn, ThinkingLevel } from "@ny4n/agent-core";
 import {
 	contentText,
 	getCurrentSystemMessage,
@@ -14,7 +14,7 @@ import {
 	type RetryPolicy,
 	retryAssistantCall,
 	uuidv7,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import type {
 	AssistantMessage,
 	Model,
@@ -22,8 +22,8 @@ import type {
 	SystemMessage,
 	TranscriptContext,
 	Usage,
-} from "@nyan/ai/compat";
-import { completeSimple } from "@nyan/ai/compat";
+} from "@ny4n/ai/compat";
+import { completeSimple } from "@ny4n/ai/compat";
 import { convertToLlm } from "../messages.ts";
 import {
 	buildSessionProjection,

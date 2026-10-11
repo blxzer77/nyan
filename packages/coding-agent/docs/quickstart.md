@@ -9,7 +9,7 @@ For native Windows setup, read [Windows Setup](windows.md). For Android, read [T
 Install Nyan from npm. This requires Node.js 22.19 or newer:
 
 ```bash
-npm install -g --ignore-scripts @nyan/coding-agent
+npm install -g --ignore-scripts @ny4n/coding-agent
 ```
 
 Nyan does not require dependency lifecycle scripts for a normal npm installation.
@@ -104,7 +104,7 @@ Start with the least powerful mechanism that meets your need:
 If you installed Nyan with npm, run:
 
 ```bash
-npm uninstall -g @nyan/coding-agent
+npm uninstall -g @ny4n/coding-agent
 ```
 
 Uninstalling does not remove configuration, credentials, sessions, or installed Nyan packages from `~/.nyan/agent/`.

@@ -1,19 +1,19 @@
-# @nyan/agent-core
+# @ny4n/agent-core
 
-Stateful agent with tool execution and event streaming. Built on `@nyan/ai`.
+Stateful agent with tool execution and event streaming. Built on `@ny4n/ai`.
 
 ## Installation
 
 ```bash
-npm install @nyan/agent-core
+npm install @ny4n/agent-core
 ```
 
 ## Quick Start
 
 ```typescript
-import { Agent } from "@nyan/agent-core";
-import { createModels } from "@nyan/ai";
-import { anthropicProvider } from "@nyan/ai/providers/anthropic";
+import { Agent } from "@ny4n/agent-core";
+import { createModels } from "@ny4n/ai";
+import { anthropicProvider } from "@ny4n/ai/providers/anthropic";
 
 const models = createModels();
 models.setProvider(anthropicProvider());
@@ -296,7 +296,7 @@ Access state via `agent.state`.
 
 Assigning `agent.state.tools = [...]` or `agent.state.messages = [...]` copies the top-level array before storing it. Mutating the returned array mutates the current agent state.
 
-The transcript owns the system prompt and tool declarations: the leading system message is the prompt, later system messages patch it (see `SystemMessage` in @nyan/ai). `agent.state.systemPrompt` is read-only and replays the transcript. `agent.state.tools` is the executable loadout; before every request the loop diffs it against the tools the transcript declares and, if they differ, announces the change in a system message (merged into a pending system message when one exists). @nyan/ai's `getCurrentSystemMessage(messages)` returns the replayed head, including declared tools, for any message array, including agent transcripts with custom message roles.
+The transcript owns the system prompt and tool declarations: the leading system message is the prompt, later system messages patch it (see `SystemMessage` in @ny4n/ai). `agent.state.systemPrompt` is read-only and replays the transcript. `agent.state.tools` is the executable loadout; before every request the loop diffs it against the tools the transcript declares and, if they differ, announces the change in a system message (merged into a pending system message when one exists). @ny4n/ai's `getCurrentSystemMessage(messages)` returns the replayed head, including declared tools, for any message array, including agent transcripts with custom message roles.
 
 To change the prompt mid-conversation, append a system message with `content` (added instructions) or `sections` (named replacements):
 
@@ -426,7 +426,7 @@ Follow-up messages are checked only when there are no more tool calls and no ste
 Extend `AgentMessage` via declaration merging:
 
 ```typescript
-declare module "@nyan/agent-core" {
+declare module "@ny4n/agent-core" {
   interface CustomAgentMessages {
     notification: { role: "notification"; text: string; timestamp: number };
   }
@@ -505,14 +505,14 @@ Return `terminate: true` from `execute()`, a blocked `beforeToolCall`, or `after
 
 ### MCP and Codemode
 
-`@nyan/mcp` connects to MCP servers and `@nyan/codemode` runs model-written JavaScript that calls tools. [examples/mcp-codemode](examples/mcp-codemode) wraps both as `AgentTool`s: one tool per MCP tool, and a `codemode` tool whose scripts call the agent's tools through `runToolCall()`, so `beforeToolCall` and `afterToolCall` apply to those calls too.
+`@ny4n/mcp` connects to MCP servers and `@ny4n/codemode` runs model-written JavaScript that calls tools. [examples/mcp-codemode](examples/mcp-codemode) wraps both as `AgentTool`s: one tool per MCP tool, and a `codemode` tool whose scripts call the agent's tools through `runToolCall()`, so `beforeToolCall` and `afterToolCall` apply to those calls too.
 
 ## Proxy Usage
 
 For browser apps that proxy through a backend:
 
 ```typescript
-import { Agent, streamProxy } from "@nyan/agent-core";
+import { Agent, streamProxy } from "@ny4n/agent-core";
 
 const agent = new Agent({
   streamFn: (model, context, options) =>
@@ -529,7 +529,7 @@ const agent = new Agent({
 For direct control without the Agent class:
 
 ```typescript
-import { agentLoop, agentLoopContinue } from "@nyan/agent-core";
+import { agentLoop, agentLoopContinue } from "@ny4n/agent-core";
 
 const context: AgentContext = {
   messages: [{ role: "system", content: "You are helpful.", timestamp: Date.now() }],

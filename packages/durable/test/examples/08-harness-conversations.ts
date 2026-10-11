@@ -2,8 +2,8 @@
 // Run from packages/durable:
 //   node --conditions=source --experimental-strip-types test/examples/08-harness-conversations.ts
 
-import { createModels } from "@nyan/ai/models";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import { createModels } from "@ny4n/ai/models";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import { createRegistry, defineEntry, Harness, MemoryStorage } from "../../src/index.ts";
 
 const context = BACKGROUND_CONTEXT;

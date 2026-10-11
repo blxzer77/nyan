@@ -1,4 +1,4 @@
-import type { TUI } from "@nyan/tui";
+import type { TUI } from "@ny4n/tui";
 import { describe, expect, it, vi } from "vitest";
 import { createInteractiveTuiReference } from "../../../src/modes/interactive/interactive-mode.ts";
 

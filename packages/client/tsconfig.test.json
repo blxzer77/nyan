@@ -6,11 +6,11 @@
 		"moduleResolution": "NodeNext",
 		"types": ["node", "vitest"],
 		"paths": {
-			"@nyan/agent-core": ["../agent/src/index.ts"],
-			"@nyan/ai": ["../ai/src/index.ts"],
-			"@nyan/ai/*": ["../ai/src/*.ts", "../ai/src/providers/*.ts"],
-			"@nyan/protocol": ["../protocol/src/index.ts"],
-			"@nyan/telemetry": ["../telemetry/src/index.ts"]
+			"@ny4n/agent-core": ["../agent/src/index.ts"],
+			"@ny4n/ai": ["../ai/src/index.ts"],
+			"@ny4n/ai/*": ["../ai/src/*.ts", "../ai/src/providers/*.ts"],
+			"@ny4n/protocol": ["../protocol/src/index.ts"],
+			"@ny4n/telemetry": ["../telemetry/src/index.ts"]
 		}
 	},
 	"include": ["src/**/*.ts", "test/**/*.ts"]

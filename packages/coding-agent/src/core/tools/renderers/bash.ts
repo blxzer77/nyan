@@ -6,7 +6,7 @@
  * tool definition, so the tool's public shape is unchanged.
  */
 
-import { Container, Spacer, Text } from "@nyan/tui";
+import { Container, Spacer, Text } from "@ny4n/tui";
 import { keyHint } from "../../../ui/components/keybinding-hints.ts";
 import { VisualLinePreview } from "../../../ui/components/visual-truncate.ts";
 import { theme } from "../../../ui/theme/theme.ts";

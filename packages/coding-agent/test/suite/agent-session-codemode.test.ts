@@ -1,6 +1,6 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AgentTool } from "@nyan/agent-core";
+import type { AgentTool } from "@ny4n/agent-core";
 import {
 	type AssistantImages,
 	type ClassifierModel,
@@ -12,8 +12,8 @@ import {
 	type ImageModel,
 	type ImagesContext,
 	type TranscriptContext,
-} from "@nyan/ai";
-import type { ToolResultMessage, Usage } from "@nyan/ai/compat";
+} from "@ny4n/ai";
+import type { ToolResultMessage, Usage } from "@ny4n/ai/compat";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/types.ts";

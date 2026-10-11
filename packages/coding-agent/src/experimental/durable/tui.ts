@@ -1,4 +1,4 @@
-import type { AssistantMessage, ToolResultMessage, Usage, UserMessage } from "@nyan/ai";
+import type { AssistantMessage, ToolResultMessage, Usage, UserMessage } from "@ny4n/ai";
 import type {
 	ConversationId,
 	EntryRecord,
@@ -7,7 +7,7 @@ import type {
 	TaskGraph,
 	TaskGraphNode,
 	UsageState,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import {
 	Box,
 	type Component,
@@ -29,7 +29,7 @@ import {
 	TruncatedText,
 	TuiAltScreen,
 	VStack,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import { getAgentDir } from "../../config.ts";
 import { KeybindingsManager } from "../../core/keybindings.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";

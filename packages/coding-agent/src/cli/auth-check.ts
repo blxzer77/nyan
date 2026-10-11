@@ -1,4 +1,4 @@
-import type { CredentialStore } from "@nyan/ai";
+import type { CredentialStore } from "@ny4n/ai";
 import { getAuthCredential } from "../core/auth-credential.ts";
 import { resolveCliModel } from "../core/model-resolver.ts";
 import { ModelRuntime } from "../core/model-runtime.ts";

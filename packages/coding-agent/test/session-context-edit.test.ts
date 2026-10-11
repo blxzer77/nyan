@@ -1,4 +1,4 @@
-import type { AssistantMessage, ToolResultMessage } from "@nyan/ai";
+import type { AssistantMessage, ToolResultMessage } from "@ny4n/ai";
 import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_COMPACTION_SETTINGS,

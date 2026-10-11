@@ -6,16 +6,16 @@ import { createInMemoryModelRegistry, createModelRegistry, getModelRuntime } fro
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentMessage, AgentTool } from "@nyan/agent-core";
-import { Agent } from "@nyan/agent-core";
+import type { AgentMessage, AgentTool } from "@ny4n/agent-core";
+import { Agent } from "@ny4n/agent-core";
 import type {
 	FauxModelDefinition,
 	FauxProviderRegistration,
 	FauxResponseStep,
 	Model,
 	ToolResultMessage,
-} from "@nyan/ai/compat";
-import { registerFauxProvider, streamSimple } from "@nyan/ai/compat";
+} from "@ny4n/ai/compat";
+import { registerFauxProvider, streamSimple } from "@ny4n/ai/compat";
 import { AgentSession, type AgentSessionEvent } from "../../src/core/agent-session.ts";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
 import type { ExtensionRunner, ExtensionUIContext } from "../../src/core/extensions/index.ts";

@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ThinkingLevel } from "@nyan/agent-core";
+import type { ThinkingLevel } from "@ny4n/agent-core";
 import {
 	backgroundAnsi,
 	type Color,
@@ -21,7 +21,7 @@ import {
 	type TerminalColorMode,
 	type TerminalColors,
 	type TextAttributes,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import chalk from "chalk";
 import { getCustomThemesDir, getThemesDir } from "../../config.ts";
 import { closeWatcher, watchWithErrorHandler } from "../../utils/fs-watch.ts";
@@ -719,7 +719,7 @@ export function getTerminalTheme(): TerminalTheme {
 // ============================================================================
 
 // Use globalThis to share theme across module loaders (node + jiti in dev mode)
-const THEME_KEY = Symbol.for("@nyan/coding-agent:theme");
+const THEME_KEY = Symbol.for("@ny4n/coding-agent:theme");
 
 // Export theme as a getter that reads from globalThis
 // This ensures all module instances (node, jiti) see the same theme

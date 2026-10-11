@@ -1,5 +1,5 @@
-import type { ServiceSubscriptionSnapshot } from "@nyan/chord";
-import type { RpcTarget, SessionTarget } from "@nyan/protocol";
+import type { ServiceSubscriptionSnapshot } from "@ny4n/chord";
+import type { RpcTarget, SessionTarget } from "@ny4n/protocol";
 import type { ByteTransportFactory } from "./transport.ts";
 
 export type ConnectionState = "disconnected" | "connecting" | "connected";

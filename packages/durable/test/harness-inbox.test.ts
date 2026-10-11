@@ -10,8 +10,8 @@ import {
 	type ToolResultMessage,
 	Type,
 	type Usage,
-} from "@nyan/ai";
-import type { Op } from "@nyan/chord/delta";
+} from "@ny4n/ai";
+import type { Op } from "@ny4n/chord/delta";
 import {
 	type Conversation,
 	defineDoc,
@@ -29,7 +29,7 @@ import {
 	type ToolExecutionResult,
 	ToolTask,
 	UsageDoc,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { afterEach, describe, expect, it } from "vitest";
 import { recordUsage } from "../src/harness/usage.ts";
 import { openNodeSqliteStorage } from "../src/storage/sqlite/node.ts";

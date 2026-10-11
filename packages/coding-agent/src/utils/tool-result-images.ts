@@ -1,4 +1,4 @@
-import type { ImageContent, ModelImageResizeOptions, TextContent } from "@nyan/ai";
+import type { ImageContent, ModelImageResizeOptions, TextContent } from "@ny4n/ai";
 import { processImage } from "./image-process.ts";
 
 export type ToolResultContent = TextContent | ImageContent;

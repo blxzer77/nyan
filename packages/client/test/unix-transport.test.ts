@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { join } from "node:path";
-import { parseServiceCall } from "@nyan/chord";
-import { ClientMessageDecoder, encodeServerMessage, PROTOCOL_VERSION } from "@nyan/protocol";
+import { parseServiceCall } from "@ny4n/chord";
+import { ClientMessageDecoder, encodeServerMessage, PROTOCOL_VERSION } from "@ny4n/protocol";
 import { afterEach, describe, expect, test } from "vitest";
 import { Client } from "../src/index.ts";
 import { createUnixTransportFactory } from "../src/unix.ts";

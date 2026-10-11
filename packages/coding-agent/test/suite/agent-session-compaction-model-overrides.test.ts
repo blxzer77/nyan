@@ -1,4 +1,4 @@
-import { fauxAssistantMessage } from "@nyan/ai";
+import { fauxAssistantMessage } from "@ny4n/ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionBeforeCompactEvent } from "../../src/core/extensions/index.ts";
 import { createHarness, type Harness } from "./harness.ts";

@@ -13,7 +13,7 @@
  * Try it in a project containing .nyan, AGENTS.md/CLAUDE.md, or .agents/skills.
  */
 
-import type { ExtensionAPI, ProjectTrustEventResult } from "@nyan/coding-agent";
+import type { ExtensionAPI, ProjectTrustEventResult } from "@ny4n/coding-agent";
 
 export default function (nyan: ExtensionAPI) {
 	let loadCount = 0;

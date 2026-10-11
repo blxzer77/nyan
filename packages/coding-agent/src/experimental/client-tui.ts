@@ -7,9 +7,9 @@ import {
 	type FacetLoader,
 	type JsonValue,
 	type LoadedFacets,
-} from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import type { AgentState, ConversationView } from "@nyan/durable";
+} from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import type { AgentState, ConversationView } from "@ny4n/durable";
 import {
 	CombinedAutocompleteProvider,
 	type Component,
@@ -19,7 +19,7 @@ import {
 	setKeybindings,
 	Text,
 	type TUI,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import type { ClientCommand } from "../cli/experimental/commands/client.ts";
 import { getAgentDir } from "../config.ts";
 import { KeybindingsManager } from "../core/keybindings.ts";
@@ -259,7 +259,7 @@ export class ExperimentalClientTui implements Component {
 			return operation;
 		};
 		const presentationBridgeFacet = defineFacet({
-			id: "@nyan/presentation-bridge",
+			id: "@ny4n/presentation-bridge",
 			setup: (env) => {
 				env.provide(PresentationUI, {
 					select: (title, items, selectedValue) =>

@@ -1,7 +1,7 @@
-import * as durable from "@nyan/durable";
-import * as environment from "@nyan/durable/env";
-import * as jsonl from "@nyan/durable/storage/jsonl";
-import * as sqlite from "@nyan/durable/storage/sqlite";
+import * as durable from "@ny4n/durable";
+import * as environment from "@ny4n/durable/env";
+import * as jsonl from "@ny4n/durable/storage/jsonl";
+import * as sqlite from "@ny4n/durable/storage/sqlite";
 
 // Keep runtime-neutral public entry points live so the browser smoke build
 // catches accidental imports of Node-only adapters or built-ins.

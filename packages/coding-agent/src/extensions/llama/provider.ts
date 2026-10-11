@@ -9,10 +9,10 @@ import {
 	type Provider,
 	type ProviderStreamOptions,
 	type RefreshModelsContext,
-} from "@nyan/ai";
-import { llamaCppClassifyApi } from "@nyan/ai/api/llama-cpp-classify.lazy";
-import { typesafeSystemOneApi } from "@nyan/ai/api/typesafe-system-one.lazy";
-import { stream, streamSimple } from "@nyan/ai/compat";
+} from "@ny4n/ai";
+import { llamaCppClassifyApi } from "@ny4n/ai/api/llama-cpp-classify.lazy";
+import { typesafeSystemOneApi } from "@ny4n/ai/api/typesafe-system-one.lazy";
+import { stream, streamSimple } from "@ny4n/ai/compat";
 import {
 	LlamaClient,
 	type LlamaModelInfo,

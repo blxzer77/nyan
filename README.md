@@ -1,6 +1,6 @@
 # Nyan
 
-Nyan 是由 [Pi Agent v1.1.0](https://github.com/earendil-works/pi/releases/tag/v1.1.0) 派生的独立 Agent 产品，使用 Node.js/TypeScript。产品身份已完整改为 `nyan`（可执行文件、`NYAN_*` 环境变量、`~/.nyan` 目录、`@nyan/*` 包名、`nyan.*` 标识）；上游组织治理、Nix 包装、Pi 专用开发助手、发布自动化和 Pi 托管服务的默认地址已移除。依赖按功能分层并由检查强制执行，见 [`docs/architecture/current-state.md`](docs/architecture/current-state.md)。
+Nyan 是由 [Pi Agent v1.1.0](https://github.com/earendil-works/pi/releases/tag/v1.1.0) 派生的独立 Agent 产品，使用 Node.js/TypeScript。产品身份已完整改为 `nyan`（可执行文件、`NYAN_*` 环境变量、`~/.nyan` 目录、`@ny4n/*` 包名、`nyan.*` 标识）；上游组织治理、Nix 包装、Pi 专用开发助手、发布自动化和 Pi 托管服务的默认地址已移除。依赖按功能分层并由检查强制执行，见 [`docs/architecture/current-state.md`](docs/architecture/current-state.md)。
 
 ## 当前基线
 

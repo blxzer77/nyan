@@ -1,6 +1,6 @@
-import type { Message, ModelRuntime } from "@nyan/ai/contracts";
-import type { AttachedReplicatedState, Context, Draft, JsonValue } from "@nyan/chord";
-import type { Op } from "@nyan/chord/delta";
+import type { Message, ModelRuntime } from "@ny4n/ai/contracts";
+import type { AttachedReplicatedState, Context, Draft, JsonValue } from "@ny4n/chord";
+import type { Op } from "@ny4n/chord/delta";
 import type { ExecutionEnv } from "./env/index.ts";
 import type {
 	Agent,

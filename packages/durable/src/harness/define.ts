@@ -1,5 +1,5 @@
-import type { TSchema } from "@nyan/ai/contracts";
-import type { JsonValue } from "@nyan/chord";
+import type { TSchema } from "@ny4n/ai/contracts";
+import type { JsonValue } from "@ny4n/chord";
 import type { AnyTask, Extension, HookRegistration, HooksOf, PromptSection, ToolRegistration, Wrap } from "./types.ts";
 
 /** Identity function that types an extension. */

@@ -1,6 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
-import type { AgentToolResult } from "@nyan/agent-core";
-import type { Component } from "@nyan/tui";
+import type { AgentToolResult } from "@ny4n/agent-core";
+import type { Component } from "@ny4n/tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { ToolRenderContext } from "../src/core/extensions/types.ts";
 import { codemodeRenderers } from "../src/extensions/codemode/renderer.ts";

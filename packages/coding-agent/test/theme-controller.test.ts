@@ -1,4 +1,4 @@
-import type { TerminalColors, TUI } from "@nyan/tui";
+import type { TerminalColors, TUI } from "@ny4n/tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { InteractiveThemeController } from "../src/modes/interactive/theme/theme-controller.ts";

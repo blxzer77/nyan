@@ -1,4 +1,4 @@
-import type { Model } from "@nyan/ai";
+import type { Model } from "@ny4n/ai";
 import {
 	Container,
 	type Focusable,
@@ -9,7 +9,7 @@ import {
 	matchesKey,
 	Spacer,
 	Text,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
 import { keyDisplayText } from "../../../ui/components/keybinding-hints.ts";
 import { theme } from "../../../ui/theme/theme.ts";

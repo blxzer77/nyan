@@ -1,5 +1,5 @@
-import { copyJson, type JsonValue } from "@nyan/chord";
-import type { Op } from "@nyan/chord/delta";
+import { copyJson, type JsonValue } from "@ny4n/chord";
+import type { Op } from "@ny4n/chord/delta";
 import { idFromNumber } from "./ids.ts";
 import type {
 	CheckpointInfo,

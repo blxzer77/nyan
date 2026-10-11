@@ -1,7 +1,7 @@
-import type { AssistantMessage, Message, ModelThinkingLevel, SimpleStreamOptions } from "@nyan/ai/contracts";
-import { calculateContextTokens, estimateMessageTokens } from "@nyan/ai/utils/estimate";
-import { isRetryableAssistantError, retryDelayMs } from "@nyan/ai/utils/retry";
-import type { Context, Draft } from "@nyan/chord";
+import type { AssistantMessage, Message, ModelThinkingLevel, SimpleStreamOptions } from "@ny4n/ai/contracts";
+import { calculateContextTokens, estimateMessageTokens } from "@ny4n/ai/utils/estimate";
+import { isRetryableAssistantError, retryDelayMs } from "@ny4n/ai/utils/retry";
+import type { Context, Draft } from "@ny4n/chord";
 import { CompactionEntry } from "../entries.ts";
 import { defineTask } from "../tasks.ts";
 import type {

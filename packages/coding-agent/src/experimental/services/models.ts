@@ -1,5 +1,5 @@
-import type { ModelThinkingLevel } from "@nyan/ai";
-import { type Context, defineService, type ReplicatedState } from "@nyan/chord";
+import type { ModelThinkingLevel } from "@ny4n/ai";
+import { type Context, defineService, type ReplicatedState } from "@ny4n/chord";
 
 export interface ModelRef {
 	provider: string;

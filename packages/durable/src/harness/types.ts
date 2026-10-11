@@ -12,8 +12,8 @@ import type {
 	TSchema,
 	Usage,
 	UserMessage,
-} from "@nyan/ai/contracts";
-import type { AttachedReplicatedState, Context, JsonValue } from "@nyan/chord";
+} from "@ny4n/ai/contracts";
+import type { AttachedReplicatedState, Context, JsonValue } from "@ny4n/chord";
 import type { ExecutionEnv, ShellOutputSkip, ShellOutputWindow } from "../env/index.ts";
 import type {
 	ConversationId,

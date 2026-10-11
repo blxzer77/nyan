@@ -10,7 +10,7 @@ export default defineConfig({
 	resolve: {
 		conditions: ["source"],
 		alias: {
-			"@nyan/protocol": fileURLToPath(new URL("../protocol/src/index.ts", import.meta.url)),
+			"@ny4n/protocol": fileURLToPath(new URL("../protocol/src/index.ts", import.meta.url)),
 		},
 	},
 	ssr: { resolve: { conditions: ["source"] } },

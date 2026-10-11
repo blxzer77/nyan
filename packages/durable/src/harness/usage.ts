@@ -1,5 +1,5 @@
-import type { Usage } from "@nyan/ai/contracts";
-import { copyJson, type Draft, type JsonRepresentation } from "@nyan/chord";
+import type { Usage } from "@ny4n/ai/contracts";
+import { copyJson, type Draft, type JsonRepresentation } from "@ny4n/chord";
 import { defineDoc } from "../documents.ts";
 import type { ConversationId, Tx } from "../types.ts";
 

@@ -1,4 +1,4 @@
-import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "@nyan/ai";
+import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "@ny4n/ai";
 
 /** Async credential store overlay for non-persistent runtime API keys. */
 export class RuntimeCredentials implements CredentialStore {

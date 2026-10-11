@@ -1,8 +1,8 @@
 import { basename } from "node:path";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import { Client, ServerError } from "@nyan/client";
-import { createUnixTransportFactory, discoverUnixServers, type UnixServerRoute } from "@nyan/client/unix";
-import { isServerId } from "@nyan/protocol";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import { Client, ServerError } from "@ny4n/client";
+import { createUnixTransportFactory, discoverUnixServers, type UnixServerRoute } from "@ny4n/client/unix";
+import { isServerId } from "@ny4n/protocol";
 import type { ClientCommand } from "../cli/experimental/commands/client.ts";
 import { activateServer, ENV_SERVER_ID, resolveServerDirectory, resolveSessionDirectory } from "./server.ts";
 import { AgentController } from "./services/agent-controller.ts";

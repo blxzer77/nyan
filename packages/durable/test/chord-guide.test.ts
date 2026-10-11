@@ -12,9 +12,9 @@ import {
 	type FacetHost,
 	type RemoteServiceTransport,
 	type ReplicatedState,
-} from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import type { Op } from "@nyan/chord/delta";
+} from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import type { Op } from "@ny4n/chord/delta";
 import {
 	type ConversationId,
 	type DocumentObserver,
@@ -26,7 +26,7 @@ import {
 	type Session,
 	type TaskId,
 	type TaskRuntime,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { context } from "./session-support.ts";
 import { completed, deferred, eventually, openTasks } from "./task-support.ts";

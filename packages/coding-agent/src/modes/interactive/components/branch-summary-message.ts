@@ -1,4 +1,4 @@
-import { Box, Container, Markdown, type MarkdownTheme, MouseRegion, Spacer, Text } from "@nyan/tui";
+import { Box, Container, Markdown, type MarkdownTheme, MouseRegion, Spacer, Text } from "@ny4n/tui";
 import type { BranchSummaryMessage } from "../../../core/messages.ts";
 import { keyText } from "../../../ui/components/keybinding-hints.ts";
 import { getMarkdownTheme, theme } from "../../../ui/theme/theme.ts";

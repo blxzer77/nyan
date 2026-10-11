@@ -27,7 +27,7 @@ vi.mock("../../../src/core/extensions/virtual-modules.ts", () => {
 	return {
 		VIRTUAL_MODULES: {
 			typebox: {},
-			"@nyan/coding-agent": {},
+			"@ny4n/coding-agent": {},
 		},
 	};
 });
@@ -65,6 +65,6 @@ describe("Node SEA extension loading", () => {
 		expect(options.tryNative).toBe(false);
 		expect(options.alias).toBeUndefined();
 		expect(options.virtualModules?.typebox).toBeDefined();
-		expect(options.virtualModules?.["@nyan/coding-agent"]).toBeDefined();
+		expect(options.virtualModules?.["@ny4n/coding-agent"]).toBeDefined();
 	});
 });

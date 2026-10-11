@@ -7,10 +7,10 @@
  * The arguments are the command that starts a stdio MCP server.
  */
 
-import { Agent } from "@nyan/agent-core";
-import { createModels } from "@nyan/ai";
-import { anthropicProvider } from "@nyan/ai/providers/anthropic";
-import { McpClient, StdioTransport } from "@nyan/mcp";
+import { Agent } from "@ny4n/agent-core";
+import { createModels } from "@ny4n/ai";
+import { anthropicProvider } from "@ny4n/ai/providers/anthropic";
+import { McpClient, StdioTransport } from "@ny4n/mcp";
 import { createCodemodeTool, createMcpTools, createNestedToolRunner } from "./tools.ts";
 
 const [command, ...args] = process.argv.slice(2);

@@ -5,7 +5,7 @@
  * Demonstrates how extensions can use ctx.shutdown() to exit nyan cleanly.
  */
 
-import type { ExtensionAPI } from "@nyan/coding-agent";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 import { Type } from "typebox";
 
 export default function (nyan: ExtensionAPI) {

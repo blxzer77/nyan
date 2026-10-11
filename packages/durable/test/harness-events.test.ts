@@ -6,8 +6,8 @@ import {
 	fauxThinking,
 	fauxToolCall,
 	Type,
-} from "@nyan/ai";
-import type { Draft } from "@nyan/chord";
+} from "@ny4n/ai";
+import type { Draft } from "@ny4n/chord";
 import {
 	AgentDoc,
 	type AgentEvent,
@@ -22,7 +22,7 @@ import {
 	type SnapshotEvent,
 	UsageDoc,
 	watchEvents,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { type ChatSetup, chatSetup, openChat, textOf, waitFor } from "./chat-support.ts";
 import { addTool } from "./harness-support.ts";

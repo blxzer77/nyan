@@ -1,6 +1,6 @@
-import { bedrockProviderModule } from "@nyan/ai/bedrock-provider";
-import { registerBunOAuthFlows } from "@nyan/ai/bun-oauth";
-import { setBedrockProviderModule } from "@nyan/ai/compat";
+import { bedrockProviderModule } from "@ny4n/ai/bedrock-provider";
+import { registerBunOAuthFlows } from "@ny4n/ai/bun-oauth";
+import { setBedrockProviderModule } from "@ny4n/ai/compat";
 // Bun loads .wasm imports as files: embedded in compiled executables, evaluating to a readable path.
 import quickjsWasmPath from "quickjs-wasi/quickjs.wasm";
 import { APP_NAME, setEmbeddedQuickJSWasmPath } from "../config.ts";

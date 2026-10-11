@@ -3,4 +3,4 @@
  * build this file as a separate entrypoint because nyan-codemode's own worker file is not on disk
  * there; `getCodemodeWorkerSpecifier()` in config.ts resolves it.
  */
-import "@nyan/codemode/worker";
+import "@ny4n/codemode/worker";

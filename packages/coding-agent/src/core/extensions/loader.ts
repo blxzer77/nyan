@@ -7,8 +7,8 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Provider } from "@nyan/ai";
-import type { KeyId } from "@nyan/tui";
+import type { Provider } from "@ny4n/ai";
+import type { KeyId } from "@ny4n/tui";
 import type { createJiti } from "jiti";
 import { CONFIG_DIR_NAME, getAgentDir, isBunBinary, isBundledNode } from "../../config.ts";
 import { resolvePath } from "../../utils/paths.ts";
@@ -86,23 +86,23 @@ function getAliases(): Record<string, string> {
 	};
 
 	const nyanCodingAgentEntry = packageIndex;
-	const nyanAgentCoreEntry = resolveWorkspaceOrImport("agent/dist/index.js", "@nyan/agent-core");
-	const nyanTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@nyan/tui");
+	const nyanAgentCoreEntry = resolveWorkspaceOrImport("agent/dist/index.js", "@ny4n/agent-core");
+	const nyanTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@ny4n/tui");
 	// Extensions resolve the nyan-ai root to the compat entrypoint (a strict
 	// superset of the core entrypoint): existing extensions using the old
 	// global API keep working at runtime until compat is removed.
-	const nyanAiCompatEntry = resolveWorkspaceOrImport("ai/dist/compat.js", "@nyan/ai/compat");
-	const nyanAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@nyan/ai/oauth");
-	const nyanAiProvidersEntry = resolveWorkspaceOrImport("ai/dist/providers/all.js", "@nyan/ai/providers/all");
+	const nyanAiCompatEntry = resolveWorkspaceOrImport("ai/dist/compat.js", "@ny4n/ai/compat");
+	const nyanAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@ny4n/ai/oauth");
+	const nyanAiProvidersEntry = resolveWorkspaceOrImport("ai/dist/providers/all.js", "@ny4n/ai/providers/all");
 
 	_aliases = {
-		"@nyan/coding-agent": nyanCodingAgentEntry,
-		"@nyan/agent-core": nyanAgentCoreEntry,
-		"@nyan/tui": nyanTuiEntry,
-		"@nyan/ai/providers/all": nyanAiProvidersEntry,
-		"@nyan/ai/compat": nyanAiCompatEntry,
-		"@nyan/ai/oauth": nyanAiOauthEntry,
-		"@nyan/ai": nyanAiCompatEntry,
+		"@ny4n/coding-agent": nyanCodingAgentEntry,
+		"@ny4n/agent-core": nyanAgentCoreEntry,
+		"@ny4n/tui": nyanTuiEntry,
+		"@ny4n/ai/providers/all": nyanAiProvidersEntry,
+		"@ny4n/ai/compat": nyanAiCompatEntry,
+		"@ny4n/ai/oauth": nyanAiOauthEntry,
+		"@ny4n/ai": nyanAiCompatEntry,
 		typebox: typeboxEntry,
 		"typebox/compile": typeboxCompileEntry,
 		"typebox/value": typeboxValueEntry,

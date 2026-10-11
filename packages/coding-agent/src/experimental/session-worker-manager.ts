@@ -9,9 +9,9 @@ import {
 	parseServiceProviderUpdate,
 	type ServiceCall,
 	type ServiceProviderUpdate,
-} from "@nyan/chord";
-import { BACKGROUND_CONTEXT, TODO_CONTEXT } from "@nyan/chord/context";
-import { type RoutedSessionAttachment, type RoutedSessionHandle, ServerError } from "@nyan/server";
+} from "@ny4n/chord";
+import { BACKGROUND_CONTEXT, TODO_CONTEXT } from "@ny4n/chord/context";
+import { type RoutedSessionAttachment, type RoutedSessionHandle, ServerError } from "@ny4n/server";
 import { Check } from "typebox/value";
 import type { CoordinatorConnection, CoordinatorConnectionEvent } from "./coordinator.ts";
 import { spawnInternalProcess } from "./process.ts";

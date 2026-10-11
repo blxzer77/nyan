@@ -1,8 +1,8 @@
-import { Client } from "@nyan/client";
-import { createAssistantMessageEventStream, Type } from "@nyan/ai";
-import { complete, getModel, getProviders, streamSimple } from "@nyan/ai/compat";
-import { Agent, streamProxy } from "@nyan/agent-core";
-import { decodeCbor, encodeCbor, PROTOCOL_VERSION } from "@nyan/protocol";
+import { Client } from "@ny4n/client";
+import { createAssistantMessageEventStream, Type } from "@ny4n/ai";
+import { complete, getModel, getProviders, streamSimple } from "@ny4n/ai/compat";
+import { Agent, streamProxy } from "@ny4n/agent-core";
+import { decodeCbor, encodeCbor, PROTOCOL_VERSION } from "@ny4n/protocol";
 
 // Keep this entry browser-safe. It is bundled by scripts/check-browser-smoke.mjs
 // to catch accidental Node-only runtime imports in browser-facing package exports.

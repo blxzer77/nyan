@@ -1,5 +1,5 @@
-import type { AssistantMessage, Message, ToolCall, ToolResultMessage } from "@nyan/ai/contracts";
-import type { Context } from "@nyan/chord";
+import type { AssistantMessage, Message, ToolCall, ToolResultMessage } from "@ny4n/ai/contracts";
+import type { Context } from "@ny4n/chord";
 import { idFromNumber } from "../ids.ts";
 import type { SessionImpl } from "../session/session.ts";
 import type { ContextEdit, ConversationId, Cursor, EntryId, EntryQuery, EntryRecord, Storage } from "../types.ts";

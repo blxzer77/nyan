@@ -6,7 +6,7 @@
  * definition, so the tool's public shape is unchanged.
  */
 
-import { Box, Container, Spacer, Text } from "@nyan/tui";
+import { Box, Container, Spacer, Text } from "@ny4n/tui";
 import { renderDiff } from "../../../ui/components/diff.ts";
 import type { Theme } from "../../../ui/theme/theme.ts";
 import type { ToolDefinition } from "../../extensions/types.ts";

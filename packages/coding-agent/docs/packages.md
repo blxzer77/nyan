@@ -79,10 +79,10 @@ Put runtime packages imported by extensions in `dependencies`. Nyan installs pac
 
 Nyan supplies these packages to extensions and skills:
 
-- `@nyan/ai`
-- `@nyan/agent-core`
-- `@nyan/coding-agent`
-- `@nyan/tui`
+- `@ny4n/ai`
+- `@ny4n/agent-core`
+- `@ny4n/coding-agent`
+- `@ny4n/tui`
 - `typebox`
 
 Declare the host-provided packages listed above in `peerDependencies` with a `"*"` range and do not bundle them. Nyan suppresses automatic peer installation for managed npm packages and git packages installed with npm, pnpm, or Bun. Local packages are not installed or modified, so their dependency tree remains the package author's responsibility.

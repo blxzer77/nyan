@@ -27,8 +27,8 @@ import {
 	type ResourceTemplate,
 	StdioTransport,
 	StreamableHttpTransport,
-} from "@nyan/mcp";
-import { McpOAuthAuthorizationRequiredError, type OAuthChallenge } from "@nyan/mcp/oauth";
+} from "@ny4n/mcp";
+import { McpOAuthAuthorizationRequiredError, type OAuthChallenge } from "@ny4n/mcp/oauth";
 import { VERSION } from "../../config.ts";
 import { resolveConfigValueOrThrow, resolveHeadersOrThrow } from "../../core/resolve-config-value.ts";
 import type { McpServerEntry } from "./config.ts";

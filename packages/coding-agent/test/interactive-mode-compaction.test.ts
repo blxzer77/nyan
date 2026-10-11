@@ -1,5 +1,5 @@
-import type { Usage } from "@nyan/ai";
-import { Container } from "@nyan/tui";
+import type { Usage } from "@ny4n/ai";
+import { Container } from "@ny4n/tui";
 import { describe, expect, test, vi } from "vitest";
 import type { SessionEntry } from "../src/core/session-manager.ts";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";

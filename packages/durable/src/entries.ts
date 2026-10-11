@@ -1,4 +1,4 @@
-import type { JsonValue } from "@nyan/chord";
+import type { JsonValue } from "@ny4n/chord";
 import type { CompactionReason, ToolDiagnostic } from "./harness/types.ts";
 import type { Entry, EntryRecord, TypedEntry } from "./types.ts";
 

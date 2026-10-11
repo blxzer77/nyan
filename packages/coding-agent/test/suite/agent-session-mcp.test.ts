@@ -1,8 +1,8 @@
 import { readFileSync, rmSync } from "node:fs";
-import { fauxAssistantMessage, fauxToolCall } from "@nyan/ai";
-import type { SystemMessage, ToolResultMessage } from "@nyan/ai/compat";
-import { type JsonRpcRequest, LATEST_PROTOCOL_VERSION } from "@nyan/mcp";
-import { createInMemoryTransportPair } from "@nyan/mcp/testing";
+import { fauxAssistantMessage, fauxToolCall } from "@ny4n/ai";
+import type { SystemMessage, ToolResultMessage } from "@ny4n/ai/compat";
+import { type JsonRpcRequest, LATEST_PROTOCOL_VERSION } from "@ny4n/mcp";
+import { createInMemoryTransportPair } from "@ny4n/mcp/testing";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionFactory } from "../../src/core/extensions/types.ts";

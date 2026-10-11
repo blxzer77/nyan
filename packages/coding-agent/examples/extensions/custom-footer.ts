@@ -8,9 +8,9 @@
  * Token stats come from ctx.sessionManager/ctx.model (already accessible).
  */
 
-import type { AssistantMessage } from "@nyan/ai";
-import type { ExtensionAPI } from "@nyan/coding-agent";
-import { truncateToWidth, visibleWidth } from "@nyan/tui";
+import type { AssistantMessage } from "@ny4n/ai";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
+import { truncateToWidth, visibleWidth } from "@ny4n/tui";
 
 export default function (nyan: ExtensionAPI) {
 	let enabled = false;

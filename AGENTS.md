@@ -12,7 +12,7 @@ Nyan 是由 Pi Agent v1.1.0 派生的独立开发产品。Pi 是来源基线，�
 - `packages/agent` 负责 Agent Core 的循环、工具调用和状态转换。
 - `packages/ai` 负责模型、Provider、认证和流式响应。
 - `packages/tui` 负责终端交互；`packages/mcp`、`packages/codemode`、`packages/protocol`、`packages/client`、`packages/server` 和 `packages/durable` 提供可复用运行时能力。
-- 产品身份是 `nyan`：可执行文件 `nyan`、`NYAN_*` 环境变量、用户目录 `~/.nyan` 与项目目录 `.nyan`、`nyan.*` 持久化与协议标识、`@nyan/*` 包名。Nyan 不读取 Pi 的 `.pi` 目录或 `PI_*` 变量，不提供 `pi` 别名，也没有 Pi 扩展生态的兼容承诺。
+- 产品身份是 `nyan`：可执行文件 `nyan`、`NYAN_*` 环境变量、用户目录 `~/.nyan` 与项目目录 `.nyan`、`nyan.*` 持久化与协议标识、`@ny4n/*` 包名。Nyan 不读取 Pi 的 `.pi` 目录或 `PI_*` 变量，不提供 `pi` 别名，也没有 Pi 扩展生态的兼容承诺。
 - Nyan 不假设任何托管服务：安装器、分享查看器、模型目录和 MCP 客户端元数据都没有内置默认地址，必须由运营者通过 `NYAN_*` 配置；未配置时对应功能关闭或明确报错，不会连接 Pi 或其他未拥有的域名。版本检查默认询问 npm registry 上本包的 `latest`，可用 `NYAN_LATEST_VERSION_URL` 或 `NYAN_NPM_REGISTRY` 改写。
 - 扩展、实验目录和示例是候选能力；在真实入口、持久化行为和恢复路径验证前，不得描述为 Nyan 的稳定产品能力。
 - 一次模型请求可见的输入必须能够从 Session 或其他明确的持久化事实重建。未知副作用必须显式暴露，不能当成成功。
@@ -23,7 +23,7 @@ Nyan 是由 Pi Agent v1.1.0 派生的独立开发产品。Pi 是来源基线，�
 
 - 包只能依赖其层 `mayDependOn` 中列出的层；同层依赖必须逐条列在 `internal`；每条跨包边的目标不得比来源更不稳定（不稳定度 I = Ce / (Ca + Ce)，由源码导入实测）。
 - 跨包导入必须落在目标包 `exports` 声明的子路径上，且源码导入的工作区包必须在 manifest 中声明。
-- `agent` 只能经 `@nyan/ai/contracts` 使用模型层；`durable` 只能经 `contracts` 与 `utils` 子路径。
+- `agent` 只能经 `@ny4n/ai/contracts` 使用模型层；`durable` 只能经 `contracts` 与 `utils` 子路径。
 - `ai`、`durable`、`coding-agent` 有包内模块层；`coding-agent` 的无头 `core` 不得依赖 `modes`、`cli` 或终端展示。
 - 静态运行时导入环被禁止；`layers.json` 的 `cycles.known` 目前为空。例外必须在 `layers.json` 写明原因。
 

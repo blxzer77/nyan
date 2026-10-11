@@ -10,7 +10,7 @@ import {
 	type TranscriptContext,
 	Type,
 	type UserMessage,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import {
 	type AgentEvent,
 	type CompactionPolicy,
@@ -29,7 +29,7 @@ import {
 	type TaskId,
 	UsageDoc,
 	watchEvents,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { afterEach, describe, expect, it } from "vitest";
 import { selectCut, serializeConversation } from "../src/harness/compaction.ts";
 import { orderToolResults } from "../src/harness/context.ts";

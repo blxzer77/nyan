@@ -56,7 +56,7 @@ function createNpmPrefixInstall(
 ): { prefix: string; packageDir: string } {
 	const prefix = mkdtempSync(join(tmpdir(), template));
 	const root = layout === "windows" ? join(prefix, "node_modules") : join(prefix, "lib", "node_modules");
-	const scopeDir = join(root, "@nyan");
+	const scopeDir = join(root, "@ny4n");
 	const packageDir = join(scopeDir, "coding-agent");
 	mkdirSync(packageDir, { recursive: true });
 	tempDir = prefix;
@@ -113,7 +113,7 @@ function createBunGlobalInstall(): { packageDir: string } {
 	const prefix = join(temp, ".bun");
 	const bunBin = join(prefix, "bin");
 	const root = join(prefix, "install", "global", "node_modules");
-	const scopeDir = join(root, "@nyan");
+	const scopeDir = join(root, "@ny4n");
 	const packageDir = join(scopeDir, "coding-agent");
 	mkdirSync(packageDir, { recursive: true });
 	mkdirSync(bunBin, { recursive: true });
@@ -166,12 +166,12 @@ describe("findNodePackageDir", () => {
 describe("detectInstallMethod", () => {
 	test("detects pnpm from Windows .pnpm install paths", () => {
 		setExecPath(
-			"C:\\Users\\Admin\\Documents\\pnpm-repository\\global\\5\\.pnpm\\@nyan+coding-agent@0.67.68\\node_modules\\@nyan\\coding-agent\\dist\\cli.js",
+			"C:\\Users\\Admin\\Documents\\pnpm-repository\\global\\5\\.pnpm\\@ny4n+coding-agent@0.67.68\\node_modules\\@ny4n\\coding-agent\\dist\\cli.js",
 		);
 
 		expect(detectInstallMethod()).toBe("pnpm");
-		expect(getUpdateInstruction("@nyan/coding-agent")).toBe(
-			"Run: pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @nyan/coding-agent",
+		expect(getUpdateInstruction("@ny4n/coding-agent")).toBe(
+			"Run: pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @ny4n/coding-agent",
 		);
 	});
 
@@ -179,31 +179,31 @@ describe("detectInstallMethod", () => {
 		setExecPath("/usr/local/bin/node");
 
 		expect(detectInstallMethod()).toBe("unknown");
-		expect(getSelfUpdateCommand("@nyan/coding-agent")).toBeUndefined();
-		expect(getUpdateInstruction("@nyan/coding-agent")).toBe(
-			"Update @nyan/coding-agent using the package manager, wrapper, or source checkout that provides this installation.",
+		expect(getSelfUpdateCommand("@ny4n/coding-agent")).toBeUndefined();
+		expect(getUpdateInstruction("@ny4n/coding-agent")).toBe(
+			"Update @ny4n/coding-agent using the package manager, wrapper, or source checkout that provides this installation.",
 		);
 	});
 
 	test("self-updates npm installs from custom prefixes", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@nyan/coding-agent");
+		const command = getSelfUpdateCommand("@ny4n/coding-agent");
 
 		expect(detectInstallMethod()).toBe("npm");
 		expect(command).toEqual({
 			command: "npm",
-			args: ["--prefix", prefix, "install", "-g", "--ignore-scripts", "--min-release-age=0", "@nyan/coding-agent"],
-			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @nyan/coding-agent`,
+			args: ["--prefix", prefix, "install", "-g", "--ignore-scripts", "--min-release-age=0", "@ny4n/coding-agent"],
+			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @ny4n/coding-agent`,
 		});
 	});
 
 	test("self-updates exact npm versions without uninstalling the current package", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@nyan/coding-agent", undefined, {
-			packageName: "@nyan/coding-agent",
-			installSpec: "@nyan/coding-agent@1.2.3",
+		const command = getSelfUpdateCommand("@ny4n/coding-agent", undefined, {
+			packageName: "@ny4n/coding-agent",
+			installSpec: "@ny4n/coding-agent@1.2.3",
 		});
 
 		expect(command).toEqual({
@@ -215,9 +215,9 @@ describe("detectInstallMethod", () => {
 				"-g",
 				"--ignore-scripts",
 				"--min-release-age=0",
-				"@nyan/coding-agent@1.2.3",
+				"@ny4n/coding-agent@1.2.3",
 			],
-			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @nyan/coding-agent@1.2.3`,
+			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @ny4n/coding-agent@1.2.3`,
 		});
 	});
 
@@ -257,19 +257,19 @@ describe("detectInstallMethod", () => {
 		// `npm --prefix <p> root -g` is what a configured command is checked against, and it differs by platform.
 		const { prefix } = createNpmPrefixInstall("nyan-prefix-", process.platform === "win32" ? "windows" : "posix");
 
-		const command = getSelfUpdateCommand("@nyan/coding-agent", ["npm", "--prefix", prefix]);
+		const command = getSelfUpdateCommand("@ny4n/coding-agent", ["npm", "--prefix", prefix]);
 
 		expect(command).toEqual({
 			command: "npm",
-			args: ["--prefix", prefix, "install", "-g", "--ignore-scripts", "--min-release-age=0", "@nyan/coding-agent"],
-			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @nyan/coding-agent`,
+			args: ["--prefix", prefix, "install", "-g", "--ignore-scripts", "--min-release-age=0", "@ny4n/coding-agent"],
+			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @ny4n/coding-agent`,
 		});
 	});
 
 	test("self-update treats empty npmCommand as unset", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@nyan/coding-agent", []);
+		const command = getSelfUpdateCommand("@ny4n/coding-agent", []);
 
 		expect(command?.args).toEqual([
 			"--prefix",
@@ -278,41 +278,41 @@ describe("detectInstallMethod", () => {
 			"-g",
 			"--ignore-scripts",
 			"--min-release-age=0",
-			"@nyan/coding-agent",
+			"@ny4n/coding-agent",
 		]);
 	});
 
 	test("quotes npm self-update display paths", () => {
 		const { prefix } = createNpmPrefixInstall("nyan prefix ");
 
-		const command = getSelfUpdateCommand("@nyan/coding-agent");
+		const command = getSelfUpdateCommand("@ny4n/coding-agent");
 
 		expect(command?.display).toBe(
-			`npm --prefix "${prefix}" install -g --ignore-scripts --min-release-age=0 @nyan/coding-agent`,
+			`npm --prefix "${prefix}" install -g --ignore-scripts --min-release-age=0 @ny4n/coding-agent`,
 		);
 	});
 
 	test("does not infer Windows npm custom prefixes from package paths", () => {
-		const packageDir = "C:\\Users\\Admin\\npm prefix\\node_modules\\@nyan\\coding-agent";
+		const packageDir = "C:\\Users\\Admin\\npm prefix\\node_modules\\@ny4n\\coding-agent";
 		process.env.NYAN_PACKAGE_DIR = packageDir;
 		setExecPath(`${packageDir}\\dist\\cli.js`);
 
 		expect(detectInstallMethod()).toBe("npm");
-		expect(getUpdateInstruction("@nyan/coding-agent")).toBe(
-			"Run: npm install -g --ignore-scripts --min-release-age=0 @nyan/coding-agent",
+		expect(getUpdateInstruction("@ny4n/coding-agent")).toBe(
+			"Run: npm install -g --ignore-scripts --min-release-age=0 @ny4n/coding-agent",
 		);
 	});
 
 	test("self-updates bun global installs from bun pm bin", () => {
 		createBunGlobalInstall();
 
-		const command = getSelfUpdateCommand("@nyan/coding-agent");
+		const command = getSelfUpdateCommand("@ny4n/coding-agent");
 
 		expect(detectInstallMethod()).toBe("bun");
 		expect(command).toEqual({
 			command: "bun",
-			args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@nyan/coding-agent"],
-			display: "bun install -g --ignore-scripts --minimum-release-age=0 @nyan/coding-agent",
+			args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@ny4n/coding-agent"],
+			display: "bun install -g --ignore-scripts --minimum-release-age=0 @ny4n/coding-agent",
 		});
 	});
 
@@ -346,8 +346,8 @@ describe("detectInstallMethod", () => {
 		const temp = mkdtempSync(join(tmpdir(), "nyan-pnpm11-"));
 		const binDir = join(temp, "bin");
 		const root = join(temp, "Library", "pnpm", "global", "v11");
-		const packageName = "@nyan/coding-agent";
-		const globalPackageDir = join(root, "11e9a", "node_modules", "@nyan", "coding-agent");
+		const packageName = "@ny4n/coding-agent";
+		const globalPackageDir = join(root, "11e9a", "node_modules", "@ny4n", "coding-agent");
 		const storePackageDir = join(
 			temp,
 			"Library",
@@ -355,12 +355,12 @@ describe("detectInstallMethod", () => {
 			"store",
 			"v11",
 			"links",
-			"@nyan",
+			"@ny4n",
 			"coding-agent",
 			"0.75.0",
 			"hash",
 			"node_modules",
-			"@nyan",
+			"@ny4n",
 			"coding-agent",
 		);
 		mkdirSync(globalPackageDir, { recursive: true });
@@ -441,8 +441,8 @@ describe("detectInstallMethod", () => {
 		const { packageDir } = createNpmPrefixInstall();
 		chmodSync(packageDir, 0o500);
 
-		expect(getSelfUpdateCommand("@nyan/coding-agent")).toBeUndefined();
-		expect(getSelfUpdateUnavailableInstruction("@nyan/coding-agent")).toContain("the install path is not writable");
+		expect(getSelfUpdateCommand("@ny4n/coding-agent")).toBeUndefined();
+		expect(getSelfUpdateUnavailableInstruction("@ny4n/coding-agent")).toContain("the install path is not writable");
 	});
 });
 

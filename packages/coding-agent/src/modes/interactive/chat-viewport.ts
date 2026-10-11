@@ -1,4 +1,4 @@
-import { type Component, ScrollView, type ScrollViewScrollbar, VStack } from "@nyan/tui";
+import { type Component, ScrollView, type ScrollViewScrollbar, VStack } from "@ny4n/tui";
 
 export interface ChatViewportOptions {
 	readonly document: Component;

@@ -1,6 +1,6 @@
-import type { ModelRuntime } from "@nyan/ai/contracts";
-import { type Context, copyJson, type JsonValue } from "@nyan/chord";
-import { awaitWithContext, withAbortSignal } from "@nyan/chord/context";
+import type { ModelRuntime } from "@ny4n/ai/contracts";
+import { type Context, copyJson, type JsonValue } from "@ny4n/chord";
+import { awaitWithContext, withAbortSignal } from "@ny4n/chord/context";
 import type { ExecutionEnv } from "../env/index.ts";
 import type { SessionImpl } from "../session/session.ts";
 import type { Transaction } from "../session/transaction.ts";

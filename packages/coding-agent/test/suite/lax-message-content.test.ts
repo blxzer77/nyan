@@ -6,8 +6,8 @@
  * reaches rendering, compaction, or provider request conversion.
  */
 
-import type { AgentMessage, AgentToolResult } from "@nyan/agent-core";
-import { fauxAssistantMessage, fauxToolCall } from "@nyan/ai";
+import type { AgentMessage, AgentToolResult } from "@ny4n/agent-core";
+import { fauxAssistantMessage, fauxToolCall } from "@ny4n/ai";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { type SessionEntry, sessionEntryToContextMessages } from "../../src/core/session-manager.ts";

@@ -1,4 +1,4 @@
-import { Box, Container, Markdown, type MarkdownTheme, MouseRegion, Text } from "@nyan/tui";
+import { Box, Container, Markdown, type MarkdownTheme, MouseRegion, Text } from "@ny4n/tui";
 import type { ParsedSkillBlock } from "../../../core/agent-session.ts";
 import { keyText } from "../../../ui/components/keybinding-hints.ts";
 import { getMarkdownTheme, theme } from "../../../ui/theme/theme.ts";

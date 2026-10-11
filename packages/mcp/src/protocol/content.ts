@@ -71,7 +71,7 @@ export interface CallToolResult {
 
 /**
  * Tool result content in the shape LLM APIs accept: text and base64 images. Matches the
- * `TextContent` and `ImageContent` types of `@nyan/ai`.
+ * `TextContent` and `ImageContent` types of `@ny4n/ai`.
  */
 export type LlmContent = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 

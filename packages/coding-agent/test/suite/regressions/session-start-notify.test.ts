@@ -1,5 +1,5 @@
-import { fauxAssistantMessage } from "@nyan/ai";
-import { Container, Text } from "@nyan/tui";
+import { fauxAssistantMessage } from "@ny4n/ai";
+import { Container, Text } from "@ny4n/tui";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentSessionEvent } from "../../../src/core/agent-session.ts";
 import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";

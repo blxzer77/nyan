@@ -8,7 +8,7 @@ import {
 	InMemoryModelsStore,
 	type Model,
 	type Provider,
-} from "@nyan/ai";
+} from "@ny4n/ai";
 import { describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRegistry } from "../src/core/model-registry.ts";

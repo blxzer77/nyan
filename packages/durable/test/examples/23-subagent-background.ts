@@ -8,11 +8,11 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type AssistantMessage, type FauxResponseStep, Type } from "@nyan/ai";
-import { createModels } from "@nyan/ai/models";
-import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@nyan/ai/providers/faux";
-import { openaiProvider } from "@nyan/ai/providers/openai";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import { type AssistantMessage, type FauxResponseStep, Type } from "@ny4n/ai";
+import { createModels } from "@ny4n/ai/models";
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@ny4n/ai/providers/faux";
+import { openaiProvider } from "@ny4n/ai/providers/openai";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import {
 	type AgentEvent,
 	AssistantEntry,

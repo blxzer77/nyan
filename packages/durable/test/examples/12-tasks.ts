@@ -2,8 +2,8 @@
 // Run from packages/durable:
 //   node --conditions=source --experimental-strip-types test/examples/12-tasks.ts
 
-import { createModels } from "@nyan/ai/models";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import { createModels } from "@ny4n/ai/models";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import { createRegistry, defineExtension, defineTask, Harness, MemoryStorage } from "../../src/index.ts";
 
 const context = BACKGROUND_CONTEXT;

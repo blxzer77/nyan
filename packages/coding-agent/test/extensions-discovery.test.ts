@@ -55,7 +55,7 @@ describe("extensions discovery", () => {
 		fs.writeFileSync(
 			path.join(extensionsDir, "coding-agent-import.ts"),
 			`
-				import { getAgentDir } from "@nyan/coding-agent";
+				import { getAgentDir } from "@ny4n/coding-agent";
 				void getAgentDir;
 				export default function(nyan) {
 					nyan.registerCommand("test", { handler: async () => {} });
@@ -70,25 +70,25 @@ describe("extensions discovery", () => {
 	});
 
 	it("does not infer package ownership from ancestor manifests", async () => {
-		const dependencyDir = path.join(tempDir, "node_modules", "@nyan", "coding-agent");
+		const dependencyDir = path.join(tempDir, "node_modules", "@ny4n", "coding-agent");
 		fs.mkdirSync(dependencyDir, { recursive: true });
 		fs.writeFileSync(
 			path.join(tempDir, "package.json"),
 			JSON.stringify({
 				name: "application",
 				type: "module",
-				dependencies: { "@nyan/coding-agent": "1.0.0" },
+				dependencies: { "@ny4n/coding-agent": "1.0.0" },
 			}),
 		);
 		fs.writeFileSync(
 			path.join(dependencyDir, "package.json"),
-			JSON.stringify({ name: "@nyan/coding-agent", type: "module", exports: "./index.js" }),
+			JSON.stringify({ name: "@ny4n/coding-agent", type: "module", exports: "./index.js" }),
 		);
 		fs.writeFileSync(path.join(dependencyDir, "index.js"), "export const physicalDependency = true;");
 		fs.writeFileSync(
 			path.join(extensionsDir, "compiled-esm-extension.js"),
 			`
-				import { physicalDependency } from "@nyan/coding-agent";
+				import { physicalDependency } from "@ny4n/coding-agent";
 				export default function(nyan) {
 					if (physicalDependency) nyan.registerCommand("physical-dependency", { handler: async () => {} });
 				}
@@ -107,7 +107,7 @@ describe("extensions discovery", () => {
 		fs.writeFileSync(
 			path.join(extensionsDir, "oauth-import.ts"),
 			`
-				import * as oauth from "@nyan/ai/oauth";
+				import * as oauth from "@ny4n/ai/oauth";
 				void oauth;
 				export default function(nyan) {
 					nyan.registerCommand("test", { handler: async () => {} });

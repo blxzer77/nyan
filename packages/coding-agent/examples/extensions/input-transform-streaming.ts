@@ -11,7 +11,7 @@
  * Start nyan with this extension:
  *   nyan -e ./examples/extensions/input-transform-streaming.ts
  */
-import type { ExtensionAPI } from "@nyan/coding-agent";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
 
 const TRIGGER = /\b(changes?|diff|modified)\b/i;
 

@@ -1,7 +1,7 @@
-import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel } from "@nyan/ai";
-import { type Context, defineFacet, type Facet, type MutableReplicatedState } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import { AgentDoc, type AgentState, type Conversation, type DocumentState, type Harness } from "@nyan/durable";
+import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel } from "@ny4n/ai";
+import { type Context, defineFacet, type Facet, type MutableReplicatedState } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import { AgentDoc, type AgentState, type Conversation, type DocumentState, type Harness } from "@ny4n/durable";
 import type { ModelRuntime } from "../../core/model-runtime.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { Models, type Models as ModelsService, type ModelsState } from "./models.ts";
@@ -140,7 +140,7 @@ export async function createModelsServiceFacet(options: {
 	const agent = await options.harness.documentState(AgentDoc, options.conversation.id, options.context);
 	if (agent === undefined) throw new Error(`Conversation ${options.conversation.id} has no agent document`);
 	return defineFacet({
-		id: "@nyan/models",
+		id: "@ny4n/models",
 		setup(env) {
 			env.own(() => agent.dispose());
 			const runtime = createModelsService(

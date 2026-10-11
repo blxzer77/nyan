@@ -1,6 +1,6 @@
 /**
  * Adapters that give a nyan-agent-core `Agent` MCP tools and a codemode tool, using
- * `@nyan/mcp` and `@nyan/codemode`. See main.ts for how they fit together.
+ * `@ny4n/mcp` and `@ny4n/codemode`. See main.ts for how they fit together.
  */
 
 import {
@@ -9,10 +9,10 @@ import {
 	type AgentToolCallOutcome,
 	type AgentToolResult,
 	runToolCall,
-} from "@nyan/agent-core";
-import type { ImageContent, JsonObject, JsonValue, TextContent } from "@nyan/ai";
-import { type CodemodeJsonSchema, CodemodeSandbox, type CodemodeTool, renderDeclarations } from "@nyan/codemode";
-import { type McpClient, toLlmContent } from "@nyan/mcp";
+} from "@ny4n/agent-core";
+import type { ImageContent, JsonObject, JsonValue, TextContent } from "@ny4n/ai";
+import { type CodemodeJsonSchema, CodemodeSandbox, type CodemodeTool, renderDeclarations } from "@ny4n/codemode";
+import { type McpClient, toLlmContent } from "@ny4n/mcp";
 import { Type } from "typebox";
 
 /** Provider tool names are limited to 64 characters of `[A-Za-z0-9_-]`. */

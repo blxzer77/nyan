@@ -1,4 +1,4 @@
-import type { Context, JsonValue } from "@nyan/chord";
+import type { Context, JsonValue } from "@ny4n/chord";
 import type { FileError, FileSystem } from "../../env/index.ts";
 import { idFromNumber, seqFromNumber } from "../../ids.ts";
 import type {

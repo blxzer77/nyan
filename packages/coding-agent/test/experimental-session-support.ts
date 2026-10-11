@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import { AgentDoc, createSession, type ModelRef, ROOT_CONVERSATION_ID } from "@nyan/durable";
-import { openNodeSqliteStorage } from "@nyan/durable/storage/sqlite/node";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import { AgentDoc, createSession, type ModelRef, ROOT_CONVERSATION_ID } from "@ny4n/durable";
+import { openNodeSqliteStorage } from "@ny4n/durable/storage/sqlite/node";
 import {
 	createSession as createCatalogSession,
 	readSession,

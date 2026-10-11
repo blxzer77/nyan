@@ -2,9 +2,9 @@
 // Run from packages/durable:
 //   node --conditions=source --experimental-strip-types test/examples/10-registry-reload.ts
 
-import { Type } from "@nyan/ai";
-import { createModels } from "@nyan/ai/models";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import { Type } from "@ny4n/ai";
+import { createModels } from "@ny4n/ai/models";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import { createRegistry, defineExtension, defineTool, Harness, MemoryStorage, wrapTool } from "../../src/index.ts";
 
 const context = BACKGROUND_CONTEXT;

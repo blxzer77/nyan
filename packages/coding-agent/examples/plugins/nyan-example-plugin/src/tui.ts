@@ -1,9 +1,9 @@
-import { defineFacet } from "@nyan/chord";
-import { AgentController, PresentationUI, SlashCommands } from "@nyan/coding-agent/experimental/plugin";
+import { defineFacet } from "@ny4n/chord";
+import { AgentController, PresentationUI, SlashCommands } from "@ny4n/coding-agent/experimental/plugin";
 import { ExampleFacetService } from "./contract.ts";
 
 export default defineFacet({
-	id: "@nyan/example-plugin/tui",
+	id: "@ny4n/example-plugin/tui",
 	setup(env) {
 		const example = env.use(ExampleFacetService);
 		const commands = env.use(SlashCommands);

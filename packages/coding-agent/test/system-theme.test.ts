@@ -1,4 +1,4 @@
-import { colorToOklch, colorToRgb, parseColor, type RgbColor, rgbColor } from "@nyan/tui";
+import { colorToOklch, colorToRgb, parseColor, type RgbColor, rgbColor } from "@ny4n/tui";
 import { afterEach, describe, expect, it } from "vitest";
 import { generateSystemThemeColors, type SystemThemeInput, wcagContrast } from "../src/ui/theme/system-theme.ts";
 import {

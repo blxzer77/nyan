@@ -13,7 +13,7 @@ Use Nyan [interactively](docs/usage.md), automate it in [print or JSON mode](doc
 Install the command-line interface from npm. This requires Node.js 22.19 or newer:
 
 ```bash
-npm install -g --ignore-scripts @nyan/coding-agent
+npm install -g --ignore-scripts @ny4n/coding-agent
 ```
 
 Nyan does not require dependency lifecycle scripts for a normal npm installation. See the [quickstart](docs/quickstart.md#1-install-nyan) for updating and pinning releases.

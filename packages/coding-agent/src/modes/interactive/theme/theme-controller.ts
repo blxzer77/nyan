@@ -1,4 +1,4 @@
-import type { RgbColor, TerminalColors, TUI } from "@nyan/tui";
+import type { RgbColor, TerminalColors, TUI } from "@ny4n/tui";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
 import {
 	getTerminalTheme,

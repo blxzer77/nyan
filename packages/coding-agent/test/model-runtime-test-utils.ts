@@ -1,4 +1,4 @@
-import type { CredentialStore } from "@nyan/ai";
+import type { CredentialStore } from "@ny4n/ai";
 import { ModelRegistry } from "../src/core/model-registry.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { InMemoryCodingAgentModelsStore } from "../src/core/models-store.ts";

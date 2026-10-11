@@ -3,7 +3,7 @@
  * Provider auth orchestration belongs to ModelRuntime and nyan-ai Models.
  */
 
-import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "@nyan/ai";
+import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "@ny4n/ai";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";

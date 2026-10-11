@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@nyan/ai";
+import type { AssistantMessage } from "@ny4n/ai";
 import { describe, expect, it } from "vitest";
 import {
 	collectCacheMisses,

@@ -1,5 +1,5 @@
-import { Agent } from "@nyan/agent-core";
-import { type AssistantMessage, getModel, streamSimple, type ToolResultMessage, type Usage } from "@nyan/ai/compat";
+import { Agent } from "@ny4n/agent-core";
+import { type AssistantMessage, getModel, streamSimple, type ToolResultMessage, type Usage } from "@ny4n/ai/compat";
 import { describe, expect, it } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";

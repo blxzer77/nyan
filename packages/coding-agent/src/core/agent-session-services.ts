@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import type { ThinkingLevel } from "@nyan/agent-core";
-import type { Model } from "@nyan/ai";
+import type { ThinkingLevel } from "@ny4n/agent-core";
+import type { Model } from "@ny4n/ai";
 import { getAgentDir } from "../config.ts";
 import { resolvePath } from "../utils/paths.ts";
 import {

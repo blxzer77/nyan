@@ -11,8 +11,8 @@ export default defineConfig({
 	resolve: {
 		conditions: ["source"],
 		alias: [
-			{ find: /^@nyan\/durable$/, replacement: durableSrcIndex },
-			{ find: /^@nyan\/durable\/testing$/, replacement: durableSrcTesting },
+			{ find: /^@ny4n\/durable$/, replacement: durableSrcIndex },
+			{ find: /^@ny4n\/durable\/testing$/, replacement: durableSrcTesting },
 		],
 	},
 	ssr: { resolve: { conditions: ["source"] } },

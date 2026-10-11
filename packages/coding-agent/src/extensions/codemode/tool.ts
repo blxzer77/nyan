@@ -22,16 +22,16 @@
  */
 
 import { join } from "node:path";
-import type { AgentTool } from "@nyan/agent-core";
-import type { CodemodeJsonSchema, CodemodeTool } from "@nyan/codemode";
+import type { AgentTool } from "@ny4n/agent-core";
+import type { CodemodeJsonSchema, CodemodeTool } from "@ny4n/codemode";
 import {
 	MCP_TYPESCRIPT_PREAMBLE,
 	mcpStructuredContentSchema,
 	renderToolOutputType,
 	renderToolSample,
 	toCodemodeIdentifier,
-} from "@nyan/codemode/declarations";
-import { CODEMODE_SOURCE_GRAMMAR } from "@nyan/codemode/source";
+} from "@ny4n/codemode/declarations";
+import { CODEMODE_SOURCE_GRAMMAR } from "@ny4n/codemode/source";
 import { type Static, Type } from "typebox";
 import { getDocsPath } from "../../config.ts";
 import type {

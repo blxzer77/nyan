@@ -1,5 +1,5 @@
-import { uuidv7 } from "@nyan/ai/utils/uuid";
-import type { Context } from "@nyan/chord";
+import { uuidv7 } from "@ny4n/ai/utils/uuid";
+import type { Context } from "@ny4n/chord";
 import { defineDoc } from "../documents.ts";
 import type { TaskRuntime } from "../types.ts";
 

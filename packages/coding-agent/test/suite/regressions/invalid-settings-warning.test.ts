@@ -1,4 +1,4 @@
-import { Container } from "@nyan/tui";
+import { Container } from "@ny4n/tui";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentSessionRuntimeDiagnostic } from "../../../src/core/agent-session-services.ts";
 import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";

@@ -1,4 +1,4 @@
-import { ProcessTerminal, setCapabilityOverrides, setKeybindings, type TUI, TuiMainScreen } from "@nyan/tui";
+import { ProcessTerminal, setCapabilityOverrides, setKeybindings, type TUI, TuiMainScreen } from "@ny4n/tui";
 import { existsSync } from "fs";
 import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, getAgentDir, getSettingsPath, PACKAGE_NAME } from "../config.ts";
 import { areExperimentalFeaturesEnabled } from "../core/experimental.ts";
@@ -25,7 +25,7 @@ import {
 	type Theme,
 } from "../ui/theme/theme.ts";
 
-const OFFICIAL_PACKAGE_NAME = "@nyan/coding-agent";
+const OFFICIAL_PACKAGE_NAME = "@ny4n/coding-agent";
 const OFFICIAL_APP_NAME = "nyan";
 const OFFICIAL_CONFIG_DIR_NAME = ".nyan";
 

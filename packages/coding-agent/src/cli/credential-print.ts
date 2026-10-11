@@ -1,4 +1,4 @@
-import type { Api, CredentialInfo, Model } from "@nyan/ai";
+import type { Api, CredentialInfo, Model } from "@ny4n/ai";
 import { getAuthCredential } from "../core/auth-credential.ts";
 import { resolveCliModel } from "../core/model-resolver.ts";
 import type { ModelRuntime } from "../core/model-runtime.ts";

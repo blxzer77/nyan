@@ -2,9 +2,9 @@
  * Extension runner - executes extensions and manages their lifecycle.
  */
 
-import type { AgentMessage, AgentTool } from "@nyan/agent-core";
-import { getCurrentSystemMessage, type ImageContent, type Model, type Provider, type ProviderHeaders } from "@nyan/ai";
-import type { KeyId } from "@nyan/tui";
+import type { AgentMessage, AgentTool } from "@ny4n/agent-core";
+import { getCurrentSystemMessage, type ImageContent, type Model, type Provider, type ProviderHeaders } from "@ny4n/ai";
+import type { KeyId } from "@ny4n/tui";
 import { type Theme, theme } from "../../ui/theme/theme.ts";
 import type { CacheWarmingAction } from "../cache-warmer.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";

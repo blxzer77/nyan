@@ -1,4 +1,4 @@
-import { createFacetHost, defineFacet } from "@nyan/chord";
+import { createFacetHost, defineFacet } from "@ny4n/chord";
 import { describe, expect, test, vi } from "vitest";
 import { SlashCommands } from "../src/experimental/services/slash-commands.ts";
 import {

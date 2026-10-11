@@ -1,4 +1,4 @@
-import type { NativeClipboard } from "@nyan/tui";
+import type { NativeClipboard } from "@ny4n/tui";
 import { writeFileSync } from "fs";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { readClipboardImage } from "../src/utils/clipboard-image.ts";
@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/utils/clipboard-command.ts", () => ({ runClipboardCommand: mocks.command }));
-vi.mock("@nyan/tui", () => ({ getNativeClipboard: mocks.getNativeClipboard }));
+vi.mock("@ny4n/tui", () => ({ getNativeClipboard: mocks.getNativeClipboard }));
 
 function commandResult(stdout: Buffer, status = 0): Buffer | undefined {
 	return status === 0 ? stdout : undefined;

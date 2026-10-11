@@ -1,4 +1,4 @@
-import { type Context, defineService } from "@nyan/chord";
+import { type Context, defineService } from "@ny4n/chord";
 import type { AgentOperationResponse, AgentQueueResponse } from "./agent-controller.ts";
 
 export interface SlashCommandCompletion {

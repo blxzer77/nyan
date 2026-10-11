@@ -1,6 +1,6 @@
-import { createModels, type FauxProviderHandle, type FauxResponseStep, fauxProvider } from "@nyan/ai";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import { type Conversation, createRegistry, Harness, MemoryStorage } from "@nyan/durable";
+import { createModels, type FauxProviderHandle, type FauxResponseStep, fauxProvider } from "@ny4n/ai";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import { type Conversation, createRegistry, Harness, MemoryStorage } from "@ny4n/durable";
 
 export interface FauxConversation {
 	readonly faux: FauxProviderHandle;

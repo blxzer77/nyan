@@ -11,8 +11,8 @@ import { createInMemoryModelRegistry, getModelRuntime } from "./model-runtime-te
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentTool } from "@nyan/agent-core";
-import { Agent } from "@nyan/agent-core";
+import type { AgentTool } from "@ny4n/agent-core";
+import { Agent } from "@ny4n/agent-core";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -26,8 +26,8 @@ import type {
 	ToolCall,
 	TranscriptContext,
 	Usage,
-} from "@nyan/ai";
-import { createAssistantMessageEventStream } from "@nyan/ai";
+} from "@ny4n/ai";
+import { createAssistantMessageEventStream } from "@ny4n/ai";
 import { AgentSession, type AgentSessionEvent } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { SessionManager } from "../src/core/session-manager.ts";

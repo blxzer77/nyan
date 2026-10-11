@@ -13,9 +13,9 @@
  *   nyan --extension examples/extensions/custom-compaction.ts
  */
 
-import { uuidv7 } from "@nyan/ai";
-import type { ExtensionAPI } from "@nyan/coding-agent";
-import { convertToLlm, serializeConversation } from "@nyan/coding-agent";
+import { uuidv7 } from "@ny4n/ai";
+import type { ExtensionAPI } from "@ny4n/coding-agent";
+import { convertToLlm, serializeConversation } from "@ny4n/coding-agent";
 
 export default function (nyan: ExtensionAPI) {
 	nyan.on("session_before_compact", async (event, ctx) => {

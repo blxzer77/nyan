@@ -1,5 +1,5 @@
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import { registerStorageConformance } from "@nyan/durable/testing";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import { registerStorageConformance } from "@ny4n/durable/testing";
 import { describe, expect, it } from "vitest";
 import { idFromNumber, seqFromNumber } from "../src/ids.ts";
 import { MemoryStorage } from "../src/storage/memory.ts";

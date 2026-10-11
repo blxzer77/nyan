@@ -1,5 +1,5 @@
-import type { AgentMessage, AgentTool } from "@nyan/agent-core";
-import { fauxAssistantMessage, fauxToolCall } from "@nyan/ai";
+import type { AgentMessage, AgentTool } from "@ny4n/agent-core";
+import { fauxAssistantMessage, fauxToolCall } from "@ny4n/ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { convertToLlm } from "../../../src/core/messages.ts";

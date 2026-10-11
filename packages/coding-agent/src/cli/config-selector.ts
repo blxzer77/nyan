@@ -2,7 +2,7 @@
  * TUI config selector for `nyan config` command
  */
 
-import { ProcessTerminal, type TUI, TuiMainScreen } from "@nyan/tui";
+import { ProcessTerminal, type TUI, TuiMainScreen } from "@ny4n/tui";
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { ConfigSelectorComponent, type ScopedResolvedPaths } from "../modes/interactive/components/config-selector.ts";
 import { initTheme, stopThemeWatcher } from "../ui/theme/theme.ts";

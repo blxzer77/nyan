@@ -1,4 +1,4 @@
-import { Container, Markdown, type MarkdownTheme } from "@nyan/tui";
+import { Container, Markdown, type MarkdownTheme } from "@ny4n/tui";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
 import { getMarkdownTheme, theme } from "../../../ui/theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";

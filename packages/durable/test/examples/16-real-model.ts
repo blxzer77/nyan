@@ -2,9 +2,9 @@
 // Run from packages/durable (needs OPENAI_API_KEY):
 //   node --conditions=source --experimental-strip-types test/examples/16-real-model.ts
 
-import { createModels } from "@nyan/ai/models";
-import { openaiProvider } from "@nyan/ai/providers/openai";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import { createModels } from "@ny4n/ai/models";
+import { openaiProvider } from "@ny4n/ai/providers/openai";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import {
 	AssistantEntry,
 	createRegistry,

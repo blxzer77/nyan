@@ -1,4 +1,4 @@
-import { fuzzyMatch } from "@nyan/tui";
+import { fuzzyMatch } from "@ny4n/tui";
 import type { SessionInfo } from "../../../core/session-manager.ts";
 
 export type SortMode = "threaded" | "recent" | "relevance";

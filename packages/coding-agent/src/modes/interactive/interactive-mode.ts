@@ -7,8 +7,8 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentMessage, ThinkingLevel } from "@nyan/agent-core";
-import type { AuthEvent, AuthPrompt } from "@nyan/ai";
+import type { AgentMessage, ThinkingLevel } from "@ny4n/agent-core";
+import type { AuthEvent, AuthPrompt } from "@ny4n/ai";
 import {
 	type AssistantMessage,
 	type ImageContent,
@@ -16,7 +16,7 @@ import {
 	type Message,
 	type Model,
 	type Usage,
-} from "@nyan/ai/compat";
+} from "@ny4n/ai/compat";
 import type {
 	AutocompleteItem,
 	AutocompleteProvider,
@@ -28,8 +28,8 @@ import type {
 	OverlayOptions,
 	SlashCommand,
 	TuiMainScreenRenderState,
-} from "@nyan/tui";
-import * as TuiLayouts from "@nyan/tui";
+} from "@ny4n/tui";
+import * as TuiLayouts from "@ny4n/tui";
 import {
 	CombinedAutocompleteProvider,
 	type Component,
@@ -51,7 +51,7 @@ import {
 	type TuiMouseEvent,
 	type TuiMouseEventResult,
 	visibleWidth,
-} from "@nyan/tui";
+} from "@ny4n/tui";
 import chalk from "chalk";
 import { spawn } from "child_process";
 import {

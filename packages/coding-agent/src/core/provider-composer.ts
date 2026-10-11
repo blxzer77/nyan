@@ -24,9 +24,9 @@ import {
 	type SimpleStreamOptions,
 	type StreamOptions,
 	type TranscriptContext,
-} from "@nyan/ai";
-import { getApiProvider } from "@nyan/ai/compat";
-import { classifierErrorResult, imageErrorResult } from "@nyan/ai/utils/model-operations";
+} from "@ny4n/ai";
+import { getApiProvider } from "@ny4n/ai/compat";
+import { classifierErrorResult, imageErrorResult } from "@ny4n/ai/utils/model-operations";
 import type { ModelConfig, ModelsJsonModel, ModelsJsonModelOverride, ModelsJsonProvider } from "./model-config.ts";
 import {
 	clearConfigValueCache,

@@ -1,8 +1,8 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentTool } from "@nyan/agent-core";
-import { fauxAssistantMessage, fauxToolCall, type Model } from "@nyan/ai";
+import type { AgentTool } from "@ny4n/agent-core";
+import { fauxAssistantMessage, fauxToolCall, type Model } from "@ny4n/ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, InputEvent } from "../../src/core/extensions/index.ts";

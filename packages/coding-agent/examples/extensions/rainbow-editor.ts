@@ -4,7 +4,7 @@
  * Usage: nyan --extension ./examples/extensions/rainbow-editor.ts
  */
 
-import { CustomEditor, type ExtensionAPI } from "@nyan/coding-agent";
+import { CustomEditor, type ExtensionAPI } from "@ny4n/coding-agent";
 
 // Base colors (coral → yellow → green → teal → blue → purple → pink)
 const COLORS: [number, number, number][] = [

@@ -1,7 +1,7 @@
-import { fauxAssistantMessage } from "@nyan/ai";
-import { createFacetHost, defineFacet } from "@nyan/chord";
-import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
-import type { InboxState, LiveState } from "@nyan/durable";
+import { fauxAssistantMessage } from "@ny4n/ai";
+import { createFacetHost, defineFacet } from "@ny4n/chord";
+import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import type { InboxState, LiveState } from "@ny4n/durable";
 import { describe, expect, test } from "vitest";
 import { AgentController } from "../src/experimental/services/agent-controller.ts";
 import { createAgentController } from "../src/experimental/services/agent-controller-provider.ts";

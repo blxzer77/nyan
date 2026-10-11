@@ -22,7 +22,7 @@ Call `nyan.registerProvider()` from the extension factory. Nyan waits for asynch
 
 There are two registration forms:
 
-- Register a complete `Provider` from `@nyan/ai` for native authentication, filtering, discovery, refresh, and streaming behavior.
+- Register a complete `Provider` from `@ny4n/ai` for native authentication, filtering, discovery, refresh, and streaming behavior.
 - Register a provider name with `ProviderConfig` for the legacy configuration form used by existing extensions.
 
 Prefer a complete provider for new integrations that own more than static endpoint and model metadata. Nyan composes `models.json` overrides above a registered native provider.

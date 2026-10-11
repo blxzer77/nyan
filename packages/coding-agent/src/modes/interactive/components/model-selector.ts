@@ -1,5 +1,5 @@
-import { type Model, modelsAreEqual } from "@nyan/ai";
-import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, Spacer, Text, type TUI } from "@nyan/tui";
+import { type Model, modelsAreEqual } from "@ny4n/ai";
+import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, Spacer, Text, type TUI } from "@ny4n/tui";
 import type { ModelRuntime } from "../../../core/model-runtime.ts";
 import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
 import { keyDisplayText, keyHint } from "../../../ui/components/keybinding-hints.ts";

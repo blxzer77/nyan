@@ -5,7 +5,7 @@ const src = (path: string): string => fileURLToPath(new URL(path, import.meta.ur
 
 /**
  * Exact matches for bare specifiers, plus one rule per package for subpath exports such as
- * `@nyan/ai/utils/uuid`. A prefix alias would rewrite those onto `index.ts/utils/uuid`.
+ * `@ny4n/ai/utils/uuid`. A prefix alias would rewrite those onto `index.ts/utils/uuid`.
  */
 export default defineConfig({
 	test: {
@@ -16,12 +16,12 @@ export default defineConfig({
 	resolve: {
 		conditions: ["source"],
 		alias: [
-			{ find: /^@nyan\/agent-core$/, replacement: src("../agent/src/index.ts") },
-			{ find: /^@nyan\/agent-core\/(.+)$/, replacement: `${src("../agent/src/")}$1.ts` },
-			{ find: /^@nyan\/ai$/, replacement: src("../ai/src/index.ts") },
-			{ find: /^@nyan\/ai\/(.+)$/, replacement: `${src("../ai/src/")}$1.ts` },
-			{ find: /^@nyan\/telemetry$/, replacement: src("../telemetry/src/index.ts") },
-			{ find: /^@nyan\/protocol$/, replacement: src("../protocol/src/index.ts") },
+			{ find: /^@ny4n\/agent-core$/, replacement: src("../agent/src/index.ts") },
+			{ find: /^@ny4n\/agent-core\/(.+)$/, replacement: `${src("../agent/src/")}$1.ts` },
+			{ find: /^@ny4n\/ai$/, replacement: src("../ai/src/index.ts") },
+			{ find: /^@ny4n\/ai\/(.+)$/, replacement: `${src("../ai/src/")}$1.ts` },
+			{ find: /^@ny4n\/telemetry$/, replacement: src("../telemetry/src/index.ts") },
+			{ find: /^@ny4n\/protocol$/, replacement: src("../protocol/src/index.ts") },
 		],
 	},
 	ssr: { resolve: { conditions: ["source"] } },

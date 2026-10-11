@@ -1,4 +1,4 @@
-import { resetCapabilitiesCache, setCapabilities } from "@nyan/tui";
+import { resetCapabilitiesCache, setCapabilities } from "@ny4n/tui";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	detectColorFgBgTheme,

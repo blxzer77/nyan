@@ -8,8 +8,8 @@ import {
 	fauxToolCall,
 	type ToolResultMessage,
 	Type,
-} from "@nyan/ai";
-import type { JsonValue } from "@nyan/chord";
+} from "@ny4n/ai";
+import type { JsonValue } from "@ny4n/chord";
 import {
 	defineTool,
 	type EntryRecord,
@@ -20,7 +20,7 @@ import {
 	type ToolRegistration,
 	ToolResultEntry,
 	ToolTask,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ExecutionEnv } from "../src/env/index.ts";
 import { NodeExecutionEnv } from "../src/env/node.ts";

@@ -14,7 +14,7 @@ For every protocol version nyan negotiates (`2025-03-26`, `2025-06-18`, `2025-11
 
 `client.ts` uses the code nyan runs for an HTTP server in `mcp.json`: `McpServerConnection` connects and calls tools, and `signInMcpServer` runs the OAuth sign-in that `/mcp` starts. A simulated browser fetches the authorization URL and delivers the redirect to nyan's loopback callback server. When the server asks for sign-in again (for example for more scope), the simulated user signs in again, up to three times.
 
-Every check the suite reports is compared with `baseline.json`. The extra `@nyan/client` check records whether `client.ts` completed the scenario. Some scenarios expect the client to give up (`auth/scope-retry-limit`), so it is baselined like the others.
+Every check the suite reports is compared with `baseline.json`. The extra `@ny4n/client` check records whether `client.ts` completed the scenario. Some scenarios expect the client to give up (`auth/scope-retry-limit`), so it is baselined like the others.
 
 The run fails when:
 
@@ -40,6 +40,6 @@ node packages/coding-agent/test/mcp-conformance/run.ts --update-baseline
 
 - `elicitation-sep1034-client-defaults`: nyan does not support elicitation.
 - `auth/basic-cimd`: nyan registers clients dynamically instead of using a Client ID Metadata Document.
-- `auth/scope-retry-limit`: `@nyan/client` fails by design; the server never accepts the granted scope.
+- `auth/scope-retry-limit`: `@ny4n/client` fails by design; the server never accepts the granted scope.
 
 2026-07-28 is not covered: it is a stateless protocol nyan does not implement.

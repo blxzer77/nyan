@@ -51,7 +51,7 @@ vi.mock("../src/utils/clipboard-command.ts", () => ({
 	}),
 }));
 
-vi.mock("@nyan/tui", () => ({
+vi.mock("@ny4n/tui", () => ({
 	getNativeClipboard: () => ({ getImage: async () => createTinyBmp1x1Red24bpp() }),
 }));
 

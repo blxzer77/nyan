@@ -1,6 +1,6 @@
-import { createModels, Type } from "@nyan/ai";
-import type { Context } from "@nyan/chord";
-import { withCancel } from "@nyan/chord/context";
+import { createModels, Type } from "@ny4n/ai";
+import type { Context } from "@ny4n/chord";
+import { withCancel } from "@ny4n/chord/context";
 import {
 	type Conversation,
 	createRegistry,
@@ -16,7 +16,7 @@ import {
 	StorageRejected,
 	type TaskId,
 	type TaskRuntime,
-} from "@nyan/durable";
+} from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
 import { addHooks, addTask, addTool, user } from "./harness-support.ts";
 import { ControlledStorage, context, flush } from "./session-support.ts";

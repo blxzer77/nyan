@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { Socket } from "node:net";
-import { encodeServerMessage, type ServerHelloError, ServerMessageDecoder } from "@nyan/protocol";
+import { encodeServerMessage, type ServerHelloError, ServerMessageDecoder } from "@ny4n/protocol";
 import { expect, test, vi } from "vitest";
 import { UnixByteConnection } from "../src/transports/unix/listener.ts";
 

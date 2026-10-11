@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { ModelsStore, ModelsStoreEntry, ModelsStoreOperationOptions } from "@nyan/ai";
+import type { ModelsStore, ModelsStoreEntry, ModelsStoreOperationOptions } from "@ny4n/ai";
 import { getAgentDir } from "../config.ts";
 import { raceWithAbortSignal } from "../utils/abort.ts";
 import { getFileRevision, normalizePath } from "../utils/paths.ts";

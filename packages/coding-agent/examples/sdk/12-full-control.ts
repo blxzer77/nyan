@@ -4,7 +4,7 @@
  * Replace everything - no discovery, explicit configuration.
  */
 
-import { getModel } from "@nyan/ai/compat";
+import { getModel } from "@ny4n/ai/compat";
 import {
 	createAgentSession,
 	createExtensionRuntime,
@@ -12,7 +12,7 @@ import {
 	type ResourceLoader,
 	SessionManager,
 	SettingsManager,
-} from "@nyan/coding-agent";
+} from "@ny4n/coding-agent";
 
 const modelRuntime = await ModelRuntime.create({
 	authPath: "/tmp/my-agent/auth.json",

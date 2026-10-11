@@ -1,4 +1,4 @@
-import { Container } from "@nyan/tui";
+import { Container } from "@ny4n/tui";
 import { describe, expect, test } from "vitest";
 import { createChatViewport } from "../src/modes/interactive/chat-viewport.ts";
 

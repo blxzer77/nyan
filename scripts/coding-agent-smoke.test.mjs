@@ -7,7 +7,7 @@ import { installConsumer } from "./local-package-install.mjs";
 import { produceArtifactSet } from "./package-artifacts.mjs";
 import { codingAgentName, smokeTestCodingAgent } from "./coding-agent-smoke.mjs";
 
-const devPackages = ["client", "protocol", "server"].map((name) => `@nyan/${name}`);
+const devPackages = ["client", "protocol", "server"].map((name) => `@ny4n/${name}`);
 
 function writePackage(directory, manifest, files) {
 	mkdirSync(directory, { recursive: true });
@@ -47,14 +47,14 @@ function createFixture(t, { importServer = false, declareServer = false } = {}) 
 				...(isAgent
 					? {
 						bin: { nyan: "dist/bundle/cli.js" },
-						...(declareServer ? { dependencies: { "@nyan/server": "1.0.0" } } : {}),
+						...(declareServer ? { dependencies: { "@ny4n/server": "1.0.0" } } : {}),
 						devDependencies: Object.fromEntries(devPackages.map((packageName) => [packageName, "1.0.0"])),
 					}
 					: {}),
 			},
 			{
 				"dist/index.js": isAgent
-					? `${importServer ? 'import "@nyan/server";' : ""}
+					? `${importServer ? 'import "@ny4n/server";' : ""}
 export function createAgentSession() {}
 export class SessionManager { static inMemory() {} }
 export class ModelRuntime { static create() {} }
@@ -80,10 +80,10 @@ test("accepts a valid coding-agent package and rejects development-only packages
 	const directory = createFixture(t);
 	smokeTestCodingAgent(directory);
 
-	const nested = join(directory, "node_modules", codingAgentName, "node_modules/@nyan/server");
+	const nested = join(directory, "node_modules", codingAgentName, "node_modules/@ny4n/server");
 	mkdirSync(nested, { recursive: true });
-	writeFileSync(join(nested, "package.json"), JSON.stringify({ name: "@nyan/server", version: "1.0.0" }));
-	assert.throws(() => smokeTestCodingAgent(directory), /@nyan\/server must not be installed/);
+	writeFileSync(join(nested, "package.json"), JSON.stringify({ name: "@ny4n/server", version: "1.0.0" }));
+	assert.throws(() => smokeTestCodingAgent(directory), /@ny4n\/server must not be installed/);
 	rmSync(nested, { recursive: true });
 
 	const experimental = join(directory, "node_modules", codingAgentName, "dist/experimental");
@@ -94,10 +94,10 @@ test("accepts a valid coding-agent package and rejects development-only packages
 // Smoke-test the public SDK, not just a bundled CLI that hides missing imports.
 test("fails when the SDK imports an undeclared server despite a working CLI", (t) => {
 	const directory = createFixture(t, { importServer: true });
-	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find package '@nyan\/server'/);
+	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find package '@ny4n\/server'/);
 });
 
 test("fails if a development-only dependency is added back to the published dependency tree", (t) => {
 	const directory = createFixture(t, { declareServer: true });
-	assert.throws(() => smokeTestCodingAgent(directory), /@nyan\/server must not be installed/);
+	assert.throws(() => smokeTestCodingAgent(directory), /@ny4n\/server must not be installed/);
 });
