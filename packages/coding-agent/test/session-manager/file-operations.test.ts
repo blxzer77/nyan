@@ -452,7 +452,7 @@ describe("SessionManager session file creation", () => {
 		expect(existsSync(session.getSessionFile()!)).toBe(false);
 	});
 
-	// #10000: the first prompt must survive a first turn that never produces an assistant message
+	// The first prompt must survive a first turn that never produces an assistant message
 	it("creates the file when the first user message is appended", () => {
 		const session = SessionManager.create(tempDir, tempDir);
 		session.appendModelChange("anthropic", "claude-sonnet-4-5");

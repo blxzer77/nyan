@@ -155,7 +155,7 @@ describe("Bedrock thinking payload", () => {
 		expect(payload.additionalModelRequestFields?.anthropic_beta).toEqual([THINKING_BINDING_CONTROLS_BETA]);
 	});
 
-	// Bedrock rejects block_binding on 4.6 models: "Extra inputs are not permitted" (#10324)
+	// Bedrock rejects block_binding on 4.6 models: "Extra inputs are not permitted"
 	it.each(["global.anthropic.claude-opus-4-6-v1", "global.anthropic.claude-sonnet-4-6"] as const)(
 		"omits block_binding for %s",
 		async (modelId) => {
@@ -199,7 +199,7 @@ describe("Bedrock thinking payload", () => {
 });
 
 describe("Bedrock OpenAI reasoning payload", () => {
-	// Regression for #9331: the configured thinking level never reached OpenAI models on Bedrock.
+	// Regression: the configured thinking level never reached OpenAI models on Bedrock.
 	it.each([
 		["minimal", "low"],
 		["low", "low"],

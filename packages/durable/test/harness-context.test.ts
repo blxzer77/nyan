@@ -159,7 +159,6 @@ describe("conversation context", () => {
 		]);
 	});
 
-	// #10542
 	it("leads with a system message that only user messages precede, and keeps later ones in place", async () => {
 		const { root, message, append } = await setup();
 		await message(user("first"));
@@ -219,7 +218,6 @@ describe("conversation context", () => {
 		expect(parentView.entries.map((entry) => entry.kind)).toEqual(["reset", "message"]);
 	});
 
-	// #10512
 	it("reads the context as of an earlier entry, as a fork at that entry starts", async () => {
 		const { root, append, message } = await setup();
 		const first = await message(user("first"));

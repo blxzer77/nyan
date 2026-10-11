@@ -45,7 +45,7 @@ function runEntry(entry: string, experimental: boolean) {
 }
 
 describe("stable and development CLI entrypoints", () => {
-	// #9132: enabling experiments must not pull remote-server dependencies into the published CLI.
+	// Enabling experiments must not pull remote-server dependencies into the published CLI.
 	it("does not dispatch experimental commands from the stable entrypoint", () => {
 		const result = runEntry("cli.ts", true);
 		expect(result.status, result.stderr).toBe(0);

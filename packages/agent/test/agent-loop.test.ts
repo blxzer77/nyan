@@ -398,7 +398,6 @@ describe("agentLoop with AgentMessage", () => {
 		expect(toolResult?.role === "toolResult" ? toolResult.usage : undefined).toEqual(patchedToolUsage);
 	});
 
-	// #10549
 	it("records how long execute() took on the tool result, excluding hooks", async () => {
 		const toolSchema = Type.Object({ value: Type.String() });
 		const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

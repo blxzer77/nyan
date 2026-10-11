@@ -214,7 +214,7 @@ const lazyResult = await build({
 });
 
 // getCodemodeWorkerSpecifier() in config.ts spawns the codemode worker from an in-memory data: URL
-// so codemode survives an update that replaces or deletes the install (#10439). A data: URL module
+// so codemode survives an update that replaces or deletes the install. A data: URL module
 // has no file location, so the worker must not use the createRequire(import.meta.url) banner,
 // require(), or imports other than Node builtins.
 const codemodeWorkerResult = await build({

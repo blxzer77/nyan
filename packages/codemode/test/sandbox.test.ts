@@ -581,7 +581,7 @@ describe("limits and lifetime", () => {
 		expect(await promise).toMatchObject({ ok: false, error: { kind: "aborted", message: "Sandbox closed" } });
 	});
 
-	// #10283: the host keeps all output, so a script that prints in a loop must not grow it without bound.
+	// The host keeps all output, so a script that prints in a loop must not grow it without bound.
 	it("fails a script whose output passes the limits, even if it catches the error", async () => {
 		const sandbox = createSandbox();
 		for (const print of ["text(s)", "console.log(s)", 'image("data:image/png;base64," + p)']) {
@@ -655,7 +655,7 @@ describe("limits and lifetime", () => {
 		});
 	});
 
-	// #10444: a malformed payload from the worker must fail the run as a sandbox error instead of
+	// A malformed payload from the worker must fail the run as a sandbox error instead of
 	// throwing in the host's message listener and never settling.
 	it.each([
 		[{ type: "done", ok: true, value: "1", writes: "null" }, "store writes are not an array"],
@@ -723,7 +723,7 @@ describe("escape hatches", () => {
 		expect(result.value).not.toBe("imported");
 	});
 
-	// #10444: the prelude shares the built-ins with the script, so patching them could corrupt what
+	// The prelude shares the built-ins with the script, so patching them could corrupt what
 	// the prelude sends to the host.
 	it("ignores patches to built-ins and built-in globals", async () => {
 		const sandbox = createSandbox([echo]);

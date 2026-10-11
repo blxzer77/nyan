@@ -123,7 +123,7 @@ describe("Harness root and conversations", () => {
 				async (conversation) => (await first.harness.snapshot(ProviderDoc, conversation.id, context))?.sessionId,
 			),
 		);
-		// Regression coverage for #10424: a fork must not inherit its parent's provider identity.
+		// Regression coverage: a fork must not inherit its parent's provider identity.
 		for (const sessionId of providerSessionIds) expect(sessionId).toMatch(UUID_V7);
 		expect(new Set(providerSessionIds).size).toBe(3);
 		await first.harness.close(context);
@@ -251,7 +251,6 @@ describe("Harness root and conversations", () => {
 		expect(await allEntries(root)).toEqual(["r3", "r2", "r1"]);
 		expect(await allEntries(child)).toEqual(["c2", "c1", "r2", "r1"]);
 		expect(await allEntries(grandchild)).toEqual(["g1", "c1", "r2", "r1"]);
-		// #10546
 		expect(await allEntries(grandchild, "ascending")).toEqual(["r1", "r2", "c1", "g1"]);
 		const bounded = await grandchild.entries(
 			{ minEntryId: r2!.id, maxEntryId: c1.id, conversationId: root.id } as never,

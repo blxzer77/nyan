@@ -533,7 +533,7 @@ describe("SettingsManager", () => {
 		expect(reloadedManager.getFullscreenCopyOnSelect()).toBe(true);
 	});
 
-	// #9758: wheel scrolling defaults to auto, persists line counts, and ignores invalid values.
+	// Wheel scrolling defaults to auto, persists line counts, and ignores invalid values.
 	it("persists fullscreen wheel scroll lines", async () => {
 		const manager = SettingsManager.create(projectDir, agentDir);
 		expect(manager.getFullscreenWheelScrollLines()).toBe("auto");

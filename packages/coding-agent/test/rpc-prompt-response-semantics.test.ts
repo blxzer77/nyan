@@ -214,7 +214,7 @@ describe("RPC prompt response semantics", () => {
 		}
 	});
 
-	// #9098: a successful prompt may start an agent run or be consumed by an extension.
+	// A successful prompt may start an agent run or be consumed by an extension.
 	it("emits one started response when prompt preflight succeeds", async () => {
 		const { lineHandler, cleanup } = await startRpcMode({ withAuth: true, responseDelayMs: 0 });
 
@@ -306,7 +306,7 @@ describe("RPC prompt response semantics", () => {
 		}
 	});
 
-	// #9803: a handler can consume A while independently queueing B; report A's outcome.
+	// A handler can consume A while independently queueing B; report A's outcome.
 	it.each(["steer", "follow_up"] as const)(
 		"reports %s as handled even when an extension queues another message",
 		async (type) => {

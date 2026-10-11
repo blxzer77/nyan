@@ -155,7 +155,6 @@ describe("AgentSession queue characterization", () => {
 		expect(getAssistantTexts(harness)).toContain("follow-up response");
 	});
 
-	// Regression test for #8718.
 	it("runs direct steering and follow-up messages through input handlers", async () => {
 		const inputEvents: Array<Pick<InputEvent, "text" | "source" | "streamingBehavior">> = [];
 		const waiting = await createWaitingHarness({

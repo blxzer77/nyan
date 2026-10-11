@@ -394,7 +394,6 @@ describe("generation", () => {
 		await harness.close(context);
 	});
 
-	// Regression coverage for #10424.
 	it("keeps provider session IDs request-local across concurrent conversations", async () => {
 		const setup = chatSetup();
 		const seen = new Map<string, string[]>();
@@ -437,7 +436,6 @@ describe("generation", () => {
 		await harness.close(context);
 	});
 
-	// Regression coverage for #10424.
 	it("creates and persists provider state before a legacy conversation's request", async () => {
 		const setup = chatSetup();
 		let sent: string | undefined;

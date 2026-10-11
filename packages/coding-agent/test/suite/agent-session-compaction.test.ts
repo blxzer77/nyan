@@ -356,7 +356,7 @@ describe("AgentSession compaction characterization", () => {
 		expect(transformContext).not.toHaveBeenCalled();
 		expect(getCurrentSystemPrompt(requestContext?.messages ?? [])).not.toBe(harness.session.agent.state.systemPrompt);
 		expect(getCurrentTools(requestContext?.messages ?? [])).toEqual([]);
-		// Regression test for #9652: split-turn summaries use a clear Markdown conversation boundary.
+		// Regression test: split-turn summaries use a clear Markdown conversation boundary.
 		expect(JSON.stringify(requestContext?.messages)).toContain("# Conversation\\n[User]: message to compact");
 		expect(requestOptions).toMatchObject({ cacheRetention: "none" });
 		expect(requestOptions?.sessionId).not.toBe("active-routing-session");
@@ -473,8 +473,8 @@ describe("AgentSession compaction characterization", () => {
 		expect(harness.session.getLastAssistantText()).toBe("completed response");
 	});
 
-	// Regression coverage for #8133: model overrides must also apply between assistant turns.
-	// Regression coverage for #9740: an oversized trailing tool result must still produce a cut point.
+	// Regression coverage: model overrides must also apply between assistant turns.
+	// Regression coverage: an oversized trailing tool result must still produce a cut point.
 	it.each([false, true])(
 		"compacts after an oversized tool result in the same run (model override: %s)",
 		async (modelOverride) => {
@@ -744,7 +744,6 @@ describe("AgentSession compaction characterization", () => {
 		await compactExpectation;
 	});
 
-	// Regression test for #8920.
 	it("aborts an in-progress manual compaction and waits until the session is idle", async () => {
 		const { harness, compactionStarted } = await createAbortableCompactionHarness();
 		harnesses.push(harness);

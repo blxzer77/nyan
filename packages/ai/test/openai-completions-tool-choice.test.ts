@@ -220,7 +220,6 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("defaults unknown OpenAI-compatible endpoints to non-strict tools", async () => {
-		// Regression test for #9816.
 		const model = {
 			...localOpenAICompletionsModel,
 			id: "local-model",

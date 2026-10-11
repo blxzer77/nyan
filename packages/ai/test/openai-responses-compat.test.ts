@@ -481,7 +481,7 @@ describe("openai-responses provider defaults", () => {
 		["gpt-5.4", "priority", "priority", 2],
 		["gpt-5.5", "priority", "priority", 2.5],
 		["gpt-5.5", "flex", "flex", 0.5],
-		// GPT-6 models report Fast mode as "fast" even when "priority" is requested (#10034)
+		// GPT-6 models report Fast mode as "fast" even when "priority" is requested
 		["gpt-6-luna", "priority", "fast", 2],
 		["gpt-6-luna", "fast", "fast", 2],
 	] as const)(

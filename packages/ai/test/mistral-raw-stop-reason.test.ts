@@ -53,7 +53,6 @@ describe("Mistral raw stop reasons", () => {
 		expect(message.stopReason).toBe("error");
 		expect(message.rawStopReason).toBe("error");
 		expect(message.errorMessage).toBe("Provider stopped with: error (server error)");
-		// #10487
 		expect(isRetryableAssistantError(message)).toBe(true);
 	});
 

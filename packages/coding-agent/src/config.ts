@@ -490,7 +490,7 @@ export function setEmbeddedQuickJSWasmPath(path: string): void {
 
 /**
  * Get path to `quickjs-wasi/quickjs.wasm`, the VM that runs codemode scripts. Resolved once so the
- * compiled module cached per path keeps working after an update removes this install (#10439).
+ * compiled module cached per path keeps working after an update removes this install.
  */
 export function getQuickJSWasmPath(): string {
 	quickJSWasmPath ??= createRequire(import.meta.url).resolve("quickjs-wasi/quickjs.wasm");
@@ -521,7 +521,7 @@ export function getCodemodeWorkerSpecifier(): string | URL | undefined {
 	const specifier = resolveCodemodeWorkerSpecifier(runtime, import.meta.url);
 	if (runtime !== "bundled-node" || !(specifier instanceof URL)) return specifier;
 	// Spawn workers from an in-memory copy. An update replaces or deletes the file while this
-	// process keeps running (#10439). The bundle build keeps the worker free of relative imports
+	// process keeps running. The bundle build keeps the worker free of relative imports
 	// and import.meta, so it runs from a data: URL.
 	codemodeWorkerDataUrl ??= new URL(`data:text/javascript;base64,${readFileSync(specifier).toString("base64")}`);
 	return codemodeWorkerDataUrl;

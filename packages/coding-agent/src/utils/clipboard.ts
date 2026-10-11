@@ -53,7 +53,7 @@ async function copyViaWindowsClipboard(text: string): Promise<boolean> {
 /** Read plain text from the system clipboard. */
 export async function readClipboardText(): Promise<string | null> {
 	const commands: [string, string[]][] = [];
-	// Termux reports platform "android", not "linux" (#10391).
+	// Termux reports platform "android", not "linux".
 	if (process.env.TERMUX_VERSION) commands.push(["termux-clipboard-get", []]);
 	if (platform() === "linux") {
 		if (process.env.WAYLAND_DISPLAY) commands.push(["wl-paste", ["--no-newline", "--type", "text"]]);
@@ -120,7 +120,7 @@ export async function copyToClipboard(text: string): Promise<void> {
 		copied = osc52Emitted || (await copyViaWindowsClipboard(text));
 	}
 	// OSC 52 cannot be verified, so a desktop session with a display reports the failure
-	// instead (#9618). Without a display the terminal is the only clipboard route (containers,
+	// instead. Without a display the terminal is the only clipboard route (containers,
 	// WSL without WSLg), and remote sessions always emit it to reach the client clipboard.
 	const headless = p === "linux" && !env.DISPLAY && !env.WAYLAND_DISPLAY && !env.TERMUX_VERSION;
 	let oversized = false;

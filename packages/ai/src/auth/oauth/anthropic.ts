@@ -16,7 +16,7 @@ const AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
 const TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
 const CALLBACK_HOST = getProviderEnvValue("NYAN_OAUTH_CALLBACK_HOST") || "127.0.0.1";
 // Preferred so the port can be forwarded into containers or over SSH. Anthropic accepts any loopback port,
-// so login falls back to a free port when this one cannot be bound (#10571).
+// so login falls back to a free port when this one cannot be bound.
 const CALLBACK_PORT = 53692;
 const CALLBACK_PATH = "/callback";
 const REDIRECT_URI = `http://localhost:${CALLBACK_PORT}${CALLBACK_PATH}`;

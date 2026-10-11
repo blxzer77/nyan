@@ -917,7 +917,6 @@ Content`,
 		});
 
 		it("should prefer the package manager after a separator over the outer executable", () => {
-			// Regression for #9863.
 			settingsManager = SettingsManager.inMemory({
 				npmCommand: ["npm", "exec", "--", "pnpm"],
 			});
@@ -939,7 +938,6 @@ Content`,
 		});
 
 		it("should detect pnpm through a corepack wrapper without a separator", async () => {
-			// Regression for #9863.
 			settingsManager = SettingsManager.inMemory({
 				npmCommand: ["corepack", "pnpm"],
 			});
@@ -2274,7 +2272,7 @@ Content`,
 		});
 	});
 
-	describe("multi-file extension discovery (issue #1102)", () => {
+	describe("multi-file extension discovery", () => {
 		it("should only load index.ts from subdirectories, not helper modules", async () => {
 			// Regression test: packages with multi-file extensions in subdirectories
 			// should only load the index.ts entry point, not helper modules like agents.ts

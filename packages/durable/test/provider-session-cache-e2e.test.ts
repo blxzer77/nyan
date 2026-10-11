@@ -44,7 +44,7 @@ function cacheHitRate(usage: AssistantMessage["usage"]): number {
 }
 
 describe("Durable provider session cache e2e", () => {
-	// Live regression coverage for #10424; skipped without ~/.nyan/agent/auth.json credentials.
+	// Live regression coverage; skipped without ~/.nyan/agent/auth.json credentials.
 	it.skipIf(!codexToken)(
 		"reuses the Codex prompt cache across Durable turns",
 		{ retry: 2, timeout: 120_000 },

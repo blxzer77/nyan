@@ -3,8 +3,7 @@
  * extension tools, hand-built histories, and old or hand-edited session files
  * can violate that contract. We are intentionally lax at the ingestion
  * boundaries and normalize null/missing content to an empty array so it never
- * reaches rendering, compaction, or provider request conversion
- * (issues #6259, #6276).
+ * reaches rendering, compaction, or provider request conversion.
  */
 
 import type { AgentMessage, AgentToolResult } from "@nyan/agent-core";

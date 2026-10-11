@@ -96,7 +96,6 @@ describe("theme syntax highlighting", () => {
 		resetCapabilitiesCache();
 	});
 
-	// #10143
 	it("colors each line of Python docstrings independently", () => {
 		const code = '"""\nline one\n\nline two\n"""\nafter';
 		const ansi = theme.getFgAnsi("syntaxString");

@@ -116,7 +116,7 @@ describe("Fireworks models", () => {
 		expect(payload?.reasoning_effort).toBe("max");
 	});
 
-	// Regression for #9323: native effort must reach Messages without budget-based fallback.
+	// Regression: native effort must reach Messages without budget-based fallback.
 	it.each([
 		["accounts/fireworks/models/deepseek-v4p1-flash", ["off", "low", "high", "max"]],
 		["accounts/fireworks/models/qwen3p8-max", ["off", "low", "medium", "xhigh"]],
@@ -149,7 +149,7 @@ describe("Fireworks models", () => {
 		}
 	});
 
-	// Regression for #9323: accepted aliases are not distinct native effort levels.
+	// Regression: accepted aliases are not distinct native effort levels.
 	it.each([
 		["accounts/fireworks/models/glm-5p3", ["low", "high", "max"]],
 		["accounts/fireworks/routers/glm-5p3-fast", ["low", "high", "max"]],

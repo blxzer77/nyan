@@ -65,7 +65,6 @@ describe("provider retry classification", () => {
 	it.each(["The pending stream has been canceled", "The pending stream has been canceled (caused by: socket closed)"])(
 		"matches HTTP/2 pending stream cancellation: %s",
 		(errorMessage) => {
-			// Regression for #10379.
 			expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(true);
 		},
 	);
@@ -79,7 +78,6 @@ describe("provider retry classification", () => {
 	});
 
 	it("matches Azure peak-load capacity errors", () => {
-		// Regression for #9669.
 		expect(
 			isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage: azurePeakLoadError })),
 		).toBe(true);
@@ -110,7 +108,6 @@ describe("provider retry classification", () => {
 		expect(
 			isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded_error" })),
 		).toBe(true);
-		// Regression for #9627.
 		expect(
 			isRetryableAssistantError(
 				fauxAssistantMessage("", { stopReason: "error", errorMessage: "520 status code (no body)" }),
@@ -127,7 +124,6 @@ describe("provider retry classification", () => {
 
 describe("retryDelayMs", () => {
 	it("caps agent retry delay", () => {
-		// Regression for #8826.
 		expect(retryDelayMs({ baseDelayMs: 2000 }, 6)).toBe(60000);
 		expect(retryDelayMs({ baseDelayMs: 2000, maxAgentDelayMs: 5000 }, 5)).toBe(5000);
 		expect(retryDelayMs({ baseDelayMs: 2000, maxAgentDelayMs: 0 }, 5)).toBe(0);
@@ -179,7 +175,6 @@ describe("retryAssistantCall", () => {
 	});
 
 	it("reports capped retry delays", async () => {
-		// Regression for #8826.
 		let n = 0;
 		const policy: RetryPolicy = { enabled: true, maxRetries: 4, baseDelayMs: 10, maxAgentDelayMs: 15 };
 		const produce = vi.fn(async () => {

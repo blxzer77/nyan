@@ -46,7 +46,7 @@ test("orders Nyan versions with semver precedence", () => {
 });
 
 test("selects the newest catalog a Nyan version supports", () => {
-	// Regression test for #9099: released clients before 0.85.0 cannot use the mixed-API catalog.
+	// Regression test: released clients before 0.85.0 cannot use the mixed-API catalog.
 	assert.equal(selectModelCatalog(index, "0.84.4")?.revision, legacyRevision);
 	assert.equal(selectModelCatalog(index, "0.85.0-rc.1")?.revision, legacyRevision);
 	assert.equal(selectModelCatalog(index, "0.85.0")?.revision, mixedApiRevision);
@@ -56,7 +56,7 @@ test("selects the newest catalog a Nyan version supports", () => {
 });
 
 test("redirects Nyan user agents to an explicit catalog version", () => {
-	// Regression test for #9099: released clients identify themselves only by User-Agent.
+	// Regression test: released clients identify themselves only by User-Agent.
 	assert.deepEqual(
 		parseModelCatalogRequest(
 			"https://catalog.example.test/api/models/providers/openrouter?types=chat%2Cimage",

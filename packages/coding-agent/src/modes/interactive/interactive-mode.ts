@@ -2146,7 +2146,7 @@ export class InteractiveMode {
 
 	/**
 	 * After an error, check whether an update replaced or removed this install while the session ran.
-	 * Code loaded on demand then fails with missing modules until restart (#10439). Returns true when
+	 * Code loaded on demand then fails with missing modules until restart. Returns true when
 	 * the install changed.
 	 */
 	private maybeShowInstallChangeWarning(): boolean {
@@ -4046,7 +4046,7 @@ export class InteractiveMode {
 		entries: SessionEntry[],
 		options: { updateFooter?: boolean; populateHistory?: boolean } = {},
 	): void {
-		// Selection coordinates point into the transcript being replaced (#9311).
+		// Selection coordinates point into the transcript being replaced.
 		if (this.renderer instanceof TuiAltScreen) this.renderer.resetTextSelection();
 		const items = entries.flatMap((entry): RenderSessionItem[] => {
 			if (entry.type === "custom" || (entry.type === "usage" && entry.kind === "cache_warm")) {
@@ -4256,7 +4256,7 @@ export class InteractiveMode {
 			// skipped if a later terminal-restore write fails on a dead or stalled
 			// terminal. If the terminal is gone, the restore writes below emit EIO,
 			// which the stdout/stderr error handler turns into emergencyTerminalExit;
-			// the render loop is already idle, so this cannot hot-spin (see #4144).
+			// the render loop is already idle, so this cannot hot-spin.
 			await this.runtimeHost.dispose();
 			this.themeController.disableAutoSync();
 			await this.ui.terminal.drainInput(1000);
@@ -4352,7 +4352,7 @@ export class InteractiveMode {
 				// SIGHUP no longer hard-exits: graceful shutdown emits session_shutdown
 				// first, then attempts terminal restore. A genuinely dead terminal
 				// surfaces as an EIO on the restore writes, which the stdout/stderr
-				// error handler converts into emergencyTerminalExit (see #4144, #5080).
+				// error handler converts into emergencyTerminalExit.
 				killTrackedDetachedChildren();
 				void this.shutdown({ fromSignal: true });
 			};

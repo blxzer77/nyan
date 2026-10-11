@@ -732,7 +732,7 @@ describe("AgentSession actionable boundaries", () => {
 		expect(harness.sessionManager.getEntries()).toContainEqual(
 			expect.objectContaining({ type: "custom", customType: "committed-after-abort", data: true }),
 		);
-		// #10607: settlement reports the abort although the last response succeeded.
+		// Settlement reports the abort although the last response succeeded.
 		expect(harness.eventsOfType("agent_settled")).toEqual([{ type: "agent_settled", aborted: true }]);
 	});
 });

@@ -290,7 +290,7 @@ const AZURE_DEEPSEEK_V4_THINKING_LEVEL_MAP = {
 	xhigh: null,
 	max: null,
 } as const;
-// Verified against Fireworks Messages raw_output on 2026-09-10 (#9323).
+// Verified against Fireworks Messages raw_output on 2026-09-10.
 // Fall back to verified support when models.dev omits effort metadata; this is
 // not an allowlist. Any Fireworks Messages model advertising effort uses adaptive thinking.
 const FIREWORKS_ADAPTIVE_THINKING_FALLBACK_MODELS = new Set([
@@ -1755,7 +1755,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					baseUrl: getBedrockBaseUrl(id),
 					reasoning: m.reasoning === true,
 					input: (m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"]) as ("text" | "image")[],
-					// Includes models.dev pricing tiers, e.g. the long-context tier for OpenAI models (#10326).
+					// Includes models.dev pricing tiers, e.g. the long-context tier for OpenAI models.
 					cost: getModelsDevCost(m.cost),
 					contextWindow: m.limit?.context || 4096,
 					maxTokens: m.limit?.output || 4096,
@@ -3389,7 +3389,7 @@ async function generateModels() {
 	// https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/deepseek/
 	const AZURE_DEEPSEEK_V4_PRO_COST: ModelCost = { input: 1.925, output: 3.828, cacheRead: 0.165, cacheWrite: 0 };
 	// Azure 400s on DeepSeek's `thinking` field and on every prompt cache parameter, discards a
-	// `developer` system message unbilled once reasoning_effort is set, and honours mid-convo ones (#9645).
+	// `developer` system message unbilled once reasoning_effort is set, and honours mid-convo ones.
 	const azureDeepSeekModels: Model<Api>[] = allModels
 		.filter((model) => model.provider === "deepseek" && model.id === "deepseek-v4-pro")
 		.map((model) => ({

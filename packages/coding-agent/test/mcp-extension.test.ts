@@ -85,7 +85,6 @@ describe("MCP config", () => {
 		expect(untrusted.servers.find((server) => server.name === "shared")?.config).toEqual({ command: "global-cmd" });
 	});
 
-	// #10277
 	it("lets project entries override enabled and exposure of global servers", () => {
 		const paths = setup(
 			{ mcpServers: { tools: { command: "x", env: { TOKEN: "secret" } } } },
@@ -114,7 +113,6 @@ describe("MCP config", () => {
 		expect(JSON.parse(readFileSync(project, "utf8")).mcpServers.tools).toEqual({ enabled: true });
 	});
 
-	// Regression: #10239.
 	it("rejects server names that differ only in - and _", () => {
 		const paths = setup({ mcpServers: { "work-files": { command: "a" }, work_files: { command: "b" } } }, {});
 		const { servers, errors } = loadMcpConfig({ ...paths, projectTrusted: false });
@@ -179,7 +177,6 @@ describe("MCP config", () => {
 						url: "https://a.example/mcp",
 						oauth: { authServerMetadataUrl: "http://idp.example/m" },
 					},
-					// #10302
 					cimd: {
 						url: "https://a.example/mcp",
 						oauth: { clientRegistration: "cimd", callbackUrl: "http://localhost/callback" },
@@ -582,7 +579,6 @@ for await (const line of createInterface({ input: process.stdin })) {
 		expect(failing.opened()).toBe(1);
 	});
 
-	// #10249
 	it("closes a connection that is still initializing before close returns", async () => {
 		const pair = createInMemoryTransportPair();
 		// The server receives initialize but never answers it.
@@ -607,7 +603,6 @@ for await (const line of createInterface({ input: process.stdin })) {
 		expect(String(failure)).toContain("failed to connect");
 	});
 
-	// #10249
 	it("stops waiting to retry a connection when closed", async () => {
 		const { connection } = connect(
 			{ name: "fake", config: { url: "http://unused.invalid", headers: { Authorization: "x" } }, source: "test" },

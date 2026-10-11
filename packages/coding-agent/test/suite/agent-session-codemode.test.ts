@@ -171,11 +171,11 @@ describe("AgentSession codemode tool", () => {
 		expect(requestTools[1]).toContain("codemode");
 		expect(requestTools[1]).not.toContain("echo");
 		expect(requestTools[1]).not.toContain("read");
-		// The prompt's tool list matches the declarations: hidden tools are not listed (#10192).
+		// The prompt's tool list matches the declarations: hidden tools are not listed.
 		expect(requestPrompts[1]).not.toContain("\n- read: ");
 		expect(requestPrompts[1]).toContain("\n- codemode: ");
 		expect(harness.session.systemPrompt).not.toContain("\n- read: ");
-		// Hidden tools' guidelines move from the rules to their codemode sections (#10343).
+		// Hidden tools' guidelines move from the rules to their codemode sections.
 		expect(requestPrompts[1]).not.toContain("Use read to examine files");
 		expect(description("codemode")).toContain("- Use read to examine files instead of cat or sed.");
 
@@ -184,7 +184,6 @@ describe("AgentSession codemode tool", () => {
 		expect(description("echo")).toBe("Echo text back.\n\nSecond paragraph.");
 	});
 
-	// #10343
 	it("shows the guidelines of tools that do not fit the inline budget through describeTool()", async () => {
 		const harness = await setup();
 		harness.settingsManager.applyOverrides({ codemode: { mode: "only", inlineBudget: 0 } });

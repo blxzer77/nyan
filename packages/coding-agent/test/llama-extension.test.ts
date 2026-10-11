@@ -91,7 +91,6 @@ describe("llama.cpp extension", () => {
 		]);
 	});
 
-	// Regression test for #9528.
 	it("discovers chat-template thinking support for loaded models", async () => {
 		let propsRequests = 0;
 		const { url } = await listen((request, response) => {

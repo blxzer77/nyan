@@ -63,7 +63,7 @@ describe("getBranchSelection", () => {
 		return { selection, lookups };
 	}
 
-	// #10198: the selection must not cost one catalog lookup per assistant message.
+	// The selection must not cost one catalog lookup per assistant message.
 	it("looks up only the last model_change", async () => {
 		const { runtime, virtual } = await createRuntime();
 		const small = runtime.getModel("faux", "small")!;

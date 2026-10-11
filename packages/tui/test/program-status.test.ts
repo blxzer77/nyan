@@ -7,7 +7,6 @@ function decodeMessage(sequence: string): string | undefined {
 	return message === undefined ? undefined : Buffer.from(message, "base64").toString("utf8");
 }
 
-// #10607
 describe("formatProgramStatus", () => {
 	it("encodes state, app, kind, and a base64 message", () => {
 		assert.equal(

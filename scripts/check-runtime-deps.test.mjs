@@ -24,7 +24,7 @@ async function check(t, manifest, source, extraFiles = {}) {
 	return spawnSync(process.execPath, [script], { cwd: root, encoding: "utf8" });
 }
 
-// #9132: workspace resolution and installing every release package masked a missing runtime dependency.
+// Workspace resolution and installing every release package masked a missing runtime dependency.
 test("rejects undeclared imports even when the workspace package exists", async (t) => {
 	const result = await check(t, {}, 'export { createUnixServer } from "@nyan/server/unix";', {
 		"packages/server/package.json": JSON.stringify({ name: "@nyan/server", version: "1.0.0" }),
@@ -86,7 +86,7 @@ test("permits dev-only dependencies in sources excluded from the published build
 	assert.equal(result.status, 0, result.stderr);
 });
 
-// #9132: an experimental flag cannot prevent module resolution through a public entrypoint.
+// An experimental flag cannot prevent module resolution through a public entrypoint.
 for (const statement of ['export * from "./experimental/server";', 'import type { Options } from "./experimental/server";']) {
 	test(`rejects excluded code reachable through ${statement}`, async (t) => {
 		const result = await check(t, { devDependencies: { server: "1.0.0" } }, statement, {

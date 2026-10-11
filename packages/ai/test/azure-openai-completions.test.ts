@@ -107,7 +107,7 @@ function deepSeekModel() {
 	return getModel("azure", "deepseek-v4-pro");
 }
 
-// Regression for #9645: Azure Foundry rejects DeepSeek's thinking field and every prompt cache parameter here.
+// Regression: Azure Foundry rejects DeepSeek's thinking field and every prompt cache parameter here.
 describe("azure deepseek-v4-pro over Chat Completions", () => {
 	it("turns thinking on with reasoning_effort instead of DeepSeek's thinking field", async () => {
 		await azure.streamSimple(deepSeekModel(), context, { apiKey: "test-key", reasoning: "high" }).result();

@@ -447,7 +447,7 @@ describe("detectInstallMethod", () => {
 });
 
 describe("detectInstallChange", () => {
-	// Regression test for #10439: a deleted pnpm install must not fall back to a package.json further up.
+	// Regression test: a deleted pnpm install must not fall back to a package.json further up.
 	test("reports a removed install instead of reading a package.json further up", () => {
 		tempDir = mkdtempSync(join(tmpdir(), "nyan-install-change-"));
 		const installDir = join(tempDir, "global", "hash");

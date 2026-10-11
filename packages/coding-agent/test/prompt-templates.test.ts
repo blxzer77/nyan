@@ -624,7 +624,6 @@ Analyze GitHub issue(s): $ARGUMENTS`,
 });
 
 describe("loadPromptTemplates - diagnostics", () => {
-	// Regression test for #9354.
 	test("reports invalid YAML frontmatter and keeps valid siblings", () => {
 		const testDir = mkdtempSync(join(tmpdir(), "nyan-test-prompts-invalid-"));
 		const invalidPromptPath = join(testDir, "invalid.md");

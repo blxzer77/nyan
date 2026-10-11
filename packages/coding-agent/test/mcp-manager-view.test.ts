@@ -21,7 +21,6 @@ describe("MCP manager status screen", () => {
 		setKeybindings(new KeybindingsManager());
 	});
 
-	// #10565
 	test("cancels the running operation with the cancel key", () => {
 		const view = new McpManagerView(tui, theme, new KeybindingsManager());
 		const onCancel = vi.fn();

@@ -46,7 +46,6 @@ const compactionEnd = (
 	errorMessage: options.errorMessage,
 });
 
-// #10607
 describe("ProgramStatusReporter", () => {
 	it("reports idle, working during a run, and done once it settles", () => {
 		const { reporter, reports, send, last } = setup("Fix login");

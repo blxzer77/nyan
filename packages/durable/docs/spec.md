@@ -34,9 +34,8 @@ type JsonObject = { [key: string]: JsonValue };
 type TaskOutcomeError = { message: string; detail?: JsonValue };
 ```
 
-Pico5 targets the transcript `SystemMessage` contract from @nyan/ai PR
-[#9548](). `Message` includes that
-type once the PR lands.
+Pico5 targets the transcript `SystemMessage` contract of `@nyan/ai`, which
+`Message` includes.
 
 The core rule is:
 
@@ -3129,7 +3128,7 @@ is not a lock against `bash` or other processes.
 Pico has no durable prompt sections. The conversation's resolved agent produces
 the desired sections for each request; the transcript's `nyan.system` entries are
 the only durable record of what the model saw. Pico stores prompt and tool
-changes directly as PR #9548 `SystemMessage` values at their transcript
+changes directly as `SystemMessage` values at their transcript
 positions, always with empty `content`:
 
 ```ts
@@ -3220,7 +3219,7 @@ shown section with `null`, and the second re-adds every desired section in
 desired order. This makes order-only changes and deletion/re-addition between
 requests replay exactly; merely restating equal values is insufficient.
 
-A PR #9548 `SystemMessage` is always a patch, not a reset: it cannot remove
+A `SystemMessage` is always a patch, not a reset: it cannot remove
 previous `content` or restore section order merely by restating current values.
 Therefore, when a head removes the previous request-visible baseline, which is
 the case when the active context has a head marker and no `nyan.system` entry

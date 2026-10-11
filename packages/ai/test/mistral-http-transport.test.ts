@@ -322,7 +322,7 @@ describe("Mistral HTTP transport", () => {
 		expect(message.usage).toMatchObject({ input: 7, output: 4, cacheRead: 3, cacheWrite: 0, totalTokens: 14 });
 	});
 
-	// #9674: GLM models on Mistral send empty content deltas at the start, around tool calls,
+	// GLM models on Mistral send empty content deltas at the start, around tool calls,
 	// and sometimes mid-thinking. They must not open blocks or split thinking.
 	it("ignores empty content deltas", async () => {
 		const model = getModel("mistral", "zai-glm-5-3");

@@ -399,7 +399,6 @@ describe("ExtensionRunner", () => {
 			expect(tools.map((t) => t.definition.name).sort()).toEqual(["tool_a", "tool_b"]);
 		});
 
-		// Regression test for #9300.
 		it("rejects extension tools without a parameter schema", async () => {
 			const extensionPath = path.join(extensionsDir, "missing-parameters.js");
 			fs.writeFileSync(
@@ -626,7 +625,6 @@ describe("ExtensionRunner", () => {
 			expect(errors[0].event).toBe("context");
 		});
 
-		// Regression test for #9068.
 		it("fails closed when a user_bash handler throws", async () => {
 			const extCode = `
 				export default function(nyan) {
@@ -648,7 +646,6 @@ describe("ExtensionRunner", () => {
 			expect(errors).toMatchObject([{ event: "user_bash", error: "Routing failed" }]);
 		});
 
-		// Regression test for #9068.
 		it.each([
 			["an empty object", "{}"],
 			["null operations", "{ operations: null }"],
@@ -888,7 +885,7 @@ describe("ExtensionRunner", () => {
 		});
 	});
 
-	// Issue #10285: the MCP extension renders calls to tools that are not registered.
+	// The MCP extension renders calls to tools that are not registered.
 	it("resolves tool renderers in extension load order, each able to defer to the next", async () => {
 		const runtime = createExtensionRuntime();
 		const eventBus = createEventBus();
@@ -1243,7 +1240,7 @@ describe("ExtensionRunner", () => {
 		});
 	});
 
-	// #8967: event handler unsubscription must not disturb other registrations.
+	// Event handler unsubscription must not disturb other registrations.
 	describe("event subscriptions", () => {
 		async function loadSubscriptionExtension(factory: ExtensionFactory) {
 			const runtime = createExtensionRuntime();

@@ -342,7 +342,7 @@ describe("StreamableHttpTransport", () => {
 		await client.close();
 	});
 
-	// #10565: the auth provider may refresh over the network, which closing must not wait for.
+	// The auth provider may refresh over the network, which closing must not wait for.
 	it("closes the session with the last request's token, without asking the auth provider", async () => {
 		const { url, requests } = await startServer(protocolHandler);
 		let calls = 0;
@@ -362,7 +362,7 @@ describe("StreamableHttpTransport", () => {
 		expect(deletes[0]?.headers["mcp-session-id"]).toBe("session-1");
 	});
 
-	// #10188: Cloudflare Workers reject the platform fetch when called with a receiver other than globalThis.
+	// Cloudflare Workers reject the platform fetch when called with a receiver other than globalThis.
 	it("calls fetch without a receiver", async () => {
 		const realFetch = globalThis.fetch;
 		const strictFetch = function (this: unknown, input: string | URL, init?: RequestInit) {

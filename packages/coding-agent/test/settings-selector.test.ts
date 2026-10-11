@@ -58,7 +58,7 @@ describe("SettingsSelectorComponent", () => {
 		expect(onScrollbarChange.mock.calls.flat()).toEqual(["always", "hidden", "auto"]);
 		cycle("Fullscreen copy on select", 2);
 		expect(onCopyOnSelectChange.mock.calls.flat()).toEqual([false, true]);
-		// #9758: custom values from settings.json stay in the cycle.
+		// Custom values from settings.json stay in the cycle.
 		cycle("Fullscreen wheel scrolling", 3);
 		expect(onWheelScrollLinesChange.mock.calls.flat()).toEqual([10, "auto", 1]);
 	});

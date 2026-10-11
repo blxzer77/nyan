@@ -69,7 +69,7 @@ function createTreeUI() {
 describe("InteractiveMode tree navigation availability", () => {
 	beforeEach(() => initTheme("dark"));
 
-	// Regression for #9178 / PR #9179: rejection must not replace the active operation's UI.
+	// Regression: rejection must not replace the active operation's UI.
 	it.each(["Summarize", "No summary"])("preserves operation UI when choosing %s while busy", async (choice) => {
 		const { ui, onEscape, select } = createTreeUI();
 		const originalLeafId = ui.sessionManager.getLeafId();

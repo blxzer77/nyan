@@ -1161,7 +1161,7 @@ export class SessionManager {
 	 * A new session file is created only once the session contains a user or assistant message.
 	 * Setup entries alone (model, thinking level, system prompt) stay in memory so opening and
 	 * closing nyan without chatting leaves no file behind. Starting at the user message (not the
-	 * first assistant reply) keeps the prompt on disk if the first turn never completes (#10000).
+	 * first assistant reply) keeps the prompt on disk if the first turn never completes.
 	 */
 	private _hasConversation(): boolean {
 		return this.fileEntries.some(

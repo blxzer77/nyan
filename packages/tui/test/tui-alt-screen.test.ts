@@ -139,7 +139,7 @@ describe("TuiAltScreen", () => {
 	});
 
 	it("keeps the jump-to-end indicator centered as the auto scrollbar hides and reappears", async () => {
-		// Regression test for #9136: auto scrollbar visibility must not move the indicator.
+		// Regression test: auto scrollbar visibility must not move the indicator.
 		const terminal = new VirtualTerminal(80, 6);
 		const label = " ↓ Jump to latest message · End ";
 		const tui = new TuiAltScreen(terminal, undefined, undefined, {
@@ -182,7 +182,7 @@ describe("TuiAltScreen", () => {
 	});
 
 	it("leaves the scrollbar visible and clickable when the jump-to-end indicator spans the transcript", async () => {
-		// Regression coverage for #9136: centering must not paint or capture clicks over the scrollbar.
+		// Regression coverage: centering must not paint or capture clicks over the scrollbar.
 		const terminal = new VirtualTerminal(30, 6);
 		const tui = new TuiAltScreen(terminal, undefined, undefined, {
 			scrollToEndIndicator: () => "↓".repeat(30),
@@ -504,7 +504,7 @@ describe("TuiAltScreen", () => {
 		tui.stop();
 	});
 
-	// #9758: wheel line counts can change at runtime; Alt keeps its multiplier.
+	// Wheel line counts can change at runtime; Alt keeps its multiplier.
 	it("applies runtime wheel line count updates", async () => {
 		const terminal = new VirtualTerminal(20, 4);
 		const tui = new TuiAltScreen(terminal, undefined, undefined, { wheelScrollLines: 3 });
@@ -925,7 +925,7 @@ describe("TuiAltScreen", () => {
 		const bottom = transcript.scrollTop;
 		assert.ok(bottom > 0);
 
-		// #10314: unmodified Home/End belong to the editor in every UI mode.
+		// Unmodified Home/End belong to the editor in every UI mode.
 		const editorKeys = ["\x1bOH", "\x1b[F", "\x1b[57423u", "\x1b[5;5~", "\x1b[6;5~"];
 		for (const input of editorKeys) terminal.sendInput(input);
 		await terminal.waitForRender();
@@ -1075,7 +1075,7 @@ describe("TuiAltScreen", () => {
 	});
 
 	it("redraws WezTerm Kitty images after writes to covered rows", async () => {
-		// Regression test for #10319: a scrollbar update below an unchanged image anchor erased its cells.
+		// Regression test: a scrollbar update below an unchanged image anchor erased its cells.
 		const weztermPane = process.env.WEZTERM_PANE;
 		let tui: TuiAltScreen | undefined;
 		process.env.WEZTERM_PANE = "1";
@@ -1475,7 +1475,6 @@ describe("TuiAltScreen", () => {
 	});
 
 	it("flashes a specific error returned by the injected copySelection handler", async () => {
-		// Regression test for #9618.
 		const terminal = new RecordingTerminal(80, 4);
 		const tui = new TuiAltScreen(terminal, undefined, undefined, {
 			copyOnSelect: false,

@@ -121,7 +121,7 @@ async function cacheReadAfterToolChange(token: string, legacyOrder: boolean): Pr
 }
 
 describe("Durable system message order e2e", () => {
-	// Live regression coverage for #10542; skipped without Anthropic credentials in ~/.nyan/agent/auth.json.
+	// Live regression coverage; skipped without Anthropic credentials in ~/.nyan/agent/auth.json.
 	it.skipIf(!anthropicToken)(
 		"keeps the prompt cache across a tool change only when the system message leads",
 		{ retry: 1, timeout: 180_000 },

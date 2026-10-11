@@ -412,7 +412,6 @@ describe("manual compaction", () => {
 		await chat.harness.close(context);
 	});
 
-	// Regression coverage for #10424.
 	it("creates provider state before a legacy conversation's summarization request", async () => {
 		const chat = await open();
 		await history(chat);

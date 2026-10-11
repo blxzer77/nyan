@@ -25,7 +25,6 @@ function seedHistory(harness: Harness, totalTokens = 650): string {
 	return recentUserId;
 }
 
-// Regression coverage for #8133.
 describe("AgentSession compaction model overrides", () => {
 	const harnesses: Harness[] = [];
 	afterEach(() => {

@@ -144,7 +144,6 @@ describe("task recovery", () => {
 		await third.harness.close(context);
 	});
 
-	// #10549
 	it("keeps a task's startedAt across close and reopen and stamps endedAt when it settles", async () => {
 		const path = await sqlitePath();
 		const service = new TransferService();

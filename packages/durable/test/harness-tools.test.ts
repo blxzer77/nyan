@@ -111,7 +111,6 @@ describe("tool round", () => {
 		await harness.close(context);
 	});
 
-	// #10395
 	it("gives tools and hooks the Harness's models", async () => {
 		const setup = chatSetup();
 		const seen: unknown[] = [];
@@ -428,7 +427,6 @@ describe("tool results", () => {
 		await harness.close(context);
 	});
 
-	// #10549
 	it("records how long execute() took, excluding hooks, and nothing for calls that did not run", async () => {
 		const setup = chatSetup();
 		const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

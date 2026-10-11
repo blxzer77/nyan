@@ -237,7 +237,6 @@ describe("defaultTools setting", () => {
 			).session;
 		}
 
-		// #10245
 		it("activates only tools newly added to defaultTools", async () => {
 			const session = await createFileSession();
 			expect(session.getActiveToolNames()).toEqual(["read", "bash", "edit", "write"]);

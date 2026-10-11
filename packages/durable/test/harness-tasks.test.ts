@@ -307,7 +307,6 @@ describe("task phases", () => {
 		await harness.close(context);
 	});
 
-	// #10549
 	it("stamps startedAt at the first run and endedAt when terminal, keeping startedAt through a wait", async () => {
 		let clock = 1_000;
 		const gate = deferred();
@@ -852,7 +851,6 @@ describe("task scheduling", () => {
 		await expect(root.waitForIdle(context)).rejects.toThrow("closed");
 	});
 
-	// #10546
 	it("pages the newest tasks first without scanning older ones", async () => {
 		const Idle = oneStep("test.idle", async () => {});
 		const { harness, root } = await openRoot([Idle]);

@@ -158,7 +158,6 @@ describe("--session-id", () => {
 		expect(consoleError).not.toHaveBeenCalled();
 	});
 
-	// Regression test for #9440.
 	it("looks up exact IDs without building full session listings", async () => {
 		const tempRoot = createTempDir();
 		const projectDir = join(tempRoot, "project");

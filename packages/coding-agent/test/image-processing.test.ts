@@ -82,7 +82,7 @@ describe("convertToPng", () => {
 	});
 });
 
-// Issue #10292: nyan-tui uses this transcoder to show non-PNG images on Kitty-protocol terminals.
+// nyan-tui uses this transcoder to show non-PNG images on Kitty-protocol terminals.
 it("loadPngTranscoder converts synchronously to oriented PNG data", async () => {
 	const transcoder = (await loadPngTranscoder())!;
 	const png = Buffer.from(transcoder(jpegWithXmpBeforeOrientation(), "image/jpeg")!, "base64");

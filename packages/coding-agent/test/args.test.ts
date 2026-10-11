@@ -146,14 +146,12 @@ describe("parseArgs", () => {
 			expect(result.models).toEqual(["gpt-4o", "claude-sonnet", "gemini-pro"]);
 		});
 
-		// Issue #10334
 		test("ignores empty entries in --models", () => {
 			const result = parseArgs(["--models", "gpt-4o, ,claude-sonnet,"]);
 			expect(result.models).toEqual(["gpt-4o", "claude-sonnet"]);
 		});
 	});
 
-	// Issue #9045
 	describe("--mode flag", () => {
 		test.each(["text", "json", "rpc"] as const)("parses --mode %s", (mode) => {
 			const result = parseArgs(["--mode", mode]);

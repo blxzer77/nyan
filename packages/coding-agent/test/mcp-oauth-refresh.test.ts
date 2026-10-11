@@ -153,14 +153,12 @@ describe("MCP OAuth sign-in", () => {
 		}
 	});
 
-	// #10172
 	it("uses the configured authorization server metadata URL", async () => {
 		const settings = (serverUrl: string) => ({ authServerMetadataUrl: new URL("/missing", serverUrl) });
 		await expect(signIn({}, settings)).rejects.toThrow("HTTP 404 loading authorization server metadata");
 	});
 });
 
-// #10302
 describe("MCP OAuth client ID metadata documents", () => {
 	const cleanups: (() => Promise<void>)[] = [];
 	const cimd: McpOAuthSettings = { clientRegistration: "cimd" };

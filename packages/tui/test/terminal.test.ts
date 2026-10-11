@@ -233,7 +233,6 @@ describe("ProcessTerminal Kitty keyboard protocol negotiation", () => {
 		}
 	});
 
-	// #10607
 	describe("program status (OSC 7501)", () => {
 		const working = "\x1b]7501;state=working:app=nyan\x1b\\";
 		const clear = "\x1b]7501;state=clear\x1b\\";

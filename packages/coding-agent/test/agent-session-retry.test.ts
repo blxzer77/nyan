@@ -155,7 +155,6 @@ describe("AgentSession retry", () => {
 	});
 
 	it("caps agent retry delay", async () => {
-		// Regression for #8826.
 		const created = await createSession({ failCount: 4, maxRetries: 5, maxAgentDelayMs: 5 });
 		const delays: number[] = [];
 		created.session.subscribe((event) => {

@@ -268,7 +268,6 @@ describe("createAgentSession stream options", () => {
 		expect(options?.maxRetryDelayMs).toBe(3000);
 	});
 
-	// Regression test for #9784.
 	it("forwards provider stream events to extensions", async () => {
 		const providerEvent = { openrouter_metadata: { strategy: "direct" } };
 		const extensionEvents: unknown[] = [];

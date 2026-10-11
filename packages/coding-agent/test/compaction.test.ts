@@ -374,7 +374,6 @@ describe("findCutPoint", () => {
 		expect(customFitsBudget.turnStartIndex).toBe(-1);
 	});
 
-	// Regression test for #9740.
 	it("should fall back to the latest valid cut point before oversized trailing tool results", () => {
 		const oldUser = createMessageEntry(createUserMessage("old history"));
 		const oldAssistant = createMessageEntry(createAssistantMessage("old answer"));

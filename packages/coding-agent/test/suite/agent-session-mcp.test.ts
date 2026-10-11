@@ -405,7 +405,6 @@ describe("AgentSession MCP integration", () => {
 		expect(nestedToolNames(harness)).toContain(searchName);
 	});
 
-	// Regression: #10239.
 	it.each([false, true])("routes tools whose names differ only in - and _ (reverse: %s)", async (reverse) => {
 		const tools = [
 			{ name: "read-file", description: "dashed", inputSchema: { type: "object", properties: {} } },
@@ -1055,7 +1054,7 @@ describe("AgentSession MCP servers registered by extensions", () => {
 		await vi.waitFor(() => expect(harness.session.getCallableToolNames()).not.toContain("mcp__late__search"));
 	});
 
-	// "my_docs" shares the namespace of "my-docs" (#10239).
+	// "my_docs" shares the namespace of "my-docs".
 	it.each(["my-docs", "my_docs"])("prefers the mcp.json server over a registered %s", async (name) => {
 		const configured: McpServerEntry = {
 			name: "my-docs",
@@ -1094,7 +1093,7 @@ describe("AgentSession MCP servers registered by extensions", () => {
 		]);
 		expect(errors).toEqual([
 			expect.stringMatching(/MCP server "taken" is already registered by extension/),
-			// Names that differ only in - and _ share a namespace (#10239).
+			// Names that differ only in - and _ share a namespace.
 			'Error: MCP server "my_server" conflicts with registered server "my-server"',
 		]);
 	});

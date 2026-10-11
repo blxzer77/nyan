@@ -230,7 +230,6 @@ describe("InteractiveMode compaction events", () => {
 		expect(fakeThis.ui.requestRender).toHaveBeenCalledTimes(2);
 	});
 
-	// Regression test for #9340.
 	test("routes interactive response aborts through AgentSession", () => {
 		const abort = vi.fn(async () => {});
 		const ui = {

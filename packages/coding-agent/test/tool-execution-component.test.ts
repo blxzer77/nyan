@@ -45,8 +45,8 @@ describe("ToolExecutionComponent parity", () => {
 		vi.useRealTimers();
 	});
 
-	// Issue #10292: the component loads the PNG transcoder itself, so this works in any TUI host.
-	// Issue #8577: a replaced partial image must not resurface.
+	// The component loads the PNG transcoder itself, so this works in any TUI host.
+	// A replaced partial image must not resurface.
 	test("converts non-PNG tool images once the transcoder loads", async () => {
 		setCapabilities({ images: "kitty", trueColor: true, hyperlinks: true });
 		const component = new ToolExecutionComponent("tool", "id", {}, {}, undefined, createFakeTui(), process.cwd());
@@ -221,7 +221,7 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).not.toContain("[Showing lines 2001-4000 of 4000. Full output:");
 	});
 
-	// Issue #9628: keep short durations precise and make long shell durations readable.
+	// Keep short durations precise and make long shell durations readable.
 	test.each([
 		{ ms: 0, formatted: "0.0s" },
 		{ ms: 4_200, formatted: "4.2s" },
@@ -262,7 +262,6 @@ describe("ToolExecutionComponent parity", () => {
 		expect(completed).toContain(`Took ${formatted}`);
 	});
 
-	// #10549
 	test("bash renderer shows a result's recorded duration, also for a result restored without a live start", () => {
 		const render = (live: boolean): string => {
 			vi.useFakeTimers();
@@ -304,7 +303,7 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered.match(/\bread\b/g)?.length ?? 0).toBe(1);
 	});
 
-	// Issue #9996: strict tool schemas make models send null for omitted optional fields.
+	// Strict tool schemas make models send null for omitted optional fields.
 	test("renders read calls with null offset and limit as full-file reads", () => {
 		const component = new ToolExecutionComponent(
 			"read",

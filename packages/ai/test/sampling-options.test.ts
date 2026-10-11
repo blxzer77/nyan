@@ -111,7 +111,7 @@ describe("sampling params", () => {
 		expect(payload.top_p).toBeUndefined();
 	});
 
-	// Model defaults must apply to direct stream()/complete() calls, not only streamSimple() (#9506)
+	// Model defaults must apply to direct stream()/complete() calls, not only streamSimple()
 	it.each(["openai-completions", "openai-responses", "azure-openai-responses"] as const)(
 		"applies model-level sampling params with request keys taking precedence for %s",
 		async (api) => {

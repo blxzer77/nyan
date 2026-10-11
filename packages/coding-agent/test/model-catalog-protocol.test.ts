@@ -15,7 +15,7 @@ import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { allowNetwork } from "./test-network-env.ts";
 
 // Runs the current client against the catalog selection a catalog service performs, using
-// the shared protocol in scripts/model-catalog-protocol.ts. Regression test for #9099.
+// the shared protocol in scripts/model-catalog-protocol.ts. Regression test.
 
 const legacyRevision = `sha256-${"a".repeat(64)}`;
 const mixedApiRevision = `sha256-${"b".repeat(64)}`;

@@ -127,7 +127,7 @@ describe("MCP OAuth", () => {
 			if (url.pathname === "/register") {
 				const metadata = JSON.parse(await readBody(request)) as Record<string, unknown>;
 				response.writeHead(201, { "content-type": "application/json" });
-				// Empty and null optional fields count as absent (#10266).
+				// Empty and null optional fields count as absent.
 				response.end(JSON.stringify({ ...metadata, client_id: "test-client", client_secret: "" }));
 				return;
 			}
@@ -408,7 +408,6 @@ describe("MCP OAuth", () => {
 		expect(await second.tokens()).toBeUndefined();
 	});
 
-	// #10493
 	it("registers with an application_type derived from the redirect URIs unless one is set", async () => {
 		const bodies: Record<string, unknown>[] = [];
 		const origin = await listen(async (request, response) => {
@@ -450,7 +449,6 @@ describe("MCP OAuth", () => {
 		await expect(discoverAuthorizationServerMetadata(origin)).rejects.toBeInstanceOf(OAuthIssuerMismatchError);
 	});
 
-	// #10172
 	it("uses a configured authorization server metadata document as is", async () => {
 		const origin = await listen(async (request, response, serverOrigin) => {
 			const url = new URL(request.url ?? "/", serverOrigin);
@@ -521,7 +519,6 @@ describe("MCP OAuth", () => {
 		expect(codes).toEqual(["matching", "omitted"]);
 	});
 
-	// #10565
 	it("stops when its signal aborts, without falling back to a redirect", async () => {
 		const stalled: string[] = [];
 		// Accepts every request and never answers.
@@ -576,7 +573,6 @@ describe("OAuthCallbackServer pages", () => {
 		}
 	});
 
-	// #10302
 	it("rejects a response on another path than the expected one", async () => {
 		const callback = await OAuthCallbackServer.listen({ extraPaths: ["/callback/server-id"] });
 		try {

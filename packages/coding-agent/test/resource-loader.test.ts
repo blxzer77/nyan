@@ -54,7 +54,6 @@ describe("DefaultResourceLoader", () => {
 		});
 
 		it("should warn about host dependencies in an extension package manifest", async () => {
-			// Regression for #9863.
 			const packageRoot = join(tempDir, "extension-package");
 			const extensionsDir = join(packageRoot, "extensions");
 			mkdirSync(extensionsDir, { recursive: true });
@@ -155,7 +154,6 @@ Prompt content.`,
 			expect(prompts.some((p) => p.name === "test-prompt")).toBe(true);
 		});
 
-		// Regression test for #9354.
 		it("should report invalid prompt frontmatter while loading valid siblings", async () => {
 			const promptsDir = join(agentDir, "prompts");
 			const invalidPromptPath = join(promptsDir, "invalid.md");
@@ -738,7 +736,7 @@ Extra content`,
 		});
 
 		// Regression: extension discovery used to drop package scope/source, collapsing every
-		// autocomplete source tag to [t]. See issue #6968.
+		// autocomplete source tag to [t].
 		it("should keep package metadata for skills, prompts, and themes", async () => {
 			const packageRoot = join(agentDir, "npm", "node_modules", "metadata-pkg");
 			const packageSkillDir = join(packageRoot, "skills", "package-skill");

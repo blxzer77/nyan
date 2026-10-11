@@ -206,7 +206,6 @@ describe("buildSystemPrompt", () => {
 		});
 	});
 
-	// #10343
 	describe("hidden tools", () => {
 		const build = (hiddenTools: string[]) =>
 			buildSystemPrompt({

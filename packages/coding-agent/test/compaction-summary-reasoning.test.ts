@@ -146,7 +146,7 @@ describe("generateSummary reasoning options", () => {
 		expect(result.summary).toContain("previous checkpoint");
 		const requestContext = completeSimpleMock.mock.calls[0][1] as TranscriptContext;
 		const prompt = JSON.stringify(requestContext.messages);
-		// Regression test for #9652: clear boundaries and continuation wording avoid the reasoning-extraction false positive.
+		// Regression test: clear boundaries and continuation wording avoid the reasoning-extraction false positive.
 		expect(prompt).toContain("# Conversation\\n[User]: Summarize this.");
 		expect(prompt).toContain("# Instructions\\nThe messages above are earlier context from an ongoing conversation.");
 	});

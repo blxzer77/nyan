@@ -20,7 +20,6 @@ vi.mock("../src/utils/clipboard-image.ts", () => ({
 beforeEach(() => vi.resetAllMocks());
 
 test("Finder file paths take precedence over their icon image", async () => {
-	// Regression test for #9999.
 	const filePaths = ["/tmp/screenshot.png", "/tmp/My Photos/photo.png"];
 	mocks.readClipboardFilePaths.mockResolvedValue(filePaths);
 	mocks.readClipboardImage.mockResolvedValue({

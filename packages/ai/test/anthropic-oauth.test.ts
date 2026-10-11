@@ -220,7 +220,6 @@ describe.sequential("Anthropic OAuth", () => {
 		expect(login.pageText).toContain("Signed in to Anthropic.");
 	});
 
-	// #10571
 	it("falls back to a free callback port when the preferred port cannot be bound", async () => {
 		const blocker = createServer();
 		await listen(blocker, 53692);
