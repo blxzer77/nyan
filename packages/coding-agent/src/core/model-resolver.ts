@@ -2,19 +2,13 @@
  * Model resolution, scoping, and initial selection
  */
 
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import {
-	type Api,
-	type AuthOperationOptions,
-	type KnownProvider,
-	type Model,
-	modelsAreEqual,
-} from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@nyan/agent-core";
+import { type Api, type AuthOperationOptions, type KnownProvider, type Model, modelsAreEqual } from "@nyan/ai";
 import chalk from "chalk";
 import { minimatch } from "minimatch";
-import { isValidThinkingLevel } from "../cli/args.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
+import { isValidThinkingLevel } from "./thinking-level.ts";
 
 /** Default chat model IDs for providers with built-in chat models. */
 export const defaultModelPerProvider: Partial<Record<KnownProvider, string>> = {

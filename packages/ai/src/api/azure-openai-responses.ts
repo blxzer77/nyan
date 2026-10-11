@@ -1,11 +1,11 @@
 import { AzureOpenAI } from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
-import { clampThinkingLevel } from "../models.ts";
 import type { Api, AssistantMessage, Model, SimpleStreamOptions, StreamFunction, TranscriptContext } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
-import { getPiUserAgent } from "../utils/pi-user-agent.ts";
+import { clampThinkingLevel } from "../utils/model-operations.ts";
+import { getNyanUserAgent } from "../utils/nyan-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { getDeclaredTools, resolveTranscript, resolveTranscriptTools } from "../utils/transcript.ts";
 import { type AzureEndpointOptions, resolveAzureConfig, resolveDeploymentName } from "./azure-openai-config.ts";
@@ -153,7 +153,7 @@ export const streamSimple: StreamFunction<"azure-openai-responses", SimpleStream
 };
 
 function createClient(model: Model<"azure-openai-responses">, apiKey: string, options?: AzureOpenAIResponsesOptions) {
-	const headers = { "User-Agent": getPiUserAgent(), ...model.headers };
+	const headers = { "User-Agent": getNyanUserAgent(), ...model.headers };
 
 	if (options?.headers) {
 		Object.assign(headers, options.headers);

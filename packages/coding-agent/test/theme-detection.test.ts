@@ -1,4 +1,4 @@
-import { resetCapabilitiesCache, setCapabilities } from "@earendil-works/pi-tui";
+import { resetCapabilitiesCache, setCapabilities } from "@nyan/tui";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	detectColorFgBgTheme,
@@ -6,7 +6,7 @@ import {
 	getThemeByName,
 	parseAutoThemeSetting,
 	resolveThemeSetting,
-} from "../src/modes/interactive/theme/theme.ts";
+} from "../src/ui/theme/theme.ts";
 
 afterEach(() => {
 	resetCapabilitiesCache();

@@ -1,6 +1,6 @@
-import { calculateCost } from "../models.ts";
 import type { ClassifierApi, ClassifierModel, ClassifierOptions, ProviderHeaders, Usage } from "../types.ts";
 import { headersToRecord, providerHeadersToRecord } from "../utils/headers.ts";
+import { calculateCost } from "../utils/model-operations.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 
 /** An HTTP failure in the shape `retryProviderRequest` and `normalizeProviderError` understand. */

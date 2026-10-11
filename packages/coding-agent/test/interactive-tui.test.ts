@@ -1,5 +1,5 @@
-import type { Component, Terminal, TUI, WheelScrollLines } from "@earendil-works/pi-tui";
-import { Container, getKeybindings, isViewportTUI, ScrollView, setKeybindings, Text } from "@earendil-works/pi-tui";
+import type { Component, Terminal, TUI, WheelScrollLines } from "@nyan/tui";
+import { Container, getKeybindings, isViewportTUI, ScrollView, setKeybindings, Text } from "@nyan/tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
@@ -17,7 +17,7 @@ import {
 	createInteractiveTuiReference,
 	InteractiveMode,
 } from "../src/modes/interactive/interactive-mode.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/ui/theme/theme.ts";
 
 const clipboardMocks = vi.hoisted(() => ({
 	copyToClipboard: vi.fn<(text: string) => Promise<void>>(),

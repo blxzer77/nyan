@@ -7,12 +7,12 @@
  * separate tool rows because they never reach the model as tool calls.
  */
 
-import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { Container, Spacer, Text } from "@nyan/tui";
 import type { ToolDefinition } from "../../core/extensions/types.ts";
 import { getTextOutput, replaceTabs, str } from "../../core/tools/render-utils.ts";
-import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
-import { VisualLinePreview } from "../../modes/interactive/components/visual-truncate.ts";
-import { highlightCode, type Theme } from "../../modes/interactive/theme/theme.ts";
+import { keyHint } from "../../ui/components/keybinding-hints.ts";
+import { VisualLinePreview } from "../../ui/components/visual-truncate.ts";
+import { highlightCode, type Theme } from "../../ui/theme/theme.ts";
 import type { CodemodeNestedCall, CodemodeToolDetails } from "./tool.ts";
 
 const CODE_PREVIEW_LINES = 10;

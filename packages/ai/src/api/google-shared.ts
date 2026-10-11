@@ -10,7 +10,6 @@ import {
 	type Part,
 	type ThinkingConfig,
 } from "@google/genai";
-import { clampThinkingLevel } from "../models.ts";
 import type {
 	ImageContent,
 	Model,
@@ -21,6 +20,7 @@ import type {
 	Tool,
 	TranscriptContext,
 } from "../types.ts";
+import { clampThinkingLevel } from "../utils/model-operations.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { collapseSystemMessages, withoutInitialSystemMessage } from "../utils/transcript.ts";
@@ -44,7 +44,7 @@ const GOOGLE_SDK_THINKING_LEVEL_MAP: Record<GoogleApiThinkingLevel, GoogleSdkThi
 	HIGH: GoogleSdkThinkingLevel.HIGH,
 };
 
-/** Resolve a supported pi level or model-specific Google mapping to a standard Google level. */
+/** Resolve a supported nyan level or model-specific Google mapping to a standard Google level. */
 export function resolveGoogleThinkingLevel<T extends GoogleApiType>(
 	model: Model<T>,
 	level: ThinkingLevel,

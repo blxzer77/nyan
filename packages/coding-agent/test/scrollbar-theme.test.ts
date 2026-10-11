@@ -2,22 +2,22 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadThemeFromPath, setThemeJsonValidator } from "../src/modes/interactive/theme/theme.ts";
-import { validateThemeJson } from "../src/modes/interactive/theme/theme-json.ts";
+import { loadThemeFromPath, setThemeJsonValidator } from "../src/ui/theme/theme.ts";
+import { validateThemeJson } from "../src/ui/theme/theme-json.ts";
 
 setThemeJsonValidator(validateThemeJson);
 
 const tempDirs: string[] = [];
 
 function loadDarkTheme(): { name: string; colors: Record<string, string | number> } {
-	return JSON.parse(readFileSync(new URL("../src/modes/interactive/theme/dark.json", import.meta.url), "utf8")) as {
+	return JSON.parse(readFileSync(new URL("../src/ui/theme/dark.json", import.meta.url), "utf8")) as {
 		name: string;
 		colors: Record<string, string | number>;
 	};
 }
 
 function writeTheme(theme: { name: string; colors: Record<string, string | number> }): string {
-	const testDir = mkdtempSync(join(tmpdir(), "pi-scrollbar-theme-"));
+	const testDir = mkdtempSync(join(tmpdir(), "nyan-scrollbar-theme-"));
 	tempDirs.push(testDir);
 	const themePath = join(testDir, `${theme.name}.json`);
 	writeFileSync(themePath, JSON.stringify(theme));

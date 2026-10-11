@@ -9,7 +9,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
-import { Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
+import { Markdown, type MarkdownTheme } from "@nyan/tui";
 import chalk from "chalk";
 import lockfile from "proper-lockfile";
 import { selectConfig } from "./cli/config-selector.ts";
@@ -35,9 +35,9 @@ import { DefaultResourceLoader, isBuiltinExtension } from "./core/resource-loade
 import { SettingsManager } from "./core/settings-manager.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
 import { spawnProcess, spawnProcessSync, waitForChildProcess } from "./utils/child-process.ts";
+import { getNyanUserAgent } from "./utils/nyan-user-agent.ts";
 import { canonicalizePath, getCwdRelativePath } from "./utils/paths.ts";
-import { getPiUserAgent } from "./utils/pi-user-agent.ts";
-import { formatVersionCheckError, getLatestPiRelease, isNewerPackageVersion } from "./utils/version-check.ts";
+import { formatVersionCheckError, getLatestNyanRelease, isNewerPackageVersion } from "./utils/version-check.ts";
 import {
 	cleanupWindowsSelfUpdateQuarantine,
 	quarantineWindowsNativeDependencies,
@@ -47,18 +47,17 @@ export type PackageCommand = "install" | "remove" | "update" | "list";
 
 type UpdateTarget = { type: "all" } | { type: "self" } | { type: "extensions"; source?: string } | { type: "models" };
 
-const DEFAULT_INSTALLER_API_BASE = "https://pi.dev/api/installer/releases";
 const MANAGED_INSTALL_MARKER = "managed-install.json";
 const MANAGED_RELEASE_VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 function getActiveManagedInstallRoot(): string | undefined {
-	const configuredRoot = process.env.PI_MANAGED_INSTALL_ROOT?.trim();
+	const configuredRoot = process.env.NYAN_MANAGED_INSTALL_ROOT?.trim();
 	if (!configuredRoot) return undefined;
 
 	const managedRoot = resolve(configuredRoot);
 	const releasesDir = canonicalizePath(join(managedRoot, "releases"));
 	// The launcher environment is inherited by child processes. Do not classify a
-	// source checkout or another Pi installation launched from managed Pi as managed.
+	// source checkout or another Nyan installation launched from managed Nyan as managed.
 	if (getCwdRelativePath(canonicalizePath(getPackageDir()), releasesDir) === undefined) return undefined;
 
 	const markerPath = join(managedRoot, MANAGED_INSTALL_MARKER);
@@ -68,7 +67,7 @@ function getActiveManagedInstallRoot(): string | undefined {
 			layout?: unknown;
 			schemaVersion?: unknown;
 		};
-		if (marker.kind !== "pi-managed-install" || marker.schemaVersion !== 1 || marker.layout !== "releases-v1") {
+		if (marker.kind !== "nyan-managed-install" || marker.schemaVersion !== 1 || marker.layout !== "releases-v1") {
 			throw new Error();
 		}
 	} catch {
@@ -79,7 +78,7 @@ function getActiveManagedInstallRoot(): string | undefined {
 }
 
 async function fetchInstallerArtifact(url: string, label: string): Promise<string> {
-	const response = await fetch(url, { headers: { "User-Agent": getPiUserAgent(VERSION) } });
+	const response = await fetch(url, { headers: { "User-Agent": getNyanUserAgent(VERSION) } });
 	if (!response.ok) {
 		throw new Error(`Could not download managed installer ${label} from ${url}: HTTP ${response.status}`);
 	}
@@ -115,11 +114,11 @@ function verifyManagedRelease(releaseDir: string, expectedVersion: string): void
 	});
 	if (result.error || result.status !== 0) {
 		const reason = result.error?.message || result.stderr.trim() || `exit code ${result.status ?? "unknown"}`;
-		throw new Error(`Could not verify managed Pi ${expectedVersion}: ${reason}`);
+		throw new Error(`Could not verify managed Nyan ${expectedVersion}: ${reason}`);
 	}
 	const installedVersion = result.stdout.trim();
 	if (installedVersion !== expectedVersion) {
-		throw new Error(`Managed Pi smoke test returned version ${installedVersion}; expected ${expectedVersion}.`);
+		throw new Error(`Managed Nyan smoke test returned version ${installedVersion}; expected ${expectedVersion}.`);
 	}
 }
 
@@ -198,7 +197,7 @@ async function runManagedSelfUpdate(managedRoot: string, version: string): Promi
 		releaseLock = await lockfile.lock(join(managedRoot, "update"), { realpath: false });
 	} catch (error: unknown) {
 		if (error instanceof Error && "code" in error && error.code === "ELOCKED") {
-			throw new Error("Another managed Pi update is already running.");
+			throw new Error("Another managed Nyan update is already running.");
 		}
 		throw error;
 	}
@@ -206,10 +205,11 @@ async function runManagedSelfUpdate(managedRoot: string, version: string): Promi
 	let stageDir: string | undefined;
 	try {
 		cleanupManagedStaging(managedRoot);
-		const installerApiBase = (process.env.PI_INSTALLER_API_BASE?.trim() || DEFAULT_INSTALLER_API_BASE).replace(
-			/\/+$/,
-			"",
-		);
+		const configuredInstallerApi = process.env.NYAN_INSTALLER_API_BASE?.trim();
+		if (!configuredInstallerApi) {
+			throw new Error("Managed installs update through an installer API; set NYAN_INSTALLER_API_BASE.");
+		}
+		const installerApiBase = configuredInstallerApi.replace(/\/+$/, "");
 		const releaseUrl = `${installerApiBase}/${encodeURIComponent(version)}`;
 		const stagingRoot = join(managedRoot, "staging");
 		const releasesRoot = join(managedRoot, "releases");
@@ -291,7 +291,7 @@ function getPackageCommandUsage(command: PackageCommand): string {
 		case "remove":
 			return `${APP_NAME} remove <source> [-l] [--approve|--no-approve]`;
 		case "update":
-			return `${APP_NAME} update [source|self|pi] [--self|--extensions|--models|--all] [--extension <source>] [--approve|--no-approve] [--force]`;
+			return `${APP_NAME} update [source|self|nyan] [--self|--extensions|--models|--all] [--extension <source>] [--approve|--no-approve] [--force]`;
 		case "list":
 			return `${APP_NAME} list [--approve|--no-approve]`;
 	}
@@ -359,24 +359,24 @@ Examples:
 			console.log(`${chalk.bold("Usage:")}
   ${getPackageCommandUsage("update")}
 
-Update pi, installed packages, or model catalogs.
+Update nyan, installed packages, or model catalogs.
 
 Options:
-  --self                  Update pi only (default when no target is given)
+  --self                  Update nyan only (default when no target is given)
   --extensions            Update installed packages only
   --models                Refresh model catalogs only
-  --all                   Update pi and installed packages
+  --all                   Update nyan and installed packages
   --extension <source>    Update one package only
   -a, --approve           Trust project-local files for this command
   -na, --no-approve       Ignore project-local files for this command
-  --force                 Reinstall pi even if the current version is latest
+  --force                 Reinstall nyan even if the current version is latest
 
 Short forms:
-  ${APP_NAME} update                Update pi only
-  ${APP_NAME} update --all          Update pi and all extensions
+  ${APP_NAME} update                Update nyan only
+  ${APP_NAME} update --all          Update nyan and all extensions
   ${APP_NAME} update --models       Refresh model catalogs only
   ${APP_NAME} update <source>       Update one package
-  ${APP_NAME} update pi             Update pi only (self works as alias to pi)
+  ${APP_NAME} update nyan             Update nyan only (self works as alias to nyan)
 `);
 			return;
 
@@ -553,7 +553,7 @@ function parsePackageCommand(args: string[]): PackageCommandOptions | undefined 
 			}
 			updateTarget = { type: "extensions", source: extensionFlagSource };
 		} else if (source) {
-			const sourceIsSelf = source === "self" || source === "pi";
+			const sourceIsSelf = source === "self" || source === "nyan";
 			if (sourceIsSelf) {
 				updateTarget = extensionsFlag ? { type: "all" } : { type: "self" };
 			} else {
@@ -682,9 +682,9 @@ interface SelfUpdatePlan {
 }
 
 async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan> {
-	let latestRelease: Awaited<ReturnType<typeof getLatestPiRelease>>;
+	let latestRelease: Awaited<ReturnType<typeof getLatestNyanRelease>>;
 	try {
-		latestRelease = await getLatestPiRelease(VERSION, { retry: true });
+		latestRelease = await getLatestNyanRelease(VERSION, { retry: true });
 	} catch (error: unknown) {
 		throw new Error(`Could not determine latest ${APP_NAME} version: ${formatVersionCheckError(error)}`, {
 			cause: error,
@@ -1115,19 +1115,6 @@ export async function handlePackageCommand(
 						return true;
 					}
 					console.log(chalk.green(`Updated ${APP_NAME} from ${VERSION} to ${selfUpdatePlan.version}`));
-					// The pi.dev installer migrates global npm installs to a managed install
-					// that pins all dependencies. It does not migrate pnpm, yarn, or bun installs.
-					if (installMethod === "npm") {
-						const installerCommand =
-							process.platform === "win32"
-								? 'powershell -c "irm https://pi.dev/install.ps1 | iex"'
-								: "curl -fsSL https://pi.dev/install.sh | sh";
-						console.log();
-						console.log(chalk.yellow(`This npm installation of ${APP_NAME} does not pin its dependencies.`));
-						console.log(chalk.yellow("Run the installer to migrate to a managed installation that does:"));
-						console.log();
-						console.log(`  ${chalk.bold(installerCommand)}`);
-					}
 				}
 				return true;
 			}

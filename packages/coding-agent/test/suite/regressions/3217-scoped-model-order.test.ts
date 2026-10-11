@@ -1,9 +1,9 @@
-import { setKeybindings, type TUI } from "@earendil-works/pi-tui";
+import { setKeybindings, type TUI } from "@nyan/tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../../../src/core/keybindings.ts";
 import { ModelSelectorComponent } from "../../../src/modes/interactive/components/model-selector.ts";
 import { ScopedModelsSelectorComponent } from "../../../src/modes/interactive/components/scoped-models-selector.ts";
-import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../../src/ui/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 import { createHarness, type Harness } from "../harness.ts";
 

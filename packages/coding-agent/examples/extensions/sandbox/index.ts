@@ -10,10 +10,10 @@
  * via `tool_call` input mutation without replacing the tool.
  *
  * Config files (merged, project takes precedence):
- * - ~/.pi/agent/extensions/sandbox.json (global)
- * - <cwd>/.pi/sandbox.json (project-local)
+ * - ~/.nyan/agent/extensions/sandbox.json (global)
+ * - <cwd>/.nyan/sandbox.json (project-local)
  *
- * Example .pi/sandbox.json:
+ * Example .nyan/sandbox.json:
  * ```json
  * {
  *   "enabled": true,
@@ -30,13 +30,13 @@
  * ```
  *
  * Usage:
- * - `pi -e ./sandbox` - sandbox enabled with default/config settings
- * - `pi -e ./sandbox --no-sandbox` - disable sandboxing
+ * - `nyan -e ./sandbox` - sandbox enabled with default/config settings
+ * - `nyan -e ./sandbox --no-sandbox` - disable sandboxing
  * - `/sandbox` - show current sandbox configuration
  *
  * Setup:
- * 1. Copy sandbox/ directory to ~/.pi/agent/extensions/
- * 2. Run `npm install` in ~/.pi/agent/extensions/sandbox/
+ * 1. Copy sandbox/ directory to ~/.nyan/agent/extensions/
+ * 2. Run `npm install` in ~/.nyan/agent/extensions/sandbox/
  *
  * Linux also requires: bubblewrap, socat, ripgrep
  */
@@ -45,8 +45,8 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SandboxManager, type SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { type BashOperations, CONFIG_DIR_NAME, createBashTool, getAgentDir } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@nyan/coding-agent";
+import { type BashOperations, CONFIG_DIR_NAME, createBashTool, getAgentDir } from "@nyan/coding-agent";
 
 interface SandboxConfig extends SandboxRuntimeConfig {
 	enabled?: boolean;
@@ -198,8 +198,8 @@ function createSandboxedBashOps(): BashOperations {
 	};
 }
 
-export default function (pi: ExtensionAPI) {
-	pi.registerFlag("no-sandbox", {
+export default function (nyan: ExtensionAPI) {
+	nyan.registerFlag("no-sandbox", {
 		description: "Disable OS-level sandboxing for bash commands",
 		type: "boolean",
 		default: false,
@@ -211,7 +211,7 @@ export default function (pi: ExtensionAPI) {
 	let sandboxEnabled = false;
 	let sandboxInitialized = false;
 
-	pi.registerTool({
+	nyan.registerTool({
 		...localBash,
 		label: "bash (sandboxed)",
 		async execute(id, params, signal, onUpdate, _ctx) {
@@ -226,13 +226,13 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.on("user_bash", () => {
+	nyan.on("user_bash", () => {
 		if (!sandboxEnabled || !sandboxInitialized) return;
 		return { operations: createSandboxedBashOps() };
 	});
 
-	pi.on("session_start", async (_event, ctx) => {
-		const noSandbox = pi.getFlag("no-sandbox") as boolean;
+	nyan.on("session_start", async (_event, ctx) => {
+		const noSandbox = nyan.getFlag("no-sandbox") as boolean;
 
 		if (noSandbox) {
 			sandboxEnabled = false;
@@ -284,7 +284,7 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
-	pi.on("session_shutdown", async () => {
+	nyan.on("session_shutdown", async () => {
 		if (sandboxInitialized) {
 			try {
 				await SandboxManager.reset();
@@ -294,7 +294,7 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
-	pi.registerCommand("sandbox", {
+	nyan.registerCommand("sandbox", {
 		description: "Show sandbox configuration",
 		handler: async (_args, ctx) => {
 			if (!sandboxEnabled) {

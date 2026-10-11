@@ -1,11 +1,11 @@
-import { Container } from "@earendil-works/pi-tui";
+import { Container } from "@nyan/tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import type { StatusIndicator } from "../src/modes/interactive/components/status-indicator.ts";
 import type { TreeSelectorComponent } from "../src/modes/interactive/components/tree-selector.ts";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/ui/theme/theme.ts";
 import { assistantMsg, userMsg } from "./utilities.ts";
 
 const busyMessage = "Wait for the current compaction or tree navigation to finish before navigating the session tree.";

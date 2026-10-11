@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { getPackageDir, isBunBinary, isBundledNode } from "../config.ts";
 
-export const INTERNAL_PROCESS_ENV = "__PI_INTERNAL_SPAWN";
+export const INTERNAL_PROCESS_ENV = "__NYAN_INTERNAL_SPAWN";
 
 export type InternalProcessRole = "coordinator" | "server" | "session-worker";
 
@@ -37,7 +37,7 @@ export interface InternalProcessSpawnOptions {
 	readonly env?: NodeJS.ProcessEnv;
 }
 
-/** Spawn a detached Pi-owned process consistently across Node and compiled Bun. */
+/** Spawn a detached Nyan-owned process consistently across Node and compiled Bun. */
 export function spawnInternalProcess(
 	role: InternalProcessRole,
 	args: readonly string[],

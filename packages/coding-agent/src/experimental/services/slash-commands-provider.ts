@@ -1,5 +1,5 @@
-import { defineFacet, type Facet, type JsonValue } from "@earendil-works/chord";
-import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { ModelThinkingLevel } from "@nyan/ai";
+import { defineFacet, type Facet, type JsonValue } from "@nyan/chord";
 import { AgentController } from "./agent-controller.ts";
 import { type ModelSummary, Models, type Models as ModelsService } from "./models.ts";
 import { PresentationPlugins, SessionPlugins } from "./plugins.ts";
@@ -76,7 +76,7 @@ export class SlashCommandRegistry implements SlashCommands {
 
 export function createSlashCommandsRuntimeFacet(registry = new SlashCommandRegistry()): Facet {
 	return defineFacet({
-		id: "@pi/slash-commands-runtime",
+		id: "@nyan/slash-commands-runtime",
 		setup(env) {
 			env.provide(SlashCommands, registry);
 		},
@@ -87,7 +87,7 @@ export function createBuiltInSlashCommandsFacet(options: {
 	reloadPresentationPlugins(data: JsonValue): Promise<void>;
 }): Facet {
 	return defineFacet({
-		id: "@pi/slash-commands-builtin",
+		id: "@nyan/slash-commands-builtin",
 		setup(env) {
 			const commands = env.use(SlashCommands);
 			const models = env.use(Models);

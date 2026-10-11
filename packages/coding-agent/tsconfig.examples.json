@@ -3,10 +3,10 @@
 	"compilerOptions": {
 		"noEmit": true,
 		"paths": {
-			"@earendil-works/pi-coding-agent": ["./src/index.ts"],
-			"@earendil-works/pi-coding-agent/hooks": ["./src/core/hooks/index.ts"],
-			"@earendil-works/pi-tui": ["../tui/src/index.ts"],
-			"@earendil-works/pi-ai": ["../ai/src/index.ts"],
+			"@nyan/coding-agent": ["./src/index.ts"],
+			"@nyan/coding-agent/hooks": ["./src/core/hooks/index.ts"],
+			"@nyan/tui": ["../tui/src/index.ts"],
+			"@nyan/ai": ["../ai/src/index.ts"],
 			"typebox": ["../../node_modules/typebox"]
 		},
 		"skipLibCheck": true

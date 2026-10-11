@@ -19,14 +19,14 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Workspace package name -> its source root, so cross-package imports are followed. */
 const WORKSPACE = {
-	"@earendil-works/chord": "packages/chord/src",
-	"@earendil-works/pi-ai": "packages/ai/src",
-	"@earendil-works/pi-durable": "packages/durable/src",
-	"@earendil-works/pi-agent-core": "packages/agent/src",
-	"@earendil-works/pi-codemode": "packages/codemode/src",
-	"@earendil-works/pi-telemetry": "packages/telemetry/src",
-	"@earendil-works/pi-mcp": "packages/mcp/src",
-	"@earendil-works/pi-tui": "packages/tui/src",
+	"@nyan/chord": "packages/chord/src",
+	"@nyan/ai": "packages/ai/src",
+	"@nyan/durable": "packages/durable/src",
+	"@nyan/agent-core": "packages/agent/src",
+	"@nyan/codemode": "packages/codemode/src",
+	"@nyan/telemetry": "packages/telemetry/src",
+	"@nyan/mcp": "packages/mcp/src",
+	"@nyan/tui": "packages/tui/src",
 };
 
 /**
@@ -43,9 +43,10 @@ const BUDGETS = {
 	},
 	"packages/durable": {
 		".": {
-			// Tool argument validation reaches TypeBox; provider-session creation reaches pi-ai's lean UUID utility; the
-			// memory and SQLite storages share scan order and cursor handling.
-			maxFiles: 63,
+			// Tool argument validation reaches TypeBox; provider-session creation reaches nyan-ai's lean UUID utility; the
+			// memory and SQLite storages share scan order and cursor handling; chord's delta barrel and its definitions
+			// are separate files so the diff and tracker modules do not import their own barrel.
+			maxFiles: 64,
 			forbid: ["packages/ai/src/index.ts", "packages/ai/src/utils/typebox-helpers.ts"],
 		},
 	},

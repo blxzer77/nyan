@@ -1,4 +1,3 @@
-import type { AuthResult } from "@earendil-works/pi-ai";
 import { APP_NAME } from "../config.ts";
 import type { Args } from "./args.ts";
 
@@ -38,9 +37,9 @@ export function isAuthCommandHelp(args: string[]): boolean {
 
 export function printAuthCommandHelp(): void {
 	console.log(`Usage:
-  pi auth print-api-key [--provider <provider>] [--model <model>]
-  pi auth print-bearer-token [--provider <provider>] [--model <model>] [--min-expiry <duration>]
-  pi auth check [--provider <provider>] [--model <model>] [--json] [--credentials] [--no-refresh]
+  nyan auth print-api-key [--provider <provider>] [--model <model>]
+  nyan auth print-bearer-token [--provider <provider>] [--model <model>] [--min-expiry <duration>]
+  nyan auth check [--provider <provider>] [--model <model>] [--json] [--credentials] [--no-refresh]
 
 Auth commands require at least one of --provider or --model. Checks refresh expired OAuth credentials by default; --no-refresh prevents this. --credentials emits the credential, or includes it in JSON output.`);
 }
@@ -115,12 +114,4 @@ export function validateAuthCommandArgs(args: Args, kind: AuthCommandKind): { pr
 		throw new AuthCommandError("Credential printing requires --provider <provider> or --model <model>");
 	}
 	return { provider, model };
-}
-
-export function getAuthCredential(auth: AuthResult | undefined): string | undefined {
-	if (auth?.auth.apiKey) return auth.auth.apiKey;
-	const authorization = Object.entries(auth?.auth.headers ?? {}).find(
-		([name]) => name.toLowerCase() === "authorization",
-	)?.[1];
-	return typeof authorization === "string" ? /^Bearer\s+(.+)$/iu.exec(authorization)?.[1] : undefined;
 }

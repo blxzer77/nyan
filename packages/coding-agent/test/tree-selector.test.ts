@@ -1,5 +1,5 @@
 import { stripVTControlCharacters } from "node:util";
-import { setKeybindings, visibleWidth } from "@earendil-works/pi-tui";
+import { setKeybindings, visibleWidth } from "@nyan/tui";
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import type {
@@ -9,7 +9,7 @@ import type {
 	SessionTreeNode,
 } from "../src/core/session-manager.ts";
 import { TreeSelectorComponent } from "../src/modes/interactive/components/tree-selector.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/ui/theme/theme.ts";
 
 beforeAll(() => {
 	initTheme("dark");

@@ -9,8 +9,8 @@ import {
 	type SelectListLayoutOptions,
 	Spacer,
 	Text,
-} from "@earendil-works/pi-tui";
-import { getSelectListTheme, theme } from "../theme/theme.ts";
+} from "@nyan/tui";
+import { getSelectListTheme, theme } from "../../../ui/theme/theme.ts";
 
 const SUBMENU_SELECT_LIST_LAYOUT: SelectListLayoutOptions = {
 	minPrimaryColumnWidth: 12,

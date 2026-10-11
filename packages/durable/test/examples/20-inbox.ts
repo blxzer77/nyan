@@ -1,10 +1,11 @@
 // The inbox: what happens to submissions while a conversation is busy.
 // Run from packages/durable:
 //   node --conditions=source --experimental-strip-types test/examples/20-inbox.ts
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { FauxResponseStep } from "@earendil-works/pi-ai";
-import { createModels } from "@earendil-works/pi-ai/models";
-import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai/providers/faux";
+
+import type { FauxResponseStep } from "@nyan/ai";
+import { createModels } from "@nyan/ai/models";
+import { fauxAssistantMessage, fauxProvider } from "@nyan/ai/providers/faux";
+import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
 import { createRegistry, Harness, InboxDoc, MemoryStorage, type Submission } from "../../src/index.ts";
 
 const context = BACKGROUND_CONTEXT;

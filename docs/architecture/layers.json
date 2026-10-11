@@ -1,0 +1,198 @@
+{
+	"version": 2,
+	"principle": "Dependencies point toward stability. A package may depend only on layers listed in its layer's mayDependOn; same-layer edges must be listed in internal. The check also requires every workspace edge to run from a more unstable package to a more stable one (instability I = Ce / (Ca + Ce), measured from source imports).",
+	"layers": [
+		{
+			"id": "foundation",
+			"purpose": "Domain-neutral primitives. Stable because nothing in the workspace is allowed beneath them.",
+			"packages": ["chord", "telemetry"],
+			"mayDependOn": []
+		},
+		{
+			"id": "capabilities",
+			"purpose": "Independent feature libraries (terminal UI, MCP, code mode). They must stay usable without the model or agent stack.",
+			"packages": ["codemode", "mcp", "tui"],
+			"mayDependOn": ["foundation"]
+		},
+		{
+			"id": "model",
+			"purpose": "Model, provider, authentication and streaming contracts plus their implementations.",
+			"packages": ["ai"],
+			"mayDependOn": ["foundation"]
+		},
+		{
+			"id": "agent-core",
+			"purpose": "The agent loop, tool calls and state transitions over the provider-neutral model contract.",
+			"packages": ["agent"],
+			"mayDependOn": ["model"]
+		},
+		{
+			"id": "durable-runtime",
+			"purpose": "Persistent, recoverable agent execution and the remote environments it runs commands in.",
+			"packages": ["durable", "env"],
+			"mayDependOn": ["foundation", "model"],
+			"internal": [["env", "durable"]]
+		},
+		{
+			"id": "transport",
+			"purpose": "Wire protocol and its client/server endpoints. Independent of the model and agent stacks.",
+			"packages": ["protocol", "client", "server"],
+			"mayDependOn": ["foundation"],
+			"internal": [
+				["client", "protocol"],
+				["server", "protocol"]
+			]
+		},
+		{
+			"id": "product-shell",
+			"purpose": "The user-facing CLI and SDK. The only composition root for runtime layers.",
+			"packages": ["coding-agent"],
+			"mayDependOn": ["foundation", "capabilities", "model", "agent-core", "durable-runtime", "transport"]
+		},
+		{
+			"id": "verification",
+			"purpose": "Evaluations that exercise the product. Nothing depends on this layer.",
+			"packages": ["evals"],
+			"mayDependOn": ["model", "product-shell"]
+		}
+	],
+	"entryRules": [
+		{
+			"from": "agent",
+			"package": "@nyan/ai",
+			"allow": ["@nyan/ai/contracts"],
+			"reason": "The agent loop depends on the provider-neutral contract, never on provider catalogs, OAuth or API adapters."
+		},
+		{
+			"from": "durable",
+			"package": "@nyan/ai",
+			"allow": ["@nyan/ai/contracts", "@nyan/ai/utils"],
+			"reason": "Durable execution consumes the contract and the pure utility subpaths; routing utilities through the contract entry would exceed the durable entry-graph budget."
+		}
+	],
+	"modules": {
+		"ai": {
+			"purpose": "Contracts are the stable core; adapters and credential flows sit on them; the registry composes adapters; providers are data plus wiring; the facade re-exports.",
+			"layers": [
+				{ "id": "contracts", "paths": ["types.ts", "utils/", "contracts/"], "mayDependOn": [] },
+				{ "id": "auth-contracts", "paths": ["auth/types.ts"], "mayDependOn": ["contracts"] },
+				{
+					"id": "infra",
+					"paths": ["env-api-keys.ts", "session-resources.ts", "model-catalog.ts", "models-store.ts", "images-api-registry.ts"],
+					"mayDependOn": ["contracts", "auth-contracts"]
+				},
+				{
+					"id": "catalog",
+					"paths": ["providers/*.models.ts", "providers/radius-config.ts"],
+					"mayDependOn": ["contracts", "auth-contracts", "infra"]
+				},
+				{ "id": "api", "paths": ["api/"], "mayDependOn": ["contracts", "auth-contracts", "infra"] },
+				{ "id": "auth", "paths": ["auth/"], "mayDependOn": ["contracts", "auth-contracts", "infra", "catalog"] },
+				{
+					"id": "registry",
+					"paths": ["models.ts", "api-options.ts"],
+					"mayDependOn": ["contracts", "auth-contracts", "infra", "api", "auth"]
+				},
+				{
+					"id": "providers",
+					"paths": ["providers/", "models.generated.ts"],
+					"mayDependOn": ["contracts", "auth-contracts", "infra", "catalog", "api", "auth", "registry"]
+				},
+				{
+					"id": "facade",
+					"paths": [
+						"index.ts",
+						"compat.ts",
+						"compat/",
+						"cli.ts",
+						"oauth.ts",
+						"bun-oauth.ts",
+						"images.ts",
+						"image-models.ts",
+						"legacy-api-aliases.ts",
+						"bedrock-provider.ts"
+					],
+					"mayDependOn": ["*"]
+				}
+			],
+			"exceptions": []
+		},
+		"durable": {
+			"purpose": "Identifiers, documents, entries and the execution environment contract are the stable core; session and storage implement persistence over them; the harness runs agents on top; tools and testing consume the harness.",
+			"layers": [
+				{
+					"id": "core",
+					"paths": ["ids.ts", "errors.ts", "documents.ts", "tasks.ts", "truncate.ts", "types.ts", "entries.ts", "env/"],
+					"mayDependOn": []
+				},
+				{ "id": "session", "paths": ["session/"], "mayDependOn": ["core"] },
+				{ "id": "storage", "paths": ["storage/"], "mayDependOn": ["core"] },
+				{ "id": "harness", "paths": ["harness/"], "mayDependOn": ["core", "session", "storage"] },
+				{ "id": "tools", "paths": ["tools/"], "mayDependOn": ["core", "harness"] },
+				{ "id": "testing", "paths": ["testing/"], "mayDependOn": ["core"] },
+				{ "id": "facade", "paths": ["index.ts"], "mayDependOn": ["*"] }
+			],
+			"exceptions": [
+				{
+					"from": "types.ts",
+					"to": "harness/types.ts",
+					"reason": "Type-only: the shared contract names harness option and settings types that are defined beside the harness. Moving them is a public-type reorganization, not a layering fix."
+				},
+				{
+					"from": "entries.ts",
+					"to": "harness/types.ts",
+					"reason": "Type-only: entry payloads reference CompactionReason and ToolDiagnostic, which the harness defines."
+				}
+			]
+		},
+		"coding-agent": {
+			"purpose": "Headless core and shared presentation primitives sit below the user interfaces; modes and the CLI adapt them; entry files compose everything.",
+			"layers": [
+				{ "id": "base", "paths": ["utils/", "config.ts", "identity.ts"], "mayDependOn": [] },
+				{ "id": "ui", "paths": ["ui/"], "mayDependOn": ["base"] },
+				{ "id": "core", "paths": ["core/"], "mayDependOn": ["base", "ui"] },
+				{ "id": "extensions", "paths": ["extensions/"], "mayDependOn": ["base", "ui", "core"] },
+				{ "id": "modes", "paths": ["modes/"], "mayDependOn": ["base", "ui", "core", "extensions"] },
+				{ "id": "cli", "paths": ["cli/"], "mayDependOn": ["base", "ui", "core", "extensions", "modes"] },
+				{
+					"id": "entry",
+					"paths": [
+						"main.ts",
+						"index.ts",
+						"cli.ts",
+						"migrations.ts",
+						"package-manager-cli.ts",
+						"rpc-entry.ts",
+						"bun/",
+						"client/",
+						"experimental/"
+					],
+					"mayDependOn": ["*"]
+				}
+			],
+			"exceptions": [
+				{
+					"from": "core/extensions/virtual-modules.ts",
+					"to": "index.ts",
+					"reason": "Extensions import the package's own public API; the virtual module must expose the same barrel the published package exports."
+				}
+			]
+		}
+	},
+	"cycles": {
+		"scope": "static runtime imports (type-only and dynamic imports are excluded)",
+		"known": [
+			{
+				"package": "durable",
+				"files": [
+					"harness/compaction.ts",
+					"harness/generation.ts",
+					"harness/live.ts",
+					"harness/submissions.ts",
+					"harness/tool.ts"
+				],
+				"reason": "The run lifecycle is mutually recursive: generation starts compactions and tool tasks, a compaction admits a submission, a submission starts a run, and live-state conversion appends the aborted partial. Breaking it changes the commit and recovery boundaries of an in-flight run, so it needs its own Agent Note and the durable crash-recovery suite, not a mechanical move."
+			}
+		]
+	}
+}

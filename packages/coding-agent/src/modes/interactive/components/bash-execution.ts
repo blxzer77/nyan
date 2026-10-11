@@ -2,18 +2,18 @@
  * Component for displaying bash command execution with streaming output.
  */
 
-import { Container, Loader, Spacer, Text, type TUI } from "@earendil-works/pi-tui";
+import { Container, Loader, Spacer, Text, type TUI } from "@nyan/tui";
 import {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
 	type TruncationResult,
 	truncateTail,
 } from "../../../core/tools/truncate.ts";
+import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
+import { keyHint, keyText } from "../../../ui/components/keybinding-hints.ts";
+import { truncateToVisualLines } from "../../../ui/components/visual-truncate.ts";
+import { theme } from "../../../ui/theme/theme.ts";
 import { stripAnsi } from "../../../utils/ansi.ts";
-import { theme } from "../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
-import { keyHint, keyText } from "./keybinding-hints.ts";
-import { truncateToVisualLines } from "./visual-truncate.ts";
 
 // Preview line limit when not expanded (matches tool execution behavior)
 const PREVIEW_LINES = 20;

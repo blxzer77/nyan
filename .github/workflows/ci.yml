@@ -1,4 +1,4 @@
-name: CI
+name: Nyan CI
 
 on:
   push:
@@ -7,18 +7,22 @@ on:
     branches: [main]
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: nyan-ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  build-check-test:
+  quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
@@ -27,7 +31,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
-          sudo ln -s $(which fdfind) /usr/local/bin/fd
+          sudo ln -s "$(which fdfind)" /usr/local/bin/fd
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
@@ -38,7 +42,7 @@ jobs:
       - name: Check
         run: npm run check
 
-      - name: Build the pi-env daemon
+      - name: Build the environment daemon
         run: npm run build:daemon --workspace packages/env
 
       - name: Test
@@ -46,12 +50,13 @@ jobs:
 
   mcp-conformance:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
@@ -59,7 +64,5 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      # Runs pi's MCP client from source against the pinned official conformance suite and fails on
-      # regressions against packages/coding-agent/test/mcp-conformance/baseline.json.
-      - name: MCP client conformance
+      - name: MCP conformance
         run: npm run test:mcp-conformance

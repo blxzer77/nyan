@@ -2,11 +2,12 @@
  * CLI argument parsing and help display
  */
 
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { ThinkingLevel } from "@nyan/agent-core";
 import chalk from "chalk";
 import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR } from "../config.ts";
 import type { ExtensionFlag } from "../core/extensions/types.ts";
 import { getToolListError, type TuiMode } from "../core/settings-manager.ts";
+import { isValidThinkingLevel, VALID_THINKING_LEVELS } from "../core/thinking-level.ts";
 
 export type Mode = "text" | "json" | "rpc";
 
@@ -56,12 +57,6 @@ export interface Args {
 	/** Unknown flags (potentially extension flags) - map of flag name to value */
 	unknownFlags: Map<string, boolean | string>;
 	diagnostics: Array<{ type: "warning" | "error"; message: string }>;
-}
-
-const VALID_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
-
-export function isValidThinkingLevel(level: string): level is ThinkingLevel {
-	return VALID_THINKING_LEVELS.includes(level as ThinkingLevel);
 }
 
 export function normalizeSessionName(value: string): string | undefined {
@@ -290,7 +285,7 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} install <source> [-l]     Install extension source and add to settings
   ${APP_NAME} remove <source> [-l]      Remove extension source from settings
   ${APP_NAME} uninstall <source> [-l]   Alias for remove
-  ${APP_NAME} update [source|self|pi]   Update pi, extensions, or model catalogs
+  ${APP_NAME} update [source|self|nyan]   Update nyan, extensions, or model catalogs
   ${APP_NAME} list                      List installed extensions from settings
   ${APP_NAME} config [-l]               Open TUI to enable/disable package resources (Tab switches scope)
   ${APP_NAME} auth <command>            Print credentials or check provider readiness
@@ -340,7 +335,7 @@ ${chalk.bold("Options:")}
   --tui-mode <mode>              TUI mode: fullscreen (default) or regular
   --approve, -a                  Trust project-local files for this run
   --no-approve, -na              Ignore project-local files for this run
-  --offline                      Disable startup network operations (same as PI_OFFLINE=1)
+  --offline                      Disable startup network operations (same as NYAN_OFFLINE=1)
   --                             End option parsing; treat remaining arguments as messages/files
   --help, -h                     Show this help
   --version, -v                  Show version number
@@ -461,10 +456,10 @@ ${chalk.bold("Environment Variables:")}
   AWS_REGION                       - AWS region for Amazon Bedrock (e.g., us-east-1)
   ${ENV_AGENT_DIR.padEnd(32)} - Config directory (default: ~/${CONFIG_DIR_NAME}/agent)
   ${ENV_SESSION_DIR.padEnd(32)} - Session storage directory (overridden by --session-dir)
-  PI_PACKAGE_DIR                   - Override package directory (for Nix/Guix store paths)
-  PI_OFFLINE                       - Disable startup network operations when set to 1/true/yes
-  PI_TELEMETRY                     - Override install telemetry when set to 1/true/yes or 0/false/no
-  PI_SHARE_VIEWER_URL              - Base URL for /share command (default: https://pi.dev/session/)
+  NYAN_PACKAGE_DIR                   - Override package directory (for Nix/Guix store paths)
+  NYAN_OFFLINE                       - Disable startup network operations when set to 1/true/yes
+  NYAN_TELEMETRY                     - Override install telemetry when set to 1/true/yes or 0/false/no
+  NYAN_SHARE_VIEWER_URL              - Base URL for /share command (optional; without it /share prints only the gist URL)
 
 ${chalk.bold("Built-in Tool Names:")}
   read       - Read file contents

@@ -1,8 +1,8 @@
-import { Container } from "@earendil-works/pi-tui";
+import { Container } from "@nyan/tui";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentSessionRuntimeDiagnostic } from "../../../src/core/agent-session-services.ts";
 import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
-import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../../src/ui/theme/theme.ts";
 import { createHarness } from "../harness.ts";
 
 function render(container: Container): string {
@@ -14,8 +14,8 @@ describe("issue #7829 invalid settings warning", () => {
 
 	it("renders startup diagnostics inside the transcript", async () => {
 		const harness = await createHarness();
-		const previousOffline = process.env.PI_OFFLINE;
-		process.env.PI_OFFLINE = "1";
+		const previousOffline = process.env.NYAN_OFFLINE;
+		process.env.NYAN_OFFLINE = "1";
 		try {
 			const chatContainer = new Container();
 			const startupDiagnostics: AgentSessionRuntimeDiagnostic[] = [
@@ -48,8 +48,8 @@ describe("issue #7829 invalid settings warning", () => {
 				);
 			});
 		} finally {
-			if (previousOffline === undefined) delete process.env.PI_OFFLINE;
-			else process.env.PI_OFFLINE = previousOffline;
+			if (previousOffline === undefined) delete process.env.NYAN_OFFLINE;
+			else process.env.NYAN_OFFLINE = previousOffline;
 			harness.cleanup();
 		}
 	});

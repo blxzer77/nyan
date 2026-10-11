@@ -1,15 +1,7 @@
-import type { ApiKeyAuth, AuthCheck, OAuthAuth } from "@earendil-works/pi-ai";
-import {
-	Container,
-	type Focusable,
-	fuzzyFilter,
-	getKeybindings,
-	Input,
-	Spacer,
-	TruncatedText,
-} from "@earendil-works/pi-tui";
-import { theme } from "../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
+import type { ApiKeyAuth, AuthCheck, OAuthAuth } from "@nyan/ai";
+import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, Spacer, TruncatedText } from "@nyan/tui";
+import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
+import { theme } from "../../../ui/theme/theme.ts";
 
 export type AuthSelectorProvider = {
 	id: string;

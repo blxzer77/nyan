@@ -16,19 +16,19 @@ function writePackage(directory, manifest, files) {
 }
 
 test("produces a verified, content-addressed artifact set", (t) => {
-	const temporaryRoot = mkdtempSync(join(tmpdir(), "pi-package-artifacts-test-"));
+	const temporaryRoot = mkdtempSync(join(tmpdir(), "nyan-package-artifacts-test-"));
 	t.after(() => rmSync(temporaryRoot, { recursive: true, force: true }));
 	const repoRoot = join(temporaryRoot, "repo with spaces");
 	mkdirSync(repoRoot);
 	writeFileSync(join(repoRoot, "package.json"), '{"name":"fixture","private":true}\n');
 	writePackage(
 		join(repoRoot, "packages", "shared"),
-		{ name: "@pi-package-test/shared", version: "1.0.0", files: ["dist"] },
+		{ name: "@nyan-package-test/shared", version: "1.0.0", files: ["dist"] },
 		{ "dist/index.js": 'export const marker = "artifact";\n' },
 	);
 	writePackage(
 		join(repoRoot, "packages", "target"),
-		{ name: "@pi-package-test/target", version: "1.0.0", files: ["dist"] },
+		{ name: "@nyan-package-test/target", version: "1.0.0", files: ["dist"] },
 		{ "dist/index.js": 'export const target = true;\n' },
 	);
 	execFileSync("git", ["init", "--quiet"], { cwd: repoRoot });
@@ -38,7 +38,7 @@ test("produces a verified, content-addressed artifact set", (t) => {
 	execFileSync("git", ["commit", "--quiet", "-m", "fixture"], { cwd: repoRoot });
 
 	const artifactSet = produceArtifactSet({ build: false, outDir: join(repoRoot, ".artifacts", "package set"), repoRoot });
-	assert.deepEqual(artifactSet.packages.map((pkg) => pkg.name), ["@pi-package-test/shared", "@pi-package-test/target"]);
+	assert.deepEqual(artifactSet.packages.map((pkg) => pkg.name), ["@nyan-package-test/shared", "@nyan-package-test/target"]);
 	for (const pkg of artifactSet.packages) {
 		assert.match(pkg.tarball, /-[0-9a-f]{12}\.tgz$/);
 		assert.match(pkg.integrity, /^sha512-/);
@@ -49,8 +49,8 @@ test("produces a verified, content-addressed artifact set", (t) => {
 	writeFileSync(join(repoRoot, "packages/shared/dist/index.js"), 'export const marker = "changed";\n');
 	const changedArtifactSet = produceArtifactSet({ build: false, outDir: join(repoRoot, ".artifacts", "changed package set"), repoRoot });
 	assert.notEqual(
-		changedArtifactSet.getPackage("@pi-package-test/shared").tarball,
-		artifactSet.getPackage("@pi-package-test/shared").tarball,
+		changedArtifactSet.getPackage("@nyan-package-test/shared").tarball,
+		artifactSet.getPackage("@nyan-package-test/shared").tarball,
 	);
 
 	appendFileSync(artifactSet.packages[0].tarballPath, "corrupt");

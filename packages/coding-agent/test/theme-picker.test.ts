@@ -2,11 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	getAvailableThemes,
-	getAvailableThemesWithPaths,
-	setRegisteredThemes,
-} from "../src/modes/interactive/theme/theme.ts";
+import { getAvailableThemes, getAvailableThemesWithPaths, setRegisteredThemes } from "../src/ui/theme/theme.ts";
 
 type ThemeFile = {
 	name: string;
@@ -18,9 +14,9 @@ describe("theme picker", () => {
 	let tempRoot: string;
 
 	beforeEach(() => {
-		tempRoot = mkdtempSync(join(tmpdir(), "pi-theme-picker-"));
+		tempRoot = mkdtempSync(join(tmpdir(), "nyan-theme-picker-"));
 		const agentDir = join(tempRoot, "agent");
-		vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+		vi.stubEnv("NYAN_CODING_AGENT_DIR", agentDir);
 		mkdirSync(join(agentDir, "themes"), { recursive: true });
 		setRegisteredThemes([]);
 	});
@@ -33,14 +29,14 @@ describe("theme picker", () => {
 
 	it("uses custom theme content names instead of file names", () => {
 		const darkTheme = JSON.parse(
-			readFileSync(new URL("../src/modes/interactive/theme/dark.json", import.meta.url), "utf-8"),
+			readFileSync(new URL("../src/ui/theme/dark.json", import.meta.url), "utf-8"),
 		) as ThemeFile;
 		const customTheme: ThemeFile = {
 			...darkTheme,
 			name: "bar",
 		};
 
-		const themePath = join(process.env.PI_CODING_AGENT_DIR!, "themes", "foo.json");
+		const themePath = join(process.env.NYAN_CODING_AGENT_DIR!, "themes", "foo.json");
 		writeFileSync(themePath, JSON.stringify(customTheme, null, 2));
 
 		expect(getAvailableThemes()).toContain("bar");

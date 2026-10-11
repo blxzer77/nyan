@@ -1,4 +1,4 @@
-import type { Api, Model, ProviderHeaders } from "@earendil-works/pi-ai";
+import type { Api, Model, ProviderHeaders } from "@nyan/ai";
 import type { SettingsManager } from "./settings-manager.ts";
 import { isInstallTelemetryEnabled } from "./telemetry.ts";
 
@@ -43,21 +43,21 @@ function getDefaultAttributionHeaders(
 
 	if (isOpenRouterModel(model)) {
 		return {
-			"HTTP-Referer": "https://pi.dev",
-			"X-OpenRouter-Title": "pi",
+			"HTTP-Referer": "https://github.com/blxzer77/nyan",
+			"X-OpenRouter-Title": "nyan",
 			"X-OpenRouter-Categories": "cli-agent",
 		};
 	}
 
 	if (isNvidiaNimModel(model)) {
 		return {
-			"X-BILLING-INVOKE-ORIGIN": "Pi",
+			"X-BILLING-INVOKE-ORIGIN": "Nyan",
 		};
 	}
 
 	if (isCloudflareModel(model)) {
 		return {
-			"User-Agent": "pi-coding-agent",
+			"User-Agent": "nyan-coding-agent",
 		};
 	}
 
@@ -73,7 +73,7 @@ function getSessionHeaders(model: Model<Api>, sessionId: string | undefined): Re
 	) {
 		return undefined;
 	}
-	return { "x-opencode-session": sessionId, "x-opencode-client": "pi" };
+	return { "x-opencode-session": sessionId, "x-opencode-client": "nyan" };
 }
 
 export function mergeProviderAttributionHeaders(

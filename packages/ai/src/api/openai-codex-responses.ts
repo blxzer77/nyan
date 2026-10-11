@@ -5,8 +5,6 @@ import type {
 	ResponseInput,
 	ResponseStreamEvent,
 } from "openai/resources/responses/responses.js";
-
-import { clampThinkingLevel } from "../models.ts";
 import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type {
 	Api,
@@ -29,8 +27,9 @@ import {
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
+import { clampThinkingLevel } from "../utils/model-operations.ts";
 import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
-import { getPiUserAgent } from "../utils/pi-user-agent.ts";
+import { getNyanUserAgent } from "../utils/nyan-user-agent.ts";
 import { getSystemMessageText } from "../utils/text.ts";
 import {
 	getDeclaredTools,
@@ -1644,7 +1643,7 @@ function buildBaseCodexHeaders(
 	token: string,
 ): Headers {
 	// Defaults first so model and caller headers can override them, matching the other providers.
-	const headers = new Headers({ originator: "pi", "User-Agent": getPiUserAgent() });
+	const headers = new Headers({ originator: "nyan", "User-Agent": getNyanUserAgent() });
 	for (const [key, value] of Object.entries(initHeaders || {})) {
 		headers.set(key, value);
 	}

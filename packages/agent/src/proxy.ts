@@ -15,7 +15,7 @@ import {
 	type StopReason,
 	type ToolCall,
 	type TranscriptContext,
-} from "@earendil-works/pi-ai";
+} from "@nyan/ai/contracts";
 
 /**
  * Proxy event types - server sends these with partial field stripped to reduce bandwidth.

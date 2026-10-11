@@ -1,8 +1,8 @@
 import { readFileSync, rmSync } from "node:fs";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import type { SystemMessage, ToolResultMessage } from "@earendil-works/pi-ai/compat";
-import { type JsonRpcRequest, LATEST_PROTOCOL_VERSION } from "@earendil-works/pi-mcp";
-import { createInMemoryTransportPair } from "@earendil-works/pi-mcp/testing";
+import { fauxAssistantMessage, fauxToolCall } from "@nyan/ai";
+import type { SystemMessage, ToolResultMessage } from "@nyan/ai/compat";
+import { type JsonRpcRequest, LATEST_PROTOCOL_VERSION } from "@nyan/mcp";
+import { createInMemoryTransportPair } from "@nyan/mcp/testing";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionFactory } from "../../src/core/extensions/types.ts";
@@ -270,7 +270,7 @@ describe("AgentSession MCP integration", () => {
 		await first.harness.session.prompt("second");
 		expect(declaredToolNames(first.harness)).toContain("mcp__docs__search");
 
-		// Like `pi --tools read,codemode -c` followed by /tree.
+		// Like `nyan --tools read,codemode -c` followed by /tree.
 		const second = await setup("direct", undefined, {
 			allowedToolNames: ["read", "codemode"],
 			sessionManager: first.harness.sessionManager,
@@ -333,7 +333,7 @@ describe("AgentSession MCP integration", () => {
 						code: `
 							const [a, b] = await Promise.allSettled([
 								tools.${searchName}({ query: "mcp" }),
-								tools.${searchName}({ query: "pi" }),
+								tools.${searchName}({ query: "nyan" }),
 							]);
 							const failure = await tools.mcp__docs__fail({});
 							const shot = await tools.mcp__docs__shot({});
@@ -377,13 +377,13 @@ describe("AgentSession MCP integration", () => {
 		}
 		expect(result.content[2]).toEqual({ type: "image", data: TINY_PNG_BASE64, mimeType: "image/png" });
 		expect(JSON.parse((result.content[3] as { text: string }).text)).toEqual({
-			hits: ["mcp guide", "mcp faq", "pi guide", "pi faq"],
+			hits: ["mcp guide", "mcp faq", "nyan guide", "nyan faq"],
 			failed: true,
 			failure: "server exploded",
 			found: [searchName],
 		});
 		expect(result.content).toHaveLength(4);
-		expect(calls).toEqual(['search:{"query":"mcp"}', 'search:{"query":"pi"}', "fail:{}", "shot:{}"]);
+		expect(calls).toEqual(['search:{"query":"mcp"}', 'search:{"query":"nyan"}', "fail:{}", "shot:{}"]);
 	});
 
 	it("keeps codemode-only MCP tools callable across tree navigation", async () => {
@@ -679,8 +679,8 @@ return { docs, sameForAliases: aliases.every((alias) => JSON.stringify(alias) ==
 
 	it("does not activate another extension's tool named codemode", async () => {
 		// Registered first, so it wins over the codemode extension's codemode.
-		const otherExec: ExtensionFactory = (pi) => {
-			pi.registerTool({
+		const otherExec: ExtensionFactory = (nyan) => {
+			nyan.registerTool({
 				name: "codemode",
 				label: "codemode",
 				description: "Another extension's codemode tool.",
@@ -1027,8 +1027,8 @@ describe("AgentSession MCP servers registered by extensions", () => {
 	}
 
 	it("connects servers registered while extensions load", async () => {
-		const { harness, connected } = await setup((pi) => {
-			pi.registerMcpServer("plugin", { url: "http://plugin.invalid", exposure: "direct" });
+		const { harness, connected } = await setup((nyan) => {
+			nyan.registerMcpServer("plugin", { url: "http://plugin.invalid", exposure: "direct" });
 		});
 		harness.setResponses([fauxAssistantMessage("ready")]);
 		await harness.session.prompt("start");
@@ -1039,19 +1039,19 @@ describe("AgentSession MCP servers registered by extensions", () => {
 
 	it("connects and disconnects servers registered during the session", async () => {
 		let api: ExtensionAPI | undefined;
-		const { harness, connected } = await setup((pi) => {
-			api = pi;
+		const { harness, connected } = await setup((nyan) => {
+			api = nyan;
 		});
 		if (!api) throw new Error("No extension API");
-		const pi = api;
+		const nyan = api;
 
-		pi.registerMcpServer("late", { url: "http://late.invalid" });
+		nyan.registerMcpServer("late", { url: "http://late.invalid" });
 		await vi.waitFor(() => expect(harness.session.getCallableToolNames()).toContain("mcp__late__search"));
 		expect(connected.map((entry) => entry.name)).toEqual(["late"]);
 		// Codemode-exposed tools need the codemode tool, which is activated for them.
 		expect(harness.session.getActiveToolNames()).toContain("codemode");
 
-		pi.unregisterMcpServer("late");
+		nyan.unregisterMcpServer("late");
 		await vi.waitFor(() => expect(harness.session.getCallableToolNames()).not.toContain("mcp__late__search"));
 	});
 
@@ -1063,8 +1063,8 @@ describe("AgentSession MCP servers registered by extensions", () => {
 			source: "mcp.json",
 		};
 		const { connected } = await setup(
-			(pi) => {
-				pi.registerMcpServer(name, { url: "http://plugin.invalid" });
+			(nyan) => {
+				nyan.registerMcpServer(name, { url: "http://plugin.invalid" });
 			},
 			[configured],
 		);
@@ -1076,16 +1076,16 @@ describe("AgentSession MCP servers registered by extensions", () => {
 	it("rejects names another extension registered", async () => {
 		const errors: string[] = [];
 		await setup([
-			(pi) => {
-				pi.registerMcpServer("taken", { url: "http://x.invalid" });
+			(nyan) => {
+				nyan.registerMcpServer("taken", { url: "http://x.invalid" });
 				// Registering again replaces the extension's own registration.
-				pi.registerMcpServer("taken", { url: "http://y.invalid" });
-				pi.registerMcpServer("my-server", { url: "http://x.invalid" });
+				nyan.registerMcpServer("taken", { url: "http://y.invalid" });
+				nyan.registerMcpServer("my-server", { url: "http://x.invalid" });
 			},
-			(pi) => {
+			(nyan) => {
 				for (const name of ["taken", "my_server"]) {
 					try {
-						pi.registerMcpServer(name, { url: "http://z.invalid" });
+						nyan.registerMcpServer(name, { url: "http://z.invalid" });
 					} catch (caught) {
 						errors.push(String(caught));
 					}
@@ -1101,7 +1101,7 @@ describe("AgentSession MCP servers registered by extensions", () => {
 
 	it("reports registered servers when no extension connects them", async () => {
 		const harness = await createHarness({
-			extensionFactories: [(pi) => pi.registerMcpServer("orphan", { url: "http://orphan.invalid" })],
+			extensionFactories: [(nyan) => nyan.registerMcpServer("orphan", { url: "http://orphan.invalid" })],
 		});
 		harnesses.push(harness);
 		const errors: string[] = [];
@@ -1200,8 +1200,10 @@ describe("AgentSession MCP tools after resume and reload", () => {
 			await loadDocsSearch(first.harness);
 
 			// Like plan mode restoring its tools, or an extension adding one to the current loadout.
-			const setLoadout: ExtensionFactory = (pi) => {
-				pi.on("session_start", () => pi.setActiveTools(loadout ? [...loadout] : [...pi.getActiveTools(), "read"]));
+			const setLoadout: ExtensionFactory = (nyan) => {
+				nyan.on("session_start", () =>
+					nyan.setActiveTools(loadout ? [...loadout] : [...nyan.getActiveTools(), "read"]),
+				);
 			};
 			const second = await setup(first.harness.sessionManager, [setLoadout]);
 			await vi.waitFor(() =>

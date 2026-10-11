@@ -1,6 +1,6 @@
-import { type Context, copyJson, type JsonValue } from "@earendil-works/chord";
-import { awaitWithContext, withAbortSignal } from "@earendil-works/chord/context";
-import type { Models } from "@earendil-works/pi-ai";
+import type { ModelRuntime } from "@nyan/ai/contracts";
+import { type Context, copyJson, type JsonValue } from "@nyan/chord";
+import { awaitWithContext, withAbortSignal } from "@nyan/chord/context";
 import type { ExecutionEnv } from "../env/index.ts";
 import type { SessionImpl } from "../session/session.ts";
 import type { Transaction } from "../session/transaction.ts";
@@ -133,7 +133,7 @@ export type TaskSchedulerOptions = {
 	readonly session: SessionImpl;
 	readonly storage: Storage;
 	readonly registry: RegistryReader;
-	readonly models: Models;
+	readonly models: ModelRuntime;
 	/** Resolve a conversation's agent against a snapshot; the runtime calls it at most once per phase. */
 	readonly agent: (conversationId: ConversationId, snapshot: RegistrySnapshot, context: Context) => Promise<Agent>;
 	/** Resolve the settings; read at each access. */
@@ -175,7 +175,7 @@ export class TaskScheduler {
 	readonly #session: SessionImpl;
 	readonly #storage: Storage;
 	readonly #registry: RegistryReader;
-	readonly #models: Models;
+	readonly #models: ModelRuntime;
 	readonly #agent: TaskSchedulerOptions["agent"];
 	readonly #settings: TaskSchedulerOptions["settings"];
 	readonly #env: TaskSchedulerOptions["env"];

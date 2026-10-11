@@ -1,6 +1,6 @@
-import type { AttachedReplicatedState, Context, Draft, JsonValue } from "@earendil-works/chord";
-import type { Op } from "@earendil-works/chord/delta";
-import type { Message, Models } from "@earendil-works/pi-ai";
+import type { Message, ModelRuntime } from "@nyan/ai/contracts";
+import type { AttachedReplicatedState, Context, Draft, JsonValue } from "@nyan/chord";
+import type { Op } from "@nyan/chord/delta";
 import type { ExecutionEnv } from "./env/index.ts";
 import type {
 	Agent,
@@ -181,7 +181,7 @@ export interface TaskRuntime<I, S, R, H extends object> extends DocumentObserver
 	agent(context: Context): Promise<Agent>;
 	/** `HarnessOptions.settings`, resolved at each access. */
 	readonly settings: Settings;
-	readonly models: Models;
+	readonly models: ModelRuntime;
 	/** Calls `HarnessOptions.env` for the task's conversation; rejects with its error. */
 	env(context: Context): Promise<ExecutionEnv | undefined>;
 	/** Handlers of this task's name from the extensions its conversation selects, in extension order. */

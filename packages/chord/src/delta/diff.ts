@@ -1,5 +1,5 @@
 import type { JsonValue } from "../types.ts";
-import { type NonEmptyPath, type Op, overlap, type Path, RESERVED_SEGMENTS, type Seg } from "./index.ts";
+import { type NonEmptyPath, type Op, overlap, type Path, RESERVED_SEGMENTS, type Seg } from "./core.ts";
 
 const DEFAULT_OVERLAP_SCAN = 65_536;
 const MAX_DELTA_OPERATIONS = 4_096;

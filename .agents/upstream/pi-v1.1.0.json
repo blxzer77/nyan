@@ -1,0 +1,30 @@
+{
+  "product": "Nyan",
+  "source": {
+    "repository": "https://github.com/earendil-works/pi.git",
+    "remote": "upstream",
+    "tag": "v1.1.0",
+    "commit": "abe508e1b89912adde45528136c3221eb69acdd7",
+    "license": "MIT"
+  },
+  "checkout": {
+    "path": "D:/Nyan",
+    "branch": "main",
+    "mode": "forked source baseline"
+  },
+  "integration": {
+    "status": "diverged",
+    "behavior": "Pi v1.1.0 source is the baseline. Nyan renamed the product identity (executable, packages, environment, directories, identifiers), removed Pi-operated service defaults and Pi-only compatibility aliases, and enforces functional layers.",
+    "localChanges": [
+      "product identity renamed to nyan; see .agents/notes/implemented/architecture/2026-10-11-nyan-productization.md",
+      "no default hosted services; see .agents/notes/implemented/architecture/2026-10-11-no-default-hosted-services.md",
+      "layered architecture with executable checks; see .agents/notes/implemented/architecture/2026-10-11-nyan-layered-architecture.md",
+      "upstream organization governance, release automation, Nix packaging and the Pi development assistant removed"
+    ],
+    "knownLimits": [
+      "committed native prebuilds and doom.wasm were built from the pre-rename sources and should be rebuilt before release",
+      "a future upstream sync must be applied as a rename-aware merge, not a file overwrite",
+      "experimental and example code remains candidate code until a Nyan entry path verifies it"
+    ]
+  }
+}

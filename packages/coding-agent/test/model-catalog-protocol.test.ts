@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { InMemoryCredentialStore } from "@nyan/ai";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
 	getModelCatalogProviderKey,
@@ -14,7 +14,7 @@ import { VERSION } from "../src/config.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { allowNetwork } from "./test-network-env.ts";
 
-// Runs the current client against the catalog selection pi.dev performs, using
+// Runs the current client against the catalog selection a catalog service performs, using
 // the shared protocol in scripts/model-catalog-protocol.ts. Regression test for #9099.
 
 const legacyRevision = `sha256-${"a".repeat(64)}`;
@@ -39,8 +39,8 @@ const index: ModelCatalogIndex = {
 	schemaVersion: 1,
 	defaultRevision: mixedApiRevision,
 	catalogs: [
-		{ minimumPiVersion: "0.80.7", revision: legacyRevision },
-		{ minimumPiVersion: "0.85.0", revision: mixedApiRevision },
+		{ minimumNyanVersion: "0.80.7", revision: legacyRevision },
+		{ minimumNyanVersion: "0.85.0", revision: mixedApiRevision },
 	],
 };
 
@@ -52,7 +52,7 @@ const objects = new Map<string, unknown>([
 	[getModelCatalogProviderKey(mixedApiRevision, "openrouter", "typed"), [{ type: "chat", ...mixedApiModel }]],
 ]);
 
-/** Minimal stand-in for pi.dev's /api/models/providers/:provider route. */
+/** Minimal stand-in for a catalog service's /api/models/providers/:provider route. */
 function startCatalogServer(requests: string[]): Promise<Server> {
 	const server = createServer((request, response) => {
 		const url = new URL(request.url ?? "/", `http://${request.headers.host}`);
@@ -68,7 +68,7 @@ function startCatalogServer(requests: string[]): Promise<Server> {
 		} else {
 			const catalog = selectModelCatalog(
 				parseModelCatalogIndex(objects.get(MODEL_CATALOG_INDEX_KEY)),
-				catalogRequest.piVersion,
+				catalogRequest.nyanVersion,
 			);
 			const body = catalog
 				? (objects.get(getModelCatalogProviderKey(catalog.revision, provider, catalogRequest.representation)) ??
@@ -81,7 +81,7 @@ function startCatalogServer(requests: string[]): Promise<Server> {
 					.writeHead(200, {
 						"content-type": "application/json",
 						"last-modified": lastModified,
-						"x-pi-model-catalog-revision": catalog.revision,
+						"x-nyan-model-catalog-revision": catalog.revision,
 					})
 					.end(JSON.stringify(body));
 			}
@@ -120,7 +120,7 @@ describe("model catalog protocol with the current client", () => {
 		expect([...refresh.errors]).toEqual([]);
 
 		const catalogUrl = "/api/models/providers/openrouter?types=chat%2Cimage%2Cclassifier";
-		expect(requests).toEqual([catalogUrl, `${catalogUrl}&pi-version=${VERSION}`]);
+		expect(requests).toEqual([catalogUrl, `${catalogUrl}&nyan-version=${VERSION}`]);
 
 		const expectedModel =
 			selectModelCatalog(index, VERSION)?.revision === legacyRevision ? legacyModel : mixedApiModel;

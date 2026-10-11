@@ -6,9 +6,9 @@
  * definition, so the tool's public shape is unchanged.
  */
 
-import { Text } from "@earendil-works/pi-tui";
-import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
-import type { Theme } from "../../../modes/interactive/theme/theme.ts";
+import { Text } from "@nyan/tui";
+import { keyHint } from "../../../ui/components/keybinding-hints.ts";
+import type { Theme } from "../../../ui/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
 import type { GrepToolDetails } from "../grep.ts";
 import { getTextOutput, invalidArgText, shortenPath, str } from "../render-utils.ts";

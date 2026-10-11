@@ -1,15 +1,9 @@
 /**
- * Model catalog protocol shared by pi and pi.dev.
+ * Model catalog protocol shared by nyan and a catalog service.
  *
- * This file is copied verbatim into two repositories. Change both copies in
- * the same pair of pull requests and keep them byte for byte identical:
- *
- *   earendil-works/pi      scripts/model-catalog-protocol.ts
- *   earendil-works/pi.dev  src/shared/models/protocol.ts
- *
- * pi uses it to publish catalog revisions and to test clients against the
- * catalog selection pi.dev performs. pi.dev uses it to serve catalog requests.
- * Keep it free of imports and runtime specific APIs so it runs unchanged in
+ * nyan uses it to publish catalog revisions and to test clients against the
+ * catalog selection a service performs. A service uses it to serve catalog
+ * requests. Keep it free of imports and runtime specific APIs so it runs unchanged in
  * Node.js and Cloudflare Workers.
  *
  * Storage layout under `MODEL_CATALOG_PREFIX`:
@@ -30,18 +24,18 @@ export const MODEL_CATALOG_PREFIX = `models/v${MODEL_CATALOG_SCHEMA_VERSION}`;
 export const MODEL_CATALOG_INDEX_KEY = `${MODEL_CATALOG_PREFIX}/index.json`;
 export const MODEL_CATALOG_REVISION_RE = /^sha256-[0-9a-f]{64}$/;
 
-const PI_VERSION_RE = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
-const PI_USER_AGENT_RE = /^pi\/([^\s()]+)(?: \([^;()]+(?:;\s*[^;()]+(?:;\s*[^()]+)?)?\))?$/i;
+const NYAN_VERSION_RE = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
+const NYAN_USER_AGENT_RE = /^nyan\/([^\s()]+)(?: \([^;()]+(?:;\s*[^;()]+(?:;\s*[^()]+)?)?\))?$/i;
 const MODEL_TYPE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-type ParsedPiVersion = readonly [major: number, minor: number, patch: number, prerelease: string];
+type ParsedNyanVersion = readonly [major: number, minor: number, patch: number, prerelease: string];
 
 export type ModelCatalogArtifact = "models.json" | "models.all.json" | "providers.json";
 
 export type ModelCatalogRepresentation = "legacy" | "typed";
 
 export type ModelCatalogIndexEntry = {
-	minimumPiVersion: string;
+	minimumNyanVersion: string;
 	revision: string;
 };
 
@@ -52,7 +46,7 @@ export type ModelCatalogIndex = {
 };
 
 export type ModelCatalogRequest =
-	| { kind: "catalog"; piVersion: string | undefined; representation: ModelCatalogRepresentation }
+	| { kind: "catalog"; nyanVersion: string | undefined; representation: ModelCatalogRepresentation }
 	| { kind: "redirect"; location: string }
 	| { kind: "invalid"; error: string };
 
@@ -69,13 +63,13 @@ export function getModelCatalogProviderKey(
 	return `${MODEL_CATALOG_PREFIX}/revisions/${revision}/providers/${provider}${suffix}`;
 }
 
-export function isValidModelCatalogPiVersion(version: string): boolean {
-	return parsePiVersion(version) !== undefined;
+export function isValidModelCatalogNyanVersion(version: string): boolean {
+	return parseNyanVersion(version) !== undefined;
 }
 
-/** Compare two Pi versions with semver precedence. Throws for invalid versions. */
-export function compareModelCatalogPiVersions(left: string, right: string): number {
-	return comparePiVersions(requirePiVersion(left), requirePiVersion(right));
+/** Compare two Nyan versions with semver precedence. Throws for invalid versions. */
+export function compareModelCatalogNyanVersions(left: string, right: string): number {
+	return compareNyanVersions(requireNyanVersion(left), requireNyanVersion(right));
 }
 
 /**
@@ -97,10 +91,10 @@ export function parseModelCatalogRepresentation(
 /**
  * Decide how to answer a catalog request from its URL and User-Agent.
  *
- * Released clients do not send `pi-version`. Responses are cached by URL, so
+ * Released clients do not send `nyan-version`. Responses are cached by URL, so
  * instead of varying the response on the User-Agent, clients that identify
- * as Pi are redirected to the equivalent URL with an explicit `pi-version`.
- * Requests without a Pi User-Agent receive the default catalog.
+ * as Nyan are redirected to the equivalent URL with an explicit `nyan-version`.
+ * Requests without a Nyan User-Agent receive the default catalog.
  */
 export function parseModelCatalogRequest(url: string | URL, userAgent: string | null | undefined): ModelCatalogRequest {
 	const requestUrl = new URL(url);
@@ -109,46 +103,46 @@ export function parseModelCatalogRequest(url: string | URL, userAgent: string | 
 		return { kind: "invalid", error: "Invalid model types." };
 	}
 
-	const piVersion = requestUrl.searchParams.get("pi-version");
-	if (piVersion === null) {
-		const userAgentVersion = PI_USER_AGENT_RE.exec(userAgent ?? "")?.[1];
-		if (userAgentVersion !== undefined && isValidModelCatalogPiVersion(userAgentVersion)) {
-			requestUrl.searchParams.set("pi-version", userAgentVersion);
+	const nyanVersion = requestUrl.searchParams.get("nyan-version");
+	if (nyanVersion === null) {
+		const userAgentVersion = NYAN_USER_AGENT_RE.exec(userAgent ?? "")?.[1];
+		if (userAgentVersion !== undefined && isValidModelCatalogNyanVersion(userAgentVersion)) {
+			requestUrl.searchParams.set("nyan-version", userAgentVersion);
 			return { kind: "redirect", location: requestUrl.toString() };
 		}
-		return { kind: "catalog", piVersion: undefined, representation };
+		return { kind: "catalog", nyanVersion: undefined, representation };
 	}
-	if (!isValidModelCatalogPiVersion(piVersion)) {
-		return { kind: "invalid", error: "Invalid Pi version." };
+	if (!isValidModelCatalogNyanVersion(nyanVersion)) {
+		return { kind: "invalid", error: "Invalid Nyan version." };
 	}
-	return { kind: "catalog", piVersion, representation };
+	return { kind: "catalog", nyanVersion, representation };
 }
 
 /**
- * Select the catalog revision for a Pi version: the entry with the highest
+ * Select the catalog revision for a Nyan version: the entry with the highest
  * minimum version that does not exceed it. Requests without a version receive
  * the default revision. Returns undefined when no entry is compatible.
  */
 export function selectModelCatalog(
 	index: ModelCatalogIndex,
-	piVersion: string | undefined,
+	nyanVersion: string | undefined,
 ): ModelCatalogIndexEntry | undefined {
-	if (piVersion === undefined) {
+	if (nyanVersion === undefined) {
 		return index.catalogs.find((catalog) => catalog.revision === index.defaultRevision);
 	}
 
-	const requestedVersion = parsePiVersion(piVersion);
+	const requestedVersion = parseNyanVersion(nyanVersion);
 	if (!requestedVersion) {
 		return undefined;
 	}
 
 	let selected: ModelCatalogIndexEntry | undefined;
-	let selectedVersion: ParsedPiVersion | undefined;
+	let selectedVersion: ParsedNyanVersion | undefined;
 	for (const catalog of index.catalogs) {
-		const minimumVersion = requirePiVersion(catalog.minimumPiVersion);
+		const minimumVersion = requireNyanVersion(catalog.minimumNyanVersion);
 		if (
-			comparePiVersions(minimumVersion, requestedVersion) <= 0 &&
-			(!selectedVersion || comparePiVersions(minimumVersion, selectedVersion) > 0)
+			compareNyanVersions(minimumVersion, requestedVersion) <= 0 &&
+			(!selectedVersion || compareNyanVersions(minimumVersion, selectedVersion) > 0)
 		) {
 			selected = catalog;
 			selectedVersion = minimumVersion;
@@ -178,8 +172,8 @@ export function parseModelCatalogIndex(value: unknown): ModelCatalogIndex {
 			(catalog) =>
 				typeof catalog !== "object" ||
 				catalog === null ||
-				typeof catalog.minimumPiVersion !== "string" ||
-				!parsePiVersion(catalog.minimumPiVersion) ||
+				typeof catalog.minimumNyanVersion !== "string" ||
+				!parseNyanVersion(catalog.minimumNyanVersion) ||
 				typeof catalog.revision !== "string" ||
 				!MODEL_CATALOG_REVISION_RE.test(catalog.revision),
 		) ||
@@ -191,23 +185,23 @@ export function parseModelCatalogIndex(value: unknown): ModelCatalogIndex {
 	return {
 		schemaVersion: value.schemaVersion,
 		defaultRevision: value.defaultRevision,
-		catalogs: value.catalogs.map(({ minimumPiVersion, revision }) => ({
-			minimumPiVersion,
+		catalogs: value.catalogs.map(({ minimumNyanVersion, revision }) => ({
+			minimumNyanVersion,
 			revision,
 		})),
 	};
 }
 
-function requirePiVersion(version: string): ParsedPiVersion {
-	const parsed = parsePiVersion(version);
+function requireNyanVersion(version: string): ParsedNyanVersion {
+	const parsed = parseNyanVersion(version);
 	if (!parsed) {
-		throw new Error(`Invalid Pi version: ${version}`);
+		throw new Error(`Invalid Nyan version: ${version}`);
 	}
 	return parsed;
 }
 
-function parsePiVersion(version: string): ParsedPiVersion | undefined {
-	const match = PI_VERSION_RE.exec(version.trim());
+function parseNyanVersion(version: string): ParsedNyanVersion | undefined {
+	const match = NYAN_VERSION_RE.exec(version.trim());
 	if (!match) {
 		return undefined;
 	}
@@ -218,7 +212,7 @@ function parsePiVersion(version: string): ParsedPiVersion | undefined {
 	return [parsed[0], parsed[1], parsed[2], match[4] ?? ""];
 }
 
-function comparePiVersions(left: ParsedPiVersion, right: ParsedPiVersion): number {
+function compareNyanVersions(left: ParsedNyanVersion, right: ParsedNyanVersion): number {
 	for (const index of [0, 1, 2] as const) {
 		const difference = left[index] - right[index];
 		if (difference !== 0) {

@@ -1,4 +1,3 @@
-import { clampThinkingLevel } from "../models.ts";
 import type {
 	Api,
 	Model,
@@ -11,6 +10,7 @@ import type {
 	TranscriptContext,
 } from "../types.ts";
 import { estimateContextTokens } from "../utils/estimate.ts";
+import { clampThinkingLevel } from "../utils/model-operations.ts";
 
 const CONTEXT_SAFETY_TOKENS = 4096;
 const MIN_MAX_TOKENS = 1;

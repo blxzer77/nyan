@@ -7,7 +7,7 @@ import { installConsumer } from "./local-package-install.mjs";
 import { produceArtifactSet } from "./package-artifacts.mjs";
 import { codingAgentName, smokeTestCodingAgent } from "./coding-agent-smoke.mjs";
 
-const devPackages = ["pi-client", "pi-protocol", "pi-server"].map((name) => `@earendil-works/${name}`);
+const devPackages = ["client", "protocol", "server"].map((name) => `@nyan/${name}`);
 
 function writePackage(directory, manifest, files) {
 	mkdirSync(directory, { recursive: true });
@@ -19,7 +19,7 @@ function writePackage(directory, manifest, files) {
 }
 
 function createFixture(t, { importServer = false, declareServer = false } = {}) {
-	const temporaryRoot = mkdtempSync(join(tmpdir(), "pi-coding-agent-smoke-test-"));
+	const temporaryRoot = mkdtempSync(join(tmpdir(), "nyan-coding-agent-smoke-test-"));
 	t.after(() => rmSync(temporaryRoot, { recursive: true, force: true }));
 	const root = join(temporaryRoot, "fixture with spaces");
 	const repoRoot = join(root, "repo");
@@ -46,15 +46,15 @@ function createFixture(t, { importServer = false, declareServer = false } = {}) 
 				files: ["dist"],
 				...(isAgent
 					? {
-						bin: { pi: "dist/bundle/cli.js" },
-						...(declareServer ? { dependencies: { "@earendil-works/pi-server": "1.0.0" } } : {}),
+						bin: { nyan: "dist/bundle/cli.js" },
+						...(declareServer ? { dependencies: { "@nyan/server": "1.0.0" } } : {}),
 						devDependencies: Object.fromEntries(devPackages.map((packageName) => [packageName, "1.0.0"])),
 					}
 					: {}),
 			},
 			{
 				"dist/index.js": isAgent
-					? `${importServer ? 'import "@earendil-works/pi-server";' : ""}
+					? `${importServer ? 'import "@nyan/server";' : ""}
 export function createAgentSession() {}
 export class SessionManager { static inMemory() {} }
 export class ModelRuntime { static create() {} }
@@ -80,10 +80,10 @@ test("accepts a valid coding-agent package and rejects development-only packages
 	const directory = createFixture(t);
 	smokeTestCodingAgent(directory);
 
-	const nested = join(directory, "node_modules", codingAgentName, "node_modules/@earendil-works/pi-server");
+	const nested = join(directory, "node_modules", codingAgentName, "node_modules/@nyan/server");
 	mkdirSync(nested, { recursive: true });
-	writeFileSync(join(nested, "package.json"), JSON.stringify({ name: "@earendil-works/pi-server", version: "1.0.0" }));
-	assert.throws(() => smokeTestCodingAgent(directory), /pi-server must not be installed/);
+	writeFileSync(join(nested, "package.json"), JSON.stringify({ name: "@nyan/server", version: "1.0.0" }));
+	assert.throws(() => smokeTestCodingAgent(directory), /@nyan\/server must not be installed/);
 	rmSync(nested, { recursive: true });
 
 	const experimental = join(directory, "node_modules", codingAgentName, "dist/experimental");
@@ -94,10 +94,10 @@ test("accepts a valid coding-agent package and rejects development-only packages
 // #9132: smoke-test the public SDK, not just a bundled CLI that hides missing imports.
 test("fails when the SDK imports an undeclared server despite a working CLI", (t) => {
 	const directory = createFixture(t, { importServer: true });
-	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find package '@earendil-works\/pi-server'/);
+	assert.throws(() => smokeTestCodingAgent(directory), /Cannot find package '@nyan\/server'/);
 });
 
 test("fails if a development-only dependency is added back to the published dependency tree", (t) => {
 	const directory = createFixture(t, { declareServer: true });
-	assert.throws(() => smokeTestCodingAgent(directory), /pi-server must not be installed/);
+	assert.throws(() => smokeTestCodingAgent(directory), /@nyan\/server must not be installed/);
 });

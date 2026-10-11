@@ -1,7 +1,7 @@
-import { CancellableLoader, Container, Loader, Spacer, Text, type TUI } from "@earendil-works/pi-tui";
-import type { Theme } from "../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
-import { keyHint } from "./keybinding-hints.ts";
+import { CancellableLoader, Container, Loader, Spacer, Text, type TUI } from "@nyan/tui";
+import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
+import { keyHint } from "../../../ui/components/keybinding-hints.ts";
+import type { Theme } from "../../../ui/theme/theme.ts";
 
 /** Loader wrapped with borders for extension UI */
 export class BorderedLoader extends Container {

@@ -1,12 +1,13 @@
-// Print mode: submit one prompt and print its answer, like `pi -p`. The host awaits its own Submission, not global
+// Print mode: submit one prompt and print its answer, like `nyan -p`. The host awaits its own Submission, not global
 // idle. Uses OpenAI when OPENAI_API_KEY is set, and a scripted faux model otherwise.
 // Run from packages/durable:
 //   node --conditions=source --experimental-strip-types test/examples/18-print.ts "What is in this directory?"
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { createModels } from "@earendil-works/pi-ai/models";
-import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
-import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+
+import type { AssistantMessage } from "@nyan/ai";
+import { createModels } from "@nyan/ai/models";
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@nyan/ai/providers/faux";
+import { openaiProvider } from "@nyan/ai/providers/openai";
+import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
 import { NodeExecutionEnv } from "../../src/env/node.ts";
 import { AssistantEntry, createRegistry, defineExtension, Harness, MemoryStorage, section } from "../../src/index.ts";
 import { createBashTool, createReadTool } from "../../src/tools/index.ts";

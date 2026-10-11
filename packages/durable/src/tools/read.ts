@@ -1,4 +1,4 @@
-import type { Context } from "@earendil-works/chord";
+import type { Context } from "@nyan/chord";
 import { type Static, Type } from "typebox";
 import {
 	type BinaryReader,

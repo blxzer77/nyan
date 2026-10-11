@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type OAuthChallenge, OAuthIssuerMismatchError } from "@earendil-works/pi-mcp/oauth";
-import { afterEach, describe, expect, it } from "vitest";
+import { type OAuthChallenge, OAuthIssuerMismatchError } from "@nyan/mcp/oauth";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { InMemoryAuthStorageBackend } from "../src/core/auth-storage.ts";
 import {
 	createMcpAuthProvider,
@@ -24,9 +24,9 @@ describe("MCP OAuth refresh", () => {
 	async function signedIn() {
 		const server = await startOAuthMcpServer();
 		cleanups.push(server.close);
-		const lockDir = mkdtempSync(join(tmpdir(), "pi-mcp-refresh-"));
+		const lockDir = mkdtempSync(join(tmpdir(), "nyan-mcp-refresh-"));
 		cleanups.push(() => rmSync(lockDir, { recursive: true, force: true }));
-		// Stores sharing the credential file and lock directory stand in for separate pi processes.
+		// Stores sharing the credential file and lock directory stand in for separate nyan processes.
 		const backend = new InMemoryAuthStorageBackend();
 		const process = () => {
 			const store = new McpOAuthCredentialStore(backend, lockDir).forServer("test", server.url);
@@ -165,7 +165,12 @@ describe("MCP OAuth client ID metadata documents", () => {
 	const cleanups: (() => Promise<void>)[] = [];
 	const cimd: McpOAuthSettings = { clientRegistration: "cimd" };
 
+	beforeEach(() => {
+		process.env.NYAN_MCP_CLIENT_METADATA_URL = "https://metadata.example.test/oauth";
+	});
+
 	afterEach(async () => {
+		delete process.env.NYAN_MCP_CLIENT_METADATA_URL;
 		while (cleanups.length > 0) await cleanups.pop()?.();
 	});
 
@@ -190,23 +195,23 @@ describe("MCP OAuth client ID metadata documents", () => {
 		expect(server.authorizations[0].get("client_id")).toBe("client-1");
 	});
 
-	it("uses pi's document when authorization responses name their issuer", async () => {
+	it("uses nyan's document when authorization responses name their issuer", async () => {
 		const { server, store, signIn } = await startServer({ cimd: true, issParameter: true });
 		await signIn(cimd);
 		const [authorization] = server.authorizations;
-		expect(authorization.get("client_id")).toBe("https://pi.dev/oauth/client.json");
+		expect(authorization.get("client_id")).toBe("https://metadata.example.test/oauth/client.json");
 		const redirect = new URL(authorization.get("redirect_uri") ?? "");
 		expect(`${redirect.hostname}${redirect.pathname}`).toBe("127.0.0.1/callback");
 		expect(redirect.port).not.toBe("");
 		expect(server.registrations).toEqual([]);
-		expect(server.tokenRequests[0].get("client_id")).toBe("https://pi.dev/oauth/client.json");
+		expect(server.tokenRequests[0].get("client_id")).toBe("https://metadata.example.test/oauth/client.json");
 		expect(server.tokenRequests[0].get("redirect_uri")).toBe(redirect.href);
 		// The document is not stored, so signing in again refreshes the tokens instead of discarding them.
 		expect((await store.load())?.clientInformation).toBeUndefined();
 		await signIn(cimd);
 		expect(server.authorizations).toHaveLength(1);
 		expect(server.tokenRequests[1].get("grant_type")).toBe("refresh_token");
-		expect(server.tokenRequests[1].get("client_id")).toBe("https://pi.dev/oauth/client.json");
+		expect(server.tokenRequests[1].get("client_id")).toBe("https://metadata.example.test/oauth/client.json");
 	});
 
 	it("uses a document and callback path specific to the MCP server without the iss parameter", async () => {
@@ -215,7 +220,7 @@ describe("MCP OAuth client ID metadata documents", () => {
 		// Computed like Codex: the first 9 bytes of the SHA-256 of the MCP server URL.
 		const id = createHash("sha256").update(server.url).digest().subarray(0, 9).toString("base64url");
 		const [authorization] = server.authorizations;
-		expect(authorization.get("client_id")).toBe(`https://pi.dev/oauth/${id}/client.json`);
+		expect(authorization.get("client_id")).toBe(`https://metadata.example.test/oauth/${id}/client.json`);
 		const redirect = new URL(authorization.get("redirect_uri") ?? "");
 		expect(redirect.pathname).toBe(`/callback/${id}`);
 		expect(server.registrations).toEqual([]);
@@ -230,7 +235,7 @@ describe("MCP OAuth client ID metadata documents", () => {
 		// The registered client's tokens are not refreshed with another client.
 		expect(server.authorizations.map((authorization) => authorization.get("client_id"))).toEqual([
 			"client-1",
-			"https://pi.dev/oauth/client.json",
+			"https://metadata.example.test/oauth/client.json",
 		]);
 		expect((await store.load())?.clientInformation).toBeUndefined();
 	});

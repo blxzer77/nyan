@@ -409,6 +409,11 @@ export type { CodemodeStoreEntryData, CodemodeToolDetails } from "./extensions/c
 export type { LoadedMcpConfig, McpExposure, McpServerConfig, McpServerEntry } from "./extensions/mcp/config.ts";
 export { createMcpExtension, type McpExtensionOptions, type McpTransportFactory } from "./extensions/mcp/index.ts";
 export { createToolSearchExtension } from "./extensions/tool-search/index.ts";
+export {
+	type ConfiguredProductIdentity,
+	PRODUCT_IDENTITY,
+	resolveConfiguredProductIdentity,
+} from "./identity.ts";
 // Main entry point
 export { type MainOptions, main } from "./main.ts";
 // Run modes for programmatic SDK usage
@@ -483,7 +488,7 @@ export {
 	type ThemeColor,
 	type ThemeStyle,
 	type ThemeToken,
-} from "./modes/interactive/theme/theme.ts";
+} from "./ui/theme/theme.ts";
 // Clipboard utilities
 export { copyToClipboard } from "./utils/clipboard.ts";
 export { parseFrontmatter, stripFrontmatter } from "./utils/frontmatter.ts";

@@ -12,12 +12,12 @@ import {
 	Spacer,
 	Text,
 	type TUI,
-} from "@earendil-works/pi-tui";
+} from "@nyan/tui";
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
+import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
+import { keyHint } from "../../../ui/components/keybinding-hints.ts";
+import { getEditorTheme, theme } from "../../../ui/theme/theme.ts";
 import { editInExternalEditor } from "../external-editor.ts";
-import { getEditorTheme, theme } from "../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
-import { keyHint } from "./keybinding-hints.ts";
 
 export interface ExtensionEditorOptions extends EditorOptions {
 	description?: string;

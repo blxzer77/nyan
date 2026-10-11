@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 function runEntry(entry: string, experimental: boolean) {
-	const directory = mkdtempSync(join(tmpdir(), "pi-cli-boundary-"));
+	const directory = mkdtempSync(join(tmpdir(), "nyan-cli-boundary-"));
 	tempDirs.push(directory);
 	return spawnSync(
 		process.execPath,
@@ -36,9 +36,9 @@ function runEntry(entry: string, experimental: boolean) {
 				...process.env,
 				HOME: directory,
 				USERPROFILE: directory,
-				PI_CODING_AGENT_DIR: join(directory, "agent"),
-				PI_OFFLINE: "1",
-				PI_EXPERIMENTAL: experimental ? "1" : "0",
+				NYAN_CODING_AGENT_DIR: join(directory, "agent"),
+				NYAN_OFFLINE: "1",
+				NYAN_EXPERIMENTAL: experimental ? "1" : "0",
 			},
 		},
 	);

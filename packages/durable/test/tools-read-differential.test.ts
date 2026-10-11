@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
 import { afterAll, describe, expect, it } from "vitest";
 import { NodeExecutionEnv } from "../src/env/node.ts";
 import { characterEnd } from "../src/harness/output.ts";
@@ -154,7 +154,7 @@ async function outcome<T>(run: () => T | Promise<T>): Promise<T | { error: strin
 
 describe("read tool", () => {
 	it("returns exactly what reading the whole file returned", async () => {
-		const cwd = mkdtempSync(join(tmpdir(), "pi-durable-read-"));
+		const cwd = mkdtempSync(join(tmpdir(), "nyan-durable-read-"));
 		dirs.push(cwd);
 		const env = new NodeExecutionEnv({ cwd });
 		const tool = createReadTool();
@@ -178,7 +178,7 @@ describe("read tool", () => {
 	}, 120_000);
 
 	it("detects animated PNGs whose acTL chunk lies far beyond the header", async () => {
-		const cwd = mkdtempSync(join(tmpdir(), "pi-durable-read-"));
+		const cwd = mkdtempSync(join(tmpdir(), "nyan-durable-read-"));
 		dirs.push(cwd);
 		const chunk = (type: string, length: number): number[] => [
 			(length >>> 24) & 0xff,

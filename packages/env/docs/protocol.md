@@ -1,12 +1,12 @@
-# pi-env wire protocol
+# @nyan/env wire protocol
 
-Version 1. The client starts `pi-env serve --token <hex>` (over `ssh`, or directly in tests) and talks to it over the
+Version 1. The client starts `@nyan/env serve --token <hex>` (over `ssh`, or directly in tests) and talks to it over the
 process's stdin and stdout. stderr is diagnostic text for logs only.
 
 ## Sync
 
 Shell startup files may print to stdout before the daemon runs. The daemon's first output is the line
-`PI-ENV <token>\n`, with the token from its command line. The client discards everything before that line. After it,
+`NYAN-ENV <token>\n`, with the token from its command line. The client discards everything before that line. After it,
 stdout carries only frames.
 
 ## Frames

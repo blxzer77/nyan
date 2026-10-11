@@ -1,102 +1,27 @@
-# Contributing to pi
+# 为 Nyan 贡献代码
 
-This guide exists to save both sides time.
+Nyan 是由 Pi Agent v1.1.0 派生的独立产品。请先阅读根 `AGENTS.md`，再查看目标包的规则和 `.agents/` 下的工作流。
 
-## Philosophy
+## 分支
 
-First things first: **pi's core is minimal**.
+`main` 是唯一集成与发布分支。日常开发使用短生命周期特性分支；不要创建 `develop`。本地验证完成前不要请求合并。
 
-If your feature does not belong in the core, it should be an extension. PRs that bloat the core will likely be rejected.
+## 变更范围
 
-Pi's core exists to be minimal and to be extensible so that it can be influenced and manipulated by extensions.  Even hook points for extensions however should be well considered and discussed to avoid adding unmaintainable bloat and complex interactions.
+提交前明确真实入口、事实所有者和显式写集。运行时、Session、Provider、工具、子进程或持久化改动必须说明失败、取消、幂等、恢复和未知结果的处理。上游同步必须更新 `.agents/upstream/` 来源记录。
 
-## The One Rule
+## 本地检查
 
-**You must understand your code.** If you cannot explain what your changes do and how they interact with the rest of the system, your PR will be closed.
-
-Using AI to write code is fine. Submitting AI-generated slop without understanding it is not.
-
-If you use an agent, run it from the `pi` root directory so it picks up `AGENTS.md` automatically. Your agent must follow the rules and guidelines in that file.
-
-## Contribution Gate
-
-All issues and PRs from new contributors are auto-closed by default.
-
-Issues submitted Friday through Sunday are not guaranteed to be reviewed.  If something is urgent, ask on Discord: https://discord.com/invite/3cU7Bz4UPx
-
-Maintainers review auto-closed issues daily and reopen worthwhile ones. Issues that do not meet the quality bar below will not be reopened or receive a reply.
-
-Approval happens through maintainer replies on issues:
-
-- `lgtmi`: your future issues will not be auto-closed
-- `lgtm`: your future issues and PRs will not be auto-closed
-
-The command must be at the start of the reply (optionally after one or more `@username` mentions) or at the end. `lgtmi` does not grant rights to submit PRs. Only `lgtm` grants rights to submit PRs.
-
-## Quality Bar For Issues
-
-If you open an issue, you must use one of the two GitHub issue templates.
-
-If you open an issue, keep it short, concrete, and worth reading.
-
-- Keep it concise. If it does not fit on one screen, it is too long.
-- Write in your own voice (do not use an LLM to generate text, if you must, follow up with a clearly AI labeled comment).
-- State the bug or request clearly.
-- Explain why it matters.
-- If you want to implement the change yourself, say so.
-
-If the issue is real and written well, a maintainer may reopen it or reply with `lgtmi` or `lgtm` in the command position described above.
-
-## Blocking
-
-If you ignore this document twice, or if you spam the tracker with agent-generated issues, your GitHub account will be permanently blocked.
-
-If you send a large volume of issues through automation, your GitHub account will be permanently blocked. No taksies backsies.
-
-## Before Submitting a PR
-
-Do not open a PR unless you have already been approved by a maintainer using `lgtm` in the command position described above.
-
-Before submitting a PR:
-
-```bash
-npm run check
-./test.sh
+```powershell
+npm ci --ignore-scripts
+npm run lint
+npm run typecheck
+npm run build
+npm test
 ```
 
-Both must pass.
+按改动范围选择最小检查，并在交接中报告实际运行的命令。不要使用真实 Provider 密钥提交测试结果或日志。
 
-Do not edit `CHANGELOG.md`. Changelog entries are added by maintainers.
+## 文档
 
-If you are adding a new provider to `packages/ai`, see `AGENTS.md` for required tests.
-
-## Questions?
-
-Ask on [Discord](https://discord.com/invite/nKXTsAcmbT).
-
-## FAQ
-
-### Why are new issues and PRs auto-closed?
-
-pi receives more issues than the maintainers can responsibly review in real time. Many reports do not meet the quality bar in this guide or do not follow CONTRIBUTING.md. Some are slung at the repository mindlessly via an agent instead of being reviewed and shaped by the person submitting them. Auto-closing creates a buffer so maintainers can review the tracker on their own schedule and reopen the issues that meet the quality bar.
-
-### Why are weekend issues lower priority?
-
-We triage the tracker during working hours. That means more issues can accumulate over the weekend. Anything submitted Friday through Sunday may be missed or given lower priority in the Monday review queue. If a problem is urgent, ask on Discord and include the short version, a repro, and the relevant logs.
-
-### Why do some issues get no reply?
-
-A reply is maintenance work too. Low-signal issues, unclear reports, duplicates, and issues that do not follow this guide may be closed without discussion. This keeps time available for reproducible bugs, thoughtful requests, and contributors who have done the work to make their report actionable.
-
-### Why not let AI triage everything?
-
-AI can help group duplicates, summarize reports, and spot missing information. It is not trusted to make final maintainer decisions. Polished AI-generated issues can still be wrong, misleading, or expensive to investigate. Human review remains the final gate.
-
-### Is this hostile to contributors?
-
-No. It is a guardrail against burnout and tracker spam. Short, concrete, reproducible issues are welcome. Thoughtful contributions are welcome. Automated slop, entitlement, and large volumes of low-effort reports are not.
-
-## Where can I learn about plans?
-
-Earendil uses RFCs to discuss larger changes.  Not all of them are public, but
-quite a few are.  They can be found at [rfc.earendil.com](https://rfc.earendil.com/keyword/pi/).
+当前行为写在 README、包文档和代码注释中；长期的所有权、协议、持久化和安全理由写入 `.agents/notes/`。不要把候选、示例或实验代码描述成稳定产品能力。

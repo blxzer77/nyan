@@ -10,10 +10,10 @@ import {
 	type RemoteServiceErrorCode,
 	type ServiceCall,
 	type ServiceProviderUpdate,
-} from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT, TODO_CONTEXT, withCancel } from "@earendil-works/chord/context";
-import { Harness, ROOT_CONVERSATION_ID, type TaskGraph } from "@earendil-works/pi-durable";
-import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+} from "@nyan/chord";
+import { BACKGROUND_CONTEXT, TODO_CONTEXT, withCancel } from "@nyan/chord/context";
+import { Harness, ROOT_CONVERSATION_ID, type TaskGraph } from "@nyan/durable";
+import { openNodeSqliteStorage } from "@nyan/durable/storage/sqlite/node";
 import lockfile from "proper-lockfile";
 import Type, { type Static } from "typebox";
 import { Check } from "typebox/value";
@@ -27,6 +27,7 @@ import {
 	ExecutionEnvs,
 	findInitialAgentModel,
 } from "./durable/harness-setup.ts";
+import { createDurableModelRuntime } from "./model-runtime-adapter.ts";
 import { createSessionPluginFacetLoader } from "./plugins/bundled.ts";
 import {
 	consumeInternalProcessRole,
@@ -61,10 +62,10 @@ const RemoteServiceErrorCodeSchema = Type.Unsafe<RemoteServiceErrorCode>(
 	Type.String({ pattern: `^(?:${REMOTE_SERVICE_ERROR_CODES.join("|")})$` }),
 );
 
-export const SESSION_WORKER_CONTROL_ADDRESS_ENV = "PI_SESSION_WORKER_CONTROL_ADDRESS";
-export const SESSION_WORKER_CONTROL_TOKEN_ENV = "PI_SESSION_WORKER_CONTROL_TOKEN";
-export const SESSION_WORKER_SESSION_KEY_ENV = "PI_SESSION_WORKER_SESSION_KEY_BASE64";
-export const SESSION_WORKER_PEER_ID_ENV = "PI_SESSION_WORKER_PEER_ID";
+export const SESSION_WORKER_CONTROL_ADDRESS_ENV = "NYAN_SESSION_WORKER_CONTROL_ADDRESS";
+export const SESSION_WORKER_CONTROL_TOKEN_ENV = "NYAN_SESSION_WORKER_CONTROL_TOKEN";
+export const SESSION_WORKER_SESSION_KEY_ENV = "NYAN_SESSION_WORKER_SESSION_KEY_BASE64";
+export const SESSION_WORKER_PEER_ID_ENV = "NYAN_SESSION_WORKER_PEER_ID";
 
 export const SessionWorkerMetadataSchema = StrictObject({
 	id: Type.String({ minLength: 1 }),
@@ -306,8 +307,8 @@ export class WorkerLifecycle {
 
 const DEFAULT_INITIAL_DEMAND_GRACE_MS = 10_000;
 const DEFAULT_ORPHAN_DEMAND_GRACE_MS = 30_000;
-export const SESSION_WORKER_INITIAL_DEMAND_GRACE_ENV = "__PI_SESSION_WORKER_INITIAL_DEMAND_GRACE_MS";
-export const SESSION_WORKER_ORPHAN_DEMAND_GRACE_ENV = "__PI_SESSION_WORKER_ORPHAN_DEMAND_GRACE_MS";
+export const SESSION_WORKER_INITIAL_DEMAND_GRACE_ENV = "__NYAN_SESSION_WORKER_INITIAL_DEMAND_GRACE_MS";
+export const SESSION_WORKER_ORPHAN_DEMAND_GRACE_ENV = "__NYAN_SESSION_WORKER_ORPHAN_DEMAND_GRACE_MS";
 
 const CoordinatorInputSchema = Type.Union([
 	Type.Object({
@@ -776,6 +777,7 @@ async function createCodingAgentHarness(
 ): Promise<SessionWorkerRuntime> {
 	const { cwd } = options.metadata;
 	const modelRuntime = await ModelRuntime.create();
+	const durableModelRuntime = createDurableModelRuntime(modelRuntime);
 	const settingsManager = SettingsManager.create(cwd);
 	configureHarnessHttp(settingsManager);
 	const envs = new ExecutionEnvs(cwd);
@@ -784,7 +786,7 @@ async function createCodingAgentHarness(
 		harness = await Harness.open(
 			await openNodeSqliteStorage(databasePath),
 			{
-				models: modelRuntime,
+				models: durableModelRuntime,
 				registry: createCodingRegistry(settingsManager, cwd),
 				settings: createHarnessSettings(settingsManager),
 				env: envs.env,

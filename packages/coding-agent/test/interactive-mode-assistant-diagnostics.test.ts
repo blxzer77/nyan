@@ -1,8 +1,8 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { Container } from "@earendil-works/pi-tui";
+import type { AssistantMessage } from "@nyan/ai";
+import { Container } from "@nyan/tui";
 import { describe, expect, test } from "vitest";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/ui/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 const message: AssistantMessage = {

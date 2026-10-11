@@ -14,15 +14,15 @@ import {
 	Spacer,
 	truncateToWidth,
 	visibleWidth,
-} from "@earendil-works/pi-tui";
+} from "@nyan/tui";
 import { CONFIG_DIR_NAME } from "../../../config.ts";
 import type { PathMetadata, ResolvedPaths, ResolvedResource } from "../../../core/package-manager.ts";
 import type { PackageSource, SettingsManager } from "../../../core/settings-manager.ts";
 import { BUILTIN_PATH_PREFIX } from "../../../core/source-info.ts";
+import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
+import { keyHint, rawKeyHint } from "../../../ui/components/keybinding-hints.ts";
+import { theme } from "../../../ui/theme/theme.ts";
 import { canonicalizePath, isLocalPath, resolvePath } from "../../../utils/paths.ts";
-import { theme } from "../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
-import { keyHint, rawKeyHint } from "./keybinding-hints.ts";
 
 type ResourceType = "extensions" | "skills" | "prompts" | "themes";
 type ConfigWriteScope = "global" | "project";

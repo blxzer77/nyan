@@ -3,14 +3,14 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { DEFAULT_RADIUS_GATEWAY } from "@earendil-works/pi-ai/providers/radius-config";
-import { type Container, type EditorComponent, hyperlink, type TUI } from "@earendil-works/pi-tui";
-import { getAuthCredential } from "../../cli/auth-command.ts";
+import { DEFAULT_RADIUS_GATEWAY } from "@nyan/ai/providers/radius-config";
+import { type Container, type EditorComponent, hyperlink, type TUI } from "@nyan/tui";
 import { getShareViewerUrl } from "../../config.ts";
 import type { AgentSession } from "../../core/agent-session.ts";
+import { getAuthCredential } from "../../core/auth-credential.ts";
 import { exportSessionToJsonl } from "../../core/session-export.ts";
+import { theme } from "../../ui/theme/theme.ts";
 import { BorderedLoader } from "./components/bordered-loader.ts";
-import { theme } from "./theme/theme.ts";
 
 interface SessionShareContext {
 	session: AgentSession;
@@ -21,7 +21,7 @@ interface SessionShareContext {
 	showError: (message: string) => void;
 }
 
-/** Trailing `pi.share` entry carrying the system prompt and tool schemas for the session viewer. */
+/** Trailing `nyan.share` entry carrying the system prompt and tool schemas for the session viewer. */
 export function createShareTrailingEntries(
 	session: AgentSession,
 	parentId: string | null,
@@ -30,7 +30,7 @@ export function createShareTrailingEntries(
 	return [
 		{
 			type: "custom",
-			customType: "pi.share",
+			customType: "nyan.share",
 			id: crypto.randomUUID().slice(0, 8),
 			parentId,
 			timestamp,
@@ -55,7 +55,7 @@ export function exportSessionForShare(filePath: string, session: AgentSession): 
 
 /** Share the current session through Radius, falling back to a private gist. */
 export async function shareSession(context: SessionShareContext): Promise<void> {
-	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-share-"));
+	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nyan-share-"));
 	const jsonlFile = path.join(tempDir, "session.jsonl");
 	const htmlFile = path.join(tempDir, "session.html");
 
@@ -118,7 +118,7 @@ async function tryShareViaRadius(tmpFile: string, context: SessionShareContext):
 		const body = fs.readFileSync(tmpFile);
 		const url = new URL("/v1/artifacts", DEFAULT_RADIUS_GATEWAY);
 		url.searchParams.set("visibility", "organization");
-		url.searchParams.set("title", "Pi session");
+		url.searchParams.set("title", "Nyan session");
 		const response = await fetch(url, {
 			method: "POST",
 			headers: {
@@ -200,7 +200,11 @@ async function shareViaGist(tmpFile: string, context: SessionShareContext): Prom
 		}
 
 		const previewUrl = getShareViewerUrl(gistId);
-		context.showStatus(`Share URL: ${hyperlink(previewUrl, previewUrl)}\nGist: ${hyperlink(gistUrl, gistUrl)}`);
+		context.showStatus(
+			previewUrl
+				? `Share URL: ${hyperlink(previewUrl, previewUrl)}\nGist: ${hyperlink(gistUrl, gistUrl)}`
+				: `Gist: ${hyperlink(gistUrl, gistUrl)}`,
+		);
 	} catch (error: unknown) {
 		if (!loader.signal.aborted) {
 			restoreEditor(loader, context);

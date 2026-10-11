@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { type PlatformPath, posix, win32 } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
-import type { Context } from "@earendil-works/chord";
+import type { Context } from "@nyan/chord";
 import {
 	type BinaryReader,
 	type DirReader,
@@ -25,7 +25,7 @@ import {
 	type TextLineReader,
 	type WatchChange,
 	type WatchTarget,
-} from "@earendil-works/pi-durable/env";
+} from "@nyan/durable/env";
 import { type Connection, type Json, RemoteError, type RemoteInfo } from "./connection.ts";
 import { abortResult, toFileError } from "./errors.ts";
 import { RemoteWatcher, type RemoteWatchOptions } from "./watch.ts";
@@ -47,7 +47,7 @@ const LINE_CHUNK = 64 * 1024;
 
 export interface RemoteExecutionEnvOptions {
 	connection: Connection;
-	/** The file namespace: equal ids see the same files (`FileSystem.id`), e.g. `pi-env:<env name>`. */
+	/** The file namespace: equal ids see the same files (`FileSystem.id`), e.g. `nyan-env:<env name>`. */
 	id: string;
 	cwd: string;
 	shellPath?: string;
@@ -345,7 +345,7 @@ class RemoteTextLineReader implements TextLineReader {
 }
 
 /**
- * An `ExecutionEnv` on another machine, reached through a pi-env daemon. Results match `NodeExecutionEnv` running on
+ * An `ExecutionEnv` on another machine, reached through a nyan-env daemon. Results match `NodeExecutionEnv` running on
  * that machine: the daemon performs the system calls, and this class applies Node's path, error, and result rules.
  */
 export class RemoteExecutionEnv implements ExecutionEnv {

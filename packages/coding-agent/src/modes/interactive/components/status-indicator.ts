@@ -1,8 +1,8 @@
-import { type Component, Loader, type TUI, truncateToWidth } from "@earendil-works/pi-tui";
+import { type Component, Loader, type TUI, truncateToWidth } from "@nyan/tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
-import { theme } from "../theme/theme.ts";
+import { keyText } from "../../../ui/components/keybinding-hints.ts";
+import { theme } from "../../../ui/theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
-import { keyText } from "./keybinding-hints.ts";
 
 export type StatusIndicatorKind = "working" | "retry" | "compaction" | "branchSummary";
 

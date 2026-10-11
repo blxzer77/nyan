@@ -36,20 +36,17 @@ afterEach(() => {
 });
 
 describe("Radius provider catalogs", () => {
-	it("ships a static public catalog for the default gateway", () => {
+	it("ships no static catalog: models come from the configured gateway", () => {
 		const provider = radiusProvider();
-		expect(provider.getModels().length).toBeGreaterThan(0);
-		expect(provider.getModels()).toContainEqual(
-			expect.objectContaining({ id: "balanced", provider: "radius", api: "pi-messages" }),
-		);
+		expect(provider.getModels()).toEqual([]);
 	});
 
-	it("does not apply the public Radius catalog to custom gateways", () => {
+	it("offers no models for a custom gateway before its catalog is known", () => {
 		const provider = radiusProvider({ id: "radius-dev", gateway: "http://localhost:8788" });
 		expect(provider.getModels()).toEqual([]);
 	});
 
-	it("replaces the static public catalog with refreshed models", async () => {
+	it("publishes the refreshed gateway catalog", async () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(
 			new Response(JSON.stringify(radiusConfig()), {
 				status: 200,

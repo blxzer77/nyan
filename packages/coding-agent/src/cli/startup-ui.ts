@@ -1,10 +1,4 @@
-import {
-	ProcessTerminal,
-	setCapabilityOverrides,
-	setKeybindings,
-	type TUI,
-	TuiMainScreen,
-} from "@earendil-works/pi-tui";
+import { ProcessTerminal, setCapabilityOverrides, setKeybindings, type TUI, TuiMainScreen } from "@nyan/tui";
 import { existsSync } from "fs";
 import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, getAgentDir, getSettingsPath, PACKAGE_NAME } from "../config.ts";
 import { areExperimentalFeaturesEnabled } from "../core/experimental.ts";
@@ -17,7 +11,8 @@ import {
 	FirstTimeSetupComponent,
 	type FirstTimeSetupResult,
 } from "../modes/interactive/components/first-time-setup.ts";
-import { SYSTEM_THEME_NAME } from "../modes/interactive/theme/system-theme.ts";
+import { requestTerminalColors } from "../modes/interactive/theme/theme-controller.ts";
+import { SYSTEM_THEME_NAME } from "../ui/theme/system-theme.ts";
 import {
 	getTerminalTheme,
 	initTheme,
@@ -28,12 +23,11 @@ import {
 	setTerminalColors,
 	setTheme,
 	type Theme,
-} from "../modes/interactive/theme/theme.ts";
-import { requestTerminalColors } from "../modes/interactive/theme/theme-controller.ts";
+} from "../ui/theme/theme.ts";
 
-const OFFICIAL_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
-const OFFICIAL_APP_NAME = "pi";
-const OFFICIAL_CONFIG_DIR_NAME = ".pi";
+const OFFICIAL_PACKAGE_NAME = "@nyan/coding-agent";
+const OFFICIAL_APP_NAME = "nyan";
+const OFFICIAL_CONFIG_DIR_NAME = ".nyan";
 
 interface DistributionMetadata {
 	packageName: string;
@@ -123,8 +117,8 @@ async function clearStartupTui(ui: TUI): Promise<void> {
 
 /**
  * First-time setup runs when all of these hold:
- * - this is the official Pi distribution (not a fork/rebrand)
- * - experimental features are enabled (PI_EXPERIMENTAL=1)
+ * - this is the official Nyan distribution (not a fork/rebrand)
+ * - experimental features are enabled (NYAN_EXPERIMENTAL=1)
  * - the default agent directory is used (no custom agent dir override)
  * - setup was not completed before (settings.json does not exist)
  */

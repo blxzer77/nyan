@@ -1,11 +1,11 @@
 import { stripVTControlCharacters } from "node:util";
-import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import type { Component } from "@earendil-works/pi-tui";
+import type { AgentToolResult } from "@nyan/agent-core";
+import type { Component } from "@nyan/tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { ToolRenderContext } from "../src/core/extensions/types.ts";
 import { codemodeRenderers } from "../src/extensions/codemode/renderer.ts";
 import type { CodemodeToolDetails } from "../src/extensions/codemode/tool.ts";
-import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme, theme } from "../src/ui/theme/theme.ts";
 
 function render(
 	result: AgentToolResult<CodemodeToolDetails | undefined>,

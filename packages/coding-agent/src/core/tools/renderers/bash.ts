@@ -6,10 +6,10 @@
  * tool definition, so the tool's public shape is unchanged.
  */
 
-import { Container, Spacer, Text } from "@earendil-works/pi-tui";
-import { keyHint } from "../../../modes/interactive/components/keybinding-hints.ts";
-import { VisualLinePreview } from "../../../modes/interactive/components/visual-truncate.ts";
-import { theme } from "../../../modes/interactive/theme/theme.ts";
+import { Container, Spacer, Text } from "@nyan/tui";
+import { keyHint } from "../../../ui/components/keybinding-hints.ts";
+import { VisualLinePreview } from "../../../ui/components/visual-truncate.ts";
+import { theme } from "../../../ui/theme/theme.ts";
 import type { ToolDefinition, ToolRenderResultOptions } from "../../extensions/types.ts";
 import type { BashToolDetails } from "../bash.ts";
 import { getTextOutput, invalidArgText, str } from "../render-utils.ts";

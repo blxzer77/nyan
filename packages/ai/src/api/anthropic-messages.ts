@@ -17,7 +17,6 @@ import {
 	ANTHROPIC_SERVICE_ACCOUNT_ID_ENV,
 	ANTHROPIC_WORKSPACE_ID_ENV,
 } from "../env-api-keys.ts";
-import { calculateCost } from "../models.ts";
 import type {
 	Api,
 	AssistantMessage,
@@ -41,7 +40,8 @@ import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-parse.ts";
-import { getPiUserAgent } from "../utils/pi-user-agent.ts";
+import { calculateCost } from "../utils/model-operations.ts";
+import { getNyanUserAgent } from "../utils/nyan-user-agent.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
@@ -64,13 +64,13 @@ import { transformMessages } from "./transform-messages.ts";
 
 /**
  * Resolve cache retention preference.
- * Defaults to "short" and uses PI_CACHE_RETENTION for backward compatibility.
+ * Defaults to "short" and uses NYAN_CACHE_RETENTION for backward compatibility.
  */
 function resolveCacheRetention(cacheRetention?: CacheRetention, env?: ProviderEnv): CacheRetention {
 	if (cacheRetention) {
 		return cacheRetention;
 	}
-	if (getProviderEnvValue("PI_CACHE_RETENTION", env) === "long") {
+	if (getProviderEnvValue("NYAN_CACHE_RETENTION", env) === "long") {
 		return "long";
 	}
 	return "short";
@@ -202,7 +202,7 @@ const INLINE_TOOLS_BETA = "inline-tools-2026-09-15";
  * activated and the model cannot see it.
  */
 const DEFERRED_TOOL_PLACEHOLDER: BetaTool = {
-	name: "__pi_deferred_placeholder__",
+	name: "__nyan_deferred_placeholder__",
 	description: "Reserved placeholder. Never available. Never call this.",
 	input_schema: { type: "object", properties: {}, required: [] },
 	defer_loading: true,
@@ -301,7 +301,7 @@ function mergeHeaders(...headerSources: (ProviderHeaders | undefined)[]): Provid
 }
 
 function mergeClientHeaders(...headerSources: (ProviderHeaders | undefined)[]): ProviderHeaders {
-	return mergeHeaders({ "User-Agent": getPiUserAgent() }, ...headerSources);
+	return mergeHeaders({ "User-Agent": getNyanUserAgent() }, ...headerSources);
 }
 
 function hasHeader(headers: ProviderHeaders | undefined, name: string): boolean {
@@ -330,9 +330,9 @@ function assertRequestAuth(provider: string, apiKey: string | undefined, headers
  * Anthropic SDK client that never runs the SDK's own credential chain
  * (ANTHROPIC_PROFILE config files, federation env vars). Without this, every
  * client built with `apiKey: null, authToken: null` for header-owned auth would
- * also resolve and exchange SDK credentials behind pi's auth resolver.
+ * also resolve and exchange SDK credentials behind nyan's auth resolver.
  */
-class PiAnthropic extends Anthropic {
+class NyanAnthropic extends Anthropic {
 	protected override _shouldResolveDefaultCredentials(): boolean {
 		return false;
 	}
@@ -370,7 +370,7 @@ function getAnthropicFederation(
 }
 
 /**
- * The SDK caches the federated access token per client, but pi creates a client
+ * The SDK caches the federated access token per client, but nyan creates a client
  * per request. Keep one client for the current federation config and fetch, and
  * clone it per request with `withOptions()`, which shares the token cache.
  */
@@ -990,7 +990,7 @@ function createClient(
 ): { client: Anthropic; isOAuthToken: boolean } {
 	// Copilot: Bearer auth.
 	if (model.provider === "github-copilot") {
-		const client = new PiAnthropic({
+		const client = new NyanAnthropic({
 			apiKey: null,
 			authToken: apiKey ?? null,
 			baseURL: model.baseUrl,
@@ -1012,7 +1012,7 @@ function createClient(
 
 	// OAuth: Bearer auth, Claude Code identity headers
 	if (apiKey && isOAuthToken(apiKey)) {
-		const client = new PiAnthropic({
+		const client = new NyanAnthropic({
 			apiKey: null,
 			authToken: apiKey,
 			baseURL: model.baseUrl,
@@ -1052,7 +1052,7 @@ function createClient(
 	if (federation) {
 		const key = JSON.stringify([model.baseUrl, federation]);
 		if (federationClient?.key !== key || federationClient.fetch !== fetch) {
-			const client = new PiAnthropic({
+			const client = new NyanAnthropic({
 				apiKey: null,
 				authToken: null,
 				config: federation,
@@ -1065,7 +1065,7 @@ function createClient(
 		return { client: federationClient.client.withOptions({ defaultHeaders }), isOAuthToken: false };
 	}
 
-	const client = new PiAnthropic({
+	const client = new NyanAnthropic({
 		apiKey: apiKey ?? null,
 		authToken: null,
 		baseURL: model.baseUrl,

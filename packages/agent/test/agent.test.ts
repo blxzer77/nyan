@@ -5,7 +5,7 @@ import {
 	getModel,
 	toToolDeclaration,
 	type UserMessage,
-} from "@earendil-works/pi-ai/compat";
+} from "@nyan/ai/compat";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import {

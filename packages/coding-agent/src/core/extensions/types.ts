@@ -16,7 +16,7 @@ import type {
 	AgentToolUpdateCallback,
 	ThinkingLevel,
 	ToolExecutionMode,
-} from "@earendil-works/pi-agent-core";
+} from "@nyan/agent-core";
 import type {
 	AnyModel,
 	Api,
@@ -42,7 +42,7 @@ import type {
 	ToolResultMessage,
 	TranscriptContext,
 	Usage,
-} from "@earendil-works/pi-ai";
+} from "@nyan/ai";
 import type {
 	AutocompleteItem,
 	AutocompleteProvider,
@@ -53,9 +53,9 @@ import type {
 	OverlayHandle,
 	OverlayOptions,
 	TUI,
-} from "@earendil-works/pi-tui";
+} from "@nyan/tui";
 import type { Static, TSchema } from "typebox";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../ui/theme/theme.ts";
 import type { BashResult } from "../bash-executor.ts";
 import type { CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult } from "../cache-warmer.ts";
 import type { CompactionPreparation, CompactionResult } from "../compaction/index.ts";
@@ -251,12 +251,12 @@ export interface ExtensionUIContext {
 	 * - `keybindings`: KeybindingsManager for app-level keybindings
 	 *
 	 * For full app keybinding support (escape, ctrl+d, model switching, etc.),
-	 * extend `CustomEditor` from `@earendil-works/pi-coding-agent` and call
+	 * extend `CustomEditor` from `@nyan/coding-agent` and call
 	 * `super.handleInput(data)` for keys you don't handle.
 	 *
 	 * @example
 	 * ```ts
-	 * import { CustomEditor } from "@earendil-works/pi-coding-agent";
+	 * import { CustomEditor } from "@nyan/coding-agent";
 	 *
 	 * class VimEditor extends CustomEditor {
 	 *   private mode: "normal" | "insert" = "insert";
@@ -354,7 +354,7 @@ export interface ExtensionContext {
 	abort(): void;
 	/** Whether there are queued messages waiting */
 	hasPendingMessages(): boolean;
-	/** Gracefully shutdown pi and exit. Available in all contexts. */
+	/** Gracefully shutdown nyan and exit. Available in all contexts. */
 	shutdown(): void;
 	/** Get current context usage for the active model. */
 	getContextUsage(): ContextUsage | undefined;
@@ -724,7 +724,7 @@ export interface ResourcesDiscoverResult {
 /**
  * Fired when an extension registers or unregisters an MCP server after the extensions are bound
  * (see {@link ExtensionAPI.registerMcpServer}). Servers registered while extensions load are read
- * with `pi.getMcpServers()` on `session_start`. Handling this event marks an extension as the one
+ * with `nyan.getMcpServers()` on `session_start`. Handling this event marks an extension as the one
  * that connects registered servers.
  */
 export interface McpServersChangeEvent {
@@ -865,7 +865,7 @@ export type SessionEvent =
  * Fired before each LLM call. Can modify messages.
  *
  * `messages` holds the conversation without system messages. The prompt and tool state
- * belong to Pi: it restores them after the handler returns, so a handler cannot drop
+ * belong to Nyan: it restores them after the handler returns, so a handler cannot drop
  * them and does not need to preserve them.
  */
 export interface ContextEvent {
@@ -874,7 +874,7 @@ export interface ContextEvent {
 }
 
 /**
- * Fired before each LLM call, after every `context` handler has run and Pi has restored
+ * Fired before each LLM call, after every `context` handler has run and Nyan has restored
  * the prompt and tool state. `messages` is the full transcript including system messages,
  * and the result is sent as returned: the handler owns the prompt and tool declarations.
  */
@@ -906,7 +906,7 @@ export interface AfterProviderResponseEvent {
 	headers: Record<string, string>;
 }
 
-/** Fired for a parsed provider stream event before Pi normalizes it. */
+/** Fired for a parsed provider stream event before Nyan normalizes it. */
 export interface ProviderStreamEvent {
 	type: "provider_stream_event";
 	provider: ProviderId;
@@ -1010,7 +1010,7 @@ export interface AgentSettledEvent {
 
 export type UIPromptKind = "select" | "confirm" | "input" | "editor" | "custom";
 
-/** Fired when Pi starts waiting on a blocking user-facing extension UI prompt. */
+/** Fired when Nyan starts waiting on a blocking user-facing extension UI prompt. */
 export interface UIPromptStartEvent {
 	type: "ui_prompt_start";
 	reason: "ui_prompt";
@@ -1018,7 +1018,7 @@ export interface UIPromptStartEvent {
 	title?: string;
 }
 
-/** Fired when Pi is no longer waiting on a blocking user-facing extension UI prompt. */
+/** Fired when Nyan is no longer waiting on a blocking user-facing extension UI prompt. */
 export interface UIPromptEndEvent {
 	type: "ui_prompt_end";
 	reason: "ui_prompt";
@@ -1165,7 +1165,7 @@ export type InputEventResult =
 interface ToolCallEventBase {
 	type: "tool_call";
 	/**
-	 * The call's id. For calls another tool made (with `parentToolCallId` set), pi assigns
+	 * The call's id. For calls another tool made (with `parentToolCallId` set), nyan assigns
 	 * `<parent id>/<n>`; such ids never appear as tool calls or tool results in the transcript, only
 	 * in the parent result's `nestedCalls` record.
 	 */
@@ -1686,7 +1686,7 @@ export interface ExtensionAPI {
 	/** Register a custom renderer for CustomMessageEntry. */
 	registerMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;
 
-	/** Register a transformer for user and assistant Markdown before Pi renders it in the interactive transcript. */
+	/** Register a transformer for user and assistant Markdown before Nyan renders it in the interactive transcript. */
 	registerMarkdownTransformer(transformer: MarkdownTransformer): void;
 
 	/** Register a custom renderer for CustomEntry. Custom entries do not participate in LLM context. */
@@ -1790,7 +1790,7 @@ export interface ExtensionAPI {
 	 *
 	 * @example
 	 * // Register a new provider with custom models
-	 * pi.registerProvider("my-proxy", {
+	 * nyan.registerProvider("my-proxy", {
 	 *   baseUrl: "https://proxy.example.com",
 	 *   apiKey: "$PROXY_API_KEY",
 	 *   api: "anthropic-messages",
@@ -1809,13 +1809,13 @@ export interface ExtensionAPI {
 	 *
 	 * @example
 	 * // Override baseUrl for an existing provider
-	 * pi.registerProvider("anthropic", {
+	 * nyan.registerProvider("anthropic", {
 	 *   baseUrl: "https://proxy.example.com"
 	 * });
 	 *
 	 * @example
 	 * // Register provider with OAuth support
-	 * pi.registerProvider("corporate-ai", {
+	 * nyan.registerProvider("corporate-ai", {
 	 *   baseUrl: "https://ai.corp.com",
 	 *   api: "openai-responses",
 	 *   models: [...],
@@ -1841,7 +1841,7 @@ export interface ExtensionAPI {
 	 * the initial load phase.
 	 *
 	 * @example
-	 * pi.unregisterProvider("my-proxy");
+	 * nyan.unregisterProvider("my-proxy");
 	 */
 	unregisterProvider(name: string): void;
 
@@ -1861,7 +1861,7 @@ export interface ExtensionAPI {
 	 * extension replaced the built-in one), the registration is reported as an extension error.
 	 *
 	 * @example
-	 * pi.registerMcpServer("jira", { url: "https://mcp.example.com/jira" });
+	 * nyan.registerMcpServer("jira", { url: "https://mcp.example.com/jira" });
 	 */
 	registerMcpServer(name: string, config: McpServerConfig): void;
 
@@ -1893,13 +1893,13 @@ export interface ExtensionAPI {
 // Provider Registration Types
 // ============================================================================
 
-/** Virtual model registered via pi.registerVirtualModel(). */
+/** Virtual model registered via nyan.registerVirtualModel(). */
 export interface ExtensionVirtualModel<TState = unknown> extends Omit<VirtualModelDefinition<TState>, "route"> {
 	/** Like `VirtualModelDefinition.route`, with an extension context. */
 	route(request: ModelRouteRequest<TState>, ctx: ExtensionContext): ModelRoute<TState> | Promise<ModelRoute<TState>>;
 }
 
-/** Configuration for registering a provider via pi.registerProvider(). */
+/** Configuration for registering a provider via nyan.registerProvider(). */
 export interface ProviderConfig {
 	/** Display name for the provider in UI. */
 	name?: string;
@@ -1983,7 +1983,7 @@ export interface ProviderChatModelConfig extends ProviderModelConfigBase {
 	api?: Api;
 	/** Whether the model supports extended thinking. */
 	reasoning: boolean;
-	/** Maps pi thinking levels to provider/model-specific values; null marks a level unsupported. */
+	/** Maps nyan thinking levels to provider/model-specific values; null marks a level unsupported. */
 	thinkingLevelMap?: Model<Api>["thinkingLevelMap"];
 	/** Best-effort prompt cache lifetime in seconds per retention tier. Unset disables cache warming. */
 	promptCache?: Model<Api>["promptCache"];
@@ -2014,7 +2014,7 @@ export interface ProviderClassifierModelConfig extends ProviderModelConfigBase {
 export type ProviderModelConfig = ProviderChatModelConfig | ProviderImageModelConfig | ProviderClassifierModelConfig;
 
 /** Extension factory function type. Supports both sync and async initialization. */
-export type ExtensionFactory = (pi: ExtensionAPI) => void | Promise<void>;
+export type ExtensionFactory = (nyan: ExtensionAPI) => void | Promise<void>;
 
 export type InlineExtension =
 	| ExtensionFactory
@@ -2037,7 +2037,7 @@ export type InlineExtension =
 			replaceable?: boolean;
 			/**
 			 * Supply the code of the `builtin:<name>` extension instead of loading as an inline extension.
-			 * `builtin:<name>` is an extension resource like a file: it loads by default, `pi config` lists
+			 * `builtin:<name>` is an extension resource like a file: it loads by default, `nyan config` lists
 			 * it, `-builtin:<name>` in the `extensions` setting and `--no-extensions` disable it, and
 			 * `-e builtin:<name>` loads it explicitly. It is hidden from the startup Extensions list and
 			 * loads after project trust is resolved, so it cannot handle `project_trust`. The CLI's built-in
@@ -2124,7 +2124,7 @@ export interface ExtensionRuntimeState {
 	flagValues: Map<string, boolean | string>;
 	/** Legacy provider-config registrations queued during extension loading, processed when runner binds. */
 	pendingProviderRegistrations: Array<{ name: string; config: ProviderConfig; extensionPath: string }>;
-	/** Native pi-ai provider registrations queued during extension loading, processed when runner binds. */
+	/** Native nyan-ai provider registrations queued during extension loading, processed when runner binds. */
 	pendingNativeProviderRegistrations: Array<{ provider: Provider; extensionPath: string }>;
 	/** Virtual model registrations queued during extension loading, processed when runner binds. */
 	pendingVirtualModelRegistrations: Array<{ definition: VirtualModelDefinition; extensionPath: string }>;
@@ -2145,14 +2145,14 @@ export interface ExtensionRuntimeState {
 	registerProvider: (name: string, config: ProviderConfig, extensionPath?: string) => void;
 	registerNativeProvider: (provider: Provider, extensionPath?: string) => void;
 	unregisterProvider: (name: string, extensionPath?: string) => void;
-	/** Servers registered with `pi.registerMcpServer()`. */
+	/** Servers registered with `nyan.registerMcpServer()`. */
 	mcpServers: McpServerRegistry;
 	registerVirtualModel: (definition: VirtualModelDefinition, extensionPath?: string) => void;
 	unregisterVirtualModel: (provider: string, id: string) => void;
 }
 
 /**
- * Action implementations for pi.* API methods.
+ * Action implementations for nyan.* API methods.
  * Provided to runner.initialize(), copied into the shared runtime.
  */
 export interface ExtensionActions {

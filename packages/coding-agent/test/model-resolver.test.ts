@@ -1,10 +1,10 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Agent } from "@earendil-works/pi-agent-core";
-import type { Model } from "@earendil-works/pi-ai";
-import { getModel, streamSimple } from "@earendil-works/pi-ai/compat";
-import { getBuiltinModels, getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
+import { Agent } from "@nyan/agent-core";
+import type { Model } from "@nyan/ai";
+import { getModel, streamSimple } from "@nyan/ai/compat";
+import { getBuiltinModels, getBuiltinProviders } from "@nyan/ai/providers/all";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
@@ -843,7 +843,7 @@ describe("default model selection", () => {
 		});
 
 		async function createSession(options: { scoped: boolean; persistedScope?: string[] }) {
-			const tempDir = join(tmpdir(), `pi-default-scope-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+			const tempDir = join(tmpdir(), `nyan-default-scope-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 			mkdirSync(tempDir, { recursive: true });
 			tempDirs.push(tempDir);
 

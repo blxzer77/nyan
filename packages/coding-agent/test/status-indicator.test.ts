@@ -1,4 +1,4 @@
-import { type TUI, visibleWidth } from "@earendil-works/pi-tui";
+import { type TUI, visibleWidth } from "@nyan/tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
@@ -9,7 +9,7 @@ import {
 	RetryStatusIndicator,
 	WorkingStatusIndicator,
 } from "../src/modes/interactive/components/status-indicator.ts";
-import { getEditorTheme, initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
+import { getEditorTheme, initTheme, theme } from "../src/ui/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 describe("status indicators", () => {

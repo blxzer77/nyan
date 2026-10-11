@@ -17,10 +17,10 @@ export default defineConfig({
 	resolve: {
 		conditions: ["source"],
 		alias: [
-			{ find: /^@earendil-works\/pi-telemetry$/, replacement: telemetrySrcIndex },
-			{ find: /^@earendil-works\/pi-agent-core$/, replacement: agentSrcIndex },
-			{ find: /^@earendil-works\/pi-ai$/, replacement: aiSrcIndex },
-			{ find: /^@earendil-works\/pi-ai\/compat$/, replacement: aiSrcCompat },
+			{ find: /^@nyan\/telemetry$/, replacement: telemetrySrcIndex },
+			{ find: /^@nyan\/agent-core$/, replacement: agentSrcIndex },
+			{ find: /^@nyan\/ai$/, replacement: aiSrcIndex },
+			{ find: /^@nyan\/ai\/compat$/, replacement: aiSrcCompat },
 		],
 	},
 	ssr: { resolve: { conditions: ["source"] } },

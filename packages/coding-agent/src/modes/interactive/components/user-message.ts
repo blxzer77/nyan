@@ -1,6 +1,6 @@
-import { Container, Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
+import { Container, Markdown, type MarkdownTheme } from "@nyan/tui";
 import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
-import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { getMarkdownTheme, theme } from "../../../ui/theme/theme.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";

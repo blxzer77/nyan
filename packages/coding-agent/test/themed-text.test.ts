@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { ThemedText } from "../src/modes/interactive/components/themed-text.ts";
-import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme, theme } from "../src/ui/theme/theme.ts";
 
 afterEach(() => {
 	initTheme("dark");

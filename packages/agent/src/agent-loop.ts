@@ -14,7 +14,7 @@ import {
 	type ToolStateChanges,
 	toToolDeclaration,
 	validateToolArguments,
-} from "@earendil-works/pi-ai";
+} from "@nyan/ai/contracts";
 import { getDefaultStreamFn } from "./stream-fn.ts";
 import type {
 	AgentContext,

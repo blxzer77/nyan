@@ -1,125 +1,76 @@
-# Development Rules
+# AGENTS.md
 
-## Conversational Style
+Nyan 是由 Pi Agent v1.1.0 派生的独立开发产品。Pi 是来源基线，不是 Nyan 的产品边界；Nyan 的行为、配置、持久化和发布规则由本文件与 `.agents/` 维护。
 
-- Keep answers short and concise
-- No emojis in commits, issues, PR comments, or code
-- No fluff or cheerful filler text (e.g., "Thanks @user" not "Thanks so much @user!")
-- Technical prose only, be direct
-- Use concise, clear, simple language. Define unavoidable jargon before using it.
-- Explain non-trivial designs and problems as: problem, concrete example or short trace, then solution. State why the solution is necessary and distinguish it from optional complexity.
-- Prefer concrete behavior and small illustrations over abstract summaries, dense terminology, or unexplained lists of changes.
-- When the user asks a question, answer it first before making edits or running implementation commands.
-- When responding to user feedback or an analysis, explicitly say whether you agree or disagree before saying what you changed.
+## 指令优先级
 
-## Code Quality
+先读取本文件，再读取目标目录下更具体的 `AGENTS.md`、相关 Agent Note 和适用 skill。当前用户指令优先于仓库规则。没有用户明确授权，不提交、推送、合并、打标签、发布或部署。
 
-- Read files in full before wide-ranging changes, before editing files you have not fully inspected, and when asked to investigate or audit. Do not rely on search snippets for broad changes.
-- No `any` unless absolutely necessary.
-- Inline single-line helpers that have only one call site.
-- Check node_modules for external API types; don't guess.
-- **No inline imports** (`await import()`, `import("pkg").Type`, dynamic type imports). Top-level imports only.
-- In `packages/coding-agent`, resolve package assets through helpers in `src/config.ts`. Do not use `__dirname` directly; the helpers account for source checkouts, npm installations, and standalone binaries.
-- Never remove or downgrade code to fix type errors from outdated deps; upgrade the dep instead.
-- Use only erasable TypeScript syntax (Node strip-only mode) in code checked by the root config (`packages/*/src`, `packages/*/test`, `packages/coding-agent/examples`): no parameter properties, `enum`, `namespace`/`module`, `import =`, `export =`, or other constructs needing JS emit. Use explicit fields with constructor assignments.
-- Always ask before removing functionality or code that appears intentional.
-- Do not preserve backward compatibility unless the user asks for it.
-- Never hardcode key checks (e.g. `matchesKey(keyData, "ctrl+x")`). Add defaults to `DEFAULT_EDITOR_KEYBINDINGS` or `DEFAULT_APP_KEYBINDINGS` so they stay configurable.
-- Never modify `packages/ai/src/models.generated.ts` directly; update `packages/ai/scripts/generate-models.ts` instead, then regenerate. Including the resulting `models.generated.ts` diff is always OK, even if regeneration includes unrelated upstream model metadata changes.
+## 产品边界
 
-## Commands
+- `packages/coding-agent` 是当前面向用户的 Agent CLI 与 SDK 入口。
+- `packages/agent` 负责 Agent Core 的循环、工具调用和状态转换。
+- `packages/ai` 负责模型、Provider、认证和流式响应。
+- `packages/tui` 负责终端交互；`packages/mcp`、`packages/codemode`、`packages/protocol`、`packages/client`、`packages/server` 和 `packages/durable` 提供可复用运行时能力。
+- 产品身份是 `nyan`：可执行文件 `nyan`、`NYAN_*` 环境变量、用户目录 `~/.nyan` 与项目目录 `.nyan`、`nyan.*` 持久化与协议标识、`@nyan/*` 包名。Nyan 不读取 Pi 的 `.pi` 目录或 `PI_*` 变量，不提供 `pi` 别名，也没有 Pi 扩展生态的兼容承诺。
+- Nyan 不假设任何托管服务：版本源、安装器、分享查看器、模型目录、MCP 客户端元数据和 Radius 网关都没有内置默认地址，必须由运营者通过 `NYAN_*` 配置；未配置时对应功能关闭或明确报错，不会连接 Pi 或其他未拥有的域名。
+- 扩展、实验目录和示例是候选能力；在真实入口、持久化行为和恢复路径验证前，不得描述为 Nyan 的稳定产品能力。
+- 一次模型请求可见的输入必须能够从 Session 或其他明确的持久化事实重建。未知副作用必须显式暴露，不能当成成功。
 
-- After code changes (not docs): `npm run check` (full output, no tail). Fix all errors, warnings, and infos before committing. Does not run tests.
-- Never run `npm run build` or `npm test` unless requested by the user.
-- Never run the full vitest suite directly: it includes e2e tests that activate when endpoint/auth env vars are present. For all non-e2e tests, run `./test.sh` from the repo root. Otherwise run specific tests from the package root:
-  - Vitest: `node "$(git rev-parse --show-toplevel)/node_modules/vitest/dist/cli.js" --run test/specific.test.ts`
-  - `packages/tui` (`node:test`): `node --test test/specific.test.ts`
-- If you create or modify a test file, run it and iterate on test or implementation until it passes.
-- For `packages/coding-agent/test/suite/`, use `test/suite/harness.ts` + the faux provider. No real provider APIs, keys, or paid tokens.
-- When regressions tests for fixing a github issue, add a comment with the github issue number next to the test.
-- For ad-hoc scripts, `write` them to a temp file (e.g. `/tmp`), run, edit if needed, remove when done. Don't embed multi-line scripts in `bash` commands.
-- Never commit unless the user asks.
+## 依赖方向与分层
 
-## Dependency and Install Security
+依赖必须指向更稳定的一侧。包级分层、包内模块分层、稳定入口和已知例外都记录在 [`docs/architecture/layers.json`](docs/architecture/layers.json)，由 `npm run check:architecture`（已包含在 `npm run check`）强制执行：
 
-- Treat npm dep and lockfile changes as reviewed code. Direct external deps stay pinned to exact versions.
-- When updating `undici`, you MUST read its changelog/release notes for the target version and evaluate whether any changes may affect functionality before applying the update.
-- Hydrate/update locally with `npm install --ignore-scripts`; clean/CI-style with `npm ci --ignore-scripts`. Don't run lifecycle scripts unless the user asks.
-- If dep metadata changes, refresh `package-lock.json` with `npm install --package-lock-only --ignore-scripts`.
-- If `packages/coding-agent/install-lock/` needs regen, run `node scripts/generate-coding-agent-install-lock.mjs` (verify with `--check` or `npm run check`). New deps with lifecycle scripts require review and an explicit allowlist entry in that script; never add one silently.
-- Pre-commit blocks lockfile commits unless `PI_ALLOW_LOCKFILE_CHANGE=1`. Don't bypass unless the user wants the lockfile change committed.
+- 包只能依赖其层 `mayDependOn` 中列出的层；同层依赖必须逐条列在 `internal`；每条跨包边的目标不得比来源更不稳定（不稳定度 I = Ce / (Ca + Ce)，由源码导入实测）。
+- 跨包导入必须落在目标包 `exports` 声明的子路径上，且源码导入的工作区包必须在 manifest 中声明。
+- `agent` 只能经 `@nyan/ai/contracts` 使用模型层；`durable` 只能经 `contracts` 与 `utils` 子路径。
+- `ai`、`durable`、`coding-agent` 有包内模块层；`coding-agent` 的无头 `core` 不得依赖 `modes`、`cli` 或终端展示。
+- 静态运行时导入环被禁止；唯一已记录的环（durable 运行生命周期）与例外必须在 `layers.json` 写明原因，消除它们需要独立的 Agent Note。
 
-## Git
+新增依赖、包或模块时先改 `layers.json` 并说明理由，不要为让检查通过而放宽规则。
 
-Multiple pi sessions may be running in this cwd at the same time, each modifying different files. Git operations that touch unstaged, staged, or untracked files outside your own changes will stomp on other sessions' work. Follow these rules:
+## 上游与分支
 
-Committing:
+- `origin` 指向 Nyan Fork，`upstream` 指向 `https://github.com/earendil-works/pi.git`（只读来源，不是 Nyan 的依赖）。
+- 当前基线是 Pi `v1.1.0`，提交 `abe508e1b89912adde45528136c3221eb69acdd7`；来源清单在 `.agents/upstream/pi-v1.1.0.json`。
+- `main` 是唯一集成与发布分支。开发使用短生命周期特性分支；不创建 `develop`。
+- 上游同步必须记录来源提交、目标文件、局部修改、冲突处理、验证结果和未接入能力。禁止直接覆盖 Nyan 改动。
 
-- Only commit files YOU changed in THIS session.
-- Stage explicit paths (`git add <path1> <path2>`); never `git add -A` / `git add .`.
-- Before committing, run `git status` and verify you are only staging your files.
-- `packages/ai/src/models.generated.ts` may always be included alongside your files.
-- Message format: `{feat,fix,docs}[(ai,tui,agent,coding-agent)]: <commit message> (optionally multiple lines)`. Message is informative and concise.
+## 开发流程
 
-Never run (destroys other agents' work or bypasses checks):
+1. 先说明问题、真实入口、所有者和显式写集；检查已有 Agent Note，避免重复决策。
+2. 先改事实所有者，再改派生文档、快照或生成文件。跨包行为变化要同时更新使用方。
+3. 运行与变更匹配的最小证据：类型检查、lint、聚焦测试、构建或真实 CLI smoke。不要用“源码存在”代替“入口可调用”。
+4. 汇报实际运行的命令、通过项、跳过项、阻塞项和仍未知的行为。
 
-- `git reset --hard`, `git checkout .`, `git clean -fd`, `git stash`, `git add -A`, `git add .`, `git commit --no-verify`.
+## 运行时与恢复
 
-If rebase conflicts occur:
+涉及 Session、Provider、工具、子进程、并发或持久化时，必须说明 admission、所有权、取消、幂等、重启恢复、lease/epoch（如果适用）和未知结果的处理。捕获异常不等于恢复；只有状态所有者可以证明继续执行安全。失败报告要指出影响、确定性、当前处置和下一步。
 
-- Resolve conflicts only in files you modified.
-- If a conflict is in a file you did not modify, abort and ask the user.
-- Never force push.
+## 文档与 Agent Notes
 
-## Issues and PRs
+Agent Note 只记录代码和普通文档无法承载、且会影响未来决策的理由、替代方案、后果和验证。生命周期目录为 `proposed/`、`implemented/`、`rejected/`、`archived/`；归档内容冻结。机械改动、临时清单和实现过程不写成 Agent Note。文档只陈述当前已验证行为；未来计划放在 proposed Note。
 
-See `CONTRIBUTING.md` for the contributor gate (auto-close workflows, `lgtm`/`lgtmi`, quality bar).
+## 代码约定
 
-When reviewing PRs:
+- 使用 ESM、严格 TypeScript 和显式类型；不要新增 `any` 或对 `unknown` 的无依据断言。
+- 在扩展点增加行为，除非 Agent Note 说明了所有权变化，不直接把产品逻辑塞进 Agent loop。
+- 跨包 ID、Session 事件、工具结果和错误使用稳定的判别字段；通过判别字段分派，闭合联合在默认分支暴露未处理情况。
+- 配置缺失在最早可判定的位置报错；不要静默回退到另一种产品行为。
+- 注释只说明非显然的所有权、时序、失败保证或安全原因；不要复述代码。
 
-- Do not run `gh pr checkout`, `git switch`, or otherwise move the worktree to the PR branch unless the user explicitly asks.
-- Use `gh pr view`, `gh pr diff`, `gh api`, and local `git show`/`git diff` against fetched refs to inspect PR metadata, commits, and patches without changing branches.
-- If you need PR file contents, fetch/read them into temporary files or use `git show <ref>:<path>` without switching branches.
+## 本地验证命令
 
-When creating issues:
+```text
+npm ci --ignore-scripts
+npm run lint
+npm run typecheck
+npm run build
+npm test
+```
 
-- Add `pkg:*` labels for affected packages (`pkg:agent`, `pkg:ai`, `pkg:coding-agent`, `pkg:tui`); use all that apply.
+按变更范围选择最小集合；不要为了“看起来完整”重复已通过的命令。真实 Provider 测试需要用户明确提供凭据和范围，凭据不得写入仓库。
 
-When posting issue/PR comments:
+## 上游特性清理
 
-- Write the comment to a temp file and post with `gh issue/pr comment --body-file` (never multi-line markdown via `--body`).
-- Keep comments concise, technical, in the user's tone.
-- End every AI-posted comment with the AI-generated disclaimer line specified by the originating prompt (e.g. `This comment is AI-generated by `/wr``).
-
-When closing issues via commit:
-
-- Include `fixes #<number>` or `closes #<number>` in the message so merging auto-closes the issue. For multiple issues, repeat the keyword per issue (`closes #1, closes #2`); a shared keyword (`closes #1, #2`) only closes the first.
-
-## Testing pi Interactive Mode with tmux
-
-For testing pi's interactive mode, load and follow [.pi/skills/interactive-testing.md](.pi/skills/interactive-testing.md).
-
-## Changelog
-
-Location: `packages/*/CHANGELOG.md` (one per package).
-
-Sections under `## [Unreleased]`: `### Breaking Changes` (API changes requiring migration), `### Added`, `### Changed`, `### Fixed`, `### Removed`.
-
-Rules:
-
-- All new entries go under `## [Unreleased]`. Read the full section first and append to existing subsections; never duplicate them.
-- Released version sections (e.g. `## [0.12.2]`) are immutable; never modify them.
-- Do not create changelog entries when working on a branch other than `main` or pull request
-
-Attribution:
-
-- Internal (from issues): `Fixed foo bar ([#123](https://github.com/earendil-works/pi/issues/123))`
-- External contributions: `Added feature X ([#456](https://github.com/earendil-works/pi/pull/456) by [@username](https://github.com/username))`
-
-## Releasing
-
-For release preparation, publishing, verification, or recovery, load and follow [.pi/skills/release.md](.pi/skills/release.md).
-
-## User Override
-
-If the user's instructions conflict with any rule in this document, ask for explicit confirmation before overriding. Only then execute their instructions.
+上游项目的组织治理、发布站点、Nix 包装、Pi 专用开发助手和贡献者策略不属于 Nyan，已从工作树移除。运行时源码、通用扩展、测试基础设施和可复用包只有在确认没有 Nyan 消费者后才可删除；删除前必须更新对应 Agent Note 与验证。

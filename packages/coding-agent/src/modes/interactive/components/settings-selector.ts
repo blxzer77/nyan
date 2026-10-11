@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { getSupportedThinkingLevels, type Model, type Transport } from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@nyan/agent-core";
+import { getSupportedThinkingLevels, type Model, type Transport } from "@nyan/ai";
 import {
 	type Component,
 	Container,
@@ -11,7 +11,7 @@ import {
 	Spacer,
 	Text,
 	type WheelScrollLines,
-} from "@earendil-works/pi-tui";
+} from "@nyan/tui";
 import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../../../core/http-dispatcher.ts";
 import {
 	CACHE_WARMING_MODES,
@@ -23,15 +23,15 @@ import {
 	type TuiMode,
 	type WarningSettings,
 } from "../../../core/settings-manager.ts";
+import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
+import { keyDisplayText } from "../../../ui/components/keybinding-hints.ts";
 import {
 	getSettingsListTheme,
 	parseAutoThemeSetting,
 	SYSTEM_THEME_NAME,
 	type TerminalTheme,
 	theme,
-} from "../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
-import { keyDisplayText } from "./keybinding-hints.ts";
+} from "../../../ui/theme/theme.ts";
 import { SelectSubmenu, SteppedSubmenu, type SteppedSubmenuStep } from "./settings-submenu.ts";
 
 const MODEL_PICKER_LAYOUT = { minPrimaryColumnWidth: 12, maxPrimaryColumnWidth: 46 };

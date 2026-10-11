@@ -1,9 +1,9 @@
-import type { Terminal, WheelScrollLines } from "@earendil-works/pi-tui";
-import { ProcessTerminal, type TUI, TuiAltScreen, TuiMainScreen } from "@earendil-works/pi-tui";
+import type { Terminal, WheelScrollLines } from "@nyan/tui";
+import { ProcessTerminal, type TUI, TuiAltScreen, TuiMainScreen } from "@nyan/tui";
+import { keyDisplayText } from "../../ui/components/keybinding-hints.ts";
+import { theme } from "../../ui/theme/theme.ts";
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { openBrowser } from "../../utils/open-browser.ts";
-import { keyDisplayText } from "./components/keybinding-hints.ts";
-import { theme } from "./theme/theme.ts";
 
 export interface InteractiveTuiOptions {
 	readonly tuiMode: "regular" | "fullscreen";

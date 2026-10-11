@@ -1,4 +1,4 @@
-import type { RgbColor, TerminalColors, TUI } from "@earendil-works/pi-tui";
+import type { RgbColor, TerminalColors, TUI } from "@nyan/tui";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
 import {
 	getTerminalTheme,
@@ -13,7 +13,7 @@ import {
 	setThemeInstance,
 	type TerminalTheme,
 	type Theme,
-} from "./theme.ts";
+} from "../../../ui/theme/theme.ts";
 
 type ThemeResult = { success: boolean; error?: string };
 
@@ -170,7 +170,7 @@ export class InteractiveThemeController {
 		return this.currentThemeSetting ?? this.getSettingsManager().getThemeSetting();
 	}
 
-	/** The theme for the current setting and terminal appearance. Without a setting, pi uses the system theme. */
+	/** The theme for the current setting and terminal appearance. Without a setting, nyan uses the system theme. */
 	private resolveThemeName(): string {
 		return resolveThemeSetting(this.getThemeSetting(), getTerminalTheme()) ?? SYSTEM_THEME_NAME;
 	}

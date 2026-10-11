@@ -13,14 +13,14 @@ const aiDistDir = join(repoRoot, "packages", "ai", "dist");
 const codingAgentDistDir = join(codingAgentDir, "dist");
 const bundleDir = join(codingAgentDistDir, "bundle");
 const banner = {
-	js: 'import { createRequire as __piCreateRequire } from "node:module"; const require = __piCreateRequire(import.meta.url);',
+	js: 'import { createRequire as __nyanCreateRequire } from "node:module"; const require = __nyanCreateRequire(import.meta.url);',
 };
 const allowedExternalPackages = new Set([
-	"@earendil-works/chord",
-	"@earendil-works/chord/bundler",
-	"@earendil-works/chord/context",
-	"@earendil-works/chord/delta",
-	"@earendil-works/chord/node",
+	"@nyan/chord",
+	"@nyan/chord/bundler",
+	"@nyan/chord/context",
+	"@nyan/chord/delta",
+	"@nyan/chord/node",
 	"@silvia-odwyer/photon-node",
 	"jiti",
 	// Optional native accelerators. Their callers fall back to JavaScript when absent.
@@ -85,8 +85,8 @@ function commonBuildOptions() {
 		absWorkingDir: repoRoot,
 		banner,
 		bundle: true,
-		define: { PI_BUNDLED_NODE: "true" },
-		external: ["@earendil-works/chord", "@silvia-odwyer/photon-node"],
+		define: { NYAN_BUNDLED_NODE: "true" },
+		external: ["@nyan/chord", "@silvia-odwyer/photon-node"],
 		format: "esm",
 		legalComments: "none",
 		logLevel: "warning",

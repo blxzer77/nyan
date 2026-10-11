@@ -1,59 +1,45 @@
 # Quickstart
 
-Pi runs in your terminal and works with files on your machine. To use it, you need access to a model through a supported provider. This can be a subscription, an API key, or a local model.
+Nyan runs in your terminal and works with files on your machine. To use it, you need access to a model through a supported provider. This can be a subscription, an API key, or a local model.
 
 For native Windows setup, read [Windows Setup](windows.md). For Android, read [Termux Setup](termux.md).
 
-## 1. Install Pi
+## 1. Install Nyan
 
-On macOS or Linux, you can use the installer:
-
-```bash
-curl -fsSL https://pi.dev/install.sh | sh
-```
-
-The installer pins all dependencies and updates Pi with `pi update`. Alternatively, install Pi from npm, which does not pin transitive dependencies. This requires Node.js 22.19 or newer:
+Install Nyan from npm. This requires Node.js 22.19 or newer:
 
 ```bash
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+npm install -g --ignore-scripts @nyan/coding-agent
 ```
 
-Pi does not require dependency lifecycle scripts for a normal npm installation.
-
-With Nix on macOS or Linux, install the latest release from Pi's flake. Nix builds Pi from source:
-
-```bash
-nix profile add github:earendil-works/pi/stable
-```
-
-Older Nix versions use `nix profile install` instead. Update with `nix profile upgrade pi`; `pi update` cannot update a Nix installation. To pin a release, use a tag such as `github:earendil-works/pi/v1.0.0`.
+Nyan does not require dependency lifecycle scripts for a normal npm installation.
 
 Verify the installation:
 
 ```bash
-pi --version
+nyan --version
 ```
 
-## 2. Start Pi
+## 2. Start Nyan
 
-Change to the folder you want Pi to work with, then start it:
+Change to the folder you want Nyan to work with, then start it:
 
 ```bash
 cd /path/to/folder
-pi
+nyan
 ```
 
-The working folder helps Pi discover relevant files, instructions, and configuration. Pi also uses it to group saved sessions.
+The working folder helps Nyan discover relevant files, instructions, and configuration. Nyan also uses it to group saved sessions.
 
-<p align="center"><img src="images/interactive-mode.png" alt="Pi running in a terminal with a conversation, input editor, and status footer" width="750"></p>
+<p align="center"><img src="images/interactive-mode.png" alt="Nyan running in a terminal with a conversation, input editor, and status footer" width="750"></p>
 
-The interface shows your conversation, an editor for prompts and commands, and a footer with the current folder, model, and session status. See [Use Pi in the terminal](usage.md) to learn how to add files, run commands, direct ongoing work, and manage results.
+The interface shows your conversation, an editor for prompts and commands, and a footer with the current folder, model, and session status. See [Use Nyan in the terminal](usage.md) to learn how to add files, run commands, direct ongoing work, and manage results.
 
 ## 3. Choose a model
 
-A **model** generates Pi's responses. A **provider** is the service or account Pi uses to access that model.
+A **model** generates Nyan's responses. A **provider** is the service or account Nyan uses to access that model.
 
-In Pi, run:
+In Nyan, run:
 
 ```text
 /login
@@ -63,9 +49,9 @@ Choose a provider, then follow the prompts to use a subscription or store an API
 
 See [Choose a model and provider](models.md) for supported providers, environment-variable authentication, local models, and custom endpoints.
 
-## 4. Give Pi a task
+## 4. Give Nyan a task
 
-Pi shows each file read, search, command, and edit it performs. It does not ask before every tool call.
+Nyan shows each file read, search, command, and edit it performs. It does not ask before every tool call.
 
 Enter a task that matches your work, for example:
 
@@ -81,56 +67,44 @@ Explain how this repository is structured and how to run its checks.
 Compare @previous.csv with @current.csv and summarize the important changes.
 ```
 
-Type `@` in the editor to search for a file instead of entering its full path. When Pi finishes, review its response and any changed files. Use version control or backups for important work. For untrusted or unattended work, use a container or another sandbox. See [Security](security.md).
+Type `@` in the editor to search for a file instead of entering its full path. When Nyan finishes, review its response and any changed files. Use version control or backups for important work. For untrusted or unattended work, use a container or another sandbox. See [Security](security.md).
 
 ## Continue later
 
-Pi saves sessions automatically. Exit Pi, then resume the most recent session for the same working folder with:
+Nyan saves sessions automatically. Exit Nyan, then resume the most recent session for the same working folder with:
 
 ```bash
-pi --continue
+nyan --continue
 ```
 
 Use `/resume` to choose another saved session. See [Continue or branch a session](sessions.md) for session naming, branching, compaction, export, and sharing.
 
 ## Next steps
 
-- [Use Pi interactively](usage.md) to learn input, commands, shortcuts, and queued messages.
-- [Add instructions](configuration.md#context-files) that Pi should follow whenever it works in a folder.
+- [Use Nyan interactively](usage.md) to learn input, commands, shortcuts, and queued messages.
+- [Add instructions](configuration.md#context-files) that Nyan should follow whenever it works in a folder.
 - [Choose a model and provider](models.md).
 
-### Choose how to customize Pi
+### Choose how to customize Nyan
 
 Start with the least powerful mechanism that meets your need:
 
 | Need | Start with |
 |---|---|
-| Give Pi persistent instructions for a folder | [`AGENTS.md`](configuration.md#context-files) |
+| Give Nyan persistent instructions for a folder | [`AGENTS.md`](configuration.md#context-files) |
 | Reuse a prompt from the `/` menu | [Prompt template](prompt-templates.md) |
 | Add task-specific instructions and supporting files | [Skill](skills.md) |
 | Add executable tools, commands, or event handlers | [Extension](extensions.md) |
 | Build a custom terminal component | [Terminal UI](tui.md) |
 | Connect an unsupported model service | [Custom provider](custom-provider.md) |
-| Install or distribute several resources | [Pi package](packages.md) |
+| Install or distribute several resources | [Nyan package](packages.md) |
 
-## Uninstall Pi
+## Uninstall Nyan
 
-If you installed Pi with npm, run:
-
-```bash
-npm uninstall -g @earendil-works/pi-coding-agent
-```
-
-If you used the installer, run it again and choose **Uninstall Pi**:
+If you installed Nyan with npm, run:
 
 ```bash
-curl -fsSL https://pi.dev/install.sh | sh
+npm uninstall -g @nyan/coding-agent
 ```
 
-If you installed Pi with Nix, run:
-
-```bash
-nix profile remove pi
-```
-
-None of these methods removes configuration, credentials, sessions, or installed Pi packages from `~/.pi/agent/`.
+Uninstalling does not remove configuration, credentials, sessions, or installed Nyan packages from `~/.nyan/agent/`.

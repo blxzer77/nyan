@@ -1,16 +1,16 @@
-import type { AssistantMessage, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
-import type { ConversationView, EntryRecord, InboxState, LiveState } from "@earendil-works/pi-durable";
-import { Container, Spacer, Text, TruncatedText, type TUI } from "@earendil-works/pi-tui";
+import type { AssistantMessage, ToolResultMessage, UserMessage } from "@nyan/ai";
+import type { ConversationView, EntryRecord, InboxState, LiveState } from "@nyan/durable";
+import { Container, Spacer, Text, TruncatedText, type TUI } from "@nyan/tui";
 import { createAllToolRenderers } from "../core/tools/renderers/index.ts";
 import { AssistantMessageComponent } from "../modes/interactive/components/assistant-message.ts";
 import { type StatusIndicator, WorkingStatusIndicator } from "../modes/interactive/components/status-indicator.ts";
 import { ToolExecutionComponent, type ToolRenderers } from "../modes/interactive/components/tool-execution.ts";
 import { UserMessageComponent } from "../modes/interactive/components/user-message.ts";
-import { theme } from "../modes/interactive/theme/theme.ts";
+import { theme } from "../ui/theme/theme.ts";
 
-/** The `pi.live` document of a view: the active run, the streaming answer, and running tools. */
+/** The `nyan.live` document of a view: the active run, the streaming answer, and running tools. */
 export function liveOf(view: ConversationView): LiveState {
-	return (view.docs["pi.live"] ?? {}) as LiveState;
+	return (view.docs["nyan.live"] ?? {}) as LiveState;
 }
 
 function userText(content: UserMessage["content"]): string {
@@ -66,7 +66,7 @@ export class ExperimentalChatView {
 				);
 			}
 		}
-		this.#syncQueue((view.docs["pi.inbox"] ?? { items: [] }) as InboxState);
+		this.#syncQueue((view.docs["nyan.inbox"] ?? { items: [] }) as InboxState);
 		this.#syncStatus(live);
 		this.transcript.invalidate();
 		this.pendingMessages.invalidate();
@@ -153,10 +153,10 @@ export class ExperimentalChatView {
 
 	#addEntry(entry: EntryRecord): void {
 		const message = entry.model?.[0];
-		if (entry.kind === "pi.user" && message?.role === "user") {
+		if (entry.kind === "nyan.user" && message?.role === "user") {
 			this.transcript.addChild(new Spacer(1));
 			this.transcript.addChild(new UserMessageComponent(userText(message.content)));
-		} else if (entry.kind === "pi.assistant" && message?.role === "assistant") {
+		} else if (entry.kind === "nyan.assistant" && message?.role === "assistant") {
 			const component = this.#streaming ?? new AssistantMessageComponent();
 			if (this.#streaming === undefined) this.transcript.addChild(component);
 			this.#streaming = undefined;
@@ -175,13 +175,13 @@ export class ExperimentalChatView {
 				}
 			}
 			this.#streamingCalls.clear();
-		} else if (entry.kind === "pi.tool-result" && message?.role === "toolResult") {
+		} else if (entry.kind === "nyan.tool-result" && message?.role === "toolResult") {
 			const result = message as ToolResultMessage;
 			this.#tool(result.toolName, result.toolCallId).updateResult(result);
-		} else if (entry.kind === "pi.compaction") {
+		} else if (entry.kind === "nyan.compaction") {
 			this.#addText(theme.fg("muted", "[compaction]"));
 			if (message?.role === "user") this.#addText(userText(message.content));
-		} else if (entry.kind === "pi.reset") {
+		} else if (entry.kind === "nyan.reset") {
 			this.#addText(theme.fg("muted", "[new context]"));
 		}
 	}

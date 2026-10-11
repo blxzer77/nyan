@@ -7,8 +7,8 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
+import type { AgentMessage, ThinkingLevel } from "@nyan/agent-core";
+import type { AuthEvent, AuthPrompt } from "@nyan/ai";
 import {
 	type AssistantMessage,
 	type ImageContent,
@@ -16,7 +16,7 @@ import {
 	type Message,
 	type Model,
 	type Usage,
-} from "@earendil-works/pi-ai/compat";
+} from "@nyan/ai/compat";
 import type {
 	AutocompleteItem,
 	AutocompleteProvider,
@@ -28,8 +28,8 @@ import type {
 	OverlayOptions,
 	SlashCommand,
 	TuiMainScreenRenderState,
-} from "@earendil-works/pi-tui";
-import * as TuiLayouts from "@earendil-works/pi-tui";
+} from "@nyan/tui";
+import * as TuiLayouts from "@nyan/tui";
 import {
 	CombinedAutocompleteProvider,
 	type Component,
@@ -51,7 +51,7 @@ import {
 	type TuiMouseEvent,
 	type TuiMouseEventResult,
 	visibleWidth,
-} from "@earendil-works/pi-tui";
+} from "@nyan/tui";
 import chalk from "chalk";
 import { spawn } from "child_process";
 import {
@@ -116,23 +116,37 @@ import {
 import type { FullscreenExitOutput, TuiMode } from "../../core/settings-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
-import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
 import { withBuiltInRenderers } from "../../core/tools/renderers/index.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core/trust-manager.ts";
 import { getUsageCostBreakdown } from "../../core/usage-totals.ts";
 import { addMcpServerConfig, loadMcpConfig } from "../../extensions/mcp/config.ts";
+import { DynamicBorder } from "../../ui/components/dynamic-border.ts";
+import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "../../ui/components/keybinding-hints.ts";
+import {
+	getAvailableThemes,
+	getAvailableThemesWithPaths,
+	getEditorTheme,
+	getMarkdownTheme,
+	getThemeByName,
+	onThemeChange,
+	SYSTEM_THEME_NAME,
+	setRegisteredThemes,
+	stopThemeWatcher,
+	Theme,
+	type ThemeColor,
+	theme,
+} from "../../ui/theme/theme.ts";
 import { getChangelogPath, getNewEntries, normalizeChangelogLinks, parseChangelog } from "../../utils/changelog.ts";
 import { copyToClipboard, readClipboardFilePaths, readClipboardText } from "../../utils/clipboard.ts";
 import { extensionForImageMimeType, readClipboardImage } from "../../utils/clipboard-image.ts";
 import { parseGitUrl } from "../../utils/git.ts";
 import { ensurePngTranscoder } from "../../utils/image-convert.ts";
 import { getCwdRelativePath } from "../../utils/paths.ts";
-import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { loadAllHighlightLanguages } from "../../utils/syntax-highlight.ts";
 import { ensureTool, type ToolStatus } from "../../utils/tools-manager.ts";
-import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.ts";
+import { checkForNewNyanVersion, type LatestNyanRelease } from "../../utils/version-check.ts";
 import { reportBug } from "./bug-report.ts";
 import { createChatViewport } from "./chat-viewport.ts";
 import { ArminComponent } from "./components/armin.ts";
@@ -143,24 +157,21 @@ import { CompactionSummaryMessageComponent } from "./components/compaction-summa
 import { CustomEditor } from "./components/custom-editor.ts";
 import { CustomEntryComponent } from "./components/custom-entry.ts";
 import { CustomMessageComponent } from "./components/custom-message.ts";
-import { DynamicBorder } from "./components/dynamic-border.ts";
-import { EarendilAnnouncementComponent } from "./components/earendil-announcement.ts";
-import { playArmin3d, playPiLogo3d } from "./components/easter-egg-3d.lazy.ts";
+import { playArmin3d, playNyanLogo3d } from "./components/easter-egg-3d.lazy.ts";
 import { ExtensionEditorComponent } from "./components/extension-editor.ts";
 import { ExtensionInputComponent } from "./components/extension-input.ts";
 import { ExtensionSelectorComponent } from "./components/extension-selector.ts";
 import { FooterComponent, formatTokens } from "./components/footer.ts";
-import { formatKeyText, keyDisplayText, keyHint, keyText, rawKeyHint } from "./components/keybinding-hints.ts";
 import { LoginDialogComponent } from "./components/login-dialog.ts";
 import { createMermaidMarkdownTransformer } from "./components/mermaid.ts";
 import { ModelSelectorComponent } from "./components/model-selector.ts";
+import { nyanLogoLines, nyanWordmark, supportsNyanLogo } from "./components/nyan-logo.ts";
 import {
 	type AuthSelectorProvider,
 	formatAuthSelectorProviderStatus,
 	formatAuthSelectorProviderType,
 	OAuthSelectorComponent,
 } from "./components/oauth-selector.ts";
-import { piLogoLines, piWordmark, supportsPiLogo } from "./components/pi-logo.ts";
 import { createLoginMenuSelector } from "./components/radius-login-selector.ts";
 import { ScopedModelsSelectorComponent } from "./components/scoped-models-selector.ts";
 import { SessionSelectorComponent } from "./components/session-selector.ts";
@@ -186,20 +197,6 @@ import { refreshModelCatalogs } from "./model-catalog-refresh.ts";
 import { getModelSearchText } from "./model-search.ts";
 import { type BlockedStatus, ProgramStatusReporter } from "./program-status-reporter.ts";
 import { shareSession } from "./session-share.ts";
-import {
-	getAvailableThemes,
-	getAvailableThemesWithPaths,
-	getEditorTheme,
-	getMarkdownTheme,
-	getThemeByName,
-	onThemeChange,
-	SYSTEM_THEME_NAME,
-	setRegisteredThemes,
-	stopThemeWatcher,
-	Theme,
-	type ThemeColor,
-	theme,
-} from "./theme/theme.ts";
 import { InteractiveThemeController } from "./theme/theme-controller.ts";
 import { createInteractiveTui, createInteractiveTuiReference } from "./tui-renderer.ts";
 
@@ -368,7 +365,7 @@ type LoginProviderCompletionOption = {
 	subscription?: boolean;
 };
 
-const RADIUS_LOGIN_INTRO = "Radius is a service crafted for Pi by the builders of Pi, Earendil Works";
+const RADIUS_LOGIN_INTRO = "Radius is a model gateway. Sign in to the gateway named by NYAN_RADIUS_GATEWAY";
 
 const AUTH_TYPE_ORDER = { oauth: 0, api_key: 1 } satisfies Record<AuthSelectorProvider["authType"], number>;
 
@@ -430,7 +427,7 @@ export interface InteractiveModeOptions {
 	startupDiagnostics?: AgentSessionRuntimeDiagnostic[];
 	/** Warning message if session model couldn't be restored */
 	modelFallbackMessage?: string;
-	/** Cwd to trust after reload if it gained a .pi directory during this implicitly trusted session. */
+	/** Cwd to trust after reload if it gained a .nyan directory during this implicitly trusted session. */
 	autoTrustOnReloadCwd?: string;
 	/** Initial message to send on startup (can include @file content) */
 	initialMessage?: string;
@@ -1010,11 +1007,11 @@ export class InteractiveMode {
 			const showDetails = this.shouldShowStartupDetails();
 			// Built on demand so the header follows theme changes. The logo's first line carries the version,
 			// its second line the first line of key hints. Terminals that cannot render the logo get a
-			// "Pi vX" line instead, with the key hints below it.
-			const showLogo = supportsPiLogo();
+			// "Nyan vX" line instead, with the key hints below it.
+			const showLogo = supportsNyanLogo();
 			const withLogo = (hints: string) => {
-				if (!showLogo) return `${piWordmark()} ${theme.fg("dim", `v${this.version}`)}\n${hints}`;
-				const [top, bottom] = piLogoLines();
+				if (!showLogo) return `${nyanWordmark()} ${theme.fg("dim", `v${this.version}`)}\n${hints}`;
+				const [top, bottom] = nyanLogoLines();
 				return `${top} ${theme.fg("dim", `v${this.version}`)}\n${bottom} ${hints}`;
 			};
 
@@ -1060,7 +1057,10 @@ export class InteractiveMode {
 					`Press ${keyText("app.tools.expand")} to show full startup help${showDetails ? " and loaded resources" : ""}.`,
 				);
 			const onboarding = () =>
-				theme.fg("dim", `Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.`);
+				theme.fg(
+					"dim",
+					`Nyan can explain its own features and look up its docs. Ask it how to use or extend Nyan.`,
+				);
 			const header = new BuiltInHeader(
 				() => `${withLogo(compactInstructions())}\n${compactOnboarding()}\n\n${onboarding()}`,
 				() => `${withLogo(expandedInstructions())}\n\n${onboarding()}`,
@@ -1068,7 +1068,7 @@ export class InteractiveMode {
 				1,
 				0,
 			);
-			if (showLogo) header.onLogoClick = (column, row) => playPiLogo3d(this.renderer, column, row);
+			if (showLogo) header.onLogoClick = (column, row) => playNyanLogo3d(this.renderer, column, row);
 			this.builtInHeader = header;
 
 			// Setup UI layout
@@ -1146,7 +1146,7 @@ export class InteractiveMode {
 	async run(): Promise<void> {
 		await this.init();
 
-		if (!process.env.PI_OFFLINE) {
+		if (!process.env.NYAN_OFFLINE) {
 			const controller = new AbortController();
 			const timeout = setTimeout(() => controller.abort(), 15_000);
 			void refreshModelCatalogs(this.session.modelRuntime, controller.signal)
@@ -1156,7 +1156,7 @@ export class InteractiveMode {
 		}
 
 		// Start version check asynchronously
-		checkForNewPiVersion(this.version).then((newRelease) => {
+		checkForNewNyanVersion(this.version).then((newRelease) => {
 			if (newRelease) {
 				this.showNewVersionNotification(newRelease);
 			}
@@ -1171,7 +1171,7 @@ export class InteractiveMode {
 			})
 			.finally(() => {
 				// On Windows, npm can overwrite the shared console title while checking
-				// extension package versions. Restore Pi's title after the startup check.
+				// extension package versions. Restore Nyan's title after the startup check.
 				if (process.platform === "win32" && this.isInitialized) {
 					this.updateTerminalTitle();
 				}
@@ -1261,7 +1261,7 @@ export class InteractiveMode {
 	}
 
 	private async checkForPackageUpdates(): Promise<string[]> {
-		if (process.env.PI_OFFLINE) {
+		if (process.env.NYAN_OFFLINE) {
 			return [];
 		}
 
@@ -1319,7 +1319,7 @@ export class InteractiveMode {
 		}
 
 		if (extendedKeysFormat === "xterm") {
-			return "tmux extended-keys-format is xterm. Pi works best with csi-u. Add `set -g extended-keys-format csi-u` to ~/.tmux.conf and restart tmux.";
+			return "tmux extended-keys-format is xterm. Nyan works best with csi-u. Add `set -g extended-keys-format csi-u` to ~/.tmux.conf and restart tmux.";
 		}
 
 		return undefined;
@@ -1340,39 +1340,18 @@ export class InteractiveMode {
 		const entries = parseChangelog(changelogPath);
 
 		if (!lastVersion) {
-			// Fresh install - record the version, send telemetry, don't show changelog
+			// Fresh install - record the version, don't show changelog
 			this.settingsManager.setLastChangelogVersion(VERSION);
-			this.reportInstallTelemetry(VERSION);
 			return undefined;
 		}
 
 		const newEntries = getNewEntries(entries, lastVersion);
 		if (newEntries.length > 0) {
 			this.settingsManager.setLastChangelogVersion(VERSION);
-			this.reportInstallTelemetry(VERSION);
 			return newEntries.map((e) => normalizeChangelogLinks(e.content, e)).join("\n\n");
 		}
 
 		return undefined;
-	}
-
-	private reportInstallTelemetry(version: string): void {
-		if (process.env.PI_OFFLINE) {
-			return;
-		}
-
-		if (!isInstallTelemetryEnabled(this.settingsManager)) {
-			return;
-		}
-
-		void fetch(`https://pi.dev/api/report-install?version=${encodeURIComponent(version)}`, {
-			headers: {
-				"User-Agent": getPiUserAgent(version),
-			},
-			signal: AbortSignal.timeout(5000),
-		})
-			.then(() => undefined)
-			.catch(() => undefined);
 	}
 
 	private getMarkdownThemeWithSettings(): MarkdownTheme {
@@ -2161,7 +2140,7 @@ export class InteractiveMode {
 	}
 
 	private crashReportInstructions(): string {
-		const resume = this.session.sessionFile ? `run \`${APP_NAME} -r\` to resume the session, then` : "start pi and";
+		const resume = this.session.sessionFile ? `run \`${APP_NAME} -r\` to resume the session, then` : "start nyan and";
 		return `To report this crash: ${resume} run /bug. The crash details are attached automatically.`;
 	}
 
@@ -3172,7 +3151,7 @@ export class InteractiveMode {
 			if (image) {
 				const tmpDir = os.tmpdir();
 				const ext = extensionForImageMimeType(image.mimeType) ?? "png";
-				const fileName = `pi-clipboard-${crypto.randomUUID()}.${ext}`;
+				const fileName = `nyan-clipboard-${crypto.randomUUID()}.${ext}`;
 				const filePath = path.join(tmpDir, fileName);
 				fs.writeFileSync(filePath, Buffer.from(image.bytes));
 
@@ -3324,11 +3303,6 @@ export class InteractiveMode {
 			}
 			if (text === "/arminsayshi") {
 				this.handleArminSaysHi();
-				this.editor.setText("");
-				return;
-			}
-			if (text === "/dementedelves") {
-				this.handleDementedDelves();
 				this.editor.setText("");
 				return;
 			}
@@ -4235,7 +4209,7 @@ export class InteractiveMode {
 				() =>
 					theme.fg(
 						"warning",
-						`This project is not trusted. Project ${CONFIG_DIR_NAME} resources and packages are ignored. Use /trust to save a trust decision, then restart pi.`,
+						`This project is not trusted. Project ${CONFIG_DIR_NAME} resources and packages are ignored. Use /trust to save a trust decision, then restart nyan.`,
 					),
 				1,
 				0,
@@ -4350,7 +4324,7 @@ export class InteractiveMode {
 	 * paste / Kitty / modifyOtherKeys sequences.
 	 */
 	private uncaughtCrash(error: Error): never {
-		// A dead terminal is not a pi crash. Do not try to restore it or record it.
+		// A dead terminal is not a nyan crash. Do not try to restore it or record it.
 		if (isDeadTerminalError(error)) {
 			this.emergencyTerminalExit();
 		}
@@ -4422,7 +4396,7 @@ export class InteractiveMode {
 
 		// Restore the terminal before the process dies on any uncaught throw.
 		// Without this, an unhandled exception from extension code (or anywhere
-		// in pi) leaves the terminal in raw mode with no cursor.
+		// in nyan) leaves the terminal in raw mode with no cursor.
 		const uncaughtExceptionHandler = (error: Error) => this.uncaughtCrash(error);
 		process.prependListener("uncaughtException", uncaughtExceptionHandler);
 		this.signalCleanupHandlers.push(() => process.off("uncaughtException", uncaughtExceptionHandler));
@@ -4632,11 +4606,11 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
-	showNewVersionNotification(release: LatestPiRelease): void {
+	showNewVersionNotification(release: LatestNyanRelease): void {
 		const updateInstruction = () =>
 			theme.fg("muted", `New version ${release.version} is available. Run `) +
 			theme.fg("accent", `${APP_NAME} update`);
-		const changelogUrl = "https://pi.dev/changelog";
+		const changelogUrl = "https://github.com/blxzer77/nyan/blob/main/packages/coding-agent/CHANGELOG.md";
 		const changelogLine = () => {
 			const changelogLink = getCapabilities().hyperlinks
 				? hyperlink(theme.fg("accent", changelogUrl), changelogUrl)
@@ -6975,12 +6949,6 @@ export class InteractiveMode {
 		if (playArmin3d(this.renderer)) return;
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(new ArminComponent(this.ui));
-		this.ui.requestRender();
-	}
-
-	private handleDementedDelves(): void {
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new EarendilAnnouncementComponent());
 		this.ui.requestRender();
 	}
 

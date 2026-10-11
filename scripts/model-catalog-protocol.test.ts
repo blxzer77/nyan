@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-	compareModelCatalogPiVersions,
+	compareModelCatalogNyanVersions,
 	getModelCatalogArtifactKey,
 	getModelCatalogProviderKey,
 	type ModelCatalogIndex,
@@ -17,8 +17,8 @@ const index: ModelCatalogIndex = {
 	schemaVersion: 1,
 	defaultRevision: mixedApiRevision,
 	catalogs: [
-		{ minimumPiVersion: "0.80.7", revision: legacyRevision },
-		{ minimumPiVersion: "0.85.0", revision: mixedApiRevision },
+		{ minimumNyanVersion: "0.80.7", revision: legacyRevision },
+		{ minimumNyanVersion: "0.85.0", revision: mixedApiRevision },
 	],
 };
 
@@ -37,15 +37,15 @@ test("builds revision scoped storage keys", () => {
 	);
 });
 
-test("orders Pi versions with semver precedence", () => {
-	assert.ok(compareModelCatalogPiVersions("0.85.0", "0.84.4") > 0);
-	assert.ok(compareModelCatalogPiVersions("0.85.0-rc.1", "0.85.0") < 0);
-	assert.ok(compareModelCatalogPiVersions("0.85.0-rc.2", "0.85.0-rc.10") < 0);
-	assert.equal(compareModelCatalogPiVersions("v1.0.0", "1.0.0+build"), 0);
-	assert.throws(() => compareModelCatalogPiVersions("0.85", "0.85.0"), /Invalid Pi version/);
+test("orders Nyan versions with semver precedence", () => {
+	assert.ok(compareModelCatalogNyanVersions("0.85.0", "0.84.4") > 0);
+	assert.ok(compareModelCatalogNyanVersions("0.85.0-rc.1", "0.85.0") < 0);
+	assert.ok(compareModelCatalogNyanVersions("0.85.0-rc.2", "0.85.0-rc.10") < 0);
+	assert.equal(compareModelCatalogNyanVersions("v1.0.0", "1.0.0+build"), 0);
+	assert.throws(() => compareModelCatalogNyanVersions("0.85", "0.85.0"), /Invalid Nyan version/);
 });
 
-test("selects the newest catalog a Pi version supports", () => {
+test("selects the newest catalog a Nyan version supports", () => {
 	// Regression test for #9099: released clients before 0.85.0 cannot use the mixed-API catalog.
 	assert.equal(selectModelCatalog(index, "0.84.4")?.revision, legacyRevision);
 	assert.equal(selectModelCatalog(index, "0.85.0-rc.1")?.revision, legacyRevision);
@@ -55,47 +55,54 @@ test("selects the newest catalog a Pi version supports", () => {
 	assert.equal(selectModelCatalog(index, undefined)?.revision, mixedApiRevision);
 });
 
-test("redirects Pi user agents to an explicit catalog version", () => {
+test("redirects Nyan user agents to an explicit catalog version", () => {
 	// Regression test for #9099: released clients identify themselves only by User-Agent.
 	assert.deepEqual(
 		parseModelCatalogRequest(
-			"https://pi.dev/api/models/providers/openrouter?types=chat%2Cimage",
-			"pi/0.84.4 (linux; node/v22.0.0; x64)",
+			"https://catalog.example.test/api/models/providers/openrouter?types=chat%2Cimage",
+			"nyan/0.84.4 (linux; node/v22.0.0; x64)",
 		),
 		{
 			kind: "redirect",
-			location: "https://pi.dev/api/models/providers/openrouter?types=chat%2Cimage&pi-version=0.84.4",
+			location:
+				"https://catalog.example.test/api/models/providers/openrouter?types=chat%2Cimage&nyan-version=0.84.4",
 		},
 	);
-	assert.deepEqual(parseModelCatalogRequest("https://pi.dev/api/models", "pi/0.84.4"), {
+	assert.deepEqual(parseModelCatalogRequest("https://catalog.example.test/api/models", "nyan/0.84.4"), {
 		kind: "redirect",
-		location: "https://pi.dev/api/models?pi-version=0.84.4",
+		location: "https://catalog.example.test/api/models?nyan-version=0.84.4",
 	});
 });
 
 test("serves explicit and unversioned catalog requests without redirecting", () => {
 	assert.deepEqual(
-		parseModelCatalogRequest("https://pi.dev/api/models?pi-version=0.83.0", "pi/0.85.1 (linux; node/v22.0.0; x64)"),
-		{ kind: "catalog", piVersion: "0.83.0", representation: "legacy" },
+		parseModelCatalogRequest(
+			"https://catalog.example.test/api/models?nyan-version=0.83.0",
+			"nyan/0.85.1 (linux; node/v22.0.0; x64)",
+		),
+		{ kind: "catalog", nyanVersion: "0.83.0", representation: "legacy" },
 	);
-	assert.deepEqual(parseModelCatalogRequest("https://pi.dev/api/models?types=chat", "curl/8.0.0"), {
+	assert.deepEqual(parseModelCatalogRequest("https://catalog.example.test/api/models?types=chat", "curl/8.0.0"), {
 		kind: "catalog",
-		piVersion: undefined,
+		nyanVersion: undefined,
 		representation: "typed",
 	});
-	assert.deepEqual(parseModelCatalogRequest("https://pi.dev/api/models", "pi/latest"), {
+	assert.deepEqual(parseModelCatalogRequest("https://catalog.example.test/api/models", "nyan/latest"), {
 		kind: "catalog",
-		piVersion: undefined,
+		nyanVersion: undefined,
 		representation: "legacy",
 	});
 });
 
 test("rejects invalid catalog request parameters", () => {
-	assert.deepEqual(parseModelCatalogRequest("https://pi.dev/api/models?pi-version=latest", undefined), {
-		kind: "invalid",
-		error: "Invalid Pi version.",
-	});
-	assert.deepEqual(parseModelCatalogRequest("https://pi.dev/api/models?types=", "pi/0.84.4"), {
+	assert.deepEqual(
+		parseModelCatalogRequest("https://catalog.example.test/api/models?nyan-version=latest", undefined),
+		{
+			kind: "invalid",
+			error: "Invalid Nyan version.",
+		},
+	);
+	assert.deepEqual(parseModelCatalogRequest("https://catalog.example.test/api/models?types=", "nyan/0.84.4"), {
 		kind: "invalid",
 		error: "Invalid model types.",
 	});
@@ -114,7 +121,8 @@ test("validates stored indexes and drops publication metadata", () => {
 	assert.throws(() => parseModelCatalogIndex({ ...index, schemaVersion: 2 }), /index is invalid/);
 	assert.throws(() => parseModelCatalogIndex({ ...index, defaultRevision: `sha256-${"c".repeat(64)}` }), /invalid/);
 	assert.throws(
-		() => parseModelCatalogIndex({ ...index, catalogs: [{ minimumPiVersion: "latest", revision: legacyRevision }] }),
+		() =>
+			parseModelCatalogIndex({ ...index, catalogs: [{ minimumNyanVersion: "latest", revision: legacyRevision }] }),
 		/invalid/,
 	);
 });

@@ -12,13 +12,13 @@ import {
 	Text,
 	truncateToWidth,
 	visibleWidth,
-} from "@earendil-works/pi-tui";
+} from "@nyan/tui";
 import { KeybindingsManager } from "../../../core/keybindings.ts";
 import type { SessionInfo, SessionListProgress } from "../../../core/session-manager.ts";
+import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
+import { keyHint, keyText } from "../../../ui/components/keybinding-hints.ts";
+import { theme } from "../../../ui/theme/theme.ts";
 import { canonicalizePath as _canonicalizePath } from "../../../utils/paths.ts";
-import { theme } from "../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
-import { keyHint, keyText } from "./keybinding-hints.ts";
 import { filterAndSortSessions, hasSessionName, type NameFilter, type SortMode } from "./session-selector-search.ts";
 
 type SessionScope = "current" | "all";

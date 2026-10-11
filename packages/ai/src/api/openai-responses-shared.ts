@@ -13,7 +13,6 @@ import type {
 	ResponseStreamEvent,
 	ResponseToolSearchOutputItemParam,
 } from "openai/resources/responses/responses.js";
-import { calculateCost } from "../models.ts";
 import type {
 	Api,
 	AssistantMessage,
@@ -33,6 +32,7 @@ import type {
 import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { shortHash } from "../utils/hash.ts";
 import { parseStreamingJson } from "../utils/json-parse.ts";
+import { calculateCost } from "../utils/model-operations.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
 import { resolveTranscript, resolveTranscriptTools } from "../utils/transcript.ts";
@@ -194,7 +194,7 @@ export function convertResponsesMessages<TApi extends Api>(
 		}
 		if (!options?.supportsToolSearch) return;
 		const names = tools.map((tool) => tool.name);
-		const callId = `pi_tool_load_${shortHash(`${seed}:${names.join(",")}`)}`;
+		const callId = `nyan_tool_load_${shortHash(`${seed}:${names.join(",")}`)}`;
 		messages.push({
 			type: "tool_search_call",
 			call_id: callId,
@@ -270,7 +270,7 @@ export function convertResponsesMessages<TApi extends Api>(
 					const textBlock = block as TextContent;
 					const parsedSignature = parseTextSignature(textBlock.textSignature);
 					const fallbackMessageId =
-						textBlockIndex === 0 ? `msg_pi_${msgIndex}` : `msg_pi_${msgIndex}_${textBlockIndex}`;
+						textBlockIndex === 0 ? `msg_nyan_${msgIndex}` : `msg_nyan_${msgIndex}_${textBlockIndex}`;
 					textBlockIndex++;
 					// OpenAI requires id to be max 64 characters
 					let msgId = parsedSignature?.id;

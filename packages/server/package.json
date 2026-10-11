@@ -1,7 +1,7 @@
 {
-	"name": "@earendil-works/pi-server",
+	"name": "@nyan/server",
 	"version": "1.1.0",
-	"description": "experimental server package for pi",
+	"description": "experimental server package for nyan",
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
@@ -33,22 +33,22 @@
 		"prepublishOnly": "npm run clean && npm run build"
 	},
 	"keywords": [
-		"pi",
+		"nyan",
 		"server"
 	],
 	"author": "Earendil Works",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/earendil-works/pi.git",
+		"url": "git+https://github.com/blxzer77/nyan.git",
 		"directory": "packages/server"
 	},
 	"engines": {
 		"node": ">=22.19.0"
 	},
 	"dependencies": {
-		"@earendil-works/chord": "^1.1.0",
-		"@earendil-works/pi-protocol": "^1.1.0"
+		"@nyan/chord": "^1.1.0",
+		"@nyan/protocol": "^1.1.0"
 	},
 	"devDependencies": {
 		"shx": "0.3.4",

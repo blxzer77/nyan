@@ -1,4 +1,4 @@
-import type { AssistantMessage, ToolResultMessage, Usage, UserMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ToolResultMessage, Usage, UserMessage } from "@nyan/ai";
 import type {
 	ConversationId,
 	EntryRecord,
@@ -7,7 +7,7 @@ import type {
 	TaskGraph,
 	TaskGraphNode,
 	UsageState,
-} from "@earendil-works/pi-durable";
+} from "@nyan/durable";
 import {
 	Box,
 	type Component,
@@ -29,21 +29,21 @@ import {
 	TruncatedText,
 	TuiAltScreen,
 	VStack,
-} from "@earendil-works/pi-tui";
+} from "@nyan/tui";
 import { getAgentDir } from "../../config.ts";
 import { KeybindingsManager } from "../../core/keybindings.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { createAllToolRenderers } from "../../core/tools/renderers/index.ts";
 import { AssistantMessageComponent } from "../../modes/interactive/components/assistant-message.ts";
 import { CustomEditor } from "../../modes/interactive/components/custom-editor.ts";
-import { DynamicBorder } from "../../modes/interactive/components/dynamic-border.ts";
 import { formatTokens } from "../../modes/interactive/components/footer.ts";
-import { keyText } from "../../modes/interactive/components/keybinding-hints.ts";
 import { type StatusIndicator, WorkingStatusIndicator } from "../../modes/interactive/components/status-indicator.ts";
 import { ToolExecutionComponent, type ToolRenderers } from "../../modes/interactive/components/tool-execution.ts";
 import { UserMessageComponent } from "../../modes/interactive/components/user-message.ts";
-import { getEditorTheme, getMarkdownTheme, initTheme, theme } from "../../modes/interactive/theme/theme.ts";
 import { InteractiveThemeController } from "../../modes/interactive/theme/theme-controller.ts";
+import { DynamicBorder } from "../../ui/components/dynamic-border.ts";
+import { keyText } from "../../ui/components/keybinding-hints.ts";
+import { getEditorTheme, getMarkdownTheme, initTheme, theme } from "../../ui/theme/theme.ts";
 import { agentOf, type DurableController, type DurableView, type DurableViewSource } from "./runtime.ts";
 
 const SELECT_THEME: SelectListTheme = {
@@ -170,7 +170,7 @@ class DurableTui {
 	/** Call IDs whose cards the streaming answer created; its entry takes them over. */
 	readonly #streamingCalls = new Set<string>();
 	readonly #summaries: CompactionComponent[] = [];
-	/** Tool output and summaries shown in full; toggled like pi. */
+	/** Tool output and summaries shown in full; toggled like nyan. */
 	#expanded = false;
 	#renderedEntryIds: number[] = [];
 	#streaming: AssistantMessageComponent | undefined;
@@ -276,7 +276,7 @@ class DurableTui {
 	}
 
 	apply(view: DurableView): void {
-		const live = (view.conversation.docs["pi.live"] ?? {}) as LiveState;
+		const live = (view.conversation.docs["nyan.live"] ?? {}) as LiveState;
 		this.#syncTranscript(view.conversation.entries);
 		const message = live.generation?.message as AssistantMessage | undefined;
 		// A partial without its entry was dropped, for example by a retry: render the transcript again.
@@ -300,7 +300,7 @@ class DurableTui {
 			}
 		}
 		this.#syncTasks(view.tasks);
-		this.#syncQueue((view.conversation.docs["pi.inbox"] ?? { items: [] }) as InboxState);
+		this.#syncQueue((view.conversation.docs["nyan.inbox"] ?? { items: [] }) as InboxState);
 		this.#syncNotices(view);
 		this.#editor.borderColor = theme.getThinkingBorderColor(agentOf(view.conversation).thinkingLevel ?? "off");
 		this.#syncStatus(live);
@@ -375,7 +375,7 @@ class DurableTui {
 
 	#syncFooter(view: DurableView): void {
 		const agent = agentOf(view.conversation);
-		const usage = totalUsage((view.conversation.docs["pi.usage"] ?? { models: {}, tools: {} }) as UsageState);
+		const usage = totalUsage((view.conversation.docs["nyan.usage"] ?? { models: {}, tools: {} }) as UsageState);
 		const stats: string[] = [];
 		if (usage.input) stats.push(`↑${formatTokens(usage.input)}`);
 		if (usage.output) stats.push(`↓${formatTokens(usage.output)}`);
@@ -427,10 +427,10 @@ class DurableTui {
 
 	#addEntry(entry: EntryRecord): void {
 		const message = entry.model?.[0];
-		if (entry.kind === "pi.user" && message?.role === "user") {
+		if (entry.kind === "nyan.user" && message?.role === "user") {
 			this.#chat.addChild(new Spacer(1));
 			this.#chat.addChild(new UserMessageComponent(userText(message.content)));
-		} else if (entry.kind === "pi.assistant" && message?.role === "assistant") {
+		} else if (entry.kind === "nyan.assistant" && message?.role === "assistant") {
 			const component = this.#streaming ?? new AssistantMessageComponent();
 			if (this.#streaming === undefined) this.#chat.addChild(component);
 			this.#streaming = undefined;
@@ -450,10 +450,10 @@ class DurableTui {
 				}
 			}
 			this.#streamingCalls.clear();
-		} else if (entry.kind === "pi.tool-result" && message?.role === "toolResult") {
+		} else if (entry.kind === "nyan.tool-result" && message?.role === "toolResult") {
 			const result = message as ToolResultMessage;
 			this.#tool(result.toolName, result.toolCallId).updateResult(result);
-		} else if (entry.kind === "pi.compaction") {
+		} else if (entry.kind === "nyan.compaction") {
 			const summary = new CompactionComponent(
 				message?.role === "user" ? userText(message.content) : "",
 				this.#expanded,
@@ -461,7 +461,7 @@ class DurableTui {
 			this.#summaries.push(summary);
 			this.#chat.addChild(new Spacer(1));
 			this.#chat.addChild(summary);
-		} else if (entry.kind === "pi.reset") this.#addText("[new context]");
+		} else if (entry.kind === "nyan.reset") this.#addText("[new context]");
 	}
 
 	#syncStreaming(message: AssistantMessage): void {
@@ -549,10 +549,13 @@ function totalUsage(state: UsageState): Usage {
 /** Context size from the newest successful answer after the newest compaction; unknown before one. */
 function contextTokens(entries: readonly EntryRecord[]): number | undefined {
 	// Kept entries follow the summary in the view but are older than it; only later answers measure the new context.
-	const compacted = Math.max(0, ...entries.filter((entry) => entry.kind === "pi.compaction").map((entry) => entry.id));
+	const compacted = Math.max(
+		0,
+		...entries.filter((entry) => entry.kind === "nyan.compaction").map((entry) => entry.id),
+	);
 	for (const entry of [...entries].reverse()) {
 		const message = entry.model?.[0];
-		if (entry.id < compacted || entry.kind !== "pi.assistant" || message?.role !== "assistant") continue;
+		if (entry.id < compacted || entry.kind !== "nyan.assistant" || message?.role !== "assistant") continue;
 		if (message.stopReason === "aborted" || message.stopReason === "error") continue;
 		const usage = message.usage;
 		return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
@@ -638,7 +641,7 @@ export async function runDurableTui(
 		cycleThinking: () => void controller.cycleThinking(),
 	});
 
-	// pi's theme handling: the theme setting (also light/dark pairs) resolved against the terminal's reported colors.
+	// nyan's theme handling: the theme setting (also light/dark pairs) resolved against the terminal's reported colors.
 	const themes = new InteractiveThemeController(view.ui, {
 		getSettingsManager: () => settings,
 		showError: (message) => console.error(message),

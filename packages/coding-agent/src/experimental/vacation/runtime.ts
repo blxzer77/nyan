@@ -1,6 +1,6 @@
-import type { AttachedReplicatedState } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel } from "@nyan/ai";
+import type { AttachedReplicatedState } from "@nyan/chord";
+import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
 import {
 	type AgentState,
 	type Conversation,
@@ -13,10 +13,11 @@ import {
 	ROOT_CONVERSATION_ID,
 	type Submission,
 	type TaskGraph,
-} from "@earendil-works/pi-durable";
-import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+} from "@nyan/durable";
+import { openNodeSqliteStorage } from "@nyan/durable/storage/sqlite/node";
 import { ModelRuntime } from "../../core/model-runtime.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
+import { createDurableModelRuntime } from "../model-runtime-adapter.ts";
 import {
 	configureHarnessHttp,
 	createHarnessSettings,
@@ -85,14 +86,14 @@ export interface OpenDurableOptions {
 export interface OpenDurableResult {
 	readonly view: DurableViewSource;
 	readonly controller: DurableController;
-	/** pi's settings, for the TUI's theme and terminal capabilities. */
+	/** nyan's settings, for the TUI's theme and terminal capabilities. */
 	readonly settings: SettingsManager;
 	close(): Promise<void>;
 }
 
 /** The agent document of a view; absent while the conversation has none. */
 export function agentOf(view: ConversationView): AgentState {
-	return (view.docs["pi.agent"] ?? {}) as AgentState;
+	return (view.docs["nyan.agent"] ?? {}) as AgentState;
 }
 
 /** A subagent's task: the oldest user message of its conversation. The main conversation needs no title. */
@@ -103,7 +104,7 @@ async function firstInput(harness: Harness, id: ConversationId): Promise<{ title
 	let cursor: Cursor | undefined;
 	do {
 		const page = await conversation.entries({}, 256, cursor, context);
-		first = page.items.findLast((entry) => entry.kind === "pi.user") ?? first;
+		first = page.items.findLast((entry) => entry.kind === "nyan.user") ?? first;
 		cursor = page.next;
 	} while (cursor !== undefined);
 	return titleOf(first);
@@ -125,6 +126,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 	let harness: Harness | undefined;
 	try {
 		const modelRuntime = await ModelRuntime.create();
+		const durableModelRuntime = createDurableModelRuntime(modelRuntime);
 		const settingsManager = SettingsManager.create(location.cwd);
 		configureHarnessHttp(settingsManager);
 		const settings = createHarnessSettings(settingsManager);
@@ -135,7 +137,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		harness = await Harness.open(
 			await openNodeSqliteStorage(location.database),
 			{
-				models: modelRuntime,
+				models: durableModelRuntime,
 				registry,
 				settings,
 				onReport: (error) => report(error),
@@ -203,7 +205,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			for (const change of publication.changes) {
 				if (change.type === "conversation") {
 					conversations = [...conversations, { id: change.value.id, label: label(change.value.id) }];
-				} else if (change.type === "entry" && change.value.kind === "pi.user") {
+				} else if (change.type === "entry" && change.value.kind === "nyan.user") {
 					const id = change.value.conversationId;
 					conversations = conversations.map((summary) =>
 						summary.id === id && summary.title === undefined ? { ...summary, ...titleOf(change.value) } : summary,

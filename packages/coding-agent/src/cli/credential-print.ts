@@ -1,8 +1,9 @@
-import type { Api, CredentialInfo, Model } from "@earendil-works/pi-ai";
+import type { Api, CredentialInfo, Model } from "@nyan/ai";
+import { getAuthCredential } from "../core/auth-credential.ts";
 import { resolveCliModel } from "../core/model-resolver.ts";
 import type { ModelRuntime } from "../core/model-runtime.ts";
 import type { Args } from "./args.ts";
-import { AuthCommandError, type AuthCommandKind, getAuthCredential, validateAuthCommandArgs } from "./auth-command.ts";
+import { AuthCommandError, type AuthCommandKind, validateAuthCommandArgs } from "./auth-command.ts";
 
 const DEFAULT_BEARER_TOKEN_MIN_EXPIRY_MS = 30 * 60_000;
 

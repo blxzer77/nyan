@@ -1,9 +1,10 @@
-import type { CredentialStore } from "@earendil-works/pi-ai";
+import type { CredentialStore } from "@nyan/ai";
+import { getAuthCredential } from "../core/auth-credential.ts";
 import { resolveCliModel } from "../core/model-resolver.ts";
 import { ModelRuntime } from "../core/model-runtime.ts";
 import { InMemoryCodingAgentModelsStore } from "../core/models-store.ts";
 import type { Args } from "./args.ts";
-import { AuthCommandError, getAuthCredential, validateAuthCommandArgs } from "./auth-command.ts";
+import { AuthCommandError, validateAuthCommandArgs } from "./auth-command.ts";
 
 export type AuthCheckStatus = "ready" | "not_ready" | "invalid";
 export type AuthCheckReason =

@@ -2,11 +2,11 @@
  * Simple text input component for extensions.
  */
 
-import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@earendil-works/pi-tui";
-import { theme } from "../theme/theme.ts";
+import { Container, type Focusable, getKeybindings, Input, Spacer, Text, type TUI } from "@nyan/tui";
+import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
+import { keyHint } from "../../../ui/components/keybinding-hints.ts";
+import { theme } from "../../../ui/theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
-import { keyHint } from "./keybinding-hints.ts";
 
 export interface ExtensionInputOptions {
 	tui?: TUI;

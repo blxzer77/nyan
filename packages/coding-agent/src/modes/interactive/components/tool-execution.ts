@@ -9,16 +9,16 @@ import {
 	Text,
 	type TUI,
 	type TuiMouseEvent,
-} from "@earendil-works/pi-tui";
+} from "@nyan/tui";
 import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/extensions/types.ts";
 
 /** What this component needs from a tool: how to draw it, without executing it. */
 export type { ToolRenderers };
 
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
+import { keyHint } from "../../../ui/components/keybinding-hints.ts";
+import { theme } from "../../../ui/theme/theme.ts";
 import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
-import { theme } from "../theme/theme.ts";
-import { keyHint } from "./keybinding-hints.ts";
 
 const FALLBACK_PREVIEW_LINES = 10;
 

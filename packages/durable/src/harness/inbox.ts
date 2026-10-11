@@ -1,4 +1,4 @@
-import type { Draft, JsonRepresentation } from "@earendil-works/chord";
+import type { Draft, JsonRepresentation } from "@nyan/chord";
 import { defineDoc } from "../documents.ts";
 import { UserEntry } from "../entries.ts";
 import type { ConversationId, EntryDraft, EntryId, JsonObject, SubmissionId, Tx } from "../types.ts";
@@ -14,7 +14,7 @@ export type InboxItem =
 export type InboxState = { items: InboxItem[] };
 
 export const InboxDoc = defineDoc<InboxState>({
-	kind: "pi.inbox",
+	kind: "nyan.inbox",
 	version: 1,
 	scope: "conversation",
 	history: "latest",

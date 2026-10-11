@@ -1,0 +1,102 @@
+# Nyan current-state architecture
+
+**Snapshot date:** 2026-10-11  
+**Source baseline:** Pi Agent v1.1.0, commit `abe508e1b89912adde45528136c3221eb69acdd7` (record: [`.agents/upstream/pi-v1.1.0.json`](../../.agents/upstream/pi-v1.1.0.json))  
+**Evidence status:** measured on the working tree with the commands below. Nothing here is committed, published or tested on a platform other than Windows 11 with Node 24.
+
+This document states current behavior. Decisions and their reasons are in [`.agents/notes/`](../../.agents/notes/); the enforced policy is [`layers.json`](layers.json).
+
+## Evidence
+
+```text
+npm run check               lint, typecheck, pinned/runtime deps, relative imports, architecture,
+                            entry-graph budgets, install lock, browser smoke
+npm run build:offline       clean dist for all packages
+node scripts/check-architecture-layers.mjs    layers, stability, entries, module layers, cycles
+```
+
+Package test suites were run against an unmodified export of Pi v1.1.0 built and tested the same way; the failures that remain on Windows are identical on both sides (Unix socket permissions, path separators, the environment daemon not built, TUI path assertions, remote model-price drift). The Ubuntu CI job builds the daemon first and runs the full suite.
+
+## Repository shape
+
+```text
+.agents/       governance: notes (lifecycle), skills, upstream source record
+.github/       CI
+.husky/        local Git hooks
+docs/          current-state documentation and the layer policy
+packages/      14 workspace packages (Node/TypeScript, plus a Rust daemon in packages/env/daemon)
+scripts/       workspace checks and build helpers
+```
+
+The root `build` is an explicit sequence, not a graph scheduler:
+
+```text
+chord -> tui -> telemetry -> codemode -> mcp -> ai -> durable -> env
+      -> agent -> protocol -> client -> server -> coding-agent
+```
+
+`packages/evals` is private and outside the production build.
+
+## Packages, layers and stability
+
+Instability `I = Ce / (Ca + Ce)` is computed by the architecture check from source imports; every dependency edge runs to an equal or lower value.
+
+| Layer | Package | Responsibility | Depends on | I |
+| --- | --- | --- | --- | --- |
+| foundation | `@nyan/chord` | Composition runtime, services, replicated state, RPC, plugins | — | 0.00 |
+| foundation | `@nyan/telemetry` | Vendor-neutral telemetry contracts | — | 0.00 |
+| capabilities | `@nyan/tui` | Terminal rendering and input widgets | — | 0.00 |
+| capabilities | `@nyan/codemode` | QuickJS/WASI tool sandbox | — | 0.00 |
+| capabilities | `@nyan/mcp` | MCP client, OAuth, testing helpers | — | 0.00 |
+| model | `@nyan/ai` | Providers, catalog, authentication, streams, cost | telemetry | 0.20 |
+| agent-core | `@nyan/agent-core` | Agent state, loop, tool calls | `ai/contracts` | 0.50 |
+| durable-runtime | `@nyan/durable` | Durable conversations, tasks, documents, storage, recovery | chord, `ai/contracts` + `ai/utils` | 0.50 |
+| durable-runtime | `@nyan/env` | Remote execution client and Rust daemon | chord, durable | 1.00 |
+| transport | `@nyan/protocol` | Transport-neutral CBOR envelopes and framing | chord | 0.25 |
+| transport | `@nyan/client` | Remote-session client | chord, protocol | 0.67 |
+| transport | `@nyan/server` | Local session server and transports | chord, protocol | 0.67 |
+| product-shell | `@nyan/coding-agent` | CLI, SDK, sessions, modes, extensions, tools | chord, agent, ai, codemode, mcp, tui, durable, client, protocol, server | 0.91 |
+| verification | `@nyan/evals` | Private evaluation harness | ai, coding-agent | 1.00 |
+
+`coding-agent` is the only composition root for the runtime layers. `@nyan/durable` is a dev dependency of it because the `experimental/` tree that imports it is source-only and excluded from the build.
+
+## Package entry points
+
+- **Executable:** `nyan` (`@nyan/coding-agent` → `dist/bundle/cli.js`). There is no `pi` alias. `@nyan/ai` ships a separate `nyan-ai` login helper; the standalone coding-agent binary build (`build:binary`, Bun) writes `dist/nyan`.
+- **Library entries:** each package declares its public subpaths in `exports`; the check rejects imports outside them. Notable subpaths: `@nyan/ai/contracts` (provider-neutral types, `ModelRuntime`, transcript and stream helpers), `@nyan/ai/utils/*`, `@nyan/coding-agent/{rpc-entry,client,experimental/plugin}`.
+- **Stable model boundary:** `agent` and `durable` use `@nyan/ai/contracts`; `coding-agent` hands `durable` a five-operation `ModelRuntime` port (`createDurableModelRuntime`), not the provider runtime.
+
+## Module layers inside packages
+
+| Package | Layers, lowest first | Notable rule |
+| --- | --- | --- |
+| `ai` | contracts → auth-contracts → infra / catalog → api / auth → registry → providers → facade | the contract (`types.ts`, `utils/`) imports no adapter; adapters import no registry |
+| `durable` | core → session / storage → harness → tools / testing → facade | one recorded cycle and two type-only exceptions (below) |
+| `coding-agent` | base → ui → core → extensions → modes → cli → entry | the headless `core` imports no `modes`, `cli` or terminal presentation outside `ui` |
+
+Static runtime import cycles are forbidden; `ai` has none. Recorded debt, all in `layers.json`:
+
+- the `durable` harness cycle (`compaction`, `generation`, `live`, `submissions`, `tool`) — [proposed fix](../../.agents/notes/proposed/architecture/2026-10-11-durable-run-lifecycle-cycle.md);
+- `durable/types.ts` and `durable/entries.ts` import harness types (type-only);
+- `coding-agent/core/extensions/virtual-modules.ts` imports the package's public barrel.
+
+## Product identity
+
+`packages/coding-agent/src/identity.ts` owns the identity (`cliName` `nyan`, `displayName` `Nyan`, `configDirName` `.nyan`); `config.ts` derives `APP_NAME`, `APP_TITLE`, `CONFIG_DIR_NAME` and the `NYAN_CODING_AGENT_DIR` / `NYAN_CODING_AGENT_SESSION_DIR` variables from it, and a package may override them through `nyanConfig`.
+
+Renamed: executable, `@nyan/*` packages, `NYAN_*` variables, `~/.nyan/agent` and `.nyan/`, the package manifest field `nyan` and keyword `nyan-package`, `nyan.*` document, entry and wire identifiers, `nyan-messages` API id, TUI cursor marker, daemon handshake, identifiers and file names. Details and the exclusions (provenance, third parties, `Math.PI`) are in the [productization note](../../.agents/notes/implemented/architecture/2026-10-11-nyan-productization.md).
+
+Still referring to Pi, by design: `CHANGELOG.md` files (release history to v1.1.0), links to upstream issues and pull requests, the `upstream` remote and manifest, and the notes that describe the fork.
+
+## External services
+
+Nyan includes no default address for any hosted service. Version feed, installer, share viewer, model catalog, MCP client metadata and the Radius gateway are configured with `NYAN_LATEST_VERSION_URL`, `NYAN_INSTALLER_API_BASE`, `NYAN_SHARE_VIEWER_URL`, `NYAN_CATALOG_BASE_URL`, `NYAN_MCP_CLIENT_METADATA_URL` and `NYAN_RADIUS_GATEWAY`; without them the feature is off or reports the missing variable. The install ping, the installer migration hint and the Earendil announcement are removed. See [no default hosted services](../../.agents/notes/implemented/architecture/2026-10-11-no-default-hosted-services.md).
+
+## Known limits
+
+- Nothing is committed, tagged, pushed or published. `origin` still points at `blxzer77/pi`; repository links in documents and manifests assume `blxzer77/nyan`.
+- Committed native prebuilds (`packages/tui/native/*/prebuilds`) and `doom.wasm` predate the rename and should be rebuilt on each platform before a release.
+- CI has a verification workflow only; there is no version, tag or npm publish workflow.
+- `AGENTS.md` lists `npm test` as a local command; on Windows the full run has the platform baseline failures above.
+- Radius has no shipped catalog. `npm run hydrate:model-data` and `generate-models` no longer include it; the generated aggregator lists one provider fewer than Pi v1.1.0.
+- Experimental and example code stays candidate code until verified through a Nyan entry path.

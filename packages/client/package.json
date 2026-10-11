@@ -1,7 +1,7 @@
 {
-	"name": "@earendil-works/pi-client",
+	"name": "@nyan/client",
 	"version": "1.1.0",
-	"description": "Transport-neutral client for remote pi sessions over framed CBOR bytes",
+	"description": "Transport-neutral client for remote nyan sessions over framed CBOR bytes",
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
@@ -30,7 +30,7 @@
 		"prepublishOnly": "npm run clean && npm run build"
 	},
 	"keywords": [
-		"pi",
+		"nyan",
 		"client",
 		"protocol",
 		"cbor",
@@ -40,15 +40,15 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/earendil-works/pi.git",
+		"url": "git+https://github.com/blxzer77/nyan.git",
 		"directory": "packages/client"
 	},
 	"engines": {
 		"node": ">=22.19.0"
 	},
 	"dependencies": {
-		"@earendil-works/chord": "^1.1.0",
-		"@earendil-works/pi-protocol": "^1.1.0"
+		"@nyan/chord": "^1.1.0",
+		"@nyan/protocol": "^1.1.0"
 	},
 	"devDependencies": {
 		"shx": "0.3.4",

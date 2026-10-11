@@ -1,20 +1,11 @@
-import { type Model, modelsAreEqual } from "@earendil-works/pi-ai";
-import {
-	Container,
-	type Focusable,
-	fuzzyFilter,
-	getKeybindings,
-	Input,
-	Spacer,
-	Text,
-	type TUI,
-} from "@earendil-works/pi-tui";
+import { type Model, modelsAreEqual } from "@nyan/ai";
+import { Container, type Focusable, fuzzyFilter, getKeybindings, Input, Spacer, Text, type TUI } from "@nyan/tui";
 import type { ModelRuntime } from "../../../core/model-runtime.ts";
+import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
+import { keyDisplayText, keyHint } from "../../../ui/components/keybinding-hints.ts";
+import { theme } from "../../../ui/theme/theme.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
-import { theme } from "../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
-import { keyDisplayText, keyHint } from "./keybinding-hints.ts";
 
 interface ModelItem {
 	provider: string;

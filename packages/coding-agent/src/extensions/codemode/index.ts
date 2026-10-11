@@ -19,26 +19,26 @@ export interface CodemodeExtensionOptions {
 	models?: boolean;
 }
 
-function readMode(pi: ExtensionAPI): CodemodeMode {
-	return pi.getSettings().codemode?.mode === "only" ? "only" : "on";
+function readMode(nyan: ExtensionAPI): CodemodeMode {
+	return nyan.getSettings().codemode?.mode === "only" ? "only" : "on";
 }
 
-function readInlineBudget(pi: ExtensionAPI): number | undefined {
-	const budget = pi.getSettings().codemode?.inlineBudget;
+function readInlineBudget(nyan: ExtensionAPI): number | undefined {
+	const budget = nyan.getSettings().codemode?.inlineBudget;
 	return typeof budget === "number" && Number.isFinite(budget) && budget >= 0 ? budget : undefined;
 }
 
 export function createCodemodeExtension(options: CodemodeExtensionOptions = {}): ExtensionFactory {
-	return (pi) => {
-		pi.registerTool({
+	return (nyan) => {
+		nyan.registerTool({
 			...createCodemodeToolDefinition({
-				appendEntry: (customType, data) => pi.appendEntry(customType, data),
+				appendEntry: (customType, data) => nyan.appendEntry(customType, data),
 				models: options.models ?? true,
-				getToolNamespace: (name) => pi.getAllTools().find((tool) => tool.name === name)?.namespace,
+				getToolNamespace: (name) => nyan.getAllTools().find((tool) => tool.name === name)?.namespace,
 				getToolGuidelines: () =>
-					new Map(pi.getAllTools().map((tool) => [tool.name, tool.promptGuidelines ?? []] as const)),
-				getMode: () => options.mode ?? readMode(pi),
-				getInlineBudget: () => options.inlineBudget ?? readInlineBudget(pi),
+					new Map(nyan.getAllTools().map((tool) => [tool.name, tool.promptGuidelines ?? []] as const)),
+				getMode: () => options.mode ?? readMode(nyan),
+				getInlineBudget: () => options.inlineBudget ?? readInlineBudget(nyan),
 			}),
 			defaultActive: false,
 		});

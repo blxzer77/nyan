@@ -12,8 +12,8 @@
           "path": "quickstart.md"
         },
         {
-          "title": "How Pi Works",
-          "path": "how-pi-works.md"
+          "title": "How Nyan Works",
+          "path": "how-nyan-works.md"
         }
       ]
     },
@@ -21,10 +21,10 @@
       "title": "Guides",
       "items": [
         {
-          "title": "Run Pi",
+          "title": "Run Nyan",
           "items": [
             {
-              "title": "Use Pi in the Terminal",
+              "title": "Use Nyan in the Terminal",
               "path": "usage.md"
             },
             {
@@ -36,11 +36,11 @@
               "path": "sessions.md"
             },
             {
-              "title": "Run Pi Safely",
+              "title": "Run Nyan Safely",
               "path": "security.md"
             },
             {
-              "title": "Isolate Pi",
+              "title": "Isolate Nyan",
               "path": "containerization.md"
             },
             {
@@ -56,24 +56,24 @@
               "path": "shell-aliases.md"
             },
             {
-              "title": "Run Pi in tmux",
+              "title": "Run Nyan in tmux",
               "path": "tmux.md"
             },
             {
-              "title": "Run Pi on Windows",
+              "title": "Run Nyan on Windows",
               "path": "windows.md"
             },
             {
-              "title": "Run Pi on Android",
+              "title": "Run Nyan on Android",
               "path": "termux.md"
             }
           ]
         },
         {
-          "title": "Customize Pi",
+          "title": "Customize Nyan",
           "items": [
             {
-              "title": "Configure Pi",
+              "title": "Configure Nyan",
               "path": "configuration.md"
             },
             {
@@ -89,7 +89,7 @@
               "path": "themes.md"
             },
             {
-              "title": "Use Pi Packages",
+              "title": "Use Nyan Packages",
               "path": "packages.md"
             },
             {
@@ -99,7 +99,7 @@
           ]
         },
         {
-          "title": "Build on Pi",
+          "title": "Build on Nyan",
           "items": [
             {
               "title": "Build Extensions",

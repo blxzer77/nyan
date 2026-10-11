@@ -1,12 +1,12 @@
-import { Container, getKeybindings, Spacer, Text } from "@earendil-works/pi-tui";
+import { Container, getKeybindings, Spacer, Text } from "@nyan/tui";
 import {
 	getProjectTrustOptions,
 	type ProjectTrustOption,
 	type ProjectTrustStoreEntry,
 } from "../../../core/trust-manager.ts";
-import { theme } from "../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
-import { keyHint, rawKeyHint } from "./keybinding-hints.ts";
+import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
+import { keyHint, rawKeyHint } from "../../../ui/components/keybinding-hints.ts";
+import { theme } from "../../../ui/theme/theme.ts";
 
 export type TrustSelection = Pick<ProjectTrustOption, "trusted" | "updates">;
 

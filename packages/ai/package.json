@@ -1,5 +1,5 @@
 {
-	"name": "@earendil-works/pi-ai",
+	"name": "@nyan/ai",
 	"version": "1.1.0",
 	"description": "Unified LLM API with automatic model discovery and provider configuration",
 	"type": "module",
@@ -14,6 +14,10 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
+		},
+		"./contracts": {
+			"types": "./dist/contracts/index.d.ts",
+			"import": "./dist/contracts/index.js"
 		},
 		"./models": {
 			"types": "./dist/models.d.ts",
@@ -49,7 +53,7 @@
 		}
 	},
 	"bin": {
-		"pi-ai": "dist/cli.js"
+		"nyan-ai": "dist/cli.js"
 	},
 	"files": [
 		"dist",
@@ -69,7 +73,7 @@
 	"dependencies": {
 		"@anthropic-ai/sdk": "0.129.0",
 		"@aws-sdk/client-bedrock-runtime": "3.1127.0",
-		"@earendil-works/pi-telemetry": "^1.1.0",
+		"@nyan/telemetry": "^1.1.0",
 		"@google/genai": "2.21.0",
 		"@smithy/node-http-handler": "4.12.1",
 		"http-proxy-agent": "9.1.0",
@@ -92,7 +96,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/earendil-works/pi.git",
+		"url": "git+https://github.com/blxzer77/nyan.git",
 		"directory": "packages/ai"
 	},
 	"engines": {

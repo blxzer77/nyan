@@ -1,9 +1,9 @@
-import { setKeybindings } from "@earendil-works/pi-tui";
+import { setKeybindings } from "@nyan/tui";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { OAuthSelectorComponent } from "../src/modes/interactive/components/oauth-selector.ts";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/ui/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 describe("OAuthSelectorComponent", () => {

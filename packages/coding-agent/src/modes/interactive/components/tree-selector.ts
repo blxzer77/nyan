@@ -11,11 +11,11 @@ import {
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
-} from "@earendil-works/pi-tui";
+} from "@nyan/tui";
 import type { SessionTreeNode } from "../../../core/session-manager.ts";
-import { theme } from "../theme/theme.ts";
-import { DynamicBorder } from "./dynamic-border.ts";
-import { formatKeyText, keyHint } from "./keybinding-hints.ts";
+import { DynamicBorder } from "../../../ui/components/dynamic-border.ts";
+import { formatKeyText, keyHint } from "../../../ui/components/keybinding-hints.ts";
+import { theme } from "../../../ui/theme/theme.ts";
 
 /** Gutter info: position (displayIndent where connector was) and whether to show │ */
 interface GutterInfo {

@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getModel } from "@earendil-works/pi-ai/compat";
-import type { TUI } from "@earendil-works/pi-tui";
+import { getModel } from "@nyan/ai/compat";
+import type { TUI } from "@nyan/tui";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { ToolDefinition } from "../src/core/extensions/types.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
@@ -10,7 +10,7 @@ import { createAgentSession } from "../src/core/sdk.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/ui/theme/theme.ts";
 
 const examplesDir = join(import.meta.dirname, "../examples/extensions");
 
@@ -23,7 +23,7 @@ describe("tool renderer examples", () => {
 	});
 
 	beforeEach(() => {
-		tempDir = join(tmpdir(), `pi-tool-renderer-example-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		tempDir = join(tmpdir(), `nyan-tool-renderer-example-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		agentDir = join(tempDir, "agent");
 		mkdirSync(agentDir, { recursive: true });
 	});

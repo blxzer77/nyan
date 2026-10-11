@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MarkdownTransformContext } from "../src/core/extensions/types.ts";
 import type { MermaidRenderingMode } from "../src/core/settings-manager.ts";
 import { createMermaidMarkdownTransformer } from "../src/modes/interactive/components/mermaid.ts";
-import type { Theme } from "../src/modes/interactive/theme/theme.ts";
+import type { Theme } from "../src/ui/theme/theme.ts";
 
 interface TransformOptions {
 	maxWidth?: number;
@@ -45,7 +45,7 @@ describe("Mermaid rendering", () => {
 		expect(transformMermaid(oversized, { maxWidth: 10 })).toBe(oversized);
 	});
 
-	it("maps semantic spans through the Pi theme", () => {
+	it("maps semantic spans through the Nyan theme", () => {
 		const theme = {
 			fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
 			bold: (text: string) => `<bold>${text}</bold>`,

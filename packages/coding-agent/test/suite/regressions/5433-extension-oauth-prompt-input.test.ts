@@ -1,8 +1,8 @@
-import { setKeybindings, type TUI } from "@earendil-works/pi-tui";
+import { setKeybindings, type TUI } from "@nyan/tui";
 import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { KeybindingsManager } from "../../../src/core/keybindings.ts";
 import { LoginDialogComponent } from "../../../src/modes/interactive/components/login-dialog.ts";
-import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../../src/ui/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 
 vi.mock("../../../src/utils/open-browser.ts", () => ({
@@ -73,13 +73,13 @@ describe("LoginDialogComponent OAuth prompts", () => {
 	test("preserves neutral information and links when showing a prompt", () => {
 		const dialog = createDialog();
 
-		dialog.showInfo("Configure credentials outside pi.", [
+		dialog.showInfo("Configure credentials outside nyan.", [
 			{ label: "Provider documentation", url: "https://example.invalid/docs" },
 		]);
 		dialog.showPrompt("Press Enter to continue:");
 
 		const output = renderDialog(dialog).join("\n");
-		expect(output).toContain("Configure credentials outside pi.");
+		expect(output).toContain("Configure credentials outside nyan.");
 		expect(output).toContain("Provider documentation: https://example.invalid/docs");
 		expect(output).toContain("Press Enter to continue:");
 	});

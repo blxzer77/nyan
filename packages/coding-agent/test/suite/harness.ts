@@ -6,16 +6,16 @@ import { createInMemoryModelRegistry, createModelRegistry, getModelRuntime } fro
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
-import { Agent } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, AgentTool } from "@nyan/agent-core";
+import { Agent } from "@nyan/agent-core";
 import type {
 	FauxModelDefinition,
 	FauxProviderRegistration,
 	FauxResponseStep,
 	Model,
 	ToolResultMessage,
-} from "@earendil-works/pi-ai/compat";
-import { registerFauxProvider, streamSimple } from "@earendil-works/pi-ai/compat";
+} from "@nyan/ai/compat";
+import { registerFauxProvider, streamSimple } from "@nyan/ai/compat";
 import { AgentSession, type AgentSessionEvent } from "../../src/core/agent-session.ts";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
 import type { ExtensionRunner, ExtensionUIContext } from "../../src/core/extensions/index.ts";
@@ -24,7 +24,7 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import type { Settings } from "../../src/core/settings-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import type { InlineExtension, ResourceLoader } from "../../src/index.ts";
-import { theme } from "../../src/modes/interactive/theme/theme.ts";
+import { theme } from "../../src/ui/theme/theme.ts";
 import {
 	type CreateTestExtensionsResultInput,
 	createTestExtensionsResult,
@@ -142,7 +142,7 @@ export interface Harness {
 }
 
 function createTempDir(): string {
-	const tempDir = join(tmpdir(), `pi-suite-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+	const tempDir = join(tmpdir(), `nyan-suite-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 	mkdirSync(tempDir, { recursive: true });
 	return tempDir;
 }

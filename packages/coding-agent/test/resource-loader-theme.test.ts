@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetCapabilitiesCache, setCapabilityOverrides } from "@earendil-works/pi-tui";
+import { resetCapabilitiesCache, setCapabilityOverrides } from "@nyan/tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
@@ -19,9 +19,10 @@ describe("DefaultResourceLoader theme color mode", () => {
 		mkdirSync(agentDir, { recursive: true });
 		mkdirSync(cwd, { recursive: true });
 
-		const themeJson = JSON.parse(
-			readFileSync(join(process.cwd(), "src", "modes", "interactive", "theme", "dark.json"), "utf-8"),
-		) as { name: string; colors: Record<string, string | number> };
+		const themeJson = JSON.parse(readFileSync(join(process.cwd(), "src", "ui", "theme", "dark.json"), "utf-8")) as {
+			name: string;
+			colors: Record<string, string | number>;
+		};
 		themeJson.name = "capability-test";
 		themeJson.colors.userMessageBg = "#3c3544";
 		themePath = join(tempDir, "capability-test.json");
@@ -52,7 +53,7 @@ describe("DefaultResourceLoader theme color mode", () => {
 	])(
 		"uses the $setting setting over a $environment environment",
 		async ({ environmentOverride, setting, expected }) => {
-			vi.stubEnv("PI_TRUE_COLOR", environmentOverride);
+			vi.stubEnv("NYAN_TRUE_COLOR", environmentOverride);
 			setCapabilityOverrides({});
 			resetCapabilitiesCache();
 
@@ -74,7 +75,7 @@ describe("DefaultResourceLoader theme color mode", () => {
 	);
 
 	it("returns to automatic detection after an explicit setting is removed", async () => {
-		vi.stubEnv("PI_TRUE_COLOR", "1");
+		vi.stubEnv("NYAN_TRUE_COLOR", "1");
 		setCapabilityOverrides({});
 		resetCapabilitiesCache();
 

@@ -11,7 +11,6 @@ import type {
 	ChatCompletionSystemMessageParam,
 	ChatCompletionToolMessageParam,
 } from "openai/resources/chat/completions.js";
-import { calculateCost, clampThinkingLevel } from "../models.ts";
 import type {
 	AssistantMessage,
 	CacheRetention,
@@ -40,7 +39,8 @@ import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { shortHash } from "../utils/hash.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { parseStreamingJson } from "../utils/json-parse.ts";
-import { getPiUserAgent } from "../utils/pi-user-agent.ts";
+import { calculateCost, clampThinkingLevel } from "../utils/model-operations.ts";
+import { getNyanUserAgent } from "../utils/nyan-user-agent.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
@@ -295,7 +295,7 @@ function resolveCacheRetention(cacheRetention?: CacheRetention, env?: ProviderEn
 	if (cacheRetention) {
 		return cacheRetention;
 	}
-	if (getProviderEnvValue("PI_CACHE_RETENTION", env) === "long") {
+	if (getProviderEnvValue("NYAN_CACHE_RETENTION", env) === "long") {
 		return "long";
 	}
 	return "short";
@@ -763,7 +763,7 @@ function createClient(
 	sessionId?: string,
 	compat: ResolvedOpenAICompletionsCompat = getCompat(model),
 ) {
-	const headers: ProviderHeaders = { "User-Agent": getPiUserAgent(), ...model.headers };
+	const headers: ProviderHeaders = { "User-Agent": getNyanUserAgent(), ...model.headers };
 	if (model.provider === "github-copilot") {
 		const hasImages = hasCopilotVisionInput(context.messages);
 		const copilotHeaders = buildCopilotDynamicHeaders({

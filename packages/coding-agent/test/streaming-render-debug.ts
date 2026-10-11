@@ -4,13 +4,13 @@
  * Run with: node --import ./src/experimental/source-resolver.ts test/streaming-render-debug.ts
  */
 
-import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { ProcessTerminal, type TUI, TuiMainScreen } from "@earendil-works/pi-tui";
+import type { AssistantMessage } from "@nyan/ai";
+import { ProcessTerminal, type TUI, TuiMainScreen } from "@nyan/tui";
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/ui/theme/theme.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

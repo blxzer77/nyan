@@ -7,9 +7,9 @@ import {
 	type FacetLoader,
 	type JsonValue,
 	type LoadedFacets,
-} from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { AgentState, ConversationView } from "@earendil-works/pi-durable";
+} from "@nyan/chord";
+import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
+import type { AgentState, ConversationView } from "@nyan/durable";
 import {
 	CombinedAutocompleteProvider,
 	type Component,
@@ -19,7 +19,7 @@ import {
 	setKeybindings,
 	Text,
 	type TUI,
-} from "@earendil-works/pi-tui";
+} from "@nyan/tui";
 import type { ClientCommand } from "../cli/experimental/commands/client.ts";
 import { getAgentDir } from "../config.ts";
 import { KeybindingsManager } from "../core/keybindings.ts";
@@ -27,9 +27,9 @@ import { DefaultResourceLoader } from "../core/resource-loader.ts";
 import { SettingsManager } from "../core/settings-manager.ts";
 import { createChatViewport } from "../modes/interactive/chat-viewport.ts";
 import { CustomEditor } from "../modes/interactive/components/custom-editor.ts";
-import { getEditorTheme, setRegisteredThemes, stopThemeWatcher, theme } from "../modes/interactive/theme/theme.ts";
 import { InteractiveThemeController } from "../modes/interactive/theme/theme-controller.ts";
 import { createInteractiveTui } from "../modes/interactive/tui-renderer.ts";
+import { getEditorTheme, setRegisteredThemes, stopThemeWatcher, theme } from "../ui/theme/theme.ts";
 import { type OpenClientRuntimeOptions, openClientRuntime } from "./client-runtime.ts";
 import { ExperimentalChatView, liveOf } from "./client-tui-chat.ts";
 import { createPresentationFacetLoaders } from "./plugins/bundled.ts";
@@ -265,7 +265,7 @@ export class ExperimentalClientTui implements Component {
 			return operation;
 		};
 		const presentationBridgeFacet = defineFacet({
-			id: "@pi/presentation-bridge",
+			id: "@nyan/presentation-bridge",
 			setup: (env) => {
 				env.provide(PresentationUI, {
 					select: (title, items, selectedValue) =>
@@ -624,7 +624,7 @@ export class ExperimentalClientTui implements Component {
 	#footer(): string {
 		const view = this.#conversationView();
 		if (!view) return "/model · /thinking · /compact · /reload";
-		const agent = (view.docs["pi.agent"] ?? {}) as AgentState;
+		const agent = (view.docs["nyan.agent"] ?? {}) as AgentState;
 		const model = agent.model === undefined ? "no model" : `${agent.model.provider}/${agent.model.modelId}`;
 		return `${model} · thinking:${agent.thinkingLevel ?? "off"} · ${view.entries.length} entries · /model · /thinking · /compact · /reload`;
 	}

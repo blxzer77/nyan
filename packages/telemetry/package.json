@@ -1,7 +1,7 @@
 {
-	"name": "@earendil-works/pi-telemetry",
+	"name": "@nyan/telemetry",
 	"version": "1.1.0",
-	"description": "Vendor-neutral telemetry contracts and typed schema utilities for pi",
+	"description": "Vendor-neutral telemetry contracts and typed schema utilities for nyan",
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
@@ -34,7 +34,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/earendil-works/pi.git",
+		"url": "git+https://github.com/blxzer77/nyan.git",
 		"directory": "packages/telemetry"
 	},
 	"engines": {

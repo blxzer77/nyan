@@ -1,9 +1,9 @@
-import { colorToHex, okhslColor } from "@earendil-works/pi-tui";
+import { colorToHex, okhslColor } from "@nyan/tui";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getThemeExportColors } from "../src/modes/interactive/theme/theme.ts";
+import { getThemeExportColors } from "../src/ui/theme/theme.ts";
 
 type ThemeFile = {
 	name: string;
@@ -21,24 +21,24 @@ describe("getThemeExportColors", () => {
 	let previousAgentDir: string | undefined;
 
 	beforeEach(() => {
-		tempRoot = mkdtempSync(join(tmpdir(), "pi-theme-export-"));
-		previousAgentDir = process.env.PI_CODING_AGENT_DIR;
-		process.env.PI_CODING_AGENT_DIR = join(tempRoot, "agent");
-		mkdirSync(join(process.env.PI_CODING_AGENT_DIR, "themes"), { recursive: true });
+		tempRoot = mkdtempSync(join(tmpdir(), "nyan-theme-export-"));
+		previousAgentDir = process.env.NYAN_CODING_AGENT_DIR;
+		process.env.NYAN_CODING_AGENT_DIR = join(tempRoot, "agent");
+		mkdirSync(join(process.env.NYAN_CODING_AGENT_DIR, "themes"), { recursive: true });
 	});
 
 	afterEach(() => {
 		rmSync(tempRoot, { recursive: true, force: true });
 		if (previousAgentDir === undefined) {
-			delete process.env.PI_CODING_AGENT_DIR;
+			delete process.env.NYAN_CODING_AGENT_DIR;
 		} else {
-			process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			process.env.NYAN_CODING_AGENT_DIR = previousAgentDir;
 		}
 	});
 
 	it("resolves export variable references using the same syntax as colors", () => {
 		const darkTheme = JSON.parse(
-			readFileSync(new URL("../src/modes/interactive/theme/dark.json", import.meta.url), "utf-8"),
+			readFileSync(new URL("../src/ui/theme/dark.json", import.meta.url), "utf-8"),
 		) as ThemeFile;
 
 		const customTheme: ThemeFile = {
@@ -59,7 +59,7 @@ describe("getThemeExportColors", () => {
 		};
 
 		writeFileSync(
-			join(process.env.PI_CODING_AGENT_DIR!, "themes", "custom-export-vars.json"),
+			join(process.env.NYAN_CODING_AGENT_DIR!, "themes", "custom-export-vars.json"),
 			JSON.stringify(customTheme, null, 2),
 		);
 
@@ -72,7 +72,7 @@ describe("getThemeExportColors", () => {
 
 	it("converts OKHSL export colors to hex because CSS does not support them", () => {
 		const darkTheme = JSON.parse(
-			readFileSync(new URL("../src/modes/interactive/theme/dark.json", import.meta.url), "utf-8"),
+			readFileSync(new URL("../src/ui/theme/dark.json", import.meta.url), "utf-8"),
 		) as ThemeFile;
 		const customTheme: ThemeFile = {
 			...darkTheme,
@@ -81,7 +81,7 @@ describe("getThemeExportColors", () => {
 			export: { pageBg: "okhsl(250 20% 15%)", cardBg: "card", infoBg: "oklch(30% 0.05 80)" },
 		};
 		writeFileSync(
-			join(process.env.PI_CODING_AGENT_DIR!, "themes", "custom-export-okhsl.json"),
+			join(process.env.NYAN_CODING_AGENT_DIR!, "themes", "custom-export-okhsl.json"),
 			JSON.stringify(customTheme, null, 2),
 		);
 
@@ -94,7 +94,7 @@ describe("getThemeExportColors", () => {
 
 	it("resolves recursive vars and converts 256-color export values to hex", () => {
 		const darkTheme = JSON.parse(
-			readFileSync(new URL("../src/modes/interactive/theme/dark.json", import.meta.url), "utf-8"),
+			readFileSync(new URL("../src/ui/theme/dark.json", import.meta.url), "utf-8"),
 		) as ThemeFile;
 
 		const customTheme: ThemeFile = {
@@ -114,7 +114,7 @@ describe("getThemeExportColors", () => {
 		};
 
 		writeFileSync(
-			join(process.env.PI_CODING_AGENT_DIR!, "themes", "custom-export-recursive.json"),
+			join(process.env.NYAN_CODING_AGENT_DIR!, "themes", "custom-export-recursive.json"),
 			JSON.stringify(customTheme, null, 2),
 		);
 

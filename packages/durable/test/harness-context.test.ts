@@ -1,5 +1,5 @@
-import type { Context } from "@earendil-works/chord";
-import { createModels, type Message } from "@earendil-works/pi-ai";
+import { createModels, type Message } from "@nyan/ai";
+import type { Context } from "@nyan/chord";
 import {
 	type ContextView,
 	createRegistry,
@@ -11,7 +11,7 @@ import {
 	type HarnessSettings,
 	MemoryStorage,
 	type Storage,
-} from "@earendil-works/pi-durable";
+} from "@nyan/durable";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { addTask, assistant, describeMessage, openHarness, system, toolResult, user } from "./harness-support.ts";
 import { context } from "./session-support.ts";
@@ -139,11 +139,11 @@ describe("conversation context", () => {
 
 	it("keeps positional system messages and orders tool results by call order", async () => {
 		const { root, message, append } = await setup();
-		await message(system({ preamble: "You help." }), "pi.system");
+		await message(system({ preamble: "You help." }), "nyan.system");
 		await message(user("run tools"));
 		await message(assistant("calling", { calls: ["b", "a"] }));
 		await message(toolResult("a"));
-		await append({ kind: "pi.system", model: [system({ cwd: "/repo" })] });
+		await append({ kind: "nyan.system", model: [system({ cwd: "/repo" })] });
 		await message(toolResult("b"));
 		await message(toolResult("zz"));
 		await message(assistant("done"));
@@ -164,10 +164,10 @@ describe("conversation context", () => {
 		const { root, message, append } = await setup();
 		await message(user("first"));
 		await message(user("steered"));
-		await message(system({ preamble: "You help." }), "pi.system");
+		await message(system({ preamble: "You help." }), "nyan.system");
 		await message(assistant("answer"));
 		await message(user("next"));
-		await message(system({ cwd: "/repo" }), "pi.system");
+		await message(system({ cwd: "/repo" }), "nyan.system");
 		let view = await root.context(context);
 		expect(view.messages.map(describeMessage)).toEqual([
 			"system:preamble",
@@ -186,7 +186,7 @@ describe("conversation context", () => {
 
 		// After a reset, the baseline written after the handoff leads too.
 		await append({ kind: "reset", head: "self", model: [user("handoff")] });
-		await message(system({ preamble: "Baseline." }), "pi.system");
+		await message(system({ preamble: "Baseline." }), "nyan.system");
 		view = await root.context(context);
 		expect(view.messages.map(describeMessage)).toEqual(["system:preamble", "user:handoff"]);
 	});

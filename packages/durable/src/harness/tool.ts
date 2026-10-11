@@ -1,8 +1,8 @@
-import { type Context, copyJson, type JsonValue } from "@earendil-works/chord";
-import { awaitWithContext } from "@earendil-works/chord/context";
-import { overlap } from "@earendil-works/chord/delta";
-import type { ImageContent, TextContent, ToolCall, ToolResultMessage } from "@earendil-works/pi-ai";
-import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
+import type { ImageContent, TextContent, ToolCall, ToolResultMessage } from "@nyan/ai/contracts";
+import { validateToolArguments } from "@nyan/ai/utils/validation";
+import { type Context, copyJson, type JsonValue } from "@nyan/chord";
+import { awaitWithContext } from "@nyan/chord/context";
+import { overlap } from "@nyan/chord/delta";
 import { AssistantEntry, ToolResultEntry } from "../entries.ts";
 import { defineTask } from "../tasks.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, utf8ByteLength } from "../truncate.ts";
@@ -48,7 +48,7 @@ type Content = (TextContent | ImageContent)[];
  * settlement. `execute` is reached only by recovery and applies the replay rule.
  */
 export const ToolTask = defineTask<ToolTaskInput, ToolTaskCheckpoint, ToolTaskResult, ToolHooks>({
-	name: "pi.tool",
+	name: "nyan.tool",
 	version: 1,
 	initial: () => ({ phase: "call" }),
 	phases: {
@@ -287,7 +287,7 @@ async function run(
 }
 
 /**
- * Throttled commits of what the tool reported into its `pi.live.tools` slot, each writing only what changed since the
+ * Throttled commits of what the tool reported into its `nyan.live.tools` slot, each writing only what changed since the
  * last one.
  */
 function publishProgress(runtime: Runtime, reported: Reported, context: Context): Progress {
@@ -451,8 +451,8 @@ function truncated(
 }
 
 /**
- * Append a `pi.tool-result` entry. The content ends with the rendered diagnostics, so the stored message is exactly
- * what the model sees; `data` keeps the structured list. A result's usage is added to `pi.usage` in the same commit.
+ * Append a `nyan.tool-result` entry. The content ends with the rendered diagnostics, so the stored message is exactly
+ * what the model sees; `data` keeps the structured list. A result's usage is added to `nyan.usage` in the same commit.
  */
 export async function appendToolResult(
 	tx: Tx,

@@ -41,12 +41,9 @@ describe("DefaultResourceLoader", () => {
 		});
 
 		it("should not treat a project manifest as the owner of a project extension", async () => {
-			const extensionsDir = join(cwd, ".pi", "extensions");
+			const extensionsDir = join(cwd, ".nyan", "extensions");
 			mkdirSync(extensionsDir, { recursive: true });
-			writeFileSync(
-				join(cwd, "package.json"),
-				JSON.stringify({ dependencies: { "@earendil-works/pi-coding-agent": "1.0.0" } }),
-			);
+			writeFileSync(join(cwd, "package.json"), JSON.stringify({ dependencies: { "@nyan/coding-agent": "1.0.0" } }));
 			writeFileSync(join(extensionsDir, "project-extension.ts"), "export default function() {}");
 
 			const loader = new DefaultResourceLoader({ cwd, agentDir });
@@ -63,7 +60,7 @@ describe("DefaultResourceLoader", () => {
 			mkdirSync(extensionsDir, { recursive: true });
 			writeFileSync(
 				join(packageRoot, "package.json"),
-				JSON.stringify({ dependencies: { "@earendil-works/pi-coding-agent": "1.0.0" } }),
+				JSON.stringify({ dependencies: { "@nyan/coding-agent": "1.0.0" } }),
 			);
 			writeFileSync(join(extensionsDir, "package-extension.ts"), "export default function() {}");
 
@@ -79,7 +76,7 @@ describe("DefaultResourceLoader", () => {
 				{
 					path: join(packageRoot, "package.json"),
 					warning:
-						'Host-provided extension packages must be declared in peerDependencies with a "*" range, not dependencies: @earendil-works/pi-coding-agent. Installed copies can bypass the extension loader and create duplicate runtime modules.',
+						'Host-provided extension packages must be declared in peerDependencies with a "*" range, not dependencies: @nyan/coding-agent. Installed copies can bypass the extension loader and create duplicate runtime modules.',
 				},
 			]);
 		});
@@ -120,7 +117,7 @@ Skill content here.`,
 		});
 
 		it("should ignore extra markdown files in auto-discovered skill dirs", async () => {
-			const skillDir = join(agentDir, "skills", "pi-skills", "browser-tools");
+			const skillDir = join(agentDir, "skills", "nyan-skills", "browser-tools");
 			mkdirSync(skillDir, { recursive: true });
 			writeFileSync(
 				join(skillDir, "SKILL.md"),
@@ -182,7 +179,7 @@ Prompt content.`,
 
 		it("should prefer project resources over user on name collisions", async () => {
 			const userPromptsDir = join(agentDir, "prompts");
-			const projectPromptsDir = join(cwd, ".pi", "prompts");
+			const projectPromptsDir = join(cwd, ".nyan", "prompts");
 			mkdirSync(userPromptsDir, { recursive: true });
 			mkdirSync(projectPromptsDir, { recursive: true });
 			const userPromptPath = join(userPromptsDir, "commit.md");
@@ -191,7 +188,7 @@ Prompt content.`,
 			writeFileSync(projectPromptPath, "Project prompt");
 
 			const userSkillDir = join(agentDir, "skills", "collision-skill");
-			const projectSkillDir = join(cwd, ".pi", "skills", "collision-skill");
+			const projectSkillDir = join(cwd, ".nyan", "skills", "collision-skill");
 			mkdirSync(userSkillDir, { recursive: true });
 			mkdirSync(projectSkillDir, { recursive: true });
 			const userSkillPath = join(userSkillDir, "SKILL.md");
@@ -214,13 +211,13 @@ Project skill`,
 			);
 
 			const baseTheme = JSON.parse(
-				readFileSync(join(process.cwd(), "src", "modes", "interactive", "theme", "dark.json"), "utf-8"),
+				readFileSync(join(process.cwd(), "src", "ui", "theme", "dark.json"), "utf-8"),
 			) as { name: string; vars?: Record<string, string> };
 			baseTheme.name = "collision-theme";
 			const userThemePath = join(agentDir, "themes", "collision.json");
-			const projectThemePath = join(cwd, ".pi", "themes", "collision.json");
+			const projectThemePath = join(cwd, ".nyan", "themes", "collision.json");
 			mkdirSync(join(agentDir, "themes"), { recursive: true });
-			mkdirSync(join(cwd, ".pi", "themes"), { recursive: true });
+			mkdirSync(join(cwd, ".nyan", "themes"), { recursive: true });
 			writeFileSync(userThemePath, JSON.stringify(baseTheme, null, 2));
 			if (baseTheme.vars) {
 				baseTheme.vars.accent = "#ff00ff";
@@ -245,8 +242,8 @@ Project skill`,
 			mkdirSync(sharedExtDir, { recursive: true });
 			writeFileSync(
 				join(sharedExtDir, "shared.ts"),
-				`export default function(pi) {
-	pi.registerCommand("shared", {
+				`export default function(nyan) {
+	nyan.registerCommand("shared", {
 		description: "shared command",
 		handler: async () => {},
 	});
@@ -254,9 +251,9 @@ Project skill`,
 			);
 
 			mkdirSync(agentDir, { recursive: true });
-			mkdirSync(join(cwd, ".pi"), { recursive: true });
+			mkdirSync(join(cwd, ".nyan"), { recursive: true });
 			symlinkSync(sharedExtDir, join(agentDir, "extensions"), "dir");
-			symlinkSync(sharedExtDir, join(cwd, ".pi", "extensions"), "dir");
+			symlinkSync(sharedExtDir, join(cwd, ".nyan", "extensions"), "dir");
 
 			const loader = new DefaultResourceLoader({ cwd, agentDir });
 			await loader.reload();
@@ -267,23 +264,23 @@ Project skill`,
 
 			// mergePaths processes project paths before user paths, so the project
 			// alias is the canonical survivor.
-			expect(extensionsResult.extensions[0].path).toBe(join(cwd, ".pi", "extensions", "shared.ts"));
+			expect(extensionsResult.extensions[0].path).toBe(join(cwd, ".nyan", "extensions", "shared.ts"));
 		});
 
 		it("should load user extensions before trust and reuse them after trust resolves", async () => {
 			const userExtDir = join(agentDir, "extensions");
-			const projectExtDir = join(cwd, ".pi", "extensions");
+			const projectExtDir = join(cwd, ".nyan", "extensions");
 			mkdirSync(userExtDir, { recursive: true });
 			mkdirSync(projectExtDir, { recursive: true });
-			const loadCountKey = `__piTrustPreloadCount_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+			const loadCountKey = `__nyanTrustPreloadCount_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 			const globalState = globalThis as typeof globalThis & Record<string, number | undefined>;
 
 			writeFileSync(
 				join(userExtDir, "user.ts"),
 				`globalThis[${JSON.stringify(loadCountKey)}] = (globalThis[${JSON.stringify(loadCountKey)}] ?? 0) + 1;
-export default function(pi) {
-	pi.on("project_trust", () => ({ trusted: "yes" }));
-	pi.registerCommand("user-trust", {
+export default function(nyan) {
+	nyan.on("project_trust", () => ({ trusted: "yes" }));
+	nyan.registerCommand("user-trust", {
 		description: "user trust",
 		handler: async () => {},
 	});
@@ -291,8 +288,8 @@ export default function(pi) {
 			);
 			writeFileSync(
 				join(projectExtDir, "project.ts"),
-				`export default function(pi) {
-	pi.registerCommand("project-trusted", {
+				`export default function(nyan) {
+	nyan.registerCommand("project-trusted", {
 		description: "project trusted",
 		handler: async () => {},
 	});
@@ -311,7 +308,7 @@ export default function(pi) {
 
 			const extensionsResult = loader.getExtensions();
 			expect(extensionsResult.extensions.map((extension) => extension.path)).toEqual([
-				join(cwd, ".pi", "extensions", "project.ts"),
+				join(cwd, ".nyan", "extensions", "project.ts"),
 				join(userExtDir, "user.ts"),
 			]);
 			expect(globalState[loadCountKey]).toBe(1);
@@ -319,18 +316,18 @@ export default function(pi) {
 
 		it("should keep both extensions loaded when command names collide", async () => {
 			const userExtDir = join(agentDir, "extensions");
-			const projectExtDir = join(cwd, ".pi", "extensions");
+			const projectExtDir = join(cwd, ".nyan", "extensions");
 			mkdirSync(userExtDir, { recursive: true });
 			mkdirSync(projectExtDir, { recursive: true });
 
 			writeFileSync(
 				join(projectExtDir, "project.ts"),
-				`export default function(pi) {
-	pi.registerCommand("deploy", {
+				`export default function(nyan) {
+	nyan.registerCommand("deploy", {
 		description: "project deploy",
 		handler: async () => {},
 	});
-	pi.registerCommand("project-only", {
+	nyan.registerCommand("project-only", {
 		description: "project only",
 		handler: async () => {},
 	});
@@ -339,12 +336,12 @@ export default function(pi) {
 
 			writeFileSync(
 				join(userExtDir, "user.ts"),
-				`export default function(pi) {
-	pi.registerCommand("deploy", {
+				`export default function(nyan) {
+	nyan.registerCommand("deploy", {
 		description: "user deploy",
 		handler: async () => {},
 	});
-	pi.registerCommand("user-only", {
+	nyan.registerCommand("user-only", {
 		description: "user only",
 		handler: async () => {},
 	});
@@ -486,10 +483,10 @@ Content`,
 			expect(agentsFiles).toEqual([]);
 		});
 
-		it("should discover SYSTEM.md from cwd/.pi", async () => {
-			const piDir = join(cwd, ".pi");
-			mkdirSync(piDir, { recursive: true });
-			writeFileSync(join(piDir, "SYSTEM.md"), "You are a helpful assistant.");
+		it("should discover SYSTEM.md from cwd/.nyan", async () => {
+			const nyanDir = join(cwd, ".nyan");
+			mkdirSync(nyanDir, { recursive: true });
+			writeFileSync(join(nyanDir, "SYSTEM.md"), "You are a helpful assistant.");
 
 			const loader = new DefaultResourceLoader({ cwd, agentDir });
 			await loader.reload();
@@ -498,16 +495,16 @@ Content`,
 		});
 
 		it("should skip project resources that require trust when project is not trusted", async () => {
-			const piDir = join(cwd, ".pi");
-			const extensionsDir = join(piDir, "extensions");
-			const skillDir = join(piDir, "skills", "project-skill");
-			const promptsDir = join(piDir, "prompts");
-			const themesDir = join(piDir, "themes");
+			const nyanDir = join(cwd, ".nyan");
+			const extensionsDir = join(nyanDir, "extensions");
+			const skillDir = join(nyanDir, "skills", "project-skill");
+			const promptsDir = join(nyanDir, "prompts");
+			const themesDir = join(nyanDir, "themes");
 			mkdirSync(extensionsDir, { recursive: true });
 			mkdirSync(skillDir, { recursive: true });
 			mkdirSync(promptsDir, { recursive: true });
 			mkdirSync(themesDir, { recursive: true });
-			writeFileSync(join(piDir, "SYSTEM.md"), "Project system prompt.");
+			writeFileSync(join(nyanDir, "SYSTEM.md"), "Project system prompt.");
 			writeFileSync(join(agentDir, "SYSTEM.md"), "Global system prompt.");
 			writeFileSync(join(agentDir, "AGENTS.md"), "Global instructions");
 			writeFileSync(join(cwd, "AGENTS.md"), "Project instructions");
@@ -522,7 +519,7 @@ Project skill content`,
 			);
 			writeFileSync(join(promptsDir, "project.md"), "Project prompt");
 			const themeData = JSON.parse(
-				readFileSync(join(process.cwd(), "src", "modes", "interactive", "theme", "dark.json"), "utf-8"),
+				readFileSync(join(process.cwd(), "src", "ui", "theme", "dark.json"), "utf-8"),
 			) as { name: string };
 			themeData.name = "project-theme";
 			writeFileSync(join(themesDir, "project.json"), JSON.stringify(themeData, null, 2));
@@ -544,9 +541,9 @@ Project skill content`,
 		});
 
 		it("should discover APPEND_SYSTEM.md", async () => {
-			const piDir = join(cwd, ".pi");
-			mkdirSync(piDir, { recursive: true });
-			writeFileSync(join(piDir, "APPEND_SYSTEM.md"), "Additional instructions.");
+			const nyanDir = join(cwd, ".nyan");
+			mkdirSync(nyanDir, { recursive: true });
+			writeFileSync(join(nyanDir, "APPEND_SYSTEM.md"), "Additional instructions.");
 
 			const loader = new DefaultResourceLoader({ cwd, agentDir });
 			await loader.reload();
@@ -557,9 +554,9 @@ Project skill content`,
 
 	describe("system prompt sources", () => {
 		it("exposes discovered project SYSTEM.md as the system prompt source", async () => {
-			const piDir = join(cwd, ".pi");
-			const systemPromptPath = join(piDir, "SYSTEM.md");
-			mkdirSync(piDir, { recursive: true });
+			const nyanDir = join(cwd, ".nyan");
+			const systemPromptPath = join(nyanDir, "SYSTEM.md");
+			mkdirSync(nyanDir, { recursive: true });
 			writeFileSync(systemPromptPath, "Project system prompt.");
 
 			const loader = new DefaultResourceLoader({ cwd, agentDir });
@@ -600,9 +597,9 @@ Project skill content`,
 		});
 
 		it("exposes discovered APPEND_SYSTEM.md as an append system prompt source", async () => {
-			const piDir = join(cwd, ".pi");
-			const appendSystemPromptPath = join(piDir, "APPEND_SYSTEM.md");
-			mkdirSync(piDir, { recursive: true });
+			const nyanDir = join(cwd, ".nyan");
+			const appendSystemPromptPath = join(nyanDir, "APPEND_SYSTEM.md");
+			mkdirSync(nyanDir, { recursive: true });
 			writeFileSync(appendSystemPromptPath, "Project append prompt.");
 
 			const loader = new DefaultResourceLoader({ cwd, agentDir });
@@ -767,7 +764,7 @@ description: Package prompt
 Package prompt content`,
 			);
 			const baseTheme = JSON.parse(
-				readFileSync(join(process.cwd(), "src", "modes", "interactive", "theme", "dark.json"), "utf-8"),
+				readFileSync(join(process.cwd(), "src", "ui", "theme", "dark.json"), "utf-8"),
 			) as { name: string };
 			writeFileSync(
 				join(packageThemesDir, "package-theme.json"),
@@ -935,10 +932,10 @@ Content`,
 			writeFileSync(
 				join(ext1Dir, "index.ts"),
 				`
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@nyan/coding-agent";
 import { Type } from "typebox";
-export default function(pi: ExtensionAPI) {
-  pi.registerTool({
+export default function(nyan: ExtensionAPI) {
+  nyan.registerTool({
     name: "duplicate-tool",
     description: "First",
     parameters: Type.Object({}),
@@ -950,10 +947,10 @@ export default function(pi: ExtensionAPI) {
 			writeFileSync(
 				join(ext2Dir, "index.ts"),
 				`
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@nyan/coding-agent";
 import { Type } from "typebox";
-export default function(pi: ExtensionAPI) {
-  pi.registerTool({
+export default function(nyan: ExtensionAPI) {
+  nyan.registerTool({
     name: "duplicate-tool",
     description: "Second",
     parameters: Type.Object({}),
@@ -977,16 +974,16 @@ export default function(pi: ExtensionAPI) {
 			writeFileSync(
 				join(globalExtDir, "global.ts"),
 				`
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@nyan/coding-agent";
 import { Type } from "typebox";
-export default function(pi: ExtensionAPI) {
-  pi.registerTool({
+export default function(nyan: ExtensionAPI) {
+  nyan.registerTool({
     name: "duplicate-tool",
     description: "global tool",
     parameters: Type.Object({}),
     execute: async () => ({ result: "global" }),
   });
-  pi.registerCommand("deploy", {
+  nyan.registerCommand("deploy", {
     description: "global command",
     handler: async () => {},
   });
@@ -996,16 +993,16 @@ export default function(pi: ExtensionAPI) {
 			writeFileSync(
 				explicitExtPath,
 				`
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@nyan/coding-agent";
 import { Type } from "typebox";
-export default function(pi: ExtensionAPI) {
-  pi.registerTool({
+export default function(nyan: ExtensionAPI) {
+  nyan.registerTool({
     name: "duplicate-tool",
     description: "explicit tool",
     parameters: Type.Object({}),
     execute: async () => ({ result: "explicit" }),
   });
-  pi.registerCommand("deploy", {
+  nyan.registerCommand("deploy", {
     description: "explicit command",
     handler: async () => {},
   });
@@ -1045,9 +1042,9 @@ export default function(pi: ExtensionAPI) {
 			writeFileSync(
 				join(globalExtDir, "other-mcp.ts"),
 				`
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-export default function(pi: ExtensionAPI) {
-  pi.registerCommand("mcp", { description: "other mcp", handler: async () => {} });
+import type { ExtensionAPI } from "@nyan/coding-agent";
+export default function(nyan: ExtensionAPI) {
+  nyan.registerCommand("mcp", { description: "other mcp", handler: async () => {} });
 }`,
 			);
 
@@ -1058,13 +1055,14 @@ export default function(pi: ExtensionAPI) {
 					{
 						name: "mcp",
 						replaceable: true,
-						factory: (pi) => pi.registerCommand("mcp", { description: "built-in mcp", handler: async () => {} }),
+						factory: (nyan) =>
+							nyan.registerCommand("mcp", { description: "built-in mcp", handler: async () => {} }),
 					},
 					{
 						name: "llama",
 						replaceable: true,
-						factory: (pi) =>
-							pi.registerCommand("llama", { description: "built-in llama", handler: async () => {} }),
+						factory: (nyan) =>
+							nyan.registerCommand("llama", { description: "built-in llama", handler: async () => {} }),
 					},
 				],
 			});
@@ -1111,8 +1109,8 @@ export default function(pi: ExtensionAPI) {
 		});
 
 		it("should skip disabledBuiltinExtensions even when settings or -e enable them", async () => {
-			mkdirSync(join(cwd, ".pi"), { recursive: true });
-			writeFileSync(join(cwd, ".pi", "settings.json"), JSON.stringify({ extensions: ["+builtin:mcp"] }));
+			mkdirSync(join(cwd, ".nyan"), { recursive: true });
+			writeFileSync(join(cwd, ".nyan", "settings.json"), JSON.stringify({ extensions: ["+builtin:mcp"] }));
 			const loaded: string[] = [];
 			const loader = new DefaultResourceLoader({
 				cwd,
@@ -1135,9 +1133,9 @@ export default function(pi: ExtensionAPI) {
 			const userExtDir = join(agentDir, "extensions");
 			mkdirSync(userExtDir, { recursive: true });
 			writeFileSync(join(userExtDir, "user.ts"), "export default function() {}");
-			mkdirSync(join(cwd, ".pi"), { recursive: true });
+			mkdirSync(join(cwd, ".nyan"), { recursive: true });
 			// A project override gives the built-in project scope, which must not move it ahead.
-			writeFileSync(join(cwd, ".pi", "settings.json"), JSON.stringify({ extensions: ["+builtin:mcp"] }));
+			writeFileSync(join(cwd, ".nyan", "settings.json"), JSON.stringify({ extensions: ["+builtin:mcp"] }));
 			const loader = new DefaultResourceLoader({
 				cwd,
 				agentDir,
@@ -1174,9 +1172,9 @@ export default function(pi: ExtensionAPI) {
 
 		it("should apply project built-in extension overrides after trust resolves", async () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: ["-builtin:mcp"] }));
-			mkdirSync(join(cwd, ".pi"), { recursive: true });
+			mkdirSync(join(cwd, ".nyan"), { recursive: true });
 			writeFileSync(
-				join(cwd, ".pi", "settings.json"),
+				join(cwd, ".nyan", "settings.json"),
 				JSON.stringify({ extensions: ["+builtin:mcp", "-builtin:llama"] }),
 			);
 			const loaded: string[] = [];

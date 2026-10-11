@@ -1,20 +1,20 @@
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
+import { fauxAssistantMessage } from "@nyan/ai";
 import {
 	createRemoteServiceBinding,
 	type MutableReplicatedState,
 	RemoteServiceProvider,
 	type RemoteServiceTransport,
 	replicatedState,
-} from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+} from "@nyan/chord";
+import { BACKGROUND_CONTEXT } from "@nyan/chord/context";
 import {
 	FACET_BUNDLE_ARTIFACT_FORMAT,
 	FACET_BUNDLE_ARTIFACT_FORMAT_VERSION,
 	type FacetBundleArtifact,
-} from "@earendil-works/chord/node";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { ProcessTerminal, TuiMainScreen } from "@earendil-works/pi-tui";
+} from "@nyan/chord/node";
+import { ProcessTerminal, TuiMainScreen } from "@nyan/tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { type ClientTuiServer, ExperimentalClientTui } from "../src/experimental/client-tui.ts";
 import { createPresentationFacetData } from "../src/experimental/plugins/bundled.ts";
@@ -35,7 +35,7 @@ import {
 	type SessionSummary,
 } from "../src/experimental/services/sessions.ts";
 import { Transcript } from "../src/experimental/services/transcript.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../src/ui/theme/theme.ts";
 import { openFauxConversation } from "./experimental-durable-support.ts";
 
 const serverId = "00000000-0000-4000-8000-000000000001";
@@ -122,7 +122,7 @@ describe("experimental client TUI", () => {
 			const transcriptState = await durable.conversation.viewState(BACKGROUND_CONTEXT);
 
 			const reloadSource =
-				'"use strict";\nconst { defineFacet, defineService } = require("@earendil-works/chord");\nconst Models = defineService("pi.models");\nmodule.exports = { __esModule: true, default: defineFacet({ id: "test-tui-facet", setup(env) { env.use(Models); } }) };\n';
+				'"use strict";\nconst { defineFacet, defineService } = require("@nyan/chord");\nconst Models = defineService("nyan.models");\nmodule.exports = { __esModule: true, default: defineFacet({ id: "test-tui-facet", setup(env) { env.use(Models); } }) };\n';
 			const reloadArtifact: FacetBundleArtifact = {
 				format: FACET_BUNDLE_ARTIFACT_FORMAT,
 				formatVersion: FACET_BUNDLE_ARTIFACT_FORMAT_VERSION,
@@ -131,7 +131,7 @@ describe("experimental client TUI", () => {
 				entry: {
 					file: "tui.cjs",
 					integrity: `sha256-${createHash("sha256").update(reloadSource).digest("base64")}`,
-					externalImports: ["@earendil-works/chord"],
+					externalImports: ["@nyan/chord"],
 				},
 				source: reloadSource,
 			};

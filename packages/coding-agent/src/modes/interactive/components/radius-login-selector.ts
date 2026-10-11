@@ -3,8 +3,8 @@
  * is Radius-only and is not exposed to other selectors.
  */
 
-import { type Color, foregroundAnsi, mixColors, parseColor, Text, type TUI } from "@earendil-works/pi-tui";
-import { theme } from "../theme/theme.ts";
+import { type Color, foregroundAnsi, mixColors, parseColor, Text, type TUI } from "@nyan/tui";
+import { theme } from "../../../ui/theme/theme.ts";
 import { ExtensionSelectorComponent } from "./extension-selector.ts";
 
 /** The four colors of the Radius logo, in the order they stream across the text. */

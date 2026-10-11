@@ -1,12 +1,12 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
-import { Container, Text, type TUI } from "@earendil-works/pi-tui";
+import type { AgentMessage } from "@nyan/agent-core";
+import type { AssistantMessage, ToolResultMessage, Usage } from "@nyan/ai";
+import { Container, Text, type TUI } from "@nyan/tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import type { AgentSessionEvent } from "../../../src/core/agent-session.ts";
 import type { SessionEntry } from "../../../src/core/session-manager.ts";
 import type { ToolExecutionComponent } from "../../../src/modes/interactive/components/tool-execution.ts";
 import { InteractiveMode } from "../../../src/modes/interactive/interactive-mode.ts";
-import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
+import { initTheme } from "../../../src/ui/theme/theme.ts";
 import { stripAnsi } from "../../../src/utils/ansi.ts";
 
 const TOOL_CALL_ID = "tool-4167";

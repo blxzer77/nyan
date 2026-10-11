@@ -1,5 +1,5 @@
-//! pi-env: a small daemon that gives a Pi Durable host an execution environment on this machine over stdin/stdout
-//! (docs/protocol.md). Started as `pi-env serve --token <hex>`, usually through `ssh`.
+//! nyan-env: a small daemon that gives a Nyan Durable host an execution environment on this machine over stdin/stdout
+//! (docs/protocol.md). Started as `nyan-env serve --token <hex>`, usually through `ssh`.
 
 mod decode;
 mod errors;
@@ -29,7 +29,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const PROTOCOL: u64 = 1;
 /// The npm package version this daemon ships with (build.rs).
-const VERSION: &str = env!("PI_ENV_VERSION");
+const VERSION: &str = env!("NYAN_ENV_VERSION");
 const PING_INTERVAL: Duration = Duration::from_secs(5);
 const SILENCE_LIMIT_MS: u64 = 30_000;
 const SCAN_CHUNK: usize = 64 * 1024;
@@ -438,7 +438,7 @@ fn serve_frames(server: &Arc<Server>, input: &mut impl Read) -> io::Result<()> {
 fn serve(token: &str) -> io::Result<()> {
     {
         let mut stdout = io::stdout().lock();
-        writeln!(stdout, "PI-ENV {token}")?;
+        writeln!(stdout, "NYAN-ENV {token}")?;
         stdout.flush()?;
     }
     let output = Arc::new(Output::default());
@@ -497,19 +497,19 @@ fn main() {
                 .position(|arg| arg == "--token")
                 .and_then(|index| args.get(index + 1));
             let Some(token) = token else {
-                eprintln!("usage: pi-env serve --token <hex>");
+                eprintln!("usage: nyan-env serve --token <hex>");
                 std::process::exit(2);
             };
             if let Err(error) = serve(token) {
-                eprintln!("pi-env: {error}");
+                eprintln!("nyan-env: {error}");
                 std::process::exit(1);
             }
             // Request threads may still be blocked (a FIFO open); nothing is left to answer them.
             std::process::exit(0);
         }
-        Some("--version") => println!("pi-env {VERSION}"),
+        Some("--version") => println!("nyan-env {VERSION}"),
         _ => {
-            eprintln!("usage: pi-env serve --token <hex>");
+            eprintln!("usage: nyan-env serve --token <hex>");
             std::process::exit(2);
         }
     }
