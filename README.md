@@ -20,25 +20,13 @@ Use Pi [interactively](packages/coding-agent/docs/usage.md), automate it in [pri
 
 ## Getting started
 
-Install the command-line interface:
-
-```bash
-curl -fsSL https://pi.dev/install.sh | sh
-```
-
-On Windows:
-
-```shell
-powershell -c "irm https://pi.dev/install.ps1 | iex"
-```
-
-The installer pins all dependencies and updates Pi with `pi update`. Alternatively, install directly with npm, which does not pin transitive dependencies:
+Install the command-line interface with npm. It requires Node.js 22.19 or newer and no dependency lifecycle scripts:
 
 ```bash
 npm install -g --ignore-scripts @blxzer/nyan
 ```
 
-Pi requires Node.js 22.19 or newer. The macOS, Linux, and Windows installers can install it if needed. Pi does not require dependency lifecycle scripts for a normal npm installation.
+Release binaries for macOS, Linux, and Windows are attached to each [GitHub Release](https://github.com/blxzer77/nyan/releases).
 
 Start Pi in the directory where you want it to work:
 

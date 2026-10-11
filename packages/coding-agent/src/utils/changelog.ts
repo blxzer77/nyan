@@ -8,7 +8,9 @@ export interface ChangelogEntry {
 	content: string;
 }
 
-const GITHUB_REPO = "earendil-works/pi";
+const GITHUB_REPO = "blxzer77/nyan";
+// Links to the retired pi-mono repository point at upstream Pi, where those issues and commits live.
+const UPSTREAM_REPO = "earendil-works/pi";
 const CHANGELOG_LINK_BASE_PATH = "packages/coding-agent";
 const LEGACY_REPO_RE = /^https:\/\/github\.com\/(?:badlogic|earendil-works)\/pi-mono(?=\/|$)/;
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
@@ -67,7 +69,7 @@ function isDirectoryTarget(originalPath: string, repositoryPath: string): boolea
 }
 
 function normalizeChangelogLinkTarget(target: string, tag: string): string {
-	let canonicalTarget = target.replace(LEGACY_REPO_RE, `https://github.com/${GITHUB_REPO}`);
+	let canonicalTarget = target.replace(LEGACY_REPO_RE, `https://github.com/${UPSTREAM_REPO}`);
 	const repoUrl = `https://github.com/${GITHUB_REPO}`;
 
 	for (const route of ["blob", "tree"]) {
