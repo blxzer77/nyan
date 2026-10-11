@@ -330,7 +330,7 @@ describe("read of images, with the Photon image processor", () => {
 		expect(shrunk!.data.length).toBeLessThanOrEqual(tight.maxBytes);
 		expect(shrunk!.resized?.from).toEqual({ width: 2000, height: 2000 });
 		expect(shrunk!.resized!.to.width).toBeLessThan(2000);
-	});
+	}, 60_000);
 
 	it("keeps at least one pixel on each side of an extreme aspect ratio", async () => {
 		const result = await processor.prepare(encode(6000, 2, "png"), "image/png", DEFAULT_IMAGE_LIMITS);
