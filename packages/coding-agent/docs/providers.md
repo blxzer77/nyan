@@ -46,7 +46,6 @@ This table covers providers with a single primary API-key variable. Providers th
 | ZAI Coding Plan (Global) | `ZAI_API_KEY` |
 | ZAI Coding Plan (China) | `ZAI_CODING_CN_API_KEY` |
 | OpenCode Zen and Go | `OPENCODE_API_KEY` |
-| Radius | `RADIUS_API_KEY` |
 | TypeSafe ([classifier models](models.md#use-classifier-models)) | `TYPESAFE_API_KEY` |
 | Hugging Face | `HF_TOKEN` |
 | Fireworks | `FIREWORKS_API_KEY` |
@@ -100,18 +99,6 @@ A stored API-key credential can include an `env` object. Its values take priorit
   }
 }
 ```
-
-### Radius
-
-Radius is a service crafted for Nyan by the builders of Nyan, Earendil Works. It provides a customizable AI gateway with organization-level controls and analytics built in, and artifacts for sharing what you create with Nyan.
-
-To get started, run `/login radius` in Nyan. This adds Radius as a provider, and its models appear in `/model` like any other provider's.
-
-Radius also has an MCP server, so Nyan can manage Radius for you.
-
-Radius is currently in early alpha and evolving quickly. See [radius.earendil.com](https://radius.earendil.com) for more.
-
-Radius authentication uses its gateway catalog and caches refreshed model metadata for later offline startup. Radius ships no catalog: the gateway named by `NYAN_RADIUS_GATEWAY`, or a custom gateway configured in `models.json`, supplies its own.
 
 ### Azure OpenAI
 

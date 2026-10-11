@@ -4,7 +4,6 @@ import { streamSimple as streamAzureOpenAIResponses } from "../src/api/azure-ope
 import { streamSimple as streamGoogleGenerativeAI } from "../src/api/google-generative-ai.ts";
 import { streamSimple as streamGoogleVertex } from "../src/api/google-vertex.ts";
 import { streamSimple as streamMistral } from "../src/api/mistral-conversations.ts";
-import { streamSimple as streamNyanMessages } from "../src/api/nyan-messages.ts";
 import { streamSimple as streamOpenAICodexResponses } from "../src/api/openai-codex-responses.ts";
 import { streamSimple as streamOpenAICompletions } from "../src/api/openai-completions.ts";
 import { streamSimple as streamOpenAIResponses } from "../src/api/openai-responses.ts";
@@ -100,7 +99,7 @@ describe("fetch stream option", () => {
 		expect(globalThis.fetch).toBe(fallback);
 	});
 
-	it("uses fetch for Mistral, Codex SSE, and nyan-messages HTTP requests", async () => {
+	it("uses fetch for Mistral and Codex SSE HTTP requests", async () => {
 		const { custom, fallback } = mockFetches();
 		await streamMistral(createModel("mistral-conversations"), context, {
 			apiKey: "test-key",
@@ -112,11 +111,7 @@ describe("fetch stream option", () => {
 			transport: "sse",
 			maxRetries: 0,
 		}).result();
-		await streamNyanMessages(createModel("nyan-messages"), context, {
-			apiKey: "test-key",
-			fetch: custom,
-		}).result();
-		expect(custom).toHaveBeenCalledTimes(3);
+		expect(custom).toHaveBeenCalledTimes(2);
 		expect(fallback).not.toHaveBeenCalled();
 		expect(globalThis.fetch).toBe(fallback);
 	});

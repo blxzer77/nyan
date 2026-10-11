@@ -66,13 +66,10 @@ describe("builtin providers", () => {
 		expect(all.length).toBeGreaterThan(500);
 
 		for (const provider of providers) {
-			// Radius is purely dynamic: its catalog comes from the configured gateway, not from the build.
-			if (provider.id === "radius") continue;
 			const list = models.getAllModels(provider.id);
 			expect(list.length).toBeGreaterThan(0);
 			expect(list.every((m) => m.provider === provider.id)).toBe(true);
 		}
-		expect(models.getAllModels("radius")).toEqual([]);
 	});
 
 	it("returns empty results for unknown provider ids", () => {

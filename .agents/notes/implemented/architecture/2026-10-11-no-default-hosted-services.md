@@ -25,16 +25,15 @@ Nyan assumes no hosted service. Each feature that needs one reads its base URL f
 
 | Variable | Without it |
 | --- | --- |
-| `NYAN_LATEST_VERSION_URL` | no startup version check, `update` cannot name a latest version |
+| `NYAN_LATEST_VERSION_URL` | the npm registry answers for this package's `latest` dist-tag; set it to ask a release feed instead (`NYAN_NPM_REGISTRY` redirects the registry lookup) |
 | `NYAN_INSTALLER_API_BASE` | a managed install update stops with an error naming the variable |
 | `NYAN_SHARE_VIEWER_URL` | `/share` prints only the gist URL |
 | `NYAN_CATALOG_BASE_URL` | the remote catalog overlay is not applied |
 | `NYAN_MCP_CLIENT_METADATA_URL` | `clientRegistration: "cimd"` fails with an error naming the variable |
-| `NYAN_RADIUS_GATEWAY` | the Radius provider offers no models; its default is `https://radius.invalid`, a reserved name that never resolves |
 
 The install ping and the `/dementedelves` Earendil announcement are removed. The npm "migrate to the installer" hint after `update` is removed. Provider attribution identifies Nyan with its repository URL. The Pi installer scripts and the Nix instructions are removed from the quickstart; Nyan ships through npm.
 
-The Radius provider ships no static catalog: its models come from the gateway named by `NYAN_RADIUS_GATEWAY`, and `scripts/generate-models.ts` no longer fetches a gateway, so building does not depend on one.
+The Radius gateway cluster was first neutralized with a reserved `.invalid` host and then removed altogether; see [remove unused upstream content](../process/2026-10-12-remove-unused-upstream-content.md).
 
 ## Alternatives considered
 
@@ -42,13 +41,13 @@ The Radius provider ships no static catalog: its models come from the gateway na
 
 **Point every default at a `.invalid` host.** Rejected for all but Radius: it would make every startup attempt a DNS lookup that is guaranteed to fail. Radius keeps the placeholder because its default is read at module load by several callers.
 
-**Delete the Radius cluster (provider, login selector, relay, share and bug-report upload).** Rejected for this change: it touches more than fifty files and is a product decision, not a rename. The cluster stays working for any gateway the operator configures.
+**Keep the Radius cluster for any gateway the operator configures.** Superseded: it was removed in a follow-up, because it could only talk to the upstream company's gateway product.
 
 ## Consequences
 
-Out of the box Nyan makes no request to any service other than the model providers the user configures and the npm registry. `nyan update` for an npm install still runs the package manager. Re-enabling a feature is a configuration change, not a code change. A hosted Nyan service, if one ever exists, sets these variables or replaces the defaults in a new note.
+Out of the box Nyan makes no request to any service other than the model providers the user configures and the npm registry (the version check). `nyan update` for an npm install still runs the package manager. Re-enabling a feature is a configuration change, not a code change. A hosted Nyan service, if one ever exists, sets these variables or replaces the defaults in a new note.
 
-`npm run hydrate:model-data` and `generate-models` no longer include a Radius catalog, so `radius.models.ts` and `data/radius.json` are gone and `models.generated.ts` lists one provider fewer.
+`generate-models` no longer includes a Radius catalog, so `radius.models.ts` and `data/radius.json` are gone and `models.generated.ts` lists one provider fewer.
 
 ## Verification
 

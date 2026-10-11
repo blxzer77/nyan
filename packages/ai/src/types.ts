@@ -13,8 +13,7 @@ export type KnownApi =
 	| "anthropic-messages"
 	| "bedrock-converse-stream"
 	| "google-generative-ai"
-	| "google-vertex"
-	| "nyan-messages";
+	| "google-vertex";
 
 export type Api = KnownApi | (string & {});
 
@@ -39,7 +38,6 @@ export type KnownProvider =
 	| "openai"
 	| "azure"
 	| "openai-codex"
-	| "radius"
 	| "typesafe"
 	| "nvidia"
 	| "deepseek"

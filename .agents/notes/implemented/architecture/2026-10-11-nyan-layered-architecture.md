@@ -40,7 +40,7 @@ A layer is only worth having if it forbids a dependency someone could plausibly 
 
 **Put `ai` contracts in a separate package now.** Deferred. The `contracts` subpath plus the `entryRules`, the module layers and the entry-graph budget already make the boundary executable; a package split adds a release unit without adding enforcement. Revisit when a second consumer needs the contract without the provider graph.
 
-**Fix the `durable` run-lifecycle cycle together with the layering.** Rejected for this change: it alters the commit and recovery boundaries of an in-flight run, so it needs its own note and the durable crash-recovery suite. It is tracked in [the proposed note](../../proposed/architecture/2026-10-11-durable-run-lifecycle-cycle.md).
+**Fix the `durable` run-lifecycle cycle together with the layering.** Done separately, as its own change, because it touches the commit and recovery boundaries of an in-flight run; see [the durable note](2026-10-11-durable-run-lifecycle-cycle.md).
 
 **Move tool renderers out of `core` instead of moving `ui` below it.** Rejected: tool definitions carry their renderers by design (`ToolDefinition.renderCall/renderResult`), so the renderers' presentation dependencies belong in a layer below `core`, not above it.
 
@@ -48,7 +48,7 @@ A layer is only worth having if it forbids a dependency someone could plausibly 
 
 A new dependency that points upward, sideways inside a layer, toward a less stable package, around a package's exports, or into an unclassified file fails `npm run check` with the offending file and line. Adding a package, module or exception means editing `layers.json` and saying why.
 
-Known debts, all visible in `layers.json`: the `durable` harness cycle (`compaction`, `generation`, `live`, `submissions`, `tool`), two type-only exceptions in `durable` (`types.ts` and `entries.ts` name harness types), and one `coding-agent` exception (`core/extensions/virtual-modules.ts` imports the package's public barrel). The `ai` runtime import graph is acyclic; its type-level cycles through `types.ts` were removed.
+Known debts, all visible in `layers.json`: two type-only exceptions in `durable` (`types.ts` and `entries.ts` name harness types) and one `coding-agent` exception (`core/extensions/virtual-modules.ts` imports the package's public barrel). No static runtime cycle remains: the `durable` run lifecycle was untangled in [its own note](2026-10-11-durable-run-lifecycle-cycle.md), and the `ai` type-level cycles through `types.ts` were removed. The layer set shrank with the removal of `packages/env` and `packages/evals` (see [the removal note](../process/2026-10-12-remove-unused-upstream-content.md)): seven layers over twelve packages.
 
 Package-internal layering is not applied to the small packages (`tui`, `mcp`, `server`, `client`, `protocol`, `agent`); their size does not justify the maintenance.
 

@@ -24,22 +24,20 @@ Package test suites were run against an unmodified export of Pi v1.1.0 built and
 .github/       CI
 .husky/        local Git hooks
 docs/          current-state documentation and the layer policy
-packages/      14 workspace packages (Node/TypeScript, plus a Rust daemon in packages/env/daemon)
+packages/      12 workspace packages (Node/TypeScript)
 scripts/       workspace checks and build helpers
 ```
 
 The root `build` is an explicit sequence, not a graph scheduler:
 
 ```text
-chord -> tui -> telemetry -> codemode -> mcp -> ai -> durable -> env
+chord -> tui -> telemetry -> codemode -> mcp -> ai -> durable
       -> agent -> protocol -> client -> server -> coding-agent
 ```
 
-`packages/evals` is private and outside the production build.
-
 ## Packages, layers and stability
 
-Instability `I = Ce / (Ca + Ce)` is computed by the architecture check from source imports; every dependency edge runs to an equal or lower value.
+Instability `I = Ce / (Ca + Ce)` is computed by the architecture check from source imports; every dependency edge runs to an equal or lower value. Twelve packages remain; `env` and `evals` were removed as unused.
 
 | Layer | Package | Responsibility | Depends on | I |
 | --- | --- | --- | --- | --- |
@@ -48,15 +46,13 @@ Instability `I = Ce / (Ca + Ce)` is computed by the architecture check from sour
 | capabilities | `@nyan/tui` | Terminal rendering and input widgets | — | 0.00 |
 | capabilities | `@nyan/codemode` | QuickJS/WASI tool sandbox | — | 0.00 |
 | capabilities | `@nyan/mcp` | MCP client, OAuth, testing helpers | — | 0.00 |
-| model | `@nyan/ai` | Providers, catalog, authentication, streams, cost | telemetry | 0.20 |
+| model | `@nyan/ai` | Providers, catalog, authentication, streams, cost | telemetry | 0.25 |
 | agent-core | `@nyan/agent-core` | Agent state, loop, tool calls | `ai/contracts` | 0.50 |
-| durable-runtime | `@nyan/durable` | Durable conversations, tasks, documents, storage, recovery | chord, `ai/contracts` + `ai/utils` | 0.50 |
-| durable-runtime | `@nyan/env` | Remote execution client and Rust daemon | chord, durable | 1.00 |
+| durable-runtime | `@nyan/durable` | Durable conversations, tasks, documents, storage, recovery | chord, `ai/contracts` + `ai/utils` | 0.67 |
 | transport | `@nyan/protocol` | Transport-neutral CBOR envelopes and framing | chord | 0.25 |
 | transport | `@nyan/client` | Remote-session client | chord, protocol | 0.67 |
 | transport | `@nyan/server` | Local session server and transports | chord, protocol | 0.67 |
-| product-shell | `@nyan/coding-agent` | CLI, SDK, sessions, modes, extensions, tools | chord, agent, ai, codemode, mcp, tui, durable, client, protocol, server | 0.91 |
-| verification | `@nyan/evals` | Private evaluation harness | ai, coding-agent | 1.00 |
+| product-shell | `@nyan/coding-agent` | CLI, SDK, sessions, modes, extensions, tools | chord, agent, ai, codemode, mcp, tui, durable, client, protocol, server | 1.00 |
 
 `coding-agent` is the only composition root for the runtime layers. `@nyan/durable` is a dev dependency of it because the `experimental/` tree that imports it is source-only and excluded from the build.
 
@@ -71,12 +67,11 @@ Instability `I = Ce / (Ca + Ce)` is computed by the architecture check from sour
 | Package | Layers, lowest first | Notable rule |
 | --- | --- | --- |
 | `ai` | contracts → auth-contracts → infra / catalog → api / auth → registry → providers → facade | the contract (`types.ts`, `utils/`) imports no adapter; adapters import no registry |
-| `durable` | core → session / storage → harness → tools / testing → facade | one recorded cycle and two type-only exceptions (below) |
+| `durable` | core → session / storage → harness → tools / testing → facade | two type-only exceptions (below); the run lifecycle has no import cycle |
 | `coding-agent` | base → ui → core → extensions → modes → cli → entry | the headless `core` imports no `modes`, `cli` or terminal presentation outside `ui` |
 
-Static runtime import cycles are forbidden; `ai` has none. Recorded debt, all in `layers.json`:
+Static runtime import cycles are forbidden and none exist (`cycles.known` is empty). The `durable` run lifecycle was untangled by [starting a task from its reference](../../.agents/notes/implemented/architecture/2026-10-11-durable-run-lifecycle-cycle.md). Recorded exceptions, all in `layers.json`:
 
-- the `durable` harness cycle (`compaction`, `generation`, `live`, `submissions`, `tool`) — [proposed fix](../../.agents/notes/proposed/architecture/2026-10-11-durable-run-lifecycle-cycle.md);
 - `durable/types.ts` and `durable/entries.ts` import harness types (type-only);
 - `coding-agent/core/extensions/virtual-modules.ts` imports the package's public barrel.
 
@@ -90,13 +85,13 @@ Still referring to Pi, by design: `CHANGELOG.md` files (release history to v1.1.
 
 ## External services
 
-Nyan includes no default address for any hosted service. Version feed, installer, share viewer, model catalog, MCP client metadata and the Radius gateway are configured with `NYAN_LATEST_VERSION_URL`, `NYAN_INSTALLER_API_BASE`, `NYAN_SHARE_VIEWER_URL`, `NYAN_CATALOG_BASE_URL`, `NYAN_MCP_CLIENT_METADATA_URL` and `NYAN_RADIUS_GATEWAY`; without them the feature is off or reports the missing variable. The install ping, the installer migration hint and the Earendil announcement are removed. See [no default hosted services](../../.agents/notes/implemented/architecture/2026-10-11-no-default-hosted-services.md).
+Nyan includes no default address for any hosted service. The installer, share viewer, model catalog and MCP client metadata are configured with `NYAN_INSTALLER_API_BASE`, `NYAN_SHARE_VIEWER_URL`, `NYAN_CATALOG_BASE_URL` and `NYAN_MCP_CLIENT_METADATA_URL`; without them the feature is off or reports the missing variable. The version check asks the npm registry for this package's `latest` (`NYAN_LATEST_VERSION_URL` / `NYAN_NPM_REGISTRY` override it). The Radius gateway, its relay and its provider, the install ping, the installer migration hint and the Earendil announcement are removed. See [no default hosted services](../../.agents/notes/implemented/architecture/2026-10-11-no-default-hosted-services.md).
 
 ## Known limits
 
-- Nothing is committed, tagged, pushed or published. `origin` still points at `blxzer77/pi`; repository links in documents and manifests assume `blxzer77/nyan`.
-- Committed native prebuilds (`packages/tui/native/*/prebuilds`) and `doom.wasm` predate the rename and should be rebuilt on each platform before a release.
-- CI has a verification workflow only; there is no version, tag or npm publish workflow.
+- Local commits only: nothing is pushed, tagged or published. `origin` still points at `blxzer77/pi`; repository links in documents and manifests assume `blxzer77/nyan`.
+- The committed native prebuilds (`packages/tui/native/*/prebuilds`) predate the rename; the release workflow rebuilds them on each platform and ships the fresh binaries, so published packages do not carry the old ones.
+- The release workflow is written but has not run: it needs the `NPM_TOKEN` secret, the `npm` environment, and the `@nyan` scope on npm. `npm run release:dry` packs all 12 packages locally.
 - `AGENTS.md` lists `npm test` as a local command; on Windows the full run has the platform baseline failures above.
-- Radius has no shipped catalog. `npm run hydrate:model-data` and `generate-models` no longer include it; the generated aggregator lists one provider fewer than Pi v1.1.0.
+- `npm run build` in `ai` runs `generate-models`, which fetches the public model catalogs from the network; the generator no longer includes a Radius catalog, so the aggregator lists one provider fewer than Pi v1.1.0.
 - Experimental and example code stays candidate code until verified through a Nyan entry path.

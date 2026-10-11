@@ -12,7 +12,6 @@ import type { BedrockOptions } from "./api/bedrock-converse-stream.ts";
 import type { GoogleOptions } from "./api/google-generative-ai.ts";
 import type { GoogleVertexOptions } from "./api/google-vertex.ts";
 import type { MistralOptions } from "./api/mistral-conversations.ts";
-import type { NyanMessagesOptions } from "./api/nyan-messages.ts";
 import type { OpenAICodexResponsesOptions } from "./api/openai-codex-responses.ts";
 import type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
 import type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
@@ -33,7 +32,6 @@ export interface ApiOptionsMap {
 	"google-vertex": GoogleVertexOptions;
 	"mistral-conversations": MistralOptions;
 	"bedrock-converse-stream": BedrockOptions;
-	"nyan-messages": NyanMessagesOptions;
 }
 
 /**

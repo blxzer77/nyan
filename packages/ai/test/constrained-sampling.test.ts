@@ -256,14 +256,14 @@ describe("constrained tool sampling", () => {
 		});
 	});
 
-	//: a gateway forwards another model's history as a foreign provider.
+	// A gateway can forward another model's history as a foreign provider.
 	it("drops foreign item ids when replaying grammar calls as custom Responses items", () => {
 		const context = normalizeContext({
 			messages: [
 				{
 					role: "assistant",
-					api: "nyan-messages",
-					provider: "radius",
+					api: "openai-responses",
+					provider: "some-gateway",
 					model: "gpt-other",
 					content: [{ type: "toolCall", id: "call_1|ctc_1", name: "sample_tool", arguments: { payload: "abc" } }],
 					usage: makeUsage(),

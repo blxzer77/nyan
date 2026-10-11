@@ -36,7 +36,7 @@ npm test
 
 ## 运行时配置
 
-`nyan` 读取 `~/.nyan/agent` 与项目内 `.nyan`，环境变量使用 `NYAN_` 前缀。Nyan 不内置任何托管服务地址；版本检查、安装器、分享查看器、模型目录、MCP 客户端元数据和 Radius 网关分别由 `NYAN_LATEST_VERSION_URL`、`NYAN_INSTALLER_API_BASE`、`NYAN_SHARE_VIEWER_URL`、`NYAN_CATALOG_BASE_URL`、`NYAN_MCP_CLIENT_METADATA_URL`、`NYAN_RADIUS_GATEWAY` 配置，未配置时对应功能关闭。
+`nyan` 读取 `~/.nyan/agent` 与项目内 `.nyan`，环境变量使用 `NYAN_` 前缀。Nyan 不内置任何托管服务地址；安装器、分享查看器、模型目录和 MCP 客户端元数据分别由 `NYAN_INSTALLER_API_BASE`、`NYAN_SHARE_VIEWER_URL`、`NYAN_CATALOG_BASE_URL`、`NYAN_MCP_CLIENT_METADATA_URL` 配置，未配置时对应功能关闭；版本检查默认询问 npm registry。
 
 ## 贡献规则
 

@@ -229,7 +229,6 @@ describe("experimental client TUI", () => {
 			});
 			const server: ClientTuiServer = {
 				serverId,
-				radius: true,
 				server: serverServices,
 				session: sessionServices,
 			};

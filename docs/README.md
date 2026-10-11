@@ -24,6 +24,8 @@ When two documents disagree, update the fact owner first and then update derived
 - [Implemented functional layers and stable-dependency rules](../.agents/notes/implemented/architecture/2026-10-11-nyan-layered-architecture.md)
 - [Implemented Pi-to-Nyan productization](../.agents/notes/implemented/architecture/2026-10-11-nyan-productization.md)
 - [Implemented no default hosted services](../.agents/notes/implemented/architecture/2026-10-11-no-default-hosted-services.md)
-- [Proposed durable run-lifecycle cycle](../.agents/notes/proposed/architecture/2026-10-11-durable-run-lifecycle-cycle.md)
+- [Implemented durable run-lifecycle cycle](../.agents/notes/implemented/architecture/2026-10-11-durable-run-lifecycle-cycle.md)
+- [Implemented removal of unused upstream content](../.agents/notes/implemented/process/2026-10-12-remove-unused-upstream-content.md)
+- [Implemented release pipeline](../.agents/notes/implemented/process/2026-10-12-release-pipeline.md)
 
 Superseded decisions are frozen under [`.agents/notes/archived/`](../.agents/notes/archived/).

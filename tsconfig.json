@@ -31,7 +31,6 @@
 				"./packages/durable/src/*/index.ts",
 				"./packages/durable/src/*"
 			],
-			"@nyan/env": ["./packages/env/src/index.ts"],
 			"@nyan/agent-core": ["./packages/agent/src/index.ts"],
 			"@nyan/coding-agent": ["./packages/coding-agent/src/index.ts"],
 			"@nyan/coding-agent/experimental/plugin": [
@@ -49,9 +48,7 @@
 			"@nyan/server/*": ["./packages/server/src/*"],
 			"typebox": ["./node_modules/typebox"],
 			"@nyan/tui": ["./packages/tui/src/index.ts"],
-			"@nyan/tui/*": ["./packages/tui/src/*"],
-			"@nyan/agent-old": ["./packages/agent-old/src/index.ts"],
-			"@nyan/agent-old/*": ["./packages/agent-old/src/*"]
+			"@nyan/tui/*": ["./packages/tui/src/*"]
 		}
 	},
 	"include": ["scripts/model-catalog-protocol.ts", "scripts/model-catalog-protocol.test.ts", "packages/*/src/**/*", "packages/*/test/**/*", "packages/coding-agent/examples/**/*", "packages/agent/examples/**/*"],

@@ -132,7 +132,7 @@ Default enabled tools are `read`, `bash`, `edit`, and `write`, unless `defaultTo
 `--tools` selects the tools declared to the model. It does not remove MCP tools, whose reach is set by their [exposure](mcp.md#control-tool-exposure): `nyan --tools read,codemode` keeps every MCP tool callable from codemode scripts. An MCP tool that no entry names or matches is never declared directly, whatever its exposure; only `tool_search`, if listed, can load it. Once an entry starts with `mcp__`, `--tools` filters MCP tools too, so this keeps only the tools of the `radius` server:
 
 ```sh
-nyan --tools read,bash,codemode,'mcp__radius__*'
+nyan --tools read,bash,codemode,'mcp__docs__*'
 ```
 
 The MCP resource tools (`list_mcp_resources`, `list_mcp_resource_templates`, `read_mcp_resource`) count as MCP tools. To remove MCP tools, use `--exclude-tools 'mcp__*'` or [`--no-mcp`](#resource-options).

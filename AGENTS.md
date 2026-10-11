@@ -13,7 +13,7 @@ Nyan 是由 Pi Agent v1.1.0 派生的独立开发产品。Pi 是来源基线，�
 - `packages/ai` 负责模型、Provider、认证和流式响应。
 - `packages/tui` 负责终端交互；`packages/mcp`、`packages/codemode`、`packages/protocol`、`packages/client`、`packages/server` 和 `packages/durable` 提供可复用运行时能力。
 - 产品身份是 `nyan`：可执行文件 `nyan`、`NYAN_*` 环境变量、用户目录 `~/.nyan` 与项目目录 `.nyan`、`nyan.*` 持久化与协议标识、`@nyan/*` 包名。Nyan 不读取 Pi 的 `.pi` 目录或 `PI_*` 变量，不提供 `pi` 别名，也没有 Pi 扩展生态的兼容承诺。
-- Nyan 不假设任何托管服务：版本源、安装器、分享查看器、模型目录、MCP 客户端元数据和 Radius 网关都没有内置默认地址，必须由运营者通过 `NYAN_*` 配置；未配置时对应功能关闭或明确报错，不会连接 Pi 或其他未拥有的域名。
+- Nyan 不假设任何托管服务：安装器、分享查看器、模型目录和 MCP 客户端元数据都没有内置默认地址，必须由运营者通过 `NYAN_*` 配置；未配置时对应功能关闭或明确报错，不会连接 Pi 或其他未拥有的域名。版本检查默认询问 npm registry 上本包的 `latest`，可用 `NYAN_LATEST_VERSION_URL` 或 `NYAN_NPM_REGISTRY` 改写。
 - 扩展、实验目录和示例是候选能力；在真实入口、持久化行为和恢复路径验证前，不得描述为 Nyan 的稳定产品能力。
 - 一次模型请求可见的输入必须能够从 Session 或其他明确的持久化事实重建。未知副作用必须显式暴露，不能当成成功。
 
@@ -25,7 +25,7 @@ Nyan 是由 Pi Agent v1.1.0 派生的独立开发产品。Pi 是来源基线，�
 - 跨包导入必须落在目标包 `exports` 声明的子路径上，且源码导入的工作区包必须在 manifest 中声明。
 - `agent` 只能经 `@nyan/ai/contracts` 使用模型层；`durable` 只能经 `contracts` 与 `utils` 子路径。
 - `ai`、`durable`、`coding-agent` 有包内模块层；`coding-agent` 的无头 `core` 不得依赖 `modes`、`cli` 或终端展示。
-- 静态运行时导入环被禁止；唯一已记录的环（durable 运行生命周期）与例外必须在 `layers.json` 写明原因，消除它们需要独立的 Agent Note。
+- 静态运行时导入环被禁止；`layers.json` 的 `cycles.known` 目前为空。例外必须在 `layers.json` 写明原因。
 
 新增依赖、包或模块时先改 `layers.json` 并说明理由，不要为让检查通过而放宽规则。
 
@@ -35,6 +35,10 @@ Nyan 是由 Pi Agent v1.1.0 派生的独立开发产品。Pi 是来源基线，�
 - 当前基线是 Pi `v1.1.0`，提交 `abe508e1b89912adde45528136c3221eb69acdd7`；来源清单在 `.agents/upstream/pi-v1.1.0.json`。
 - `main` 是唯一集成与发布分支。开发使用短生命周期特性分支；不创建 `develop`。
 - 上游同步必须记录来源提交、目标文件、局部修改、冲突处理、验证结果和未接入能力。禁止直接覆盖 Nyan 改动。
+
+## 发布
+
+推送 `vX.Y.Z` 标签触发 `.github/workflows/release.yml`：在 Ubuntu 上构建、检查并测试，在各平台编译 `packages/tui` 的原生模块，然后按依赖顺序把公开包发布到 npm（`scripts/publish-packages.mjs`，已发布的版本会跳过，预发布版本使用 `next` 标签）。标签必须等于包版本。版本号用 `npm run version:set -- X.Y.Z` 同步；`npm run release:dry` 在本地只打包不发布。发布需要仓库 secret `NPM_TOKEN` 和 GitHub environment `npm`。
 
 ## 开发流程
 
