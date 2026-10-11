@@ -89,7 +89,7 @@ Nyan includes no default address for any hosted service. The installer, share vi
 
 ## Known limits
 
-- Local commits only: nothing is pushed, tagged or published. `origin` still points at `blxzer77/pi`; repository links in documents and manifests assume `blxzer77/nyan`.
+- Local commits only: nothing is pushed, tagged or published. `origin` now points at `blxzer77/nyan`, whose `main` has diverged from this tree: it carries Pi commits made after v1.1.0 and a partial rename to `@blxzer/nyan` whose binary is still `pi`. How the two histories are joined has not been decided.
 - The committed native prebuilds (`packages/tui/native/*/prebuilds`) predate the rename; the release workflow rebuilds them on each platform and ships the fresh binaries, so published packages do not carry the old ones.
 - The release workflow is written but has not run: it needs the `NPM_TOKEN` secret, the `npm` environment, and the `@nyan` scope on npm. `npm run release:dry` packs all 12 packages locally.
 - The hosted Windows CI job builds and runs `npm run check` but not the test suite; the suite has only been run on one Windows machine.
