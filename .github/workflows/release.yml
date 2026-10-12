@@ -52,8 +52,15 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Changelog has the release
-        if: github.ref_type == 'tag' && !contains(github.ref_name, '-')
-        run: node scripts/changelog-release.mjs --check "${GITHUB_REF_NAME#nyan-v}"
+        if: github.ref_type == 'tag'
+        # The tag is nyan-vX.Y.Z, so look for a pre-release suffix in the version only, not in the whole tag name.
+        run: |
+          version="${GITHUB_REF_NAME#nyan-v}"
+          if [[ "$version" == *-* ]]; then
+            echo "Pre-release $version: the changelog is dated at the final release."
+          else
+            node scripts/changelog-release.mjs --check "$version"
+          fi
 
       - name: Build
         run: npm run build
