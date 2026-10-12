@@ -2,7 +2,7 @@ name: Release
 
 # Publishes the public packages to npm when a release tag is pushed.
 #
-#   npm run version:set -- 1.2.0     bump every package and the lockfiles
+#   npm run version:set -- 1.2.0     bump every package and the lockfiles, date the changelog's Unreleased entries
 #   git commit -am "Release 1.2.0" && git tag nyan-v1.2.0 && git push --follow-tags
 #
 # Release tags are nyan-vX.Y.Z. The plain vX.Y.Z names belong to Pi: this repository inherited its tags, and v1.0.0 and
@@ -49,6 +49,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
+
+      - name: Changelog has the release
+        if: github.ref_type == 'tag' && !contains(github.ref_name, '-')
+        run: node scripts/changelog-release.mjs --check "${GITHUB_REF_NAME#nyan-v}"
 
       - name: Build
         run: npm run build

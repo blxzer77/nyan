@@ -12,7 +12,7 @@ The fork renamed nearly every file it shares with Pi, so a plain `git merge` of 
 3. Run `node .agents/skills/nyan-upstream-sync/normalize-upstream.mjs <dir> --apply` on both. Without `--apply` it prints what it would change.
 4. Commit the two normalized trees as scratch refs, the target on top of the base.
 5. `git merge-tree --write-tree --merge-base=<normalized base> HEAD <normalized target>` gives the merged tree and the real conflicts.
-6. Resolve conflicts only in files whose Nyan owner is clear. Drop upstream changes to content Nyan removed (changelogs, upstream project operations, removed packages). When ownership is unclear, stop and ask.
+6. Resolve conflicts only in files whose Nyan owner is clear. Drop upstream changes to content Nyan removed (upstream project operations, removed packages) and every edit to Pi's changelogs: `packages/coding-agent/CHANGELOG.md` is Nyan's own, so keep this tree's version and describe the user-visible upstream changes there yourself. When ownership is unclear, stop and ask.
 7. Commit the result as a merge whose second parent is the real upstream commit, not the scratch ref, so history stays true. Delete the scratch refs.
 8. Run the audits and checks: no Pi names, `PI_*` variables or `@earendil-works/pi-*` imports in the merged files; `npm run check`; `npm run build:offline`; the suites of the affected packages. New upstream files often need a layer in `docs/architecture/layers.json`.
 9. Add `.agents/upstream/pi-sync-<n>-<short-commit>.json`, in the format of the existing records: source commits, what was taken, dropped, adapted, and not integrated, and the verification.

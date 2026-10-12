@@ -12,7 +12,7 @@ This directory contains current, reviewable product facts and navigation for the
 | Current cross-package architecture | [`architecture/current-state.md`](architecture/current-state.md) | A dated inventory of ownership, dependency direction, entry points, and naming debt |
 | Functional layer policy | [`architecture/layers.json`](architecture/layers.json) | Versioned package-to-layer map enforced by the architecture check |
 | Decisions that affect future work | [`.agents/notes/`](../.agents/notes/) | Rationale, alternatives, consequences, and acceptance evidence |
-| Release history | GitHub releases (`nyan-vX.Y.Z` tags) | Notes generated from the pull requests merged since the previous release; there are no CHANGELOG files |
+| Release history | [`packages/coding-agent/CHANGELOG.md`](../packages/coding-agent/CHANGELOG.md), and GitHub releases (`nyan-vX.Y.Z` tags) | User-visible changes per release, shown by `/changelog`; the GitHub release notes list the merged pull requests |
 
 When two documents disagree, update the fact owner first and then update derived navigation. Do not turn a proposed design into current-state documentation. Proposed changes live in [`.agents/notes/proposed/`](../.agents/notes/proposed/) until their acceptance criteria are implemented and verified.
 
@@ -28,6 +28,7 @@ When two documents disagree, update the fact owner first and then update derived
 - [Implemented removal of unused upstream content](../.agents/notes/implemented/process/2026-10-12-remove-unused-upstream-content.md)
 - [Implemented release pipeline](../.agents/notes/implemented/process/2026-10-12-release-pipeline.md)
 - [Implemented rename-aware upstream sync](../.agents/notes/implemented/process/2026-10-12-rename-aware-upstream-sync.md)
+- [Implemented coding-agent changelog](../.agents/notes/implemented/process/2026-10-12-coding-agent-changelog.md)
 - [Implemented initialization boundary and Pi baseline](../.agents/notes/implemented/process/2026-10-11-nyan-initialization.md)
 
 Superseded decisions are frozen under [`.agents/notes/archived/`](../.agents/notes/archived/).

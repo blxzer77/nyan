@@ -47,7 +47,7 @@ Provider tests run only when the provider's credential variable is set. Without 
 
 ## 7. Documentation (`packages/ai/README.md`)
 
-Add the provider to the supported-providers list, the environment-variable table, and the model table, with its options and auth. There is no CHANGELOG to update.
+Add the provider to the supported-providers list, the environment-variable table, and the model table, with its options and auth. Add an `### Added` entry under `## [Unreleased]` in `packages/coding-agent/CHANGELOG.md`.
 
 ## 8. Checks
 

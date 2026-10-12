@@ -77,9 +77,8 @@ async function resizeImageInWorker(
 /**
  * Resize an image to fit within the specified max dimensions and encoded file size.
  * Runs Photon in a worker thread so WASM decoding, resizing, and encoding do not
- * block the TUI event loop. If the worker cannot be loaded (for example in some
- * Bun compiled executable layouts), fall back to in-process resizing so image
- * reads still work.
+ * block the TUI event loop. If the worker cannot be loaded, fall back to
+ * in-process resizing so image reads still work.
  */
 export async function resizeImage(
 	inputBytes: Uint8Array,
@@ -91,15 +90,6 @@ export async function resizeImage(
 		isTypeScriptRuntime ? "./image-resize-worker.ts" : "./image-resize-worker.js",
 		import.meta.url,
 	);
-
-	// Bun compiled executables resolve worker entrypoints by string path, not via
-	// new URL(..., import.meta.url). Try the string path first under Bun so the
-	// release binary uses the embedded worker instead of falling back in-process.
-	if (typeof process.versions.bun === "string") {
-		try {
-			return await resizeImageInWorker("./src/utils/image-resize-worker.ts", inputBytes, mimeType, options);
-		} catch {}
-	}
 
 	try {
 		return await resizeImageInWorker(workerUrl, inputBytes, mimeType, options);

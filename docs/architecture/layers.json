@@ -404,10 +404,8 @@
 						"main.ts",
 						"index.ts",
 						"cli.ts",
-						"migrations.ts",
 						"package-manager-cli.ts",
 						"rpc-entry.ts",
-						"bun/",
 						"client/",
 						"experimental/"
 					],

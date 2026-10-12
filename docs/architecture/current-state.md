@@ -58,7 +58,7 @@ Instability `I = Ce / (Ca + Ce)` is computed by the architecture check from sour
 
 ## Package entry points
 
-- **Executable:** `nyan` (`@ny4n/coding-agent` → `dist/bundle/cli.js`). There is no `pi` alias. `@ny4n/ai` ships a separate `nyan-ai` login helper; the standalone coding-agent binary build (`build:binary`, Bun) writes `dist/nyan`.
+- **Executable:** `nyan` (`@ny4n/coding-agent` → `dist/bundle/cli.js`). There is no `pi` alias. `@ny4n/ai` ships a separate `nyan-ai` login helper. Nyan is distributed through npm only; there is no standalone binary build. `node scripts/nyan-source.mjs` runs the CLI from the sources.
 - **Library entries:** each package declares its public subpaths in `exports`; the check rejects imports outside them. Notable subpaths: `@ny4n/ai/contracts` (provider-neutral types, `ModelRuntime`, transcript and stream helpers), `@ny4n/ai/utils/*`, `@ny4n/coding-agent/{rpc-entry,client,experimental/plugin}`.
 - **Stable model boundary:** `agent` and `durable` use `@ny4n/ai/contracts`; `coding-agent` hands `durable` a five-operation `ModelRuntime` port (`createDurableModelRuntime`), not the provider runtime.
 

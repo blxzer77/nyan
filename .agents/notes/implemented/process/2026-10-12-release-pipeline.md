@@ -14,7 +14,7 @@ Three workflows in `.github/workflows/`, and two scripts that hold the logic so 
 - **`native.yml`** — builds the native modules where they run: Linux x64 and arm64 on matching runners, macOS (the script cross-compiles both architectures), Windows (the script builds x64 and arm64). Reusable by the release workflow and runnable by hand.
 - **`release.yml`** — on a pushed `nyan-vX.Y.Z` tag: verify (build, check, test), build the native modules, then publish. The tag must equal the package version. A pre-release suffix publishes under the `next` dist-tag. It creates a GitHub release with generated notes. A manual run defaults to a dry run.
 - **`scripts/publish-packages.mjs`** — publishes the public packages in dependency order, requires one lockstep version (`--expect-version` pins it to the tag), skips versions already on the registry so a failed release can be re-run, and uses `npm publish --provenance` under GitHub Actions. `--dry-run` packs every tarball.
-- **`scripts/set-version.mjs`** (`npm run version:set -- X.Y.Z`) — sets one version everywhere, then syncs internal ranges and regenerates both lockfiles.
+- **`scripts/set-version.mjs`** (`npm run version:set -- X.Y.Z`) — sets one version everywhere, moves the coding-agent changelog's Unreleased entries under the version (a release version only), then syncs internal ranges and regenerates both lockfiles. The release workflow checks the changelog section before it builds; see [the changelog note](2026-10-12-coding-agent-changelog.md).
 
 Published tarballs carry the native binaries built by the workflow, not the ones committed to the repository; the committed prebuilds remain so a source checkout runs without a toolchain.
 

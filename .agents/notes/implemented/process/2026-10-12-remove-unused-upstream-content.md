@@ -12,12 +12,14 @@ Delete what no Nyan source path reaches. Git history keeps all of it, and each g
 
 | Removed | Why it is safe |
 | --- | --- |
-| Every `CHANGELOG.md` and its packaging entries | Pi's release history up to v1.1.0. The startup "what's new" code stays and reads a changelog if a package ships one |
+| Every `CHANGELOG.md` and its packaging entries | Pi's release history up to v1.1.0. The coding agent now has a Nyan changelog that starts at 1.0.0; see [the changelog note](2026-10-12-coding-agent-changelog.md) |
 | Links to upstream issues and pull requests in comments and docs | They point at a tracker Nyan does not own; the surrounding comment still states the reason |
 | `migrations.ts`, its call sites, and the tests that exercised only it | Migrated Pi's older auth, session, keybinding and header layouts; Nyan has no older layout |
 | `scripts/` analysis tools (stats, cost, tool and read/edit stats, session transcripts, WSL repro, import rewriting) and `migrate-sessions.sh` | Written for the upstream author's session logs; unreferenced |
 | `chord/PLANNING.md`, `durable/docs/pico-v5-handoff.md` | Upstream planning and port notes |
 | `examples/extensions/doom-overlay` | Third-party GPL source plus a wasm binary shipped as an example |
+| The Bun standalone binary: `build:binary`, `copy-binary-assets`, `src/bun/`, the `bun-binary` install method and its asset, worker, Photon and update branches | Nyan is distributed through npm only and its releases carry no binary, so the update hint pointed at downloads that do not exist. `@ny4n/ai/bun-oauth` and the Bun sandbox environment fallback in `@ny4n/ai` stay: they are public library behavior for applications that compile `@ny4n/ai` themselves |
+| `CONTRIBUTING.md` | The root `AGENTS.md` holds the repository rules; a second copy drifted from it |
 | `packages/env` (remote execution client and Rust daemon) and `packages/evals` (Pi documentation evals) | No workspace package or source path imports either; removing them also removes the Rust toolchain from CI |
 | The Radius cluster: provider, OAuth flow, `nyan-messages` API, login selector, MCP offer, bug-report upload, experimental relay transport and `--auth-token` options | A hosted gateway product of the upstream company; the code could only talk to a gateway Nyan does not run |
 | Package `author` fields naming Pi's authors | Replaced by `Nyan`. `LICENSE` keeps the original copyright notice, which the MIT license requires |

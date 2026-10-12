@@ -9,5 +9,5 @@
 - `schemas/*.schema.json` are generated. Change the source schema (`src/core/settings-schema.ts`, `src/core/keybindings-schema.ts`, `src/core/model-config.ts`, `src/ui/theme/theme-schema.ts`), then run `npm run generate:schemas` from this package. `test/config-schemas.test.ts` fails when the committed files drift.
 - `src/experimental/` is excluded from the build and from the published package. It is candidate code; see the root AGENTS.md.
 - Tests under `test/suite/` use `test/suite/harness.ts` and the faux provider. No real provider APIs, keys, or paid tokens.
-- Run the CLI from source with `node packages/coding-agent/src/cli.ts` (Node strips the types). To check interactive behavior in a real terminal, follow [interactive-testing](../../.agents/skills/interactive-testing/SKILL.md).
-- User-facing docs live in `docs/`. Update the affected page with any user-visible change.
+- Run the CLI from source with `node scripts/nyan-source.mjs` from the repo root, or with its absolute path from any directory. It maps `@ny4n/*` imports to the workspace sources, so it needs no build; `node packages/coding-agent/src/cli.ts` alone would load the packages' `dist/`. To check interactive behavior in a real terminal, follow [interactive-testing](../../.agents/skills/interactive-testing/SKILL.md).
+- User-facing docs live in `docs/`. Update the affected page with any user-visible change, and add an entry to `CHANGELOG.md` (see the root AGENTS.md).

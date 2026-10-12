@@ -63,6 +63,7 @@ When a new dependency, package, or module needs a rule change, edit `layers.json
 - After code changes (not docs): `npm run check`, full output, no tail. It runs biome, `tsc --noEmit`, the dependency, import, architecture, entry-graph and install-lock checks, and a browser bundle smoke test. It does not run tests. Fix all errors, warnings, and infos.
 - In a fresh checkout, run `npm run hydrate:model-data` first: `packages/ai/src/providers/data/` is gitignored and is fetched from models.dev. Without it `tsc` reports model ids as not assignable to `never`.
 - Build with `npm run build:offline`. `npm run build` also regenerates the model catalog from the network.
+- Run the CLI from the sources, without a build: `node scripts/nyan-source.mjs [args]`. It works from any directory and keeps the caller's working directory.
 - One vitest file, from the package directory: `npx vitest --run test/specific.test.ts`. `packages/tui` uses `node:test`: `node --test test/specific.test.ts`. Root script tests: `npm run test:scripts`.
 - Provider e2e tests run whenever a provider credential such as `ANTHROPIC_API_KEY` is set in the environment, and spend real tokens. Unset them before running a whole package suite.
 - Choose the narrowest check that covers the change: follow [nyan-checks](.agents/skills/nyan-checks/SKILL.md).
@@ -106,7 +107,7 @@ For a change that touches sessions, providers, tools, subprocesses, concurrency,
 
 ## Release
 
-Run `npm run version:set -- X.Y.Z`, commit, then push the tag `nyan-vX.Y.Z`. `.github/workflows/release.yml` builds, checks, and tests on Ubuntu, builds the `packages/tui` native modules on each platform, publishes the 12 packages in dependency order with provenance (`scripts/publish-packages.mjs`, already-published versions are skipped, a pre-release version goes to the `next` dist-tag), and creates the GitHub release with generated notes. The tag must equal the package version. `npm run release:dry` packs locally; a manual run of the workflow defaults to a dry run. Publishing needs the `NPM_TOKEN` repository secret.
+Run `npm run version:set -- X.Y.Z` (it also dates the changelog), commit, then push the tag `nyan-vX.Y.Z`. `.github/workflows/release.yml` builds, checks, and tests on Ubuntu, builds the `packages/tui` native modules on each platform, publishes the 12 packages in dependency order with provenance (`scripts/publish-packages.mjs`, already-published versions are skipped, a pre-release version goes to the `next` dist-tag), and creates the GitHub release with generated notes. The tag must equal the package version. `npm run release:dry` packs locally; a manual run of the workflow defaults to a dry run. Publishing needs the `NPM_TOKEN` repository secret.
 
 ## Git
 
@@ -120,7 +121,15 @@ Run `npm run version:set -- X.Y.Z`, commit, then push the tag `nyan-vX.Y.Z`. `.g
 
 - Docs state current, verified behavior. Plans live in `.agents/notes/proposed/` until they ship. [`docs/README.md`](docs/README.md) lists which document owns which fact.
 - User-facing docs are in `packages/coding-agent/docs/`; update the affected page with any user-visible change. The cross-package picture is [`docs/architecture/current-state.md`](docs/architecture/current-state.md).
-- There are no CHANGELOG files. GitHub generates the release notes from the pull requests merged since the previous release; commits pushed directly to `main` do not appear in them.
+- GitHub generates the release notes from the pull requests merged since the previous release; commits pushed directly to `main` do not appear in them.
+
+## Changelog
+
+`packages/coding-agent/CHANGELOG.md` is the only changelog. Nyan shows it in `/changelog` and shows the new sections once after an update, so it describes what a `nyan` user notices, not internal changes.
+
+- Add entries under `## [Unreleased]` in `### Breaking Changes`, `### Added`, `### Changed`, `### Fixed`, or `### Removed`. Read the whole section first and append to existing subsections.
+- Released sections are immutable. `npm run version:set` moves the Unreleased entries under the new version and refuses a release without entries; the release workflow refuses a tag whose version has no section.
+- Links to repository files may be relative to `packages/coding-agent/`; Nyan rewrites them to the release tag. Link Nyan issues as `([#123](https://github.com/blxzer77/nyan/issues/123))`.
 
 ## Conversational style
 

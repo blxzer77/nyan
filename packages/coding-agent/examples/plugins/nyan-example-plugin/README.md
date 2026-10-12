@@ -7,18 +7,18 @@ The package needs no build script. Nyan asks Chord to discover `src/session.ts` 
 From the repository root:
 
 ```bash
-NYAN_EXPERIMENTAL=1 ./nyan-test.sh server \
+NYAN_EXPERIMENTAL=1 node scripts/nyan-source.mjs server \
   -e "$PWD/packages/coding-agent/examples/plugins/nyan-example-plugin"
 ```
 
 Alternatively, a client can select the plugin for the Session it creates or resumes on one local server:
 
 ```bash
-NYAN_EXPERIMENTAL=1 ./nyan-test.sh client \
+NYAN_EXPERIMENTAL=1 node scripts/nyan-source.mjs client \
   -e "$PWD/packages/coding-agent/examples/plugins/nyan-example-plugin"
 ```
 
-Repeat `-e` to select multiple plugin packages. Client paths are resolved locally and sent only to a Unix server; Radius clients cannot select server filesystem paths. The Session and matching TUI facets are stored with that Session, so later server generations and clients can resume it without plugin arguments. Other Sessions and their workers are unaffected. An active Session rejects a different package selection instead of being restarted.
+Repeat `-e` to select multiple plugin packages. Client paths are resolved locally and sent only to a Unix server. The Session and matching TUI facets are stored with that Session, so later server generations and clients can resume it without plugin arguments. Other Sessions and their workers are unaffected. An active Session rejects a different package selection instead of being restarted.
 
 `server -e` establishes the server profile's default Session and TUI facets. Starting an explicit foreground server without `-e` clears that default. Client selection never changes the server's root facet generation.
 

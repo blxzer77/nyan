@@ -2,18 +2,34 @@
 
 /**
  * Set one version on every workspace package, then bring the internal dependency ranges and both lockfiles in line.
+ * For a release version (no pre-release suffix) the coding-agent changelog's `## [Unreleased]` entries move under
+ * the new version; the step fails if there are none.
  *
  *   npm run version:set -- 1.2.0
  */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { CHANGELOG_PATH, releaseDate, stampChangelog } from "./changelog-release.mjs";
 import { execNpmSync } from "./npm-command.mjs";
 
 const version = process.argv[2];
 if (!version || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
 	console.error("Usage: npm run version:set -- <major.minor.patch[-prerelease]>");
 	process.exit(1);
+}
+
+// Stamp the changelog first: it is the step that can refuse, and nothing has been written yet when it does.
+if (!version.includes("-")) {
+	const changelog = readFileSync(CHANGELOG_PATH, "utf8");
+	let stamped;
+	try {
+		stamped = stampChangelog(changelog, version, releaseDate());
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exit(1);
+	}
+	if (stamped !== changelog) writeFileSync(CHANGELOG_PATH, stamped);
 }
 
 // Only the packages npm treats as workspace members take the release version. Fixtures such as the example plugin carry
