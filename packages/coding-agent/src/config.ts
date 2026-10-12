@@ -343,7 +343,7 @@ export function getSelfUpdateUnavailableInstruction(
 	const method = detectInstallMethod();
 	const target = normalizeSelfUpdatePackageTarget(updatePackageTarget);
 	if (method === "bun-binary") {
-		return `Download from: https://github.com/blxzer77/nyan/releases/latest`;
+		return `Run \`${APP_NAME} update\`, or download the release archive from https://github.com/blxzer77/nyan/releases/latest`;
 	}
 	const command = getSelfUpdateCommandForMethod(method, packageName, target, npmCommand);
 	if (command) {

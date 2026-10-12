@@ -184,6 +184,10 @@ jobs:
           "${{ steps.extract.outputs.binary }}" --version
           node scripts/smoke-test-codemode-binary.mjs "${{ steps.extract.outputs.binary }}"
 
+      - name: Smoke-test self-update
+        shell: bash
+        run: node scripts/smoke-test-binary-update.mjs "${{ steps.extract.outputs.binary }}" "${{ matrix.platform }}"
+
   publish:
     name: Publish
     needs: [verify, native, binary-smoke]

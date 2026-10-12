@@ -34,6 +34,7 @@ import { type AppMode, resolveProjectTrusted } from "./core/project-trust.ts";
 import { DefaultResourceLoader, isBuiltinExtension } from "./core/resource-loader.ts";
 import { SettingsManager } from "./core/settings-manager.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
+import { binaryAssetName, binaryPlatform, RELEASES_PAGE_URL, updateBinaryInstall } from "./utils/binary-update.ts";
 import { spawnProcess, spawnProcessSync, waitForChildProcess } from "./utils/child-process.ts";
 import { getNyanUserAgent } from "./utils/nyan-user-agent.ts";
 import { canonicalizePath, getCwdRelativePath } from "./utils/paths.ts";
@@ -1078,6 +1079,36 @@ export async function handlePackageCommand(
 					}
 
 					const installMethod = detectInstallMethod();
+					if (installMethod === "bun-binary") {
+						if (selfUpdatePlan.packageName !== PACKAGE_NAME) {
+							console.error(
+								chalk.red(
+									`The release feed names ${selfUpdatePlan.packageName}, not ${PACKAGE_NAME}; refusing to replace this binary.`,
+								),
+							);
+							process.exitCode = 1;
+							return true;
+						}
+						if (selfUpdatePlan.note) {
+							printSelfUpdateNote(selfUpdatePlan.note);
+						}
+						try {
+							console.log(
+								chalk.dim(
+									`Updating ${APP_NAME} from the ${binaryAssetName(binaryPlatform())} release asset...`,
+								),
+							);
+							await updateBinaryInstall({ version: selfUpdatePlan.version });
+						} catch (error: unknown) {
+							const message = error instanceof Error ? error.message : "Unknown binary update error";
+							console.error(chalk.red(`Error: ${message}`));
+							console.error(chalk.dim(`Or download and extract the archive yourself: ${RELEASES_PAGE_URL}`));
+							process.exitCode = 1;
+							return true;
+						}
+						console.log(chalk.green(`Updated ${APP_NAME} from ${VERSION} to ${selfUpdatePlan.version}`));
+						return true;
+					}
 					if (process.platform === "win32" && installMethod !== "npm" && installMethod !== "pnpm") {
 						console.error(
 							chalk.red(`${APP_NAME} self-update on Windows is only supported for npm and pnpm installs.`),

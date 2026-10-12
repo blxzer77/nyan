@@ -33,7 +33,15 @@ import { listModels } from "./cli/list-models.ts";
 import { createProjectTrustContext } from "./cli/project-trust.ts";
 import { selectSession } from "./cli/session-picker.ts";
 import { shouldRunFirstTimeSetup, showFirstTimeSetup, showStartupSelector } from "./cli/startup-ui.ts";
-import { APP_NAME, ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, VERSION } from "./config.ts";
+import {
+	APP_NAME,
+	ENV_SESSION_DIR,
+	expandTildePath,
+	getAgentDir,
+	getPackageDir,
+	isBunBinary,
+	VERSION,
+} from "./config.ts";
 import { type CreateAgentSessionRuntimeFactory, createAgentSessionRuntime } from "./core/agent-session-runtime.ts";
 import {
 	type AgentSessionRuntimeDiagnostic,
@@ -67,6 +75,7 @@ import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { cleanupManagedInstall, handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./ui/theme/theme.ts";
 import { validateThemeJson } from "./ui/theme/theme-schema.ts";
+import { cleanupBinaryUpdateLeftovers } from "./utils/binary-update.ts";
 import { isLocalPath, normalizePath, resolvePath } from "./utils/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
 
@@ -586,6 +595,9 @@ export async function main(args: string[], options?: MainOptions) {
 
 	if (process.platform === "win32") {
 		cleanupWindowsSelfUpdateQuarantine(getPackageDir());
+	}
+	if (isBunBinary) {
+		cleanupBinaryUpdateLeftovers(getPackageDir());
 	}
 	cleanupManagedInstall();
 

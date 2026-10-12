@@ -85,6 +85,7 @@ These variables are read by Nyan itself:
 | `NYAN_SKIP_VERSION_CHECK` | Disable the latest-version request |
 | `NYAN_LATEST_VERSION_URL` | Ask this release feed instead of the npm registry; it answers `{ version, packageName?, note? }` |
 | `NYAN_NPM_REGISTRY` | Registry used for the latest-version lookup (default `https://registry.npmjs.org`) |
+| `NYAN_RELEASE_BASE_URL` | Folder URL holding the release assets that `nyan update` downloads in a standalone executable (default `https://github.com/blxzer77/nyan/releases/download`). It must be an https URL; http is accepted for localhost |
 | `NYAN_TELEMETRY` | Override install/update telemetry and provider attribution headers: `1`/`true`/`yes` or `0`/`false`/`no` |
 | `NYAN_CACHE_RETENTION` | Set to `long` for extended provider prompt caching where supported |
 | `NYAN_SHARE_VIEWER_URL` | Override the base URL used by `/share` |

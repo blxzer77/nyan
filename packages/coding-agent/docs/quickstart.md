@@ -20,6 +20,22 @@ Verify the installation:
 nyan --version
 ```
 
+### Standalone executable (without Node.js)
+
+Every [release](https://github.com/blxzer77/nyan/releases/latest) also attaches a standalone executable that includes its own runtime. Download the archive for your system:
+
+| System | Archive |
+| --- | --- |
+| Linux, macOS | `nyan-linux-x64.tar.gz`, `nyan-linux-arm64.tar.gz`, `nyan-darwin-x64.tar.gz`, `nyan-darwin-arm64.tar.gz` |
+| Windows | `nyan-windows-x64.zip`, `nyan-windows-arm64.zip` |
+
+Extract it and run `nyan` (`nyan.exe` on Windows) from the extracted folder, or add that folder to your `PATH`. Keep the folder together: the executable reads its themes, documentation, and native helpers from beside itself, so copying `nyan` somewhere else breaks them.
+
+- **Check the download.** Compare `sha256sum <archive>` (macOS: `shasum -a 256 <archive>`, Windows: `Get-FileHash <archive>`) with the line for your archive in the release's `SHA256SUMS`. The checksum detects a damaged download. It does not prove who built the file.
+- **macOS.** The executable is not signed or notarized. A file downloaded in a browser carries a quarantine mark, and macOS may refuse to open it. Remove the mark with `xattr -dr com.apple.quarantine nyan/`. Files downloaded with `curl` are not marked.
+- **Windows.** SmartScreen may warn about an unsigned executable. Unblock the archive before extracting it with `Unblock-File nyan-windows-x64.zip`, or choose **More info**, then **Run anyway**.
+- **Updating.** `nyan update` downloads the archive for your system from the release, checks it against `SHA256SUMS`, and replaces the files in the extracted folder. It needs write access to that folder and `tar` (Windows 10 and later include one). `NYAN_RELEASE_BASE_URL` points it at a mirror.
+
 ## 2. Start Nyan
 
 Change to the folder you want Nyan to work with, then start it:
