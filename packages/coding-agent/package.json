@@ -1,6 +1,6 @@
 {
 	"name": "@ny4n/coding-agent",
-	"version": "1.0.1",
+	"version": "1.1.0",
 	"description": "Coding agent CLI with read, bash, edit, write tools and session management",
 	"type": "module",
 	"nyanConfig": {
@@ -47,12 +47,12 @@
 		"prepublishOnly": "npm run clean && npm run build"
 	},
 	"dependencies": {
-		"@ny4n/chord": "^1.0.1",
-		"@ny4n/agent-core": "^1.0.1",
-		"@ny4n/ai": "^1.0.1",
-		"@ny4n/codemode": "^1.0.1",
-		"@ny4n/mcp": "^1.0.1",
-		"@ny4n/tui": "^1.0.1",
+		"@ny4n/chord": "^1.1.0",
+		"@ny4n/agent-core": "^1.1.0",
+		"@ny4n/ai": "^1.1.0",
+		"@ny4n/codemode": "^1.1.0",
+		"@ny4n/mcp": "^1.1.0",
+		"@ny4n/tui": "^1.1.0",
 		"@silvia-odwyer/photon-node": "0.3.4",
 		"brace-expansion": "5.0.12",
 		"chalk": "6.0.0",
@@ -75,10 +75,10 @@
 		"protobufjs": "7.6.6"
 	},
 	"devDependencies": {
-		"@ny4n/client": "^1.0.1",
-		"@ny4n/durable": "^1.0.1",
-		"@ny4n/protocol": "^1.0.1",
-		"@ny4n/server": "^1.0.1",
+		"@ny4n/client": "^1.1.0",
+		"@ny4n/durable": "^1.1.0",
+		"@ny4n/protocol": "^1.1.0",
+		"@ny4n/server": "^1.1.0",
 		"@types/cross-spawn": "6.0.6",
 		"@types/hosted-git-info": "3.0.5",
 		"@types/node": "22.19.19",
