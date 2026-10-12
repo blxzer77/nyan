@@ -790,7 +790,11 @@ function discoverExtensionsInDir(dir: string): string[] {
 	const discovered: string[] = [];
 
 	try {
-		const entries = fs.readdirSync(dir, { withFileTypes: true });
+		// A directory listing has no defined order, and Bun does not return the order Node does (seen on Linux).
+		// The order extensions load in decides the order their handlers run in, so make it deterministic.
+		const entries = fs
+			.readdirSync(dir, { withFileTypes: true })
+			.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
 		for (const entry of entries) {
 			const entryPath = path.join(dir, entry.name);

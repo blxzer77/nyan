@@ -1090,7 +1090,10 @@ export class DefaultResourceLoader implements ResourceLoader {
 		}
 
 		try {
-			const entries = readdirSync(dir, { withFileTypes: true });
+			// A directory listing has no defined order, and Bun does not return the order Node does (seen on Linux).
+			const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+				a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+			);
 			for (const entry of entries) {
 				let isFile = entry.isFile();
 				if (entry.isSymbolicLink()) {
