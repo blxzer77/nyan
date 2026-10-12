@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { getPackageDir, isBunBinary, isBundledNode } from "../config.ts";
+import { sourceRuntimeArgs } from "./source-runtime-args.ts";
 
 export const INTERNAL_PROCESS_ENV = "__NYAN_INTERNAL_SPAWN";
 
@@ -47,25 +48,18 @@ export function spawnInternalProcess(
 		throw new Error("A compiled Bun executable cannot launch an external internal-process entrypoint");
 	}
 	const entryUrl = defaultEntryUrl(role, options.entryUrl);
-	// --import takes a module specifier; a raw path breaks on Windows drives and on `#`, `?`, or `%` in the path.
-	const sourceRuntimeArgs = import.meta.url.endsWith(".ts")
-		? ["--import", new URL("source-resolver.ts", import.meta.url).href]
-		: [];
-	const child = spawn(
-		process.execPath,
-		isBunBinary ? [...args] : [...sourceRuntimeArgs, fileURLToPath(entryUrl), ...args],
-		{
-			cwd: process.cwd(),
-			detached: true,
-			env: {
-				...process.env,
-				...options.env,
-				[INTERNAL_PROCESS_ENV]: role,
-			},
-			stdio: "ignore",
-			windowsHide: true,
+	const runtimeArgs = import.meta.url.endsWith(".ts") ? sourceRuntimeArgs() : [];
+	const child = spawn(process.execPath, isBunBinary ? [...args] : [...runtimeArgs, fileURLToPath(entryUrl), ...args], {
+		cwd: process.cwd(),
+		detached: true,
+		env: {
+			...process.env,
+			...options.env,
+			[INTERNAL_PROCESS_ENV]: role,
 		},
-	);
+		stdio: "ignore",
+		windowsHide: true,
+	});
 	child.unref();
 	return child;
 }
