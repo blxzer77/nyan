@@ -12,7 +12,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { execNpmSync } from "./npm-command.mjs";
 import { findPackageDirectories } from "./package-workspaces.mjs";
 
@@ -77,7 +77,8 @@ for (const { directory, manifest } of ordered) {
 		console.log(`  ${manifest.name}@${version} is already published, skipping`);
 		continue;
 	}
-	const publishArgs = ["publish", directory, "--access", "public", "--ignore-scripts"];
+	// An absolute path: npm reads a bare `packages/x` as the GitHub shorthand user/repo, which only Windows' backslashes avoid.
+	const publishArgs = ["publish", resolve(directory), "--access", "public", "--ignore-scripts"];
 	if (distTag) publishArgs.push("--tag", distTag);
 	if (dryRun) publishArgs.push("--dry-run");
 	else if (process.env.GITHUB_ACTIONS === "true") publishArgs.push("--provenance");
