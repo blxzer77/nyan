@@ -114,7 +114,7 @@ test("wires multiple direct packages without registry fallbacks", (t) => {
 	const lockPath = join(consumerDirectory, "package-lock.json");
 	const lockContents = readFileSync(lockPath, "utf8");
 	const lock = JSON.parse(lockContents);
-	const targetLockEntry = Object.values(lock.packages).find((entry) => entry.resolved?.includes("nyan-package-test-target"));
+	const targetLockEntry = Object.values(lock.packages).find((entry) => entry.resolved?.includes("ny4n-package-test-target"));
 	assert.ok(targetLockEntry);
 	targetLockEntry.resolved = "https://registry.npmjs.org/@ny4n-package-test/target/-/target-1.0.0.tgz";
 	writeFileSync(lockPath, JSON.stringify(lock));
