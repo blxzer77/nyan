@@ -20,8 +20,10 @@ const vitestBin = join(repoRoot, "node_modules", "vitest", "vitest.mjs");
 
 const SUITES = {
 	agent: ["--bun", vitestBin, "--run"],
+	chord: ["--bun", vitestBin, "--run"],
 	client: ["--bun", vitestBin, "--run"],
 	codemode: ["--bun", vitestBin, "--run"],
+	durable: ["--bun", vitestBin, "--run"],
 	protocol: ["--bun", vitestBin, "--run"],
 	server: ["--bun", vitestBin, "--run"],
 	telemetry: ["--bun", vitestBin, "--run"],

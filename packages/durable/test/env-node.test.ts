@@ -318,10 +318,10 @@ describe("NodeExecutionEnv filesystem", () => {
 		const env = new NodeExecutionEnv({ cwd: root });
 		const tempDir = getOrThrow(await env.createTempDir("node-env-test-", BACKGROUND_CONTEXT));
 		tempDirs.push(tempDir);
-		await expect(access(tempDir)).resolves.toBeUndefined();
+		await access(tempDir);
 		const tempFile = getOrThrow(await env.createTempFile({ prefix: "prefix-", suffix: ".txt" }, BACKGROUND_CONTEXT));
 		tempDirs.push(join(tempFile, ".."));
-		await expect(access(tempFile)).resolves.toBeUndefined();
+		await access(tempFile);
 		expect(tempFile.endsWith(".txt")).toBe(true);
 		expect(getOrThrow(await env.readTextFile(tempFile, BACKGROUND_CONTEXT))).toBe("");
 	});
