@@ -71,6 +71,8 @@ Use an explicit manifest when resources live elsewhere or need filtering:
 
 Paths are relative to the package root. Arrays accept glob patterns and exclusions. List dot-prefixed or symlinked resource roots directly when traversal through a glob would not discover them.
 
+A package written for Pi loads without changes: when it has no `nyan` field, Nyan reads its `pi` field the same way. See [Packages and extensions written for Pi](#packages-and-extensions-written-for-pi).
+
 The `nyan-package` keyword marks an npm package as a Nyan package so a package gallery or search can find it. Optional `nyan.image` and `nyan.video` fields give such a gallery previews. Nyan does not operate a gallery.
 
 ## Declare dependencies
@@ -90,6 +92,17 @@ Declare the host-provided packages listed above in `peerDependencies` with a `"*
 Do not list host-provided packages in `dependencies`. A physical copy can bypass Nyan's extension module mapping in compiled ESM and create duplicate classes, registries, and initialization work. Nyan reports an extension warning when it detects this manifest configuration. Other Nyan packages used as dependencies must be included in the published tarball and referenced through their `node_modules` resource paths.
 
 Installed packages load with separate module roots. Do not rely on two packages sharing one dependency instance or one package resolving another package’s undeclared dependency.
+
+## Packages and extensions written for Pi
+
+Nyan maps two Pi names so that an extension or package written against Pi loads as it is:
+
+- Imports of `@earendil-works/pi-coding-agent`, `pi-tui`, `pi-ai`, `pi-agent-core` and the same names under `@mariozechner/` resolve to the `@ny4n/*` host modules, including the `/oauth`, `/compat` and `/providers/all` subpaths of `pi-ai`.
+- A package's `pi` manifest field is read when it has no `nyan` field. If both exist, `nyan` wins.
+
+This covers extensions that use the host API. It does not make Nyan Pi-compatible in other ways: Nyan does not read `~/.pi`, `.pi/`, or `PI_*` variables. An extension that finds the agent directory itself (by joining `~/.pi/agent`, reading `PI_CODING_AGENT_DIR`, or reading a `piConfig` field) keeps looking at Pi's locations. `pi-mcp-adapter` is one: unchanged, it reads its configuration from `~/.pi/agent`. Such an extension needs a Nyan version, or a copy that uses `getAgentDir()` or `~/.nyan`.
+
+Pi-specific behavior beyond the names is not promised, and the Pi API can differ from Nyan's where Nyan has changed it. New packages should use `@ny4n/*` and the `nyan` field.
 
 ## Select package resources
 

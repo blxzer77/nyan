@@ -20,6 +20,7 @@ import { readNyanManifest } from "../nyan-manifest.ts";
 import { createSyntheticSourceInfo, getSyntheticPathSource, isSyntheticPath } from "../source-info.ts";
 import { time } from "../timings.ts";
 import type { ModelRouteRequest, VirtualModelDefinition } from "../virtual-models.ts";
+import { withPiAliases } from "./pi-compat.ts";
 import type {
 	EntryRenderer,
 	Extension,
@@ -95,7 +96,7 @@ function getAliases(): Record<string, string> {
 	const nyanAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@ny4n/ai/oauth");
 	const nyanAiProvidersEntry = resolveWorkspaceOrImport("ai/dist/providers/all.js", "@ny4n/ai/providers/all");
 
-	_aliases = {
+	_aliases = withPiAliases({
 		"@ny4n/coding-agent": nyanCodingAgentEntry,
 		"@ny4n/agent-core": nyanAgentCoreEntry,
 		"@ny4n/tui": nyanTuiEntry,
@@ -109,7 +110,7 @@ function getAliases(): Record<string, string> {
 		"@sinclair/typebox": typeboxEntry,
 		"@sinclair/typebox/compile": typeboxCompileEntry,
 		"@sinclair/typebox/value": typeboxValueEntry,
-	};
+	});
 
 	return _aliases;
 }
