@@ -239,37 +239,4 @@ describe.runIf(isBun)("native fetch on Bun", () => {
 
 		expect(globalThis.fetch).toBe(custom);
 	});
-
-	it("sends requests through HTTP_PROXY, read when the request is made", async () => {
-		const origin = http.createServer((_request, response) => response.end("origin"));
-		const originPort = await listen(origin);
-		const proxyRequestLines: string[] = [];
-		const proxy = net.createServer((client) => {
-			client.once("data", (data) => {
-				const text = data.toString();
-				proxyRequestLines.push(text.split("\r\n")[0] ?? "");
-				// A forward proxy: Bun sends the absolute-form request line for a plain-HTTP origin.
-				const upstream = net.connect(originPort, "127.0.0.1", () => {
-					upstream.write(text.replace(/^(\w+) http:\/\/[^/]+/, "$1 "));
-					upstream.pipe(client);
-				});
-				upstream.on("error", () => client.destroy());
-			});
-		});
-		const proxyPort = await listen(proxy);
-		try {
-			configureHttpDispatcher();
-			// Set after configuring: the variable must be honored for requests made later.
-			applyHttpProxySettings(`http://127.0.0.1:${proxyPort}`);
-
-			const body = await fetch(`http://127.0.0.1:${originPort}/v1`).then((response) => response.text());
-
-			expect(body).toBe("origin");
-			expect(proxyRequestLines).toEqual([`GET http://127.0.0.1:${originPort}/v1 HTTP/1.1`]);
-		} finally {
-			proxy.close();
-			origin.closeAllConnections();
-			await new Promise<void>((resolve) => origin.close(() => resolve()));
-		}
-	});
 });

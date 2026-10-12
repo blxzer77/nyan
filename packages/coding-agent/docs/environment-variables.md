@@ -96,6 +96,6 @@ These variables are read by Nyan itself:
 | `NYAN_TRUE_COLOR` | Override truecolor detection with `1`, `0`, or `auto` |
 | `NYAN_TUI_ESC_TIMEOUT` | How long to wait after a lone ESC before treating it as Escape, in milliseconds; defaults to `100` over SSH and `10` otherwise. Increase if Alt-key input is misread as Escape |
 | `VISUAL`, `EDITOR` | External editor fallback when `externalEditor` is unset |
-| `HTTP_PROXY`, `HTTPS_PROXY` | Proxy outbound HTTP requests. On Node a plain-HTTP origin goes through a CONNECT tunnel; in the standalone executable Bun's fetch sends it in forward-proxy form (`GET http://origin/...`), and HTTPS origins use a CONNECT tunnel on both |
+| `HTTP_PROXY`, `HTTPS_PROXY` | Proxy outbound HTTP requests. On Node, Nyan installs an undici proxy agent (a plain-HTTP origin goes through a CONNECT tunnel). In the standalone executable Bun's own fetch reads these variables; which requests it proxies and in which form is Bun's behavior and can differ per platform |
 
 Provider credentials such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and provider-specific configuration are listed in [Providers](providers.md#use-an-api-key-from-the-environment).
