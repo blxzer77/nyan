@@ -4,7 +4,6 @@
  * server is configured.
  */
 
-import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
@@ -31,6 +30,7 @@ import {
 import { McpOAuthAuthorizationRequiredError, type OAuthChallenge } from "@ny4n/mcp/oauth";
 import { VERSION } from "../../config.ts";
 import { resolveConfigValueOrThrow, resolveHeadersOrThrow } from "../../core/resolve-config-value.ts";
+import { homeDirectory } from "../../utils/paths.ts";
 import type { McpServerEntry } from "./config.ts";
 import type { McpServerLog } from "./log.ts";
 import {
@@ -88,9 +88,9 @@ function usesOAuth(entry: McpServerEntry): boolean {
 
 /** `~` and `~/…` (also `~\…` on Windows) name the home directory, like in a shell. */
 function expandHome(value: string): string {
-	if (value === "~") return homedir();
+	if (value === "~") return homeDirectory();
 	if (value.startsWith("~/") || (process.platform === "win32" && value.startsWith("~\\"))) {
-		return join(homedir(), value.slice(2));
+		return join(homeDirectory(), value.slice(2));
 	}
 	return value;
 }
