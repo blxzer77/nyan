@@ -19,7 +19,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PLATFORMS = ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64", "windows-x64", "windows-arm64"];
@@ -118,13 +118,29 @@ function buildPlatform(platform, out) {
 	return archive;
 }
 
+const OUTPUT_MARKER = ".nyan-binaries";
+
+/** Clear `out` for a fresh build. The removal is recursive, so it only touches an empty directory or one this script made. */
+function prepareOutputDirectory(out) {
+	if (repoRoot === out || repoRoot.startsWith(`${out}${sep}`)) {
+		throw new Error(`--out ${out} is the repository or one of its parents; refusing to delete it.`);
+	}
+	if (existsSync(out) && readdirSync(out).length > 0 && !existsSync(join(out, OUTPUT_MARKER))) {
+		throw new Error(
+			`--out ${out} is not empty and was not created by this script (no ${OUTPUT_MARKER} file); refusing to delete it. Use a new or empty directory.`,
+		);
+	}
+	rmSync(out, { recursive: true, force: true });
+	mkdirSync(out, { recursive: true });
+	writeFileSync(join(out, OUTPUT_MARKER), "Created by scripts/build-binaries.mjs; the script may clear this directory.\n");
+}
+
 function main() {
 	const { platforms, out } = parseArgs(process.argv.slice(2));
 	if (!existsSync(join(agentDir, "dist", "bun", "cli.js"))) {
 		throw new Error("packages/coding-agent/dist/bun/cli.js is missing. Run `npm run build` first.");
 	}
-	rmSync(out, { recursive: true, force: true });
-	mkdirSync(out, { recursive: true });
+	prepareOutputDirectory(out);
 
 	const archives = platforms.map((platform) => {
 		console.log(`==> ${platform}`);
