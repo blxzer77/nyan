@@ -8,6 +8,10 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 - Extensions and packages written for Pi load as they are. Imports of `@earendil-works/pi-coding-agent`, `pi-tui`, `pi-ai` and `pi-agent-core` (and the same names under `@mariozechner/`) resolve to Nyan's host modules, and a package's `pi` manifest field is read when it has no `nyan` field. Nyan still does not read `~/.pi` or `PI_*` variables, so an extension that locates the agent directory itself keeps using Pi's. See [Packages and extensions written for Pi](docs/packages.md#packages-and-extensions-written-for-pi).
 
+### Fixed
+
+- In the standalone executable, `httpIdleTimeoutMs` takes effect. Before, a response that stalled before its headers or in the middle of its body was never given up on, whatever the setting. Proxy variables were already honored by Bun's fetch; the standalone executable now uses that fetch with an idle-timeout wrapper and no longer installs undici. A plain-HTTP origin behind an HTTP proxy is requested in forward-proxy form there instead of through a CONNECT tunnel; HTTPS origins still use a tunnel.
+
 ## [1.1.0] - 2026-10-12
 
 ### Added
