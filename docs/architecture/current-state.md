@@ -89,6 +89,7 @@ Nyan includes no default address for any hosted service. The installer, share vi
 
 ## Known limits
 
+- Pi extensions load through a name mapping only (`src/core/extensions/pi-compat.ts`): `@earendil-works/pi-*` and `@mariozechner/pi-*` imports and the `pi` manifest field. An extension that finds the agent directory itself, such as `pi-mcp-adapter`, still reads `~/.pi/agent`. Loading was checked for seven Pi extensions on Windows; their behavior beyond loading was not.
 - Version 1.0.0 of the twelve public packages is on npm under `@ny4n` (`@ny4n/coding-agent` provides the `nyan` command) and `main` on `blxzer77/nyan` is this tree. Release tags are `nyan-vX.Y.Z`; the plain `vX.Y.Z` tags are Pi's.
 - The native prebuilds committed in the repository (`packages/tui/native/*/prebuilds`) predate the rename; the release workflow rebuilds them per platform and the published packages carry the rebuilt ones. Only the Windows x64 module has been exercised on a machine; the other five were built by the workflow and not run.
 - Publishing needs the `NPM_TOKEN` repository secret (an npm token with publish rights to `@ny4n`). Package versions on npm cannot be replaced: a fix is a new version.

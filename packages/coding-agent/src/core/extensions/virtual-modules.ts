@@ -9,9 +9,10 @@ import * as bundledTypeboxValue from "typebox/value";
 // This import is safe because loader.ts exports are not re-exported from index.ts.
 // Extensions can therefore import from @ny4n/coding-agent.
 import * as bundledNyanCodingAgent from "../../index.ts";
+import { withPiAliases } from "./pi-compat.ts";
 
-/** Modules available to extensions in source and compiled binary runtimes. */
-export const VIRTUAL_MODULES: Record<string, unknown> = {
+/** Modules available to extensions in source and compiled binary runtimes, under their Nyan names and Pi's. */
+export const VIRTUAL_MODULES: Record<string, unknown> = withPiAliases({
 	typebox: bundledTypebox,
 	"typebox/compile": bundledTypeboxCompile,
 	"typebox/value": bundledTypeboxValue,
@@ -28,4 +29,4 @@ export const VIRTUAL_MODULES: Record<string, unknown> = {
 	"@ny4n/ai/oauth": bundledNyanAiOauth,
 	"@ny4n/ai/providers/all": bundledNyanAiProviders,
 	"@ny4n/coding-agent": bundledNyanCodingAgent,
-};
+});
