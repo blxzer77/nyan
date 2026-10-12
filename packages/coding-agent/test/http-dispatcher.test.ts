@@ -57,7 +57,11 @@ describe("http proxy settings", () => {
 	});
 });
 
-describe("http dispatcher", () => {
+const isBun = typeof process.versions.bun === "string";
+
+// The undici dispatcher is what Node uses. Bun keeps its native fetch (see the "native fetch on Bun" tests below),
+// which no undici dispatcher applies to.
+describe.skipIf(isBun)("http dispatcher", () => {
 	const originalDispatcher = undici.getGlobalDispatcher();
 	const originalFetch = globalThis.fetch;
 	let savedProxyEnv: Record<(typeof DISPATCHER_PROXY_ENV_KEYS)[number], string | undefined>;
@@ -167,5 +171,105 @@ describe("http dispatcher", () => {
 		);
 		expect(connectSpy.mock.calls[0]?.[0]).not.toHaveProperty("autoSelectFamily");
 		expect(net.getDefaultAutoSelectFamilyAttemptTimeout()).toBe(originalAttemptTimeoutMs);
+	});
+});
+
+describe.runIf(isBun)("native fetch on Bun", () => {
+	const originalFetch = globalThis.fetch;
+	let savedProxyEnv: Record<(typeof DISPATCHER_PROXY_ENV_KEYS)[number], string | undefined>;
+
+	beforeEach(() => {
+		savedProxyEnv = Object.fromEntries(DISPATCHER_PROXY_ENV_KEYS.map((key) => [key, process.env[key]])) as Record<
+			(typeof DISPATCHER_PROXY_ENV_KEYS)[number],
+			string | undefined
+		>;
+		for (const key of DISPATCHER_PROXY_ENV_KEYS) {
+			delete process.env[key];
+		}
+	});
+
+	afterEach(() => {
+		for (const key of DISPATCHER_PROXY_ENV_KEYS) {
+			const value = savedProxyEnv[key];
+			if (value === undefined) {
+				delete process.env[key];
+			} else {
+				process.env[key] = value;
+			}
+		}
+		// Back to the fetch that was global when the file loaded, so the next test configures from scratch.
+		globalThis.fetch = originalFetch;
+	});
+
+	async function listen(server: http.Server | net.Server): Promise<number> {
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		return (server.address() as net.AddressInfo).port;
+	}
+
+	it("wraps the native fetch with the idle timeout and unwraps it when the timeout is disabled", async () => {
+		configureHttpDispatcher(1_000);
+		const wrapped = globalThis.fetch;
+		expect(wrapped).not.toBe(originalFetch);
+
+		configureHttpDispatcher(2_000);
+		expect(globalThis.fetch).not.toBe(wrapped);
+		expect(globalThis.fetch).not.toBe(originalFetch);
+
+		configureHttpDispatcher(0);
+		expect(globalThis.fetch).toBe(originalFetch);
+	});
+
+	it("applies the idle timeout to requests", async () => {
+		const stalled = http.createServer(() => {});
+		const port = await listen(stalled);
+		try {
+			configureHttpDispatcher(200);
+			await expect(fetch(`http://127.0.0.1:${port}/`)).rejects.toMatchObject({ code: "UND_ERR_HEADERS_TIMEOUT" });
+		} finally {
+			stalled.closeAllConnections();
+			await new Promise<void>((resolve) => stalled.close(() => resolve()));
+		}
+	});
+
+	it("leaves a fetch that someone else installed alone", () => {
+		const custom = (async () => new Response("custom")) as typeof fetch;
+		globalThis.fetch = custom;
+
+		configureHttpDispatcher(1_000);
+
+		expect(globalThis.fetch).toBe(custom);
+	});
+
+	it("sends requests through HTTP_PROXY, read when the request is made", async () => {
+		const origin = http.createServer((_request, response) => response.end("origin"));
+		const originPort = await listen(origin);
+		const proxyRequestLines: string[] = [];
+		const proxy = net.createServer((client) => {
+			client.once("data", (data) => {
+				const text = data.toString();
+				proxyRequestLines.push(text.split("\r\n")[0] ?? "");
+				// A forward proxy: Bun sends the absolute-form request line for a plain-HTTP origin.
+				const upstream = net.connect(originPort, "127.0.0.1", () => {
+					upstream.write(text.replace(/^(\w+) http:\/\/[^/]+/, "$1 "));
+					upstream.pipe(client);
+				});
+				upstream.on("error", () => client.destroy());
+			});
+		});
+		const proxyPort = await listen(proxy);
+		try {
+			configureHttpDispatcher();
+			// Set after configuring: the variable must be honored for requests made later.
+			applyHttpProxySettings(`http://127.0.0.1:${proxyPort}`);
+
+			const body = await fetch(`http://127.0.0.1:${originPort}/v1`).then((response) => response.text());
+
+			expect(body).toBe("origin");
+			expect(proxyRequestLines).toEqual([`GET http://127.0.0.1:${originPort}/v1 HTTP/1.1`]);
+		} finally {
+			proxy.close();
+			origin.closeAllConnections();
+			await new Promise<void>((resolve) => origin.close(() => resolve()));
+		}
 	});
 });

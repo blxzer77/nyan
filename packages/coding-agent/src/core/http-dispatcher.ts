@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import * as undici from "undici";
+import { createIdleTimeoutFetch } from "./idle-timeout-fetch.ts";
 
 export const DEFAULT_HTTP_IDLE_TIMEOUT_MS = 300_000;
 // Node's 250ms default can terminate valid connection attempts on high-latency routes.
@@ -78,10 +79,31 @@ function createUndiciOriginDispatcher(origin: string | URL, options: object): un
 	);
 }
 
+/**
+ * Bun's own fetch stays the global fetch: it reads HTTP_PROXY, HTTPS_PROXY and NO_PROXY itself on every request (checked
+ * on Bun 1.4, including variables set after startup), and undici's dispatcher does not apply to it. What it lacks is the
+ * idle timeout, so the global fetch is wrapped by createIdleTimeoutFetch. Differences from the Node path: a plain-HTTP
+ * origin behind a proxy is requested in forward-proxy form (`GET http://origin/...`) and not through a CONNECT tunnel,
+ * and there is no dispatcher, HTTP/2 switch, or connection-attempt timeout to configure.
+ *
+ * A fetch that someone else installed after startup is left alone, as on the Node path.
+ */
+function configureNativeFetch(timeoutMs: number): void {
+	const current = globalThis.fetch;
+	if (installedGlobalFetch === undefined ? current !== originalGlobalFetch : current !== installedGlobalFetch) return;
+	const wrapped = createIdleTimeoutFetch(originalGlobalFetch, timeoutMs);
+	globalThis.fetch = wrapped;
+	installedGlobalFetch = wrapped;
+}
+
 export function configureHttpDispatcher(timeoutMs: number = DEFAULT_HTTP_IDLE_TIMEOUT_MS): void {
 	const normalizedTimeoutMs = parseHttpIdleTimeoutMs(timeoutMs);
 	if (normalizedTimeoutMs === undefined) {
 		throw new Error(`Invalid HTTP idle timeout: ${String(timeoutMs)}`);
+	}
+	if (typeof process.versions.bun === "string") {
+		configureNativeFetch(normalizedTimeoutMs);
+		return;
 	}
 	const dispatcher = withUndiciErrorListener(
 		new undici.EnvHttpProxyAgent({
