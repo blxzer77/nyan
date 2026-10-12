@@ -4,6 +4,10 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+### Added
+
+- Each GitHub release attaches standalone `nyan` executables built with Bun for Linux, macOS and Windows on x64 and arm64, with a `SHA256SUMS` file. They need no Node.js installation. Extract the archive and run `nyan`, or `nyan.exe` on Windows, from the extracted folder; it reads its themes, docs and native helpers from beside the executable. A binary does not update itself and points to the releases page instead.
+
 ## [1.0.1] - 2026-10-12
 
 ### Fixed

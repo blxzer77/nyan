@@ -10,7 +10,7 @@ import * as bundledTypeboxValue from "typebox/value";
 // Extensions can therefore import from @ny4n/coding-agent.
 import * as bundledNyanCodingAgent from "../../index.ts";
 
-/** Modules available to extensions in source and bundled runtimes. */
+/** Modules available to extensions in source and compiled binary runtimes. */
 export const VIRTUAL_MODULES: Record<string, unknown> = {
 	typebox: bundledTypebox,
 	"typebox/compile": bundledTypeboxCompile,

@@ -1,6 +1,7 @@
 name: Release
 
-# Publishes the public packages to npm when a release tag is pushed.
+# Publishes the public packages to npm and creates a GitHub release with standalone Bun executables
+# (scripts/build-binaries.mjs) when a release tag is pushed.
 #
 #   npm run version:set -- 1.2.0     bump every package and the lockfiles, date the changelog's Unreleased entries
 #   git commit -am "Release 1.2.0" && git tag nyan-v1.2.0 && git push --follow-tags
@@ -67,9 +68,118 @@ jobs:
     name: Native prebuilds
     uses: ./.github/workflows/native.yml
 
+  binaries:
+    name: Bun binaries
+    needs: native
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Download native prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-linux-*
+          path: packages/tui/native/linux/prebuilds
+          merge-multiple: true
+
+      - name: Download macOS prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          name: native-darwin-universal
+          path: packages/tui/native/darwin/prebuilds
+
+      - name: Download Windows prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          name: native-win32-universal
+          path: packages/tui/native/win32/prebuilds
+
+      - name: Build
+        run: npm run build
+
+      - name: Compile binaries
+        run: node scripts/build-binaries.mjs --out release-assets
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: nyan-binaries
+          path: |
+            release-assets/*.tar.gz
+            release-assets/*.zip
+            release-assets/SHA256SUMS
+          if-no-files-found: error
+
+  binary-smoke:
+    name: Smoke ${{ matrix.platform }}
+    needs: binaries
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, platform: linux-x64 }
+          - { os: ubuntu-24.04-arm, platform: linux-arm64 }
+          - { os: macos-15, platform: darwin-arm64 }
+          - { os: windows-latest, platform: windows-x64 }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: nyan-binaries
+          path: release-assets
+
+      - name: Extract
+        id: extract
+        shell: bash
+        run: |
+          mkdir -p extracted
+          if [[ "${{ matrix.platform }}" == windows-* ]]; then
+            export ARCHIVE_PATH="$(cygpath -w "release-assets/nyan-${{ matrix.platform }}.zip")"
+            export DESTINATION_PATH="$(cygpath -w extracted/nyan)"
+            powershell.exe -NoProfile -NonInteractive -Command \
+              'Expand-Archive -LiteralPath $env:ARCHIVE_PATH -DestinationPath $env:DESTINATION_PATH -Force'
+            echo "binary=extracted/nyan/nyan.exe" >> "${GITHUB_OUTPUT}"
+          else
+            tar -xzf "release-assets/nyan-${{ matrix.platform }}.tar.gz" -C extracted
+            echo "binary=extracted/nyan/nyan" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Smoke-test binary
+        shell: bash
+        run: |
+          "${{ steps.extract.outputs.binary }}" --help
+          "${{ steps.extract.outputs.binary }}" --version
+          node scripts/smoke-test-codemode-binary.mjs "${{ steps.extract.outputs.binary }}"
+
   publish:
     name: Publish
-    needs: [verify, native]
+    needs: [verify, native, binary-smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm
@@ -128,6 +238,13 @@ jobs:
           fi
           node scripts/publish-packages.mjs "${args[@]}"
 
+      - name: Download binaries
+        if: github.ref_type == 'tag'
+        uses: actions/download-artifact@v4
+        with:
+          name: nyan-binaries
+          path: release-assets
+
       - name: Create GitHub release
         if: github.ref_type == 'tag'
         env:
@@ -136,4 +253,6 @@ jobs:
           prerelease=()
           # The tag is nyan-vX.Y.Z; only a suffix on the version itself (1.2.0-rc.1) makes a pre-release.
           [[ "${GITHUB_REF_NAME#nyan-v}" == *-* ]] && prerelease=(--prerelease)
-          gh release create "${GITHUB_REF_NAME}" --generate-notes "${prerelease[@]}" || gh release view "${GITHUB_REF_NAME}"
+          # A re-run finds the release already created and replaces its binaries.
+          gh release create "${GITHUB_REF_NAME}" --generate-notes "${prerelease[@]}" release-assets/* \
+            || gh release upload "${GITHUB_REF_NAME}" release-assets/* --clobber
