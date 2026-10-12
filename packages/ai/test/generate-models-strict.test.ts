@@ -2,8 +2,9 @@ import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { preloadArgs } from "./fixtures/runtime-preload.ts";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const temporaryRoots: string[] = [];
@@ -67,7 +68,7 @@ describe("strict model generation", () => {
 
 		const result = spawnSync(
 			process.execPath,
-			["--import", pathToFileURL(preloadPath).href, "scripts/generate-models.ts", "--strict"],
+			[...preloadArgs(preloadPath), "scripts/generate-models.ts", "--strict"],
 			{
 				cwd: isolatedPackageRoot,
 				encoding: "utf8",

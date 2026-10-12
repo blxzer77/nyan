@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { watchWithErrorHandler } from "../../../src/utils/fs-watch.ts";
 
 /**
  * fs.watch() returns an FSWatcher (EventEmitter). If the watcher emits an
@@ -37,18 +38,43 @@ describe("fs.watch error event crashes process", () => {
 		rmSync(tempRoot, { recursive: true, force: true });
 	});
 
-	it("process should survive an error event on the theme FSWatcher", () => {
-		// The child imports it by URL: a bare absolute path is not a valid specifier on Windows.
-		const themeModuleUrl = pathToFileURL(join(__dirname, "../../../src/ui/theme/theme.ts")).href;
-		const agentDir = join(tempRoot, "agent").replace(/\\/g, "/");
+	// The helper the theme watcher is created with: it must attach an error listener, so a later OS error reaches
+	// onError instead of throwing out of the emitter. This holds on Node and on Bun.
+	it("attaches an error handler that receives a watcher error", () => {
+		let handled = 0;
+		const watcher = watchWithErrorHandler(
+			join(tempRoot, "agent", "themes"),
+			() => {},
+			() => {
+				handled++;
+			},
+		);
+		try {
+			expect(watcher).not.toBeNull();
+			expect(watcher?.listenerCount("error")).toBe(1);
+			expect(() => watcher?.emit("error", new Error("simulated OS watcher failure"))).not.toThrow();
+			expect(handled).toBe(1);
+		} finally {
+			watcher?.close();
+		}
+	});
 
-		// Script that sets up the watcher and emits a synthetic error on it.
-		// If no .on('error') handler is attached, EventEmitter.emit('error')
-		// throws, which either crashes the process or gets caught by our try/catch.
-		const scriptPath = join(tempRoot, "test-watcher-error.mts");
-		writeFileSync(
-			scriptPath,
-			`
+	// Bun's fs.watch does not expose its watcher through process._getActiveHandles(), so the child below cannot reach
+	// the watcher to emit a synthetic error there. The guarantee itself is covered on Bun by the test above.
+	it.skipIf(typeof process.versions.bun === "string")(
+		"process should survive an error event on the theme FSWatcher",
+		() => {
+			// The child imports it by URL: a bare absolute path is not a valid specifier on Windows.
+			const themeModuleUrl = pathToFileURL(join(__dirname, "../../../src/ui/theme/theme.ts")).href;
+			const agentDir = join(tempRoot, "agent").replace(/\\/g, "/");
+
+			// Script that sets up the watcher and emits a synthetic error on it.
+			// If no .on('error') handler is attached, EventEmitter.emit('error')
+			// throws, which either crashes the process or gets caught by our try/catch.
+			const scriptPath = join(tempRoot, "test-watcher-error.mts");
+			writeFileSync(
+				scriptPath,
+				`
 import { setTheme, stopThemeWatcher } from "${themeModuleUrl}";
 
 process.env.NYAN_CODING_AGENT_DIR = "${agentDir}";
@@ -81,26 +107,27 @@ try {
 stopThemeWatcher();
 process.exit(0);
 `,
-		);
+			);
 
-		let _stdout = "";
-		let stderr = "";
-		let exitCode: number;
-		try {
-			_stdout = execFileSync(process.execPath, [scriptPath], {
-				timeout: 10000,
-				encoding: "utf-8",
-				env: { ...process.env, NYAN_CODING_AGENT_DIR: agentDir },
-				stdio: ["pipe", "pipe", "pipe"],
-			});
-			exitCode = 0;
-		} catch (err: unknown) {
-			const e = err as { status: number; stdout: string; stderr: string };
-			_stdout = e.stdout ?? "";
-			stderr = e.stderr ?? "";
-			exitCode = e.status ?? 1;
-		}
+			let _stdout = "";
+			let stderr = "";
+			let exitCode: number;
+			try {
+				_stdout = execFileSync(process.execPath, [scriptPath], {
+					timeout: 10000,
+					encoding: "utf-8",
+					env: { ...process.env, NYAN_CODING_AGENT_DIR: agentDir },
+					stdio: ["pipe", "pipe", "pipe"],
+				});
+				exitCode = 0;
+			} catch (err: unknown) {
+				const e = err as { status: number; stdout: string; stderr: string };
+				_stdout = e.stdout ?? "";
+				stderr = e.stderr ?? "";
+				exitCode = e.status ?? 1;
+			}
 
-		expect(exitCode, `Child crashed (exit ${exitCode}). stderr: ${stderr.trim()}`).toBe(0);
-	});
+			expect(exitCode, `Child crashed (exit ${exitCode}). stderr: ${stderr.trim()}`).toBe(0);
+		},
+	);
 });

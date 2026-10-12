@@ -6,7 +6,8 @@ describe("clipboard commands", () => {
 		expect(
 			await runClipboardCommand(process.execPath, ["-e", "process.stdout.write(Buffer.from([0, 255, 10]))"]),
 		).toEqual(Buffer.from([0, 255, 10]));
-		expect(await runClipboardCommand(process.execPath, ["-e", ""])).toEqual(Buffer.alloc(0));
+		// an empty script makes Bun print its CLI banner, so the no-op is spelled out
+		expect(await runClipboardCommand(process.execPath, ["-e", "void 0"])).toEqual(Buffer.alloc(0));
 		expect(await runClipboardCommand(process.execPath, ["-e", "process.exit(1)"])).toBeUndefined();
 		expect(await runClipboardCommand("nyan-clipboard-command-does-not-exist", [])).toBeUndefined();
 	});

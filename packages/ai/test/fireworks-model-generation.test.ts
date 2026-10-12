@@ -2,13 +2,14 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ModelsDevReasoningOption } from "../scripts/models-dev-reasoning-options.ts";
 import { streamSimple } from "../src/api/anthropic-messages.ts";
 import { getSupportedThinkingLevels, hasApi } from "../src/models.ts";
 import type { Api, Model } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
+import { preloadArgs } from "./fixtures/runtime-preload.ts";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const temporaryRoots: string[] = [];
@@ -47,14 +48,7 @@ function generateFireworksModels(
 	);
 	const result = spawnSync(
 		process.execPath,
-		[
-			"--import",
-			pathToFileURL(preloadPath).href,
-			"scripts/generate-models.ts",
-			"--json-only",
-			"--json-output",
-			outputPath,
-		],
+		[...preloadArgs(preloadPath), "scripts/generate-models.ts", "--json-only", "--json-output", outputPath],
 		{ cwd: packageRoot, encoding: "utf8", timeout: 10_000 },
 	);
 	expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);

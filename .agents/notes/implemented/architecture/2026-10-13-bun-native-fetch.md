@@ -26,7 +26,7 @@ On Bun the global fetch stays Bun's native fetch. `configureHttpDispatcher()` on
 
 The two runtimes differ in these ways, both verified:
 
-- A plain-HTTP origin behind an HTTP proxy is requested as `GET http://origin/...` on Bun, and through a `CONNECT` tunnel on Node (undici with `proxyTunnel: true`). HTTPS origins use `CONNECT` on both. A proxy that supports only tunnels will refuse plain-HTTP origins on Bun.
+- Which requests Bun's fetch proxies, and in which form, is Bun's own behavior and is not the same on every platform; nothing in Nyan configures it. Measured: on Windows a loopback plain-HTTP origin went through the proxy as `GET http://origin/...`, on Linux the same request went directly to the origin. On Node the dispatcher uses a `CONNECT` tunnel for a plain-HTTP origin. A proxy that supports only tunnels will refuse plain-HTTP origins on Bun.
 - On Bun there is no dispatcher to configure: no HTTP/2 switch and no connection-attempt timeout (`autoSelectFamilyAttemptTimeout`).
 - The wrapper returns a new `Response` for a response with a body, with the same status, headers, `url` and `redirected`, but not `type`.
 
@@ -35,6 +35,6 @@ The two runtimes differ in these ways, both verified:
 ## Verification
 
 - `test/idle-timeout-fetch.test.ts` (9 tests, real local servers, Node and Bun): pass-through of status, headers, url and body; a body-less response; the headers timeout and the body timeout with their codes; chunks that keep arriving within the timeout; a slow consumer; the caller's abort reason; cancelling the body. Four deliberate breakages of the wrapper each make some of them fail.
-- `test/http-dispatcher.test.ts`: the undici tests run on Node (a CONNECT tunnel for a plain-HTTP origin, the two-second connection attempt), and four tests run only on Bun (the fetch is wrapped and unwrapped, the timeout applies, a foreign fetch is left alone, `HTTP_PROXY` set after configuring is honored in forward-proxy form).
+- `test/http-dispatcher.test.ts`: the undici tests run on Node (a CONNECT tunnel for a plain-HTTP origin, the two-second connection attempt), and three tests run only on Bun (the fetch is wrapped and unwrapped, the timeout applies, a foreign fetch is left alone). No test asserts how Bun routes a proxied request, because that differs by platform.
 - By hand on Bun 1.4.3: an HTTPS origin with a self-signed certificate behind a `CONNECT` proxy answered `200` through `configureHttpDispatcher(6000)`, with the proxy seeing `CONNECT`. Before this change, with an idle timeout of one second, a five-second header stall and a five-second body stall were returned after five seconds; now both fail after one second.
 - Not verified: Linux and macOS, and the compiled executable (the tests ran Bun against the sources).

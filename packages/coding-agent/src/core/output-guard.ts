@@ -2,7 +2,12 @@ interface StdoutTakeoverState {
 	rawStdoutWrite: (chunk: string, callback?: (error?: Error | null) => void) => boolean;
 	rawStderrWrite: (chunk: string, callback?: (error?: Error | null) => void) => boolean;
 	originalStdoutWrite: typeof process.stdout.write;
+	/** The console methods replaced on Bun; see takeOverStdout(). */
+	originalConsole?: Pick<Console, StdoutConsoleMethod>;
 }
+
+type StdoutConsoleMethod = "log" | "info" | "debug" | "dir" | "table";
+const STDOUT_CONSOLE_METHODS: StdoutConsoleMethod[] = ["log", "info", "debug", "dir", "table"];
 
 let stdoutTakeoverState: StdoutTakeoverState | undefined;
 
@@ -62,10 +67,22 @@ export function takeOverStdout(): void {
 		return rawStderrWrite(String(chunk), callback);
 	}) as typeof process.stdout.write;
 
+	// Node's console writes through process.stdout.write, so the replacement above already redirects it. Bun's console
+	// writes to file descriptor 1 itself and would still reach stdout, which in json and rpc mode carries the protocol.
+	let originalConsole: Pick<Console, StdoutConsoleMethod> | undefined;
+	if (typeof process.versions.bun === "string") {
+		originalConsole = {} as Pick<Console, StdoutConsoleMethod>;
+		for (const method of STDOUT_CONSOLE_METHODS) {
+			(originalConsole as Record<string, unknown>)[method] = console[method];
+			(console as unknown as Record<string, unknown>)[method] = (...args: unknown[]) => console.error(...args);
+		}
+	}
+
 	stdoutTakeoverState = {
 		rawStdoutWrite,
 		rawStderrWrite,
 		originalStdoutWrite,
+		originalConsole,
 	};
 }
 
@@ -75,6 +92,11 @@ export function restoreStdout(): void {
 	}
 
 	process.stdout.write = stdoutTakeoverState.originalStdoutWrite;
+	if (stdoutTakeoverState.originalConsole) {
+		for (const method of STDOUT_CONSOLE_METHODS) {
+			(console as unknown as Record<string, unknown>)[method] = stdoutTakeoverState.originalConsole[method];
+		}
+	}
 	stdoutTakeoverState = undefined;
 }
 

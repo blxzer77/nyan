@@ -7,6 +7,7 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const aiEntryUrl = new URL("../src/index.ts", import.meta.url).href;
 const compatEntryUrl = new URL("../src/compat.ts", import.meta.url).href;
 const providersAllUrl = new URL("../src/providers/all.ts", import.meta.url).href;
+const spyUrl = new URL("./fixtures/sdk-load-spy.mjs", import.meta.url).href;
 
 const SDK_SPECIFIERS = ["@anthropic-ai/sdk", "openai", "@google/genai", "@aws-sdk/client-bedrock-runtime"] as const;
 
@@ -14,31 +15,27 @@ type ProbeResult = {
 	loadedSpecifiers: string[];
 };
 
+// The probe runs in a child process of whichever runtime runs the test, and observes SDK loading with that runtime's
+// own mechanism (see the fixture).
 function runProbe(action: string): ProbeResult {
 	const script = `
-		import { registerHooks } from "node:module";
+		import { observeSdkLoads } from ${JSON.stringify(spyUrl)};
 
-		const targets = new Set(${JSON.stringify(SDK_SPECIFIERS)});
-		const loaded = [];
-
-		registerHooks({
-			resolve(specifier, context, nextResolve) {
-				if (targets.has(specifier)) {
-					loaded.push(specifier);
-				}
-				return nextResolve(specifier, context);
-			},
-		});
+		const loaded = await observeSdkLoads(${JSON.stringify(SDK_SPECIFIERS)});
 
 		const mod = await import(${JSON.stringify(aiEntryUrl)});
 		${action}
 		console.log(JSON.stringify({ loadedSpecifiers: [...new Set(loaded)] }));
 	`;
 
-	const result = spawnSync(process.execPath, ["--input-type=module", "--eval", script], {
-		cwd: packageRoot,
-		encoding: "utf8",
-	});
+	const result = spawnSync(
+		process.execPath,
+		process.versions.bun ? ["--eval", script] : ["--input-type=module", "--eval", script],
+		{
+			cwd: packageRoot,
+			encoding: "utf8",
+		},
+	);
 
 	if (result.status !== 0) {
 		throw new Error(`Probe failed (exit ${result.status})\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`);

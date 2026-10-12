@@ -33,7 +33,15 @@ export async function closeServers(): Promise<void> {
 			(server) =>
 				new Promise<void>((resolve, reject) => {
 					server.closeAllConnections();
-					server.close((error) => (error ? reject(error) : resolve()));
+					// Bun's node:http can have stopped the server already by now and then reports "Server is not running"
+					// to the close callback. Node does not. Either way the server is down, which is all this helper needs.
+					server.close((error) => {
+						const notRunning =
+							(error as NodeJS.ErrnoException | undefined)?.code === "ERR_SERVER_NOT_RUNNING" ||
+							/not running/i.test(error?.message ?? "");
+						if (error && !notRunning) reject(error);
+						else resolve();
+					});
 				}),
 		),
 	);

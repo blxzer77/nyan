@@ -11,12 +11,22 @@ export interface PathInputOptions {
 	trim?: boolean;
 	/** Expand leading `~` to a home directory. Defaults to true. */
 	expandTilde?: boolean;
-	/** Home directory used for `~` expansion. Defaults to `os.homedir()`. */
+	/** Home directory used for `~` expansion. Defaults to `homeDirectory()`. */
 	homeDir?: string;
 	/** Strip a leading `@`, used for CLI @file paths. */
 	stripAtPrefix?: boolean;
 	/** Normalize unicode space variants to regular spaces. */
 	normalizeUnicodeSpaces?: boolean;
+}
+
+/**
+ * The home directory the environment advertises: `$HOME` on POSIX and `$USERPROFILE` on Windows, falling back to
+ * `os.homedir()`. Node's `os.homedir()` already prefers those variables; Bun's does not (it reads the account entry
+ * instead), so under Bun `~` would otherwise expand to a different directory than under Node.
+ */
+export function homeDirectory(): string {
+	const advertised = process.platform === "win32" ? process.env.USERPROFILE?.trim() : process.env.HOME?.trim();
+	return advertised ? advertised : homedir();
 }
 
 /**
@@ -94,7 +104,7 @@ export function normalizePath(input: string, options: PathInputOptions = {}): st
 	}
 
 	if (options.expandTilde ?? true) {
-		const home = options.homeDir ?? homedir();
+		const home = options.homeDir ?? homeDirectory();
 		if (normalized === "~") return home;
 		if (normalized.startsWith("~/") || (process.platform === "win32" && normalized.startsWith("~\\"))) {
 			return join(home, normalized.slice(2));
@@ -102,10 +112,24 @@ export function normalizePath(input: string, options: PathInputOptions = {}): st
 	}
 
 	if (/^file:\/\//.test(normalized)) {
-		return fileURLToPath(normalized);
+		return fileURLToPath(withDecodablePath(normalized));
 	}
 
 	return normalized;
+}
+
+/**
+ * `file:` URLs reach the filesystem through their decoded path, so a malformed escape (`file:///%E0%A4%A`) names no
+ * path at all. Node's `fileURLToPath` throws for it; Bun's returns the text undecoded, which would be a silent
+ * difference between the runtimes.
+ */
+function withDecodablePath(url: string): string {
+	try {
+		decodeURIComponent(new URL(url).pathname);
+	} catch (error) {
+		throw new Error(`Invalid file URL: ${url}`, { cause: error });
+	}
+	return url;
 }
 
 export function resolvePath(input: string, baseDir: string = process.cwd(), options: PathInputOptions = {}): string {

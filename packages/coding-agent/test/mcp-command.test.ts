@@ -42,9 +42,9 @@ describe("nyan mcp", () => {
 		expect(output).toContain("fixture: connected, 1 tool (codemode, global)\n");
 		expect(output).toContain("  tools: echo");
 		expect(output).toContain("broken: failed (codemode, global)\n  nyan-test-missing-mcp-server\n  ");
-		// Windows reports a missing command through cmd.exe instead of Node's ENOENT.
+		// Windows reports a missing command through cmd.exe instead of Node's ENOENT, and Bun reports its own wording.
 		expect(output).toMatch(
-			/spawn nyan-test-missing-mcp-server ENOENT|'nyan-test-missing-mcp-server' is not recognized/,
+			/spawn nyan-test-missing-mcp-server ENOENT|'nyan-test-missing-mcp-server' is not recognized|Executable not found in \$PATH/,
 		);
 		expect(output).toContain("parked: disabled (codemode, global)");
 		expect(output).toContain("config error: ");

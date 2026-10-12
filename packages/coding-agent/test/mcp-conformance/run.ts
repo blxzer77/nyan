@@ -18,8 +18,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { sourceRuntimeArgs } from "../../src/experimental/source-runtime-args.ts";
 
 /** The pinned upstream suite. Bumping it requires reviewing and regenerating the baseline. */
 const CONFORMANCE_PACKAGE = "@modelcontextprotocol/conformance@0.2.0-alpha.11";
@@ -32,7 +33,6 @@ const IGNORED_STATUSES = new Set(["INFO", "SKIPPED"]);
 const here = fileURLToPath(new URL(".", import.meta.url));
 const baselinePath = join(here, "baseline.json");
 const clientPath = join(here, "client.ts");
-const resolverUrl = pathToFileURL(join(here, "../../src/experimental/source-resolver.ts")).href;
 
 type CheckStatus = "pass" | "fail";
 
@@ -306,7 +306,7 @@ Options:
 		const launcher = join(workDir, "nyan-client");
 		writeFileSync(
 			launcher,
-			`#!/bin/sh\nexec ${JSON.stringify(process.execPath)} --import ${JSON.stringify(resolverUrl)} ${JSON.stringify(clientPath)} "$@"\n`,
+			`#!/bin/sh\nexec ${[process.execPath, ...sourceRuntimeArgs(), clientPath].map((arg) => JSON.stringify(arg)).join(" ")} "$@"\n`,
 		);
 		chmodSync(launcher, 0o755);
 
