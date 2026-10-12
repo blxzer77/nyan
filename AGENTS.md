@@ -38,7 +38,7 @@ Nyan 是由 Pi Agent v1.1.0 派生的独立开发产品。Pi 是来源基线，�
 
 ## 发布
 
-推送 `vX.Y.Z` 标签触发 `.github/workflows/release.yml`：在 Ubuntu 上构建、检查并测试，在各平台编译 `packages/tui` 的原生模块，然后按依赖顺序把公开包发布到 npm（`scripts/publish-packages.mjs`，已发布的版本会跳过，预发布版本使用 `next` 标签）。标签必须等于包版本。版本号用 `npm run version:set -- X.Y.Z` 同步；`npm run release:dry` 在本地只打包不发布。发布需要仓库 secret `NPM_TOKEN` 和 GitHub environment `npm`。
+推送 `nyan-vX.Y.Z` 标签触发 `.github/workflows/release.yml`（不用 `vX.Y.Z`：它属于 Pi，fork 继承的 `v1.0.0`、`v1.1.0` 等标签指向 Pi 的发布）：在 Ubuntu 上构建、检查并测试，在各平台编译 `packages/tui` 的原生模块，然后按依赖顺序把公开包发布到 npm（`scripts/publish-packages.mjs`，已发布的版本会跳过，预发布版本使用 `next` 标签）。标签必须等于包版本。版本号用 `npm run version:set -- X.Y.Z` 同步；`npm run release:dry` 在本地只打包不发布。发布需要仓库 secret `NPM_TOKEN` 和 GitHub environment `npm`。
 
 ## 开发流程
 

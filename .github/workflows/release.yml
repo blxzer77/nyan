@@ -1,16 +1,17 @@
 name: Release
 
-# Publishes the public packages to npm when a version tag is pushed.
+# Publishes the public packages to npm when a release tag is pushed.
 #
 #   npm run version:set -- 1.2.0     bump every package and the lockfiles
-#   git commit -am "Release v1.2.0" && git tag v1.2.0 && git push --follow-tags
+#   git commit -am "Release 1.2.0" && git tag nyan-v1.2.0 && git push --follow-tags
 #
-# The tag must equal the package version. A version with a pre-release suffix publishes under the `next` dist-tag.
+# Release tags are nyan-vX.Y.Z. The plain vX.Y.Z names belong to Pi: this repository inherited its tags, and v1.0.0 and
+# v1.1.0 already point at Pi releases. The tag version must equal the package version. A version with a pre-release suffix publishes under the `next` dist-tag.
 # A re-run skips versions that are already on the registry.
 
 on:
   push:
-    tags: ["v*.*.*"]
+    tags: ["nyan-v*.*.*"]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -112,7 +113,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            version="${GITHUB_REF_NAME#v}"
+            version="${GITHUB_REF_NAME#nyan-v}"
             args=(--expect-version "$version")
             [[ "$version" == *-* ]] && args+=(--tag next)
           else
