@@ -51,4 +51,4 @@ Out of the box Nyan makes no request to any service other than the model provide
 
 ## Verification
 
-Searching source, tests and package docs for `pi.dev` finds only the CHANGELOG history and this note; the affected tests set the new variables explicitly (`version-check`, `package-command-paths`, `mcp-oauth-refresh`, `remote-catalog-provider`, `model-catalog-protocol`, `radius`, `sdk-openrouter-attribution`, `radius-provider`, `providers`).
+Searching the tracked files for `pi.dev` finds only this note, the productization note, and the protection rule in the upstream normalizer. The affected tests set the new variables explicitly: `version-check`, `package-command-paths`, `mcp-oauth-refresh`, `remote-catalog-provider`, `model-catalog-protocol`, `sdk-openrouter-attribution` (coding-agent) and `providers` (ai). The Radius tests were deleted with the Radius code.

@@ -1,12 +1,14 @@
 ---
 name: nyan-error-handling
-description: 设计和审查 Nyan 的失败、恢复、重试、后台任务和用户可见报告。
+description: Design and review failure handling in Nyan, covering recovery, retries, background work, and user-visible error reports.
 ---
 
-# Nyan 错误处理
+# Error handling in Nyan
 
-每个预期失败都要有稳定的判别字段、处理所有者、状态保证和用户可执行的下一步。不要通过解析错误消息分派。保留原始原因，但把机器身份与显示文本分开。
+Every expected failure has a stable discriminant, an owner that handles it, a guarantee about the state it leaves, and a next step the user can take. Never dispatch on the error message. Keep the original cause, and keep the machine-readable identity separate from the displayed text.
 
-捕获异常只限制传播，不会撤销已经发生的变更。只有状态所有者能证明后续工作安全；否则停止依赖工作、丢弃不可信状态或把结果升级为未知。重试必须有幂等保证、取消语义和预算。
+Catching an exception limits how far it propagates; it does not undo a change that already happened. Only the owner of the state can prove that later work is safe. Otherwise stop the dependent work, discard the state that can no longer be trusted, or report the outcome as unknown. A retry needs an idempotency guarantee, defined cancellation, and a budget.
 
-最终报告说明受影响的操作、已知或未知的结果、系统当前处置和安全下一步。不得声称已回滚、已成功或可以安全重试，除非有证据。
+Missing configuration fails at the earliest point it is known and names the setting or `NYAN_*` variable to set. It never falls back silently to a different behavior.
+
+The final report says which operation was affected, what is known and unknown about the outcome, what the system did about it, and what is safe to do next. Do not claim that something was rolled back, succeeded, or can be retried safely without evidence.

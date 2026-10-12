@@ -1,19 +1,22 @@
 ---
 name: nyan-code-review
-description: 审查 Nyan 变更的所有权、生命周期、恢复、证据和用户可见行为。
+description: Review a Nyan change for state ownership, lifecycle, recovery, architecture rules, evidence, and user-visible behavior.
 ---
 
-# Nyan 代码审查
+# Reviewing a Nyan change
 
-先确认根 `AGENTS.md`、目标目录规则、Agent Notes 和变更基线，再读完整 diff 及其调用方。优先检查行为缺陷、生命周期和安全问题，少做无证据的风格评论。
+Read the root `AGENTS.md`, the AGENTS.md of each touched package, and the notes that own the area. Then read the whole diff and its callers, not only the changed lines. Look for behavior defects, lifecycle bugs, and security problems first; leave style comments that have no evidence behind them.
 
-重点问题：
+Questions to answer:
 
-- 改变了哪个事实所有者？是否有重复的 Session、Provider、工具或配置真相？
-- 失败、取消和重启后谁拥有状态？是否可能把部分或未知副作用当成成功？
-- 注册、监听器、子进程和临时文件是否在所有路径清理？是否能重复执行而不重复副作用？
-- 测试是否经过真正的 CLI、Provider、Session 或扩展入口，并观察外部状态、事件或持久化结果？
-- 新文档、错误和模型可见文本是否与代码和测试同步？
-- 是否把上游候选、示例或实验能力描述成稳定 Nyan 产品？
+- Which owner of a fact does the change touch? Does it create a second source of truth for a session, provider, tool, or setting?
+- After a failure, a cancellation, or a restart, who owns the state? Can a partial or unknown side effect be reported as success?
+- Are registrations, listeners, subprocesses, and temporary files released on every path? Can the operation run twice without doing its side effect twice?
+- Do the tests go through the real CLI, provider, session, or extension entry point, and observe external state, events, or persisted results?
+- Does a new import respect `docs/architecture/layers.json`, or does the change loosen a rule to pass?
+- Does it break something released versions depend on: session files, settings, `auth.json`, durable storage, CLI flags, `NYAN_*` variables, package exports? If so, did the author say so?
+- Does it bring back Pi names, `PI_*` variables, `.pi` paths, or a default URL for a service Nyan does not run?
+- Do docs, error messages, and model-visible text match the code and tests?
+- Does it describe experimental, example, or upstream candidate code as a Nyan feature?
 
-每个发现必须包含位置、影响、触发路径和证据。把跨文件所有权或架构问题放在总体意见，局部缺陷放在最小 diff 范围。
+Every finding states the location, the impact, how it is triggered, and the evidence. Put ownership and architecture problems that span files in the overall comment, and local defects on the smallest range of the diff.

@@ -12,7 +12,7 @@ This directory contains current, reviewable product facts and navigation for the
 | Current cross-package architecture | [`architecture/current-state.md`](architecture/current-state.md) | A dated inventory of ownership, dependency direction, entry points, and naming debt |
 | Functional layer policy | [`architecture/layers.json`](architecture/layers.json) | Versioned package-to-layer map enforced by the architecture check |
 | Decisions that affect future work | [`.agents/notes/`](../.agents/notes/) | Rationale, alternatives, consequences, and acceptance evidence |
-| Historical release information | Package `CHANGELOG.md` files | What was true for a released version; not a source for current behavior |
+| Release history | GitHub releases (`nyan-vX.Y.Z` tags) | Notes generated from the pull requests merged since the previous release; there are no CHANGELOG files |
 
 When two documents disagree, update the fact owner first and then update derived navigation. Do not turn a proposed design into current-state documentation. Proposed changes live in [`.agents/notes/proposed/`](../.agents/notes/proposed/) until their acceptance criteria are implemented and verified.
 
@@ -27,5 +27,7 @@ When two documents disagree, update the fact owner first and then update derived
 - [Implemented durable run-lifecycle cycle](../.agents/notes/implemented/architecture/2026-10-11-durable-run-lifecycle-cycle.md)
 - [Implemented removal of unused upstream content](../.agents/notes/implemented/process/2026-10-12-remove-unused-upstream-content.md)
 - [Implemented release pipeline](../.agents/notes/implemented/process/2026-10-12-release-pipeline.md)
+- [Implemented rename-aware upstream sync](../.agents/notes/implemented/process/2026-10-12-rename-aware-upstream-sync.md)
+- [Implemented initialization boundary and Pi baseline](../.agents/notes/implemented/process/2026-10-11-nyan-initialization.md)
 
 Superseded decisions are frozen under [`.agents/notes/archived/`](../.agents/notes/archived/).

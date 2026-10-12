@@ -1,12 +1,26 @@
-# Nyan Agent Governance
+# .agents
 
-Nyan 将 Agent 工作分成三层：
+Agent-facing material that the root [AGENTS.md](../AGENTS.md) links to. When Nyan runs inside this repository it discovers the skills in `.agents/skills/` on its own and loads one when a task matches its description.
 
-- 根 `AGENTS.md`：所有贡献者和 Agent 都必须遵守的当前规则。
-- `.agents/notes/`：只保存需要长期记忆的决策、替代方案、后果和证据。
-- `.agents/skills/`：可复用的工作流指导；skill 不替代代码、测试或用户授权。
-- `docs/`：当前事实、架构基线和文档导航；不承载尚未实现的未来行为。
+| Directory | Holds |
+| --- | --- |
+| [`notes/`](notes/README.md) | Design decisions: the problem, what was decided, what was rejected, and the evidence |
+| `skills/` | Workflows loaded on demand, one `SKILL.md` per directory |
+| `upstream/` | One record per Pi source baseline or sync: source commits, and what was taken, dropped, adapted, or left unintegrated |
 
-每次工作先确认真实入口和写集，再执行最小验证。源码存在、类型通过、测试通过、构建产物可调用和已发布是不同证据等级。
+## Skills
 
-文档事实的归属、当前架构和改名状态见 [`docs/README.md`](../docs/README.md)。`proposed` 阶段的 Note 不能在 README 或发布说明中写成已完成能力。
+| Skill | Use it when |
+| --- | --- |
+| [nyan-checks](skills/nyan-checks/SKILL.md) | Choosing the checks for a change, and before saying that checks pass |
+| [nyan-code-review](skills/nyan-code-review/SKILL.md) | Reviewing a change |
+| [nyan-error-handling](skills/nyan-error-handling/SKILL.md) | Designing or reviewing failure, recovery, retry, background work, and user-visible error reports |
+| [nyan-upstream-sync](skills/nyan-upstream-sync/SKILL.md) | Bringing Pi upstream commits into the fork |
+| [add-llm-provider](skills/add-llm-provider/SKILL.md) | Adding a provider to `packages/ai` |
+| [interactive-testing](skills/interactive-testing/SKILL.md) | Checking interactive behavior in a real terminal |
+
+A skill does not replace code, tests, or the user's authorization.
+
+## Evidence levels
+
+Source exists, types check, tests pass, the built artifact runs, the published package installs and runs: each is stronger than the one before. Say which level a claim reached.
