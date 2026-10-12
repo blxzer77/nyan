@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { delimiter, join } from "path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
 	detectInstallChange,
 	detectInstallMethod,
@@ -10,6 +10,7 @@ import {
 	getSelfUpdateUnavailableInstruction,
 	getUpdateInstruction,
 } from "../src/config.ts";
+import { setBunRuntimeMarker } from "./fixtures/runtime-marker.ts";
 
 const execPathDescriptor = Object.getOwnPropertyDescriptor(process, "execPath");
 const originalPath = process.env.PATH;
@@ -24,7 +25,16 @@ function setExecPath(value: string): void {
 	});
 }
 
+// The install-method tests describe Node installs. Hide the Bun marker so they mean the same on Bun.
+let restoreRuntimeMarker: (() => void) | undefined;
+
+beforeEach(() => {
+	restoreRuntimeMarker = setBunRuntimeMarker(undefined);
+});
+
 afterEach(() => {
+	restoreRuntimeMarker?.();
+	restoreRuntimeMarker = undefined;
 	if (execPathDescriptor) {
 		Object.defineProperty(process, "execPath", execPathDescriptor);
 	}
@@ -162,6 +172,18 @@ describe("findNodePackageDir", () => {
 });
 
 describe("detectInstallMethod", () => {
+	test("reports bun when the process runs under Bun, wherever the package is", () => {
+		const { packageDir } = createNpmPrefixInstall();
+		setExecPath(join(packageDir, "dist", "cli.js"));
+		const restore = setBunRuntimeMarker("1.4.2");
+		try {
+			expect(detectInstallMethod()).toBe("bun");
+		} finally {
+			restore();
+		}
+		expect(detectInstallMethod()).toBe("npm");
+	});
+
 	test("detects pnpm from Windows .pnpm install paths", () => {
 		setExecPath(
 			"C:\\Users\\Admin\\Documents\\pnpm-repository\\global\\5\\.pnpm\\@ny4n+coding-agent@0.67.68\\node_modules\\@ny4n\\coding-agent\\dist\\cli.js",
