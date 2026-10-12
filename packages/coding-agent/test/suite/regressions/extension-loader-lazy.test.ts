@@ -49,7 +49,9 @@ describe("extension loader lazy imports", () => {
 		expect(state.createJiti).toHaveBeenCalledOnce();
 
 		const options = state.createJiti.mock.calls[0][1] as JitiOptionsProbe;
-		expect(options.tryNative).toBeUndefined();
+		// jiti must not hand the extension to the runtime: a natively loaded module is cached by the runtime and bypasses
+		// the virtual host modules, so a reload would not re-run the extension.
+		expect(options.tryNative).toBe(false);
 		expect(options.tsconfigPaths).toBe(true);
 		expect(options.alias).toBeUndefined();
 		expect(options.virtualModules).toBeDefined();

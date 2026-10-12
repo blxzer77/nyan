@@ -559,10 +559,13 @@ async function loadExtensionModule(extensionPath: string, cacheToken?: Extension
 	// Compiled binaries and the bundled Node distribution use embedded modules.
 	// Source TypeScript reuses host modules and root tsconfig paths. Unbundled
 	// Node builds use dist aliases and do not need the bundled virtual modules.
+	// tryNative: false everywhere. jiti defaults it to "Bun is the runtime", and a natively loaded module is cached by
+	// that runtime: the extension's own imports would bypass the virtual modules, and reloading a file would not
+	// re-run its top-level code (see the loader tests). Node already defaults to false, so this only changes Bun.
 	const resolutionOptions = usesEmbeddedModules
 		? { virtualModules: await getVirtualModules(), tryNative: false }
 		: isTypeScriptSourceRuntime
-			? { virtualModules: await getVirtualModules(), tsconfigPaths: true }
+			? { virtualModules: await getVirtualModules(), tsconfigPaths: true, tryNative: false }
 			: { alias: getAliases() };
 	const jiti = createJitiImpl(import.meta.url, {
 		moduleCache: false,
