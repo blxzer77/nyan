@@ -65,6 +65,7 @@ When a new dependency, package, or module needs a rule change, edit `layers.json
 - Build with `npm run build:offline`. `npm run build` also regenerates the model catalog from the network.
 - Run the CLI from the sources, without a build: `node scripts/nyan-source.mjs [args]`. It works from any directory and keeps the caller's working directory.
 - One vitest file, from the package directory: `npx vitest --run test/specific.test.ts`. `packages/tui` uses `node:test`: `node --test test/specific.test.ts`. Root script tests: `npm run test:scripts`.
+- Bun: after `npm run build`, `npm run test:bun` runs the suites that pass under Bun 1.4.2 (`scripts/test-bun.mjs`; CI runs it as the `bun` job). When a package's Bun-only failures are fixed, add it to that script. The other packages still fail on Bun in places and are covered on Node only.
 - Provider e2e tests run whenever a provider credential such as `ANTHROPIC_API_KEY` is set in the environment, and spend real tokens. Unset them before running a whole package suite.
 - Choose the narrowest check that covers the change: follow [nyan-checks](.agents/skills/nyan-checks/SKILL.md).
 - Never run `npm run build` or the full `npm test` unless the user asks. CI runs build, check, and the full suite on every push to `main`.
