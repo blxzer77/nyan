@@ -357,6 +357,12 @@ for (const dir of dirs) {
 		for (const file of files) {
 			if (!classify(file)) fail(`${dir}: ${rel(file)} is not assigned to a module layer in layers.json.`);
 		}
+		// A path that matches no file is a leftover of a deleted module; it would silently classify a new file.
+		for (const entry of matchers) {
+			if (!files.some((file) => entry.matches(rel(file)))) {
+				fail(`${dir}: module path ${entry.path} (layer ${entry.id}) matches no source file; remove it from layers.json.`);
+			}
+		}
 		for (const layer of moduleById.values()) {
 			for (const target of layer.mayDependOn ?? []) {
 				if (target !== "*" && !moduleById.has(target)) fail(`${dir}: module layer ${layer.id} lists unknown layer ${target}.`);
