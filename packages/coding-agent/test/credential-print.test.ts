@@ -6,6 +6,7 @@ import { resolveCredentialForPrint } from "../src/cli/credential-print.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { main } from "../src/main.ts";
+import { clearExitCode } from "./fixtures/exit-code.ts";
 
 async function createRuntime(credentials: AuthStorage): Promise<ModelRuntime> {
 	return ModelRuntime.create({
@@ -70,7 +71,7 @@ describe("credential print commands", () => {
 		const originalExitCode = process.exitCode;
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		try {
-			process.exitCode = undefined;
+			clearExitCode();
 			await main(["auth", "check", "--provider", "openai-codex", "--credentails"]);
 			const stderr = errorSpy.mock.calls.map(([message]) => String(message)).join("\n");
 			expect(stderr).toContain('Unknown option --credentails for "auth check".');
