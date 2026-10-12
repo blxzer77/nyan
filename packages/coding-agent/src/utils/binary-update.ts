@@ -266,8 +266,11 @@ export async function updateBinaryInstall(options: BinaryUpdateOptions): Promise
 		extractArchive(archivePath, extractDir, platformName);
 		rmSync(archivePath, { force: true });
 
-		// The tar archives hold a nyan/ folder; the zip holds its files at the root.
-		const newRoot = [extractDir, join(extractDir, "nyan")].find((dir) => existsSync(join(dir, executable)));
+		// The tar archives hold a nyan/ folder; the zip holds its files at the root. Match a file, not a
+		// directory: the tar's nyan/ folder has the same name as the Unix executable.
+		const newRoot = [extractDir, join(extractDir, "nyan")].find(
+			(dir) => statSync(join(dir, executable), { throwIfNoEntry: false })?.isFile() === true,
+		);
 		if (!newRoot) throw new Error(`${asset} does not contain ${executable}.`);
 		const newPackage = readPackageJson(newRoot);
 		if (newPackage?.name !== PACKAGE_NAME || newPackage.version !== version) {
