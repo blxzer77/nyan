@@ -13,14 +13,14 @@ Run the TUI from source, from the repo root:
 
 ```bash
 tmux new-session -d -s nyan-test -x 80 -y 24 -c "$PWD"
-tmux send-keys -t nyan-test "NYAN_OFFLINE=1 node packages/coding-agent/src/cli.ts" Enter
+tmux send-keys -t nyan-test "NYAN_OFFLINE=1 node scripts/nyan-source.mjs" Enter
 sleep 3 && tmux capture-pane -t nyan-test -p     # capture after startup
 tmux send-keys -t nyan-test "your prompt here" Enter
 tmux send-keys -t nyan-test Escape               # special keys (also C-o for ctrl+o, etc.)
 tmux kill-session -t nyan-test
 ```
 
-To test what ships, run `npm run build:offline` and replace the source entry with `node packages/coding-agent/dist/bundle/cli.js`.
+`scripts/nyan-source.mjs` runs the TypeScript sources without a build. To test what ships, run `npm run build:offline` and use `node packages/coding-agent/dist/bundle/cli.js` instead.
 
 ## Release smoke test
 

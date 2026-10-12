@@ -32,7 +32,7 @@
   ],
   "notIntegrated": [
     "Cloudflare Workers codemode backend and the Photon image processor have unit tests only; no Nyan entry path uses them yet",
-    "the published JSON schemas carry $id and $schema URLs derived from the repository link; the files are not hosted anywhere"
+    "the JSON schemas' $id URLs point at raw.githubusercontent.com/blxzer77/nyan/main/packages/coding-agent/schemas/, which serves them from main; there is no versioned schema host"
   ],
   "origin": {
     "alsoMerged": "origin/main at 49c8e3769 (the fork owner's PRs #1 to #4)",

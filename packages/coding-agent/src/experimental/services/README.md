@@ -5,11 +5,11 @@ Facet setup generates each host's RPC service catalogue from its provided non-lo
 Run the source-only server and client from the repository root:
 
 ```bash
-NYAN_EXPERIMENTAL=1 ./nyan-test.sh server
-NYAN_EXPERIMENTAL=1 ./nyan-test.sh client
+NYAN_EXPERIMENTAL=1 node scripts/nyan-source.mjs server
+NYAN_EXPERIMENTAL=1 node scripts/nyan-source.mjs client
 ```
 
-`NYAN_SERVER_DIR` overrides the server profile and socket directory, which defaults to `~/.nyan/server`. `NYAN_SERVER_ID` selects the logical server ID when `--server-id` is omitted. The server, client, and experimental package subpaths are excluded from npm packages and standalone binaries.
+`NYAN_SERVER_DIR` overrides the server profile and socket directory, which defaults to `~/.nyan/server`. `NYAN_SERVER_ID` selects the logical server ID when `--server-id` is omitted. The server, client, and experimental package subpaths are excluded from the npm package.
 
 | Scope | Service | Current slice | Continuation point |
 |---|---|---|---|

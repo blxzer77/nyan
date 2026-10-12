@@ -37,20 +37,14 @@ Clone the repository, install its dependencies, and run Nyan from source:
 ```bash
 git clone https://github.com/blxzer77/nyan
 cd nyan
-npm install --ignore-scripts
-./nyan-test.sh
+npm ci --ignore-scripts
+npm run hydrate:model-data
+node scripts/nyan-source.mjs
 ```
 
-`nyan-test.sh` can be called from any directory and preserves the caller's working directory.
+`scripts/nyan-source.mjs` runs Nyan from the TypeScript sources without a build. It can be called from any directory (`node /path/to/nyan/scripts/nyan-source.mjs`) and keeps the caller's working directory.
 
-Before submitting changes, run:
-
-```bash
-npm run check
-./test.sh
-```
-
-Read [CONTRIBUTING.md](https://github.com/blxzer77/nyan/blob/main/CONTRIBUTING.md) before opening an issue or pull request. It defines the contribution gate, issue quality bar, and required checks. Read [AGENTS.md](https://github.com/blxzer77/nyan/blob/main/AGENTS.md) for repository-specific implementation, testing, dependency, and release rules.
+Before submitting changes, run `npm run check` and the tests of the packages you changed. [AGENTS.md](https://github.com/blxzer77/nyan/blob/main/AGENTS.md) has the repository's implementation, testing, dependency, and release rules.
 
 ## License
 
