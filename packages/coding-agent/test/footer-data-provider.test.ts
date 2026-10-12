@@ -77,10 +77,19 @@ function createReftableWorktree(tempDir: string): WorktreeFixture {
 	return { worktreeDir, reftableDir };
 }
 
+/**
+ * Drive a reftable update. Node's fs.watch registers the callback as a 'change' listener on the returned FSWatcher, so
+ * emitting on it is enough. Bun's fs.watch keeps the callback to itself (the watcher has no 'change' listener), so there
+ * the provider's scheduler is called, which is what its watcher does when the directory changes.
+ */
 function emitReftableChange(provider: FooterDataProvider): void {
-	const { reftableWatcher } = provider as unknown as { reftableWatcher: FSWatcher | null };
-	expect(reftableWatcher).not.toBeNull();
-	reftableWatcher?.emit("change", "change", "tables.list");
+	const watched = provider as unknown as { reftableWatcher: FSWatcher | null; scheduleRefresh: () => void };
+	expect(watched.reftableWatcher).not.toBeNull();
+	if ((watched.reftableWatcher?.listenerCount?.("change") ?? 0) > 0) {
+		watched.reftableWatcher?.emit("change", "change", "tables.list");
+		return;
+	}
+	watched.scheduleRefresh();
 }
 
 async function waitFor(condition: () => boolean, timeoutMs = 3000): Promise<void> {
