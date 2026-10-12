@@ -2,7 +2,7 @@
 
 **Snapshot date:** 2026-10-12  
 **Source baseline:** Pi Agent v1.1.0, commit `abe508e1b89912adde45528136c3221eb69acdd7` (record: [`.agents/upstream/pi-v1.1.0.json`](../../.agents/upstream/pi-v1.1.0.json)), synced to upstream `cdaf6c227` ([record](../../.agents/upstream/pi-sync-1-cdaf6c227.json))  
-**Evidence status:** measured on the working tree with the commands below, on Windows 11 with Node 24. Nothing here has run on Linux or macOS, in GitHub Actions, or against the npm registry.
+**Evidence status:** measured on the working tree with the commands below, on Windows 11 with Node 24. The `Nyan CI` workflow also ran on the pushed merge commit `36575976f`: Ubuntu build, check and the full test suite, Windows build and check, the dependency audit and MCP conformance all succeeded. Nothing here has run on macOS, the release and native-prebuild workflows have not run, and nothing has been published to the npm registry.
 
 This document states current behavior. Decisions and their reasons are in [`.agents/notes/`](../../.agents/notes/); the enforced policy is [`layers.json`](layers.json).
 
