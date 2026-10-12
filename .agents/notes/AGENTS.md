@@ -1,3 +1,3 @@
-# AGENTS.md — Nyan Agent Notes
+# AGENTS.md — Agent Notes
 
-Agent Notes 是 Nyan 的长期决策记录。新增 Note 前搜索 `proposed/` 和 `implemented/`，判断是否已有同一决策的记录。`archived/` 下的文件是冻结历史，不能编辑、移动或当作当前行为依据。
+Before adding a note, search `proposed/` and `implemented/` for one that already owns the decision. Files under `archived/` are frozen history: do not edit or move them, and do not treat them as current behavior. The format and lifecycle are in [README.md](README.md).

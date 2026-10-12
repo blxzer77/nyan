@@ -6,7 +6,7 @@ Status: implemented
 
 The Pi v1.1.0 fork still presented as Pi everywhere a user, a script, a stored file or a wire peer could see it: the `pi` executable, `@earendil-works/pi-*` package names, `PI_*` environment variables, `~/.pi` and `.pi` directories, `pi.user`-style document and entry identifiers, `pi.dev` links and a Pi-branded README. An earlier plan staged the change (identity seam, then a `pi` compatibility alias, then packages, then data with dual readers) to protect existing installations and stored data.
 
-That protection has no subject. Nyan has published no release, so no Nyan-written data, install or script exists. The only Pi data on a developer machine belongs to Pi, which Nyan does not manage. Keeping legacy names would keep a second product identity alive and make every future change reason about both.
+That protection had no subject. When the rename was made Nyan had published no release, so no Nyan-written data, install or script existed. The only Pi data on a developer machine belongs to Pi, which Nyan does not manage. Keeping legacy names would keep a second product identity alive and make every future change reason about both.
 
 ## Decision
 
@@ -28,13 +28,13 @@ The product identity lives in `packages/coding-agent/src/identity.ts` (`cliName`
 
 Not renamed, on purpose:
 
-- **Provenance.** `.agents/upstream/pi-v1.1.0.json`, the notes that describe the fork, links to upstream issues and pull requests (`github.com/earendil-works/pi/issues/...`), the `upstream` remote, and every `CHANGELOG.md` (release history of Pi up to v1.1.0).
+- **Provenance.** The records in `.agents/upstream/`, the notes that describe the fork, the README's link to Pi, and the `upstream` remote. Links to upstream issues and the `CHANGELOG.md` files were kept at first and later removed; see [remove unused upstream content](../process/2026-10-12-remove-unused-upstream-content.md).
 - **Third parties.** `@earendil-works/gondolin` (a dependency) and the `mariozechner.at` source link in a comment.
 - **Math.** `Math.PI`.
 - **Pi-only compatibility.** The `@mariozechner/pi-*` and `@earendil-works/pi-*` module aliases that let old Pi extensions import the host (`virtual-modules`, extension loader, host-provided package list, vitest aliases) and the legacy theme symbol are deleted instead of renamed: Nyan promises no compatibility with Pi extensions, and an alias named after a package nobody publishes is dead code.
-- **Native prebuilds.** The committed `.node` prebuilds and `doom.wasm` were compiled from the pre-rename sources. The native sources now use `NYAN_*` macro names and the X11 selection atom `NYAN_CLIPBOARD`; the macros leave no trace in the binaries and the atom is a private property name, so the prebuilds keep working, but they should be rebuilt on each platform before the next release.
+- **Native prebuilds.** The `.node` prebuilds committed in `packages/tui` were compiled from the pre-rename sources. The native sources now use `NYAN_*` macro names and the X11 selection atom `NYAN_CLIPBOARD`; the macros leave no trace in the binaries and the atom is a private property name, so the committed prebuilds keep working in a source checkout. The release workflow rebuilds them on each platform, and the published packages carry the rebuilt ones.
 
-Pi-operated hosts were not renamed to a new domain; see [no default hosted services](2026-10-11-no-default-hosted-services.md). The GitHub URLs assume the fork will be renamed to `blxzer77/nyan`; `origin` still points at `blxzer77/pi`.
+Pi-operated hosts were not renamed to a new domain; see [no default hosted services](2026-10-11-no-default-hosted-services.md). Repository links point at `github.com/blxzer77/nyan`, which is the fork and `origin`.
 
 ## Alternatives considered
 
@@ -42,7 +42,7 @@ Pi-operated hosts were not renamed to a new domain; see [no default hosted servi
 
 **Replace text with a plain `s/pi/nyan/`.** Rejected: it breaks `Math.PI`, `api`, `pipe`, upstream issue links and base64 lockfile hashes. The rename is delimiter-aware (a `pi` component bounded by non-alphanumerics, or a camel-case boundary) with explicit protection for provenance spans, then reviewed by token class.
 
-**Choose a different npm scope.** Considered; `@ny4n` is the shortest honest name and the scope is one constant in the rename, so changing it later is mechanical. It has not been registered on npm.
+**A different npm scope.** The first rename used `@nyan`, which is not available on npm; the packages moved to `@ny4n`, the fork owner's npm organization, before the first release. The scope is one constant in the rename, so the move was mechanical apart from the composed names described below. Version 1.0.0 is published under `@ny4n`.
 
 ## Consequences
 

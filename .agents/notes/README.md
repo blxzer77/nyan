@@ -1,30 +1,41 @@
-# Nyan Agent Notes
+# Agent Notes
 
-`.agents/notes/` 保存会影响未来实现的长期决策，不保存任务清单或实现流水账。根 `AGENTS.md` 是当前行为规则；Agent Note 只补充“为什么这样决定、放弃了什么、如何证明”。
+An Agent Note records a design decision for this repository: the problem, what was decided, and what was rejected. It holds the rationale that code, tests, and other docs cannot carry, so a later session does not reopen a settled question. Task lists, mechanical changes, and implementation logs are not notes.
 
-## 生命周期
+## When to write one
 
-- `proposed/`：尚未交付的提案。
-- `implemented/`：已经交付，正文必须使用现在时态描述真实代码。
-- `rejected/`：明确否决但仍能防止重复犯错的提案。
-- `archived/`：冻结的历史记录，只读，不是当前行为来源。
+Write or update a note in the same change only for a lasting decision whose reason is not visible in the code. Mechanical or local edits do not need one. If a note already owns the decision, update it instead of adding another.
 
-## 分类
+## Layout
 
-用 `architecture/` 记录源码边界和运行时所有权，用 `process/` 记录 CI、上游同步、依赖或发布流程，用 `feature/`、`bug-fix/`、`simplification/`、`testing/` 记录相应决策。不要使用 `refactor/` 作为分类。
+```
+.agents/notes/
+  proposed/     considered, not built yet
+  implemented/  shipped; kept current with what shipped
+  rejected/     declined; kept while it prevents a plausible mistake
+  archived/     superseded; frozen, read-only, not a source of current behavior
+```
 
-## 文件格式
+Inside each status folder, group by kind: `architecture/` for source boundaries and runtime ownership, `process/` for CI, upstream sync, dependencies, and release, and `feature/`, `bug-fix/`, `simplification/`, or `testing/` where they fit. Do not use `refactor/`.
 
-活跃 Note 的前三行必须是：
+File name: `yyyy-mm-dd-short-title.md`, dated when the topic was first proposed. Move the file between folders when its status changes and update the `Status:` line in the same change. A note is never edited into a different decision: write a new note and link both. Before archiving or deleting a note, keep any reason that still prevents a wrong decision and fix the links that point to it.
+
+## Format
 
 ```markdown
 # Agent Note: <title>
 
-Status: proposed
+Status: proposed | implemented | rejected: <one-line reason>
+
+## Problem
+
+## Decision        (implemented)  or  ## Proposal  (proposed, rejected)
+
+## Alternatives considered
+
+## Consequences    (implemented: what it cost and what it bought)
+
+## Verification    (implemented: what was run and what it showed)
 ```
 
-或 `Status: implemented`、`Status: rejected — <reason>`。正文从 `## Problem` 开始，必须包含 `## Alternatives considered`。提案使用 `## Proposal`、`## Acceptance criteria`、`## Risks`；已实现决策使用 `## Decision`、`## Consequences`。英文文件是事实主文件；中文对侧文件只有在真正维护双语时才创建，不能复制一份失真的翻译。
-
-## 创建与更新
-
-新增 Note 前搜索活跃目录，确认没有同一决策的旧记录。只更新同一决策的事实时修改原 Note；决策反转或替代时新建 Note 并互相链接。归档或删除必须保留仍能防止错误决策的理由，并先修复入站链接。
+`## Alternatives considered` is required: list each real alternative and why it lost. An implemented note describes the code as it is now, in the present tense; when the code changes, update the note in the same change. Link other notes with relative Markdown links. Notes are written in English.

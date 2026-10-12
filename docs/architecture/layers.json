@@ -151,8 +151,7 @@
 				{
 					"id": "catalog",
 					"paths": [
-						"providers/*.models.ts",
-						"providers/radius-config.ts"
+						"providers/*.models.ts"
 					],
 					"mayDependOn": [
 						"contracts",

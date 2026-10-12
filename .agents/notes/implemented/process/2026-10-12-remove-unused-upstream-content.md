@@ -40,4 +40,4 @@ Twelve workspace packages remain. `rg` for Pi-specific vocabulary returns proven
 
 ## Verification
 
-`npm run check`, `npm run build:offline` and the `ai`, `durable` and `coding-agent` suites; the failing tests that remain are the Windows baseline recorded in the productization note.
+`npm run check`, `npm run build:offline` and the `ai`, `durable` and `coding-agent` suites. The failures left at the time were the Windows baseline recorded in the productization note; they were fixed afterwards, and the full suite now passes on Windows and in CI on Ubuntu.

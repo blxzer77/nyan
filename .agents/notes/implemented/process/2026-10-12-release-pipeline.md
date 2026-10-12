@@ -22,7 +22,7 @@ Published tarballs carry the native binaries built by the workflow, not the ones
 
 **Tag as `vX.Y.Z`.** Rejected: the fork inherited all of Pi's tags, `v1.0.0` and `v1.1.0` already point at Pi's releases, and reusing a name would mean moving a tag that records where the code came from. Nyan releases use the `nyan-v` prefix. The package version is independent of Pi's, so the first Nyan release is 1.0.0.
 
-**Publish on every merge to `main`.** Deferred. A tag makes the release an explicit act, keeps the version and the tag equal, and lets a pre-release go to `next`. A `main`-triggered pre-release job can be added once the scope is registered.
+**Publish on every merge to `main`.** Deferred. A tag makes the release an explicit act, keeps the version and the tag equal, and lets a pre-release go to `next`. The scope is now registered; a `main`-triggered pre-release job has not been built.
 
 **Commit the rebuilt binaries back to the repository from CI.** Rejected: a bot commit per platform build adds history noise, and the published artifact is what users run.
 

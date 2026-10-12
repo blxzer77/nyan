@@ -1,14 +1,20 @@
 ---
 name: nyan-upstream-sync
-description: 安全同步 Pi 上游源码并保留 Nyan 局部修改、来源和验证证据。
+description: Bring Pi upstream commits into the Nyan fork with a rename-aware merge, keeping Nyan's changes and recording the source and the evidence.
 ---
 
-# Nyan 上游同步
+# Syncing from Pi upstream
 
-同步前记录当前 `main`、`upstream` 的确切提交和工作区状态。只把目标 Pi 提交引入临时分支；不得在未审查的情况下覆盖 Nyan 工作树。
+The fork renamed nearly every file it shares with Pi, so a plain `git merge` of upstream reports hundreds of conflicts that are the same word on both sides. Normalize the upstream side with the same rename rules first, then merge. The method and its trade-offs are in [rename-aware-upstream-sync](../../notes/implemented/process/2026-10-12-rename-aware-upstream-sync.md).
 
-每次同步更新 `.agents/upstream/` 中的来源清单，记录远程、tag 或提交、目标路径、局部修改、冲突处理和运行过的验证。上游实现存在不等于 Nyan 已接入；未经过 Nyan 入口的代码标记为 candidate。
+1. Record the exact commits of `main`, the last synced upstream commit (the newest file in `.agents/upstream/`), and the target upstream commit. The working tree must be clean.
+2. Export the last synced tree and the target tree with `git archive` into two temporary directories.
+3. Run `node .agents/skills/nyan-upstream-sync/normalize-upstream.mjs <dir> --apply` on both. Without `--apply` it prints what it would change.
+4. Commit the two normalized trees as scratch refs, the target on top of the base.
+5. `git merge-tree --write-tree --merge-base=<normalized base> HEAD <normalized target>` gives the merged tree and the real conflicts.
+6. Resolve conflicts only in files whose Nyan owner is clear. Drop upstream changes to content Nyan removed (changelogs, upstream project operations, removed packages). When ownership is unclear, stop and ask.
+7. Commit the result as a merge whose second parent is the real upstream commit, not the scratch ref, so history stays true. Delete the scratch refs.
+8. Run the audits and checks: no Pi names, `PI_*` variables or `@earendil-works/pi-*` imports in the merged files; `npm run check`; `npm run build:offline`; the suites of the affected packages. New upstream files often need a layer in `docs/architecture/layers.json`.
+9. Add `.agents/upstream/pi-sync-<n>-<short-commit>.json`, in the format of the existing records: source commits, what was taken, dropped, adapted, and not integrated, and the verification.
 
-不要直接合并 Pi 的原始树：Nyan 的改名使几乎每个文件都与上游冲突。先用 `normalize-upstream.mjs` 把旧基线和目标树按同一规则归一化，再以归一化的旧基线为 merge base 做三方合并，方法与取舍见 [rename-aware-upstream-sync](../../notes/implemented/process/2026-10-12-rename-aware-upstream-sync.md)。
-
-冲突只在明确属于本次同步且有 Nyan 所有者的文件中解决。无法判断所有权时停止并保留现场。同步完成后至少运行 `npm run typecheck`、受影响包的聚焦测试、`npm run build` 和 `git diff --check`。
+When the fork renames something new, add the rule to `normalize-upstream.mjs` in the same change; a rule missing from the script comes back as conflicts on the next sync. Upstream code that no Nyan entry point reaches is candidate code, not a Nyan feature.

@@ -18,13 +18,13 @@ A layer is only worth having if it forbids a dependency someone could plausibly 
 
 [`docs/architecture/layers.json`](../../../../docs/architecture/layers.json) is the policy and `scripts/check-architecture-layers.mjs` (part of `npm run check`) is its enforcement.
 
-**Package layers.** Eight layers, each with an explicit `mayDependOn` list instead of a numeric rank. Same-layer edges must be listed in `internal`. A layer exists because it forbids something real: `foundation` has no workspace dependencies; `capabilities` (`tui`, `mcp`, `codemode`) cannot reach the model or agent stack; `model` (`ai`) depends only on foundation; `agent-core` depends only on the model contract; `durable-runtime` and `transport` are independent of each other; only `product-shell` composes them.
+**Package layers.** Seven layers (eight until `packages/env` and `packages/evals` were removed), each with an explicit `mayDependOn` list instead of a numeric rank. Same-layer edges must be listed in `internal`. A layer exists because it forbids something real: `foundation` has no workspace dependencies; `capabilities` (`tui`, `mcp`, `codemode`) cannot reach the model or agent stack; `model` (`ai`) depends only on foundation; `agent-core` depends only on the model contract; `durable-runtime` and `transport` are independent of each other; only `product-shell` composes them.
 
-**Measured stability.** The check computes instability `I = Ce / (Ca + Ce)` from the actual source imports and fails any edge whose target is more unstable than its source. This is the stable-dependencies principle stated as a measurement, so it holds even for an edge the layer matrix allows. Current values: chord, telemetry, codemode, mcp, tui `0.00`; ai `0.20`; protocol `0.25`; agent, durable `0.50`; client, server `0.67`; coding-agent `0.91`; env, evals `1.00`.
+**Measured stability.** The check computes instability `I = Ce / (Ca + Ce)` from the actual source imports and fails any edge whose target is more unstable than its source. This is the stable-dependencies principle stated as a measurement, so it holds even for an edge the layer matrix allows. Current values: chord, telemetry, codemode, mcp, tui `0.00`; ai, protocol `0.25`; agent `0.50`; client, durable, server `0.67`; coding-agent `1.00`.
 
 **Public entries.** A workspace import must resolve to a subpath in the target's `exports`; a source import must be declared in the manifest; `entryRules` narrow specific consumers (`agent` → `@ny4n/ai/contracts` only; `durable` → `contracts` and `utils`). A rule that names an unknown package is itself an error, so a rename cannot silently disable it.
 
-**Module layers inside packages.** `ai` (contracts → auth-contracts → infra/catalog → api/auth → registry → providers → facade), `durable` (core → session/storage → harness → tools/testing) and `coding-agent` (base → ui → core → extensions → modes → cli → entry). Every file must be classified; paths may be directories, files, or `prefix*suffix` globs. Exceptions are single file edges with a recorded reason.
+**Module layers inside packages.** `ai` (contracts, which include the `schemas/` files → auth-contracts → infra/catalog → api/auth → registry → providers → facade), `durable` (core → session → storage → harness → tools → images → testing → facade) and `coding-agent` (base → ui → core → extensions → modes → cli → entry). Every file must be classified; paths may be directories, files, or `prefix*suffix` globs. Exceptions are single file edges with a recorded reason.
 
 **Code changes the rules forced.**
 
@@ -32,7 +32,7 @@ A layer is only worth having if it forbids a dependency someone could plausibly 
 - `coding-agent`: shared terminal presentation (`theme`, `keybinding-hints`, `visual-truncate`, `diff`, `dynamic-border`, `auth-url`) moved from `modes/interactive` to `ui/`; `SourceInfo` data and synthetic-path helpers moved to `utils/source-info.ts`; `isValidThinkingLevel` and `getAuthCredential` moved into `core`; `create-agent-session.ts` split from the `sdk.ts` barrel; `@ny4n/durable` declared as a dev dependency (the `experimental/` tree is source-only and excluded from the build).
 - `chord`: `delta/core.ts` holds the definitions and `delta/index.ts` is a pure barrel, so `diff.ts` and `tracker.ts` no longer import their own barrel.
 
-**Cycles.** Static runtime import cycles are forbidden. Type-only and dynamic imports are excluded because they do not create an evaluation-order cycle. One cycle is recorded rather than fixed (see Consequences).
+**Cycles.** Static runtime import cycles are forbidden. Type-only and dynamic imports are excluded because they do not create an evaluation-order cycle. `cycles.known` is empty.
 
 ## Alternatives considered
 

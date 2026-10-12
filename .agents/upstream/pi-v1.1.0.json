@@ -19,11 +19,12 @@
       "product identity renamed to nyan; see .agents/notes/implemented/architecture/2026-10-11-nyan-productization.md",
       "no default hosted services; see .agents/notes/implemented/architecture/2026-10-11-no-default-hosted-services.md",
       "layered architecture with executable checks; see .agents/notes/implemented/architecture/2026-10-11-nyan-layered-architecture.md",
-      "upstream organization governance, release automation, Nix packaging and the Pi development assistant removed"
+      "upstream organization governance, release automation, Nix packaging and the Pi development assistant removed",
+      "upstream content with no Nyan consumer removed (changelogs, issue links, packages/env, packages/evals, the Radius gateway); see .agents/notes/implemented/process/2026-10-12-remove-unused-upstream-content.md"
     ],
     "knownLimits": [
-      "committed native prebuilds and doom.wasm were built from the pre-rename sources and should be rebuilt before release",
-      "a future upstream sync must be applied as a rename-aware merge, not a file overwrite",
+      "the native prebuilds committed in packages/tui were built from the pre-rename sources; the release workflow rebuilds them and the published packages carry the rebuilt ones (doom.wasm was removed with its example)",
+      "upstream syncs are rename-aware merges, not file overwrites; the first one is recorded in pi-sync-1-cdaf6c227.json",
       "experimental and example code remains candidate code until a Nyan entry path verifies it"
     ]
   }
