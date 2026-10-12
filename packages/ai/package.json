@@ -27,6 +27,10 @@
 			"types": "./dist/compat.d.ts",
 			"import": "./dist/compat.js"
 		},
+		"./schemas/*": {
+			"types": "./dist/schemas/*.d.ts",
+			"import": "./dist/schemas/*.js"
+		},
 		"./providers/*": {
 			"types": "./dist/providers/*.d.ts",
 			"import": "./dist/providers/*.js"

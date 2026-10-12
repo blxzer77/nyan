@@ -9,7 +9,7 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext, Theme } from "@ny4n/coding-agent";
-import { CURSOR_MARKER, type Focusable, matchesKey, visibleWidth } from "@ny4n/tui";
+import { CURSOR_MARKER, type Focusable, matchesKey, renderFakeCursor, visibleWidth } from "@ny4n/tui";
 
 export default function (nyan: ExtensionAPI) {
 	nyan.registerCommand("overlay-test", {
@@ -131,7 +131,7 @@ class OverlayTestComponent implements Focusable {
 					const after = inputDisplay.slice(item.cursor + 1);
 					// Emit hardware cursor marker for IME support when focused
 					const marker = this.focused ? CURSOR_MARKER : "";
-					inputDisplay = `${before}${marker}\x1b[7m${cursorChar}\x1b[27m${after}`;
+					inputDisplay = `${before}${marker}${renderFakeCursor(cursorChar)}${after}`;
 				}
 				content = `${prefix + label} ${inputDisplay}`;
 			} else {

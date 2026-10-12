@@ -1,7 +1,7 @@
 # Nyan current-state architecture
 
 **Snapshot date:** 2026-10-12  
-**Source baseline:** Pi Agent v1.1.0, commit `abe508e1b89912adde45528136c3221eb69acdd7` (record: [`.agents/upstream/pi-v1.1.0.json`](../../.agents/upstream/pi-v1.1.0.json))  
+**Source baseline:** Pi Agent v1.1.0, commit `abe508e1b89912adde45528136c3221eb69acdd7` (record: [`.agents/upstream/pi-v1.1.0.json`](../../.agents/upstream/pi-v1.1.0.json)), synced to upstream `cdaf6c227` ([record](../../.agents/upstream/pi-sync-1-cdaf6c227.json))  
 **Evidence status:** measured on the working tree with the commands below, on Windows 11 with Node 24. Nothing here has run on Linux or macOS, in GitHub Actions, or against the npm registry.
 
 This document states current behavior. Decisions and their reasons are in [`.agents/notes/`](../../.agents/notes/); the enforced policy is [`layers.json`](layers.json).
@@ -15,7 +15,7 @@ npm run build:offline       clean dist for all packages
 node scripts/check-architecture-layers.mjs    layers, stability, entries, module layers, cycles
 ```
 
-`npm test` passes on Windows: every package suite reports no failures (`coding-agent` 2659 passed, `ai` 1299, `durable` 970, `tui` and the root script tests included). Tests that cannot apply on Windows are skipped with a stated reason in the test file: the Unix-domain-socket transport (the client rejects it and the listener publishes sockets with `link(2)`), Ctrl-Z suspend, file permission bits, and two checks that need a home directory with no `.agents/skills` above the temp dir. `ai` skips 865 live-provider tests that need credentials.
+`npm test` passes on Windows: every package suite reports no failures (`coding-agent` 2677 passed, `ai` 1303, `durable` 1145 in each of its two runs, `codemode` 176, `tui` and the root script tests included). Tests that cannot apply on Windows are skipped with a stated reason in the test file: the Unix-domain-socket transport (the client rejects it and the listener publishes sockets with `link(2)`), Ctrl-Z suspend, file permission bits, and two checks that need a home directory with no `.agents/skills` above the temp dir. `ai` skips 865 live-provider tests that need credentials.
 
 ## Repository shape
 
@@ -66,8 +66,8 @@ Instability `I = Ce / (Ca + Ce)` is computed by the architecture check from sour
 
 | Package | Layers, lowest first | Notable rule |
 | --- | --- | --- |
-| `ai` | contracts → auth-contracts → infra / catalog → api / auth → registry → providers → facade | the contract (`types.ts`, `utils/`) imports no adapter; adapters import no registry |
-| `durable` | core → session / storage → harness → tools / testing → facade | two type-only exceptions (below); the run lifecycle has no import cycle |
+| `ai` | contracts → auth-contracts → infra / catalog → api / auth → registry → providers → facade | the contract (`types.ts`, `schemas/`, `utils/`) imports no adapter; adapters import no registry |
+| `durable` | core → session / storage → harness → tools → images / testing → facade | two type-only exceptions (below); the run lifecycle has no import cycle |
 | `coding-agent` | base → ui → core → extensions → modes → cli → entry | the headless `core` imports no `modes`, `cli` or terminal presentation outside `ui` |
 
 Static runtime import cycles are forbidden and none exist (`cycles.known` is empty). The `durable` run lifecycle was untangled by [starting a task from its reference](../../.agents/notes/implemented/architecture/2026-10-11-durable-run-lifecycle-cycle.md). Recorded exceptions, all in `layers.json`:
@@ -81,7 +81,7 @@ Static runtime import cycles are forbidden and none exist (`cycles.known` is emp
 
 Renamed: executable, `@ny4n/*` packages, `NYAN_*` variables, `~/.nyan/agent` and `.nyan/`, the package manifest field `nyan` and keyword `nyan-package`, `nyan.*` document, entry and wire identifiers, `nyan-messages` API id, TUI cursor marker, daemon handshake, identifiers and file names. Details and the exclusions (provenance, third parties, `Math.PI`) are in the [productization note](../../.agents/notes/implemented/architecture/2026-10-11-nyan-productization.md).
 
-Still referring to Pi, by design: `CHANGELOG.md` files (release history to v1.1.0), links to upstream issues and pull requests, the `upstream` remote and manifest, and the notes that describe the fork.
+Still referring to Pi, by design: the `upstream` remote and the manifests under `.agents/upstream/`, the release link in `README.md`, and the notes that describe the fork. The changelogs and the links to upstream issues and pull requests are removed. The governance files taken verbatim from `origin/main` (`CLAUDE.md`, the per-package `AGENTS.md`, three skills) still describe the Pi layout and are not reconciled with this tree.
 
 ## External services
 

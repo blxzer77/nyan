@@ -120,7 +120,8 @@
 					"paths": [
 						"types.ts",
 						"utils/",
-						"contracts/"
+						"contracts/",
+						"schemas/"
 					],
 					"mayDependOn": []
 				},
@@ -234,7 +235,7 @@
 			"exceptions": []
 		},
 		"durable": {
-			"purpose": "Identifiers, documents, entries and the execution environment contract are the stable core; session and storage implement persistence over them; the harness runs agents on top; tools and testing consume the harness.",
+			"purpose": "Identifiers, documents, entries and the execution environment contract are the stable core; session and storage implement persistence over them; the harness runs agents on top; tools and testing consume the harness; image processors implement the tools' ImageProcessor contract and are loaded only through their own package subpaths.",
 			"layers": [
 				{
 					"id": "core",
@@ -287,6 +288,16 @@
 					"mayDependOn": [
 						"core",
 						"harness"
+					]
+				},
+				{
+					"id": "images",
+					"paths": [
+						"images/"
+					],
+					"mayDependOn": [
+						"core",
+						"tools"
 					]
 				},
 				{

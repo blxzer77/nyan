@@ -32,7 +32,7 @@ Nyan 是由 Pi Agent v1.1.0 派生的独立开发产品。Pi 是来源基线，�
 ## 上游与分支
 
 - `origin` 指向 Nyan Fork，`upstream` 指向 `https://github.com/earendil-works/pi.git`（只读来源，不是 Nyan 的依赖）。
-- 当前基线是 Pi `v1.1.0`，提交 `abe508e1b89912adde45528136c3221eb69acdd7`；来源清单在 `.agents/upstream/pi-v1.1.0.json`。
+- 起始基线是 Pi `v1.1.0`，提交 `abe508e1b89912adde45528136c3221eb69acdd7`（清单 `.agents/upstream/pi-v1.1.0.json`）；已同步到上游 `cdaf6c227`，记录在 `.agents/upstream/pi-sync-1-cdaf6c227.json`。
 - `main` 是唯一集成与发布分支。开发使用短生命周期特性分支；不创建 `develop`。
 - 上游同步必须记录来源提交、目标文件、局部修改、冲突处理、验证结果和未接入能力。禁止直接覆盖 Nyan 改动。
 

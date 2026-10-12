@@ -1,0 +1,48 @@
+{
+  "product": "Nyan",
+  "sync": 1,
+  "source": {
+    "repository": "https://github.com/earendil-works/pi.git",
+    "remote": "upstream",
+    "from": "abe508e1b89912adde45528136c3221eb69acdd7",
+    "to": "cdaf6c227d4718a72b59ccd02152c9614df44cfc",
+    "commits": 24,
+    "forkCommitOnTop": "101de664f (test timeout fix, made on the fork's origin)",
+    "license": "MIT"
+  },
+  "method": "Both source trees were run through the same rename rules as the Nyan rename, then three-way merged with the normalized v1.1.0 tree as the base; see .agents/notes/implemented/process/2026-10-12-rename-aware-upstream-sync.md",
+  "taken": [
+    "durable: nested tool calls, structured output, callers, images with an optional Photon processor, document cache retention, scheduler index bounds",
+    "codemode: portable runtime and Cloudflare Workers backend, Node --watch notification fix",
+    "coding-agent: configuration JSON schemas (settings, models, keybindings, theme) and their generator, symlinked AGENTS.md in worktrees, terminal-cursor-only mode",
+    "ai: Mistral request timeout applies to response headers only, Claude 5.5 metadata from models.dev, schema types moved out of types.ts",
+    "mcp: reject iss without discovered authorization server metadata"
+  ],
+  "dropped": [
+    "scripts/issues triage tool, issue-triage workflow, approved-contributors list, the dup prompt (upstream project operations)",
+    "all CHANGELOG.md edits (changelogs are removed)",
+    "changes under packages/env and packages/evals (packages removed)",
+    "npm 12 pack JSON handling in publish scripts (scripts removed)"
+  ],
+  "localAdaptations": [
+    "ai schema files moved from providers/ to schemas/ so the contracts layer does not depend on providers; exported as @ny4n/ai/schemas/*",
+    "durable images/ added to layers.json as an adapter layer over tools/",
+    "theme schema and tokens placed under coding-agent src/ui/theme (this tree moved the theme out of modes/interactive)",
+    "durable test script split so the second run, with document retention 0, works without POSIX shell syntax"
+  ],
+  "notIntegrated": [
+    "Cloudflare Workers codemode backend and the Photon image processor have unit tests only; no Nyan entry path uses them yet",
+    "the published JSON schemas carry $id and $schema URLs derived from the repository link; the files are not hosted anywhere"
+  ],
+  "origin": {
+    "alsoMerged": "origin/main at 49c8e3769 (the fork owner's PRs #1 to #4)",
+    "taken": [
+      "CLAUDE.md, per-package AGENTS.md, nyan-checks, add-llm-provider and interactive-testing skills, npm-audit workflow (verbatim, not reconciled with this tree)"
+    ],
+    "superseded": [
+      "AGENTS.md, README.md, CONTRIBUTING.md and .agents/notes/README.md: this tree's versions kept",
+      "the @blxzer/nyan package names and the pi binary name: @ny4n/* and nyan",
+      "env, env-daemons, model-catalog and release workflows: their packages and scripts do not exist here"
+    ]
+  }
+}

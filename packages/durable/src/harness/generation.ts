@@ -265,7 +265,7 @@ export const GenerationTask = defineTask<GenerationInput, GenerationCheckpoint, 
 			await convertPartial(tx, live, conversationId);
 			for (const call of unstarted) {
 				const result = harnessError("aborted", `Tool ${call.name} was aborted`);
-				await appendToolResult(tx, conversationId, call, result, runtime.now());
+				await appendToolResult(tx, conversationId, call, result, { timestamp: runtime.now() });
 			}
 			endRun(tx, live, runtime.taskId, { status: "unanswered", reason: "aborted" });
 			return { status: "terminal", outcome: { status: "aborted" } };
@@ -287,7 +287,11 @@ async function readCalls(
 
 /** A tool task for call `callId`, owned by the generation. */
 function createToolTask(tx: Tx, runtime: Runtime, assistant: EntryId, callId: string): Promise<TaskId<ToolTaskResult>> {
-	return tx.createTask(ToolTask, { assistant, callId }, { ownership: { kind: "task", taskId: runtime.taskId } });
+	return tx.createTask(
+		ToolTask,
+		{ kind: "model", assistant, callId },
+		{ ownership: { kind: "task", taskId: runtime.taskId } },
+	);
 }
 
 /**
@@ -551,7 +555,7 @@ async function startToolRound(
 		for (const call of calls) {
 			if (!offered.has(call.name)) {
 				const unavailable = harnessError("tool_unavailable", `Tool ${call.name} is not available`);
-				const result = await appendToolResult(tx, conversationId, call, unavailable, runtime.now());
+				const result = await appendToolResult(tx, conversationId, call, unavailable, { timestamp: runtime.now() });
 				slots.push({ callId: call.id, name: call.name, status: "done", entry: result.id });
 				continue;
 			}
@@ -586,7 +590,11 @@ async function finishToolRound(
 	const outcomes = await runtime.outcomes(tools, context);
 	tools.forEach((id, index) => {
 		const outcome = outcomes[index]!;
-		controls.set(id, outcome.status === "completed" ? outcome.result.control : undefined);
+		// Version 1 results have no kind; every result a generation's round reads is a model-issued call's.
+		controls.set(
+			id,
+			outcome.status === "completed" && outcome.result.kind !== "nested" ? outcome.result.control : undefined,
+		);
 	});
 	const slots = (await runtime.snapshot(LiveDoc, conversationId, context))?.tools ?? [];
 	const results = slots.flatMap((slot) => (slot.entry === undefined ? [] : [slot.entry]));
@@ -620,6 +628,7 @@ async function finishToolRound(
 				if (users.length > 0) await startRun(tx, conversationId, live, users);
 			} else {
 				delete live.tools;
+				delete live.nestedTools;
 				if (live.run?.taskId === runtime.taskId) live.run.inputs.push(...users);
 				handOver(live, runtime.taskId, await createGeneration(tx, conversationId));
 			}
