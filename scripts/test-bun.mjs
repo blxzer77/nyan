@@ -24,6 +24,8 @@ const SUITES = {
 	client: ["--bun", vitestBin, "--run"],
 	codemode: ["--bun", vitestBin, "--run"],
 	durable: ["--bun", vitestBin, "--run"],
+	ai: ["--bun", vitestBin, "--run"],
+	mcp: ["--bun", vitestBin, "--run"],
 	protocol: ["--bun", vitestBin, "--run"],
 	server: ["--bun", vitestBin, "--run"],
 	telemetry: ["--bun", vitestBin, "--run"],
