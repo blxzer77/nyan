@@ -30,8 +30,15 @@ Published tarballs carry the native binaries built by the workflow, not the ones
 
 ## Consequences
 
-Nothing publishes until the repository has the `NPM_TOKEN` secret, a GitHub environment named `npm`, and the `@ny4n` scope on npm; until then a tag push fails at the publish step after verification, and nothing is released. `npm run release:dry` was run locally: all 12 packages pack in dependency order (telemetry, ai, agent-core, chord, protocol, client, codemode, mcp, tui, coding-agent, durable, server).
+A release needs the `NPM_TOKEN` secret and the `@ny4n` scope on npm; the `npm` environment is created by GitHub the first time a job names it. Without the secret a tag push fails at the publish step after verification, and nothing is released. All 12 packages pack in dependency order (telemetry, ai, agent-core, chord, protocol, client, codemode, mcp, tui, coding-agent, durable, server).
+
+The pipeline's first run was a manual dry run, and it found two defects before anything was published:
+
+- `npm publish packages/telemetry` is read by npm on Linux as the GitHub shorthand `user/repo` and runs `git ls-remote` against `github.com/packages/telemetry`. Windows backslashes had hidden it. The script now passes an absolute path.
+- The pre-release test looked for `-` in the tag name, and `nyan-v1.0.0` contains one, so the GitHub release of 1.0.0 was created as a pre-release. The test now looks at the version only; the 1.0.0 release was corrected by hand.
+
+The tag prefix was also chosen after checking the tag namespace: the fork inherits Pi's tags, and `v1.0.0` and `v1.1.0` are Pi releases.
 
 ## Verification
 
-The workflow files parse as YAML and list the intended jobs. `node scripts/publish-packages.mjs --dry-run` and `node scripts/set-version.mjs 1.1.0` (a no-op) ran locally. The workflows themselves have not run on GitHub.
+Dry runs of the release workflow (`workflow_dispatch`, default `dry_run`) pass: verification, native modules for Linux x64 and arm64, macOS and Windows, and `npm publish --dry-run` for all 12 packages. Then the tag `nyan-v1.0.0` published 1.0.0: all 12 packages are on the registry with provenance attestations, and `@ny4n/coding-agent@1.0.0` installed from the registry into an empty directory prints `1.0.0`, shows `nyan --help`, creates `~/.nyan` and not `~/.pi`, and ships the license and six native modules.

@@ -2,7 +2,7 @@
 
 **Snapshot date:** 2026-10-12  
 **Source baseline:** Pi Agent v1.1.0, commit `abe508e1b89912adde45528136c3221eb69acdd7` (record: [`.agents/upstream/pi-v1.1.0.json`](../../.agents/upstream/pi-v1.1.0.json)), synced to upstream `cdaf6c227` ([record](../../.agents/upstream/pi-sync-1-cdaf6c227.json))  
-**Evidence status:** measured on the working tree with the commands below, on Windows 11 with Node 24. The `Nyan CI` workflow also ran on the pushed merge commit `36575976f`: Ubuntu build, check and the full test suite, Windows build and check, the dependency audit and MCP conformance all succeeded. Nothing here has run on macOS, the release and native-prebuild workflows have not run, and nothing has been published to the npm registry.
+**Evidence status:** measured on the working tree with the commands below, on Windows 11 with Node 24. The `Nyan CI` workflow runs on every push to `main` and has succeeded on each so far: Ubuntu build, check and the full test suite, Windows build and check, the dependency audit and MCP conformance. Release 1.0.0 was published from tag `nyan-v1.0.0` by the release workflow, and the published `@ny4n/coding-agent@1.0.0` was installed from the registry into an empty directory and run on Windows. Nothing has been run by hand on macOS or Linux; the workflows built the native modules there.
 
 This document states current behavior. Decisions and their reasons are in [`.agents/notes/`](../../.agents/notes/); the enforced policy is [`layers.json`](layers.json).
 
@@ -89,9 +89,9 @@ Nyan includes no default address for any hosted service. The installer, share vi
 
 ## Known limits
 
-- Local commits only: nothing is pushed, tagged or published. `origin` now points at `blxzer77/nyan`, whose `main` has diverged from this tree: it carries Pi commits made after v1.1.0 and a partial rename to `@blxzer/nyan` whose binary is still `pi`. How the two histories are joined has not been decided.
-- The committed native prebuilds (`packages/tui/native/*/prebuilds`) predate the rename; the release workflow rebuilds them on each platform and ships the fresh binaries, so published packages do not carry the old ones.
-- The release workflow is written but has not run: it needs the `NPM_TOKEN` secret, the `npm` environment, and the `@ny4n` scope on npm. `npm run release:dry` packs all 12 packages locally.
+- Version 1.0.0 of the twelve public packages is on npm under `@ny4n` (`@ny4n/coding-agent` provides the `nyan` command) and `main` on `blxzer77/nyan` is this tree. Release tags are `nyan-vX.Y.Z`; the plain `vX.Y.Z` tags are Pi's.
+- The native prebuilds committed in the repository (`packages/tui/native/*/prebuilds`) predate the rename; the release workflow rebuilds them per platform and the published packages carry the rebuilt ones. Only the Windows x64 module has been exercised on a machine; the other five were built by the workflow and not run.
+- Publishing needs the `NPM_TOKEN` repository secret (an npm token with publish rights to `@ny4n`). Package versions on npm cannot be replaced: a fix is a new version.
 - The hosted Windows CI job builds and runs `npm run check` but not the test suite; the suite has only been run on one Windows machine.
 - `npm run build` in `ai` runs `generate-models`, which fetches the public model catalogs from the network; the generator no longer includes a Radius catalog, so the aggregator lists one provider fewer than Pi v1.1.0.
 - Experimental and example code stays candidate code until verified through a Nyan entry path.

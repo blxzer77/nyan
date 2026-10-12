@@ -130,5 +130,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           prerelease=()
-          [[ "${GITHUB_REF_NAME}" == *-* ]] && prerelease=(--prerelease)
+          # The tag is nyan-vX.Y.Z; only a suffix on the version itself (1.2.0-rc.1) makes a pre-release.
+          [[ "${GITHUB_REF_NAME#nyan-v}" == *-* ]] && prerelease=(--prerelease)
           gh release create "${GITHUB_REF_NAME}" --generate-notes "${prerelease[@]}" || gh release view "${GITHUB_REF_NAME}"
