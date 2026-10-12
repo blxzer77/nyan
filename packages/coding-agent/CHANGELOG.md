@@ -4,6 +4,8 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-12
+
 ### Fixed
 
 - `/changelog` and the "What's New" notice after an update show Nyan's release notes again, and the changelog link in the update notice resolves.
