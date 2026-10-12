@@ -151,13 +151,11 @@ function createFakeBunScript(bunBin: string): string {
 }
 
 describe("findNodePackageDir", () => {
-	test("skips binary metadata copied into dist", () => {
+	test("returns the package root above the bundle directory", () => {
 		tempDir = mkdtempSync(join(tmpdir(), "nyan-package-dir-"));
-		const distDir = join(tempDir, "dist");
-		const bundleDir = join(distDir, "bundle");
+		const bundleDir = join(tempDir, "dist", "bundle");
 		mkdirSync(bundleDir, { recursive: true });
 		writeFileSync(join(tempDir, "package.json"), "{}");
-		writeFileSync(join(distDir, "package.json"), "{}");
 
 		expect(findNodePackageDir(bundleDir)).toBe(tempDir);
 	});

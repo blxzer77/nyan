@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import type { Provider } from "@ny4n/ai";
 import type { KeyId } from "@ny4n/tui";
 import type { createJiti } from "jiti";
-import { CONFIG_DIR_NAME, getAgentDir, isBunBinary, isBundledNode } from "../../config.ts";
+import { CONFIG_DIR_NAME, getAgentDir, isBundledNode } from "../../config.ts";
 import { resolvePath } from "../../utils/paths.ts";
 import { createEventBus, type EventBus } from "../event-bus.ts";
 import type { ExecOptions } from "../exec.ts";
@@ -41,8 +41,8 @@ const require = createRequire(import.meta.url);
 const isNodeSeaBinary =
 	("sea" in process.features && process.features.sea === true) ||
 	process.getBuiltinModule("node:sea")?.isSea() === true;
-const isTypeScriptSourceRuntime = !isBunBinary && path.extname(fileURLToPath(import.meta.url)) === ".ts";
-const usesEmbeddedModules = isBunBinary || isNodeSeaBinary || isBundledNode;
+const isTypeScriptSourceRuntime = path.extname(fileURLToPath(import.meta.url)) === ".ts";
+const usesEmbeddedModules = isNodeSeaBinary || isBundledNode;
 
 let createJitiPromise: Promise<typeof createJiti> | undefined;
 
@@ -62,7 +62,7 @@ function getVirtualModules(): Promise<Record<string, unknown>> {
 
 /**
  * Get aliases for jiti (used in built Node.js mode).
- * In compiled binary mode, virtualModules is used instead.
+ * In bundled mode, virtualModules is used instead.
  */
 let _aliases: Record<string, string> | null = null;
 
