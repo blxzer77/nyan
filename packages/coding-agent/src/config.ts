@@ -15,7 +15,14 @@ import { stripBom } from "./utils/text.ts";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/** Detect if Bun is the runtime (`bun run`, `bunx`, or a global `bun` install). */
+/**
+ * Detect if we're running as a Bun compiled binary.
+ * Bun binaries have import.meta.url containing "$bunfs", "~BUN", or "%7EBUN" (Bun's virtual filesystem path)
+ */
+export const isBunBinary =
+	import.meta.url.includes("$bunfs") || import.meta.url.includes("~BUN") || import.meta.url.includes("%7EBUN");
+
+/** Detect if Bun is the runtime (compiled binary or bun run) */
 export const isBunRuntime = !!process.versions.bun;
 
 /** Detect the esbuild-bundled Node.js distribution. */
@@ -26,7 +33,7 @@ export const isBundledNode = typeof NYAN_BUNDLED_NODE !== "undefined" && NYAN_BU
 // Install Method Detection
 // =============================================================================
 
-export type InstallMethod = "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+export type InstallMethod = "bun-binary" | "npm" | "pnpm" | "yarn" | "bun" | "unknown";
 
 interface SelfUpdateCommandStep {
 	command: string;
@@ -71,6 +78,10 @@ function makeSelfUpdateCommandStep(command: string, args: string[]): SelfUpdateC
 }
 
 export function detectInstallMethod(): InstallMethod {
+	if (isBunBinary) {
+		return "bun-binary";
+	}
+
 	const resolvedPath = `${__dirname}\0${process.execPath || ""}`.toLowerCase().replace(/\\/g, "/");
 
 	if (resolvedPath.includes("/pnpm/") || resolvedPath.includes("/.pnpm/")) {
@@ -116,6 +127,8 @@ function getSelfUpdateCommandForMethod(
 ): SelfUpdateCommand | undefined {
 	const target = normalizeSelfUpdatePackageTarget(updatePackageTarget);
 	switch (method) {
+		case "bun-binary":
+			return undefined;
 		case "pnpm": {
 			const match = readCommandOutput("pnpm", ["root", "-g"])
 				? undefined
@@ -239,6 +252,7 @@ function getGlobalPackageRoots(method: InstallMethod, _packageName: string, npmC
 			}
 			return roots;
 		}
+		case "bun-binary":
 		case "unknown":
 			return [];
 	}
@@ -328,6 +342,9 @@ export function getSelfUpdateUnavailableInstruction(
 ): string {
 	const method = detectInstallMethod();
 	const target = normalizeSelfUpdatePackageTarget(updatePackageTarget);
+	if (method === "bun-binary") {
+		return `Run \`${APP_NAME} update\`, or download the release archive from https://github.com/blxzer77/nyan/releases/latest`;
+	}
 	const command = getSelfUpdateCommandForMethod(method, packageName, target, npmCommand);
 	if (command) {
 		if (isManagedByGlobalPackageManager(method, packageName, npmCommand) && !isSelfUpdatePathWritable()) {
@@ -353,7 +370,7 @@ export function getUpdateInstruction(packageName: string): string {
 
 /**
  * Get the base directory for resolving package assets (themes, package.json, README.md, CHANGELOG.md):
- * the nearest ancestor of `startDir` that contains a package.json.
+ * the nearest ancestor of `startDir` that contains a package.json. A Bun binary uses the executable's directory instead.
  */
 export function findNodePackageDir(startDir: string): string {
 	let dir = startDir;
@@ -372,15 +389,25 @@ export function getPackageDir(): string {
 	if (envDir) {
 		return normalizePath(envDir);
 	}
+
+	if (isBunBinary) {
+		// Bun binary: process.execPath points to the compiled executable
+		return dirname(process.execPath);
+	}
 	return findNodePackageDir(__dirname);
 }
 
 /**
  * Get path to built-in themes directory (shipped with package)
+ * - For Bun binary: theme/ next to executable
  * - For Node.js (dist/): dist/ui/theme/
  * - For source (src/): src/ui/theme/
  */
 export function getThemesDir(): string {
+	if (isBunBinary) {
+		return join(getPackageDir(), "theme");
+	}
+	// Themes are in ui/theme/ relative to src/ or dist/
 	const packageDir = getPackageDir();
 	const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
 	return join(packageDir, srcOrDist, "ui", "theme");
@@ -388,10 +415,14 @@ export function getThemesDir(): string {
 
 /**
  * Get path to HTML export template directory (shipped with package)
+ * - For Bun binary: export-html/ next to executable
  * - For Node.js (dist/): dist/core/export-html/
  * - For source (src/): src/core/export-html/
  */
 export function getExportTemplateDir(): string {
+	if (isBunBinary) {
+		return join(getPackageDir(), "export-html");
+	}
 	const packageDir = getPackageDir();
 	const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
 	return join(packageDir, srcOrDist, "core", "export-html");
@@ -424,10 +455,14 @@ export function getChangelogPath(): string {
 
 /**
  * Get path to built-in interactive assets directory.
+ * - For Bun binary: assets/ next to executable
  * - For Node.js (dist/): dist/modes/interactive/assets/
  * - For source (src/): src/modes/interactive/assets/
  */
 export function getInteractiveAssetsDir(): string {
+	if (isBunBinary) {
+		return join(getPackageDir(), "assets");
+	}
 	const packageDir = getPackageDir();
 	const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
 	return join(packageDir, srcOrDist, "modes", "interactive", "assets");
@@ -440,6 +475,11 @@ export function getBundledInteractiveAssetPath(name: string): string {
 
 let quickJSWasmPath: string | undefined;
 
+/** Called by the Bun entry with the path of the QuickJS wasm file embedded in the compiled executable. */
+export function setEmbeddedQuickJSWasmPath(path: string): void {
+	quickJSWasmPath = path;
+}
+
 /**
  * Get path to `quickjs-wasi/quickjs.wasm`, the VM that runs codemode scripts. Resolved once so the
  * compiled module cached per path keeps working after an update removes this install.
@@ -451,9 +491,13 @@ export function getQuickJSWasmPath(): string {
 
 /** Resolve the codemode worker entry for a release runtime. */
 export function resolveCodemodeWorkerSpecifier(
-	runtime: "bundled-node" | "unbundled",
+	runtime: "bun-binary" | "bundled-node" | "unbundled",
 	moduleUrl: string,
-): URL | undefined {
+): string | URL | undefined {
+	// Bun embeds explicit source entrypoints, but on Windows Bun 1.3 cannot map an absolute
+	// B:\~BUN URL back to one. A relative string with the original source extension works on
+	// every Bun platform.
+	if (runtime === "bun-binary") return "./src/extensions/codemode/worker.ts";
 	if (runtime === "bundled-node") return new URL("./codemode-worker.js", moduleUrl);
 	return undefined;
 }
@@ -462,12 +506,12 @@ let codemodeWorkerDataUrl: URL | undefined;
 
 /**
  * Get the codemode worker entry, or undefined to use the worker that ships next to nyan-codemode.
- * The Node bundle builds the worker as an extra entrypoint.
+ * The Bun and Node release builds both pass the worker as an extra entrypoint.
  */
-export function getCodemodeWorkerSpecifier(): URL | undefined {
-	const runtime = isBundledNode ? "bundled-node" : "unbundled";
+export function getCodemodeWorkerSpecifier(): string | URL | undefined {
+	const runtime = isBunBinary ? "bun-binary" : isBundledNode ? "bundled-node" : "unbundled";
 	const specifier = resolveCodemodeWorkerSpecifier(runtime, import.meta.url);
-	if (!specifier) return specifier;
+	if (runtime !== "bundled-node" || !(specifier instanceof URL)) return specifier;
 	// Spawn workers from an in-memory copy. An update replaces or deletes the file while this
 	// process keeps running. The bundle build keeps the worker free of relative imports
 	// and import.meta, so it runs from a data: URL.
@@ -485,7 +529,8 @@ export type InstallChange = { kind: "updated"; version: string } | { kind: "remo
  * and could find an unrelated package.json, such as one in the home directory.
  */
 export function detectInstallChange(packageJsonPath = startupPackageJsonPath): InstallChange | undefined {
-	if (!packageJsonPath) return undefined;
+	// The Bun binary embeds its code, so replacing the executable does not affect this process.
+	if (isBunBinary || !packageJsonPath) return undefined;
 	let installed: PackageJson;
 	try {
 		installed = JSON.parse(stripBom(readFileSync(packageJsonPath, "utf-8"))) as PackageJson;

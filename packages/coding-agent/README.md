@@ -18,6 +18,8 @@ npm install -g --ignore-scripts @ny4n/coding-agent
 
 Nyan does not require dependency lifecycle scripts for a normal npm installation. See the [quickstart](docs/quickstart.md#1-install-nyan) for updating and pinning releases.
 
+Without Node.js, download the standalone executable for your system from the [latest release](https://github.com/blxzer77/nyan/releases/latest), extract it, and run `nyan`. See [standalone executable](docs/quickstart.md#standalone-executable-without-nodejs) for checking the download and for macOS and Windows warnings.
+
 Start Nyan in the directory where you want it to work:
 
 ```bash

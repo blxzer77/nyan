@@ -8,10 +8,7 @@ import { openaiCodexOAuth } from "./auth/oauth/openai-codex.ts";
 import { openRouterOAuth } from "./auth/oauth/openrouter.ts";
 import { xaiOAuth } from "./auth/oauth/xai.ts";
 
-/**
- * Register every OAuth flow statically, for a bundle that cannot load them lazily, such as an application
- * compiled into a Bun executable. Nyan's own npm distribution loads them lazily and does not call this.
- */
+/** Register OAuth flows statically embedded in the standalone Bun binary. */
 export function registerBunOAuthFlows(): void {
 	registerBundledOAuthFlowLoaders({
 		anthropic: () => anthropicOAuth,

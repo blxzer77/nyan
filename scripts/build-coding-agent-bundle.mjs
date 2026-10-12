@@ -94,7 +94,7 @@ function commonBuildOptions() {
 		minifySyntax: true,
 		minifyWhitespace: true,
 		platform: "node",
-		// The source uses jiti/static so a bundler can embed its Babel transform. The Node
+		// The source uses jiti/static so Bun embeds its Babel transform. The Node
 		// package replaces it with a synchronous lazy require so jiti loads only
 		// when importing an extension; Babel remains deferred until a cache miss
 		// needs transformation.

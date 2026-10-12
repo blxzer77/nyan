@@ -406,6 +406,7 @@
 						"cli.ts",
 						"package-manager-cli.ts",
 						"rpc-entry.ts",
+						"bun/",
 						"client/",
 						"experimental/"
 					],
