@@ -6,8 +6,8 @@
  *   node scripts/test-bun.mjs [package]...
  *
  * Needs `bun` on PATH and a built workspace (`npm run build`): cross-package imports resolve
- * to dist. Only packages whose suites pass on Bun are listed; add a package here once its
- * Bun-only failures are fixed. vitest suites run with `bun --bun` so the test workers use Bun
+ * to dist. Every workspace package is listed; a suite that fails here is a difference between the runtimes to fix,
+ * not a package to drop. vitest suites run with `bun --bun` so the test workers use Bun
  * rather than Node; packages/tui uses node:test, which `bun test` runs directly.
  */
 
@@ -23,6 +23,7 @@ const SUITES = {
 	chord: ["--bun", vitestBin, "--run"],
 	client: ["--bun", vitestBin, "--run"],
 	codemode: ["--bun", vitestBin, "--run"],
+	"coding-agent": ["--bun", vitestBin, "--run"],
 	durable: ["--bun", vitestBin, "--run"],
 	ai: ["--bun", vitestBin, "--run"],
 	mcp: ["--bun", vitestBin, "--run"],
