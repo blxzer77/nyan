@@ -17,9 +17,10 @@ function entryVersion(entry: ChangelogEntry): string {
 	return `${entry.major}.${entry.minor}.${entry.patch}`;
 }
 
-function normalizeTag(version: string | ChangelogEntry): string {
+/** The release tag of a version. Nyan tags releases `nyan-vX.Y.Z`; the plain `vX.Y.Z` tags in the repository are Pi's. */
+export function releaseTag(version: string | ChangelogEntry): string {
 	const versionString = typeof version === "string" ? version : entryVersion(version);
-	return versionString.startsWith("v") ? versionString : `v${versionString}`;
+	return `nyan-v${versionString.replace(/^(nyan-)?v/, "")}`;
 }
 
 function splitLocalTarget(target: string): { fragment: string; pathPart: string; query: string } {
@@ -97,7 +98,7 @@ function normalizeChangelogLinkTarget(target: string, tag: string): string {
 }
 
 export function normalizeChangelogLinks(markdown: string, version: string | ChangelogEntry): string {
-	const tag = normalizeTag(version);
+	const tag = releaseTag(version);
 	return markdown.replace(INLINE_MARKDOWN_LINK_RE, (_match, prefix, target, suffix) => {
 		return `${prefix}${normalizeChangelogLinkTarget(target, tag)}${suffix}`;
 	});
