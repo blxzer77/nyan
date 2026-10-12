@@ -10,6 +10,8 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ### Fixed
 
+- In the standalone executable (Bun), an extension is loaded from its source: its module code runs again on reload, and its imports of the host resolve to the running Nyan instead of a second copy that the runtime caches on its own.
+- In the standalone executable (Bun), `--mode json`, `--mode rpc`, and print mode keep stdout for the protocol: output written with `console.log` goes to stderr there too, as it does on Node.
 - In the standalone executable, `httpIdleTimeoutMs` takes effect. Before, a response that stalled before its headers or in the middle of its body was never given up on, whatever the setting. Proxy variables were already honored by Bun's fetch; the standalone executable now uses that fetch with an idle-timeout wrapper and no longer installs undici. A plain-HTTP origin behind an HTTP proxy is requested in forward-proxy form there instead of through a CONNECT tunnel; HTTPS origins still use a tunnel.
 
 ## [1.1.0] - 2026-10-12
