@@ -15,7 +15,6 @@ gantt
     title nyan roadmap
     dateFormat YYYY-MM-DD
     axisFormat %m-%d
-    todayMarker stroke-width:1px
 
     section Bun-first
     Phase 1 Bun CI seven packages :done, bun1ci, 2026-10-12, 1d
