@@ -7,6 +7,7 @@ This directory contains current, reviewable product facts and navigation for the
 | Fact | Owner | What belongs there |
 | --- | --- | --- |
 | Repository rules and current workflow | [`AGENTS.md`](../AGENTS.md) | Applicable instructions, evidence levels, release and contribution constraints |
+| Planned work and its status | [`ROADMAP.md`](../ROADMAP.md) | `ROADMAP.md` owns planned work and its status |
 | Governance and reusable workflows | [`.agents/`](../.agents/) | Agent Notes, skills, upstream source records, and maintenance procedures |
 | Package API and package behavior | Each package `README.md`, source exports, and tests | Public entry points, supported behavior, package-specific examples |
 | Current cross-package architecture | [`architecture/current-state.md`](architecture/current-state.md) | A dated inventory of ownership, dependency direction, entry points, and naming debt |
