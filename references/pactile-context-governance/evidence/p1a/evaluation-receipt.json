@@ -1,0 +1,352 @@
+{
+  "schemaId": "pactile.cg.stage1a-offline-evaluation",
+  "schemaVersion": 1,
+  "evaluationRunId": "evr-20261010-p1a-offline",
+  "policyVersion": "cg-v1-p1a-offline",
+  "seed": "p1a-seed-1",
+  "plane": "evaluation",
+  "runtimeReceipt": false,
+  "providerCalls": 0,
+  "productStoreWrites": 0,
+  "fixtureHash": "sha256:27e5269ced81a2f76923e8e11ed46ab7a008a30eec7b690235841bd907fb10f1",
+  "caseSetHash": "sha256:87f870905207c8926290daab94205dcf316eec25c159e7f5876abdadc355e537",
+  "harnessVerdict": "valid",
+  "candidateVerdict": "fail",
+  "negative": {
+    "total": 33,
+    "rejected": 33,
+    "mismatches": 0,
+    "denominator": 33,
+    "results": [
+      {
+        "caseId": "NG-01",
+        "expected": "reject: plane_conflict",
+        "observed": "reject: plane_conflict",
+        "bodyHash": "sha256:a9d22c49772a981d428c51c0f64d7fd1f077bd2b39b6b3501cbee3465bfac225",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-02",
+        "expected": "reject: evaluation_runtime_field",
+        "observed": "reject: evaluation_runtime_field",
+        "bodyHash": "sha256:e9dacc8bf9e334e879228ed390472b0ed87ea508a18e84fdac345928e410b711",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-03",
+        "expected": "reject: observed_value_missing",
+        "observed": "reject: observed_value_missing",
+        "bodyHash": "sha256:a29ee2b15c494311c52521766e44af56a3ad2248e7a8ab465e5206463c13d288",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-04",
+        "expected": "reject: unknown_schema",
+        "observed": "reject: unknown_schema",
+        "bodyHash": "sha256:2c0a0d7deda95fa51e614c0152632a8a9c62f3afb9e3ad46c49092046982728a",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-05",
+        "expected": "reject: coverage_incomplete",
+        "observed": "reject: coverage_incomplete",
+        "bodyHash": "sha256:1dc429560a692d0feb580732df5b77d3d3fa2737060227ea32efabb9d43ebc86",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-06",
+        "expected": "reject: invalid_outcome",
+        "observed": "reject: invalid_outcome",
+        "bodyHash": "sha256:cdd2447d87285731a7f45a43aa693c5ac818cbb6a4940f4e3dfbbb6d868db102",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-07",
+        "expected": "reject: inspect_not_ok",
+        "observed": "reject: inspect_not_ok",
+        "bodyHash": "sha256:2c48629dc87216b80c5608de3654f65fe9650bbf3e50e38744a51f94b7d43d51",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-08",
+        "expected": "reject: advisory_as_evidence",
+        "observed": "reject: advisory_as_evidence",
+        "bodyHash": "sha256:d68312d229431485b856b8bde3e1aecd496296b72c0179c7556aaf0ef205df60",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-09",
+        "expected": "wrong_dimension",
+        "observed": "wrong_dimension",
+        "bodyHash": "sha256:0086b53b92c9355ebc1ddc6243da8992bf12fbdfbe299bb4998dfbc7832e7e53",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-10",
+        "expected": "reject: missing_evidence",
+        "observed": "reject: missing_evidence",
+        "bodyHash": "sha256:bdc60d5e4143937469479fd46e089b653a130cf5d2150761241d234151b2b381",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-11",
+        "expected": "reject: invalid_advisory",
+        "observed": "reject: invalid_advisory",
+        "bodyHash": "sha256:b77b43525bcad9276dda736e4cbc5f98dd4677577495e28b7f774a28b0bacc6c",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-12",
+        "expected": "reject: invalid_rollback",
+        "observed": "reject: invalid_rollback",
+        "bodyHash": "sha256:f2d649d60644c651241149c61c06305ffa54644a4758a2178e18860d6b21a058",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-13",
+        "expected": "reject: receipt_plane_conflict",
+        "observed": "reject: receipt_plane_conflict",
+        "bodyHash": "sha256:d3cfe4ae89c98c79940614217f1f98a1922656765ea42391e29208151575993d",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-14",
+        "expected": "reject: audit_verdict_conflict",
+        "observed": "reject: audit_verdict_conflict",
+        "bodyHash": "sha256:63c620bf865b8745d41f7296b80015e58228f21a174dd085e5b75cf8589884c0",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-15",
+        "expected": "reject: evaluation_affects_product",
+        "observed": "reject: evaluation_affects_product",
+        "bodyHash": "sha256:b511628ae8f7219d6e063a9ba5b31946bbd80d7231cf188f0b2671ef959d3db4",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-16",
+        "expected": "reject: manifest_not_frozen",
+        "observed": "reject: manifest_not_frozen",
+        "bodyHash": "sha256:cc636543e23108c9705f68cf5bf839447a95363cffb9706fe48d9c8d0f1a55ff",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-17",
+        "expected": "reject: hash_mismatch",
+        "observed": "reject: hash_mismatch",
+        "bodyHash": "sha256:e1059dba1a4a1674dd0eb6848ce6a897d170b30227d4a5b854a2b4bcfc8e3f1b",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-18",
+        "expected": "reject: forbidden_action",
+        "observed": "reject: forbidden_action",
+        "bodyHash": "sha256:d0dfa1b32db8f60c5e721d77595bd03b812f71007c43bac319cc192a37839907",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-19",
+        "expected": "generation_mismatch",
+        "observed": "generation_mismatch",
+        "bodyHash": "sha256:a78e7a57d50e75aa3d576e8d67343a8b8050fcb9530d0a27e5b33827bbcb17c5",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-20",
+        "expected": "wrong_dimension",
+        "observed": "wrong_dimension",
+        "bodyHash": "sha256:633fec1a6ff0c0dbd88efdff454511d723d387994f3a20c058539332f1270b6b",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-21",
+        "expected": "cancelled",
+        "observed": "cancelled",
+        "bodyHash": "sha256:fd8dbab2e2683db6a9c6e0c2b2fa6b28e3c6ef764e485aac47fedac9103a1ef1",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-22",
+        "expected": "unconvertible",
+        "observed": "unconvertible",
+        "bodyHash": "sha256:897678015faa97e7ef4b37a7ef2731ce33e4865ab14a36319b1caaf386bfb10b",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-23",
+        "expected": "permission_denied",
+        "observed": "permission_denied",
+        "bodyHash": "sha256:ac4b9127b940b3d4497e80e96080fe527341e531f9b5cb73f39e4ca764041b86",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-24",
+        "expected": "reject: index_write_forbidden",
+        "observed": "reject: index_write_forbidden",
+        "bodyHash": "sha256:2536d20bb736deac9792477175cabae8e6513c314f19a23e370caf91f89b7144",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-25",
+        "expected": "reject: source_hash_conflict",
+        "observed": "reject: source_hash_conflict",
+        "bodyHash": "sha256:d5698685837fcf2b4a00b1d072532dda4e2f49662dbe93e8ab5f8c25b39409cc",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-26",
+        "expected": "reject: placeholder_hash",
+        "observed": "reject: placeholder_hash",
+        "bodyHash": "sha256:ef09963f8d3f219e618f6b1ad953e7be03f5d27bb9f6d51811c7cb59cac932cf",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-27",
+        "expected": "reject: authority_conflict",
+        "observed": "reject: authority_conflict",
+        "bodyHash": "sha256:5e6021d8be882121843a3e7c03692bf8049ebadb0b6e4d3589ea1ef9a5c7afc9",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-28",
+        "expected": "unverified",
+        "observed": "unverified",
+        "bodyHash": "sha256:9edd3bdd214c582c221d014b22d97010bf338fa9f04fc2562486ba3433fcc192",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-29",
+        "expected": "reject: status_registry_conflict",
+        "observed": "reject: status_registry_conflict",
+        "bodyHash": "sha256:94cf36507aed8fc16bd90597f16a569c39e8d64968fa53eb445486fbc321bc1d",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-30",
+        "expected": "reject: schema_conflict",
+        "observed": "reject: schema_conflict",
+        "bodyHash": "sha256:484d9ca3a90a6b6a5e94db9c10a0a7d03f4712537198c54eda255d7e440f545a",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-31",
+        "expected": "wrong_dimension",
+        "observed": "wrong_dimension",
+        "bodyHash": "sha256:144be925d8e4875b120cdbfc0c62edfcc1f48139a45efb7690ce669d3a69a017",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-32",
+        "expected": "unconvertible",
+        "observed": "unconvertible",
+        "bodyHash": "sha256:b9e6b35cd980ed00a085228f481f741c8245dad3d121ad215e50f05cf2a50487",
+        "verdict": "rejected"
+      },
+      {
+        "caseId": "NG-33",
+        "expected": "timeout_or_cancelled",
+        "observed": "timeout_or_cancelled",
+        "bodyHash": "sha256:6876bc42052512aaeb527207aa395c31775e0f4e73315beb611d4dce8e080eac",
+        "verdict": "rejected"
+      }
+    ]
+  },
+  "knownBad": {
+    "total": 7,
+    "failed": 7,
+    "mismatches": 0,
+    "denominator": 7,
+    "results": [
+      {
+        "caseId": "KB-1",
+        "fault": "unauthorized-read",
+        "expected": "candidate_fail: permission_denied_or_blocked",
+        "observed": "candidate_fail: permission_denied_or_blocked",
+        "verdict": "fail"
+      },
+      {
+        "caseId": "KB-2",
+        "fault": "nondeterministic-body-hash",
+        "expected": "candidate_fail: determinism",
+        "observed": "candidate_fail: determinism",
+        "verdict": "fail"
+      },
+      {
+        "caseId": "KB-3",
+        "fault": "silent-rejected-drop",
+        "expected": "candidate_fail: silent_success",
+        "observed": "candidate_fail: silent_success",
+        "verdict": "fail"
+      },
+      {
+        "caseId": "KB-4",
+        "fault": "zero-placeholder-hash",
+        "expected": "candidate_fail: invalid_hash",
+        "observed": "candidate_fail: invalid_hash",
+        "verdict": "fail"
+      },
+      {
+        "caseId": "KB-5",
+        "fault": "cancelled-folded-to-timeout",
+        "expected": "candidate_fail: cancelled",
+        "observed": "candidate_fail: cancelled",
+        "verdict": "fail"
+      },
+      {
+        "caseId": "KB-6",
+        "fault": "generation-mismatch-as-low-score",
+        "expected": "candidate_fail: generation_mismatch",
+        "observed": "candidate_fail: generation_mismatch",
+        "verdict": "fail"
+      },
+      {
+        "caseId": "KB-7",
+        "fault": "no-match-as-proof-of-absence",
+        "expected": "candidate_fail: fail_open_evidence",
+        "observed": "candidate_fail: fail_open_evidence",
+        "verdict": "fail"
+      }
+    ]
+  },
+  "pairedBaseline": {
+    "status": "computed",
+    "armA": {
+      "armId": "offline-rule-baseline-a",
+      "denominator": 33,
+      "rejected": 33
+    },
+    "armB": {
+      "armId": "offline-rule-baseline-b-replay",
+      "denominator": 33,
+      "rejected": 33
+    },
+    "excluded": [],
+    "parity": true
+  },
+  "erm": {
+    "schemaId": "pactile.cg.evaluation-run-manifest",
+    "schemaVersion": 1,
+    "status": "completed",
+    "evaluationRunId": "evr-20261010-p1a-offline",
+    "fixtureHash": "sha256:27e5269ced81a2f76923e8e11ed46ab7a008a30eec7b690235841bd907fb10f1",
+    "caseSetHash": "sha256:87f870905207c8926290daab94205dcf316eec25c159e7f5876abdadc355e537",
+    "seed": "p1a-seed-1",
+    "frozenAt": "2026-10-10T00:00:00Z"
+  },
+  "pcr": {
+    "schemaId": "pactile.cg.paired-comparison-report",
+    "schemaVersion": 1,
+    "status": "computed",
+    "evaluationRunId": "evr-20261010-p1a-offline",
+    "harnessVerdict": "valid",
+    "candidateVerdict": "fail",
+    "knownBadRequired": true,
+    "knownBadFailed": true,
+    "excluded": []
+  },
+  "limitations": [
+    "这是离线 fixture decoder harness，不是产品 runtime/provider 验证。",
+    "candidateVerdict 仅表示 fixture candidate failure 语义，不表示真实检索质量或 P0 放行。",
+    "没有生成 RunLedger runtime receipt，也没有连接 JEV/EmbeddingGemma 2。"
+  ]
+}

@@ -1,0 +1,295 @@
+{
+  "catalogId": "pactile.cg.negative-catalog",
+  "schemaVersion": 1,
+  "title": "Context Governance P0 decoder negative fixture catalog",
+  "plane": "evaluation",
+  "scope": {
+    "sourceDocuments": [
+      "implementation/01-contract-draft.zh-CN.md §7 #1–#18",
+      "implementation/09-contract-entities-v1.zh-CN.md §6 #19–#33"
+    ],
+    "inputFixtureSource": "negative-fixture-inputs.json (caseId-aligned)",
+    "fixturePolicy": "仅登记最小负例形状与契约预期；不执行 decoder，不填写 observed result；独立盲标注与比对由独立回执记录。",
+    "statusMeaning": "所有条目 status=unverified，直到真实评测运行、结果文件、fixtureHash/caseSetHash 与独立 Review receipt 落盘。"
+  },
+  "status": "unverified",
+  "provenance": {
+    "kind": "contract-derived",
+    "derivedFrom": [
+      "implementation/01-contract-draft.zh-CN.md §7",
+      "implementation/09-contract-entities-v1.zh-CN.md §6"
+    ],
+    "observedRun": false,
+    "independentAnnotation": "second-party-static-blind-review-recorded",
+    "independentAnnotationRef": "../negative-label-blind-review-round-2.json",
+    "labelComparisonRef": "../negative-label-comparison-round-2.json",
+    "evidenceState": "unverified",
+    "note": "本 catalog 是证据准备资产；其中 expected 由契约负例文字抽取，第二方盲标注与现有 labels 已逐 case 一致，但不代表 decoder 已运行或已通过/失败。"
+  },
+  "cases": [
+    {
+      "caseId": "NG-01",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 1 },
+      "minimalInput": { "description": "同一个 Envelope 同时出现非空 runId 与 evaluationRunId。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "ISO-1 平面身份互斥。" },
+      "provenance": { "sourceRef": "01 §7 #1 / ISO-1", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-02",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 2 },
+      "minimalInput": { "description": "plane=evaluation 的实体带有 attemptId 或 operationEpoch。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "ISO-2 禁止评测实体携带 runtime 身份字段。" },
+      "provenance": { "sourceRef": "01 §7 #2 / ISO-2", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-03",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 3 },
+      "minimalInput": { "description": "ObservedV1 status=ok 省略 value；或 status 非 ok 却写入默认 value=0/[]。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "ObservedV1 的 status 与 value 形状不一致，不能用默认值表示未知。" },
+      "provenance": { "sourceRef": "01 §7 #3 / §3.3", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-04",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 4 },
+      "minimalInput": { "description": "schemaId 或同一 schemaId 的 schemaVersion 使用契约未登记的值。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "未知 schema 不得当作空对象或默认版本接受。" },
+      "provenance": { "sourceRef": "01 §7 #4 / §3.1", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-05",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 5 },
+      "minimalInput": { "description": "RetrievalPackV1 的 plan 启用了分支 branch-A，但 coverage 中没有 branch-A 条目。" },
+      "expected": { "decision": "reject_pack", "status": "invalid_response", "reason": "PK-1：coverage 必须覆盖 plan 中每个启用分支。" },
+      "provenance": { "sourceRef": "01 §7 #5 / PK-1", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-06",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 6 },
+      "minimalInput": { "description": "authoritative 分支的 coverage 状态为 timeout，但 pack outcome 写成 pack_empty_observed。" },
+      "expected": { "decision": "reject_pack", "status": "invalid_response", "reason": "PK-2：timeout 不能被解释成已观察到空结果。" },
+      "provenance": { "sourceRef": "01 §7 #6 / PK-2", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-07",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 7 },
+      "minimalInput": { "description": "RetrievalPackV1.items 包含 inspect.status != ok 的候选。" },
+      "expected": { "decision": "reject_pack", "status": "invalid_response", "reason": "PK-3：未通过 Inspect 的候选不得进入 items。" },
+      "provenance": { "sourceRef": "01 §7 #7 / PK-3", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-08",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 8 },
+      "minimalInput": { "description": "RC 带有 semantic.similarity，却把 similarity 直接写进 RK.items 的 evidence 字段。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "PK-4：advisory similarity 不得冒充证据字段。" },
+      "provenance": { "sourceRef": "01 §7 #8 / PK-4", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-09",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 9 },
+      "minimalInput": { "description": "RC.embeddingDim 与 capability snapshot 不符，但候选被当作低分候选接受；或未保留原生 wrong_dimension；或折叠缺少 reason.code=cg-wrong-dimension。" },
+      "expected": { "decision": "reject_acceptance", "status": "wrong_dimension", "reason": "维度不符必须在原生层可区分；仅 RK 等授权层可折叠并带共享码。" },
+      "provenance": { "sourceRef": "01 §7 #9 / §3.2.2", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-10",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 10 },
+      "minimalInput": { "description": "来源只有 search_hit，未经历 Fetch→Evidence，却把该条目放入 RK.items。" },
+      "expected": { "decision": "reject_pack", "status": "invalid_response", "reason": "search_hit 不能在缺少 Fetch 与 Evidence 时成为 pack item。" },
+      "provenance": { "sourceRef": "01 §7 #10", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-11",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 11 },
+      "minimalInput": { "description": "CJ.provenance.authority 不是 advisory，或 confidence<0、confidence>1、confidence=NaN。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "CJ 必须是 advisory 且 confidence 是有限的 [0,1] 值。" },
+      "provenance": { "sourceRef": "01 §7 #11", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-12",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 12 },
+      "minimalInput": { "description": "CDQ.manifestRef 指向 durable.status != ok 的 CM；或 reversible/lossy 动作的 rollbackRef=null。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "压缩请求必须绑定 durable manifest，并为可逆/有损动作提供回滚引用。" },
+      "provenance": { "sourceRef": "01 §7 #12", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-13",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 13 },
+      "minimalInput": { "description": "runtime CDR 缺 lease；或 evaluation CDR 带 lease；或 evaluation receipt 被提交给 EffectGateway 入账。" },
+      "expected": { "decision": "reject_decode_or_effect", "status": "invalid_response", "reason": "平面字段与 EffectGateway 入账边界违反 ISO-8。" },
+      "provenance": { "sourceRef": "01 §7 #13 / ISO-8", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-14",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 14 },
+      "minimalInput": { "description": "CAR.checks 中至少一项失败，但 CAR.verdict=accepted。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "AU-1：存在失败检查时不得接受。" },
+      "provenance": { "sourceRef": "01 §7 #14 / AU-1", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-15",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 15 },
+      "minimalInput": { "description": "PCR.affectsProductRun=true，或 PCR.verdict=completed/settled。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "评测报告不得影响产品 Run，也不得使用产品完成态 verdict。" },
+      "provenance": { "sourceRef": "01 §7 #15 / ISO-7", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-16",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 16 },
+      "minimalInput": { "description": "ERM.frozenAt 晚于任一结果文件时间；或 productStoreAccess 持有活的产品 store 句柄。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "评测清单必须先冻结且不得持有产品 store 活句柄。" },
+      "provenance": { "sourceRef": "01 §7 #16 / ISO-5", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-17",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 17 },
+      "minimalInput": { "description": "bodyHash 不等于去除规定字段后的 canonical hash；或计算 bodyHash 时把 createdAt 纳入。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "bodyHash canonicalization 规则被违反。" },
+      "provenance": { "sourceRef": "01 §7 #17 / §3.4", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-18",
+      "source": { "document": "implementation/01-contract-draft.zh-CN.md", "section": "§7", "item": 18 },
+      "minimalInput": { "description": "CDQ 将 drop 动作提交给 Policy Gate，且 Policy Gate 返回 admitted。" },
+      "expected": { "decision": "reject_admission", "status": "invalid_response", "reason": "v1 的 drop 只能作为 shadow judgment 或 request_review 输入，不能执行。" },
+      "provenance": { "sourceRef": "01 §7 #18 / §5", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-19",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 19 },
+      "minimalInput": { "description": "候选 generation 与当前 generation 不同，却按低分候选接受；或把两个 generation 合并成一个 pack。" },
+      "expected": { "decision": "reject_acceptance", "status": "generation_mismatch", "reason": "generation 漂移必须丢弃/重建，不能静默混合。" },
+      "provenance": { "sourceRef": "09 §6 #19 / §3", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-20",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 20 },
+      "minimalInput": { "description": "wrong_dimension 候选被截断/补齐后接受；或在未授权层折叠；或折叠缺少 reason.code=cg-wrong-dimension。" },
+      "expected": { "decision": "reject_acceptance", "status": "wrong_dimension", "reason": "维度故障需可区分、可还原，只能在登记的 RK 等层折叠。" },
+      "provenance": { "sourceRef": "09 §6 #20 / §3.2.2", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-21",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 21 },
+      "minimalInput": { "description": "cancelled 被改写为 timeout 或 ok；或取消后仍生成 pack_ready。" },
+      "expected": { "decision": "reject_decode_or_pack", "status": "cancelled", "reason": "取消状态不可折叠，取消后不得产出 pack_ready。" },
+      "provenance": { "sourceRef": "09 §6 #21 / 01 §3.3", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-22",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 22 },
+      "minimalInput": { "description": "SourcePointerV1 转 ABI ref 失败，却静默截断行号、改大小写或重编码路径。" },
+      "expected": { "decision": "reject_conversion", "status": "unconvertible", "reason": "FI-20.1：转换失败必须显式保留原指针并返回 unconvertible。" },
+      "provenance": { "sourceRef": "09 §6 #22 / FI-20.1", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-23",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 23 },
+      "minimalInput": { "description": "egress.destination=remote 且 authorized=true，但 egress.authorizationRef 缺失。" },
+      "expected": { "decision": "reject_egress", "status": "permission_denied", "reason": "远程外发 deny-by-default，授权必须有 capability policy 与 authorizationRef。" },
+      "provenance": { "sourceRef": "09 §6 #23 / 08 privacy-egress", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-24",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 24 },
+      "minimalInput": { "description": "阶段 1 deterministic baseline 的实体带 indexWrite=true，或包含任意 workspace 写入意图。" },
+      "expected": { "decision": "reject_write_intent", "status": "permission_denied", "reason": "阶段 1 baseline 默认不写 workspace index。" },
+      "provenance": { "sourceRef": "09 §6 #24 / 09 §5 #9", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-25",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 25 },
+      "minimalInput": { "description": "把 textHash 写入 IR.sourceHash，或用 textHash 作为 freshness fence 依据。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "sourceHash/fileHashRaw 必须是原始字节 hash；textHash 只作独立观测。" },
+      "provenance": { "sourceRef": "09 §6 #25 / §4", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-26",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 26 },
+      "minimalInput": { "description": "任意 hash 字段为 sha256: 后跟 64 个 0，或 hash 缺席却将对应 ObservedV1 标记为 ok。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "全零占位 hash 和缺失 hash 不得当作有效证据。" },
+      "provenance": { "sourceRef": "09 §6 #26 / §4", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-27",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 27 },
+      "minimalInput": { "description": "CJ authority 非 advisory；CDR/CAR authority 写成 advisory；或用 permissionsSummary/Observed 聚合/manifest 统计充当权限或权威判据。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "advisory 权限与派生摘要不能冒充 receipt 权威或授权事实。" },
+      "provenance": { "sourceRef": "09 §6 #27 / §3.3", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-28",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 28 },
+      "minimalInput": { "description": "PCS.availability 仅因配置中出现 provider 名称就写成 ready，且没有 probe 观测。" },
+      "expected": { "decision": "reject_ready_inference", "status": "unverified", "reason": "可用性必须来自独立 probe；配置出现名称不能产生 ready。" },
+      "provenance": { "sourceRef": "09 §6 #28 / readiness rule", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-29",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 29 },
+      "minimalInput": { "description": "文档重新声明 FactStatusV1 成员列表/本地占位副本，或将 wrong_dimension 折叠为 cg-wrong-dimension 以外的码。" },
+      "expected": { "decision": "reject_contract", "status": "invalid_response", "reason": "FactStatusV1 与折叠码只有 01 §3.3/09 §3 的唯一权威。" },
+      "provenance": { "sourceRef": "09 §6 #29 / CF-07 / CF-08", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-30",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 30 },
+      "minimalInput": { "description": "PS.actions 出现 promotionRecommendation 或第五个许可位；或 RT 的 operationEpoch 与 evaluationRunId 同时非空/同时为空。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "PS 只允许四位动作许可；RT 必须满足平面互斥且恰好一个绑定字段非空。" },
+      "provenance": { "sourceRef": "09 §6 #30 / CF-40 / CF-41", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-31",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 31 },
+      "minimalInput": { "description": "RC.semantic.embeddingDim 与 snapshot 不一致，却把整条候选写成 invalid_response，而不是在 RC 原生层保留 wrong_dimension。" },
+      "expected": { "decision": "reject_status_mapping", "status": "wrong_dimension", "reason": "RC 原生层不得提前折叠为 invalid_response；只允许 RK 层按规则折叠。" },
+      "provenance": { "sourceRef": "09 §6 #31 / §3.2.2", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-32",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 32 },
+      "minimalInput": { "description": "IR（InspectResultV1）承载 status=unconvertible；或把 ABI pointer 转换失败写成 IR 自身的 unconvertible。" },
+      "expected": { "decision": "reject_decode", "status": "invalid_response", "reason": "IR 矩阵不承载 unconvertible；该故障属于 SP/RC/RK/OBS/ERM/PCR 层。" },
+      "provenance": { "sourceRef": "09 §6 #32 / X-10 / R-BL-19", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    },
+    {
+      "caseId": "NG-33",
+      "source": { "document": "implementation/09-contract-entities-v1.zh-CN.md", "section": "§6", "item": 33 },
+      "minimalInput": { "description": "把工作单元自身 deadline 到期写成 cancelled；或把调用方取消/上层父级 deadline abort 写成 timeout；或把取消来源码当作共享折叠码。" },
+      "expected": { "decision": "reject_status_mapping", "status": "timeout_or_cancelled_by_source", "reason": "自身 deadline=timeout；外部取消/父级 abort=cancelled；来源诊断码不能取代状态。" },
+      "provenance": { "sourceRef": "09 §6 #33 / 01 §3.3", "observed": false, "annotation": "second-party-static-blind-review-round-2" },
+      "status": "unverified"
+    }
+  ]
+}

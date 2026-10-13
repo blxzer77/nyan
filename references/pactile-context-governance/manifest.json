@@ -1,0 +1,1814 @@
+{
+  "kind": "pactile-context-governance-reference-snapshot",
+  "snapshotDate": "2026-10-13",
+  "sourceRepositories": [
+    {
+      "name": "pactile",
+      "root": "D:\\pactile"
+    },
+    {
+      "name": "retrieval-worker",
+      "root": "D:\\MyHarness\\pactile\\packages\\retrieval-worker"
+    }
+  ],
+  "fileCount": 245,
+  "files": [
+    {
+      "path": "source/pactile/agent/context/compaction.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\context\\compaction.ts",
+      "sha256": "0fa74cd8951592fbe7fab470923b9a46876c6dabb0cd8914daee57ddc38bcb63",
+      "bytes": 25039
+    },
+    {
+      "path": "tests/pactile/retrieval/planner.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\retrieval\\planner.test.ts",
+      "sha256": "1430411d9f6b96064f29e82e9abcf092aa1523052a95ca653c4dfef093e5298c",
+      "bytes": 12105
+    },
+    {
+      "path": "tests/pactile/runtime/context-governance-artifact-intents.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\context-governance-artifact-intents.test.ts",
+      "sha256": "9c9a10979ae55b1017de6d36e28e519abcb46206161e4f944fc68b3070fb3611",
+      "bytes": 24749
+    },
+    {
+      "path": "tests/pactile/runtime/context-governance-producer.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\context-governance-producer.test.ts",
+      "sha256": "bb877c6838f06acef9d15166eb1cc0cb4e6cf503ffc0902c2fbc08cc0b45d234",
+      "bytes": 95104
+    },
+    {
+      "path": "tests/pactile/runtime/context-governance-receipts.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\context-governance-receipts.test.ts",
+      "sha256": "f79eb682c9e55e6183be9edfd427ece9b803e6a6407b7d4560cd1a5479568629",
+      "bytes": 10668
+    },
+    {
+      "path": "tests/pactile/runtime/context-governance-reconcile-all.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\context-governance-reconcile-all.test.ts",
+      "sha256": "b2cee0431d7f2b0a1cc8fd9f4bb2502620496ab1803159488179d07b8e03534e",
+      "bytes": 16948
+    },
+    {
+      "path": "tests/pactile/runtime/context-governance-review.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\context-governance-review.test.ts",
+      "sha256": "9b04b7d9eada1dda18bdf415fa6f6da410a96a1d9d1904fbfa09ea93fff3a740",
+      "bytes": 33931
+    },
+    {
+      "path": "tests/pactile/runtime/context-memory-sqlite.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\context-memory-sqlite.test.ts",
+      "sha256": "8af046e7420876a5a2aad4df67a51e8be6fdee01b0843b966e9dc761ca4533bd",
+      "bytes": 12751
+    },
+    {
+      "path": "tests/pactile/runtime/file-artifact-store.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\file-artifact-store.test.ts",
+      "sha256": "93d61c79d2ad13d6c344ee6db31d7db68b8ed373e8d4a1c56382ebbaed6830e0",
+      "bytes": 19411
+    },
+    {
+      "path": "tests/pactile/runtime/governed-context-pipeline.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\governed-context-pipeline.test.ts",
+      "sha256": "f4d4befabbc0c5292104a4568c37b3ab04efa0dc123610010dda0aad6a8160ff",
+      "bytes": 17425
+    },
+    {
+      "path": "tests/pactile/runtime/governed-memory-read-tool.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\governed-memory-read-tool.test.ts",
+      "sha256": "697b8debe4fa3df81e3e31a7a01440d7489126e75dd1ffbfd2ca75bfb31af8ff",
+      "bytes": 10954
+    },
+    {
+      "path": "tests/pactile/runtime/governed-run-scope.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\governed-run-scope.test.ts",
+      "sha256": "edc4d51bcc00434a3f65556e5872c31d25027df2c4540a59b14998d6450246c1",
+      "bytes": 4909
+    },
+    {
+      "path": "tests/pactile/runtime/governed-run-session.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\governed-run-session.test.ts",
+      "sha256": "8bea5af2e8cde155c2c748915a7df65026d972b74a9ab9eb554f5ca2d0fe30c5",
+      "bytes": 18679
+    },
+    {
+      "path": "tests/pactile/retrieval/parity.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\retrieval\\parity.test.ts",
+      "sha256": "4608479faa731ce59980204a9f876e37908f67adff2553a62ec476be0c8d2ede",
+      "bytes": 4060
+    },
+    {
+      "path": "tests/pactile/runtime/paths.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\paths.test.ts",
+      "sha256": "f5f3872482af4342c4838feaf8c575a0ce8f6be34a4f66160fd1446e5b8cb566",
+      "bytes": 6262
+    },
+    {
+      "path": "tests/pactile/runtime/run-ledger-approval-grant.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\run-ledger-approval-grant.test.ts",
+      "sha256": "af8ac0c587d909ee49a3ed2f95c6b8aec4aebaf4dfef646774b975e16802dc3c",
+      "bytes": 3976
+    },
+    {
+      "path": "tests/pactile/runtime/run-ledger-effect-receipts.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\run-ledger-effect-receipts.test.ts",
+      "sha256": "218699af65be3a0489022ab6da0e1bd80a926db45da1cc3eb17c4dbff6eccd02",
+      "bytes": 5402
+    },
+    {
+      "path": "tests/pactile/runtime/run-ledger.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\run-ledger.test.ts",
+      "sha256": "cbe355b017db3b53cad8b8662434993dd5c06dc1a7fb3f2d8283209e86e71b49",
+      "bytes": 10853
+    },
+    {
+      "path": "tests/pactile/runtime/runtime-host.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\runtime-host.test.ts",
+      "sha256": "06fbf6ff256d3356d7bdb6252441814ae51dc36b8f53d11bb6430d37dace6957",
+      "bytes": 3092
+    },
+    {
+      "path": "tests/pactile/runtime/sqlite-runtime-store.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\sqlite-runtime-store.test.ts",
+      "sha256": "c42e2bade4f95a473305b45d35998404c05091816eabfab473cdbca0a86cd3fc",
+      "bytes": 17914
+    },
+    {
+      "path": "tests/pactile/runtime/stores.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\stores.test.ts",
+      "sha256": "6eba5ededccc7c5254e948646713f43538cb6ec5da2c135a064bd42f666cb918",
+      "bytes": 11426
+    },
+    {
+      "path": "design/context-governance/compression-memory-rebase-report.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\compression-memory-rebase-report.zh-CN.md",
+      "sha256": "e44715417fc276133bf2a242424e9be85dcfdbf6bbebe67822a508d9c2940d25",
+      "bytes": 28611
+    },
+    {
+      "path": "design/context-governance/compression/compression-decision-chain-v1.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\compression\\compression-decision-chain-v1.zh-CN.md",
+      "sha256": "1bf282c0d16cbffd01e68f4147c95d604a8be5f896355232c23317c37d9469fb",
+      "bytes": 54188
+    },
+    {
+      "path": "design/context-governance/compression/compression-memory-evaluation-matrix-v1.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\compression\\compression-memory-evaluation-matrix-v1.zh-CN.md",
+      "sha256": "1bacdce2d88e08f58d6f6120e2eec4c00e6c7cd9d22378cc7bef22f22e9cef7a",
+      "bytes": 36435
+    },
+    {
+      "path": "design/context-governance/compression/compression-memory-legacy-migration.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\compression\\compression-memory-legacy-migration.zh-CN.md",
+      "sha256": "d4310096eba21b80cd92c20cf9b1b0afe4e973869a58487f89535440b58e8f97",
+      "bytes": 23091
+    },
+    {
+      "path": "design/context-governance/compression/context-unit-manifest-v1.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\compression\\context-unit-manifest-v1.zh-CN.md",
+      "sha256": "8f71eb082c616ae46f99e63d9e1d4c2b3a59ec68081e12b38a419381d13ca5e3",
+      "bytes": 67160
+    },
+    {
+      "path": "design/context-governance/implementation/00-rebase-report.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\implementation\\00-rebase-report.zh-CN.md",
+      "sha256": "0403ca1771b585495cefe1d51351198893cf21a1be59b30bb4bbadcf8b66735a",
+      "bytes": 34987
+    },
+    {
+      "path": "tests/pactile/runtime/review-regressions.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\runtime\\review-regressions.test.ts",
+      "sha256": "6e45b8832e3d96e7772e63bfb9d09cd34dac43a077422fbfbf8b62f5de18b592",
+      "bytes": 9061
+    },
+    {
+      "path": "tests/pactile/retrieval/pack-node.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\retrieval\\pack-node.test.ts",
+      "sha256": "31ce0e8a368710f8a23893bd9561856776f9196fcc30051698a01b7b78d85105",
+      "bytes": 6642
+    },
+    {
+      "path": "tests/pactile/retrieval/local-worker-process.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\retrieval\\local-worker-process.test.ts",
+      "sha256": "d2d3bfb0fc0a0fe10ea6fa493ec4dfb049c58d29325440b37ee4eeed6d0d2380",
+      "bytes": 12749
+    },
+    {
+      "path": "tests/pactile/retrieval/local-worker-candidate.smoke.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\retrieval\\local-worker-candidate.smoke.test.ts",
+      "sha256": "4817c50bcada56a89522368e4505a55f7bdd6fc4cb856bf8fa6c67c63a024ac4",
+      "bytes": 9487
+    },
+    {
+      "path": "source/retrieval-worker/src/index.ts",
+      "category": "source",
+      "origin": "D:\\MyHarness\\pactile\\packages\\retrieval-worker\\src\\index.ts",
+      "sha256": "93f3c0447af524b80c7926627cef3061ea8fb6387fe8c1341734e45e8b5c22b6",
+      "bytes": 155
+    },
+    {
+      "path": "source/retrieval-worker/src/rpc.ts",
+      "category": "source",
+      "origin": "D:\\MyHarness\\pactile\\packages\\retrieval-worker\\src\\rpc.ts",
+      "sha256": "1b2ea3d0c1f784b30deb1d7804e7c2bafc31b694028696419f264308d9e72b67",
+      "bytes": 4065
+    },
+    {
+      "path": "source/retrieval-worker/src/store.ts",
+      "category": "source",
+      "origin": "D:\\MyHarness\\pactile\\packages\\retrieval-worker\\src\\store.ts",
+      "sha256": "1c9497cb64a8941c18309ec9ec7cc5e991eb47d0c182f6eac8004f5201ecd24d",
+      "bytes": 9884
+    },
+    {
+      "path": "source/retrieval-worker/src/types.ts",
+      "category": "source",
+      "origin": "D:\\MyHarness\\pactile\\packages\\retrieval-worker\\src\\types.ts",
+      "sha256": "e7d94012e392b94000489ab761e765c6692705d77fdaf76c861e6f5a45cc3ace",
+      "bytes": 6418
+    },
+    {
+      "path": "source/retrieval-worker/src/util.ts",
+      "category": "source",
+      "origin": "D:\\MyHarness\\pactile\\packages\\retrieval-worker\\src\\util.ts",
+      "sha256": "0567bc716ea7f44751cd2da448e41205b1d5b6f59bc4d71c5ee5b64fb61a3a10",
+      "bytes": 5400
+    },
+    {
+      "path": "source/retrieval-worker/src/worker.ts",
+      "category": "source",
+      "origin": "D:\\MyHarness\\pactile\\packages\\retrieval-worker\\src\\worker.ts",
+      "sha256": "3b106cb04db34a22fe08d25c745a46aca28f55a356aba7d38395f4f93d70c5af",
+      "bytes": 35275
+    },
+    {
+      "path": "source/retrieval-worker/src/bin/retrieval-worker.ts",
+      "category": "source",
+      "origin": "D:\\MyHarness\\pactile\\packages\\retrieval-worker\\src\\bin\\retrieval-worker.ts",
+      "sha256": "f7bfc75afb2cedbf50da8a6a24f2e5c982a96c4c36c52b7680811fb5b69a553c",
+      "bytes": 132
+    },
+    {
+      "path": "tests/retrieval-worker/worker.test.ts",
+      "category": "test",
+      "origin": "D:\\MyHarness\\pactile\\packages\\retrieval-worker\\test\\worker.test.ts",
+      "sha256": "84bb1974fc8b5a917d3a2a0e8e021ea928a38ce5923abb8f489b112ac0158c10",
+      "bytes": 79473
+    },
+    {
+      "path": "design/retrieval-worker-README.md",
+      "category": "design",
+      "origin": "D:\\MyHarness\\pactile\\packages\\retrieval-worker\\README.md",
+      "sha256": "be3fca4a2114680bec8baecebfe58faad9777eb746c3cc8350bc2d3a43b2e561",
+      "bytes": 3134
+    },
+    {
+      "path": "tests/core/pactile/context-memory/compaction.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\core\\pactile\\context-memory\\compaction.test.ts",
+      "sha256": "bb8239ffc299a0203515a261045df2574e8f4ec8b043fdc28787bfe570d2770a",
+      "bytes": 6613
+    },
+    {
+      "path": "tests/core/pactile/context-memory/context-memory-policy.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\core\\pactile\\context-memory\\context-memory-policy.test.ts",
+      "sha256": "eb2d8059733e911005f95c3c989ccc65c9dd08a8bd8d5d51fbc38c9e3526004e",
+      "bytes": 2887
+    },
+    {
+      "path": "tests/core/pactile/context-memory/durability.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\core\\pactile\\context-memory\\durability.test.ts",
+      "sha256": "421056550e2e030bd85c5720e89d82107f9c58d2261b7a218099382cf096dcb8",
+      "bytes": 76512
+    },
+    {
+      "path": "tests/pactile/agent/context-governance-pipeline.integration.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\agent\\context-governance-pipeline.integration.test.ts",
+      "sha256": "845d1dcbdaafce23f971274eeeaae4e8877ce889fe23a143151e1463f10112c4",
+      "bytes": 25377
+    },
+    {
+      "path": "tests/pactile/agent/context-pipeline-native.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\agent\\context-pipeline-native.test.ts",
+      "sha256": "fccd7fde7ea922b9f0fb647d4eec67c90a64a89b19c0ab4244716baaf47f8b73",
+      "bytes": 12337
+    },
+    {
+      "path": "tests/pactile/agent/context-policy-review.integration.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\agent\\context-policy-review.integration.test.ts",
+      "sha256": "8852cf8a69edc41f8c82b9ec434d6b35cfd3495ce1cd47fd597729d79965d8dd",
+      "bytes": 33308
+    },
+    {
+      "path": "tests/pactile/agent/context-summarizer.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\agent\\context-summarizer.test.ts",
+      "sha256": "ac33de444fb48ee2a3f733a8e515f3f36d12372a396389ede23f0cd9976efee5",
+      "bytes": 8312
+    },
+    {
+      "path": "tests/pactile/agent/tool-result-fingerprint.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\agent\\tool-result-fingerprint.test.ts",
+      "sha256": "28642a43a2247e6b817f304aa170b20aaf6814d989039dce2ae97931c4ecc807",
+      "bytes": 2497
+    },
+    {
+      "path": "tests/pactile/agent/memory/scope.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\agent\\memory\\scope.test.ts",
+      "sha256": "f90e69bf5e6e276ee655f31b954cf18d4e8050e7c2c71b8e5b56506d48ff8753",
+      "bytes": 2735
+    },
+    {
+      "path": "tests/pactile/agent/retrieval/modular.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\agent\\retrieval\\modular.test.ts",
+      "sha256": "070208cecf6e1b789537b014af70ee999fb5a8a7e782630e151cffc088294c95",
+      "bytes": 6187
+    },
+    {
+      "path": "tests/pactile/jev/decision.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\jev\\decision.test.ts",
+      "sha256": "1d206b790c0aeab09a8cc8483b7394b3a1b9a5283e009c1c5a2a8f69210d0571",
+      "bytes": 6896
+    },
+    {
+      "path": "tests/pactile/jev/public-api.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\jev\\public-api.test.ts",
+      "sha256": "e3ebf244b0fe39938e60d43359f367ef25bb0aef9a809f0501a2a23497613843",
+      "bytes": 792
+    },
+    {
+      "path": "tests/pactile/jev/transport.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\jev\\transport.test.ts",
+      "sha256": "ed4669b74a83927c3be4382c3a9f048f15ce6081fac88449ab127aca7fd77584",
+      "bytes": 24443
+    },
+    {
+      "path": "tests/pactile/providers/provider-probes.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\providers\\provider-probes.test.ts",
+      "sha256": "17bc4a90921a73a70c5ef0ce26d8b890fdd60c14c8d987ec9ba6e1751cf0e369",
+      "bytes": 2339
+    },
+    {
+      "path": "tests/pactile/retrieval/evidence.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\retrieval\\evidence.test.ts",
+      "sha256": "28055858027199b98cc2019e3256329a8c3418df00894435377a9ad191f6e0c2",
+      "bytes": 12990
+    },
+    {
+      "path": "tests/pactile/retrieval/guard.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\retrieval\\guard.test.ts",
+      "sha256": "5fdd085374c7b99c8245d64f8c4d347da044da7ebffb28266f41eea65d534967",
+      "bytes": 3545
+    },
+    {
+      "path": "tests/pactile/retrieval/jev-planning.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\retrieval\\jev-planning.test.ts",
+      "sha256": "d5cca4f8472ea919ef90fa67eec6e6e698f26c61a296296a044181b1086d5291",
+      "bytes": 10430
+    },
+    {
+      "path": "tests/pactile/retrieval/local-worker-adapter.test.ts",
+      "category": "test",
+      "origin": "D:\\pactile\\packages\\cli\\test\\pactile\\retrieval\\local-worker-adapter.test.ts",
+      "sha256": "9b8c65abf7e72d3f567cf53622106505afa3ae26b93df8b41cd7870e7419a61b",
+      "bytes": 31865
+    },
+    {
+      "path": "design/context-governance/implementation/01-contract-draft.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\implementation\\01-contract-draft.zh-CN.md",
+      "sha256": "276c2b164ed53b3b16eb2756fcfeafa824fb42280fd99e9bf61e486514f903ee",
+      "bytes": 64774
+    },
+    {
+      "path": "design/context-governance/implementation/02-ownership-dependency.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\implementation\\02-ownership-dependency.zh-CN.md",
+      "sha256": "4de06c274a53d3f449e36515734cbaa3351d1c56a2f61585f501ead60e84c5d6",
+      "bytes": 22896
+    },
+    {
+      "path": "design/context-governance/implementation/03-stage-plan.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\implementation\\03-stage-plan.zh-CN.md",
+      "sha256": "ec5f36a8ece751b0aa1825e2d3609b9cad1edb6874d4732b2d7230cf6cca3d8f",
+      "bytes": 34670
+    },
+    {
+      "path": "design/context-governance/implementation/04-evaluation-controller.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\implementation\\04-evaluation-controller.zh-CN.md",
+      "sha256": "fed80b143fdebf9ea07f558223bc8a5b5459befd07020fb9fc1aa8c8b17a5870",
+      "bytes": 32496
+    },
+    {
+      "path": "evidence/p0/review-round-11-evidence-assets.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\review-round-11-evidence-assets.json",
+      "sha256": "a802b5cd8422e85a62b9a87952ac043c5b78dd3de57b34fb45c6b7eba8091a54",
+      "bytes": 1519
+    },
+    {
+      "path": "evidence/p0/review-round-12-full-p0-entry.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\review-round-12-full-p0-entry.json",
+      "sha256": "ec6057a1a1c141d880f630d20cbe7186b92756b17017c0f9c25345e1c0ef9c6c",
+      "bytes": 3012
+    },
+    {
+      "path": "evidence/p0/fixtures/known-bad-inputs.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\fixtures\\known-bad-inputs.json",
+      "sha256": "b680ae6da7c2d1bae9ec7b8481b46f8d8d4921157db7575f54c3f4e00f3d08ef",
+      "bytes": 1961
+    },
+    {
+      "path": "evidence/p0/fixtures/negative-catalog.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\fixtures\\negative-catalog.json",
+      "sha256": "dea09ea1df6a5f43f5543821c7826572792d1f7012b861cda9d7ee1f9414cd21",
+      "bytes": 22112
+    },
+    {
+      "path": "evidence/p0/fixtures/negative-fixture-inputs.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\fixtures\\negative-fixture-inputs.json",
+      "sha256": "374ef3a0b4a0c39db9b6671582408171cf0117ed2ebd2b1254b5fc4e6e6f56ec",
+      "bytes": 5114
+    },
+    {
+      "path": "evidence/p0/labels/negative-labels.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\labels\\negative-labels.json",
+      "sha256": "44c34d52aa4779e617033e692ee0e0f351e0741581b761256988fc151b415232",
+      "bytes": 2268
+    },
+    {
+      "path": "evidence/p1a/erm.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\erm.json",
+      "sha256": "d703057a9b1acf319666f0bf4dcd68a9d91a5b28d2ff56c5126673f14f0da860",
+      "bytes": 624
+    },
+    {
+      "path": "evidence/p1a/evaluation-receipt.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\evaluation-receipt.json",
+      "sha256": "d0c7afb88e501106cace3c83c707616ab46e85d42360ac72b97e5805dd68ddce",
+      "bytes": 12744
+    },
+    {
+      "path": "evidence/p1a/freeze-manifest.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\freeze-manifest.json",
+      "sha256": "8845a45f2b3b7a9c5e552376c7ab8e00c363b09a64d6eff7204a25c5983c6575",
+      "bytes": 5751
+    },
+    {
+      "path": "evidence/p1a/pcr.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\pcr.json",
+      "sha256": "d2f3c878b968cba2381b4f2153b22d8e0d400252e04e896d4594035c5981cf9e",
+      "bytes": 2384
+    },
+    {
+      "path": "evidence/p1a/catalogs/kb-catalog.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\catalogs\\kb-catalog.json",
+      "sha256": "8c903804f0a5da2aa12dc36fa9535b14fa2e80644de7b8713b69eebc509e9a84",
+      "bytes": 10903
+    },
+    {
+      "path": "evidence/p1a/catalogs/negative-catalog.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\catalogs\\negative-catalog.json",
+      "sha256": "46773c640933e4a3037eee08f50a078938d4e8a733a623f1dccfb2925967592d",
+      "bytes": 22407
+    },
+    {
+      "path": "evidence/p1a/fixtures/known-bad-inputs.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\fixtures\\known-bad-inputs.json",
+      "sha256": "0b5ae6f1d88a126f27f6f15be807ad4761494e048ee6f90b923afa3e811a0042",
+      "bytes": 2012
+    },
+    {
+      "path": "evidence/p1a/fixtures/negative-fixture-inputs.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\fixtures\\negative-fixture-inputs.json",
+      "sha256": "04989c31c636c050826f8f67d25ddc4f2e965fc3c8df390f9577ac8aebff6db2",
+      "bytes": 5156
+    },
+    {
+      "path": "evidence/p1a/labels/negative-labels.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\labels\\negative-labels.json",
+      "sha256": "e7d46e1cffff3f744826c9cbe4bef132d8e96453cd50caf73c2d97d6a9c80dd0",
+      "bytes": 2318
+    },
+    {
+      "path": "evidence/p1a/provenance/negative-label-blind-review-round-2.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\provenance\\negative-label-blind-review-round-2.json",
+      "sha256": "d65dcbdf4945f2a45f5232893afd775ed1367f8299b9d450d03ea06b2863e7ce",
+      "bytes": 6451
+    },
+    {
+      "path": "evidence/p1a/provenance/negative-label-comparison-round-2.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\provenance\\negative-label-comparison-round-2.json",
+      "sha256": "5fed19af70b280b2e26710bc52770586e08c7f7c2ae2329404642d6f3790034c",
+      "bytes": 1364
+    },
+    {
+      "path": "evidence/p1a/results/known-bad-binding.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\results\\known-bad-binding.json",
+      "sha256": "0421f3522673f58648595d901d246de8c64b4bc706996550dc5d61b84882bfd1",
+      "bytes": 5077
+    },
+    {
+      "path": "evidence/p1a/results/known-bad-results.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\results\\known-bad-results.json",
+      "sha256": "7055b48d21318dca733b870143ff63e8e46b47f116c9e321b88552e3beb8e174",
+      "bytes": 1740
+    },
+    {
+      "path": "evidence/p1a/results/negative-results.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\results\\negative-results.json",
+      "sha256": "06392b1b3f265233601dff1800bb6f421d77418111dde289fd3ddb0735b3e0fa",
+      "bytes": 8644
+    },
+    {
+      "path": "evidence/p1a/source-preregistration/erm-pcr-preregistration-template.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p1a\\source-preregistration\\erm-pcr-preregistration-template.json",
+      "sha256": "9402eed002d4bb1a1bdf6c51a78529fc7653537dd82ab7cd07311b4ec0c43bfc",
+      "bytes": 10848
+    },
+    {
+      "path": "design/pactile-docs/architecture/pactile-module-catalog.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\pactile-module-catalog.zh-CN.md",
+      "sha256": "d6db228ff41f921f0ea41771d2fde6877d7bc01445b35fd1765f1105444a8dc3",
+      "bytes": 28508
+    },
+    {
+      "path": "design/pactile-docs/migration/batch-2-context-compaction-memory.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\migration\\batch-2-context-compaction-memory.zh-CN.md",
+      "sha256": "1ca674ddc873b835684daa6adc312f1f8e5b524b8dab9d4c0b49eac0a0e5e393",
+      "bytes": 9650
+    },
+    {
+      "path": "design/pactile-docs/migration/batch-2a-provider-stream-audit.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\migration\\batch-2a-provider-stream-audit.zh-CN.md",
+      "sha256": "840c260414d8a514f13e11a4c5070fdec7f1192ada0159eebbf6f2760c2cb47d",
+      "bytes": 8706
+    },
+    {
+      "path": "design/pactile-docs/migration/native-agent-gap-matrix.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\migration\\native-agent-gap-matrix.zh-CN.md",
+      "sha256": "ff9fa210915316c6c1fcd51336eeb94d8fd44f7e53743bf067243c43c66c1191",
+      "bytes": 19074
+    },
+    {
+      "path": "design/pactile-docs/migration/retrieval-worker-d25d33.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\migration\\retrieval-worker-d25d33.zh-CN.md",
+      "sha256": "5a8afd171d502e59fe0918b28ca55adccdc8f71440c8ca474e45958ab5b7b367",
+      "bytes": 3388
+    },
+    {
+      "path": "design/pactile-docs/migration/retrieval-worker-integration-design.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\migration\\retrieval-worker-integration-design.zh-CN.md",
+      "sha256": "f63a45342910026236a9acf780e74b467ed36d3967d763c96349b4a04831cf40",
+      "bytes": 17793
+    },
+    {
+      "path": "evidence/p0/p0-hash-preflight-round-1.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\p0-hash-preflight-round-1.json",
+      "sha256": "945462001951a403fa5028e9883f6437917e85432fd03bc19045d525b7ee26c3",
+      "bytes": 7333
+    },
+    {
+      "path": "source/retrieval-worker/src/graph.ts",
+      "category": "source",
+      "origin": "D:\\MyHarness\\pactile\\packages\\retrieval-worker\\src\\graph.ts",
+      "sha256": "f0a7475d8c4a9f64a6e8fd03fdfc5a9b212b6f623359d0336ca7780e576d32b7",
+      "bytes": 27308
+    },
+    {
+      "path": "evidence/p0/p0-hash-preflight-review-round-1.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\p0-hash-preflight-review-round-1.json",
+      "sha256": "dda50bed28bdc808126515bd7023352bc6e20eaf95cdb408783aa8c1b818e62e",
+      "bytes": 7291
+    },
+    {
+      "path": "evidence/p0/p0-gate-status-review-round-13.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\p0-gate-status-review-round-13.json",
+      "sha256": "2c656f162877d51abc500c84a40706919886d552308e4a65ba4c024110fc0e8f",
+      "bytes": 3783
+    },
+    {
+      "path": "design/context-governance/implementation/05-writeset-rollback.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\implementation\\05-writeset-rollback.zh-CN.md",
+      "sha256": "627fb9a1fe06997a4a67d8950c911ce91fc11a1fe88ce7146d6b75ee26d75e27",
+      "bytes": 65062
+    },
+    {
+      "path": "design/context-governance/implementation/06-blockers.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\implementation\\06-blockers.zh-CN.md",
+      "sha256": "456c7bd174b1b49a68e42bfc78cd2e2aedeec32f7f41f5cb10eef8eef6cbc7d8",
+      "bytes": 14450
+    },
+    {
+      "path": "design/context-governance/implementation/07-legacy-migration.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\implementation\\07-legacy-migration.zh-CN.md",
+      "sha256": "e06a238b0ad579d148ea33df97c8ff4bd81a939b43887653cbe7bf6043597c58",
+      "bytes": 13624
+    },
+    {
+      "path": "design/context-governance/implementation/08-p0-admission-decision.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\implementation\\08-p0-admission-decision.zh-CN.md",
+      "sha256": "9433796e0739adf668034baaa7758b33f18889a37fd1e40d735002a5916ee15d",
+      "bytes": 9919
+    },
+    {
+      "path": "design/context-governance/implementation/09-contract-entities-v1.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\implementation\\09-contract-entities-v1.zh-CN.md",
+      "sha256": "17b6291986b4a3b5a0c8a80b6b50d451d630aaf758d876ecfab4495f564fb2a1",
+      "bytes": 58976
+    },
+    {
+      "path": "design/context-governance/implementation/10-p0-exit-checklist.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\implementation\\10-p0-exit-checklist.zh-CN.md",
+      "sha256": "66119ce3e1c6ef307951878e67dda24b2c2c28fd4bd96ab5d1dea8cca1f33a28",
+      "bytes": 45787
+    },
+    {
+      "path": "design/context-governance/retrieval/00-rebase-report.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\00-rebase-report.zh-CN.md",
+      "sha256": "3d70fdd7df796567ae328b76535f29aced21aee23207d2696ea6e6b172b76f2a",
+      "bytes": 20805
+    },
+    {
+      "path": "design/context-governance/retrieval/01-semantic-provider-contract.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\01-semantic-provider-contract.zh-CN.md",
+      "sha256": "d60db370d8a7870411d6bb46548b28c488cc7a88287566410b505e0468c50ce7",
+      "bytes": 26431
+    },
+    {
+      "path": "design/context-governance/retrieval/02-retrieval-schema.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\02-retrieval-schema.zh-CN.md",
+      "sha256": "8d1f86152a8142c129f7c679fe1a8f69b5cfdb73c537ef4e714ed370b15eab6f",
+      "bytes": 46429
+    },
+    {
+      "path": "design/context-governance/retrieval/03-semantic-generation-index.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\03-semantic-generation-index.zh-CN.md",
+      "sha256": "bcd3439ac393b4e7744b89af320a4c5b91d33b1454af064d8d554ac8c5ab8fc4",
+      "bytes": 19292
+    },
+    {
+      "path": "design/context-governance/retrieval/04-inspect-freshness-fence.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\04-inspect-freshness-fence.zh-CN.md",
+      "sha256": "d2dfa7219c1196a45b6fe8e5ef0ce0471d9770d2785a0a7c3a5be8cbcaf6288b",
+      "bytes": 17197
+    },
+    {
+      "path": "design/context-governance/retrieval/05-candidate-pipeline.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\05-candidate-pipeline.zh-CN.md",
+      "sha256": "e61838469e9a3f7685978472d00d3985effe1e4baf0f7403b91cf38890f338aa",
+      "bytes": 18676
+    },
+    {
+      "path": "design/context-governance/retrieval/06-fallback-degradation.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\06-fallback-degradation.zh-CN.md",
+      "sha256": "a9c0dbcdb35b9a676bf40f9bb15e5e67856fa368e073bd7cff7c6f7fdecbbe8e",
+      "bytes": 10294
+    },
+    {
+      "path": "design/context-governance/retrieval/07-external-search-fetch-evidence.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\07-external-search-fetch-evidence.zh-CN.md",
+      "sha256": "2ef803245568b16612bd883157971d74b92370ce0687a497f84bf6e93f671d39",
+      "bytes": 11551
+    },
+    {
+      "path": "design/context-governance/retrieval/08-privacy-egress.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\08-privacy-egress.zh-CN.md",
+      "sha256": "b99cc8d1a39c8d394f3acac2fda469a2cb79a62f0e8639f398d7dce5bafd4f52",
+      "bytes": 9842
+    },
+    {
+      "path": "design/context-governance/retrieval/09-readiness-fixtures.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\09-readiness-fixtures.zh-CN.md",
+      "sha256": "f8df7585fca30cdbbe76d5aa99aec220e244ef04cf55201b20db6ee3d8eadf05",
+      "bytes": 14281
+    },
+    {
+      "path": "design/context-governance/retrieval/10-evaluation-matrix.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\10-evaluation-matrix.zh-CN.md",
+      "sha256": "1aec63a6b2e71f7d7fc899a6b667f5cc00cff1d2ab1d61219de4674386584b65",
+      "bytes": 24264
+    },
+    {
+      "path": "design/context-governance/retrieval/11-legacy-worker-migration.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\11-legacy-worker-migration.zh-CN.md",
+      "sha256": "f7ee2098a70a9ce79fdb2c24d8030e41a62a6e18926147f315810f5c500ff432",
+      "bytes": 11247
+    },
+    {
+      "path": "design/context-governance/retrieval/12-blockers-unverified.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\12-blockers-unverified.zh-CN.md",
+      "sha256": "6c5fdd72274dbdf55a2ee3c42cc157a82e6bba624412af5ed0c0c4b73bc989b9",
+      "bytes": 32761
+    },
+    {
+      "path": "design/context-governance/retrieval/13-retrieval-search-service-design.zh-CN.md",
+      "category": "design",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\retrieval\\13-retrieval-search-service-design.zh-CN.md",
+      "sha256": "95daf31715940da4a75f2b3e94f7b54109503ff30f44dfaeeac38f7a9b68ff1d",
+      "bytes": 19339
+    },
+    {
+      "path": "evidence/p0/erm-pcr-preregistration.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\erm-pcr-preregistration.json",
+      "sha256": "c3f5b51aca4e9d3a1ecf77035195d337526ec55aed175f409fec7e3fea0fe4b5",
+      "bytes": 10692
+    },
+    {
+      "path": "evidence/p0/kb-catalog.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\kb-catalog.json",
+      "sha256": "b8ab6ff063b1cf475c6d415c556b0b6199b06a1c1bf7624067496127978eca70",
+      "bytes": 10741
+    },
+    {
+      "path": "evidence/p0/kb-erm-static-review-round-1.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\kb-erm-static-review-round-1.json",
+      "sha256": "709ec77d6ce4147e5f1cb3a87d3cf0d6640a05345165f444290b627822a0c25b",
+      "bytes": 4303
+    },
+    {
+      "path": "evidence/p0/kb-erm-static-review-round-2.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\kb-erm-static-review-round-2.json",
+      "sha256": "5e5da74f2f1e803b7221516486b797841cac9362e596334f49fc2cdad1cf9ff9",
+      "bytes": 5117
+    },
+    {
+      "path": "evidence/p0/negative-label-blind-review-round-1.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\negative-label-blind-review-round-1.json",
+      "sha256": "a741caf5cc4e9d256da593236dfe6f979623f83a242910c5c1307487beb02a3e",
+      "bytes": 2500
+    },
+    {
+      "path": "evidence/p0/negative-label-blind-review-round-2.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\negative-label-blind-review-round-2.json",
+      "sha256": "c4724085a22151d24315796f7896114c13e318dd91b8dac3a70fd96d87dc6131",
+      "bytes": 6374
+    },
+    {
+      "path": "evidence/p0/negative-label-comparison-round-2.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\negative-label-comparison-round-2.json",
+      "sha256": "17a13c98fe3b3a4171b4e649014d997fce6b7ec48dfff25d2ca443f3e2808677",
+      "bytes": 1324
+    },
+    {
+      "path": "evidence/p0/p0-gate-status-review-round-14.json",
+      "category": "evidence",
+      "origin": "D:\\pactile\\docs\\architecture\\context-governance\\evidence\\p0\\p0-gate-status-review-round-14.json",
+      "sha256": "874e6f3e1b5f85eb3706fed611a3700339d810a795b24293a4b30dd115d4f724",
+      "bytes": 4206
+    },
+    {
+      "path": "LICENSE.pactile",
+      "category": "license",
+      "origin": "D:\\pactile\\LICENSE",
+      "sha256": "79735a75d0274d2a5dcc240d11a0f81e34cfc3533939b7fce8e84e35a150a238",
+      "bytes": 34255
+    },
+    {
+      "path": "source/retrieval-worker/src/exact.ts",
+      "category": "source",
+      "origin": "D:\\MyHarness\\pactile\\packages\\retrieval-worker\\src\\exact.ts",
+      "sha256": "cf49f5439858afb4e6a67fe709afc8cfa481921046d975ff24321641fbca5be7",
+      "bytes": 23048
+    },
+    {
+      "path": "source/nyan-adapter-candidates/utils/semantic-plan-gate.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\utils\\semantic-plan-gate.ts",
+      "sha256": "c45ff3709e7abc25e18f1fe1b49653b2de69ddae6b650893ace096614b39c7ea",
+      "bytes": 1608
+    },
+    {
+      "path": "source/pactile/retrieval/jev-planning.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\retrieval\\jev-planning.ts",
+      "sha256": "61c1ebe2d4d55945d854ed4b932fd87f9bd5190cd6dff660d75e0ed5c5ef5fc6",
+      "bytes": 5098
+    },
+    {
+      "path": "source/pactile/retrieval/pack.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\retrieval\\pack.ts",
+      "sha256": "a969f65cb59c5ced9fd1902b559ac3ff1bdb7b07a06f9dc6e87cc9c6b303cb0f",
+      "bytes": 20949
+    },
+    {
+      "path": "source/pactile/retrieval/planner.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\retrieval\\planner.ts",
+      "sha256": "9520f3c4593e47bdd20539ae2252dd53e679aa411291171da0e92069cdd8b40d",
+      "bytes": 29874
+    },
+    {
+      "path": "source/pactile/retrieval/types.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\retrieval\\types.ts",
+      "sha256": "64b2bdcf66194f6f3b35016d02b0f9418f58bfbf975c5180a7718c94cb2ba207",
+      "bytes": 5513
+    },
+    {
+      "path": "source/pactile/retrieval/adapters/local-worker-process.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\retrieval\\adapters\\local-worker-process.ts",
+      "sha256": "1630f11808b818cb54f5be3aae85ecf73406548553bd6ca5ab89b09ee6abef48",
+      "bytes": 18204
+    },
+    {
+      "path": "source/pactile/retrieval/adapters/local-worker.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\retrieval\\adapters\\local-worker.ts",
+      "sha256": "e309884ff37339188762b3344eea28ce316a679314e73a19f8c665a418786961",
+      "bytes": 40508
+    },
+    {
+      "path": "source/pactile/decision/contract.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\decision\\contract.ts",
+      "sha256": "bf9e97136b459ae0dabe79a6580550bce57aa24c388b3453baeb8f1655f20afa",
+      "bytes": 2409
+    },
+    {
+      "path": "source/pactile/decision/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\decision\\index.ts",
+      "sha256": "316ccfb2cf7f7b3456d26c4ce2cdd623557743abbf8d74581b25c3c1a192e0a5",
+      "bytes": 577
+    },
+    {
+      "path": "source/pactile/decision/model-catalog.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\decision\\model-catalog.ts",
+      "sha256": "c57bef5ad2afa4b06a3206e7df3ec11f8af8ebcf504e01b201a5ee703507865a",
+      "bytes": 7520
+    },
+    {
+      "path": "source/pactile/decision/provider-registry.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\decision\\provider-registry.ts",
+      "sha256": "fc52d01d0364dc5b989b686bd1e28a7b3918dd782a584238186e71173d409dc5",
+      "bytes": 3983
+    },
+    {
+      "path": "source/pactile/decision/rule-provider.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\decision\\rule-provider.ts",
+      "sha256": "5555af51fad3690618ae57e639a085b56eed580aa512b3a900f158cfac48c820",
+      "bytes": 999
+    },
+    {
+      "path": "source/pactile/jev/contracts.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\jev\\contracts.ts",
+      "sha256": "f3b75598b28773e6589793e0551aad17784b0e96e56b82e1e53f3a095c7dc36d",
+      "bytes": 7236
+    },
+    {
+      "path": "source/pactile/retrieval/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\retrieval\\index.ts",
+      "sha256": "6fc8c95480979838cdfe8a963917233269b4f0e135552603acfdf78417d246f5",
+      "bytes": 325
+    },
+    {
+      "path": "source/pactile/jev/decision.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\jev\\decision.ts",
+      "sha256": "f7704fbaa9c64b3e0dad927600258a71d15d1db9a2c32b1d65179fa22b448173",
+      "bytes": 8740
+    },
+    {
+      "path": "source/pactile/jev/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\jev\\index.ts",
+      "sha256": "7de9bc241935566c7fd9fe77c79168aedb075dc6039276a2e1ae567d04e66507",
+      "bytes": 925
+    },
+    {
+      "path": "source/pactile/jev/outbound.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\jev\\outbound.ts",
+      "sha256": "47d4b6140e58695d58c7f50e7eb453fe2afec11231e15ebccc0924d581e52983",
+      "bytes": 11635
+    },
+    {
+      "path": "source/pactile/jev/project-policy.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\jev\\project-policy.ts",
+      "sha256": "97b63d59e2a574fbeb560265cbc36ab4b0d18edefba6c6eca434cc3f9a96cc36",
+      "bytes": 2144
+    },
+    {
+      "path": "source/pactile/jev/response.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\jev\\response.ts",
+      "sha256": "a54d4cf03d3894c12faf4892a7588b298d5c056c3053b61c95321f9a3f9db852",
+      "bytes": 12370
+    },
+    {
+      "path": "source/pactile/jev/scheduler-advice.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\jev\\scheduler-advice.ts",
+      "sha256": "caad5d790e5d61a69c18f4414d3fc66e4f2ad6721ae1341b084a85c9759be92b",
+      "bytes": 17404
+    },
+    {
+      "path": "source/pactile/jev/transport.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\jev\\transport.ts",
+      "sha256": "bf5d41325b5f950bc94d984ed496ca9d4e495c001394f6cb8b84ca8b5bb8f7fc",
+      "bytes": 4498
+    },
+    {
+      "path": "source/pactile/providers/contract.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\providers\\contract.ts",
+      "sha256": "4161d737ab759eb6c791de06374dc78f4088b08e4af0ce6fdf3cdbcefbd147a6",
+      "bytes": 20378
+    },
+    {
+      "path": "source/pactile/providers/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\providers\\index.ts",
+      "sha256": "09e10be2e5ff7f765f9529f574c2b291f92252f55559e0280efcbd51b8ec6702",
+      "bytes": 121
+    },
+    {
+      "path": "source/pactile/providers/probes.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\providers\\probes.ts",
+      "sha256": "220aff18c64940893db21eb6b4ac05aa59e854401c671800a37e159f297e1816",
+      "bytes": 8166
+    },
+    {
+      "path": "source/pactile/shared/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\shared\\index.ts",
+      "sha256": "568efb95e71f22688a07c0297404e1efbf47fd0e320a9ef12dd03df102c1dd67",
+      "bytes": 34
+    },
+    {
+      "path": "source/pactile/shared/validation.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\shared\\validation.ts",
+      "sha256": "8de3fdffda644d3cfcf4722aa9c48ee8533862f6de8bbe9459d52a0554e94237",
+      "bytes": 15071
+    },
+    {
+      "path": "source/pactile/runtime/canonical-paths.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\canonical-paths.ts",
+      "sha256": "47089385bcb3ba7a7a233e9e72f7a0a0f18f74167c3df46d748c632bb400ee4a",
+      "bytes": 12587
+    },
+    {
+      "path": "source/pactile/jev/http.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\jev\\http.ts",
+      "sha256": "388ef031fc3b0f3606348067988304409bd5d74db73fac91aec05894cb1c2c70",
+      "bytes": 8606
+    },
+    {
+      "path": "source/pactile/retrieval/evidence.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\retrieval\\evidence.ts",
+      "sha256": "0afe9ca377a949b351441a126ae48b48c18fa4cb199f54c66a05155206422a5b",
+      "bytes": 13357
+    },
+    {
+      "path": "source/pactile/retrieval/envelope.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\retrieval\\envelope.ts",
+      "sha256": "c5d68fc8b73f088504cb8e7d243ed741205a6afa0722bb7c7297e0347844d9c5",
+      "bytes": 8828
+    },
+    {
+      "path": "source/pactile/retrieval/boundary.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\retrieval\\boundary.ts",
+      "sha256": "cba4e00a9a1c33e406da6dd2ef0c5fbe4fb763927f7d85838574b1159278097d",
+      "bytes": 4100
+    },
+    {
+      "path": "source/pactile/agent/context/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\context\\index.ts",
+      "sha256": "699178ebb616cf783b5b7d06dd7278a571adb9a96459d4391b0435ef2867e365",
+      "bytes": 64
+    },
+    {
+      "path": "source/pactile/agent/context/policy.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\context\\policy.ts",
+      "sha256": "6a61aa755e1c0e44b86382a0715e0cdea1cc392c90fb9c414fe298aaf9b72e2a",
+      "bytes": 6724
+    },
+    {
+      "path": "source/pactile/agent/memory/artifact-store.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\memory\\artifact-store.ts",
+      "sha256": "7729d1fc415508a0f697bb1b1fe38d64df454b19d1604b316ca4d7750d8c1fda",
+      "bytes": 119
+    },
+    {
+      "path": "source/pactile/agent/memory/durability.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\memory\\durability.ts",
+      "sha256": "818f3968c53dcec229438570f9867dc1afa3a69ebb6b8b755d99560e20859b09",
+      "bytes": 111
+    },
+    {
+      "path": "source/pactile/agent/memory/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\memory\\index.ts",
+      "sha256": "66e5189ac13a77dfa89faade8497326a8d0cfe2db8b44c98888e5787e0032cad",
+      "bytes": 98
+    },
+    {
+      "path": "source/pactile/agent/memory/read-tool.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\memory\\read-tool.ts",
+      "sha256": "38edf6cc363d682a71f592989b0bcd35b31e3ed6be5b48d60585ab3b3b81b5e7",
+      "bytes": 6737
+    },
+    {
+      "path": "source/pactile/agent/memory/scope.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\memory\\scope.ts",
+      "sha256": "d9fff52b25d100935fcaf74a4aef8de62f558559f8f4dfe2590c180eebab4bfe",
+      "bytes": 7814
+    },
+    {
+      "path": "source/pactile/agent/memory/artifact-store/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\memory\\artifact-store\\index.ts",
+      "sha256": "3e4c99c94bf2bc21d81d63ecb4265a692039214da8b34189584c45867afe4051",
+      "bytes": 24446
+    },
+    {
+      "path": "source/pactile/agent/memory/durability/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\memory\\durability\\index.ts",
+      "sha256": "83b3695c0618747a6eaf09e54f298007f51ca7569182969f585d3367c69590c6",
+      "bytes": 129791
+    },
+    {
+      "path": "source/pactile/agent/effects/contract.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\effects\\contract.ts",
+      "sha256": "8855dee4a91c493ecf75b5962d45d570031523a9d72f65e5a3f5b2a70a42c034",
+      "bytes": 4208
+    },
+    {
+      "path": "source/pactile/agent/native-agent/contract.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\native-agent\\contract.ts",
+      "sha256": "f3471d382d7f3a03fcde3bfc50afc4060db47aaba232bc9c6fe9d76cdbd143ae",
+      "bytes": 1267
+    },
+    {
+      "path": "source/pactile/agent/native-agent/service.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\native-agent\\service.ts",
+      "sha256": "200a5ba2ef5b925fc68ce07a590c6507045002ef17eaa802c6ff2306e1d178e3",
+      "bytes": 12212
+    },
+    {
+      "path": "source/pactile/agent/retrieval/adapter.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\retrieval\\adapter.ts",
+      "sha256": "4f871b989579a225ad84c4790cf4169e7a4721c580a82193975ae5f440881959",
+      "bytes": 6526
+    },
+    {
+      "path": "source/pactile/agent/retrieval/contract.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\retrieval\\contract.ts",
+      "sha256": "cf5251273d88e4de0cd5b05f9bf0dae4c7b0a7097f65580c64348116f78575f6",
+      "bytes": 3204
+    },
+    {
+      "path": "source/pactile/agent/retrieval/explain.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\retrieval\\explain.ts",
+      "sha256": "ef6f626e588dfe045af582502b924aff3d3b2a0c05db9bbd5ebda6908e05a57f",
+      "bytes": 1108
+    },
+    {
+      "path": "source/pactile/agent/retrieval/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\retrieval\\index.ts",
+      "sha256": "ec7d1bf0181bafa0502a01f0ccea365e269216580d059762c39c5a8951cddeec",
+      "bytes": 179
+    },
+    {
+      "path": "source/pactile/agent/retrieval/policy.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\retrieval\\policy.ts",
+      "sha256": "653e08851f7f77e86232976ea5ad425fd196529d1c7d070e5d0a0edc233881d9",
+      "bytes": 2797
+    },
+    {
+      "path": "source/pactile/agent/retrieval/ranking.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\retrieval\\ranking.ts",
+      "sha256": "a86c5e4bcec542432db732a212ad557d58a3a1906095baf4789429b341f9172a",
+      "bytes": 2329
+    },
+    {
+      "path": "source/pactile/agent/retrieval/router.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\retrieval\\router.ts",
+      "sha256": "d4e1e87191b375e59e01a3ed7a1a5d5b7cfb19884896e94bfee56c6f18256ea7",
+      "bytes": 1925
+    },
+    {
+      "path": "source/pactile/agent/session/checkpoint.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\session\\checkpoint.ts",
+      "sha256": "bd4a5bea1b48c0ecb4b7f50f196675ab4ffd26d955ebb7d0ffc08862e348420f",
+      "bytes": 7208
+    },
+    {
+      "path": "source/pactile/agent/session/contracts.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\session\\contracts.ts",
+      "sha256": "8e8024124f28faecbac4cc75f5528335eb632095cf51c52e29d73532bb6197a8",
+      "bytes": 6939
+    },
+    {
+      "path": "source/pactile/agent/session/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\session\\index.ts",
+      "sha256": "6725d67aa288d1689fff2b5f6e38e42ae440356887803ba9511dc828908977d6",
+      "bytes": 67
+    },
+    {
+      "path": "source/pactile/agent/pi/agent-loop.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\pi\\agent-loop.ts",
+      "sha256": "b0cb495992071215a7f275eda0b4f42195ddc0204d1dbc0f6dd8e697a429d30b",
+      "bytes": 30112
+    },
+    {
+      "path": "source/pactile/agent/pi/agent.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\pi\\agent.ts",
+      "sha256": "77c43e625e248234e23709ed9653fe9d312f194010f35f2ea10e23bac5523896",
+      "bytes": 20203
+    },
+    {
+      "path": "source/pactile/agent/pi/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\pi\\index.ts",
+      "sha256": "a59c4658919d8d702f2ae9d993da93eff740aa44620cff793b35b2a1b9d9e2af",
+      "bytes": 142
+    },
+    {
+      "path": "source/pactile/agent/pi/stream-fn.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\pi\\stream-fn.ts",
+      "sha256": "2a82b3548f2fc108530e308b13a8e722e9656194df704a2fd189d483f98bf28c",
+      "bytes": 683
+    },
+    {
+      "path": "source/pactile/agent/pi/types.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\agent\\pi\\types.ts",
+      "sha256": "f98ab27afe1c4a2c01aa293ff5b97af0052b93355118c3c7f33ab0917a7b2189",
+      "bytes": 21604
+    },
+    {
+      "path": "source/pactile/runtime/case-fold.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\case-fold.ts",
+      "sha256": "46df4f4ee6180f2bd8bff3ebb030d1bf346de110679417e9fc405cc8641aa131",
+      "bytes": 12817
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-approval-grant.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-approval-grant.ts",
+      "sha256": "229035c3d57a0badd0745505eecd9eb20310ef2658dd28376a54e4ee24f99498",
+      "bytes": 6258
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-artifact-intents.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-artifact-intents.ts",
+      "sha256": "7d57420dc56b2a00ffac5e2f8902a2dcc542f2ed02d338ad63ddf747ecac630a",
+      "bytes": 27347
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-artifacts.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-artifacts.ts",
+      "sha256": "0cf862e1563da50f06406032eaeba2a448d5ac15b41f5460e16673db3ce21724",
+      "bytes": 5215
+    },
+    {
+      "path": "source/pactile/runtime/pi-executor-contract/attempt.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\pi-executor-contract\\attempt.ts",
+      "sha256": "a965a3427a6ae2d5f85d7820c5a6954b0349c4d125f999f0f03d1848d6f83c97",
+      "bytes": 2514
+    },
+    {
+      "path": "source/pactile/runtime/pi-executor-contract/binding.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\pi-executor-contract\\binding.ts",
+      "sha256": "16bb9e330e9ebb5eaa537e84dc3b1e69bd565d0ca8bdd96ce1944ea9c400c91b",
+      "bytes": 7849
+    },
+    {
+      "path": "source/pactile/runtime/pi-executor-contract/decode.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\pi-executor-contract\\decode.ts",
+      "sha256": "3f7313ecd3680a5157128d93582e904f72a63d2565ed3c0ca3ab13bc1d6c38d8",
+      "bytes": 12991
+    },
+    {
+      "path": "source/pactile/runtime/pi-executor-contract/helpers.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\pi-executor-contract\\helpers.ts",
+      "sha256": "a6c25414e87ee1792e5c2e2dadae5effa3aae960327693419e52100840b81072",
+      "bytes": 2942
+    },
+    {
+      "path": "source/pactile/runtime/pi-executor-contract/idempotency.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\pi-executor-contract\\idempotency.ts",
+      "sha256": "4b08ac44ce555f0cc3fb080c6ab53e1ccd0a29f235bfe959524a3562ef494ff6",
+      "bytes": 1519
+    },
+    {
+      "path": "source/pactile/runtime/pi-executor-contract/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\pi-executor-contract\\index.ts",
+      "sha256": "4a7c46fa9897271050f5fc01ef59ba2d4c0b6858915dc90921636053a2532869",
+      "bytes": 985
+    },
+    {
+      "path": "source/pactile/runtime/pi-executor-contract/outcome.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\pi-executor-contract\\outcome.ts",
+      "sha256": "c467d3b8eda863770ffa93860dc0f4fb78e5215265740c78532b1d39d04e4be8",
+      "bytes": 3652
+    },
+    {
+      "path": "source/pactile/runtime/pi-executor-contract/result.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\pi-executor-contract\\result.ts",
+      "sha256": "eb4545082c3ae00b6d252656ae20fe98a9a744e913c6288cb308f63200cad262",
+      "bytes": 3316
+    },
+    {
+      "path": "source/pactile/runtime/pi-executor-contract/types.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\pi-executor-contract\\types.ts",
+      "sha256": "ea3bf792e28dd84297e7ee5f0bbbeb022be5782f27c2031a6f9975099d09e1cd",
+      "bytes": 10022
+    },
+    {
+      "path": "source/pactile/runtime/stores/artifact/filesystem.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\stores\\artifact\\filesystem.ts",
+      "sha256": "b106841312434f4941cefe9062d8b2f133b68aae87b316bddb14b21ea687729f",
+      "bytes": 5674
+    },
+    {
+      "path": "source/pactile/runtime/stores/artifact/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\stores\\artifact\\index.ts",
+      "sha256": "a791656fdce538e7ca6335b00ce9718307d113e5c42e65d84b6dfadaea6a53c1",
+      "bytes": 62
+    },
+    {
+      "path": "source/pactile/runtime/stores/artifact/repository.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\stores\\artifact\\repository.ts",
+      "sha256": "74a5867a3a95b3a9ea56ed895accfb8757394490f616b6972e324059dd889015",
+      "bytes": 25121
+    },
+    {
+      "path": "source/pactile/runtime/stores/artifact/types.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\stores\\artifact\\types.ts",
+      "sha256": "b305e95394c904125d67c1112737662172f9ed490d4d126b86acd818bef4d66c",
+      "bytes": 2785
+    },
+    {
+      "path": "source/pactile/runtime/stores/sqlite/capability.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\stores\\sqlite\\capability.ts",
+      "sha256": "6c9a05033401e36b361b6df5261a39887e01c87f069917133ba98e8df2f4c662",
+      "bytes": 8369
+    },
+    {
+      "path": "source/pactile/runtime/stores/sqlite/codec.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\stores\\sqlite\\codec.ts",
+      "sha256": "dac544c810fa2ee4ab1d4acef2592b562849ce6e8e5a2a165ae8fdb65e937b6d",
+      "bytes": 9124
+    },
+    {
+      "path": "source/pactile/runtime/stores/sqlite/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\stores\\sqlite\\index.ts",
+      "sha256": "3814308b9b03bf8705eb1a04b1cad8df82d25521ceeb815a587de6b21f2f28ad",
+      "bytes": 639
+    },
+    {
+      "path": "source/pactile/runtime/stores/sqlite/repository.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\stores\\sqlite\\repository.ts",
+      "sha256": "8d2ad7303820c95bf3573bfcd7600a3cf7889ff48a90b48a3017eb2053e26725",
+      "bytes": 70227
+    },
+    {
+      "path": "source/pactile/runtime/stores/sqlite/schema.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\stores\\sqlite\\schema.ts",
+      "sha256": "6862d3d9891529f2564ae74a0892cd7681c67fd6b38b7b06d5275895aa020fad",
+      "bytes": 7291
+    },
+    {
+      "path": "source/pactile/runtime/stores/sqlite/types.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\stores\\sqlite\\types.ts",
+      "sha256": "414953a4aa64f22dc1040396ec3bd8765c287124d362dbc1098b5df0a5134d6e",
+      "bytes": 3072
+    },
+    {
+      "path": "source/pactile-core/context-memory/compaction.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\core\\pactile\\context-memory\\compaction.ts",
+      "sha256": "84355243ad9dc8388ed32e2532be3908eb20fe4226a4368a6a07880ecaf2bdc5",
+      "bytes": 163
+    },
+    {
+      "path": "source/pactile-core/context-memory/durability.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\core\\pactile\\context-memory\\durability.ts",
+      "sha256": "3a6166c7e863d01bc3a99ab8bee7773a1737614e0ea69c615518c98258d99d5e",
+      "bytes": 161
+    },
+    {
+      "path": "source/pactile-core/context-memory/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\core\\pactile\\context-memory\\index.ts",
+      "sha256": "5b2f5109cc9e989541f9c6b70a54fe575d55bf1def0382ea2f3857b5d8a533f9",
+      "bytes": 159
+    },
+    {
+      "path": "source/nyan-adapter-candidates/utils/codebase-retrieval-router.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\utils\\codebase-retrieval-router.ts",
+      "sha256": "6387ab4caf50bd314a6ad2fdfd6a919033c1d221d23358a7241edc2b084e6a93",
+      "bytes": 4724
+    },
+    {
+      "path": "source/nyan-adapter-candidates/utils/retrieval-agent-instructions.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\utils\\retrieval-agent-instructions.ts",
+      "sha256": "94767eb9fa5a43068bc2ea0118546547338d10df9cda7a2d8c7455ce5d75d6a4",
+      "bytes": 4735
+    },
+    {
+      "path": "source/nyan-adapter-candidates/utils/retrieval-execution-telemetry.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\utils\\retrieval-execution-telemetry.ts",
+      "sha256": "6f64285f997ebd64d5f71d4c36cd868833506a21d6d43a5d14125112d2243bb4",
+      "bytes": 6735
+    },
+    {
+      "path": "source/nyan-adapter-candidates/utils/retrieval-result-ranking.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\utils\\retrieval-result-ranking.ts",
+      "sha256": "821016aa07c1c5ecf2d4da56f739e6b0ba2e10b81c34080cf118ffcdd9f01ebf",
+      "bytes": 4167
+    },
+    {
+      "path": "source/nyan-adapter-candidates/utils/retrieval-tool-classification.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\utils\\retrieval-tool-classification.ts",
+      "sha256": "4499f23368e93f20d60604db9daef8dbebc7bc3f76507cf8e3772d04d15bb3d4",
+      "bytes": 3598
+    },
+    {
+      "path": "source/pactile/runtime/contracts/session-registry.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\contracts\\session-registry.ts",
+      "sha256": "22810d8237a60b870e27461d47f20e053711a35998a40ca4973da919d9495d03",
+      "bytes": 27440
+    },
+    {
+      "path": "source/retrieval-worker/src/decision.ts",
+      "category": "source",
+      "origin": "D:\\MyHarness\\pactile\\packages\\retrieval-worker\\src\\decision.ts",
+      "sha256": "fe448bda191813b447360ca7ec2b48b95812611e1721f9935f11ab6944a81c16",
+      "bytes": 16951
+    },
+    {
+      "path": "source/pactile/runtime/contracts/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\contracts\\index.ts",
+      "sha256": "afaa4b07df3f8f1a7dfa047dad0caa8236ba7e9e41e5e91bef215249cffa22ca",
+      "bytes": 39
+    },
+    {
+      "path": "source/pactile/runtime/unicode-nfc.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\unicode-nfc.ts",
+      "sha256": "e403336fff17b82634b5d9da7b3eed31878d3571a32d093e2f091e03fcbddd78",
+      "bytes": 2641
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-memory-commit.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-memory-commit.ts",
+      "sha256": "8beee3a3b066c0e5ee1af47e5126c051378262d9486e16e8c74b06832b2380d8",
+      "bytes": 16084
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-memory-read-port.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-memory-read-port.ts",
+      "sha256": "2e30e1c7e7e5f61d0ff151b107752a1ff15ba48c2e26ed60b8f6549b6c5ce7f6",
+      "bytes": 6173
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-memory-read.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-memory-read.ts",
+      "sha256": "27f1884edbb0c13c272bf4950d13bb21545fd5bc56093002ee10e7114886a45f",
+      "bytes": 5537
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-memory.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-memory.ts",
+      "sha256": "9dc67931be1f17f9455bf1d5cf344fa21ff42b25884fb1a41abd1be0b4b70cc7",
+      "bytes": 20341
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-pipeline-producer.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-pipeline-producer.ts",
+      "sha256": "752e99a72ed98d5ffa53e365c8c5527b44fd112b376080932256f7b4baac1476",
+      "bytes": 17858
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-policy.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-policy.ts",
+      "sha256": "91dc2446e2c64e5d28f5b63624020cc966feac5618ed7198bc08d1bfa233f0cf",
+      "bytes": 9591
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-producer.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-producer.ts",
+      "sha256": "a9d4793fa997b46c3ad2188369438bc9f15d3c04d2af1b5b2f0d0219bba57d96",
+      "bytes": 10701
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-receipts.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-receipts.ts",
+      "sha256": "a3f6a97501b68b03992808a9548ee6d8515353373bb565d65c1262dc5d9c7714",
+      "bytes": 20176
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-record-support.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-record-support.ts",
+      "sha256": "3a93b5f6a75df712fa7e393d4724a56a36082b7261baa4ffd601fc65ad54e96c",
+      "bytes": 2722
+    },
+    {
+      "path": "source/pactile/runtime/context-governance-review.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\context-governance-review.ts",
+      "sha256": "12639e84a95efb2c10c67a41333a590985f48b5363eb10f32f440b41d6d5d508",
+      "bytes": 24780
+    },
+    {
+      "path": "source/pactile/runtime/effect-receipts.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\effect-receipts.ts",
+      "sha256": "1e5708e12dbd7e469654e22c849b4d1336f7a044eb9a78a4c725cd377ac611da",
+      "bytes": 7631
+    },
+    {
+      "path": "source/pactile/runtime/file-artifact-store.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\file-artifact-store.ts",
+      "sha256": "d2a624f810c5dade07f6161b779962667d7508c44ee0e800c3002f6c1bedd4c6",
+      "bytes": 45
+    },
+    {
+      "path": "source/pactile/runtime/governed-context-pipeline.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\governed-context-pipeline.ts",
+      "sha256": "861bff0bdbe5247fd1163661e277d6006a8ecef4cf594b972cf906bdf925c72c",
+      "bytes": 8113
+    },
+    {
+      "path": "source/pactile/runtime/governed-run-session.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\governed-run-session.ts",
+      "sha256": "0bc7143b8f8a627200a4b152601b17de0f7370b750a5754b89105264b71bafb7",
+      "bytes": 17593
+    },
+    {
+      "path": "source/pactile/runtime/index.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\index.ts",
+      "sha256": "fc8ebf601f066b3b6811a090835926608c473c8b71bb37aa2a707644034c0600",
+      "bytes": 4559
+    },
+    {
+      "path": "source/pactile/runtime/io-envelope.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\io-envelope.ts",
+      "sha256": "19c2e499f0c3fca126f0f02f23cff3a8805bed7c7ae6885d8cf49a18308877c4",
+      "bytes": 10634
+    },
+    {
+      "path": "source/pactile/runtime/json-api.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\json-api.ts",
+      "sha256": "557607cc119ea1ef045a6368719f967a2122a14b26604b96801a95dc69c14861",
+      "bytes": 2740
+    },
+    {
+      "path": "source/pactile/runtime/paths.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\paths.ts",
+      "sha256": "53848e0297cc3f24c3bddfb56da002c13529a386473828e07d22d119e41edd23",
+      "bytes": 10748
+    },
+    {
+      "path": "source/pactile/runtime/pi-executor-contract.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\pi-executor-contract.ts",
+      "sha256": "4739356cad72da79f7941228801ac5d6dd5ecff2aa036389511cfd949810db85",
+      "bytes": 49
+    },
+    {
+      "path": "source/pactile/runtime/run-ledger-effect-receipts.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\run-ledger-effect-receipts.ts",
+      "sha256": "915bdeaee207710d0be0351d9b03bc6eceb49f1e17058beebf8550f68816f23f",
+      "bytes": 8252
+    },
+    {
+      "path": "source/pactile/runtime/run-ledger.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\run-ledger.ts",
+      "sha256": "bc5537e4a247637bd5773fc7509a039c2d60fcb700c1da18ac086790e976b711",
+      "bytes": 44575
+    },
+    {
+      "path": "source/pactile/runtime/runtime-host.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\runtime-host.ts",
+      "sha256": "508b4eb4369a0b02221c238c4653923fe80b2df9d6b284108fba5d27a55091f4",
+      "bytes": 5993
+    },
+    {
+      "path": "source/pactile/runtime/session-registry.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\session-registry.ts",
+      "sha256": "41b629a18295a332be1b4973c77b012482672b26629008a2f565bb4551c03d9e",
+      "bytes": 26460
+    },
+    {
+      "path": "source/pactile/runtime/sqlite-runtime-store.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\sqlite-runtime-store.ts",
+      "sha256": "2acdf0ea94b51135502193880e15ee9d4c10bf5129014479c591fef7e43d3f12",
+      "bytes": 115
+    },
+    {
+      "path": "source/pactile/runtime/store-port.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\store-port.ts",
+      "sha256": "f8ad8cafd307c2634cb22d8ff27f057329e37e91a35f4d14cbb61db69afd63d7",
+      "bytes": 9229
+    },
+    {
+      "path": "source/pactile/runtime/stores.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\stores.ts",
+      "sha256": "feb1701440dd99b0e96f8ba953ef6e578f94d897b9be2db90b0a30ce59034adf",
+      "bytes": 18214
+    },
+    {
+      "path": "source/pactile/runtime/unicode-nfc-data.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\unicode-nfc-data.ts",
+      "sha256": "a094ae1a9a08d79d21938fa8afe678586a95f991468acbf09fe5b6393c7b2a23",
+      "bytes": 61884
+    },
+    {
+      "path": "source/pactile/runtime/workspace-admission.ts",
+      "category": "source",
+      "origin": "D:\\pactile\\packages\\cli\\src\\pactile\\runtime\\workspace-admission.ts",
+      "sha256": "8cfb7ecf5d51c12b1e74101fe03f28c8976b9b37899cd7912020b3d1dcfee63e",
+      "bytes": 18502
+    },
+    {
+      "path": "COPYRIGHT.pactile",
+      "category": "license",
+      "origin": "D:\\pactile\\COPYRIGHT",
+      "sha256": "5f93662fbf8777b4b0c4c40f9c9382a5a5f26e40879671d349064b671b4d7f88",
+      "bytes": 1149
+    }
+  ],
+  "redactions": [
+    {
+      "path": "tests/pactile/jev/decision.test.ts",
+      "pattern": "credential-shaped test literal",
+      "replacement": "[test-key-placeholder]",
+      "occurrences": 7
+    },
+    {
+      "path": "tests/pactile/jev/transport.test.ts",
+      "pattern": "credential-shaped test literal",
+      "replacement": "[test-key-placeholder]",
+      "occurrences": 4
+    },
+    {
+      "path": "tests/pactile/jev/transport.test.ts",
+      "pattern": "credential-shaped test literal",
+      "replacement": "[test-key-placeholder]",
+      "occurrences": 1
+    },
+    {
+      "path": "tests/pactile/jev/transport.test.ts",
+      "pattern": "credential-shaped test literal",
+      "replacement": "TYPESAFE_API_KEY=[test-key-placeholder]",
+      "occurrences": 1
+    },
+    {
+      "path": "tests/pactile/retrieval/jev-planning.test.ts",
+      "pattern": "credential-shaped test literal",
+      "replacement": "[test-key-placeholder]",
+      "occurrences": 8
+    },
+    {
+      "path": "tests/pactile/jev/decision.test.ts",
+      "pattern": "credential-shaped fixture literal",
+      "replacement": "[test-secret-placeholder]",
+      "occurrences": 2
+    },
+    {
+      "path": "tests/pactile/jev/transport.test.ts",
+      "pattern": "credential-shaped fixture literal",
+      "replacement": "[test-secret-placeholder]",
+      "occurrences": 9
+    },
+    {
+      "path": "tests/pactile/jev/transport.test.ts",
+      "pattern": "credential-shaped fixture literal",
+      "replacement": "[stripe-key-placeholder]",
+      "occurrences": 1
+    },
+    {
+      "path": "tests/pactile/jev/transport.test.ts",
+      "pattern": "credential-shaped fixture literal",
+      "replacement": "[test-secret-placeholder]",
+      "occurrences": 2
+    },
+    {
+      "path": "tests/pactile/jev/transport.test.ts",
+      "pattern": "credential-shaped fixture literal",
+      "replacement": "[test-body-placeholder]",
+      "occurrences": 1
+    },
+    {
+      "path": "tests/pactile/providers/provider-probes.test.ts",
+      "pattern": "credential-shaped fixture literal",
+      "replacement": "[test-password-placeholder]",
+      "occurrences": 1
+    },
+    {
+      "path": "tests/pactile/retrieval/jev-planning.test.ts",
+      "pattern": "credential-shaped fixture literal",
+      "replacement": "[test-secret-placeholder]",
+      "occurrences": 2
+    }
+  ],
+  "excluded": [
+    "node_modules and package-manager stores",
+    "dist and build output",
+    "provider-shadow live receipts and probe scripts",
+    "tailnet/private-network endpoints and credentials",
+    "Pactile kernel, task, worktree, CLI, and unrelated application modules",
+    "Nyan product integration and package wiring"
+  ]
+}

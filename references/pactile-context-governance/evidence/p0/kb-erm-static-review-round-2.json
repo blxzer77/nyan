@@ -1,0 +1,114 @@
+{
+  "schemaId": "pactile.cg.review-receipt",
+  "schemaVersion": 1,
+  "reviewId": "kb-erm-static-review-round-2",
+  "reviewType": "focused-kb-erm-pcr-static-review",
+  "reviewer": "kb_erm_static_review_retry",
+  "reviewMode": "read-only-independent-subagent",
+  "recordedAt": "2026-10-09T16:57:53Z",
+  "verdict": "blocked",
+  "p0ExitAllowed": false,
+  "stage1aAllowed": false,
+  "scope": [
+    "evidence/p0/kb-catalog.json",
+    "evidence/p0/fixtures/known-bad-inputs.json",
+    "evidence/p0/erm-pcr-preregistration.json",
+    "implementation/04-evaluation-controller.zh-CN.md §5",
+    "implementation/04-evaluation-controller.zh-CN.md §7.1",
+    "implementation/04-evaluation-controller.zh-CN.md §9"
+  ],
+  "observations": {
+    "jsonFilesParsed": 4,
+    "knownBadEntryCount": 7,
+    "knownBadInputCount": 7,
+    "knownBadIdsUniqueAndAligned": true,
+    "inputRefsResolveByCaseIndex": true,
+    "inputRefs": [
+      "fixtures/known-bad-inputs.json#/cases/0",
+      "fixtures/known-bad-inputs.json#/cases/1",
+      "fixtures/known-bad-inputs.json#/cases/2",
+      "fixtures/known-bad-inputs.json#/cases/3",
+      "fixtures/known-bad-inputs.json#/cases/4",
+      "fixtures/known-bad-inputs.json#/cases/5",
+      "fixtures/known-bad-inputs.json#/cases/6"
+    ],
+    "catalogStatuses": {
+      "catalog": "proposed_unverified",
+      "executionStatus": "not_run",
+      "plannedFixtureRootExists": false,
+      "entryActualStatuses": "unverified",
+      "entryFixtureStatuses": "not_created"
+    },
+    "ermStatus": {
+      "registration": "proposed_unverified",
+      "runStatus": "not_started",
+      "ermState": "drafted",
+      "evaluationRunId": null,
+      "candidateSha": null,
+      "caseSetHash": null,
+      "fixtureHash": null,
+      "providerCapabilitySnapshot": null,
+      "frozenAt": null
+    },
+    "pcrStatus": {
+      "state": "not_created",
+      "reportId": null,
+      "evaluationRunId": null,
+      "verdict": null,
+      "affectsProductRun": false
+    },
+    "freezeChecklist": {
+      "kbCatalogItems": 6,
+      "kbCatalogItemsPending": 6,
+      "ermFreezePrerequisites": 6,
+      "ermFreezePrerequisitesPending": 6
+    },
+    "sr7Binding": {
+      "condition": "any KB-1…KB-7 known-bad candidate is reported as pass; candidate results must be unverified and harnessVerdict must be blocked",
+      "action": "mark_unverified",
+      "source": "04 §7.1",
+      "explicitHarnessBlockedBinding": true,
+      "staticFindingFromRound1Resolved": true
+    },
+    "documentAlignment": {
+      "section5ErmFields": "template fields correspond to the proposed ERM shape; no frozen run identity or hashes",
+      "section71KnownBadIds": "KB-1..KB-7, fault intent, global blocked rule, and minimal input fixtures align",
+      "section9Verdicts": "harnessVerdict != valid implies candidateVerdict=unverified; no observed verdict exists"
+    }
+  },
+  "staticFindings": [
+    {
+      "severity": "resolved_static",
+      "finding": "Round 1's SR-7 wording gap is closed in the preregistration template: a pass from any KB-1…KB-7 requires candidate results to remain unverified and harnessVerdict to be blocked. This is a document binding only; it is not an observed run."
+    },
+    {
+      "severity": "open",
+      "finding": "The KB catalog and minimal known-bad inputs are prepared but unexecuted. The external fixture root is absent, real bad candidates are not materialized, all actual fields remain unverified, and no evidence refs exist."
+    },
+    {
+      "severity": "open",
+      "finding": "ERM remains proposed_unverified/drafted with runStatus=not_started; evaluationRunId, candidateSha, caseSetHash, fixtureHash, provider capability snapshot, frozenAt, results, verification and evidence index are absent. PCR remains not_created."
+    },
+    {
+      "severity": "open",
+      "finding": "KB provenance, annotator independence, blind review, frozen canonical hashes, pre-run ERM, independent rerun, and caseSetHash revision evidence remain pending."
+    }
+  ],
+  "openConditions": [
+    "Materialize and freeze the seven real known-bad candidates only after the separately authorized Stage 1a evaluation setup.",
+    "Freeze an ERM with evaluationRunId, candidate tree-hash, caseSetHash, fixtureHash, provider capability snapshot, isolation, and frozenAt before any result file.",
+    "Run the harness and record verification.json, results.jsonl, evidence-index.json, PCR, and an independent review receipt; every KB candidate must be candidateVerdict=fail and harnessVerdict must be valid.",
+    "Record source, annotator, independence, and blind-review provenance for the relevant gold/negative labels."
+  ],
+  "gateRowsVerified": [
+    "P0_DOCUMENT_WRITE_COMPLETE",
+    "P0_REVIEW_BLOCKED",
+    "P0_EXIT_NOT_ALLOWED",
+    "STAGE_1_NOT_AUTHORIZED"
+  ],
+  "limitations": [
+    "This is a focused static consistency review, not a full P0 exit approval.",
+    "No runtime, provider, external evaluation result root, or real known-bad candidate was executed or created.",
+    "No hash was computed and no observed result, candidateVerdict, harnessVerdict, or PCR metric is claimed."
+  ]
+}

@@ -1,0 +1,165 @@
+{
+  "schemaId": "pactile.cg.stage1a-evidence-freeze.v1",
+  "schemaVersion": 1,
+  "freezeStatus": "frozen-evaluation-bundle",
+  "frozenAt": "2026-10-10T00:00:00Z",
+  "plane": "evaluation",
+  "evaluationRunId": "evr-20261010-p1a-offline",
+  "policyVersion": "cg-v1-p1a-offline",
+  "seed": "p1a-seed-1",
+  "semanticHashes": {
+    "fixtureHash": "sha256:27e5269ced81a2f76923e8e11ed46ab7a008a30eec7b690235841bd907fb10f1",
+    "caseSetHash": "sha256:87f870905207c8926290daab94205dcf316eec25c159e7f5876abdadc355e537"
+  },
+  "sourceRun": {
+    "taskId": "cg-p1a-offline-baseline",
+    "runId": "daf20591-0dfd-4f10-bc59-e3d70ccd799e",
+    "candidateSnapshotId": "4b0ecb40-619a-4f15-ab50-b8b619c2ce99",
+    "candidateFingerprint": "0bdf609fa2167a2ddbb7e3a32c16e79d8216fdf5e7551cbf22b517b706473699",
+    "candidateWorktree": "D:\\MyHarness\\.tmp\\pactile-p1a-baseline"
+  },
+  "observed": {
+    "harnessVerdict": "valid",
+    "candidateVerdict": "fail",
+    "negative": {
+      "total": 33,
+      "rejected": 33,
+      "mismatches": 0
+    },
+    "knownBad": {
+      "total": 7,
+      "failed": 7,
+      "mismatches": 0,
+      "binding": {
+        "status": "completed",
+        "ref": "results/known-bad-binding.json",
+        "total": 7,
+        "failed": 7,
+        "mismatches": 0,
+        "evaluationRunId": "evr-20261010-p1a-offline"
+      }
+    },
+    "pairedBaseline": {
+      "status": "computed",
+      "armA": {
+        "armId": "offline-rule-baseline-a",
+        "denominator": 33,
+        "rejected": 33
+      },
+      "armB": {
+        "armId": "offline-rule-baseline-b-replay",
+        "denominator": 33,
+        "rejected": 33
+      },
+      "excluded": [],
+      "parity": true
+    }
+  },
+  "isolation": {
+    "runtimeReceipt": false,
+    "providerCalls": 0,
+    "productStoreWrites": 0,
+    "productStoreAccess": "none"
+  },
+  "p0Boundary": {
+    "P0_DOCUMENT_WRITE_COMPLETE": "保持",
+    "P0_REVIEW_BLOCKED": "保持",
+    "P0_EXIT_NOT_ALLOWED": "保持",
+    "STAGE_1_NOT_AUTHORIZED": "保持",
+    "p0ExitAllowed": false,
+    "stage1bReady": false
+  },
+  "provenance": {
+    "preparedBy": "blxzer77",
+    "source": "completed Stage 1a offline candidate and existing P0 label/catalog assets",
+    "labelBlindReviewRef": "provenance/negative-label-blind-review-round-2.json",
+    "labelComparisonRef": "provenance/negative-label-comparison-round-2.json",
+    "independentReview": "D:/MyHarness/.pactile/tasks/10-10-cg-p1a-evidence-freeze/p1a-evidence-freeze-review-round-1.json"
+  },
+  "files": [
+    {
+      "path": "catalogs/kb-catalog.json",
+      "bytes": 10903,
+      "sha256": "sha256:8c903804f0a5da2aa12dc36fa9535b14fa2e80644de7b8713b69eebc509e9a84"
+    },
+    {
+      "path": "catalogs/negative-catalog.json",
+      "bytes": 22407,
+      "sha256": "sha256:46773c640933e4a3037eee08f50a078938d4e8a733a623f1dccfb2925967592d"
+    },
+    {
+      "path": "erm.json",
+      "bytes": 624,
+      "sha256": "sha256:d703057a9b1acf319666f0bf4dcd68a9d91a5b28d2ff56c5126673f14f0da860"
+    },
+    {
+      "path": "evaluation-receipt.json",
+      "bytes": 12744,
+      "sha256": "sha256:d0c7afb88e501106cace3c83c707616ab46e85d42360ac72b97e5805dd68ddce"
+    },
+    {
+      "path": "fixtures/known-bad-inputs.json",
+      "bytes": 2012,
+      "sha256": "sha256:0b5ae6f1d88a126f27f6f15be807ad4761494e048ee6f90b923afa3e811a0042"
+    },
+    {
+      "path": "fixtures/negative-fixture-inputs.json",
+      "bytes": 5156,
+      "sha256": "sha256:04989c31c636c050826f8f67d25ddc4f2e965fc3c8df390f9577ac8aebff6db2"
+    },
+    {
+      "path": "labels/negative-labels.json",
+      "bytes": 2318,
+      "sha256": "sha256:e7d46e1cffff3f744826c9cbe4bef132d8e96453cd50caf73c2d97d6a9c80dd0"
+    },
+    {
+      "path": "pcr.json",
+      "bytes": 2384,
+      "sha256": "sha256:d2f3c878b968cba2381b4f2153b22d8e0d400252e04e896d4594035c5981cf9e"
+    },
+    {
+      "path": "provenance/negative-label-blind-review-round-2.json",
+      "bytes": 6451,
+      "sha256": "sha256:d65dcbdf4945f2a45f5232893afd775ed1367f8299b9d450d03ea06b2863e7ce"
+    },
+    {
+      "path": "provenance/negative-label-comparison-round-2.json",
+      "bytes": 1364,
+      "sha256": "sha256:5fed19af70b280b2e26710bc52770586e08c7f7c2ae2329404642d6f3790034c"
+    },
+    {
+      "path": "results/known-bad-binding.json",
+      "bytes": 5077,
+      "sha256": "sha256:0421f3522673f58648595d901d246de8c64b4bc706996550dc5d61b84882bfd1"
+    },
+    {
+      "path": "results/known-bad-results.json",
+      "bytes": 1740,
+      "sha256": "sha256:7055b48d21318dca733b870143ff63e8e46b47f116c9e321b88552e3beb8e174"
+    },
+    {
+      "path": "results/negative-results.json",
+      "bytes": 8644,
+      "sha256": "sha256:06392b1b3f265233601dff1800bb6f421d77418111dde289fd3ddb0735b3e0fa"
+    },
+    {
+      "path": "source-preregistration/erm-pcr-preregistration-template.json",
+      "bytes": 10848,
+      "sha256": "sha256:9402eed002d4bb1a1bdf6c51a78529fc7653537dd82ab7cd07311b4ec0c43bfc"
+    }
+  ],
+  "manifestSelfHash": "excluded",
+  "limitations": [
+    "这是离线 fixture decoder harness，不是产品 runtime/provider 验证。",
+    "candidateVerdict 仅表示 fixture candidate failure 语义，不表示真实检索质量或 P0 放行。",
+    "没有生成 RunLedger runtime receipt，也没有连接 JEV/EmbeddingGemma 2。",
+    "known-bad binding 仅绑定离线 fixture harness 的 7 个已知坏输入与结果，不证明真实候选或生产质量。"
+  ],
+  "fileHashBasis": "canonical-worktree-bytes-post-integration",
+  "hashReconciliation": {
+    "reason": "Git checkout normalization changed committed LF text to the current worktree line endings during local integration.",
+    "semanticEvidenceChanged": false,
+    "selfHashExcluded": true
+  },
+  "reconciledAt": "2026-10-10T00:00:00Z"
+}

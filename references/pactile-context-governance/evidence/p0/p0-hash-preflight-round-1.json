@@ -1,0 +1,225 @@
+{
+  "schemaId": "pactile.cg.p0-hash-preflight-receipt",
+  "schemaVersion": 1,
+  "receiptId": "p0-hash-preflight-round-1",
+  "recordedAt": "2026-10-09T17:24:00Z",
+  "status": "preflight-not-frozen",
+  "canonicalizer": {
+    "implementation": "canonicalizePactileJsonV1/fingerprintPactileContractV1",
+    "source": "D:/pactile/packages/cli/dist/pactile/shared/validation.js",
+    "encoding": "UTF-8",
+    "bodyHashInput": "{caseId,input,expected} from negative-fixture-inputs.json",
+    "caseSetHashInput": "ordered bodyHash array in caseId order"
+  },
+  "observations": {
+    "caseCount": 33,
+    "caseIdsOrdered": [
+      "NG-01",
+      "NG-02",
+      "NG-03",
+      "NG-04",
+      "NG-05",
+      "NG-06",
+      "NG-07",
+      "NG-08",
+      "NG-09",
+      "NG-10",
+      "NG-11",
+      "NG-12",
+      "NG-13",
+      "NG-14",
+      "NG-15",
+      "NG-16",
+      "NG-17",
+      "NG-18",
+      "NG-19",
+      "NG-20",
+      "NG-21",
+      "NG-22",
+      "NG-23",
+      "NG-24",
+      "NG-25",
+      "NG-26",
+      "NG-27",
+      "NG-28",
+      "NG-29",
+      "NG-30",
+      "NG-31",
+      "NG-32",
+      "NG-33"
+    ],
+    "caseBodyHashes": [
+      {
+        "caseId": "NG-01",
+        "bodyHash": "sha256:c300bad3a47dc4609ce1bf6c41540adcb7b3913b5b2ebd71a41b1fbb52724b04"
+      },
+      {
+        "caseId": "NG-02",
+        "bodyHash": "sha256:0d8285dad1411028ede993a82046f16f7194d74f9163b091f3163937f3b98991"
+      },
+      {
+        "caseId": "NG-03",
+        "bodyHash": "sha256:ff2da6383dcf207509d787b490caa9675219aa311c6cbe32bdbf60dbeffa272b"
+      },
+      {
+        "caseId": "NG-04",
+        "bodyHash": "sha256:0716e4741030d053770b3fe8b440e59b54a76a8140c10cda97bf48c68e3240eb"
+      },
+      {
+        "caseId": "NG-05",
+        "bodyHash": "sha256:53fc862b1ac2d27ae89d8f38738561c89520869b65f21938af298d25b701300d"
+      },
+      {
+        "caseId": "NG-06",
+        "bodyHash": "sha256:bf5459373d7e48543022d5b66a2057e3158fc0c70801b5e37c13788c86cef768"
+      },
+      {
+        "caseId": "NG-07",
+        "bodyHash": "sha256:ae0bd828b1670da84d866f3152c18788483465b2289f32b26aa7e75dd47be67d"
+      },
+      {
+        "caseId": "NG-08",
+        "bodyHash": "sha256:ee0c3adddb979bd31b803cf22716cdf51550f8d0d7f950fc13283e75247f97fb"
+      },
+      {
+        "caseId": "NG-09",
+        "bodyHash": "sha256:b4a18926cd853cef5fd1b0c19e2c52919d55ee0f76fb31e614f0e67ae2dcc624"
+      },
+      {
+        "caseId": "NG-10",
+        "bodyHash": "sha256:eea7d443fb55f56c57c89dc598a0f9e51dd48e9ffc7aeacc716704f76845ce95"
+      },
+      {
+        "caseId": "NG-11",
+        "bodyHash": "sha256:d7a1bf378dc483707eec61334e82461b04bbabafeee1da7fafc1b30b37a56912"
+      },
+      {
+        "caseId": "NG-12",
+        "bodyHash": "sha256:178fa8b1f87fa83eef1bf773b5693ab134cccd00b260b8f1cdecbd2bf12e4e9b"
+      },
+      {
+        "caseId": "NG-13",
+        "bodyHash": "sha256:7dbc1c3c52c7d256771ea2feaff6dfdf21b39d7e936682c6411d5329d943ad5d"
+      },
+      {
+        "caseId": "NG-14",
+        "bodyHash": "sha256:60fdb6daada3e5c8947195710ff8bb91440609976db0275616d4d3340cf477c4"
+      },
+      {
+        "caseId": "NG-15",
+        "bodyHash": "sha256:3a056c055e0c80a9ce27399b327e59c4d021253e95c668815248de9c5120f6c1"
+      },
+      {
+        "caseId": "NG-16",
+        "bodyHash": "sha256:92ae7201d032addfc7fd9de493cd6ff1b55091a24ffe2cb0cfadbd7cca4a4cc1"
+      },
+      {
+        "caseId": "NG-17",
+        "bodyHash": "sha256:c411b142e295a0b1135e1efea3e0f2193fd000030b391d8a3e1ced8f19f93c0e"
+      },
+      {
+        "caseId": "NG-18",
+        "bodyHash": "sha256:0d3ac8abf2d734023e875ed40ac37b27051882900cabcfc098ad6b4c03495a88"
+      },
+      {
+        "caseId": "NG-19",
+        "bodyHash": "sha256:a302c5e677ff9092c24e27394075d23c5503bd60ddf6802b2e344576d87eba05"
+      },
+      {
+        "caseId": "NG-20",
+        "bodyHash": "sha256:691bb6084c339128073e79cede497f18e6543c7087ea0701b29ead5a50663119"
+      },
+      {
+        "caseId": "NG-21",
+        "bodyHash": "sha256:26530b32a22c79188c17ca23524a2441acebb4a42cdd2db4dc08665e755c6202"
+      },
+      {
+        "caseId": "NG-22",
+        "bodyHash": "sha256:ebbae6f4e7d3885c160bd6602c6130dfea19ad50ad83c67d9446766f43077f3f"
+      },
+      {
+        "caseId": "NG-23",
+        "bodyHash": "sha256:d89f22d3778ee05a094266c277e9685f7480f54307829b534db711be3f208b43"
+      },
+      {
+        "caseId": "NG-24",
+        "bodyHash": "sha256:5a78f852aa68802630e80cf742b2c4daf81ab8b4c77e301c616d2a5a768c1da8"
+      },
+      {
+        "caseId": "NG-25",
+        "bodyHash": "sha256:cdf4b86fc781b7f2fec21653264d2b103a2ef6317bbcc05d71231290067418e4"
+      },
+      {
+        "caseId": "NG-26",
+        "bodyHash": "sha256:9f61bd3e396ee4810db3c075d6ce61e323f23853b7fa4fafee0da9e69b0096a7"
+      },
+      {
+        "caseId": "NG-27",
+        "bodyHash": "sha256:2e533b4d226b3c6dc061a5ce9f063c5298ebf472e2fbb7cfb33a77a30868031f"
+      },
+      {
+        "caseId": "NG-28",
+        "bodyHash": "sha256:32755e9171dd319890c78fb89d65944e09dbcc9fda366e8515e651b1e7d1ad3c"
+      },
+      {
+        "caseId": "NG-29",
+        "bodyHash": "sha256:905f360b01876813c25c44c83ce832e4688c0435e05c6e03398aaf8b7e13fe56"
+      },
+      {
+        "caseId": "NG-30",
+        "bodyHash": "sha256:08da9150916e36e1217573f709b30fd532a5489eef973d6ee5495bf473a6c4e0"
+      },
+      {
+        "caseId": "NG-31",
+        "bodyHash": "sha256:7f7e5061aec4843fd41c6455a59220212ddb610fc12c558ea64283f2e6e54691"
+      },
+      {
+        "caseId": "NG-32",
+        "bodyHash": "sha256:280ead62aa2704d1abf65edbb5f82f6408e2ab802961b0dd7a84fb5b62f05170"
+      },
+      {
+        "caseId": "NG-33",
+        "bodyHash": "sha256:6eb064765ddf422805caec2913a18f1bbccbd6fc60f3916ee301f2b00777abf3"
+      }
+    ],
+    "caseSetHash": "sha256:abb81d93a3a8fb0b41a8f306998db18c68325a1d5ffbe99822392fb97fdb264b",
+    "canonicalAssetFingerprints": [
+      {
+        "path": "fixtures/negative-fixture-inputs.json",
+        "fingerprint": "sha256:9b8bccb4c627d5c83eb5d8147d3427faafa9de5c3de9a63cd4294dcec70aee4a",
+        "rawSha256": "sha256:374ef3a0b4a0c39db9b6671582408171cf0117ed2ebd2b1254b5fc4e6e6f56ec"
+      },
+      {
+        "path": "fixtures/negative-catalog.json",
+        "fingerprint": "sha256:9c41cf200be1de6cc13e0fc65cc3208a0e0249949454d6a923fd47a0fbfbc18c",
+        "rawSha256": "sha256:dea09ea1df6a5f43f5543821c7826572792d1f7012b861cda9d7ee1f9414cd21"
+      },
+      {
+        "path": "labels/negative-labels.json",
+        "fingerprint": "sha256:d36b496cf08b99cfd423583cfcc56a96f0ebbc4f010b7c27ff08b8d538a31bae",
+        "rawSha256": "sha256:44c34d52aa4779e617033e692ee0e0f351e0741581b761256988fc151b415232"
+      }
+    ],
+    "labelsStatus": "prepared-unverified",
+    "catalogStatus": "unverified",
+    "observedRun": false
+  },
+  "interpretation": {
+    "fixtureHash": "not_frozen",
+    "caseSetHash": "preflight_only",
+    "independentOfCandidateAuthor": "unknown",
+    "blindReview": "recorded",
+    "decoderObserved": false,
+    "note": "这些值用于冻结前复核和复现，不回填 ERM/PCR，不代表 fixture/gold 已冻结或 decoder 已运行。任何资产修改都必须重新生成 caseSetHash。"
+  },
+  "gate": {
+    "verdict": "blocked",
+    "p0ExitAllowed": false,
+    "stage1aAllowed": false,
+    "gateRows": [
+      "P0_REVIEW_BLOCKED",
+      "P0_EXIT_NOT_ALLOWED",
+      "STAGE_1_NOT_AUTHORIZED"
+    ]
+  }
+}

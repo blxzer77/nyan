@@ -1,0 +1,78 @@
+{
+  "receiptId": "negative-label-blind-review-round-2",
+  "reviewRound": 2,
+  "reviewer": "negative_label_blind_review_round_2",
+  "reviewerRole": "independent second-party static annotator",
+  "reviewMode": "blind-static-second-party",
+  "recordedAt": "2026-10-09T17:17:00Z",
+  "scope": "仅基于 negative-catalog.json 与 negative-fixture-inputs.json 的 caseId 和 expected 语义进行静态盲标注；不运行 decoder，不读取候选输出或现有 labels。",
+  "inputFilesRead": [
+    "fixtures/negative-catalog.json",
+    "fixtures/negative-fixture-inputs.json"
+  ],
+  "blindBoundary": {
+    "labelsComparison": "pending",
+    "labelsComparisonReason": "未读取 labels/negative-labels.json；本回执不比较现有标签。",
+    "independentOfCandidateAuthor": "unknown",
+    "independentOfCandidateAuthorReason": "允许读取的两份 fixture 只含契约来源和预期，不含 candidate author 或候选输出身份。",
+    "observedDecoder": "not_run",
+    "observedCandidateOutput": "not_read",
+    "fixtureHash": "not_computed",
+    "caseSetHash": "not_computed"
+  },
+  "cases": [
+    {"caseId":"NG-01","label":"negative","rationale":"同一输入同时带 runId 与 evaluationRunId，违反平面身份互斥。"},
+    {"caseId":"NG-02","label":"negative","rationale":"evaluation 实体携带 attemptId/operationEpoch，混入 runtime 身份字段。"},
+    {"caseId":"NG-03","label":"negative","rationale":"status=ok 却缺少 value，ObservedV1 形状不完整。"},
+    {"caseId":"NG-04","label":"negative","rationale":"schemaId/schemaVersion 未登记，不能按默认 schema 接受。"},
+    {"caseId":"NG-05","label":"negative","rationale":"启用的 structural 分支没有 coverage，覆盖集合不完整。"},
+    {"caseId":"NG-06","label":"negative","rationale":"coverage=timeout 却声明 pack_empty_observed，错误折叠了超时语义。"},
+    {"caseId":"NG-07","label":"negative","rationale":"inspect.status=stale 的候选进入 items，未通过 Inspect。"},
+    {"caseId":"NG-08","label":"negative","rationale":"advisory similarity 被放入 evidence，越过证据边界。"},
+    {"caseId":"NG-09","label":"negative","rationale":"embeddingDim 与 capability 不一致，属于原生 wrong_dimension，不应按低分候选接受。"},
+    {"caseId":"NG-10","label":"negative","rationale":"只有 search_hit 且缺少 Fetch/Evidence，不能成为 pack item。"},
+    {"caseId":"NG-11","label":"negative","rationale":"authority=host 不是 advisory 且 confidence=1.2 越界，违反 CJ 约束。"},
+    {"caseId":"NG-12","label":"negative","rationale":"manifest 非 durable 且 rollbackRef 缺失，外部化动作的回滚约束未满足。"},
+    {"caseId":"NG-13","label":"negative","rationale":"runtime receipt 缺 lease，并出现 evaluation 绑定冲突，违反 receipt 平面边界。"},
+    {"caseId":"NG-14","label":"negative","rationale":"存在失败检查却 verdict=accepted，审计结论自相矛盾。"},
+    {"caseId":"NG-15","label":"negative","rationale":"评测报告声明影响产品 Run 且使用 completed，越过 evaluation 隔离。"},
+    {"caseId":"NG-16","label":"negative","rationale":"结果时间早于 frozenAt，评测清单不是先冻结后产出。"},
+    {"caseId":"NG-17","label":"negative","rationale":"bodyHash 明显与 body 不匹配，违反 canonical hash 约束。"},
+    {"caseId":"NG-18","label":"negative","rationale":"v1 drop 被 Policy Gate 判 admitted，执行了禁止的动作。"},
+    {"caseId":"NG-19","label":"negative","rationale":"candidate generation 与 currentGeneration 不同，不能静默按低分候选接受或合并。"},
+    {"caseId":"NG-20","label":"negative","rationale":"embedding 实际长度与 declaredDim 不一致，属于 wrong_dimension。"},
+    {"caseId":"NG-21","label":"negative","rationale":"cancelled 状态仍产出 pack_ready，取消语义被错误折叠。"},
+    {"caseId":"NG-22","label":"negative","rationale":"SourcePointer 到 ABI ref 的转换失败却给出不同路径，必须显式 unconvertible 并保留原指针。"},
+    {"caseId":"NG-23","label":"negative","rationale":"remote egress 即使标记 authorized 也缺 authorizationRef，deny-by-default 条件未满足。"},
+    {"caseId":"NG-24","label":"negative","rationale":"Stage 1 evaluation baseline 带 indexWrite=true，包含被禁止的 workspace 写入意图。"},
+    {"caseId":"NG-25","label":"negative","rationale":"把 textHash 用作 sourceHash，混淆原始字节 hash 与文本观测。"},
+    {"caseId":"NG-26","label":"negative","rationale":"全零占位 hash 不是真实证据，不能把对应观测标为有效。"},
+    {"caseId":"NG-27","label":"negative","rationale":"CDR 的 authority 写成 advisory，receipt 权威被错误降级。"},
+    {"caseId":"NG-28","label":"negative","rationale":"仅凭 provider 配置写 ready 且没有 probe；正确语义是保持 unverified，不能推导可用。"},
+    {"caseId":"NG-29","label":"negative","rationale":"重新声明 FactStatusV1 成员，造成唯一状态注册表冲突。"},
+    {"caseId":"NG-30","label":"negative","rationale":"出现第五个许可动作且 operationEpoch/evaluationRunId 同时非空，违反 schema 与平面互斥。"},
+    {"caseId":"NG-31","label":"negative","rationale":"RC wrong_dimension 被提前改写成 invalid_response，破坏原生状态可区分性。"},
+    {"caseId":"NG-32","label":"negative","rationale":"InspectResultV1 不承载 unconvertible，状态放错实体层。"},
+    {"caseId":"NG-33","label":"negative","rationale":"自身 deadline 被写成 cancelled 并混用 timeout reason，违反 timeout/cancelled 来源映射。"}
+  ],
+  "summary": {
+    "totalCases": 33,
+    "negative": 33,
+    "positive": 0,
+    "unknown": 0,
+    "basis": "所有条目均为 catalog 标记的已知契约负例；NG-28 的 expected=unverified 仍表示禁止从配置推导 ready，因此标为 negative。",
+    "observedRun": false,
+    "comparisonWithExistingLabels": "pending"
+  },
+  "gate": {
+    "verdict": "blocked",
+    "p0ExitAllowed": false,
+    "stage1aAllowed": false,
+    "gateRows": [
+      "P0_REVIEW_BLOCKED",
+      "P0_EXIT_NOT_ALLOWED",
+      "STAGE_1_NOT_AUTHORIZED"
+    ],
+    "reason": "本回执是静态盲标注，不提供 decoder 运行、fixture/gold/hash、候选结果或现有 labels 的独立比较证据。"
+  }
+}

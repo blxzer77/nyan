@@ -1,0 +1,60 @@
+{
+  "schemaId": "pactile.cg.review-receipt",
+  "schemaVersion": 1,
+  "reviewId": "negative-label-blind-review-round-1",
+  "reviewType": "focused-negative-label-blind-review",
+  "reviewer": "negative_label_blind_review",
+  "reviewMode": "read-only-static-independent-review",
+  "recordedAt": "2026-10-09T16:27:05Z",
+  "verdict": "blocked",
+  "p0ExitAllowed": false,
+  "stage1aAllowed": false,
+  "scope": [
+    "evidence/p0/fixtures/negative-catalog.json",
+    "evidence/p0/fixtures/negative-fixture-inputs.json",
+    "evidence/p0/labels/negative-labels.json"
+  ],
+  "observations": {
+    "catalogCaseCount": 33,
+    "inputCaseCount": 33,
+    "labelCaseCount": 33,
+    "caseIdsUniqueWithinEachFile": true,
+    "caseIdSetsAligned": true,
+    "allLabelsAreNegative": true,
+    "catalogAndInputsHaveNoObservedResults": true,
+    "candidateOutputFieldsFoundInReviewedFiles": [],
+    "candidateOutputLeakageObservedInReviewedFiles": false,
+    "fineGrainedExpectedStatusesReviewedStatically": true
+  },
+  "alignment": {
+    "status": "static-alignment-confirmed",
+    "notes": [
+      "每个 NG-01..NG-33 在 catalog、input、labels 中各出现一次。",
+      "catalog 的 expected decision/status 与 input 的预期均表达负例/拒绝或未验证路径；NG-28 的 unverified 与其 ready 推断应拒绝的契约意图一致。",
+      "labels 只有 negative 类别，不声称任何 observed decoder 结果。"
+    ]
+  },
+  "independence": {
+    "independentOfCandidateAuthor": "unknown",
+    "annotator": "p0-document-preparation",
+    "blindReview": "pending",
+    "independentBlindReviewRecorded": false,
+    "basis": "negative-labels.json labelProvenance"
+  },
+  "openConditions": [
+    "尚无独立于候选作者的 annotator 身份与声明。",
+    "尚无逐 case 的盲审记录或第二方标注，不能把 labels 认定为 independent blind review。",
+    "尚无 decoder observed output，无法验证每个 expected reason/status 的运行时行为。",
+    "fixtureHash、goldHash、caseSetHash 与真实评测 run 尚未产生。"
+  ],
+  "limitations": [
+    "本回执只证明静态 caseId/label 对齐和 reviewed JSON 中未出现候选输出字段；不证明运行时没有其他输出泄露。",
+    "本回执不是完整 P0 Review，也不是批准性回执。",
+    "未运行 runtime、decoder、provider 或任何外部系统；未计算 hash。"
+  ],
+  "gateRowsVerified": [
+    "P0_REVIEW_BLOCKED",
+    "P0_EXIT_NOT_ALLOWED",
+    "STAGE_1_NOT_AUTHORIZED"
+  ]
+}

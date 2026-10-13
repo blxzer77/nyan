@@ -1,0 +1,100 @@
+{
+  "schemaId": "pactile.cg.review-receipt",
+  "schemaVersion": 1,
+  "reviewId": "p0-gate-status-round-14",
+  "reviewType": "p0-gate-status-review",
+  "reviewer": "p0_gate_status_review_round_14",
+  "reviewMode": "read-only-independent-subagent",
+  "recordedAt": "2026-10-09T17:27:43Z",
+  "verdict": "blocked",
+  "p0ExitAllowed": false,
+  "stage1aAllowed": false,
+  "scope": [
+    "evidence/p0/negative-label-blind-review-round-2.json",
+    "evidence/p0/negative-label-comparison-round-2.json",
+    "implementation/10-p0-exit-checklist.zh-CN.md condition 7 and gate rows",
+    "D:/MyHarness/.pactile/tasks/10-10-cg-p0-contract-freeze/kernel.json",
+    "D:/MyHarness/.pactile/tasks/10-10-cg-p1a-offline-baseline/kernel.json"
+  ],
+  "gateRowsVerified": {
+    "P0_DOCUMENT_WRITE_COMPLETE": {
+      "status": "preserved",
+      "evidence": "implementation/10-p0-exit-checklist.zh-CN.md:14"
+    },
+    "P0_REVIEW_BLOCKED": {
+      "status": "preserved",
+      "evidence": "implementation/10-p0-exit-checklist.zh-CN.md:15; current P0 Task Run is blocked"
+    },
+    "P0_EXIT_NOT_ALLOWED": {
+      "status": "preserved",
+      "evidence": "implementation/10-p0-exit-checklist.zh-CN.md:16; condition 7 remains partial and conditions 1, 3-6, 8 and 10 remain open or partial"
+    },
+    "STAGE_1_NOT_AUTHORIZED": {
+      "status": "preserved_as_gate_row",
+      "evidence": "implementation/10-p0-exit-checklist.zh-CN.md:17; Stage 1a hard dependency is unsatisfied"
+    }
+  },
+  "condition7": {
+    "status": "partial",
+    "blindLabelCount": 33,
+    "existingLabelCount": 33,
+    "caseIdSetsAligned": true,
+    "mechanicalMatchCount": 33,
+    "mechanicalMismatchCount": 0,
+    "mechanicalMatch": true,
+    "comparison": "33/33 blind labels mechanically match existing labels; all are negative",
+    "annotatorIndependentOfCandidateAuthor": "unknown",
+    "annotatorDeclaration": "pending",
+    "independentBlindReviewComplete": false,
+    "fixtureHash": "pending",
+    "goldHash": "pending",
+    "caseSetHash": "pending",
+    "freezeStatus": "pending",
+    "decoderObservedOutput": false,
+    "decoderObservedOutputStatus": "not_run",
+    "candidateOutputRead": false,
+    "effectOnGate": "The 33/33 mechanical label match strengthens static alignment only; it does not satisfy condition 7 or open any gate while independence, freeze, hashes, and observed decoder output remain pending."
+  },
+  "p0Task": {
+    "taskId": "cg-p0-contract-freeze",
+    "kernelPath": "D:/MyHarness/.pactile/tasks/10-10-cg-p0-contract-freeze/kernel.json",
+    "phase": "execute",
+    "condition": "blocked",
+    "revision": 6,
+    "runId": "000461f3-491c-4574-a4bb-69e78fd37e82",
+    "runState": "blocked",
+    "failureCategory": "gate-blocked",
+    "failureMessage": "P0 independent review is blocked; conditions 1 and 3-8/10 lack approval or runtime evidence.",
+    "reviewsRecorded": 0
+  },
+  "stage1aTask": {
+    "taskId": "cg-p1a-offline-baseline",
+    "kernelPath": "D:/MyHarness/.pactile/tasks/10-10-cg-p1a-offline-baseline/kernel.json",
+    "phase": "define",
+    "condition": "ready",
+    "runsRecorded": 0,
+    "hardDependencies": ["cg-p0-contract-freeze"],
+    "dependencySatisfied": false,
+    "stage1aAllowed": false,
+    "reason": "The required P0 Task remains execute/blocked with no passing Review or closure. Stage 1a was not started."
+  },
+  "observations": {
+    "runtimeExecuted": false,
+    "providerCalled": false,
+    "stage1aExecuted": false,
+    "decoderExecuted": false,
+    "candidateOutputRead": false,
+    "runLedgerEvidenceProduced": false,
+    "fixtureGoldLabelKbErmPcrEvidenceComplete": false,
+    "annotatorCandidateAuthorIndependenceEstablished": false,
+    "freezeEvidenceProduced": false,
+    "hashComputedByThisReview": false,
+    "gateRowsChangedByThisReview": false
+  },
+  "limitations": [
+    "The blind-label receipt and its comparison provide static alignment only; they are not observed decoder results.",
+    "No fixture, gold, or caseSet hash was computed or asserted by this review.",
+    "This is an independent read-only gate-status receipt, not a P0 approval or Stage 1a authorization.",
+    "No runtime, provider, external service, credential, or API key operation was performed."
+  ]
+}

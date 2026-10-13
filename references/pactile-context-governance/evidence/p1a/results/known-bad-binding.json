@@ -1,0 +1,107 @@
+{
+  "schemaId": "pactile.cg.known-bad-execution-binding.v1",
+  "schemaVersion": 1,
+  "status": "completed",
+  "plane": "evaluation",
+  "evaluationRunId": "evr-20261010-p1a-offline",
+  "sourceCatalog": "catalogs/kb-catalog.json",
+  "fixtureRef": "fixtures/known-bad-inputs.json",
+  "resultRef": "results/known-bad-results.json",
+  "hashBasis": "canonical-sorted-json",
+  "hashDefinitions": {
+    "bodyHash": "sha256(stableJson(case.input))",
+    "expectedOutputHash": "sha256(stableJson({caseId, expected}))",
+    "observedOutputHash": "sha256(stableJson({caseId, observed, verdict}))"
+  },
+  "cases": [
+    {
+      "caseId": "KB-1",
+      "fault": "unauthorized-read",
+      "expected": "candidate_fail: permission_denied_or_blocked",
+      "observed": "candidate_fail: permission_denied_or_blocked",
+      "verdict": "fail",
+      "bodyHash": "sha256:02eb982e2be5aa50688827a16e172e931babd018c7af052c4472f9463ecafd37",
+      "expectedOutputHash": "sha256:770cece602325e5610b41dfa9da340b64a41a5a894c8c4c7d0958b32223ae779",
+      "observedOutputHash": "sha256:907587907279e1286e0453df22d6b311e370a35d7f10bdc4586f0055374db40a",
+      "evidenceRef": "results/known-bad-results.json#/results/0"
+    },
+    {
+      "caseId": "KB-2",
+      "fault": "nondeterministic-body-hash",
+      "expected": "candidate_fail: determinism",
+      "observed": "candidate_fail: determinism",
+      "verdict": "fail",
+      "bodyHash": "sha256:a9f5e093cf2ce8ccc345bc941abeec63409bca1fbae5f2244446676082f2ca9d",
+      "expectedOutputHash": "sha256:1680dfc4d80003f2d26485ac2c7d68a18640dca1afb5d5be9d763b8e5ed52c24",
+      "observedOutputHash": "sha256:6c07ceed33cea58b2238390dd42db465b76d4bfea5cc12087c4fa0fc946a36d0",
+      "evidenceRef": "results/known-bad-results.json#/results/1"
+    },
+    {
+      "caseId": "KB-3",
+      "fault": "silent-rejected-drop",
+      "expected": "candidate_fail: silent_success",
+      "observed": "candidate_fail: silent_success",
+      "verdict": "fail",
+      "bodyHash": "sha256:7cfe39517e26ce24dbd403b850ca96dcaab54047baceb38e27d7981efb8a723c",
+      "expectedOutputHash": "sha256:186e25f5a188ce3c55a662b6ab196dd4b11910a84bbfed85109b1a57f87d5a05",
+      "observedOutputHash": "sha256:f4a49c6b622e7eb4aec1ff996448d2966884ab94bec70577c8eedb473d7acaa1",
+      "evidenceRef": "results/known-bad-results.json#/results/2"
+    },
+    {
+      "caseId": "KB-4",
+      "fault": "zero-placeholder-hash",
+      "expected": "candidate_fail: invalid_hash",
+      "observed": "candidate_fail: invalid_hash",
+      "verdict": "fail",
+      "bodyHash": "sha256:ef09963f8d3f219e618f6b1ad953e7be03f5d27bb9f6d51811c7cb59cac932cf",
+      "expectedOutputHash": "sha256:1743e806c41c7d39980276e21211d752da11002e6df620ad0ed4e451ef346955",
+      "observedOutputHash": "sha256:ab9f716bc0e93343b6b9acc3473d375a08f9a022c7f7251e1b3563fc9385f68b",
+      "evidenceRef": "results/known-bad-results.json#/results/3"
+    },
+    {
+      "caseId": "KB-5",
+      "fault": "cancelled-folded-to-timeout",
+      "expected": "candidate_fail: cancelled",
+      "observed": "candidate_fail: cancelled",
+      "verdict": "fail",
+      "bodyHash": "sha256:78c2d92ade0e72b4046593cd7f193b5850433fdf37a58fb6ca4877a39024f4ae",
+      "expectedOutputHash": "sha256:3c9388b485867f96ce3913634b85dca706fb83e9a39d7bede7ce30d83e7edda3",
+      "observedOutputHash": "sha256:8c9167dce2b379eefd5ea2330b79b959f52e3dbdd9981dc0f02c2d5dfe9c1b29",
+      "evidenceRef": "results/known-bad-results.json#/results/4"
+    },
+    {
+      "caseId": "KB-6",
+      "fault": "generation-mismatch-as-low-score",
+      "expected": "candidate_fail: generation_mismatch",
+      "observed": "candidate_fail: generation_mismatch",
+      "verdict": "fail",
+      "bodyHash": "sha256:1fb54c19e1a6ef3d14b25957a06c03439027df90b1de24c6dc8161cc6dd6c991",
+      "expectedOutputHash": "sha256:443763dcec342ce09033605c2997c2af8eaeba37f2f45b06e25ca8ab8fe28907",
+      "observedOutputHash": "sha256:5659d1bb167a8c10aec1cb4aeb0a9be08bb16241d453ca240e35f18cfa0456f2",
+      "evidenceRef": "results/known-bad-results.json#/results/5"
+    },
+    {
+      "caseId": "KB-7",
+      "fault": "no-match-as-proof-of-absence",
+      "expected": "candidate_fail: fail_open_evidence",
+      "observed": "candidate_fail: fail_open_evidence",
+      "verdict": "fail",
+      "bodyHash": "sha256:f5a33979becdfcbf8993d8541707f0c6e6cb80e0bad3e5f5a9680daeea6e6088",
+      "expectedOutputHash": "sha256:c8fdadd21efdd22bda399763b075ad0fa14a4167b380087dfd873871463367ea",
+      "observedOutputHash": "sha256:a3b1f4cfcb6019f85a8ec83f74590dff4fc36e32d36079c4eb9a536f0b1cdcc5",
+      "evidenceRef": "results/known-bad-results.json#/results/6"
+    }
+  ],
+  "summary": {
+    "total": 7,
+    "failed": 7,
+    "mismatches": 0,
+    "allExpectedFailuresObserved": true
+  },
+  "independentReviewRef": "D:/MyHarness/.pactile/tasks/10-10-cg-p1a-evidence-freeze/p1a-evidence-freeze-review-round-1.json",
+  "p0Boundary": {
+    "p0ExitAllowed": false,
+    "stage1bReady": false,
+    "note": "离线 known-bad harness 绑定；不等同于真实候选、runtime、provider 或 P0 放行。"
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "schemaId": "pactile.cg.known-bad-catalog",
+  "schemaVersion": 1,
+  "plane": "evaluation",
+  "artifactRole": "p0-pre-registration",
+  "status": "proposed_unverified",
+  "catalogId": "cg-p0-known-bad-2026-10",
+  "scope": {
+    "purpose": "为 Evaluation Controller 的 harness 阳性对照登记 KB-1…KB-7 的最小缺陷、预期失败与冻结条件。",
+    "authoritativeSource": "docs/architecture/context-governance/implementation/04-evaluation-controller.zh-CN.md#7.1",
+    "supportingSources": [
+      "docs/architecture/context-governance/implementation/03-stage-plan.zh-CN.md#1.2",
+      "docs/architecture/context-governance/implementation/01-contract-draft.zh-CN.md#4.11",
+      "docs/architecture/context-governance/implementation/09-contract-entities-v1.zh-CN.md#6"
+    ],
+    "executionStatus": "not_run",
+    "boundary": "本文件只登记设计、注入意图和预期判定；KB 本体、fixture、实际 run、结果、annotator、blind review 与 hash 尚未产生。"
+  },
+  "plannedFixtureRoot": {
+    "path": "D:\\pactile-evidence\\context-governance\\fixtures\\known-bad",
+    "pathType": "planned_external_result_root",
+    "exists": false,
+    "status": "pending"
+  },
+  "expectedGlobalRule": {
+    "onAllKnownBadCaught": {
+      "harnessVerdict": "valid",
+      "candidateVerdictPerEntry": "fail",
+      "note": "KB 全部被判 fail 才能证明阳性对照有效；这不等于产品候选通过。"
+    },
+    "onAnyKnownBadMissed": {
+      "harnessVerdict": "blocked",
+      "candidateVerdict": "unverified",
+      "note": "一旦 harness 把已知坏候选判 pass，全部候选结果均不得作为已验证事实。"
+    }
+  },
+  "entries": [
+    {
+      "id": "KB-1",
+      "title": "越权读取",
+      "sourceDescription": "workspace 外路径仍返回 ok",
+      "faultClass": "workspace-or-worktree-fence",
+      "plannedFixturePath": "D:\\pactile-evidence\\context-governance\\fixtures\\known-bad\\KB-1",
+      "fixture": { "status": "not_created", "fixtureHash": null, "bodyHash": null, "expectedOutputHash": null },
+      "injection": { "method": "fake inspect/memory port returns ok for a path outside the declared scope", "inputRef": "fixtures/known-bad-inputs.json#/cases/0" },
+      "expectedAssertions": [
+        "越出 workspace/worktree 的读取计数必须为 0。",
+        "越权请求必须得到 permission_denied 或等价的显式拒绝，不得返回 ok 内容。",
+        "该已知坏候选必须被 candidateVerdict=fail 捕获。"
+      ],
+      "expectedFailure": { "observedDefect": "unauthorized read accepted", "requiredVerdict": "fail", "zeroTolerance": "workspace/worktree read violation" },
+      "actual": { "status": "unverified", "evaluationRunId": null, "evidenceRefs": [] }
+    },
+    {
+      "id": "KB-2",
+      "title": "非确定性 bodyHash",
+      "sourceDescription": "同一输入两次 bodyHash 不同",
+      "faultClass": "determinism",
+      "plannedFixturePath": "D:\\pactile-evidence\\context-governance\\fixtures\\known-bad\\KB-2",
+      "fixture": { "status": "not_created", "fixtureHash": null, "bodyHash": null, "expectedOutputHash": null },
+      "injection": { "method": "known-bad candidate injects process/time/random data into canonical body hash", "inputRef": "fixtures/known-bad-inputs.json#/cases/1" },
+      "expectedAssertions": [
+        "同一 ERM、同一 case、同一 seed 的独立进程重放必须得到相同 bodyHash。",
+        "重复运行出现 bodyHash 不一致时，determinism gate 必须 fail，不得取平均或静默覆盖。",
+        "该已知坏候选必须被 candidateVerdict=fail 捕获。"
+      ],
+      "expectedFailure": { "observedDefect": "bodyHash differs for identical input", "requiredVerdict": "fail", "zeroTolerance": "none; determinism gate fails directly" },
+      "actual": { "status": "unverified", "evaluationRunId": null, "evidenceRefs": [] }
+    },
+    {
+      "id": "KB-3",
+      "title": "静默丢弃 rejected",
+      "sourceDescription": "rejected 候选被从 coverage 删除但仍输出 pack_ready",
+      "faultClass": "silent-success",
+      "plannedFixturePath": "D:\\pactile-evidence\\context-governance\\fixtures\\known-bad\\KB-3",
+      "fixture": { "status": "not_created", "fixtureHash": null, "bodyHash": null, "expectedOutputHash": null },
+      "injection": { "method": "known-bad pack builder drops rejected entries before reporting pack_ready", "inputRef": "fixtures/known-bad-inputs.json#/cases/2" },
+      "expectedAssertions": [
+        "每个 inspect 非 ok 的对象都必须出现在 rejected 或等价显式失败集合中。",
+        "存在被拒候选而 coverage/rejected 证据不完整时，不得产出 pack_ready。",
+        "silent success 计数必须为 0；该已知坏候选必须被 candidateVerdict=fail 捕获。"
+      ],
+      "expectedFailure": { "observedDefect": "pack_ready with silently dropped rejected candidate", "requiredVerdict": "fail", "zeroTolerance": "silent success" },
+      "actual": { "status": "unverified", "evaluationRunId": null, "evidenceRefs": [] }
+    },
+    {
+      "id": "KB-4",
+      "title": "全零占位 hash",
+      "sourceDescription": "DEF-IMPL-1 的最小复现",
+      "faultClass": "hash-integrity",
+      "plannedFixturePath": "D:\\pactile-evidence\\context-governance\\fixtures\\known-bad\\KB-4",
+      "fixture": { "status": "not_created", "fixtureHash": null, "bodyHash": null, "expectedOutputHash": null },
+      "injection": { "method": "known-bad writer emits sha256: followed by 64 zeroes when a source hash is unavailable", "inputRef": "fixtures/known-bad-inputs.json#/cases/3" },
+      "expectedAssertions": [
+        "全零占位 hash 必须被 decoder/validator 拒绝，不得作为 ok 证据。",
+        "缺少真实 hash 时只能记录 unknown 或 missing，并披露原因。",
+        "该已知坏候选必须被 candidateVerdict=fail 捕获。"
+      ],
+      "expectedFailure": { "observedDefect": "placeholder hash accepted as valid", "requiredVerdict": "fail", "allowedNonOkStatuses": ["unknown", "missing"] },
+      "actual": { "status": "unverified", "evaluationRunId": null, "evidenceRefs": [] }
+    },
+    {
+      "id": "KB-5",
+      "title": "将 cancelled 折叠为 timeout",
+      "sourceDescription": "取消状态与自身 deadline 超时被混为一类",
+      "faultClass": "status-preservation",
+      "plannedFixturePath": "D:\\pactile-evidence\\context-governance\\fixtures\\known-bad\\KB-5",
+      "fixture": { "status": "not_created", "fixtureHash": null, "bodyHash": null, "expectedOutputHash": null },
+      "injection": { "method": "fake caller/operation cancellation is reported as timeout", "inputRef": "fixtures/known-bad-inputs.json#/cases/4" },
+      "expectedAssertions": [
+        "调用方取消、上层/父级 deadline abort、operation 撤销、epoch fence、预算耗尽、early stop 必须保留 cancelled 及来源码。",
+        "只有工作单元自身 deadline 到期才可报告 timeout。",
+        "错误折叠必须使该已知坏候选 candidateVerdict=fail。"
+      ],
+      "expectedFailure": { "observedDefect": "cancelled reported as timeout", "requiredVerdict": "fail", "expectedCorrectStatus": "cancelled" },
+      "actual": { "status": "unverified", "evaluationRunId": null, "evidenceRefs": [] }
+    },
+    {
+      "id": "KB-6",
+      "title": "将 generation_mismatch 当作低分候选",
+      "sourceDescription": "旧 generation 的结果被继续参与排序或 pack",
+      "faultClass": "generation-fence",
+      "plannedFixturePath": "D:\\pactile-evidence\\context-governance\\fixtures\\known-bad\\KB-6",
+      "fixture": { "status": "not_created", "fixtureHash": null, "bodyHash": null, "expectedOutputHash": null },
+      "injection": { "method": "candidate consumes an old index/semantic/manifest generation while source revision is unchanged", "inputRef": "fixtures/known-bad-inputs.json#/cases/5" },
+      "expectedAssertions": [
+        "同 revision 内 generation 不匹配必须报告 generation_mismatch。",
+        "旧候选必须 rejected、重建或降级到确定性分支，不得按低分继续进入 pack。",
+        "generation fence 违规计数必须为 0；该已知坏候选必须被 candidateVerdict=fail 捕获。"
+      ],
+      "expectedFailure": { "observedDefect": "generation mismatch accepted as low-score candidate", "requiredVerdict": "fail", "expectedCorrectStatus": "generation_mismatch" },
+      "actual": { "status": "unverified", "evaluationRunId": null, "evidenceRefs": [] }
+    },
+    {
+      "id": "KB-7",
+      "title": "把无匹配当成证明不存在",
+      "sourceDescription": "报告把无观察到匹配写成对真实不存在的证明（fail-open）",
+      "faultClass": "no-gold-and-abstain",
+      "plannedFixturePath": "D:\\pactile-evidence\\context-governance\\fixtures\\known-bad\\KB-7",
+      "fixture": { "status": "not_created", "fixtureHash": null, "bodyHash": null, "expectedOutputHash": null },
+      "injection": { "method": "no-gold query with incomplete/non-ok authoritative coverage is reported as proof of non-existence", "inputRef": "fixtures/known-bad-inputs.json#/cases/6" },
+      "expectedAssertions": [
+        "无匹配只能表示在已声明分支、generation、revision 下未观察到匹配，不能证明真实不存在。",
+        "只有所有 authoritative 分支为 ok 且无命中时，才允许 abstain.basis=full_coverage_no_match。",
+        "覆盖不足时必须是 pack_degraded 或等价非 ok 事实；该已知坏候选必须被 candidateVerdict=fail 捕获。"
+      ],
+      "expectedFailure": { "observedDefect": "no-match treated as proof of non-existence", "requiredVerdict": "fail", "requiredCoverageCondition": "all authoritative branches ok before full_coverage_no_match" },
+      "actual": { "status": "unverified", "evaluationRunId": null, "evidenceRefs": [] }
+    }
+  ],
+  "freezeChecklist": [
+    { "item": "KB body and fixture are materialized at plannedFixturePath", "status": "pending" },
+    { "item": "fixtureHash, bodyHash and expectedOutputHash are computed from canonical bytes", "status": "pending" },
+    { "item": "source, annotator, independentOfCandidateAuthor and blind review are recorded", "status": "pending" },
+    { "item": "a pre-run ERM is frozen before any KB result", "status": "pending" },
+    { "item": "an independent reviewer reruns all KB entries and records evidence refs", "status": "pending" },
+    { "item": "catalog revision is included in a new caseSetHash; prior revisions are retained", "status": "pending" }
+  ],
+  "integrity": {
+    "fileSha256": null,
+    "note": "由创建后对该 JSON 文件字节计算；不把自引用 hash 写入内容。"
+  }
+}
