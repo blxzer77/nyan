@@ -15,6 +15,7 @@ gantt
     title nyan roadmap
     dateFormat YYYY-MM-DD
     axisFormat %m-%d
+    %% todayMarker on
 
     section Bun-first
     Phase 1 Bun CI seven packages :done, bun1ci, 2026-10-12, 1d
@@ -37,6 +38,8 @@ gantt
 ```
 
 The Queue table records the complete multi-parent dependencies for tasks whose compact Gantt representation uses one primary predecessor. Critical bars identify work waiting on an owner decision or on a task blocked by one.
+
+GitHub's current Mermaid renderer keeps the today marker on by default. An explicit `todayMarker on` directive, and its style form, currently fails that renderer, so the setting is represented by the valid comment above rather than a parser-breaking directive.
 
 The verified baseline is `origin/main` at `d539390f` plus GitHub PR and release metadata checked on 2026-10-13. PR #10 added the seven-package Bun CI line; PRs #12, #13, and #14 resolved the remaining Bun package and HTTP differences, and the latest GitHub CI run passed all jobs including the Bun job. A local all-package Bun run was attempted with Bun 1.4.3, but its durable suite remained unverified because Windows reported `EBUSY` while removing temporary SQLite directories; this does not replace the passing GitHub CI evidence.
 
