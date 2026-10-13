@@ -118,6 +118,12 @@ Run `npm run version:set -- X.Y.Z` (it also dates the changelog), commit, then p
 - When a commit closes a Nyan issue, include `fixes #<number>`. Repeat the keyword per issue (`closes #1, closes #2`).
 - On rebase conflicts, resolve only files you modified. If a conflict is in a file you did not modify, abort and ask.
 
+## Roadmap
+
+- Read `ROADMAP.md` before starting work; it lists the active lines, the queue, and decisions waiting on the owner.
+- A PR that finishes or changes a roadmap item updates `ROADMAP.md` in the same PR (status, gantt bar, and the table row).
+- Do not decide an item listed under "Decisions"; add new owner decisions there, keep working on the reversible part with the recommended option, and say so in the PR.
+
 ## Documentation
 
 - Docs state current, verified behavior. Plans live in `.agents/notes/proposed/` until they ship. [`docs/README.md`](docs/README.md) lists which document owns which fact.
