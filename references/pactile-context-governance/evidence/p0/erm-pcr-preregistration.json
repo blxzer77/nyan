@@ -1,0 +1,157 @@
+{
+  "schemaId": "pactile.cg.evaluation-preregistration",
+  "schemaVersion": 1,
+  "plane": "evaluation",
+  "artifactRole": "p0-erm-pcr-template",
+  "status": "proposed_unverified",
+  "registrationId": "cg-p0-erm-pcr-2026-10",
+  "scope": {
+    "purpose": "提供 EvaluationRunManifest (ERM) 与 PairedComparisonReport (PCR) 的预注册骨架；只冻结字段、臂定义、指标与判定规则，不宣称已有运行。",
+    "authoritativeSources": [
+      "docs/architecture/context-governance/implementation/04-evaluation-controller.zh-CN.md#5",
+      "docs/architecture/context-governance/implementation/04-evaluation-controller.zh-CN.md#9",
+      "docs/architecture/context-governance/implementation/04-evaluation-controller.zh-CN.md#10",
+      "docs/architecture/context-governance/implementation/01-contract-draft.zh-CN.md#4.11-4.13",
+      "docs/architecture/context-governance/implementation/03-stage-plan.zh-CN.md#1"
+    ],
+    "runStatus": "not_started",
+    "evidenceStatus": "unverified",
+    "providerStatus": "not_required_for_template",
+    "boundary": "所有 run identity、candidate/fixture/case hashes、provider snapshot、数字结果、分母与 verdict 均留空或 pending；只有冻结后的 ERM 才能启动评测。"
+  },
+  "selectionRule": {
+    "oneRunUsesOneProfile": true,
+    "note": "RET-* 与 CMP-* 臂不可混用；不使用无前缀 A0–A5。真实 provider 臂不在 Stage 1a 启动。"
+  },
+  "ermTemplate": {
+    "schemaId": "pactile.cg.evaluation-run-manifest",
+    "schemaVersion": 1,
+    "plane": "evaluation",
+    "state": "drafted",
+    "evaluationRunId": null,
+    "candidateSha": null,
+    "dirtyWriteSet": [],
+    "sourceHashes": [],
+    "caseSetHash": null,
+    "fixtureHash": null,
+    "seed": null,
+    "arms": [],
+    "providerCapabilitySnapshot": null,
+    "runtime": { "node": null, "os": "windows", "sqlite": null },
+    "isolation": {
+      "workspaceKind": "snapshot",
+      "resultRoot": "D:\\pactile-evidence\\context-governance\\runs\\<evaluationRunId>",
+      "productStoreAccess": "none"
+    },
+    "plannedDenominators": [
+      { "metric": "recall@1", "n": null, "excludedCases": [] },
+      { "metric": "recall@5", "n": null, "excludedCases": [] },
+      { "metric": "recall@20", "n": null, "excludedCases": [] },
+      { "metric": "MRR", "n": null, "excludedCases": [] },
+      { "metric": "precision", "n": null, "excludedCases": [] },
+      { "metric": "F0.5", "n": null, "excludedCases": [] },
+      { "metric": "correct-abstain", "n": null, "excludedCases": [] },
+      { "metric": "inspect-valid-rate", "n": null, "excludedCases": [] },
+      { "metric": "unitization-determinism", "n": null, "excludedCases": [] },
+      { "metric": "restore-byte-equality", "n": null, "excludedCases": [] }
+    ],
+    "stopRules": [
+      { "id": "SR-1", "condition": "candidate pre/post hash differ", "action": "stop", "source": "04 §5" },
+      { "id": "SR-2", "condition": "fixture hash changes without a pre-registered mutation pair", "action": "stop", "source": "04 §7 HV-4 / FI-26" },
+      { "id": "SR-3", "condition": "required runner artifact is missing or empty", "action": "stop", "source": "04 §7 HV-3" },
+      { "id": "SR-4", "condition": "pre-run ERM is absent or frozenAt is not earlier than result files", "action": "mark_unverified", "source": "01 §4.12 / 04 §13" },
+      { "id": "SR-5", "condition": "any global zero-tolerance counter is non-zero", "action": "stop", "source": "03 §1.2" },
+      { "id": "SR-6", "condition": "same ERM replay produces different bodyHash or verdict", "action": "stop", "source": "04 §7 HV-6" },
+      { "id": "SR-7", "condition": "any KB-1…KB-7 known-bad candidate is reported as pass; candidate results must be unverified and harnessVerdict must be blocked", "action": "mark_unverified", "source": "04 §7.1" }
+    ],
+    "frozenAt": null,
+    "freezePrerequisites": [
+      "caseSetHash and fixtureHash are computed from frozen canonical inputs",
+      "candidate tree-hash and sourceHashes are recorded",
+      "provider capability probe is recorded; configuration name alone is insufficient",
+      "all gold/negative labels have source, annotator, independence and blind-review provenance",
+      "workspace snapshot is isolated and productStoreAccess is none or readonly-export",
+      "ERM hash is written before any result file"
+    ]
+  },
+  "armProfiles": {
+    "retrieval": [
+      { "armId": "RET-A0", "role": "baseline", "config": "exact+structural", "stage": "1a+", "provider": "fake-or-none", "status": "planned" },
+      { "armId": "RET-A1", "role": "treatment", "config": "RET-A0+semantic(shadow)", "stage": "2+", "provider": "EmbeddingGemma-or-fake", "status": "planned_not_stage_1a" },
+      { "armId": "RET-A2", "role": "treatment", "config": "Jev plan shadow+exact+structural; semantic off", "stage": "3+", "provider": "Jev", "status": "planned_not_stage_1a" },
+      { "armId": "RET-A3", "role": "treatment", "config": "RET-A1+Jev", "stage": "3+", "provider": "EmbeddingGemma+Jev", "status": "planned_not_stage_1a" }
+    ],
+    "compression": [
+      { "armId": "CMP-A0", "role": "baseline", "config": "no-compression", "stage": "1a+", "provider": "none", "status": "planned" },
+      { "armId": "CMP-A1", "role": "treatment", "config": "reversible(mask|externalize|structured_project)", "stage": "1a/5+", "provider": "fake-or-none", "status": "planned" },
+      { "armId": "CMP-A2", "role": "treatment", "config": "Pi compaction", "stage": "5+", "provider": "Pi", "status": "planned_not_stage_1a" },
+      { "armId": "CMP-A3", "role": "treatment", "config": "combination", "stage": "5+", "provider": "fake-or-none", "status": "planned_not_stage_1a" },
+      { "armId": "CMP-A4", "role": "treatment", "config": "shadow", "stage": "4+", "provider": "Jev-shadow", "status": "planned_not_stage_1a" },
+      { "armId": "CMP-A5", "role": "fault", "config": "fault-injection-subarm", "stage": "1a+", "provider": "fake", "status": "planned" }
+    ]
+  },
+  "pcrTemplate": {
+    "schemaId": "pactile.cg.paired-comparison-report",
+    "schemaVersion": 1,
+    "plane": "evaluation",
+    "state": "not_created",
+    "reportId": null,
+    "evaluationRunId": null,
+    "arms": [],
+    "pairing": { "key": "caseId+seed", "n": null, "excluded": [] },
+    "metrics": [
+      { "name": "recall@1", "layer": "RetrievalPack", "baseline": null, "treatment": null, "delta": null, "n": null, "interval": null },
+      { "name": "recall@5", "layer": "RetrievalPack", "baseline": null, "treatment": null, "delta": null, "n": null, "interval": null },
+      { "name": "recall@20", "layer": "RetrievalPack", "baseline": null, "treatment": null, "delta": null, "n": null, "interval": null },
+      { "name": "MRR", "layer": "RetrievalPack", "baseline": null, "treatment": null, "delta": null, "n": null, "interval": null },
+      { "name": "precision", "layer": "RetrievalPack", "baseline": null, "treatment": null, "delta": null, "n": null, "interval": null },
+      { "name": "F0.5", "layer": "RetrievalPack", "baseline": null, "treatment": null, "delta": null, "n": null, "interval": null },
+      { "name": "fallback-rate", "layer": "RetrievalPack", "baseline": null, "treatment": null, "delta": null, "n": null, "interval": null },
+      { "name": "p50-latency-ms", "layer": "evaluation", "baseline": null, "treatment": null, "delta": null, "n": null, "interval": null },
+      { "name": "p95-latency-ms", "layer": "evaluation", "baseline": null, "treatment": null, "delta": null, "n": null, "interval": null },
+      { "name": "p99-latency-ms", "layer": "evaluation", "baseline": null, "treatment": null, "delta": null, "n": null, "interval": null },
+      { "name": "unitization-determinism", "layer": "ContextUnit", "baseline": null, "treatment": null, "delta": null, "n": null, "interval": null },
+      { "name": "restore-byte-equality", "layer": "Pi-compaction", "baseline": null, "treatment": null, "delta": null, "n": null, "interval": null }
+    ],
+    "zeroTolerance": [
+      { "id": "generation-fence-violations", "violations": null },
+      { "id": "data-egress-violations", "violations": null },
+      { "id": "silent-success", "violations": null },
+      { "id": "workspace-or-worktree-read-write-violations", "violations": null },
+      { "id": "reversible-restore-byte-mismatch", "violations": null },
+      { "id": "product-store-byte-changes", "violations": null },
+      { "id": "evaluation-receipt-accounted", "violations": null },
+      { "id": "advisory-promoted-to-host-or-kernel", "violations": null },
+      { "id": "pack-empty-observed-on-non-ok-authoritative-branch", "violations": null }
+    ],
+    "gates": [
+      { "id": "harness-valid", "expectedRule": "harnessVerdict == valid", "result": null, "basis": "verification.json and HV-1…HV-6" },
+      { "id": "known-bad-catalog", "expectedRule": "KB-1…KB-7 each candidateVerdict == fail", "result": null, "basis": "kb-catalog.json" },
+      { "id": "zero-tolerance", "expectedRule": "every zeroTolerance.violations == 0", "result": null, "basis": "03 §1.2" },
+      { "id": "denominator-sufficient", "expectedRule": "each primary metric n meets its ERM preregistration", "result": null, "basis": "ERM plannedDenominators" },
+      { "id": "regression-margin", "expectedRule": "treatment interval lower bound meets preregistered margin", "result": null, "basis": "margin must be measured from baseline and frozen before treatment" }
+    ],
+    "verdict": null,
+    "affectsProductRun": false,
+    "limits": { "unexecutedArms": [], "unverifiedItems": [], "harnessDefects": [] }
+  },
+  "expectedVerdictRules": [
+    { "condition": "harnessVerdict != valid", "candidateVerdict": "unverified", "source": "04 §9.1" },
+    { "condition": "any zero-tolerance violation > 0", "candidateVerdict": "fail", "source": "03 §1.2 / 04 §11" },
+    { "condition": "effective denominator below preregistered minimum", "candidateVerdict": "unverified", "source": "04 §11" },
+    { "condition": "provider unavailable or unsupported for an arm", "candidateVerdict": "unverified", "source": "01 §4.13 / 04 §9.1" },
+    { "condition": "all gates pass with valid harness and sufficient denominator", "candidateVerdict": "pass", "source": "04 §9.1" }
+  ],
+  "missingEvidence": [
+    "evaluationRunId and candidate tree-hash",
+    "caseSetHash and fixtureHash",
+    "frozen ERM hash and frozenAt",
+    "provider capability snapshot",
+    "results.jsonl, verification.json and evidence-index.json",
+    "independent Review receipt bound to these file hashes"
+  ],
+  "integrity": {
+    "fileSha256": null,
+    "note": "由创建后对该 JSON 文件字节计算；不把自引用 hash 写入内容。"
+  }
+}

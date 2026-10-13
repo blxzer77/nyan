@@ -1,0 +1,71 @@
+{
+  "schemaId": "pactile.cg.review-receipt",
+  "schemaVersion": 1,
+  "reviewId": "p0-full-entry-round-12",
+  "reviewType": "full-p0-entry-review",
+  "reviewer": "p0_evidence_asset_review",
+  "reviewMode": "read-only-independent-subagent",
+  "recordedAt": "2026-10-09T13:56:37Z",
+  "verdict": "blocked",
+  "p0ExitAllowed": false,
+  "stage1aAllowed": false,
+  "scope": [
+    "implementation/10-p0-exit-checklist.zh-CN.md conditions 1-10",
+    "implementation/10 and retrieval/12 gate rows",
+    "evidence/p0 JSON assets and identity alignment",
+    "RunLedgerV1, EffectLedgerEntryV1, operationId reconciliation evidence",
+    "fixture/gold/labels/KB/ERM/PCR/hash readiness",
+    "current wording that could confuse a focused receipt with full P0 approval"
+  ],
+  "conditionStatus": {
+    "1": "open",
+    "2": "satisfied_document_layer_pending_review",
+    "3": "partial",
+    "4": "partial_document_layer_pending_review",
+    "5": "partial_contract_only_mechanism_missing",
+    "6": "partial",
+    "7": "partial",
+    "8": "partial",
+    "9": "satisfied_stage_preflight_snapshot_pending",
+    "10": "open"
+  },
+  "observations": {
+    "priorEvidenceJsonFilesParsed": 7,
+    "negativeCases": 33,
+    "negativeIdsUniqueAndAligned": true,
+    "knownBadCases": 7,
+    "knownBadIdsUniqueAndAligned": true,
+    "ermStatus": "template_only",
+    "pcrStatus": "template_only",
+    "runProduced": false,
+    "providerCalled": false,
+    "runLedgerV1Implemented": false,
+    "operationIdReconciliationProduced": false,
+    "sha256PendingOccurrences": 48,
+    "sha256PendingScope": "reviewer scan of context-governance at recordedAt; not implementation-only",
+    "sha256PendingCountKind": "review-time observation, not a current canonical total",
+    "focusedRound11ReceiptIsApproval": false,
+    "currentApprovalWordingFound": false
+  },
+  "openConditions": [
+    "condition-1: complete independent P0 Review approval is absent",
+    "condition-6: RunLedgerV1, EffectGateway and CDR/CAR operationId reconciliation are not implemented or produced",
+    "condition-7: fixture/gold/labels are not independently frozen; annotator independence and blind review are pending; hashes are pending",
+    "condition-8: KB bodies, FI run, ERM/PCR instances, evaluationRunId, result files and hashes are absent",
+    "legacy: old P5 fixtureMismatchCount=1 remains unexplained",
+    "legacy: check-pactile-brand-surface remains failing",
+    "authorization: Stage 1a still requires separate user authorization"
+  ],
+  "gateRowsVerified": [
+    "P0_DOCUMENT_WRITE_COMPLETE",
+    "P0_REVIEW_BLOCKED",
+    "P0_EXIT_NOT_ALLOWED",
+    "STAGE_1_NOT_AUTHORIZED"
+  ],
+  "limitations": [
+    "This receipt records an independent read-only blocked review, not an approval.",
+    "No runtime, provider, external service, Stage 1, or Stage 1a was executed.",
+    "No hash was computed or fabricated; the pending count is a review-time observation.",
+    "The review did not alter implementation, runtime, global configuration, or gate rows."
+  ]
+}

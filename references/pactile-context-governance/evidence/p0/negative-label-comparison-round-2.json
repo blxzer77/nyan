@@ -1,0 +1,41 @@
+{
+  "schemaId": "pactile.cg.review-receipt",
+  "schemaVersion": 1,
+  "receiptId": "negative-label-comparison-round-2",
+  "reviewType": "blind-label-mechanical-comparison",
+  "reviewer": "p0-document-preparation",
+  "reviewMode": "post-blind-read-only-comparison",
+  "recordedAt": "2026-10-09T17:24:00Z",
+  "inputs": [
+    "evidence/p0/negative-label-blind-review-round-2.json",
+    "evidence/p0/labels/negative-labels.json"
+  ],
+  "observations": {
+    "blindCaseCount": 33,
+    "existingLabelCount": 33,
+    "caseIdSetsAligned": true,
+    "labelMismatches": 0,
+    "comparison": "all-33-match-negative",
+    "candidateOutputRead": false,
+    "decoderObserved": false,
+    "fixtureHash": "not_computed",
+    "caseSetHash": "not_computed"
+  },
+  "interpretation": {
+    "labelsComparison": "match",
+    "independentOfCandidateAuthor": "unknown",
+    "annotatorDeclaration": "pending",
+    "freezeStatus": "pending",
+    "note": "第二方盲标注与现有 labels 的 33 条结果逐 case 一致；该机械比对不提供 observed decoder 结果，也不替代候选作者独立性声明或冻结 hash。"
+  },
+  "gate": {
+    "verdict": "blocked",
+    "p0ExitAllowed": false,
+    "stage1aAllowed": false,
+    "gateRows": [
+      "P0_REVIEW_BLOCKED",
+      "P0_EXIT_NOT_ALLOWED",
+      "STAGE_1_NOT_AUTHORIZED"
+    ]
+  }
+}

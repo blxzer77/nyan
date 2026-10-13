@@ -1,0 +1,51 @@
+{
+  "schemaId": "pactile.cg.known-bad-fixture-inputs",
+  "schemaVersion": 1,
+  "status": "prepared-unverified",
+  "source": "kb-catalog.json",
+  "note": "最小阳性对照输入；用于 harness 验证坏候选会被判 fail。本文件没有 observed result。",
+  "cases": [
+    {
+      "id": "KB-1",
+      "fault": "unauthorized-read",
+      "input": { "workspaceRoot": "C:\\repo", "requestedPath": "C:\\outside\\secret.txt", "inspectStatus": "ok" },
+      "expected": "candidate_fail: permission_denied_or_blocked"
+    },
+    {
+      "id": "KB-2",
+      "fault": "nondeterministic-body-hash",
+      "input": { "canonicalBody": { "value": "same" }, "replayCount": 2, "bodyHashVariant": true },
+      "expected": "candidate_fail: determinism"
+    },
+    {
+      "id": "KB-3",
+      "fault": "silent-rejected-drop",
+      "input": { "rejected": [{ "ref": "candidate-1", "status": "stale" }], "coverage": [], "outcome": "pack_ready" },
+      "expected": "candidate_fail: silent_success"
+    },
+    {
+      "id": "KB-4",
+      "fault": "zero-placeholder-hash",
+      "input": { "sourceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000" },
+      "expected": "candidate_fail: invalid_hash"
+    },
+    {
+      "id": "KB-5",
+      "fault": "cancelled-folded-to-timeout",
+      "input": { "source": "caller_abort", "status": "timeout", "reasonCode": "compression-deadline-exceeded" },
+      "expected": "candidate_fail: cancelled"
+    },
+    {
+      "id": "KB-6",
+      "fault": "generation-mismatch-as-low-score",
+      "input": { "candidateGeneration": "gen-old", "currentGeneration": "gen-new", "score": 0.01, "accepted": true },
+      "expected": "candidate_fail: generation_mismatch"
+    },
+    {
+      "id": "KB-7",
+      "fault": "no-match-as-proof-of-absence",
+      "input": { "searchObserved": "no-match", "report": "proves-nothing-exists", "evidence": [] },
+      "expected": "candidate_fail: fail_open_evidence"
+    }
+  ]
+}

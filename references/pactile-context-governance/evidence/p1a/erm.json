@@ -1,0 +1,14 @@
+{
+  "schemaId": "pactile.cg.evaluation-run-manifest",
+  "schemaVersion": 1,
+  "status": "completed",
+  "evaluationRunId": "evr-20261010-p1a-offline",
+  "fixtureHash": "sha256:27e5269ced81a2f76923e8e11ed46ab7a008a30eec7b690235841bd907fb10f1",
+  "caseSetHash": "sha256:87f870905207c8926290daab94205dcf316eec25c159e7f5876abdadc355e537",
+  "seed": "p1a-seed-1",
+  "frozenAt": "2026-10-10T00:00:00Z",
+  "candidateSnapshotId": "4b0ecb40-619a-4f15-ab50-b8b619c2ce99",
+  "candidateFingerprint": "0bdf609fa2167a2ddbb7e3a32c16e79d8216fdf5e7551cbf22b517b706473699",
+  "productStoreAccess": "none",
+  "providerCalls": 0
+}

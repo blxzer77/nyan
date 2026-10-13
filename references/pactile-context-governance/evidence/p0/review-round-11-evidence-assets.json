@@ -1,0 +1,45 @@
+{
+  "schemaId": "pactile.cg.review-receipt",
+  "schemaVersion": 1,
+  "reviewId": "p0-evidence-assets-round-11",
+  "reviewType": "focused-evidence-asset-review",
+  "reviewer": "p0_evidence_asset_review",
+  "reviewMode": "read-only-independent-subagent",
+  "recordedAt": "2026-10-09T13:05:02Z",
+  "verdict": "blocked",
+  "p0ExitAllowed": false,
+  "stage1aAllowed": false,
+  "scope": [
+    "evidence/p0/*.json parseability",
+    "NG-01..NG-33 catalog/input/label identity consistency",
+    "KB-1..KB-7 registration and input consistency",
+    "ERM/PCR template state",
+    "implementation/10 P0 gate rows"
+  ],
+  "observations": {
+    "jsonFilesParsed": 5,
+    "negativeCases": 33,
+    "negativeIdsUniqueAndAligned": true,
+    "knownBadCases": 7,
+    "ermStatus": "template-only",
+    "pcrStatus": "template-only",
+    "runProduced": false,
+    "providerCalled": false,
+    "runtimeModified": false
+  },
+  "openConditions": [
+    "condition-7: fixture/gold/negative labels are prepared but not independently frozen or hashed",
+    "condition-8: KB bodies, evaluation run, results, hashes, and full Review receipt are absent",
+    "RunLedgerV1 and operationId reconciliation remain Host/Stage-1b work"
+  ],
+  "gateRowsVerified": [
+    "P0_DOCUMENT_WRITE_COMPLETE",
+    "P0_REVIEW_BLOCKED",
+    "P0_EXIT_NOT_ALLOWED",
+    "STAGE_1_NOT_AUTHORIZED"
+  ],
+  "limitations": [
+    "This is a focused evidence-asset review, not a full P0 exit approval.",
+    "No runtime, provider, Stage 1, or external system was executed."
+  ]
+}

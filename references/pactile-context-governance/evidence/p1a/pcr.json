@@ -1,0 +1,83 @@
+{
+  "schemaId": "pactile.cg.paired-comparison-report",
+  "schemaVersion": 1,
+  "status": "computed",
+  "evaluationRunId": "evr-20261010-p1a-offline",
+  "harnessVerdict": "valid",
+  "candidateVerdict": "fail",
+  "knownBadRequired": true,
+  "knownBadFailed": true,
+  "excluded": [],
+  "pairedBaseline": {
+    "status": "computed",
+    "armA": {
+      "armId": "offline-rule-baseline-a",
+      "denominator": 33,
+      "rejected": 33
+    },
+    "armB": {
+      "armId": "offline-rule-baseline-b-replay",
+      "denominator": 33,
+      "rejected": 33
+    },
+    "excluded": [],
+    "parity": true
+  },
+  "knownBad": {
+    "total": 7,
+    "failed": 7,
+    "mismatches": 0,
+    "denominator": 7,
+    "results": [
+      {
+        "caseId": "KB-1",
+        "fault": "unauthorized-read",
+        "expected": "candidate_fail: permission_denied_or_blocked",
+        "observed": "candidate_fail: permission_denied_or_blocked",
+        "verdict": "fail"
+      },
+      {
+        "caseId": "KB-2",
+        "fault": "nondeterministic-body-hash",
+        "expected": "candidate_fail: determinism",
+        "observed": "candidate_fail: determinism",
+        "verdict": "fail"
+      },
+      {
+        "caseId": "KB-3",
+        "fault": "silent-rejected-drop",
+        "expected": "candidate_fail: silent_success",
+        "observed": "candidate_fail: silent_success",
+        "verdict": "fail"
+      },
+      {
+        "caseId": "KB-4",
+        "fault": "zero-placeholder-hash",
+        "expected": "candidate_fail: invalid_hash",
+        "observed": "candidate_fail: invalid_hash",
+        "verdict": "fail"
+      },
+      {
+        "caseId": "KB-5",
+        "fault": "cancelled-folded-to-timeout",
+        "expected": "candidate_fail: cancelled",
+        "observed": "candidate_fail: cancelled",
+        "verdict": "fail"
+      },
+      {
+        "caseId": "KB-6",
+        "fault": "generation-mismatch-as-low-score",
+        "expected": "candidate_fail: generation_mismatch",
+        "observed": "candidate_fail: generation_mismatch",
+        "verdict": "fail"
+      },
+      {
+        "caseId": "KB-7",
+        "fault": "no-match-as-proof-of-absence",
+        "expected": "candidate_fail: fail_open_evidence",
+        "observed": "candidate_fail: fail_open_evidence",
+        "verdict": "fail"
+      }
+    ]
+  }
+}
