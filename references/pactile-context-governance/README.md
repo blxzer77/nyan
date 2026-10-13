@@ -15,6 +15,8 @@ This directory is a **read-only reference snapshot** for planning Nyan's future 
 - `manifest.json`: every copied file, original local source path, category, size, and SHA-256 hash.
 - `LICENSE.pactile` and `COPYRIGHT.pactile`: preserved source-project licensing notices.
 
+The copied TypeScript and JavaScript source/test files use a `.txt` suffix so repository-wide Nyan checks cannot treat this reference snapshot as product source. Remove only that suffix when inspecting a file as standalone reference code.
+
 ## Provenance
 
 The snapshot was assembled from the local Pactile checkout at `D:\pactile` and the local retrieval-worker checkout at `D:\MyHarness\pactile\packages\retrieval-worker`. The manifest records the source paths and hashes available at snapshot time. This is a curated extraction, not a full Pactile checkout.
