@@ -80,6 +80,10 @@ jobs:
     needs: native
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -122,6 +126,16 @@ jobs:
 
       - name: Compile binaries
         run: node scripts/build-binaries.mjs --out release-assets
+
+      # A Sigstore-signed statement that these files were built by this workflow from this commit. The smoke and
+      # publish jobs download the same bytes, so what is attested is what is released.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            release-assets/*.tar.gz
+            release-assets/*.zip
+            release-assets/SHA256SUMS
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4

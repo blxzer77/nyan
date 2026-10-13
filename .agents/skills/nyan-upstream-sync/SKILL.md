@@ -1,9 +1,11 @@
 ---
 name: nyan-upstream-sync
-description: Bring Pi upstream commits into the Nyan fork with a rename-aware merge, keeping Nyan's changes and recording the source and the evidence.
+description: Take a specific change that the user names from Pi upstream into Nyan with a rename-aware merge, keeping Nyan's changes and recording the source and the evidence. Nyan does not follow Pi otherwise.
 ---
 
-# Syncing from Pi upstream
+# Taking a Pi change into Nyan
+
+Nyan no longer follows Pi ([independent of Pi](../../notes/implemented/process/2026-10-13-independent-of-pi.md)). Use this only for a change or range of commits the user asks for, never as a routine sync. The method below is for a range; a single small change is usually clearer ported by hand, with the same record in `.agents/upstream/`.
 
 The fork renamed nearly every file it shares with Pi, so a plain `git merge` of upstream reports hundreds of conflicts that are the same word on both sides. Normalize the upstream side with the same rename rules first, then merge. The method and its trade-offs are in [rename-aware-upstream-sync](../../notes/implemented/process/2026-10-12-rename-aware-upstream-sync.md).
 

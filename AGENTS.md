@@ -102,13 +102,13 @@ For a change that touches sessions, providers, tools, subprocesses, concurrency,
 
 ## Upstream
 
-- `upstream` is `https://github.com/earendil-works/pi.git` and is read-only. The fork starts at Pi v1.1.0 (`abe508e1b`) and is synced to `cdaf6c227`; each sync has a record in `.agents/upstream/`.
-- Bring in upstream changes only with [nyan-upstream-sync](.agents/skills/nyan-upstream-sync/SKILL.md): a rename-aware merge, never a file overwrite.
+- `upstream` is `https://github.com/earendil-works/pi.git` and is read-only: a record of where the code came from. The fork starts at Pi v1.1.0 (`abe508e1b`) and was synced once, to `cdaf6c227`; the records are in `.agents/upstream/`.
+- Nyan no longer follows Pi. Do not merge, rebase onto, or periodically sync from `upstream`. Take a specific Pi change only when the user names it, and port it with [nyan-upstream-sync](.agents/skills/nyan-upstream-sync/SKILL.md), which also records it. See [independent of Pi](.agents/notes/implemented/process/2026-10-13-independent-of-pi.md).
 - Do not cite or follow upstream issues, pull requests, workflows, or release processes. The plain `vX.Y.Z` tags in this repository are Pi's releases.
 
 ## Release
 
-Run `npm run version:set -- X.Y.Z` (it also dates the changelog), commit, then push the tag `nyan-vX.Y.Z`. `.github/workflows/release.yml` builds, checks, and tests on Ubuntu, builds the `packages/tui` native modules on each platform, publishes the 12 packages in dependency order with provenance (`scripts/publish-packages.mjs`, already-published versions are skipped, a pre-release version goes to the `next` dist-tag), and creates the GitHub release with generated notes and the binary archives. Before publishing it compiles the standalone Bun executables (`scripts/build-binaries.mjs`, six platforms) and smoke-tests four of them on matching runners, including `nyan update` from a local mock release (`scripts/smoke-test-binary-update.mjs`). The tag must equal the package version. `npm run release:dry` packs locally; a manual run of the workflow defaults to a dry run. Publishing needs the `NPM_TOKEN` repository secret.
+Run `npm run version:set -- X.Y.Z` (it also dates the changelog), commit, then push the tag `nyan-vX.Y.Z`. `.github/workflows/release.yml` builds, checks, and tests on Ubuntu, builds the `packages/tui` native modules on each platform, publishes the 12 packages in dependency order with provenance (`scripts/publish-packages.mjs`, already-published versions are skipped, a pre-release version goes to the `next` dist-tag), and creates the GitHub release with generated notes and the binary archives. Before publishing it compiles the standalone Bun executables (`scripts/build-binaries.mjs`, six platforms), attests the archives' build provenance (`gh attestation verify` checks it), and smoke-tests four of them on matching runners, including `nyan update` from a local mock release (`scripts/smoke-test-binary-update.mjs`). The tag must equal the package version. `npm run release:dry` packs locally; a manual run of the workflow defaults to a dry run. Publishing needs the `NPM_TOKEN` repository secret.
 
 ## Git
 
