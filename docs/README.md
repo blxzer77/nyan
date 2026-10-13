@@ -30,6 +30,7 @@ When two documents disagree, update the fact owner first and then update derived
 - [Implemented removal of unused upstream content](../.agents/notes/implemented/process/2026-10-12-remove-unused-upstream-content.md)
 - [Implemented release pipeline](../.agents/notes/implemented/process/2026-10-12-release-pipeline.md)
 - [Implemented rename-aware upstream sync](../.agents/notes/implemented/process/2026-10-12-rename-aware-upstream-sync.md)
+- [Implemented independent of Pi](../.agents/notes/implemented/process/2026-10-13-independent-of-pi.md)
 - [Implemented coding-agent changelog](../.agents/notes/implemented/process/2026-10-12-coding-agent-changelog.md)
 - [Implemented initialization boundary and Pi baseline](../.agents/notes/implemented/process/2026-10-11-nyan-initialization.md)
 

@@ -4,6 +4,10 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+### Added
+
+- The standalone executable archives and `SHA256SUMS` of a release carry a signed build provenance attestation. `gh attestation verify <archive> --repo blxzer77/nyan` shows that the file was built by the release workflow from a named commit. The executables are still not code-signed for macOS or Windows.
+
 ## [1.2.0] - 2026-10-12
 
 ### Added

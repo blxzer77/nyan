@@ -9,7 +9,7 @@ Nyan 是由 [Pi Agent v1.1.0](https://github.com/earendil-works/pi/releases/tag/
 - 上游版本：`v1.1.0`
 - 上游提交：`abe508e1b89912adde45528136c3221eb69acdd7`
 - `origin`：Nyan Fork
-- `upstream`：官方 Pi 仓库（只读来源）
+- `upstream`：官方 Pi 仓库（只读来源，仅作出处记录；Nyan 不再跟随 Pi）
 
 来源、局部修改和已知限制见 `.agents/upstream/pi-v1.1.0.json`；长期决策见 `.agents/notes/`。
 

@@ -6,7 +6,7 @@ Agent-facing material that the root [AGENTS.md](../AGENTS.md) links to. When Nya
 | --- | --- |
 | [`notes/`](notes/README.md) | Design decisions: the problem, what was decided, what was rejected, and the evidence |
 | `skills/` | Workflows loaded on demand, one `SKILL.md` per directory |
-| `upstream/` | One record per Pi source baseline or sync: source commits, and what was taken, dropped, adapted, or left unintegrated |
+| `upstream/` | The Pi baseline and the one sync, kept as provenance: source commits, and what was taken, dropped, adapted, or left unintegrated |
 
 ## Skills
 
@@ -15,7 +15,7 @@ Agent-facing material that the root [AGENTS.md](../AGENTS.md) links to. When Nya
 | [nyan-checks](skills/nyan-checks/SKILL.md) | Choosing the checks for a change, and before saying that checks pass |
 | [nyan-code-review](skills/nyan-code-review/SKILL.md) | Reviewing a change |
 | [nyan-error-handling](skills/nyan-error-handling/SKILL.md) | Designing or reviewing failure, recovery, retry, background work, and user-visible error reports |
-| [nyan-upstream-sync](skills/nyan-upstream-sync/SKILL.md) | Bringing Pi upstream commits into the fork |
+| [nyan-upstream-sync](skills/nyan-upstream-sync/SKILL.md) | Taking a Pi change the user names into Nyan (Nyan does not follow Pi otherwise) |
 | [add-llm-provider](skills/add-llm-provider/SKILL.md) | Adding a provider to `packages/ai` |
 | [interactive-testing](skills/interactive-testing/SKILL.md) | Checking interactive behavior in a real terminal |
 

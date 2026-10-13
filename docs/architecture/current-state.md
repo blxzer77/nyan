@@ -1,8 +1,8 @@
 # Nyan current-state architecture
 
-**Snapshot date:** 2026-10-12  
-**Source baseline:** Pi Agent v1.1.0, commit `abe508e1b89912adde45528136c3221eb69acdd7` (record: [`.agents/upstream/pi-v1.1.0.json`](../../.agents/upstream/pi-v1.1.0.json)), synced to upstream `cdaf6c227` ([record](../../.agents/upstream/pi-sync-1-cdaf6c227.json))  
-**Evidence status:** measured on the working tree with the commands below, on Windows 11 with Node 24. The `Nyan CI` workflow runs on every push to `main` and has succeeded on each so far: Ubuntu build, check and the full test suite, Windows build and check, the dependency audit and MCP conformance. Release 1.0.0 was published from tag `nyan-v1.0.0` by the release workflow, and the published `@ny4n/coding-agent@1.0.0` was installed from the registry into an empty directory and run on Windows. Nothing has been run by hand on macOS or Linux; the workflows built the native modules there.
+**Snapshot date:** 2026-10-13  
+**Source baseline:** Pi Agent v1.1.0, commit `abe508e1b89912adde45528136c3221eb69acdd7` (record: [`.agents/upstream/pi-v1.1.0.json`](../../.agents/upstream/pi-v1.1.0.json)), synced once, to upstream `cdaf6c227` ([record](../../.agents/upstream/pi-sync-1-cdaf6c227.json)); Nyan does not follow Pi after that ([note](../../.agents/notes/implemented/process/2026-10-13-independent-of-pi.md))  
+**Evidence status:** measured on the working tree with the commands below, on Windows 11 with Node 24. The `Nyan CI` workflow runs on every push to `main` and has succeeded on each so far: Ubuntu build, check and the full test suite, Windows build and check, the dependency audit and MCP conformance. Releases 1.0.0 to 1.2.0 were published from `nyan-vX.Y.Z` tags by the release workflow; the published npm package and the Windows x64 standalone executable were installed from the registry and the release and run on Windows. The owner reports the Linux standalone executable installed and working on Fedora; no agent run and no CI job covers that, and nothing has been run by hand on macOS.
 
 This document states current behavior. Decisions and their reasons are in [`.agents/notes/`](../../.agents/notes/); the enforced policy is [`layers.json`](layers.json).
 
@@ -81,7 +81,7 @@ Static runtime import cycles are forbidden and none exist (`cycles.known` is emp
 
 Renamed: executable, `@ny4n/*` packages, `NYAN_*` variables, `~/.nyan/agent` and `.nyan/`, the package manifest field `nyan` and keyword `nyan-package`, `nyan.*` document, entry and wire identifiers, `nyan-messages` API id, TUI cursor marker, daemon handshake, identifiers and file names. Details and the exclusions (provenance, third parties, `Math.PI`) are in the [productization note](../../.agents/notes/implemented/architecture/2026-10-11-nyan-productization.md).
 
-Still referring to Pi, by design: the `upstream` remote and the manifests under `.agents/upstream/`, the release link in `README.md`, and the notes that describe the fork. The changelogs and the links to upstream issues and pull requests are removed. The governance files taken verbatim from `origin/main` (`CLAUDE.md`, the per-package `AGENTS.md`, three skills) still describe the Pi layout and are not reconciled with this tree.
+Still referring to Pi, by design: the `upstream` remote and the manifests under `.agents/upstream/`, the release link in `README.md`, and the notes that describe the fork. The links to upstream issues and pull requests are removed, and the only changelog is Nyan's own. The root and package `AGENTS.md` files and the skills were rewritten for Nyan in #5.
 
 ## External services
 
@@ -90,9 +90,10 @@ Nyan includes no default address for any hosted service. The installer, share vi
 ## Known limits
 
 - Pi extensions load through a name mapping only (`src/core/extensions/pi-compat.ts`): `@earendil-works/pi-*` and `@mariozechner/pi-*` imports and the `pi` manifest field. An extension that finds the agent directory itself, such as `pi-mcp-adapter`, still reads `~/.pi/agent`. Loading was checked for seven Pi extensions on Windows; their behavior beyond loading was not.
-- Version 1.0.0 of the twelve public packages is on npm under `@ny4n` (`@ny4n/coding-agent` provides the `nyan` command) and `main` on `blxzer77/nyan` is this tree. Release tags are `nyan-vX.Y.Z`; the plain `vX.Y.Z` tags are Pi's.
-- The native prebuilds committed in the repository (`packages/tui/native/*/prebuilds`) predate the rename; the release workflow rebuilds them per platform and the published packages carry the rebuilt ones. Only the Windows x64 module has been exercised on a machine; the other five were built by the workflow and not run.
+- Version 1.2.0 of the twelve public packages is on npm under `@ny4n` (`@ny4n/coding-agent` provides the `nyan` command) and `main` on `blxzer77/nyan` is this tree. Release tags are `nyan-vX.Y.Z`; the plain `vX.Y.Z` tags are Pi's. Pi's `main` was 79 commits ahead of the one sync when this was written; those commits are not taken and are not planned to be.
+- The native prebuilds committed in the repository (`packages/tui/native/*/prebuilds`) predate the rename; the release workflow rebuilds them per platform and the published packages carry the rebuilt ones. Only the Windows x64 module has been exercised by an agent; the owner reports Linux working on Fedora. The macOS modules, and the `darwin-x64` and `windows-arm64` standalone executables, were built by the workflow and have no smoke test.
 - Publishing needs the `NPM_TOKEN` repository secret (an npm token with publish rights to `@ny4n`). Package versions on npm cannot be replaced: a fix is a new version.
+- The standalone executables are not code-signed or notarized, so macOS Gatekeeper and Windows SmartScreen may warn on first run. That needs an Apple Developer ID and a Windows code-signing certificate, which the project does not have. The release workflow attests the archives (`gh attestation verify`), which shows where they were built, and `nyan update` does not check the attestation.
 - The hosted Windows CI job builds and runs `npm run check` but not the test suite; the suite has only been run on one Windows machine.
 - `npm run build` in `ai` runs `generate-models`, which fetches the public model catalogs from the network; the generator no longer includes a Radius catalog, so the aggregator lists one provider fewer than Pi v1.1.0.
 - Experimental and example code stays candidate code until verified through a Nyan entry path.
