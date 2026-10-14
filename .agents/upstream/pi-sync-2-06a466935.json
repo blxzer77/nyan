@@ -1,0 +1,91 @@
+{
+	"product": "Nyan",
+	"sync": 2,
+	"requestedBy": "owner: codemode and durable at Pi 1.2.0, then the small fixes below that the owner approved after review",
+	"source": {
+		"repository": "https://github.com/earendil-works/pi.git",
+		"remote": "none configured in this checkout; read from a temporary clone and the GitHub tarballs of both commits",
+		"tag": "v1.2.0",
+		"from": "cdaf6c227d4718a72b59ccd02152c9614df44cfc",
+		"to": "06a466935536f8c9bcacb2d5efc0fc021be1bdff",
+		"commits": 57,
+		"license": "MIT",
+		"alsoReadFrom": "Pi main at 2026-10-14, 22 commits after v1.2.0; only the commits named in 'taken' were used"
+	},
+	"method": "Hand port, not a merge: no upstream history is in this repository. Both Pi trees were run through normalize-upstream.mjs and diffed; hunks were applied with patch where the Nyan file still matched the Pi base, and the rest was written by hand against Nyan's layers, entry rules and style. Pi issue and pull request numbers in comments and tests were removed.",
+	"taken": [
+		"codemode: deterministic runs the host answers (sandbox.start, CodemodeRun, virtual clock, seeded randomness, result sequencing, VM fingerprint)",
+		"codemode: schema constraints as @ tags in tool declarations; MCP result types removed from the package",
+		"codemode: a // @options: line that is not the first line is rejected",
+		"mcp: structuredContent that is not an object is passed through; a request cancelled while authorization recovers is not retried",
+		"coding-agent: codemode declarations of MCP tools spell out the result type; describeFields; reachesTools on tool definitions (codemode, tool_search, MCP waiting); namespace aliases; elapsed and total time on codemode rows (shared tool timer with the bash row); linear joining of codemode output; summaries omit thinking",
+		"durable: inputs placed as application entries (InputEntry); display-only writes appended at once",
+		"durable: a compaction failure is recorded in nyan.live.compactionFailure and in compaction_end.error; a generation whose blocking threshold compaction failed fails instead of sending an oversized request",
+		"durable: a schema tool's error result without structuredOutput gives programs its text as a tool_error diagnostic",
+		"durable: waits that close a wait cycle are rejected",
+		"durable: deferred tools (ToolRegistration.deferred, modelTools add/remove, Agent.deferred) and the tool_search extension",
+		"durable: code mode (@ny4n/durable/codemode) over sandbox.start, with the run and journal documents",
+		"ai: 0f4b1465 Codex request body as a copy of the compressed bytes; 7bd01fb9 retry 'The upstream provider returned an error'; d4d53612 Anthropic strict tools fall back to plain schemas; 4b994d5e repair of invalid \\u escapes in tool-call arguments; 34a8bb38 images in Anthropic error tool results become a text note",
+		"tui: edb2eb96 delayed terminal replies stay out of keyboard input; 78a3c10b Kitty images in Herdr; 11f99114 unhandled wheel input scrolls the transcript under a focused overlay",
+		"coding-agent: 441f5767 print mode warns and exits 1 on a response cut off at the output limit; e6fb2581 retry of transient Windows EPERM on the auth lock; 6a51a39d ~ in exclusion and exact resource patterns; 6f2f164a active tools restored on session resume",
+		"coding-agent (breaking for extensions): a447ba11 before_agent_start for runs started by custom messages, BeforeAgentStartEvent as a union on messageType, the session busy while a run starts",
+		"coding-agent (breaking JSON shape): f4cca2dc MCP resources are not listed on connect; 'nyan mcp list --json' reports resources: true",
+		"codemode and coding-agent: 3daa2028 shutdown requests termination without waiting for the worker to exit, onWorkerStarted and acquireWorker, at most two live codemode workers per process counted until actual exit"
+	],
+	"dropped": [
+		"CHANGELOG.md edits of codemode, durable, ai, mcp, tui (only packages/coding-agent/CHANGELOG.md exists)",
+		"packages/chord: the chord2 host runtime replacing the facet and service runtime, and the durable documentation changes that follow from it; Nyan's chord is unchanged",
+		"removal of the experimental server stack and of the client, protocol and server packages from coding-agent (Nyan still ships them as experimental)",
+		"packages/env: pseudo-terminals, ptyForeground, listFiles (the package was removed from Nyan)",
+		"durable ExecutionEnv.listFiles and its conformance tests: no Nyan environment implements it",
+		"durable models.* for code mode scripts (catalog, classify, generateImages): durable's model port is the five-operation ModelRuntime of ai/contracts, and widening it is a contract decision (see the durable model runtime adapter note)",
+		"durable documentation and tests about the Chord facet guide and the Pico handoff documents",
+		"scripts and workflows of the Pi project",
+		"ai test of nyan-messages (the gateway API 'pi-messages' that Nyan removed) in anthropic-strict-tool-fallback.test.ts",
+		"cea25743 sessionShareDestination and the Radius session share: waiting for the owner's decision (Nyan has no Radius provider, and Radius is a service of the Pi authors)",
+		"chord2 (0104fef1): waiting for the owner's decision; it removes the client, protocol and server packages"
+	],
+	"localAdaptations": [
+		"The BM25 ranker, tokenizer and schema text collector live once in @ny4n/codemode/search and are used by coding-agent's tool_search and codemode, and by durable's tool_search and code mode searchTools(). Pi keeps a copy in each of coding-agent and durable.",
+		"durable depends on @ny4n/codemode: layers.json lets durable-runtime depend on capabilities, and the durable module layers gain an extensions layer (codemode/, tool-search/), loaded only through their package subpaths.",
+		"durable's new files import typebox directly and @ny4n/ai/contracts for types, as the entry rule for durable requires; Pi imports Type from the ai root.",
+		"codemode declarations keep the isObject guard and coding-agent's codemode execute keeps isRecord; Pi replaced both with inline checks and type assertions.",
+		"The tool timer helpers (startToolTimer, toolTimerText) are applied to the codemode renderer under ui/theme paths, where Nyan moved the interactive components.",
+		"CODEMODE_MODULE_VERSION starts at 1: durable code mode is new in Nyan, so no stored run exists to protect.",
+		"The durable code mode test waits on time with vi.waitFor and a 30 s test timeout instead of 200 event loop turns and the 5 s default, because each script starts a QuickJS VM in a worker thread."
+	],
+	"notIntegrated": [
+		"durable code mode and tool_search are reached only by their tests: no Nyan entry point uses @ny4n/durable outside src/experimental",
+		"the mcp, codemode and durable changes were checked on Node only; the Bun suites were not run",
+		"nothing in packages/coding-agent/docs documents the durable extensions; they are described in packages/durable/README.md and docs/spec.md"
+	],
+	"reviewedNotTaken": [
+		"ai: OpenRouter model lists per key (ee409a85); owner: not needed",
+		"coding-agent: PI_CLIPBOARD_OSC52 (as a NYAN_ variable) and showHardwareCursor using only the terminal cursor",
+		"env package (SSH remote execution environments for durable, with a Rust daemon): Nyan removed it at the fork; not part of this port",
+		"coding-agent: session share destination with Radius uploads (a hosted service Nyan does not run)"
+	],
+	"verification": {
+		"passed": [
+			"npm run check (lint, typecheck, pinned-deps, runtime-deps, ts-imports, architecture, entry-graphs, install-lock, browser-smoke)",
+			"packages/codemode: vitest, all files",
+			"packages/mcp: vitest, all files",
+			"packages/durable: vitest, the harness, code mode, tool_search, session-states and types files, normally and with NYAN_DURABLE_DOCUMENT_RETENTION_MS=0",
+			"packages/coding-agent: the compaction, codemode, MCP, tool-search, renderer, extension-runner and config-schema test files, with GH_TOKEN and GITHUB_TOKEN unset",
+			"packages/ai: retry, anthropic-strict-tool-fallback (with a check that the image test fails without the fix), json-parse",
+			"packages/tui: stdin-buffer, terminal-colors, terminal-image, tui-alt-screen (node --test)",
+			"packages/coding-agent: print-mode, auth-storage, package-manager, default-tools-setting, extensions-runner, agent-session-concurrent, mcp-extension, mcp-cli, codemode-worker-admission and the whole test/suite directory (one failure: fswatch-error-crash needs packages/tui/dist, which was not built)",
+			"packages/codemode: all 232 tests including worker-lifetime"
+		],
+		"failedOrFlaky": [
+			"packages/durable test/tools-images.test.ts 'prepares in a worker thread, leaving the event loop free' fails in about two runs of three here, also on an unmodified checkout of HEAD (one of three runs failed there); it asserts that the event loop is blocked for less than 100 ms. The change touches that file only by adding a comment."
+		],
+		"notRun": [
+			"the whole coding-agent suite and the root npm test",
+			"npm run build and npm run build:offline for the whole repository (chord, telemetry, ai and codemode were built so the durable tests could resolve them)",
+			"Bun test suites",
+			"anything against a real provider",
+			"Bun: the worker shutdown change targets Bun behavior, and its tests that need a Bun runtime were not run"
+		]
+	}
+}

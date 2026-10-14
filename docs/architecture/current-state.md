@@ -48,7 +48,7 @@ Instability `I = Ce / (Ca + Ce)` is computed by the architecture check from sour
 | capabilities | `@ny4n/mcp` | MCP client, OAuth, testing helpers | — | 0.00 |
 | model | `@ny4n/ai` | Providers, catalog, authentication, streams, cost | telemetry | 0.25 |
 | agent-core | `@ny4n/agent-core` | Agent state, loop, tool calls | `ai/contracts` | 0.50 |
-| durable-runtime | `@ny4n/durable` | Durable conversations, tasks, documents, storage, recovery | chord, `ai/contracts` + `ai/utils` | 0.67 |
+| durable-runtime | `@ny4n/durable` | Durable conversations, tasks, documents, storage, recovery, code mode | chord, codemode, `ai/contracts` + `ai/utils` | 0.75 |
 | transport | `@ny4n/protocol` | Transport-neutral CBOR envelopes and framing | chord | 0.25 |
 | transport | `@ny4n/client` | Remote-session client | chord, protocol | 0.67 |
 | transport | `@ny4n/server` | Local session server and transports | chord, protocol | 0.67 |
@@ -67,7 +67,7 @@ Instability `I = Ce / (Ca + Ce)` is computed by the architecture check from sour
 | Package | Layers, lowest first | Notable rule |
 | --- | --- | --- |
 | `ai` | contracts → auth-contracts → infra / catalog → api / auth → registry → providers → facade | the contract (`types.ts`, `schemas/`, `utils/`) imports no adapter; adapters import no registry |
-| `durable` | core → session / storage → harness → tools → images / testing → facade | two type-only exceptions (below); the run lifecycle has no import cycle |
+| `durable` | core → session / storage → harness → tools / extensions → images / testing → facade | two type-only exceptions (below); the run lifecycle has no import cycle |
 | `coding-agent` | base → ui → core → extensions → modes → cli → entry | the headless `core` imports no `modes`, `cli` or terminal presentation outside `ui` |
 
 Static runtime import cycles are forbidden and none exist (`cycles.known` is empty). The `durable` run lifecycle was untangled by [starting a task from its reference](../../.agents/notes/implemented/architecture/2026-10-11-durable-run-lifecycle-cycle.md). Recorded exceptions, all in `layers.json`:

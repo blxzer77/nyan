@@ -54,6 +54,9 @@ const MAX_CONCURRENT_MODEL_CALLS = 4;
  * `InternalError: out of memory` inside the script.
  */
 const CODEMODE_MEMORY_LIMIT_BYTES = 256 * 1024 * 1024;
+// Shared across calls and sessions. Allow one replacement while a cancelled worker is still exiting.
+const MAX_CONCURRENT_CODEMODE_WORKERS = 2;
+let activeCodemodeWorkers = 0;
 const MODEL_TYPES: ReadonlySet<string> = new Set<ModelType>(["chat", "image", "classifier"]);
 
 function truncateText(text: string, maxChars: number): string {
@@ -280,18 +283,34 @@ function formatOutput(output: readonly CodemodeOutputItem[]): (TextContent | Ima
 	return items;
 }
 
-/** Join adjacent text items into one, each part starting on its own line. */
+/**
+ * Join adjacent text items into one, each part starting on its own line. The separator check looks
+ * at the last non-empty part, not the joined text: reading the end of a growing concatenation makes
+ * V8 copy it on every item, which is quadratic.
+ */
 function joinAdjacentText(items: (TextContent | ImageContent)[]): (TextContent | ImageContent)[] {
 	const joined: (TextContent | ImageContent)[] = [];
+	let parts: string[] = [];
+	let lastPart = "";
+	const flush = () => {
+		if (parts.length > 0) joined.push({ type: "text", text: parts.join("") });
+		parts = [];
+		lastPart = "";
+	};
 	for (const item of items) {
-		const last = joined.at(-1);
-		if (item.type === "text" && last?.type === "text") {
-			const separator = last.text === "" || last.text.endsWith("\n") ? "" : "\n";
-			joined[joined.length - 1] = { type: "text", text: `${last.text}${separator}${item.text}` };
-		} else {
+		if (item.type !== "text") {
+			flush();
 			joined.push(item);
+			continue;
 		}
+		if (lastPart !== "" && !lastPart.endsWith("\n")) {
+			parts.push("\n");
+			lastPart = "\n";
+		}
+		parts.push(item.text);
+		if (item.text !== "") lastPart = item.text;
 	}
+	flush();
 	return joined;
 }
 
@@ -437,6 +456,8 @@ export async function executeCodemode(
 
 	const snapshot = (): CodemodeToolDetails => ({ calls: calls.map((call) => ({ ...call })) });
 	const publish = () => onUpdate?.({ content: [], details: snapshot() });
+	// Show the script as running before its first nested call, so the row's timer starts.
+	publish();
 
 	const callable = ctx ? getCodemodeCallableTools(ctx.tools) : [];
 	// ALL_TOOLS entries carry the declaration.
@@ -485,6 +506,17 @@ export async function executeCodemode(
 		memoryLimitBytes: CODEMODE_MEMORY_LIMIT_BYTES,
 		wasm: loadQuickJSWasm(getQuickJSWasmPath()),
 		workerUrl: getCodemodeWorkerSpecifier(),
+		acquireWorker: () => {
+			if (activeCodemodeWorkers >= MAX_CONCURRENT_CODEMODE_WORKERS) {
+				throw new Error(
+					`Codemode worker limit reached (${MAX_CONCURRENT_CODEMODE_WORKERS} workers are still running or shutting down). Retry after they exit.`,
+				);
+			}
+			activeCodemodeWorkers++;
+			return () => {
+				activeCodemodeWorkers--;
+			};
+		},
 	});
 
 	let result: CodemodeResult;
@@ -537,14 +569,14 @@ export async function executeCodemode(
 }
 
 /**
- * Whether `query` names the namespace: its name, its script identifier (`mcp__dev-radius` is
- * `mcp__dev_radius`), or the part after its last `__` in either form (`dev-radius`, `dev_radius`).
+ * Whether `query` names the namespace: its name or one of its aliases, as written or as the same
+ * script identifier (`dev-radius` and `dev_radius` are both `dev_radius`).
  */
-function isNamespaceName(namespace: string, query: string): boolean {
-	const id = toCodemodeIdentifier(namespace);
+function isNamespaceName(namespace: ToolNamespace, query: string): boolean {
 	const queryId = toCodemodeIdentifier(query);
-	const suffix = (name: string) => (name.includes("__") ? name.slice(name.lastIndexOf("__") + 2) : undefined);
-	return namespace === query || id === queryId || suffix(namespace) === query || suffix(id) === queryId;
+	return [namespace.name, ...(namespace.aliases ?? [])].some(
+		(name) => name === query || toCodemodeIdentifier(name) === queryId,
+	);
 }
 
 /**
@@ -575,7 +607,7 @@ function createDiscoveryGlobals(
 				}
 				const documents = tools.flatMap((tool) => {
 					const toolNamespace = options.getToolNamespace?.(tool.name);
-					if (namespace && (!toolNamespace || !isNamespaceName(toolNamespace.name, namespace))) return [];
+					if (namespace && (!toolNamespace || !isNamespaceName(toolNamespace, namespace))) return [];
 					return [createToolSearchDocument(tool, toolNamespace)];
 				});
 				return ranker.rank(query, documents, limit).map((match) => entry(match.name));
@@ -603,7 +635,7 @@ function createDiscoveryGlobals(
 				const names: string[] = [];
 				for (const tool of tools) {
 					const toolNamespace = options.getToolNamespace?.(tool.name);
-					if (!toolNamespace || !isNamespaceName(toolNamespace.name, name)) continue;
+					if (!toolNamespace || !isNamespaceName(toolNamespace, name)) continue;
 					namespace ??= toolNamespace;
 					names.push(toCodemodeIdentifier(tool.name));
 				}

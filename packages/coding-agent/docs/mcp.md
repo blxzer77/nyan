@@ -231,7 +231,7 @@ To keep `codemode` active without MCP servers, add `"defaultTools": ["+codemode"
 
 Text results over 20 KB reach the model with their middle removed around a `…N chars truncated…` marker. The full text is saved to a temporary file named in the result. Codemode scripts receive the complete result and can reduce it before returning output to the model.
 
-Codemode scripts receive the complete MCP `CallToolResult`, including `content`, `structuredContent`, and `isError`. A result with `isError` resolves inside scripts but is reported as an error for direct calls. `image(result.content[0])` forwards an image block. Server instructions are not part of any tool description; scripts read them with `describeNamespace("mcp__<server>")`, which also returns the server's tool names.
+Codemode scripts receive the complete MCP `CallToolResult`, including `content`, `structuredContent`, and `isError`. A result with `isError` resolves inside scripts but is reported as an error for direct calls. `image(result.content[0])` forwards an image block. The declaration of an MCP tool spells out this result: `content` blocks with their `type`, `text`, `data`, and `mimeType`, the tool's own output schema as `structuredContent`, and `isError`. Server instructions are not part of any tool description; scripts read them with `describeNamespace("<server>")` or `describeNamespace("mcp__<server>")`, which also returns the server's tool names.
 
 ## Use resources
 

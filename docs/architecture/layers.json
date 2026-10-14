@@ -45,12 +45,13 @@
 		},
 		{
 			"id": "durable-runtime",
-			"purpose": "Persistent, recoverable agent execution.",
+			"purpose": "Persistent, recoverable agent execution. Its code mode runs scripts in the capabilities layer's sandbox; the sandbox knows nothing about durability, so the dependency points toward the more stable package.",
 			"packages": [
 				"durable"
 			],
 			"mayDependOn": [
 				"foundation",
+				"capabilities",
 				"model"
 			]
 		},
@@ -234,7 +235,7 @@
 			"exceptions": []
 		},
 		"durable": {
-			"purpose": "Identifiers, documents, entries and the execution environment contract are the stable core; session and storage implement persistence over them; the harness runs agents on top; tools and testing consume the harness; image processors implement the tools' ImageProcessor contract and are loaded only through their own package subpaths.",
+			"purpose": "Identifiers, documents, entries and the execution environment contract are the stable core; session and storage implement persistence over them; the harness runs agents on top; tools, extensions and testing consume the harness (extensions are the code mode and tool search extensions, loaded only through their own package subpaths); image processors implement the tools' ImageProcessor contract and are loaded only through their own package subpaths.",
 			"layers": [
 				{
 					"id": "core",
@@ -283,6 +284,17 @@
 					"id": "tools",
 					"paths": [
 						"tools/"
+					],
+					"mayDependOn": [
+						"core",
+						"harness"
+					]
+				},
+				{
+					"id": "extensions",
+					"paths": [
+						"codemode/",
+						"tool-search/"
 					],
 					"mayDependOn": [
 						"core",

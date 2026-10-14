@@ -64,7 +64,8 @@ export type ContentBlock = TextContent | ImageContent | AudioContent | ResourceL
 
 export interface CallToolResult {
 	content: ContentBlock[];
-	structuredContent?: Record<string, unknown>;
+	/** As the server sent it. The protocol revisions Nyan negotiates define an object, but servers may send any JSON value. */
+	structuredContent?: unknown;
 	isError?: boolean;
 	_meta?: Record<string, unknown>;
 }

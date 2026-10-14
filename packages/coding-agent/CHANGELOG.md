@@ -4,9 +4,41 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `before_agent_start` also runs for a run started by `nyan.sendMessage(..., { triggerTurn: true })`. `BeforeAgentStartEvent` is now a union on `messageType`: `"user"` carries `prompt` and `images`, `"custom"` carries the starting `message`. A handler that reads `event.prompt` or `event.images` must check `event.messageType` first, and a handler that adds context for a user prompt should return early for `"custom"`. The session also counts as busy while a run starts, so `ctx.isIdle()` is false during `before_agent_start`, and a message sent meanwhile goes into the starting run instead of starting a second one.
+- `nyan mcp list --json` reports `"resources": true` for a server that offers resources, instead of the counts `resources` and `resourceTemplates`. Connecting no longer lists a server's resources, so a slow listing cannot keep its tools out of the first prompt. `/mcp` and `nyan mcp list` print `offers resources`. The resource tools still list and read resources on demand.
+
 ### Added
 
 - The standalone executable archives and `SHA256SUMS` of a release carry a signed build provenance attestation. `gh attestation verify <archive> --repo blxzer77/nyan` shows that the file was built by the release workflow from a named commit. The executables are still not code-signed for macOS or Windows.
+- Codemode tool declarations show input constraints such as `integer`, minimum and maximum, length, pattern, and `default` as `@` tags on property comments, so scripts see them without the tool repeating them in its description.
+- Codemode rows show the time a script has been running while it runs and its total time when it finished, like bash rows.
+- `describeNamespace()` and the `namespace` option of `searchTools()` in codemode scripts also match a namespace by its aliases. MCP namespaces answer to the server name, so `describeNamespace("docs")` finds `mcp__docs`.
+- Tool definitions can declare `reachesTools`, for tools that reach other tools (such as `codemode` and `tool_search`). The MCP extension uses it to wait for the servers a call needs and to decide whether a replacement `codemode` or `tool_search` tool can reach MCP tools.
+
+### Changed
+
+- Print mode writes a warning to stderr and exits with status 1 when the final response stopped at the model's output token limit. The partial text is still written to stdout.
+- Codemode declarations of MCP tools spell out the result type (`content`, `structuredContent`, `isError`) instead of referring to `CallToolResult<T>`, which `describeTool()`, `searchTools()`, and `ALL_TOOLS` showed without defining it. The codemode description no longer includes the shared MCP types.
+- Compaction and branch summaries no longer include the model's thinking blocks. Replayed thinking is often not part of the live context, so including it could make a summarization request larger than the context it summarizes and fail.
+
+### Fixed
+
+- Stopping a codemode script or reaching its deadline no longer waits for a non-interruptible built-in to return on Bun. At most two codemode workers may be alive across all sessions in one process, and a cancelled worker keeps its slot until it exits; at capacity, a new script fails immediately.
+- A resumed session restores the tools it had activated, with `--tools +name` and `-name` entries applied to them. Before, tools activated during the session were dropped. `--tools` with tool names, `--no-tools`, and `--no-builtin-tools` still select the tools explicitly.
+- A leading `~` in exclusion and exact patterns of the `extensions`, `skills`, `prompts`, and `themes` settings (`!~/skills/pdf`, `-~/x`) means the home directory. Before, it was compared literally and never matched.
+- On Windows, taking the `auth.json` lock retries briefly when a just-removed lock directory is still delete-pending and `mkdir` fails with `EPERM`. Real permission errors still fail at once.
+- Terminal replies that arrive late, such as a device attributes or color report, stay out of keyboard input; the terminal keeps them until their terminator.
+- Mouse wheel events that no component handles scroll the transcript under a focused overlay instead of reaching the overlay as raw input. An overlay that scrolls with the wheel must implement `handleMouse`.
+- Kitty images are enabled in Herdr.
+- Anthropic requests replace images in error tool results with a text note. The API rejects error results that contain anything but text, which stalled sessions after a failed codemode script that had shown images.
+- Anthropic requests with strict tools retry with plain schemas when the API rejects the grammar (too large, too many strict tools, too many union types), and keep strict sampling for tools that require it.
+- Tool call arguments with an invalid `\u` escape are repaired instead of failing the call.
+- The wrapper text "The upstream provider returned an error" is retried like "Provider returned error".
+- The OpenAI Codex request body is sent as a copy of the compressed bytes, which `fetch` accepts under every TypeScript lib.
+- Codemode rejects a `// @options:` line that is not the first line of the script instead of ignoring it, which ran the script without its deadline.
+- Codemode output with many text items is joined in linear time. A script that printed 100,000 empty lines took about ten seconds to format.
 
 ## [1.2.0] - 2026-10-12
 

@@ -42,6 +42,13 @@ describe("provider retry classification", () => {
 		).toBe(true);
 	});
 
+	it.each(["Provider returned error", "The upstream provider returned an error"])(
+		"matches gateway wrapper wording: %s",
+		(errorMessage) => {
+			expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(true);
+		},
+	);
+
 	it("matches upstream request buffer exhaustion wording", () => {
 		expect(
 			isRetryableAssistantError(

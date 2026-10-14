@@ -16,6 +16,7 @@
 			"@ny4n/codemode/cloudflare": ["./packages/codemode/src/cloudflare.ts"],
 			"@ny4n/codemode/declarations": ["./packages/codemode/src/declarations.ts"],
 			"@ny4n/codemode/portable": ["./packages/codemode/src/portable.ts"],
+			"@ny4n/codemode/search": ["./packages/codemode/src/search.ts"],
 			"@ny4n/codemode/source": ["./packages/codemode/src/source.ts"],
 			"@ny4n/codemode/worker": ["./packages/codemode/src/runtime/worker.ts"],
 			"@ny4n/mcp": ["./packages/mcp/src/index.ts"],

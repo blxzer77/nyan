@@ -24,6 +24,11 @@ describe("toLlmContent", () => {
 	});
 
 	it("falls back to the structured content as JSON when there are no blocks", () => {
+		// Structured content that is not an object is converted too.
+		expect(toLlmContent({ content: [], structuredContent: [1, 2] })).toEqual([
+			{ type: "text", text: "[\n  1,\n  2\n]" },
+		]);
+		expect(toLlmContent({ content: [], structuredContent: null })).toEqual([{ type: "text", text: "null" }]);
 		expect(toLlmContent({ content: [], structuredContent: { n: 1 } })).toEqual([
 			{ type: "text", text: '{\n  "n": 1\n}' },
 		]);

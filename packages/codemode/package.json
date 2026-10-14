@@ -21,6 +21,11 @@
 			"types": "./dist/source.d.ts",
 			"import": "./dist/source.js"
 		},
+		"./search": {
+			"source": "./src/search.ts",
+			"types": "./dist/search.d.ts",
+			"import": "./dist/search.js"
+		},
 		"./portable": {
 			"source": "./src/portable.ts",
 			"types": "./dist/portable.d.ts",

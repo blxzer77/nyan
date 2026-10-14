@@ -280,6 +280,16 @@ describe("McpClient", () => {
 		await client.close();
 	});
 
+	// A server may send structured content that is not an object.
+	it("accepts structured content that is not an object", async () => {
+		const { client, server } = await connect();
+		for (const structuredContent of [[{ id: 1 }, { id: 2 }], null, "text", 3, false]) {
+			server.setHandler("tools/call", () => ({ content: [], structuredContent }));
+			expect(await client.callTool("structured")).toEqual({ content: [], structuredContent });
+		}
+		await client.close();
+	});
+
 	it("does not send notifications/cancelled for a timed-out initialize", async () => {
 		const { clientTransport, server } = await createServer();
 		server.setHandler("initialize", () => new Promise(() => {}));
