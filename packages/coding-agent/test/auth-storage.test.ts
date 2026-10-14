@@ -114,9 +114,13 @@ describe("AuthStorage", () => {
 	});
 
 	test("keeps a coalesced reload alive while another credential reader is waiting", async () => {
+		// The external edit between the two writes must change the file revision (dev:ino:size:mtimeNs:ctimeNs)
+		// or the store legitimately serves the cached credential and never reloads. Two keys of equal length
+		// written inside one filesystem clock tick give an identical revision — on a machine with a coarse timer
+		// (mtimeNs advances in ~1ms steps) that made this test flaky. A longer key keeps the size distinguishable.
 		writeAuthJson({ anthropic: { type: "api_key", key: "old" } });
 		const storage = AuthStorage.create(authJsonPath);
-		writeAuthJson({ anthropic: { type: "api_key", key: "new" } });
+		writeAuthJson({ anthropic: { type: "api_key", key: "newer" } });
 		let grantLock: (() => void) | undefined;
 		const lockGranted = new Promise<void>((resolve) => {
 			grantLock = resolve;
@@ -134,7 +138,7 @@ describe("AuthStorage", () => {
 		firstController.abort();
 		await expect(first).rejects.toMatchObject({ name: "AbortError" });
 		grantLock?.();
-		await expect(second).resolves.toEqual({ type: "api_key", key: "new" });
+		await expect(second).resolves.toEqual({ type: "api_key", key: "newer" });
 		expect(lockSpy).toHaveBeenCalledTimes(1);
 		expect(release).toHaveBeenCalledTimes(1);
 	});
