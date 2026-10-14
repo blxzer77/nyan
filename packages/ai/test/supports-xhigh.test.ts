@@ -175,10 +175,13 @@ describe("getSupportedThinkingLevels", () => {
 		expect(getSupportedThinkingLevels(model!)).toEqual(["off", "low", "high", "max"]);
 	});
 
-	it("includes low/high/max plus off for DeepSeek V4 Flash on opencode-go", () => {
-		const model = getModel("opencode-go", "deepseek-v4-flash");
+	it("includes low/high/max for DeepSeek V4 Flash on opencode", () => {
+		// models.dev marks opencode-go/deepseek-v4-flash deprecated, so the generator drops it there.
+		// OpenCode Zen still serves the model, which is where this metadata is asserted now. Its
+		// thinkingLevelMap has `off: null`, so the level is absent rather than reported.
+		const model = getModel("opencode", "deepseek-v4-flash");
 		expect(model).toBeDefined();
-		expect(getSupportedThinkingLevels(model!)).toEqual(["off", "low", "high", "max"]);
+		expect(getSupportedThinkingLevels(model!)).toEqual(["low", "high", "max"]);
 	});
 
 	it("preserves low/high/max metadata for DeepSeek V4.1 Flash on OpenRouter", () => {
