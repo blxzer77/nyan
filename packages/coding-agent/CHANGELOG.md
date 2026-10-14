@@ -11,6 +11,7 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ### Added
 
+- Nyan reports its agent state to [Herdr](https://herdr.dev), a terminal workspace manager for coding agents, so a Nyan pane shows `working`, `blocked`, or `idle` in the Herdr sidebar, Herdr notifies you when Nyan finishes or needs input, and restarting the Herdr server reopens the pane in the same directory with the conversation restored. The integration is a built-in extension that acts only inside a Herdr pane. See [Run Nyan in Herdr](docs/herdr.md).
 - The standalone executable archives and `SHA256SUMS` of a release carry a signed build provenance attestation. `gh attestation verify <archive> --repo blxzer77/nyan` shows that the file was built by the release workflow from a named commit. The executables are still not code-signed for macOS or Windows.
 - Codemode tool declarations show input constraints such as `integer`, minimum and maximum, length, pattern, and `default` as `@` tags on property comments, so scripts see them without the tool repeating them in its description.
 - Codemode rows show the time a script has been running while it runs and its total time when it finished, like bash rows.

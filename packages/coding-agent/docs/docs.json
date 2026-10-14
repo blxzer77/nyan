@@ -60,6 +60,10 @@
               "path": "tmux.md"
             },
             {
+              "title": "Run Nyan in Herdr",
+              "path": "herdr.md"
+            },
+            {
               "title": "Run Nyan on Windows",
               "path": "windows.md"
             },
