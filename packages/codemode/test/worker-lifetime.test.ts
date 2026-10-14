@@ -1,4 +1,4 @@
-import { execFile, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Worker } from "node:worker_threads";
@@ -202,27 +202,63 @@ describe("worker lifetime", () => {
 	});
 });
 
-const runtimes = [
-	{ name: "Node", command: process.execPath, available: true },
-	{ name: "Bun", command: "bun", available: spawnSync("bun", ["--version"], { timeout: 5000 }).status === 0 },
-];
+// Resolve each runtime by name. `bun --bun` runs this suite inside Bun, so `process.execPath` is the
+// Bun binary there: naming the Node runtime from it ran Bun twice and asserted Node-only exit
+// behaviour against Bun, which is exactly the comparison this block exists to make.
+function resolveRuntime(name: string, command: string) {
+	return { name, command, available: spawnSync(command, ["--version"], { timeout: 5000 }).status === 0 };
+}
+
+const runtimes = [resolveRuntime("Node", "node"), resolveRuntime("Bun", "bun")];
 
 describe.each(runtimes)("$name process lifetime", ({ name, command, available }) => {
-	// Verify both prompt cancellation and, on Node, prompt process exit with a real worker.
-	// Bun 1.4.0's pending terminate() keeps the process alive even after unref(), independently of codemode.
+	// Verify prompt cancellation on both runtimes, and prompt process exit on Node.
+	// Bun's pending terminate() keeps the host process alive after the result, independently of
+	// codemode (`runtime/host.ts` requests terminate() without awaiting it for that reason), so the
+	// Bun run is stopped once the result line arrives instead of waiting for the process to exit.
 	it.skipIf(!available).each(["abort", "timeout", "close"] as const)(
 		name === "Node" ? "exits promptly after %s with a real worker" : "settles %s promptly with a real worker",
 		async (how) => {
 			const fixture = fileURLToPath(new URL("./fixtures/worker-process-exit.ts", import.meta.url));
+			const expectedKind = how === "timeout" ? "timeout" : "aborted";
+
+			if (name === "Bun") {
+				const child = spawn(command, [fixture, how], { stdio: ["ignore", "pipe", "ignore"] });
+				child.stdout.setEncoding("utf8");
+				const firstLine = new Promise<string>((resolve, reject) => {
+					let buffered = "";
+					const timer = setTimeout(() => reject(new Error(`no result from ${command} ${how}`)), 20000);
+					child.stdout.on("data", (chunk: string) => {
+						buffered += chunk;
+						const newline = buffered.indexOf("\n");
+						if (newline === -1) return;
+						clearTimeout(timer);
+						resolve(buffered.slice(0, newline));
+					});
+					child.on("error", (error) => {
+						clearTimeout(timer);
+						reject(error);
+					});
+				});
+				try {
+					const result = JSON.parse(await firstLine) as { type: string; kind: string; elapsedMs: number };
+					expect(result).toMatchObject({ type: "result", kind: expectedKind });
+					expect(result.elapsedMs).toBeLessThan(1000);
+				} finally {
+					child.kill();
+				}
+				return;
+			}
+
 			const { stdout } = await promisify(execFile)(command, [fixture, how], { timeout: 20000 });
 			const lines = stdout.trim().split(/\r?\n/);
 			expect(lines).toHaveLength(2);
 			const result = JSON.parse(lines[0]) as { type: string; kind: string; elapsedMs: number };
 			const exit = JSON.parse(lines[1]) as { type: string; elapsedMs: number };
-			expect(result).toMatchObject({ type: "result", kind: how === "timeout" ? "timeout" : "aborted" });
+			expect(result).toMatchObject({ type: "result", kind: expectedKind });
 			expect(exit.type).toBe("exit");
 			expect(result.elapsedMs).toBeLessThan(1000);
-			if (name === "Node") expect(exit.elapsedMs - result.elapsedMs).toBeLessThan(1000);
+			expect(exit.elapsedMs - result.elapsedMs).toBeLessThan(1000);
 		},
 		25000,
 	);
