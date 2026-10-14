@@ -16,7 +16,7 @@ permissions:
 jobs:
   quality:
     name: Build, check and test (Ubuntu)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -32,7 +32,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
-          sudo ln -s "$(which fdfind)" /usr/local/bin/fd
+          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd   # -f: self-hosted runners keep /usr/local across runs
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
@@ -48,7 +48,7 @@ jobs:
 
   bun:
     name: Test on Bun (Ubuntu)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -69,7 +69,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
-          sudo ln -s "$(which fdfind)" /usr/local/bin/fd
+          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd   # -f: self-hosted runners keep /usr/local across runs
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
@@ -105,7 +105,7 @@ jobs:
 
   supply-chain:
     name: Dependency audit
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -125,7 +125,7 @@ jobs:
 
   mcp-conformance:
     name: MCP conformance
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
     timeout-minutes: 10
     steps:
       - name: Checkout
