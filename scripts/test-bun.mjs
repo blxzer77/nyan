@@ -9,14 +9,19 @@
  * to dist. Every workspace package is listed; a suite that fails here is a difference between the runtimes to fix,
  * not a package to drop. vitest suites run with `bun --bun` so the test workers use Bun
  * rather than Node; packages/tui uses node:test, which `bun test` runs directly.
+ *
+ * On Windows the script resolves Bun's real `bun.exe` instead of the `bun.cmd` shim; see
+ * `bun-command.mjs` for why the shell is not a substitute.
  */
 
 import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveBunExecutable } from "./bun-command.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const vitestBin = join(repoRoot, "node_modules", "vitest", "vitest.mjs");
+const bun = resolveBunExecutable();
 
 const SUITES = {
 	agent: ["--bun", vitestBin, "--run"],
@@ -43,7 +48,7 @@ if (unknown.length > 0) {
 const failed = [];
 for (const name of requested.length > 0 ? requested : Object.keys(SUITES)) {
 	console.log(`\n==> ${name} (bun ${SUITES[name].join(" ")})`);
-	const result = spawnSync("bun", SUITES[name], { cwd: join(repoRoot, "packages", name), stdio: "inherit" });
+	const result = spawnSync(bun, SUITES[name], { cwd: join(repoRoot, "packages", name), stdio: "inherit" });
 	if (result.error) {
 		console.error(`bun could not start: ${result.error.message}`);
 		process.exit(1);
