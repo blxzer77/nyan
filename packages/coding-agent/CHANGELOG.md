@@ -4,6 +4,8 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-14
+
 ### Breaking Changes
 
 - `before_agent_start` also runs for a run started by `nyan.sendMessage(..., { triggerTurn: true })`. `BeforeAgentStartEvent` is now a union on `messageType`: `"user"` carries `prompt` and `images`, `"custom"` carries the starting `message`. A handler that reads `event.prompt` or `event.images` must check `event.messageType` first, and a handler that adds context for a user prompt should return early for `"custom"`. The session also counts as busy while a run starts, so `ctx.isIdle()` is false during `before_agent_start`, and a message sent meanwhile goes into the starting run instead of starting a second one.
