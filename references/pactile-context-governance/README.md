@@ -12,6 +12,7 @@ This directory is a **read-only reference snapshot** for planning Nyan's future 
 - `design/context-governance/`: context-governance design and implementation documents.
 - `design/pactile-docs/`: additional migration and architecture documents relevant to the roadmap.
 - `evidence/p0/` and `evidence/p1a/`: offline evaluation fixtures and receipts. Live provider-shadow material is intentionally excluded.
+- `INDEX.md`: roadmap-item, batch, provenance, and reading-order index.
 - `manifest.json`: every copied file, original local source path, category, size, and SHA-256 hash.
 - `LICENSE.pactile` and `COPYRIGHT.pactile`: preserved source-project licensing notices.
 
