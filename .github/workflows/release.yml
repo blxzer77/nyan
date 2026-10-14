@@ -205,7 +205,12 @@ jobs:
   publish:
     name: Publish
     needs: [verify, native, binary-smoke]
-    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    # npm verifies the runner environment when it accepts a provenance bundle and rejects a
+    # `self-hosted` runner: "Only 'github-hosted' runners are supported when publishing with
+    # provenance". This job therefore stays on a GitHub-hosted runner while the build jobs use the
+    # self-hosted one. `actions/attest-build-provenance` in the binaries job is a GitHub service and
+    # is not affected.
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm
     permissions:
