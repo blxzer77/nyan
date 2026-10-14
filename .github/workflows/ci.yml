@@ -16,7 +16,13 @@ permissions:
 jobs:
   quality:
     name: Build, check and test (Ubuntu)
-    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    # Linux/x64 jobs run on the self-hosted nyan-dev-01 runner. A pull request
+    # whose code comes from another repository falls back to a GitHub-hosted
+    # runner: the self-hosted runner users hold NOPASSWD sudo and the docker
+    # group, so untrusted fork code must not execute there. Compare repository
+    # names rather than head.repo.fork, which is true for every PR while this
+    # repository is itself a fork of an upstream project.
+    runs-on: ${{ ((github.event_name == 'pull_request') && (github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -48,7 +54,7 @@ jobs:
 
   bun:
     name: Test on Bun (Ubuntu)
-    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    runs-on: ${{ ((github.event_name == 'pull_request') && (github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -105,7 +111,7 @@ jobs:
 
   supply-chain:
     name: Dependency audit
-    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    runs-on: ${{ ((github.event_name == 'pull_request') && (github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -125,7 +131,7 @@ jobs:
 
   mcp-conformance:
     name: MCP conformance
-    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    runs-on: ${{ ((github.event_name == 'pull_request') && (github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
     timeout-minutes: 10
     steps:
       - name: Checkout
