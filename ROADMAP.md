@@ -18,8 +18,8 @@ gantt
 
     section Migration (durable product path)
     N0 inventory and event classification :done, crit, n0, 2026-10-15, 10d
-    N1 product path switch to durable :active, crit, n1, after n0, 21d
-    N2 extension and hook adaptation :crit, n2, after n1, 21d
+    N1 product path switch to durable :done, crit, n1, after n0, 21d
+    N2 extension and hook adaptation :active, crit, n2, after n1, 21d
 
     section Context governance
     N3 content-addressed artifact store :crit, n3, after n2, 14d
@@ -271,7 +271,7 @@ Durable already provides the Context Operation primitives: the effect sandwich (
 | N8 external search, fetch, and evidence | `SearchHit` to `Fetch` to `Evidence` to citation, with the fixed safety constraints. | No search hit becomes a citation without a fetch record and a response hash. |
 | N9 TUI rewrite | The [TUI rewrite](#tui-rewrite) design. | Every durable operation state renders from the view, and no recovery logic lives in the TUI. |
 
-N0 is complete. N1 is now active; every phase carries a gate that must pass with recorded evidence before the next phase starts, and each phase is a separate change that can be reverted on its own.
+N0 and N1 are complete. N2 is now active; every phase carries a gate that must pass with recorded evidence before the next phase starts, and each phase is a separate change that can be reverted on its own.
 
 ## Decided architecture (2026-10-15)
 
@@ -332,25 +332,22 @@ The rewrite is a new line that does not change the non-interactive `print`, `jso
 
 | Line | Item | Owner | Branch / PR | Next step |
 | --- | --- | --- | --- | --- |
-| Migration | N1 product path switch to durable | Blxze | `main`; N1 active | Complete the durable non-interactive adapter and legacy JSONL read-only boundary; then verify mid-tool-call restart recovery, session discovery, `--continue`, and all non-interactive modes |
+| Migration | N2 extension and hook adaptation | Blxze | `main`; N2 active | Reconnect the classified extension surface, add the eight durable capabilities, and preserve the JSON/RPC event contract |
 
-N0 is complete: its deliverables exist, the independent review findings were re-verified and applied,
-and the gate is wired into `npm run check`. Decisions #18 and #19 were answered on 2026-10-15: keep
-every streaming event and add the phased request transform for fidelity. Decisions #20 and #21 were
-also answered: extend the durable settlement hook, and retain `thinking_level_select` as a product-API
-compatibility event. N1's first slice is now implemented: the durable runtime is promoted into
-`src/core/durable`, its TUI adapter into `src/modes/durable`, the default interactive path uses it,
-and new sessions live below `~/.nyan/agent/sessions-durable/`. Eligible text print runs now also use
-the durable path and wait for the durable submission settlement before rendering the final answer.
-Legacy JSONL sessions selected through compatibility flags are now opened read-only. Eligible JSON/RPC
-invocations now use durable storage, event translation, and recovery; legacy RPC filesystem/session
-commands still return named unavailable responses, and invocations with legacy selectors remain on the
-compatibility path. Evidence for this slice is
-`npm run check`, `npm run build:offline`, the durable session-policy and JSON-event tests, the durable
-JSON/RPC no-model smoke tests, the durable generation/tool recovery tests, the print/RPC regression
-subset, the no-model durable print smoke test, and source plus built-bundle tmux startup with
-`NYAN_OFFLINE=1`. The corrected inventory raises N2's scope: 8 durable capabilities must be added,
-and two events are part of the documented `--mode json` contract.
+N0 and N1 are complete: the inventory gate is wired into `npm run check`, the durable runtime is
+promoted into `src/core/durable`, its TUI adapter into `src/modes/durable`, and the default
+interactive, text print, JSON, and RPC paths use durable storage for eligible new-session invocations.
+New sessions live below `~/.nyan/agent/sessions-durable/`; session discovery skips incomplete SQLite
+directories; legacy JSONL sessions selected through compatibility flags are opened read-only. The
+durable JSON event translator preserves the published event vocabulary, and the durable RPC adapter
+covers the core prompt, state, model, thinking, queue, compaction, retry, and new-session lifecycle.
+Legacy RPC product APIs such as bash, queue clearing, entry/tree access, fork, and export return named
+unavailable responses and are explicitly part of N2 rather than silently changing semantics. N1 evidence
+is `npm run check`, `npm run build:offline`, the durable session-policy and JSON-event tests, the durable
+generation/tool recovery tests, the print/JSON/RPC no-model smoke tests, the legacy JSONL read-only
+smoke test, and source plus built-bundle startup checks with `NYAN_OFFLINE=1`. The corrected inventory
+raises N2's scope: 8 durable capabilities must be added, and two events are part of the documented
+`--mode json` contract.
 
 ## Queue
 
@@ -395,6 +392,7 @@ Do not close or reinterpret these entries without an owner decision. Work may co
 | 19 | Does durable gain the phased request transform? | Resolved 2026-10-15: preserve fidelity by adding the phased channel, including the two ordered phases and the prompt/tool restoration between them | Resolved; N2 |
 | 20 | How is the settlement boundary expressed? | Resolved 2026-10-15: widen the durable hook so settlement entry writes remain durable and recoverable; do not model it as `onYield` | Resolved; N2 |
 | 21 | Are the events with no extension consumer removed? | Resolved 2026-10-15: retain all four streamed events and retain `thinking_level_select` as a product-API compatibility event; no event is removed in N2 | Resolved; N2 |
+| 22 | May N1 close with legacy RPC product APIs deferred? | Resolved 2026-10-16: close N1 with durable JSON/RPC core lifecycle and event/recovery evidence; bash, queue mutation, entry/tree access, fork, export, and related product APIs are explicit N2 scope | Resolved; N2 |
 
 ## Done
 
