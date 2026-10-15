@@ -341,8 +341,10 @@ also answered: extend the durable settlement hook, and retain `thinking_level_se
 compatibility event. N1's first slice is now implemented: the durable runtime is promoted into
 `src/core/durable`, its TUI adapter into `src/modes/durable`, the default interactive path uses it,
 and new sessions live below `~/.nyan/agent/sessions-durable/`. Legacy session-selection flags still
-use the old JSONL path until their read-only adapters are complete. The corrected inventory raises
-N2's scope: 8 durable capabilities must be added, and two events are part of the documented
+use the old JSONL path until their read-only adapters are complete. Evidence for this slice is
+`npm run check`, `npm run build:offline`, the durable session-policy test, the print/RPC regression
+subset, and source plus built-bundle tmux startup with `NYAN_OFFLINE=1`. The corrected inventory
+raises N2's scope: 8 durable capabilities must be added, and two events are part of the documented
 `--mode json` contract.
 
 ## Queue
