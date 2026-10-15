@@ -332,7 +332,7 @@ The rewrite is a new line that does not change the non-interactive `print`, `jso
 
 | Line | Item | Owner | Branch / PR | Next step |
 | --- | --- | --- | --- | --- |
-| Migration | N0 inventory and extension classification | Blxze | This worktree, uncommitted | Owner answers decisions #20 and #21; then wire `check:extension-surface` into `npm run check` and start N1 |
+| Migration | N0 inventory and extension classification | Blxze | `main`; handoff-ready commits pending push | Owner answers decisions #20 and #21; then wire `check:extension-surface` into `npm run check` and start N1 |
 
 N0's deliverables exist and the gate passes, but N0 is not closed. An independent review rejected the
 first draft; the findings were re-verified against source, applied, and recorded in
