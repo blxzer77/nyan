@@ -411,6 +411,6 @@ export function createCodemodeTool(
 }
 
 export function mediumSmoke(a: number, b: number): number {
-  // division without a zero check
-  return a / b;
+	// division without a zero check
+	return a / b;
 }

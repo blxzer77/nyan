@@ -246,7 +246,7 @@ The migration cost is not the context work. It is that Nyan's extension surface 
 | Status channel | event bus plus `AgentSession` getters | `Conversation.viewState()`; the spec states there is no public semantic event channel |
 | Compaction | LLM summary, split-turn summary, `session_before_compact` | built-in phased compaction task with `select` / `summarize` / `retry` |
 
-The 41 subscriptions cannot be mapped mechanically. Each resolves to exactly one of five destinations: an existing `hook:`; a `durable-capability` that durable must gain; `product-api` for the product shell (trust, registries, input pipeline, provider selection, session lifecycle); `internal-view` for events only the TUI and the non-interactive modes read, now rendered from `Conversation.viewState()`; and `drop` for the one event with no consumer at all.
+The 41 subscriptions cannot be mapped mechanically. Each resolves to exactly one of five destinations: an existing `hook:`; a `durable-capability` that durable must gain; `product-api` for the product shell (trust, registries, input pipeline, provider selection, session lifecycle); `internal-view` for events only the TUI and the non-interactive modes read, now rendered from `Conversation.viewState()`; or `drop` when an intentional removal is explicitly approved.
 
 A name-level match is seductive and wrong, and the first draft of the N0 inventory proved it. An independent review rejected eight of the original `keep` mappings because the contracts differ: `beforeRequest` receives model messages and runs on every request attempt including recovery, not once per run; `afterResponse` receives a terminal assistant message and returns `void`; `onYield` returns only `{ continue }`; and Nyan's `session_before_compact` is last-write-wins with a result carrying `firstKeptEntryId`, `details`, and `usage`, while durable's `beforeCompact` is first-decision-wins and returns only `{ decline }` or `{ summary }`. Only `tool_call` and `tool_result` matched a hook's real contract.
 
@@ -332,22 +332,22 @@ The rewrite is a new line that does not change the non-interactive `print`, `jso
 
 | Line | Item | Owner | Branch / PR | Next step |
 | --- | --- | --- | --- | --- |
-| Migration | N0 inventory and extension classification | Blxze | `main`; handoff-ready commits pending push | Owner answers decisions #20 and #21; then wire `check:extension-surface` into `npm run check` and start N1 |
+| Migration | N0 inventory and extension classification | Blxze | `main`; handoff-ready commits pending push | Owner answers decision #20; then start N1 (the extension-surface check is wired into `npm run check`) |
 
 N0's deliverables exist and the gate passes, but N0 is not closed. An independent review rejected the
 first draft; the findings were re-verified against source, applied, and recorded in
 [the review](.agents/notes/proposed/architecture/2026-10-15-durable-migration-inventory-review.md).
 The corrected inventory raises N2's scope: 8 durable capabilities must be added, and two of the
 events are part of the documented `--mode json` contract. Decisions #18 and #19 were answered on 2026-10-15: keep every streaming event and add the
-bounded channel, and add the phased request transform for fidelity. Decisions #20 (the settlement
-boundary) and #21 (whether `thinking_level_select` is removed) are still open, and
-`check:extension-surface` is not yet part of `npm run check`.
+bounded channel, and add the phased request transform for fidelity. Decision #21 was answered on
+2026-10-15: retain `thinking_level_select` as a product-API compatibility event. Only decision #20
+(the settlement boundary) remains open.
 
 ## Queue
 
 | Order | Line | Item | Depends on |
 | --- | --- | --- | --- |
-| 1 | Migration | N0 inventory and extension classification | Deliverables written and reviewed; decisions #20 and #21 outstanding |
+| 1 | Migration | N0 inventory and extension classification | Deliverables written and reviewed; decision #20 outstanding |
 | 2 | Bun-first | Phase 2 runtime adapter | Bun Phase 1 parity fixes; independent of N0 |
 | 3 | Migration | N1 product path switch to durable | N0 closes after the owner decisions |
 | 4 | Migration | N2 extension and hook adaptation | N1 |
@@ -385,7 +385,7 @@ Do not close or reinterpret these entries without an owner decision. Work may co
 | 18 | Does durable gain a bounded streaming channel, or do the streamed events arrive another way? | Resolved 2026-10-15: keep all streaming events and add the bounded channel. `--mode json` and `--mode rpc` stream `message_update` and tool events, so reducing them would break a documented interface | Resolved; N2 |
 | 19 | Does durable gain the phased request transform? | Resolved 2026-10-15: preserve fidelity by adding the phased channel, including the two ordered phases and the prompt/tool restoration between them | Resolved; N2 |
 | 20 | How is the settlement boundary expressed? | Widen the durable hook, or move the entry writes to a named product API; do not model it as `onYield` | N2 |
-| 21 | Are the events with no extension consumer removed? | The four streamed events are kept (decision #18). Only `thinking_level_select` has no consumer of any kind and is the one candidate for removal; that removal is still unconfirmed | N2 |
+| 21 | Are the events with no extension consumer removed? | Resolved 2026-10-15: retain all four streamed events and retain `thinking_level_select` as a product-API compatibility event; no event is removed in N2 | Resolved; N2 |
 
 ## Done
 

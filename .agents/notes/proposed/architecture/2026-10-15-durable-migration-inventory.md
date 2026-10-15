@@ -171,7 +171,7 @@ it was missing from the first draft.
 | `tool_execution_update` | capability: `streaming-channel` | adapt | none | Partial tool output; streamed by --mode json and rendered by the TUI | a documented non-interactive interface consumes this, so it cannot be reduced |
 | `tool_execution_end` | `internal-view` | keep | none | Tool execution finished; streamed by --mode json and rendered by the TUI |  |
 | `model_select` | `internal-view` | keep | example 1, test 1 | Model changed for the session |  |
-| `thinking_level_select` | `drop` | drop | none | Thinking level changed | no consumer anywhere in the repository; drop unless a release note records the removal |
+| `thinking_level_select` | `product-api` | keep | none | Thinking level changed |  |
 | `tool_call` | `hook:beforeTool` | adapt | built-in 1, example 5, test 8 | Argument replacement with first-block-wins; arguments are fixed after intent |  |
 | `tool_result` | `hook:afterTool` | adapt | example 1, test 4 | Result replacement over content, details, structuredContent, isError, and usage | the field mapping onto durable's tool result type is unverified |
 | `user_bash` | `product-api` | keep | example 4, test 2 | Supply custom shell operations or fully handle a user ! command |  |
@@ -323,19 +323,19 @@ point. It fails when:
 - an evidence string points at a missing file, a line past the end of the file, or — for the
   `types.ts` declaration of an event or API member — a line that does not name it.
 
-The owner reviews this note and the JSON before the check is wired into `npm run check`.
+The owner has reviewed this note and the JSON. The check is now wired into `npm run check`; N0 remains open only for the settlement-boundary decision.
 
 ### Open questions
 
-Eleven events carry an open question; the full list is in the generated table above. They group into
-four decisions that need an owner answer before N2:
+Ten events carry an implementation question; the full list is in the generated table above. The
+owner has resolved the streaming and phased-request policy decisions, and has retained
+`thinking_level_select` as a compatibility event. One owner decision remains before N2:
 
-| Decision | Affects | Why it cannot be settled here |
+| Decision | Affects | Current status |
 | --- | --- | --- |
-| Does durable gain a bounded streaming channel, or do the streamed events arrive another way? | `message_update`, `tool_execution_update`, `provider_stream_event` | A documented non-interactive interface consumes the first two, so reducing them is a user-visible break. The owner has chosen to preserve them, which makes this new durable code with its own ordering and backpressure rules. |
-| Does durable gain the phased request transform? | `context`, `context_with_system` | Nyan runs two ordered transforms with different visibility and restores prompt and tool state between them (`runner.ts:1294-1300`). The owner has chosen fidelity, so this is a durable capability rather than a merge into `beforeRequest`. |
-| How is the settlement boundary expressed? | `agent_before_settle`, `turn_end` | These append arbitrary entries; `onYield` can only continue. Either durable widens the hook or the entries move elsewhere. |
-| Which of the five events with no extension consumer are removed? | `thinking_level_select` and the four tool/message stream events | Removing an event is a user-visible change. Only `thinking_level_select` has no consumer at all, so it is the only safe `drop` today. |
+| Bounded streaming channel | `message_update`, `tool_execution_update`, `provider_stream_event` | Resolved: preserve the events. Durable still needs to define ordering and backpressure. |
+| Phased request transform | `context`, `context_with_system` | Resolved: preserve both ordered phases and prompt/tool restoration. |
+| Settlement boundary | `agent_before_settle`, `turn_end` | Open: durable must widen the hook so settlement entry writes remain durable and recoverable. |
 
 ## Alternatives considered
 
@@ -367,9 +367,9 @@ hidden behind a comment.
 
 What this buys:
 
-- N1 and N2 start with a known scope: 3 hook destinations (one needing an extended hook), 11
-  `durable-capability` members across 8 capabilities, 17 `product-api` members, 8 `internal-view`
-  members, and 1 `drop`.
+- N1 and N2 start with a known scope: 4 hook destinations (one needing an extended hook), 11
+  `durable-capability` members across 8 capabilities, 18 `product-api` members, and 8
+  `internal-view` members. No member is currently classified as `drop`.
 - The gate makes the mapping self-maintaining. Adding a subscription without recording its
   destination fails `npm run check`, and so does an evidence line that does not point at what it
   claims.
@@ -398,9 +398,12 @@ What this note does not claim:
 
 ## Verification
 
-`npm run check:extension-surface` was run against the source and reported: 41 events, 31
-`ExtensionAPI` members, 9 prototype files, 7 extra areas, 11 open questions, and 5 events with no
-extension consumer.
+`npm run check` was run after wiring in `check:extension-surface` and passed. The extension gate
+reported: 41 events, 31 `ExtensionAPI` members, 9 prototype files, 7 extra areas, 10 remaining
+implementation questions, and 5 events with no extension consumer. The final classification has 11
+`durable-capability` members, 18 `product-api` members, 8 `internal-view` members, 4 hook
+destinations, and no `drop` entries; `thinking_level_select` is retained as a product-API
+compatibility event.
 
 Methods this note relies on and what they showed:
 
@@ -425,3 +428,5 @@ violation; setting its line to `1` reported the mismatch; pointing its evidence 
 `types.ts:1` reported that the line does not name it; and adding a second `on(...)` declaration to an
 existing line, without shifting any line number, was caught by the handler-count cross-check. The
 data was restored after each run, and `--write` then reported that the note tables already matched.
+The full `npm run check` also passed lint, typecheck, dependency checks, architecture, entry graphs,
+install-lock validation, and browser smoke.
