@@ -54,6 +54,11 @@ export interface NewSessionOptions {
 	parentSession?: string;
 }
 
+export interface SessionOpenOptions {
+	/** Load a legacy JSONL session without migrating or appending to its file. */
+	readonly readOnly?: boolean;
+}
+
 export interface SessionEntryBase {
 	type: string;
 	id: string;
@@ -990,6 +995,7 @@ export class SessionManager {
 	private sessionDir: string;
 	private cwd: string;
 	private persist: boolean;
+	private readonly readOnly: boolean;
 	private flushed: boolean = false;
 	private fileEntries: FileEntry[] = [];
 	private byId: Map<string, SessionEntry> = new Map();
@@ -1004,11 +1010,13 @@ export class SessionManager {
 		persist: boolean,
 		newSessionOptions?: NewSessionOptions,
 		preloadedFileEntries?: FileEntry[],
+		readOnly = false,
 	) {
 		this.cwd = resolvePath(cwd);
 		this.sessionDir = normalizePath(sessionDir);
-		this.persist = persist;
-		if (persist && this.sessionDir && !existsSync(this.sessionDir)) {
+		this.readOnly = readOnly;
+		this.persist = persist && !readOnly;
+		if (this.persist && this.sessionDir && !existsSync(this.sessionDir)) {
 			mkdirSync(this.sessionDir, { recursive: true });
 		}
 
@@ -1135,6 +1143,10 @@ export class SessionManager {
 
 	isPersisted(): boolean {
 		return this.persist;
+	}
+
+	isReadOnly(): boolean {
+		return this.readOnly;
 	}
 
 	getCwd(): string {
@@ -1763,7 +1775,7 @@ export class SessionManager {
 	 * @param sessionDir Optional session directory for /new or /branch. If omitted, derives from file's parent.
 	 * @param cwdOverride Optional cwd override instead of the session header cwd.
 	 */
-	static open(path: string, sessionDir?: string, cwdOverride?: string): SessionManager {
+	static open(path: string, sessionDir?: string, cwdOverride?: string, options?: SessionOpenOptions): SessionManager {
 		const resolvedPath = resolvePath(path);
 		let header: SessionHeader | null = null;
 		let preloadedFileEntries: FileEntry[] | undefined;
@@ -1782,7 +1794,15 @@ export class SessionManager {
 		const cwd = cwdOverride ?? (header ? getSessionHeaderCwd(header) : undefined) ?? process.cwd();
 		// If no sessionDir provided, derive from file's parent directory
 		const dir = sessionDir ? normalizePath(sessionDir) : resolve(resolvedPath, "..");
-		return new SessionManager(cwd, dir, resolvedPath, true, undefined, preloadedFileEntries);
+		return new SessionManager(
+			cwd,
+			dir,
+			resolvedPath,
+			true,
+			undefined,
+			preloadedFileEntries,
+			options?.readOnly === true,
+		);
 	}
 
 	/**
@@ -1790,14 +1810,14 @@ export class SessionManager {
 	 * @param cwd Working directory
 	 * @param sessionDir Optional session directory. If omitted, uses default (~/.nyan/agent/sessions/<encoded-cwd>/).
 	 */
-	static continueRecent(cwd: string, sessionDir?: string): SessionManager {
+	static continueRecent(cwd: string, sessionDir?: string, options?: SessionOpenOptions): SessionManager {
 		const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(cwd);
 		const filterCwd = sessionDir !== undefined && dir !== getDefaultSessionDirPath(cwd);
 		const mostRecent = findMostRecentSession(dir, filterCwd ? cwd : undefined);
 		if (mostRecent) {
-			return new SessionManager(cwd, dir, mostRecent, true);
+			return new SessionManager(cwd, dir, mostRecent, true, undefined, undefined, options?.readOnly === true);
 		}
-		return new SessionManager(cwd, dir, undefined, true);
+		return new SessionManager(cwd, dir, undefined, true, undefined, undefined, options?.readOnly === true);
 	}
 
 	/** Create an in-memory session (no file persistence), optionally from entries held outside the filesystem. */
