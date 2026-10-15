@@ -10,8 +10,8 @@ The pre-promotion prototype was 1,416 lines across nine files. The implementatio
 `src/experimental/`; the files here are not a second runtime and must not gain product logic.
 
 New durable sessions live under `~/.nyan/agent/sessions-durable/<cwd-hash>/<timestamp>-<uuid>/session.sqlite`.
-The old `~/.nyan/agent/sessions/` JSONL tree remains the read-only compatibility path for legacy
-session-selection flags until their durable adapters are implemented.
+The old `~/.nyan/agent/sessions/` JSONL tree remains preserved. The legacy session-selection flags
+still use the old compatibility runtime for now; their read-only adapters are an outstanding N1 task.
 
 Run the compatibility entry from a source checkout with:
 
