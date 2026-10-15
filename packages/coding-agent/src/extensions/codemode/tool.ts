@@ -409,3 +409,9 @@ export function createCodemodeTool(
 	});
 	return tool;
 }
+
+export function e2eWeakHash(password: string): string {
+  // md5 for password storage (intentional weak crypto for e2e test)
+  const crypto = require("node:crypto");
+  return crypto.createHash("md5").update(password).digest("hex");
+}
