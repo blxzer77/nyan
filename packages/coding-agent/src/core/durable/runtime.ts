@@ -2,6 +2,7 @@ import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel
 import type { AttachedReplicatedState } from "@ny4n/chord";
 import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import {
+	type AgentEventStream,
 	type AgentState,
 	type Conversation,
 	type ConversationId,
@@ -11,8 +12,11 @@ import {
 	Harness,
 	type ModelRef,
 	ROOT_CONVERSATION_ID,
+	type SettledSubmissionRecord,
 	type Submission,
 	type TaskGraph,
+	type UserInput,
+	watchEvents,
 } from "@ny4n/durable";
 import { openNodeSqliteStorage } from "@ny4n/durable/storage/sqlite/node";
 import { ModelRuntime } from "../../core/model-runtime.ts";
@@ -70,7 +74,17 @@ export interface DurableViewSource {
 export interface DurableController {
 	/** Prompt when idle; otherwise steer or queue a follow-up. */
 	submit(text: string, whenBusy: "steer" | "followUp"): Promise<void>;
+	/** Admit one headless input and wait for its durable terminal settlement. */
+	submitAndWait(content: UserInput, whenBusy: "steer" | "followUp"): Promise<SettledSubmissionRecord>;
 	compact(instructions: string | undefined): Promise<void>;
+	setThinking(level: ModelThinkingLevel): Promise<void>;
+	setSteeringMode(mode: "all" | "one-at-a-time"): Promise<void>;
+	setFollowUpMode(mode: "all" | "one-at-a-time"): Promise<void>;
+	setAutoCompaction(enabled: boolean): Promise<void>;
+	setAutoRetry(enabled: boolean): Promise<void>;
+	getAutoCompaction(): boolean;
+	getAutoRetry(): boolean;
+	getQueueModes(): { readonly steeringMode: "all" | "one-at-a-time"; readonly followUpMode: "all" | "one-at-a-time" };
 	abort(): Promise<void>;
 	cycleThinking(): Promise<void>;
 	setModel(model: ModelRef): Promise<void>;
@@ -87,6 +101,8 @@ export interface DurableModelSelection {
 export interface OpenDurableOptions {
 	readonly cwd?: string;
 	readonly continueSession?: boolean;
+	/** Attach the durable event stream for a headless adapter. */
+	readonly eventStream?: boolean;
 	readonly settingsManager?: SettingsManager;
 	readonly model?: DurableModelSelection;
 	readonly thinkingLevel?: ModelThinkingLevel;
@@ -96,6 +112,8 @@ export interface OpenDurableOptions {
 export interface OpenDurableResult {
 	readonly view: DurableViewSource;
 	readonly controller: DurableController;
+	readonly modelRuntime: ModelRuntime;
+	readonly events?: AgentEventStream;
 	/** nyan's settings, for the TUI's theme and terminal capabilities. */
 	readonly settings: SettingsManager;
 	close(): Promise<void>;
@@ -140,7 +158,13 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		const durableModelRuntime = createDurableModelRuntime(modelRuntime);
 		const settingsManager = options.settingsManager ?? SettingsManager.create(location.cwd);
 		configureHarnessHttp(settingsManager);
-		const settings = createHarnessSettings(settingsManager);
+		const queueModes: {
+			steeringMode?: "all" | "one-at-a-time";
+			followUpMode?: "all" | "one-at-a-time";
+			compactionEnabled?: boolean;
+			retryEnabled?: boolean;
+		} = {};
+		const settings = createHarnessSettings(settingsManager, queueModes);
 		const registry = createCodingRegistry(settingsManager, location.cwd);
 		registry.install(Subagent);
 
@@ -198,6 +222,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			for (const { id } of page.items) summaries.push({ id, label: label(id), ...(await firstInput(opened, id)) });
 			cursor = page.next;
 		} while (cursor !== undefined);
+		const events = options.eventStream === true ? await watchEvents(opened, root.id, context) : undefined;
 		let current: Conversation = root;
 		let conversation: AttachedReplicatedState<ConversationView> = await root.viewState(context);
 		const models = (): ModelSummary[] =>
@@ -285,6 +310,10 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		const controller: DurableController = {
 			submit: (text, whenBusy) =>
 				command(async () => watchAnswer(await current.submit({ type: "input", content: text, whenBusy }, context))),
+			submitAndWait: async (content, whenBusy) => {
+				const submission = await current.submit({ type: "input", content, whenBusy }, context);
+				return submission.wait(context);
+			},
 			compact: (instructions) =>
 				command(async () => {
 					const id = await current.compact(instructions, context);
@@ -313,6 +342,29 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 							notice("error", `Compaction ${outcome.status}: ${outcome.error?.message ?? outcome.reason ?? ""}`);
 					}, fail);
 				}),
+			setThinking: (level) => command(async () => current.configure({ thinkingLevel: level }, context)),
+			setSteeringMode: (mode) =>
+				command(async () => {
+					queueModes.steeringMode = mode;
+				}),
+			setFollowUpMode: (mode) =>
+				command(async () => {
+					queueModes.followUpMode = mode;
+				}),
+			setAutoCompaction: (enabled) =>
+				command(async () => {
+					queueModes.compactionEnabled = enabled;
+				}),
+			setAutoRetry: (enabled) =>
+				command(async () => {
+					queueModes.retryEnabled = enabled;
+				}),
+			getAutoCompaction: () => queueModes.compactionEnabled ?? settingsManager.getCompactionSettings().enabled,
+			getAutoRetry: () => queueModes.retryEnabled ?? settingsManager.getRetrySettings().enabled,
+			getQueueModes: () => ({
+				steeringMode: queueModes.steeringMode ?? settingsManager.getSteeringMode(),
+				followUpMode: queueModes.followUpMode ?? settingsManager.getFollowUpMode(),
+			}),
 			// Not queued: it waits until the conversation is idle.
 			abort: () => current.abort(context).catch(fail),
 			cycleThinking: () =>
@@ -376,6 +428,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 				},
 			},
 			controller,
+			modelRuntime,
+			...(events === undefined ? {} : { events }),
 			settings: settingsManager,
 			close() {
 				closing ??= (async () => {
@@ -384,6 +438,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					conversation.dispose();
 					closeTasks();
 					try {
+						await events?.stop();
 						// Close writes no outcome: a running turn resumes with --continue.
 						await opened.close(context);
 						await envs.cleanup(context);

@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { complete, getModel } from "../src/compat.ts";
+import { complete, getModel, getModels } from "../src/compat.ts";
 import type { Api, Context, Model, StreamOptions, Usage } from "../src/types.ts";
 
 type StreamOptionsWithExtras = StreamOptions & Record<string, unknown>;
@@ -707,10 +707,13 @@ describe("totalTokens field", () => {
 
 	describe.skipIf(!process.env.OPENROUTER_API_KEY)("OpenRouter", () => {
 		it(
-			"anthropic/claude-sonnet-4 - should return totalTokens equal to sum of components",
+			"an available Anthropic Sonnet - should return totalTokens equal to sum of components",
 			{ retry: 3, timeout: 60000 },
 			async () => {
-				const llm = getModel("openrouter", "anthropic/claude-sonnet-4");
+				const llm = getModels("openrouter").find((candidate) =>
+					candidate.id.startsWith("anthropic/claude-sonnet-"),
+				);
+				if (llm === undefined) throw new Error("OpenRouter has no Anthropic Sonnet model in the generated catalog");
 
 				console.log(`\nOpenRouter / ${llm.id}:`);
 				const { first, second } = await testTotalTokensWithCache(llm, { apiKey: process.env.OPENROUTER_API_KEY });

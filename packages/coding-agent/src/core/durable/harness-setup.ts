@@ -16,7 +16,15 @@ export function configureHarnessHttp(settingsManager: SettingsManager): void {
 }
 
 /** Harness settings read at every use from nyan's settings as loaded at startup. */
-export function createHarnessSettings(settingsManager: SettingsManager): HarnessSettings {
+export function createHarnessSettings(
+	settingsManager: SettingsManager,
+	overrides?: {
+		readonly steeringMode?: "all" | "one-at-a-time";
+		readonly followUpMode?: "all" | "one-at-a-time";
+		readonly compactionEnabled?: boolean;
+		readonly retryEnabled?: boolean;
+	},
+): HarnessSettings {
 	return {
 		get stream() {
 			const provider = settingsManager.getProviderRetrySettings();
@@ -28,16 +36,22 @@ export function createHarnessSettings(settingsManager: SettingsManager): Harness
 			};
 		},
 		get compaction() {
-			return settingsManager.getCompactionSettings();
+			return {
+				...settingsManager.getCompactionSettings(),
+				...(overrides?.compactionEnabled === undefined ? {} : { enabled: overrides.compactionEnabled }),
+			};
 		},
 		get retry() {
-			return settingsManager.getRetrySettings();
+			return {
+				...settingsManager.getRetrySettings(),
+				...(overrides?.retryEnabled === undefined ? {} : { enabled: overrides.retryEnabled }),
+			};
 		},
 		get steeringMode() {
-			return settingsManager.getSteeringMode();
+			return overrides?.steeringMode ?? settingsManager.getSteeringMode();
 		},
 		get followUpMode() {
-			return settingsManager.getFollowUpMode();
+			return overrides?.followUpMode ?? settingsManager.getFollowUpMode();
 		},
 	};
 }

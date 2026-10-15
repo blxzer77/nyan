@@ -71,7 +71,10 @@ import { printTimings, resetTimings, time } from "./core/timings.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
 import { builtInExtensions } from "./extensions/index.ts";
 import { loadMcpCommand } from "./extensions/mcp/cli.lazy.ts";
+import { runDurableJson } from "./modes/durable/json.ts";
 import { runDurableInteractive } from "./modes/durable/main.ts";
+import { runDurablePrint } from "./modes/durable/print.ts";
+import { runDurableRpc } from "./modes/durable/rpc.ts";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { cleanupManagedInstall, handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./ui/theme/theme.ts";
@@ -139,9 +142,11 @@ function isPlainRuntimeMetadataCommand(parsed: Args): boolean {
 	return !parsed.print && parsed.mode === undefined && (parsed.help === true || parsed.listModels !== undefined);
 }
 
-/** The durable product path currently accepts the common new-session flags; legacy session flags stay read-only. */
-function canRunDurableInteractive(parsed: Args): boolean {
+/** The durable product path accepts the common new-session flags; legacy session selectors stay on compatibility paths. */
+function canRunDurableProductPath(parsed: Args, allowMultipleMessages = false): boolean {
 	return (
+		parsed.help !== true &&
+		parsed.listModels === undefined &&
 		parsed.resume !== true &&
 		parsed.session === undefined &&
 		parsed.sessionId === undefined &&
@@ -166,11 +171,10 @@ function canRunDurableInteractive(parsed: Args): boolean {
 		parsed.themes === undefined &&
 		parsed.noThemes !== true &&
 		parsed.noContextFiles !== true &&
-		parsed.offline !== true &&
 		parsed.tuiMode === undefined &&
 		parsed.projectTrustOverride === undefined &&
 		parsed.fileArgs.length === 0 &&
-		parsed.messages.length <= 1
+		(allowMultipleMessages || parsed.messages.length <= 1)
 	);
 }
 
@@ -379,9 +383,9 @@ function validateSessionIdFlags(parsed: Args): void {
 	}
 }
 
-function openSessionOrExit(path: string, sessionDir?: string): SessionManager {
+function openSessionOrExit(path: string, sessionDir?: string, readOnly = false): SessionManager {
 	try {
-		return SessionManager.open(path, sessionDir);
+		return SessionManager.open(path, sessionDir, undefined, { readOnly });
 	} catch (error: unknown) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(chalk.red(`Error: ${message}`));
@@ -438,7 +442,7 @@ export async function createSessionManager(
 		switch (resolved.type) {
 			case "path":
 			case "local":
-				return openSessionOrExit(resolved.path, sessionDir);
+				return openSessionOrExit(resolved.path, sessionDir, true);
 
 			case "global": {
 				console.log(chalk.yellow(`Session found in different project: ${resolved.cwd}`));
@@ -467,20 +471,20 @@ export async function createSessionManager(
 				console.log(chalk.dim("No session selected"));
 				process.exit(0);
 			}
-			return SessionManager.open(selectedPath, sessionDir);
+			return SessionManager.open(selectedPath, sessionDir, undefined, { readOnly: true });
 		} finally {
 			stopThemeWatcher();
 		}
 	}
 
 	if (parsed.continue) {
-		return SessionManager.continueRecent(cwd, sessionDir);
+		return SessionManager.continueRecent(cwd, sessionDir, { readOnly: true });
 	}
 
 	if (parsed.sessionId) {
 		const existingSession = findLocalSessionByExactId(parsed.sessionId, cwd, sessionDir);
 		if (existingSession) {
-			return SessionManager.open(existingSession.path, sessionDir);
+			return SessionManager.open(existingSession.path, sessionDir, undefined, { readOnly: true });
 		}
 		console.error(
 			chalk.yellow(
@@ -729,7 +733,7 @@ export async function main(args: string[], options?: MainOptions) {
 		appMode === "interactive" &&
 		!parsed.help &&
 		parsed.listModels === undefined &&
-		canRunDurableInteractive(parsed)
+		canRunDurableProductPath(parsed)
 	) {
 		const initial = await prepareInitialMessage(parsed);
 		await runDurableInteractive({
@@ -744,6 +748,61 @@ export async function main(args: string[], options?: MainOptions) {
 			...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
 		});
 		stopThemeWatcher();
+		return;
+	}
+
+	if (appMode === "rpc" && canRunDurableProductPath(parsed, true)) {
+		await runDurableRpc({
+			cwd,
+			settingsManager: startupSettingsManager,
+			...(parsed.provider === undefined && parsed.model === undefined
+				? {}
+				: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
+			...(parsed.thinking === undefined ? {} : { thinkingLevel: parsed.thinking }),
+			...(parsed.apiKey === undefined ? {} : { apiKey: parsed.apiKey }),
+		});
+		return;
+	}
+
+	if (appMode === "json" && canRunDurableProductPath(parsed, true)) {
+		const stdinContent = await readPipedStdin();
+		const initial = await prepareInitialMessage(parsed, stdinContent);
+		const exitCode = await runDurableJson({
+			cwd,
+			continueSession: parsed.continue === true,
+			settingsManager: startupSettingsManager,
+			...(parsed.provider === undefined && parsed.model === undefined
+				? {}
+				: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
+			...(parsed.thinking === undefined ? {} : { thinkingLevel: parsed.thinking }),
+			...(parsed.apiKey === undefined ? {} : { apiKey: parsed.apiKey }),
+			...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
+			...(initial.initialImages === undefined ? {} : { initialImages: initial.initialImages }),
+			messages: parsed.messages,
+		});
+		stopThemeWatcher();
+		if (exitCode !== 0) process.exitCode = exitCode;
+		return;
+	}
+
+	if (appMode === "print" && parsed.mode !== "json" && canRunDurableProductPath(parsed, true)) {
+		const stdinContent = await readPipedStdin();
+		const initial = await prepareInitialMessage(parsed, stdinContent);
+		const exitCode = await runDurablePrint({
+			cwd,
+			continueSession: parsed.continue === true,
+			settingsManager: startupSettingsManager,
+			...(parsed.provider === undefined && parsed.model === undefined
+				? {}
+				: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
+			...(parsed.thinking === undefined ? {} : { thinkingLevel: parsed.thinking }),
+			...(parsed.apiKey === undefined ? {} : { apiKey: parsed.apiKey }),
+			...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
+			...(initial.initialImages === undefined ? {} : { initialImages: initial.initialImages }),
+			messages: parsed.messages,
+		});
+		stopThemeWatcher();
+		if (exitCode !== 0) process.exitCode = exitCode;
 		return;
 	}
 
@@ -765,11 +824,16 @@ export async function main(args: string[], options?: MainOptions) {
 			if (!selectedCwd) {
 				process.exit(0);
 			}
-			sessionManager = SessionManager.open(missingSessionCwdIssue.sessionFile!, sessionDir, selectedCwd);
+			sessionManager = SessionManager.open(missingSessionCwdIssue.sessionFile!, sessionDir, selectedCwd, {
+				readOnly: sessionManager.isReadOnly(),
+			});
 		} else {
 			console.error(chalk.red(new MissingSessionCwdError(missingSessionCwdIssue).message));
 			process.exit(1);
 		}
+	}
+	if (sessionManager.isReadOnly() && sessionManager.getSessionFile() !== undefined) {
+		console.error(chalk.yellow("Legacy JSONL session opened read-only; changes will not be written to that file."));
 	}
 	if (parsed.name !== undefined) {
 		const name = normalizeSessionName(parsed.name);

@@ -2,7 +2,7 @@
 
 Planned work and its status. Updated in the PR that changes it.
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 WIP rule: No more than two roadmap lines may be active simultaneously.
 
@@ -18,8 +18,8 @@ gantt
 
     section Migration (durable product path)
     N0 inventory and event classification :done, crit, n0, 2026-10-15, 10d
-    N1 product path switch to durable :active, crit, n1, after n0, 21d
-    N2 extension and hook adaptation :crit, n2, after n1, 21d
+    N1 product path switch to durable :done, crit, n1, after n0, 21d
+    N2 extension and hook adaptation :active, crit, n2, after n1, 21d
 
     section Context governance
     N3 content-addressed artifact store :crit, n3, after n2, 14d
@@ -128,21 +128,21 @@ The following assessment covers every numbered item from the handoff. A source f
 | R5 | Queued | No Nyan agent retrieval boundary exists. Implement in N6. |
 | R6 | Queued | No Nyan retrieval router, ranking, classification, or telemetry integration exists. Implement in N6. |
 | R7 | Queued | `code_search` is not a Nyan tool. Implement in N6. |
-| R8 | Queued | EmbeddingGemma semantic retrieval has design material but no Nyan provider, index, chunker, or verified dimensions. The design is fixed as an always-available advisory branch rather than a later phase; implement the branch in N6 and verify provider configuration in N7. |
-| R9 | Blocked | Index writes through EffectGateway versus an external index directory are undecided. Add Owner Decision #14 before production index writes in N6. |
+| R8 | Queued | The semantic branch is an optional, self-hosted remote EmbeddingProvider rather than a fixed EmbeddingGemma implementation. The proposed profile is TEI `jinaai/jina-code-embeddings-1.5b` with client batch limit 32 and target 256 dimensions, but model revision, effective dimensions, normalization, prompt/task profile, precision, batch limit, and response shape must pass readiness checks before use. Provider output remains advisory and degrades to exact/structural retrieval. Implement in N6 and verify the provider profile and refusal matrix before claiming readiness. |
+| R9 | Queued | Remote index writes use a self-hosted server-side index coordinator over Qdrant and a strict Tantivy/BM25 service. The coordinator owns staged immutable generations, active-manifest CAS, coordinator epoch/fencing, job leases/checkpoints, reconciliation, rollback, and retention; Nyan never mounts or mutates remote index files. Implement the client protocol and recovery fixtures in N6. |
 | R10 | Queued | External Search, Fetch, and Evidence have design material but no Nyan implementation. Implement in N8. |
-| R11 | Queued | No Retrieval Controller with branch budgets, deadlines, and cancellation exists. Implement in N6. |
+| R11 | Queued | No Retrieval Controller with branch budgets, deadlines, cancellation, or remote bootstrap ownership exists. Implement the controller in N6 with an idempotent server job protocol: a missing active generation starts a background bootstrap while core exact/structural retrieval returns immediately; stale-generation rebuilds remain independent operations. |
 | R12 | Queued | Lexical and relation branches are not in Nyan. Implement deterministic branches in N6. |
-| R13 | Queued | Canonical locator, generation fences, merged IDs, and explicit RRF ordering are not in Nyan. Implement in N6. |
-| R14 | Queued | Coverage, abstain, insufficient coverage, degraded, and blocked pack states are not in Nyan. Implement in N6. |
+| R13 | Queued | Canonical locators, source snapshots, file hashes, generation fences, merged IDs, staged Qdrant/Tantivy generations, and explicit RRF ordering are not in Nyan. Implement them in N6; every candidate must be re-read and checked against the current local source before entering the RetrievalPack. |
+| R14 | Queued | Coverage, abstain, insufficient coverage, degraded, blocked, index-building, provider-unavailable, stale-source, and generation-mismatch states are not in Nyan. Implement explicit provider-combination degradation and keep the last active generation serving while bootstrap or incremental sync is building. |
 | R15 | Queued | Retrieval capability and egress gates are not in Nyan. Configuring a provider is the authorization, so admission is automatic with the fixed safety constraints; implement the capability snapshot and gates in N7 and N8. |
 | R16 | Queued | No Search Provider is configured or built into Nyan. The provider and key remain owner-supplied; implement the adapter and its readiness checks in N8. |
 | R17 | Queued | No SSRF-safe Fetch adapter exists in Nyan. Implement host allowlists, HTTPS, redirects, limits, cancellation, and Artifact storage in N8. |
 | R18 | Queued | No response-hash-based EvidenceRecord or citation pointer exists. Implement in N8. |
 | R19 | Queued | No `web_search` or `web_fetch` tool exists. Implement in N8, after the evidence and citation rules exist. |
-| R20 | Queued | Retrieval is not attached to Context Operation epochs or restart recovery. Integrate in N2, B5, and B7. |
+| R20 | Queued | Retrieval is not attached to Context Operation epochs, restart recovery, or the client/server source-snapshot contract. Integrate the recoverable RetrievalPack task in N2, B5, B7, and N6; durable converts validated packs to bounded ContextUnits and retrieval never writes Agent state directly. |
 | R21 | Queued | No external-link security fixture suite exists in Nyan. Implement in N8. |
-| G6 | Queued | Inspect, freshness, generation, scope, revision, and hash fencing are not in Nyan. Implement in N6. |
+| G6 | Queued | Inspect, freshness, source-snapshot, file-hash, generation, scope, revision, coordinator fencing, manifest CAS, and hash fencing are not in Nyan. Implement in N6 with crash/reconciliation, duplicate-job, stale-source, and partial-index fault coverage. |
 | J1 | Queued | Jev transport and outbound validation are not in Nyan; the Pactile hard-coded endpoint cannot be copied. The decision provider is a configured capability, so implement the contract and configuration in N7 without a fixed endpoint. |
 | J2 | Queued | Rule provider and registry fallback are not in Nyan. Implement in N7. |
 | J3 | Queued | Provider policy caps, assurance, and readiness are not in Nyan. Implement in N7. |
@@ -266,16 +266,16 @@ Durable already provides the Context Operation primitives: the effect sandwich (
 | N3 content-addressed artifact store | Add a content-addressed store to `packages/durable` with scope, basis revision, and read-time hash verification. | Tampering and truncation are detected and no content is returned. |
 | N4 compaction semantics | Port Pactile's validated cut point, mask-first policy, structured summary, and receipt onto the durable compaction task. | Stale basis, failed summary, and failed append each leave the live context unchanged; the three are asserted separately. |
 | N5 memory lifecycle | Context Memory with exact facts and manifests, plus Persistent Memory typed `user`, `feedback`, `project`, and `reference`, with extraction and consolidation as separate tasks. | A failed extraction does not roll back a committed compaction. |
-| N6 retrieval controller | All six branches, the retrieval pack, and the disclosed failure states. | Provider unavailability, timeout, cancellation, denial, stale index, and budget truncation are distinguishable and never reported as an empty result. |
+| N6 retrieval controller | All six branches, the retrieval pack, disclosed failure states, and the optional remote hybrid code-retrieval path described in [the proposed architecture note](.agents/notes/proposed/architecture/2026-10-16-remote-hybrid-code-retrieval.md). The client owns local chunking, scheduling, RRF, current-source validation, and `RetrievalPack`; a self-hosted index coordinator owns Qdrant/Tantivy generations and durable index jobs. | Provider unavailability, timeout, cancellation, denial, stale source/index, generation mismatch, partial publication, bootstrap/incremental-sync failure, and budget truncation are distinguishable and never reported as an empty result. A missing active generation returns core exact/structural results immediately while an idempotent bootstrap runs in the background. |
 | N7 decision providers and policy gate | `@ny4n/decision` with the advisory judgment contract, and the deterministic policy gate that decides admission. | A provider judgment never grants authority, and a configured provider runs without per-request approval. |
 | N8 external search, fetch, and evidence | `SearchHit` to `Fetch` to `Evidence` to citation, with the fixed safety constraints. | No search hit becomes a citation without a fetch record and a response hash. |
 | N9 TUI rewrite | The [TUI rewrite](#tui-rewrite) design. | Every durable operation state renders from the view, and no recovery logic lives in the TUI. |
 
-N0 is complete. N1 is now active; every phase carries a gate that must pass with recorded evidence before the next phase starts, and each phase is a separate change that can be reverted on its own.
+N0 and N1 are complete. N2 is now active; every phase carries a gate that must pass with recorded evidence before the next phase starts, and each phase is a separate change that can be reverted on its own.
 
-## Decided architecture (2026-10-15)
+## Decided architecture (2026-10-15; retrieval revision 2026-10-16)
 
-These decisions fix the target design. They are planning records taken with the owner during this roadmap update, not implementation evidence.
+These decisions fix the target design. They are planning records taken with the owner during this roadmap update, not implementation evidence. The retrieval revision records the owner's self-hosted C/S decision and the reviewed remote hybrid index contract; it does not claim that the client, coordinator, or providers are implemented.
 
 **Product path**
 
@@ -298,16 +298,18 @@ These decisions fix the target design. They are planning records taken with the 
 
 **Retrieval**
 
-- One Retrieval Controller with every branch available from the start: `exact`, `structural`, `lexical`, `relation`, `semantic` (EmbeddingGemma), and `external_search`. Capability, authority, permission, and degradation are expressed as per-run state, not as roadmap phases.
-- Deterministic branches are authoritative. Embedding output is advisory and never proves that a file exists, that a line range is valid, or that no other match exists.
+- One Retrieval Controller with every branch available from the start: `exact`, `structural`, `lexical`, `relation`, optional remote `semantic`, and `external_search`. The semantic branch is a configurable self-hosted provider, initially profiled around TEI `jinaai/jina-code-embeddings-1.5b`; EmbeddingGemma is not a fixed Nyan dependency. Capability, authority, permission, and degradation are expressed as per-run state, not as roadmap phases.
+- The optional local-code hybrid path is client/server separated: the client performs Tree-sitter chunking, breadcrumb enrichment, embedding batch scheduling, local RRF, current-source validation, and `RetrievalPack` construction; a self-hosted index coordinator manages staged immutable Qdrant and strict Tantivy/BM25 generations, active-manifest CAS, coordinator epoch/fencing, durable jobs, reconciliation, and retention. The client never mounts or mutates remote index files.
+- A missing active remote generation does not block the core path: exact/structural retrieval returns immediately while an idempotent bootstrap runs in the background. Incremental sync uses source snapshots, file hashes, tombstones, checkpoints, and the same active-generation publication protocol; the last active generation remains in service until the new one is validated.
+- Deterministic branches are authoritative. Embedding output is advisory and never proves that a file exists, that a line range is valid, or that no other match exists. Remote candidates must be re-read and checked against the current local source before context admission.
 - External search is strictly `SearchHit -> Fetch -> Evidence -> citation`. A search hit never enters the result set and never becomes a citation.
-- The controller's only output is a pack carrying `items`, `rejected`, `coverage`, `fallback`, `budget`, and `abstain`. Provider unavailability, timeout, cancellation, permission denial, stale index, budget truncation, and dimension mismatch are distinct disclosed states, never an empty result.
+- The controller's only output is a pack carrying `items`, `rejected`, `coverage`, `fallback`, `budget`, and `abstain`. Provider unavailability, timeout, cancellation, permission denial, stale source/index, generation mismatch, partial publication, budget truncation, and dimension mismatch are distinct disclosed states, never an empty result. Retrieval returns a provider-neutral `RetrievalPack`; durable converts it to a bounded `ContextUnit` and owns recovery admission.
 
 **Decision and egress**
 
 - Jev is a Decision Provider: it returns structured advisory judgments and holds no authority. `@ny4n/decision` owns the provider contract, registry, judgment schema, readiness, adoption rules, and decision receipts. Nyan reuses `ctx.modelRegistry.classify()` for the rule path rather than porting a fixed endpoint or a second transport.
 - The deterministic Policy Gate decides admission. It checks scope, data class, quota, egress, protected regions, basis freshness, and artifact durability.
-- Configuring a remote provider is the authorization. Remote embedding, decision providers, external search, and fetch run automatically once configured, subject to fixed automatic constraints: HTTPS, SSRF and private-network blocking, host allowlists, redirect rechecks, size and timeout limits, response hashing, and evidence records. No per-request interactive approval is required. An unconfigured provider produces a named unavailable or denied state and sends no request.
+- Configuring a remote provider is the authorization. Self-hosted retrieval services configured under the owner's internal network policy run automatically without per-request approval; the client accepts only configured service identities, ports, and protocols, rechecks redirects, and enforces size, timeout, cancellation, and response validation limits. Public/external search and fetch retain HTTPS, SSRF, private-network blocking, host allowlists, redirect rechecks, response hashing, and evidence-record constraints. An unconfigured provider produces a named unavailable or denied state and sends no request.
 
 ## TUI rewrite
 
@@ -332,18 +334,20 @@ The rewrite is a new line that does not change the non-interactive `print`, `jso
 
 | Line | Item | Owner | Branch / PR | Next step |
 | --- | --- | --- | --- | --- |
-| Migration | N1 product path switch to durable | Blxze | `main`; N1 active | Complete the durable non-interactive adapter and legacy JSONL read-only boundary; then verify mid-tool-call restart recovery, session discovery, `--continue`, and all non-interactive modes |
+| Migration | N2 extension and hook adaptation | Blxze | `main`; N2 active | Reconnect the classified extension surface, add the eight durable capabilities, and preserve the JSON/RPC event contract |
 
-N0 is complete: its deliverables exist, the independent review findings were re-verified and applied,
-and the gate is wired into `npm run check`. Decisions #18 and #19 were answered on 2026-10-15: keep
-every streaming event and add the phased request transform for fidelity. Decisions #20 and #21 were
-also answered: extend the durable settlement hook, and retain `thinking_level_select` as a product-API
-compatibility event. N1's first slice is now implemented: the durable runtime is promoted into
-`src/core/durable`, its TUI adapter into `src/modes/durable`, the default interactive path uses it,
-and new sessions live below `~/.nyan/agent/sessions-durable/`. Legacy session-selection flags still
-use the old JSONL path until their read-only adapters are complete. Evidence for this slice is
-`npm run check`, `npm run build:offline`, the durable session-policy test, the print/RPC regression
-subset, and source plus built-bundle tmux startup with `NYAN_OFFLINE=1`. The corrected inventory
+N0 and N1 are complete: the inventory gate is wired into `npm run check`, the durable runtime is
+promoted into `src/core/durable`, its TUI adapter into `src/modes/durable`, and the default
+interactive, text print, JSON, and RPC paths use durable storage for eligible new-session invocations.
+New sessions live below `~/.nyan/agent/sessions-durable/`; session discovery skips incomplete SQLite
+directories; legacy JSONL sessions selected through compatibility flags are opened read-only. The
+durable JSON event translator preserves the published event vocabulary, and the durable RPC adapter
+covers the core prompt, state, model, thinking, queue, compaction, retry, and new-session lifecycle.
+Legacy RPC product APIs such as bash, queue clearing, entry/tree access, fork, and export return named
+unavailable responses and are explicitly part of N2 rather than silently changing semantics. N1 evidence
+is `npm run check`, `npm run build:offline`, the durable session-policy and JSON-event tests, the durable
+generation/tool recovery tests, the print/JSON/RPC no-model smoke tests, the legacy JSONL read-only
+smoke test, and source plus built-bundle startup checks with `NYAN_OFFLINE=1`. The corrected inventory
 raises N2's scope: 8 durable capabilities must be added, and two events are part of the documented
 `--mode json` contract.
 
@@ -357,7 +361,7 @@ raises N2's scope: 8 durable capabilities must be added, and two events are part
 | 4 | Migration | N2 extension and hook adaptation | N1 |
 | 5 | Context governance | N3 content-addressed artifact store | N2 |
 | 6 | Context governance | N4 compaction semantics | N3 |
-| 7 | Context governance | N6 retrieval controller with all branches | N3; Owner Decision #14 |
+| 7 | Context governance | N6 retrieval controller with all branches and remote hybrid code retrieval | N3; Decision #14 resolved; proposed retrieval architecture note |
 | 8 | Context governance | N7 decision providers and policy gate | N3; Owner Decision #4 |
 | 9 | Context governance | N5 memory lifecycle | N4; Owner Decisions #1 and #11 |
 | 10 | Context governance | N8 external search, fetch, and evidence | N6 and N7; Owner Decision #7 |
@@ -367,14 +371,14 @@ raises N2's scope: 8 durable capabilities must be added, and two events are part
 
 ## Decisions waiting on the owner
 
-Do not close or reinterpret these entries without an owner decision. Work may continue on reversible preparation using the recommendation, but no approval gate may be crossed on that basis. Decision #8 was resolved on 2026-10-15: configuring a remote provider is the authorization, and no per-request approval is required. Decision #10 was resolved on 2026-10-15: durable owns the ContextOperation, artifact, receipt, checkpoint, and recovery runtime. Decision #17 was resolved on 2026-10-15: the durable Harness becomes the product path rather than a runtime mounted beside `AgentSession`. Decision #12 has a merged implementation slice in PR #13, but the roadmap keeps the policy question visible until the owner explicitly closes it.
+Do not close or reinterpret these entries without an owner decision. Work may continue on reversible preparation using the recommendation, but no approval gate may be crossed on that basis. Decision #8 was resolved on 2026-10-15: configuring a remote provider is the authorization, and no per-request approval is required. Decision #10 was resolved on 2026-10-15: durable owns the ContextOperation, artifact, receipt, checkpoint, and recovery runtime. Decision #14 was resolved on 2026-10-16: remote retrieval uses the server-side coordinator and staged dual-index publication described in the proposed architecture note. Decision #17 was resolved on 2026-10-15: the durable Harness becomes the product path rather than a runtime mounted beside `AgentSession`. Decision #12 has a merged implementation slice in PR #13, but the roadmap keeps the policy question visible until the owner explicitly closes it.
 
 | # | Question | Recommended | Blocks |
 | --- | --- | --- | --- |
 | 1 | Cross-session memory location | Under durable storage; the physical layout follows the durable session directory policy frozen in N0 | N5 |
 | 2 | Develop context governance only in nyan from now on | Yes | N3 |
 | 3 | Keep Pactile review gates or use Nyan tests and notes | Tests + notes, keep evaluation fixtures and zero-tolerance rules | N3 |
-| 4 | Decision-provider and embedding endpoint config names and test credentials | Owner provides; an unconfigured provider yields a named unavailable state rather than a hidden fallback | N6 and N7 |
+| 4 | Unified decision/retrieval provider configuration, endpoint names, auth references, and test credentials | One structured `retrieval` block covers TEI embedding/rerank, Qdrant, Tantivy, model profiles, readiness, timeouts, and batch limits; no default hosted endpoints; owner provides credentials | N6 and N7 |
 | 5 | Location of the Pactile stage 1a evaluation runner | Owner to point at it | N4 |
 | 6 | Separate `@ny4n/decision` package or merge into `@ny4n/durable` | Separate package | N7 |
 | 7 | External search open questions including URL canonicalization, retention, refetch, budget, schema, and allowlist | See the original checklist item 7 | N8 |
@@ -382,7 +386,7 @@ Do not close or reinterpret these entries without an owner decision. Work may co
 | 11 | Approver for lossy compression, permanent drop, and memory deletion | Low-risk memory promotion is automatic by policy; these three remain explicit user confirmations recorded as a durable entry | N5 |
 | 12 | Bun HTTP dispatcher, keep undici or switch to Bun-native fetch | Bun-native fetch behind the runtime adapter; PR #13 is only a partial implementation slice | Bun Phase 3 remainder |
 | 13 | Bun release signing certificate and key scope | Owner provides a certificate or explicitly defers signing | Bun Phase 4 |
-| 14 | Retrieval index storage placement | Freeze the port and recovery contract before choosing the storage placement | N6 |
+| 14 | Retrieval index storage placement and publication ownership | Resolved 2026-10-16: self-hosted server-side index coordinator over Qdrant and strict Tantivy/BM25; staged immutable generations, active-manifest CAS, coordinator epoch/fencing, durable jobs, reconciliation, rollback, and retention are the required contract. Nyan uses the client protocol and never mounts remote index files. | Resolved; N6 |
 | 15 | Keep the `V1` suffix in public contract names | Freeze one naming rule before public package exports are created | N3, N6, and N7 |
 | 16 | Keep Pactile documents as an appendix or link-only reference | Rewrite verified Nyan behavior in English and link to Pactile design references | Documentation for N3 through N9 |
 | 17 | Durable Harness as the product path or a runtime beside `AgentSession` | Durable Harness as the product path; resolved on 2026-10-15 | Resolved; N1 and N2 |
@@ -390,6 +394,7 @@ Do not close or reinterpret these entries without an owner decision. Work may co
 | 19 | Does durable gain the phased request transform? | Resolved 2026-10-15: preserve fidelity by adding the phased channel, including the two ordered phases and the prompt/tool restoration between them | Resolved; N2 |
 | 20 | How is the settlement boundary expressed? | Resolved 2026-10-15: widen the durable hook so settlement entry writes remain durable and recoverable; do not model it as `onYield` | Resolved; N2 |
 | 21 | Are the events with no extension consumer removed? | Resolved 2026-10-15: retain all four streamed events and retain `thinking_level_select` as a product-API compatibility event; no event is removed in N2 | Resolved; N2 |
+| 22 | May N1 close with legacy RPC product APIs deferred? | Resolved 2026-10-16: close N1 with durable JSON/RPC core lifecycle and event/recovery evidence; bash, queue mutation, entry/tree access, fork, export, and related product APIs are explicit N2 scope | Resolved; N2 |
 
 ## Done
 

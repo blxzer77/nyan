@@ -1,0 +1,349 @@
+import { join } from "node:path";
+import type { AgentMessage } from "@ny4n/agent-core";
+import { getSupportedThinkingLevels, type ModelThinkingLevel } from "@ny4n/ai";
+import type { AgentState, LiveState, UsageState } from "@ny4n/durable";
+import { type DurableModelSelection, type OpenDurableResult, openDurable } from "../../core/durable/runtime.ts";
+import {
+	flushRawStdout,
+	takeOverStdout,
+	waitForRawStdoutBackpressure,
+	writeRawStdout,
+} from "../../core/output-guard.ts";
+import type { SettingsManager } from "../../core/settings-manager.ts";
+import { killTrackedDetachedChildren } from "../../utils/shell.ts";
+import { attachJsonlLineReader, serializeJsonLine } from "../rpc/jsonl.ts";
+import type { RpcCommand, RpcResponse, RpcSessionState } from "../rpc/rpc-types.ts";
+import { DurableJsonEventAdapter } from "./json-events.ts";
+
+export interface DurableRpcOptions {
+	readonly cwd: string;
+	readonly settingsManager: SettingsManager;
+	readonly model?: DurableModelSelection;
+	readonly thinkingLevel?: ModelThinkingLevel;
+	readonly apiKey?: string;
+}
+
+/** Run the durable product path with the JSON-lines RPC protocol. */
+export async function runDurableRpc(options: DurableRpcOptions): Promise<never> {
+	takeOverStdout();
+	let durable = await openDurable({ ...options, eventStream: true });
+	let eventAdapter: DurableJsonEventAdapter;
+	let shuttingDown = false;
+	const signalCleanupHandlers: Array<() => void> = [];
+	let detachInput = (): void => {};
+
+	const output = (value: unknown): void => writeRawStdout(serializeJsonLine(value));
+	const success = (id: string | undefined, command: string, data?: object | null): RpcResponse =>
+		({
+			...(id === undefined ? {} : { id }),
+			type: "response",
+			command,
+			success: true,
+			...(data === undefined ? {} : { data }),
+		}) as RpcResponse;
+	const failure = (id: string | undefined, command: string, message: string): RpcResponse => ({
+		...(id === undefined ? {} : { id }),
+		type: "response",
+		command,
+		success: false,
+		error: message,
+	});
+
+	const messagesOf = (source: OpenDurableResult): AgentMessage[] =>
+		source.view.current().conversation.entries.flatMap((entry) => (entry.model ?? []) as AgentMessage[]);
+
+	const bindEvents = (): void => {
+		const events = durable.events;
+		if (events === undefined) throw new Error("Durable RPC mode did not acquire an event stream");
+		eventAdapter = new DurableJsonEventAdapter(() => messagesOf(durable));
+		events.start(async (batch) => {
+			for (const event of eventAdapter.translate(batch)) output(event);
+			await waitForRawStdoutBackpressure();
+		});
+	};
+	bindEvents();
+
+	const replaceSession = async (continueSession: boolean): Promise<void> => {
+		await durable.close();
+		durable = await openDurable({
+			cwd: options.cwd,
+			continueSession,
+			settingsManager: options.settingsManager,
+			...(options.model === undefined ? {} : { model: options.model }),
+			...(options.thinkingLevel === undefined ? {} : { thinkingLevel: options.thinkingLevel }),
+			...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
+			eventStream: true,
+		});
+		bindEvents();
+	};
+
+	const state = (): RpcSessionState => {
+		const view = durable.view.current();
+		const agent = (view.conversation.docs["nyan.agent"] ?? {}) as AgentState;
+		const live = (view.conversation.docs["nyan.live"] ?? {}) as LiveState;
+		const inbox = (view.conversation.docs["nyan.inbox"] ?? { items: [] }) as unknown as {
+			readonly items: readonly unknown[];
+		};
+		const model =
+			agent.model === undefined
+				? undefined
+				: durable.modelRuntime.getModel(agent.model.provider, agent.model.modelId);
+		const modes = durable.controller.getQueueModes();
+		return {
+			...(model === undefined ? {} : { model }),
+			thinkingLevel: agent.thinkingLevel ?? "off",
+			isStreaming: live.run !== undefined || live.generation !== undefined,
+			isCompacting: (live.compactions ?? []).length > 0,
+			steeringMode: modes.steeringMode,
+			followUpMode: modes.followUpMode,
+			sessionFile: join(view.session.directory, "session.sqlite"),
+			sessionId: view.session.id,
+			autoCompactionEnabled: durable.controller.getAutoCompaction(),
+			messageCount: view.conversation.entries.reduce((count, entry) => count + (entry.model?.length ?? 0), 0),
+			pendingMessageCount: inbox.items.length,
+		};
+	};
+
+	const getAssistantText = (): string | null => {
+		const assistant = [...messagesOf(durable)].reverse().find((message) => message.role === "assistant");
+		return assistant === undefined ? null : textOfMessage(assistant);
+	};
+
+	const handleCommand = async (command: RpcCommand): Promise<RpcResponse | undefined> => {
+		const id = command.id;
+		switch (command.type) {
+			case "prompt":
+				void durable.controller
+					.submitAndWait(
+						command.images === undefined
+							? command.message
+							: [{ type: "text", text: command.message }, ...command.images],
+						command.streamingBehavior ?? "steer",
+					)
+					.then(
+						() => output(success(id, "prompt", { disposition: "started" })),
+						(error) => output(failure(id, "prompt", error instanceof Error ? error.message : String(error))),
+					);
+				return undefined;
+			case "steer":
+				await durable.controller.submitAndWait(
+					command.images === undefined
+						? command.message
+						: [{ type: "text", text: command.message }, ...command.images],
+					"steer",
+				);
+				return success(id, "steer", { disposition: "queued" });
+			case "follow_up":
+				await durable.controller.submitAndWait(
+					command.images === undefined
+						? command.message
+						: [{ type: "text", text: command.message }, ...command.images],
+					"followUp",
+				);
+				return success(id, "follow_up", { disposition: "queued" });
+			case "abort":
+				await durable.controller.abort();
+				return success(id, "abort");
+			case "clear_queue":
+				return failure(id, "clear_queue", "Durable RPC does not expose queue clearing yet");
+			case "new_session":
+				await replaceSession(false);
+				return success(id, "new_session", { cancelled: false });
+			case "get_state":
+				return success(id, "get_state", state());
+			case "set_model": {
+				const model = durable.modelRuntime.getModel(command.provider, command.modelId);
+				if (model === undefined)
+					return failure(id, "set_model", `Model not found: ${command.provider}/${command.modelId}`);
+				await durable.controller.setModel({ provider: command.provider, modelId: command.modelId });
+				return success(id, "set_model", model);
+			}
+			case "cycle_model": {
+				const models = durable.modelRuntime.getAvailableSnapshot();
+				const current = (durable.view.current().conversation.docs["nyan.agent"] ?? {}) as AgentState;
+				const index =
+					current.model === undefined
+						? -1
+						: models.findIndex(
+								(model) => model.provider === current.model?.provider && model.id === current.model?.modelId,
+							);
+				const model = models[(index + 1) % Math.max(models.length, 1)];
+				if (model === undefined) return success(id, "cycle_model", null);
+				await durable.controller.setModel({ provider: model.provider, modelId: model.id });
+				return success(id, "cycle_model", { model, thinkingLevel: state().thinkingLevel, isScoped: false });
+			}
+			case "get_available_models":
+				return success(id, "get_available_models", { models: durable.modelRuntime.getAvailableSnapshot() });
+			case "set_thinking_level":
+				await durable.controller.setThinking(command.level);
+				return success(id, "set_thinking_level");
+			case "cycle_thinking_level": {
+				const current = state();
+				if (current.model === undefined) return success(id, "cycle_thinking_level", null);
+				const levels = getSupportedThinkingLevels(current.model);
+				const next = levels[(levels.indexOf(current.thinkingLevel) + 1) % levels.length];
+				if (next === undefined) return success(id, "cycle_thinking_level", null);
+				await durable.controller.setThinking(next);
+				return success(id, "cycle_thinking_level", { level: next });
+			}
+			case "get_available_thinking_levels": {
+				const current = state();
+				return success(id, "get_available_thinking_levels", {
+					levels: current.model === undefined ? [] : getSupportedThinkingLevels(current.model),
+				});
+			}
+			case "set_steering_mode":
+				await durable.controller.setSteeringMode(command.mode);
+				return success(id, "set_steering_mode");
+			case "set_follow_up_mode":
+				await durable.controller.setFollowUpMode(command.mode);
+				return success(id, "set_follow_up_mode");
+			case "compact":
+				await durable.controller.compact(command.customInstructions);
+				return success(id, "compact", {});
+			case "set_auto_compaction":
+				await durable.controller.setAutoCompaction(command.enabled);
+				return success(id, "set_auto_compaction");
+			case "set_auto_retry":
+				await durable.controller.setAutoRetry(command.enabled);
+				return success(id, "set_auto_retry");
+			case "abort_retry":
+				return failure(id, "abort_retry", "Durable RPC does not expose retry-only cancellation yet");
+			case "get_last_assistant_text":
+				return success(id, "get_last_assistant_text", { text: getAssistantText() });
+			case "get_messages":
+				return success(id, "get_messages", { messages: messagesOf(durable) });
+			case "get_commands":
+				return success(id, "get_commands", { commands: [] });
+			case "get_session_stats": {
+				const messages = messagesOf(durable);
+				const usage = ((durable.view.current().conversation.docs["nyan.usage"] ?? {}) as UsageState).models ?? {};
+				const totals = Object.values(usage).reduce(
+					(total, item) => ({
+						input: total.input + item.input,
+						output: total.output + item.output,
+						cacheRead: total.cacheRead + item.cacheRead,
+						cacheWrite: total.cacheWrite + item.cacheWrite,
+						totalTokens: total.totalTokens + item.totalTokens,
+						cost: total.cost + item.cost.total,
+					}),
+					{ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: 0 },
+				);
+				return success(id, "get_session_stats", {
+					sessionFile: state().sessionFile,
+					sessionId: state().sessionId,
+					userMessages: messages.filter((message) => message.role === "user").length,
+					assistantMessages: messages.filter((message) => message.role === "assistant").length,
+					toolCalls: messages
+						.filter((message) => message.role === "assistant")
+						.reduce((count, message) => count + toolCallCount(message), 0),
+					toolResults: messages.filter((message) => message.role === "toolResult").length,
+					totalMessages: messages.length,
+					tokens: totals,
+					cost: totals.cost,
+				});
+			}
+			case "switch_session":
+			case "fork":
+			case "clone":
+			case "get_fork_messages":
+			case "get_entries":
+			case "get_tree":
+			case "export_html":
+			case "set_session_name":
+			case "bash":
+			case "abort_bash":
+				return failure(id, command.type, `Command ${command.type} is not available on the durable RPC path yet`);
+		}
+	};
+
+	const shutdown = async (exitCode = 0, signal?: NodeJS.Signals): Promise<never> => {
+		if (shuttingDown) process.exit(exitCode);
+		shuttingDown = true;
+		for (const cleanup of signalCleanupHandlers) cleanup();
+		detachInput();
+		process.stdin.pause();
+		killTrackedDetachedChildren();
+		await durable.close();
+		if (signal !== "SIGTERM") await waitForRawStdoutBackpressure();
+		await flushRawStdout();
+		process.exit(exitCode);
+	};
+
+	const handleLine = async (line: string): Promise<void> => {
+		if (line.trim().length === 0) return;
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(line);
+		} catch (error) {
+			output(
+				failure(
+					undefined,
+					"parse",
+					`Failed to parse command: ${error instanceof Error ? error.message : String(error)}`,
+				),
+			);
+			return;
+		}
+		if (typeof parsed !== "object" || parsed === null || !("type" in parsed) || typeof parsed.type !== "string") {
+			output(failure(undefined, "parse", "RPC command must be a JSON object with a type"));
+			return;
+		}
+		try {
+			const response = await handleCommand(parsed as RpcCommand);
+			if (response !== undefined) output(response);
+			await waitForRawStdoutBackpressure();
+		} catch (error) {
+			const record = parsed as Record<string, unknown>;
+			output(
+				failure(
+					typeof record.id === "string" ? record.id : undefined,
+					parsed.type,
+					error instanceof Error ? error.message : String(error),
+				),
+			);
+			await waitForRawStdoutBackpressure();
+		}
+	};
+
+	const registerSignal = (signal: NodeJS.Signals, exitCode: number): void => {
+		const handler = () => void shutdown(exitCode, signal);
+		process.on(signal, handler);
+		signalCleanupHandlers.push(() => process.off(signal, handler));
+	};
+	registerSignal("SIGTERM", 143);
+	if (process.platform !== "win32") registerSignal("SIGHUP", 129);
+	process.stdin.on("end", () => void shutdown());
+	detachInput = attachJsonlLineReader(process.stdin, (line) => void handleLine(line));
+	return new Promise(() => {});
+}
+
+function isTextPart(value: unknown): value is { readonly type: "text"; readonly text: string } {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"type" in value &&
+		value.type === "text" &&
+		"text" in value &&
+		typeof value.text === "string"
+	);
+}
+
+function isToolCallPart(value: unknown): value is { readonly type: "toolCall" } {
+	return typeof value === "object" && value !== null && "type" in value && value.type === "toolCall";
+}
+
+function textOfMessage(message: AgentMessage): string {
+	if (!("content" in message)) return "";
+	if (typeof message.content === "string") return message.content;
+	if (!Array.isArray(message.content)) return "";
+	return message.content
+		.filter(isTextPart)
+		.map((part) => part.text)
+		.join("");
+}
+
+function toolCallCount(message: AgentMessage): number {
+	if (message.role !== "assistant" || !("content" in message) || !Array.isArray(message.content)) return 0;
+	return message.content.filter(isToolCallPart).length;
+}

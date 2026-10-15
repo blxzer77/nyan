@@ -108,7 +108,7 @@ function setup(): CliDirs {
 }
 
 describe("startup session name", () => {
-	it("sets --name on the selected session before runtime model validation", async () => {
+	it("does not append --name to a read-only legacy session before runtime model validation", async () => {
 		const dirs = setup();
 		const result = await runCli(
 			["--session", dirs.sessionFile, "--name", "  CLI Named Session  ", "--model", "missing-model", "-p", "hi"],
@@ -117,6 +117,7 @@ describe("startup session name", () => {
 
 		expect(result.code).toBe(1);
 		expect(result.signal).toBeNull();
-		expect(readSessionInfoNames(dirs.sessionFile)).toEqual(["CLI Named Session"]);
+		expect(readSessionInfoNames(dirs.sessionFile)).toEqual([]);
+		expect(result.stderr).toContain("read-only");
 	});
 });
