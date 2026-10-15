@@ -12,9 +12,16 @@
 #
 # Review effort is "medium". Measured on a 6-file diff against effort=low:
 # 14 findings vs 8, at ~2.6x the tokens and ~30 minutes instead of ~7. The extra
-# findings included a real user-visible regression that low missed. Every timeout
-# below is sized for that worst case: workflow 50 min, dispatch 40 min,
-# nginx 2500s. A medium run that exceeds them loses the whole review.
+# findings included a real user-visible regression that low missed.
+#
+# No timeout is set on the review itself: a review runs as long as the diff needs.
+# Earlier this workflow capped the job at 50 min, dispatch at 40 min and nginx at
+# 2500s, which silently discarded long runs (a 32-min effort=medium session has
+# already been observed on dev-02). The only ceiling left is GitHub's own hard
+# limit: jobs.timeout-minutes maxes out at 360 minutes, and omitting the key
+# falls back to that same 360. So the workflow explicitly declares 360 — the
+# largest legal value — and nginx's 24h backstop can never fire first (it is the
+# client that runs out of clock).
 #
 # OCR reports status=partial when some files could not be reviewed; the rendered
 # comment then carries a warning naming them, so a partial run is never mistaken
@@ -47,7 +54,9 @@ jobs:
     # Compare repository full names rather than head.repo.fork: this repository
     # is itself a fork, so `fork` is true for every PR. Mirrors ci.yml.
     runs-on: ${{ (github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","repo-nyan"]') || 'ubuntu-latest' }}
-    timeout-minutes: 50
+    # 360 is GitHub's hard maximum for jobs.timeout-minutes; there is no way to
+    # express "unlimited", and omitting the key means the same 360.
+    timeout-minutes: 360
     steps:
       - name: Guard — fork PRs cannot reach the dispatch service
         id: guard
@@ -110,6 +119,8 @@ jobs:
               "diff": diff,
               "model": "deepseek-flash",
               "effort": "medium",
+              # 0 = review 不限时;能跑多久由本作业的 timeout-minutes 决定。
+              "timeout_minutes": 0,
           }).encode()
           req = urllib.request.Request(
               os.environ["URL"].rstrip('/') + '/review',
@@ -120,7 +131,7 @@ jobs:
               },
               method='POST')
           try:
-              with urllib.request.urlopen(req, timeout=2600) as resp:
+              with urllib.request.urlopen(req, timeout=None) as resp:
                   data = json.load(resp)
           except urllib.error.HTTPError as exc:
               data = {"ok": False, "error": "HTTP %s: %s" % (exc.code, exc.read(200)[:200])}
