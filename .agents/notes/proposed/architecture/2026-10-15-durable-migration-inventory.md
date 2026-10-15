@@ -323,7 +323,9 @@ point. It fails when:
 - an evidence string points at a missing file, a line past the end of the file, or — for the
   `types.ts` declaration of an event or API member — a line that does not name it.
 
-The owner has reviewed this note and the JSON. The check is now wired into `npm run check`; N0 remains open only for the settlement-boundary decision.
+The owner has reviewed this note and the JSON. The check is wired into `npm run check`, and the owner
+resolved the settlement-boundary decision by choosing an extended durable hook. N0 is complete; the
+hook implementation is part of N2.
 
 ### Open questions
 
@@ -335,7 +337,7 @@ owner has resolved the streaming and phased-request policy decisions, and has re
 | --- | --- | --- |
 | Bounded streaming channel | `message_update`, `tool_execution_update`, `provider_stream_event` | Resolved: preserve the events. Durable still needs to define ordering and backpressure. |
 | Phased request transform | `context`, `context_with_system` | Resolved: preserve both ordered phases and prompt/tool restoration. |
-| Settlement boundary | `agent_before_settle`, `turn_end` | Open: durable must widen the hook so settlement entry writes remain durable and recoverable. |
+| Settlement boundary | `agent_before_settle`, `turn_end` | Resolved 2026-10-15: durable widens the hook so settlement entry writes remain durable and recoverable; implementation is part of N2. |
 
 ## Alternatives considered
 

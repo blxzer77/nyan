@@ -17,8 +17,8 @@ gantt
     axisFormat %m-%d
 
     section Migration (durable product path)
-    N0 inventory and event classification :crit, n0, 2026-10-15, 10d
-    N1 product path switch to durable :crit, n1, after n0, 21d
+    N0 inventory and event classification :done, crit, n0, 2026-10-15, 10d
+    N1 product path switch to durable :active, crit, n1, after n0, 21d
     N2 extension and hook adaptation :crit, n2, after n1, 21d
 
     section Context governance
@@ -40,7 +40,7 @@ gantt
 
 The Queue table records complete multi-parent dependencies where the compact Gantt representation uses one primary predecessor. Critical bars identify work waiting on an owner decision or on a task blocked by one. GitHub's current Mermaid renderer keeps the today marker on by default but rejects an explicit `todayMarker on` directive and its style form for this chart; the valid chart therefore relies on that default.
 
-The verified baseline is `origin/main` at `e0a3f3cc3` after the Nyan 1.3.0 release. The Nyan tree has 12 packages and has no `packages/context`, `packages/retrieval`, `packages/decision`, or `packages/coding-agent/src/core/context-governance` implementation. Pactile's source, tests, design documents, evidence fixtures, and the external retrieval worker are available as migration inputs, not as Nyan completion evidence. The 1.3.0 Herdr, Bun, and provider fixes are published; they do not implement Context Governance. On 2026-10-15 the owner fixed the target architecture for compression, memory, retrieval, decision, egress, and the terminal UI, and selected the implementation shape; those decisions are recorded in the [Decided architecture](#decided-architecture-2026-10-15), [Implementation orchestration](#implementation-orchestration-2026-10-15), and [TUI rewrite](#tui-rewrite) sections below. They are planning records, not implementation evidence, and no implementation line is active.
+The verified baseline is `origin/main` at `589be2d73` after the N0 inventory and durable-path classification commits. The Nyan tree has 12 packages and has no `packages/context`, `packages/retrieval`, `packages/decision`, or `packages/coding-agent/src/core/context-governance` implementation. Pactile's source, tests, design documents, evidence fixtures, and the external retrieval worker are available as migration inputs, not as Nyan completion evidence. The 1.3.0 Herdr, Bun, and provider fixes are published; they do not implement Context Governance. On 2026-10-15 the owner fixed the target architecture for compression, memory, retrieval, decision, egress, and the terminal UI, and selected the implementation shape; those decisions are recorded in the [Decided architecture](#decided-architecture-2026-10-15), [Implementation orchestration](#implementation-orchestration-2026-10-15), and [TUI rewrite](#tui-rewrite) sections below. They are planning records, not implementation evidence, and no implementation line is active.
 
 ### Status key
 
@@ -271,7 +271,7 @@ Durable already provides the Context Operation primitives: the effect sandwich (
 | N8 external search, fetch, and evidence | `SearchHit` to `Fetch` to `Evidence` to citation, with the fixed safety constraints. | No search hit becomes a citation without a fetch record and a response hash. |
 | N9 TUI rewrite | The [TUI rewrite](#tui-rewrite) design. | Every durable operation state renders from the view, and no recovery logic lives in the TUI. |
 
-N0 is the only phase that can start without an owner decision. Every phase after it carries a gate that must pass with recorded evidence before the next phase starts, and each phase is a separate change that can be reverted on its own.
+N0 is complete. N1 is now active; every phase carries a gate that must pass with recorded evidence before the next phase starts, and each phase is a separate change that can be reverted on its own.
 
 ## Decided architecture (2026-10-15)
 
@@ -332,24 +332,23 @@ The rewrite is a new line that does not change the non-interactive `print`, `jso
 
 | Line | Item | Owner | Branch / PR | Next step |
 | --- | --- | --- | --- | --- |
-| Migration | N0 inventory and extension classification | Blxze | `main`; handoff-ready commits pending push | Owner answers decision #20; then start N1 (the extension-surface check is wired into `npm run check`) |
+| Migration | N1 product path switch to durable | Blxze | `main`; N1 active | Promote the durable runtime into the product path; verify session discovery, `--continue`, restart recovery, and non-interactive mode compatibility |
 
-N0's deliverables exist and the gate passes, but N0 is not closed. An independent review rejected the
-first draft; the findings were re-verified against source, applied, and recorded in
-[the review](.agents/notes/proposed/architecture/2026-10-15-durable-migration-inventory-review.md).
-The corrected inventory raises N2's scope: 8 durable capabilities must be added, and two of the
-events are part of the documented `--mode json` contract. Decisions #18 and #19 were answered on 2026-10-15: keep every streaming event and add the
-bounded channel, and add the phased request transform for fidelity. Decision #21 was answered on
-2026-10-15: retain `thinking_level_select` as a product-API compatibility event. Only decision #20
-(the settlement boundary) remains open.
+N0 is complete: its deliverables exist, the independent review findings were re-verified and applied,
+and the gate is wired into `npm run check`. Decisions #18 and #19 were answered on 2026-10-15: keep
+every streaming event and add the bounded channel, and add the phased request transform for fidelity.
+Decisions #20 and #21 were also answered: extend the durable settlement hook, and retain
+`thinking_level_select` as a product-API compatibility event. The corrected inventory raises N2's
+scope: 8 durable capabilities must be added, and two of the events are part of the documented
+`--mode json` contract.
 
 ## Queue
 
 | Order | Line | Item | Depends on |
 | --- | --- | --- | --- |
-| 1 | Migration | N0 inventory and extension classification | Deliverables written and reviewed; decision #20 outstanding |
+| 1 | Migration | N0 inventory and extension classification | Done: gate wired, reviewed, and owner decisions #18–#21 recorded |
 | 2 | Bun-first | Phase 2 runtime adapter | Bun Phase 1 parity fixes; independent of N0 |
-| 3 | Migration | N1 product path switch to durable | N0 closes after the owner decisions |
+| 3 | Migration | N1 product path switch to durable | N0 complete |
 | 4 | Migration | N2 extension and hook adaptation | N1 |
 | 5 | Context governance | N3 content-addressed artifact store | N2 |
 | 6 | Context governance | N4 compaction semantics | N3 |
@@ -384,7 +383,7 @@ Do not close or reinterpret these entries without an owner decision. Work may co
 | 17 | Durable Harness as the product path or a runtime beside `AgentSession` | Durable Harness as the product path; resolved on 2026-10-15 | Resolved; N1 and N2 |
 | 18 | Does durable gain a bounded streaming channel, or do the streamed events arrive another way? | Resolved 2026-10-15: keep all streaming events and add the bounded channel. `--mode json` and `--mode rpc` stream `message_update` and tool events, so reducing them would break a documented interface | Resolved; N2 |
 | 19 | Does durable gain the phased request transform? | Resolved 2026-10-15: preserve fidelity by adding the phased channel, including the two ordered phases and the prompt/tool restoration between them | Resolved; N2 |
-| 20 | How is the settlement boundary expressed? | Widen the durable hook, or move the entry writes to a named product API; do not model it as `onYield` | N2 |
+| 20 | How is the settlement boundary expressed? | Resolved 2026-10-15: widen the durable hook so settlement entry writes remain durable and recoverable; do not model it as `onYield` | Resolved; N2 |
 | 21 | Are the events with no extension consumer removed? | Resolved 2026-10-15: retain all four streamed events and retain `thinking_level_select` as a product-API compatibility event; no event is removed in N2 | Resolved; N2 |
 
 ## Done
