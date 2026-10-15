@@ -4,6 +4,10 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+### Changed
+
+- The default interactive session path now uses the durable Harness and SQLite under `~/.nyan/agent/sessions-durable/`; `--continue` resumes the newest durable session for the current directory. Legacy JSONL session-selection flags remain the read-only compatibility path while their durable adapters are implemented.
+
 ## [1.3.0] - 2026-10-14
 
 ### Breaking Changes

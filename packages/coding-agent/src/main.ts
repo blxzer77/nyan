@@ -71,6 +71,7 @@ import { printTimings, resetTimings, time } from "./core/timings.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
 import { builtInExtensions } from "./extensions/index.ts";
 import { loadMcpCommand } from "./extensions/mcp/cli.lazy.ts";
+import { runDurableInteractive } from "./modes/durable/main.ts";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { cleanupManagedInstall, handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./ui/theme/theme.ts";
@@ -136,6 +137,41 @@ function toPrintOutputMode(appMode: AppMode): Exclude<Mode, "rpc"> {
 
 function isPlainRuntimeMetadataCommand(parsed: Args): boolean {
 	return !parsed.print && parsed.mode === undefined && (parsed.help === true || parsed.listModels !== undefined);
+}
+
+/** The durable product path currently accepts the common new-session flags; legacy session flags stay read-only. */
+function canRunDurableInteractive(parsed: Args): boolean {
+	return (
+		parsed.resume !== true &&
+		parsed.session === undefined &&
+		parsed.sessionId === undefined &&
+		parsed.fork === undefined &&
+		parsed.sessionDir === undefined &&
+		parsed.noSession !== true &&
+		parsed.name === undefined &&
+		parsed.models === undefined &&
+		parsed.tools === undefined &&
+		parsed.excludeTools === undefined &&
+		parsed.noTools !== true &&
+		parsed.noBuiltinTools !== true &&
+		parsed.systemPrompt === undefined &&
+		parsed.appendSystemPrompt === undefined &&
+		parsed.extensions === undefined &&
+		parsed.noExtensions !== true &&
+		parsed.noMcp !== true &&
+		parsed.noSkills !== true &&
+		parsed.skills === undefined &&
+		parsed.promptTemplates === undefined &&
+		parsed.noPromptTemplates !== true &&
+		parsed.themes === undefined &&
+		parsed.noThemes !== true &&
+		parsed.noContextFiles !== true &&
+		parsed.offline !== true &&
+		parsed.tuiMode === undefined &&
+		parsed.projectTrustOverride === undefined &&
+		parsed.fileArgs.length === 0 &&
+		parsed.messages.length <= 1
+	);
 }
 
 async function runAuthCommand(args: string[]): Promise<boolean> {
@@ -687,6 +723,28 @@ export async function main(args: string[], options?: MainOptions) {
 
 	if (appMode === "interactive" && parsed.useTheme !== undefined) {
 		startupSettingsManager.applyOverrides({ theme: parsed.useTheme });
+	}
+
+	if (
+		appMode === "interactive" &&
+		!parsed.help &&
+		parsed.listModels === undefined &&
+		canRunDurableInteractive(parsed)
+	) {
+		const initial = await prepareInitialMessage(parsed);
+		await runDurableInteractive({
+			cwd,
+			continueSession: parsed.continue === true,
+			settingsManager: startupSettingsManager,
+			...(parsed.provider === undefined && parsed.model === undefined
+				? {}
+				: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
+			...(parsed.thinking === undefined ? {} : { thinkingLevel: parsed.thinking }),
+			...(parsed.apiKey === undefined ? {} : { apiKey: parsed.apiKey }),
+			...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
+		});
+		stopThemeWatcher();
+		return;
 	}
 
 	// Decide the final runtime cwd before creating cwd-bound runtime services.

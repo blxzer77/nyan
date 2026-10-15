@@ -1,66 +1,25 @@
-# durable
+# Durable compatibility entry
 
-A small local coding agent on `@ny4n/durable`. One process owns the model runtime, the durable
-Harness, its SQLite storage, and the TUI. It reuses nyan's model runtime, auth, settings, system prompt, keybindings,
-theme, and interactive components; the agent itself is the durable Harness with its built-in `CodingTools`.
+The durable coding-agent implementation was promoted to the product source tree in N1:
+
+- `src/core/durable/` owns session selection, Harness composition, settings, tools, prompts, and model access.
+- `src/modes/durable/` owns the current durable TUI adapter.
+- This directory keeps source-level shims for the old experimental entry while callers migrate.
+
+The pre-promotion prototype was 1,416 lines across nine files. The implementation now lives outside
+`src/experimental/`; the files here are not a second runtime and must not gain product logic.
+
+New durable sessions live under `~/.nyan/agent/sessions-durable/<cwd-hash>/<timestamp>-<uuid>/session.sqlite`.
+The old `~/.nyan/agent/sessions/` JSONL tree remains the read-only compatibility path for legacy
+session-selection flags until their durable adapters are implemented.
+
+Run the compatibility entry from a source checkout with:
 
 ```bash
 node --import ./packages/coding-agent/src/experimental/source-resolver.ts packages/coding-agent/src/experimental/durable/main.ts
 node --import ./packages/coding-agent/src/experimental/source-resolver.ts packages/coding-agent/src/experimental/durable/main.ts --continue
 ```
 
-A new session starts with nyan's default model and thinking level from `settings.json`. `--continue` opens the newest
-session for the current directory. Sessions live under
-`~/.nyan/agent/experimental/durable-sessions/<cwd-hash>/<session>/session.sqlite`; a lock keeps a second process out
-(a lock left by a crash goes stale after 10 seconds, and the next start waits for that). Log in with nyan itself;
-credentials are shared.
-
-## What it shows
-
-- **Durability:** every streamed partial, tool output, queue, and turn is committed. Kill the process in the middle
-  of a tool call and start it again with `--continue`: the interrupted call gets an interrupted result and the turn
-  finishes. Nothing in the TUI handles recovery; it only renders the conversation view.
-- **One view:** the TUI renders `Conversation.viewState()`, the structural mount of the transcript and the built-in
-  documents (`nyan.live`, `nyan.inbox`, `nyan.agent`, `nyan.usage`). Streaming, tool progress, the queue, retries,
-  compaction status, the model, and usage all come from it.
-- **Subagents:** the `subagent` tool runs a task in a child conversation owned by the call. `/agents` switches the
-  view to any conversation, also while the subagent works, and the editor then talks to it: steer it while busy, or
-  keep chatting after the call returned. Esc aborts the shown conversation; aborting the main turn aborts its
-  subagents.
-- **Task graph:** a live panel of `Harness.taskGraph()`, shown by default and toggled with `/tasks`: every live task, what it waits on, and the
-  conversations it owns.
-
-## Commands
-
-- submit: prompt while idle, steer while busy
-- follow-up key (`app.message.followUp`): queue a follow-up
-- Esc: abort the shown conversation's work, including a manual compaction
-- `/model` or the model key: select a model for the shown conversation
-- thinking key (Shift+Tab): cycle thinking levels
-- `/compact [instructions]`: summarize older context; reports "Nothing to compact" when the context fits in
-  `compaction.keepRecentTokens`
-- `/agents`: switch conversations
-- `/tasks`: hide or show the task panel
-- tools expand key (Ctrl+O): expand tool output and compaction summaries
-- clear key (Ctrl+C) or Ctrl+D: exit at once, unlike nyan's clear-first Ctrl+C; work in flight resumes with
-  `--continue`
-
-## Layout
-
-| file | role |
-| --- | --- |
-| `main.ts` | arguments, open, run, close |
-| `sessions.ts` | session directories and the lock |
-| `runtime.ts` | Harness, registry, settings, environments; the plain `DurableView` and `DurableController` |
-| `prompt.ts` | nyan's system prompt sections (tools, rules, docs, AGENTS.md, skills, cwd) as one extension |
-| `subagent.ts` | the foreground subagent tool |
-| `tui.ts` | rendering with nyan's interactive components |
-
-Compaction thresholds, retry policy, queue modes, and request timeouts come from nyan's `settings.json` as loaded at
-startup, read through Harness settings getters at each use. nyan's HTTP dispatcher is configured as in nyan; without it some provider streams end
-early.
-
-A turn that ends without an answer shows a notice; one recovered after a restart does not, since only submissions
-made by this process are watched.
-
-Not here: sessions list and resume picker, forks and tree navigation, extensions, prompt templates, images, `/login`.
+The product CLI's default interactive path now calls the promoted runtime directly. The current
+compatibility entry is temporary; its wrappers should be removed only after N1 verifies the product
+entry and the old source-level command is no longer needed.

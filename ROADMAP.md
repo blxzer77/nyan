@@ -332,14 +332,17 @@ The rewrite is a new line that does not change the non-interactive `print`, `jso
 
 | Line | Item | Owner | Branch / PR | Next step |
 | --- | --- | --- | --- | --- |
-| Migration | N1 product path switch to durable | Blxze | `main`; N1 active | Promote the durable runtime into the product path; verify session discovery, `--continue`, restart recovery, and non-interactive mode compatibility |
+| Migration | N1 product path switch to durable | Blxze | `main`; N1 active | Complete the durable non-interactive adapter and legacy JSONL read-only boundary; then verify mid-tool-call restart recovery, session discovery, `--continue`, and all non-interactive modes |
 
 N0 is complete: its deliverables exist, the independent review findings were re-verified and applied,
 and the gate is wired into `npm run check`. Decisions #18 and #19 were answered on 2026-10-15: keep
-every streaming event and add the bounded channel, and add the phased request transform for fidelity.
-Decisions #20 and #21 were also answered: extend the durable settlement hook, and retain
-`thinking_level_select` as a product-API compatibility event. The corrected inventory raises N2's
-scope: 8 durable capabilities must be added, and two of the events are part of the documented
+every streaming event and add the phased request transform for fidelity. Decisions #20 and #21 were
+also answered: extend the durable settlement hook, and retain `thinking_level_select` as a product-API
+compatibility event. N1's first slice is now implemented: the durable runtime is promoted into
+`src/core/durable`, its TUI adapter into `src/modes/durable`, the default interactive path uses it,
+and new sessions live below `~/.nyan/agent/sessions-durable/`. Legacy session-selection flags still
+use the old JSONL path until their read-only adapters are complete. The corrected inventory raises
+N2's scope: 8 durable capabilities must be added, and two events are part of the documented
 `--mode json` contract.
 
 ## Queue

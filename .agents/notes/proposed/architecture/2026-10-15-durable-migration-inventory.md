@@ -263,28 +263,30 @@ and each needs its own design pass.
 
 ### Prototype inventory
 
-`packages/coding-agent/src/experimental/durable/` already runs a durable coding agent with SQLite
-storage, Nyan's model runtime, auth, settings, theme, keybindings, and TUI components, plus
-subagents, `/agents`, the task graph, and `/compact`. It is excluded from the build and no product
-entry point reaches it.
+The original `packages/coding-agent/src/experimental/durable/` prototype ran a durable coding agent
+with SQLite storage, Nyan's model runtime, auth, settings, theme, keybindings, and TUI components,
+plus subagents, `/agents`, the task graph, and `/compact`. N1 promoted the implementation into
+`src/core/durable/` and `src/modes/durable/`; the experimental directory now contains only
+compatibility shims and documentation, and remains excluded from the build.
 
 The decisions below are about the source, not about its behavior. A README claim is not verification
-evidence, and neither is the existence of a file. The prototype README states plainly what it does
-not cover, including fork and tree behavior, which is why those appear as unfinished work above.
+evidence, and neither is the existence of a file. The pre-promotion prototype was 1,416 lines across
+nine files; the current shim inventory is generated below. Fork and tree behavior remain unfinished,
+as recorded in the N1 roadmap scope.
 
 <!-- BEGIN GENERATED: prototype -->
 
 | File | Decision | Lines | Purpose |
 | --- | --- | --- | --- |
-| `harness-setup.ts` | promote | 117 | HTTP, settings, coding registry, execution envs, initial model |
-| `main.ts` | promote | 20 | Entry point: parse --continue, open the runtime, run the TUI |
+| `harness-setup.ts` | promote | 1 | Compatibility shim for the promoted HTTP, settings, registry, environment, and model setup |
+| `main.ts` | promote | 20 | Compatibility entry that delegates --continue, runtime opening, and TUI execution to promoted modules |
 | `model-runtime-adapter.ts` | promote | 1 | Re-export of the model runtime adapter |
-| `prompt.ts` | promote | 74 | Nyan's system prompt as a durable extension with cached resources |
-| `README.md` | rework | 66 | Prototype documentation; claims must be re-verified before promotion |
-| `runtime.ts` | rework | 369 | Harness composition, SQLite storage, view and controller boundary |
-| `sessions.ts` | rework | 56 | Session directory, lock, and --continue selection |
-| `subagent.ts` | promote | 55 | Foreground subagent as a child conversation owned by the call |
-| `tui.ts` | rework | 658 | Durable TUI; superseded by the P9 rewrite |
+| `prompt.ts` | promote | 1 | Compatibility shim for the promoted Nyan system-prompt extension |
+| `README.md` | rework | 25 | Compatibility-shim documentation and the promoted durable product-path boundary |
+| `runtime.ts` | rework | 1 | Compatibility shim; the Harness composition is promoted to src/core/durable/runtime.ts |
+| `sessions.ts` | rework | 1 | Compatibility shim for the promoted durable session directory, lock, and --continue policy |
+| `subagent.ts` | promote | 1 | Compatibility shim for the promoted foreground subagent extension |
+| `tui.ts` | rework | 1 | Compatibility shim for the durable TUI; superseded by the N9 rewrite |
 
 <!-- END GENERATED: prototype -->
 

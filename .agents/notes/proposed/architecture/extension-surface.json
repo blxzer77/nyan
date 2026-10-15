@@ -1612,78 +1612,78 @@
       "file": "main.ts",
       "path": "packages/coding-agent/src/experimental/durable/main.ts",
       "decision": "promote",
-      "purpose": "Entry point: parse --continue, open the runtime, run the TUI",
+      "purpose": "Compatibility entry that delegates --continue, runtime opening, and TUI execution to promoted modules",
       "evidence": [
         "packages/coding-agent/src/experimental/durable/main.ts"
       ],
-      "notes": "README claims are not verification evidence",
+      "notes": "The product implementation is promoted; this entry remains for source-level compatibility",
       "lines": 20
     },
     {
       "file": "runtime.ts",
       "path": "packages/coding-agent/src/experimental/durable/runtime.ts",
       "decision": "rework",
-      "purpose": "Harness composition, SQLite storage, view and controller boundary",
+      "purpose": "Compatibility shim; the Harness composition is promoted to src/core/durable/runtime.ts",
       "evidence": [
         "packages/coding-agent/src/experimental/durable/runtime.ts"
       ],
-      "notes": "README claims are not verification evidence",
-      "lines": 369
+      "notes": "The product implementation is promoted; this wrapper must not gain product logic",
+      "lines": 1
     },
     {
       "file": "harness-setup.ts",
       "path": "packages/coding-agent/src/experimental/durable/harness-setup.ts",
       "decision": "promote",
-      "purpose": "HTTP, settings, coding registry, execution envs, initial model",
+      "purpose": "Compatibility shim for the promoted HTTP, settings, registry, environment, and model setup",
       "evidence": [
         "packages/coding-agent/src/experimental/durable/harness-setup.ts"
       ],
-      "notes": "README claims are not verification evidence",
-      "lines": 117
+      "notes": "The product implementation is promoted; this wrapper must not gain product logic",
+      "lines": 1
     },
     {
       "file": "prompt.ts",
       "path": "packages/coding-agent/src/experimental/durable/prompt.ts",
       "decision": "promote",
-      "purpose": "Nyan's system prompt as a durable extension with cached resources",
+      "purpose": "Compatibility shim for the promoted Nyan system-prompt extension",
       "evidence": [
         "packages/coding-agent/src/experimental/durable/prompt.ts"
       ],
-      "notes": "README claims are not verification evidence",
-      "lines": 74
+      "notes": "The product implementation is promoted; this wrapper must not gain product logic",
+      "lines": 1
     },
     {
       "file": "sessions.ts",
       "path": "packages/coding-agent/src/experimental/durable/sessions.ts",
       "decision": "rework",
-      "purpose": "Session directory, lock, and --continue selection",
+      "purpose": "Compatibility shim for the promoted durable session directory, lock, and --continue policy",
       "evidence": [
         "packages/coding-agent/src/experimental/durable/sessions.ts"
       ],
-      "notes": "README claims are not verification evidence",
-      "lines": 56
+      "notes": "The product implementation is promoted; this wrapper must not gain product logic",
+      "lines": 1
     },
     {
       "file": "subagent.ts",
       "path": "packages/coding-agent/src/experimental/durable/subagent.ts",
       "decision": "promote",
-      "purpose": "Foreground subagent as a child conversation owned by the call",
+      "purpose": "Compatibility shim for the promoted foreground subagent extension",
       "evidence": [
         "packages/coding-agent/src/experimental/durable/subagent.ts"
       ],
-      "notes": "README claims are not verification evidence",
-      "lines": 55
+      "notes": "The product implementation is promoted; this wrapper must not gain product logic",
+      "lines": 1
     },
     {
       "file": "tui.ts",
       "path": "packages/coding-agent/src/experimental/durable/tui.ts",
       "decision": "rework",
-      "purpose": "Durable TUI; superseded by the P9 rewrite",
+      "purpose": "Compatibility shim for the durable TUI; superseded by the N9 rewrite",
       "evidence": [
         "packages/coding-agent/src/experimental/durable/tui.ts"
       ],
-      "notes": "README claims are not verification evidence",
-      "lines": 658
+      "notes": "The product implementation is promoted; this wrapper must not gain product logic",
+      "lines": 1
     },
     {
       "file": "model-runtime-adapter.ts",
@@ -1700,12 +1700,12 @@
       "file": "README.md",
       "path": "packages/coding-agent/src/experimental/durable/README.md",
       "decision": "rework",
-      "purpose": "Prototype documentation; claims must be re-verified before promotion",
+      "purpose": "Compatibility-shim documentation and the promoted durable product-path boundary",
       "evidence": [
         "packages/coding-agent/src/experimental/durable/README.md"
       ],
-      "notes": "README claims are not verification evidence",
-      "lines": 66
+      "notes": "This document records the promotion; it is not behavior evidence",
+      "lines": 25
     }
   ],
   "capabilities": {

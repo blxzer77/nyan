@@ -1,1 +1,1 @@
-export { createDurableModelRuntime } from "../model-runtime-adapter.ts";
+export * from "../../core/durable/model-runtime-adapter.ts";

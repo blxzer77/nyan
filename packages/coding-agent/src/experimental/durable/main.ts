@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { type OpenDurableOptions, openDurable } from "./runtime.ts";
-import { runDurableTui } from "./tui.ts";
+import { type OpenDurableOptions, openDurable } from "../../core/durable/runtime.ts";
+import { runDurableTui } from "../../modes/durable/tui.ts";
 
 function parseArgs(argv: readonly string[]): OpenDurableOptions {
 	let continueSession = false;
