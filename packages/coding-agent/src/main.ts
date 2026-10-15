@@ -72,6 +72,7 @@ import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/tru
 import { builtInExtensions } from "./extensions/index.ts";
 import { loadMcpCommand } from "./extensions/mcp/cli.lazy.ts";
 import { runDurableInteractive } from "./modes/durable/main.ts";
+import { runDurablePrint } from "./modes/durable/print.ts";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { cleanupManagedInstall, handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./ui/theme/theme.ts";
@@ -139,8 +140,8 @@ function isPlainRuntimeMetadataCommand(parsed: Args): boolean {
 	return !parsed.print && parsed.mode === undefined && (parsed.help === true || parsed.listModels !== undefined);
 }
 
-/** The durable product path currently accepts the common new-session flags; legacy session flags stay read-only. */
-function canRunDurableInteractive(parsed: Args): boolean {
+/** The durable product path accepts the common new-session flags; legacy session selectors stay on compatibility paths. */
+function canRunDurableProductPath(parsed: Args, allowMultipleMessages = false): boolean {
 	return (
 		parsed.resume !== true &&
 		parsed.session === undefined &&
@@ -166,11 +167,10 @@ function canRunDurableInteractive(parsed: Args): boolean {
 		parsed.themes === undefined &&
 		parsed.noThemes !== true &&
 		parsed.noContextFiles !== true &&
-		parsed.offline !== true &&
 		parsed.tuiMode === undefined &&
 		parsed.projectTrustOverride === undefined &&
 		parsed.fileArgs.length === 0 &&
-		parsed.messages.length <= 1
+		(allowMultipleMessages || parsed.messages.length <= 1)
 	);
 }
 
@@ -729,7 +729,7 @@ export async function main(args: string[], options?: MainOptions) {
 		appMode === "interactive" &&
 		!parsed.help &&
 		parsed.listModels === undefined &&
-		canRunDurableInteractive(parsed)
+		canRunDurableProductPath(parsed)
 	) {
 		const initial = await prepareInitialMessage(parsed);
 		await runDurableInteractive({
@@ -744,6 +744,27 @@ export async function main(args: string[], options?: MainOptions) {
 			...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
 		});
 		stopThemeWatcher();
+		return;
+	}
+
+	if (appMode === "print" && parsed.mode !== "json" && canRunDurableProductPath(parsed, true)) {
+		const stdinContent = await readPipedStdin();
+		const initial = await prepareInitialMessage(parsed, stdinContent);
+		const exitCode = await runDurablePrint({
+			cwd,
+			continueSession: parsed.continue === true,
+			settingsManager: startupSettingsManager,
+			...(parsed.provider === undefined && parsed.model === undefined
+				? {}
+				: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
+			...(parsed.thinking === undefined ? {} : { thinkingLevel: parsed.thinking }),
+			...(parsed.apiKey === undefined ? {} : { apiKey: parsed.apiKey }),
+			...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
+			...(initial.initialImages === undefined ? {} : { initialImages: initial.initialImages }),
+			messages: parsed.messages,
+		});
+		stopThemeWatcher();
+		if (exitCode !== 0) process.exitCode = exitCode;
 		return;
 	}
 

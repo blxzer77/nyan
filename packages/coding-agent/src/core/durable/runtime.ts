@@ -11,8 +11,10 @@ import {
 	Harness,
 	type ModelRef,
 	ROOT_CONVERSATION_ID,
+	type SettledSubmissionRecord,
 	type Submission,
 	type TaskGraph,
+	type UserInput,
 } from "@ny4n/durable";
 import { openNodeSqliteStorage } from "@ny4n/durable/storage/sqlite/node";
 import { ModelRuntime } from "../../core/model-runtime.ts";
@@ -70,6 +72,8 @@ export interface DurableViewSource {
 export interface DurableController {
 	/** Prompt when idle; otherwise steer or queue a follow-up. */
 	submit(text: string, whenBusy: "steer" | "followUp"): Promise<void>;
+	/** Admit one headless input and wait for its durable terminal settlement. */
+	submitAndWait(content: UserInput, whenBusy: "steer" | "followUp"): Promise<SettledSubmissionRecord>;
 	compact(instructions: string | undefined): Promise<void>;
 	abort(): Promise<void>;
 	cycleThinking(): Promise<void>;
@@ -285,6 +289,10 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		const controller: DurableController = {
 			submit: (text, whenBusy) =>
 				command(async () => watchAnswer(await current.submit({ type: "input", content: text, whenBusy }, context))),
+			submitAndWait: async (content, whenBusy) => {
+				const submission = await current.submit({ type: "input", content, whenBusy }, context);
+				return submission.wait(context);
+			},
 			compact: (instructions) =>
 				command(async () => {
 					const id = await current.compact(instructions, context);
