@@ -26,6 +26,7 @@
 			"check:ts-imports": "node scripts/check-ts-relative-imports.mjs",
 			"check:architecture": "node scripts/check-architecture-layers.mjs",
 			"check:entry-graphs": "node scripts/check-entry-graphs.mjs",
+			"check:extension-surface": "node scripts/check-extension-surface.mjs",
 		"generate:models": "npm --prefix packages/ai run generate-models",
 		"hydrate:model-data": "npm --prefix packages/ai run hydrate-model-data",
 		"check:model-data": "npm --prefix packages/ai run check:model-data",

@@ -3,7 +3,18 @@
 Date: 2026-10-14
 Repository: `/home/blxze/projects/personal/nyan`
 Branch: `main`
-Status: implementation changes are ready to commit; the roadmap has deliberately not been edited yet.
+Status: historical record. Superseded on 2026-10-15 by
+[`ROADMAP.md`](../../ROADMAP.md) and
+[the durable migration inventory](../notes/proposed/architecture/2026-10-15-durable-migration-inventory.md).
+
+Read this file for the Pi 1.2.0 port record and the reasoning behind it. Two statements below no
+longer hold and must not be followed:
+
+- durable is no longer "an optional task/recovery infrastructure". On 2026-10-15 the owner selected
+  Shape B: the durable Harness becomes the product path. See the Decided architecture and
+  Implementation orchestration sections of `ROADMAP.md`.
+- the roadmap has been edited since. `ROADMAP.md` is the source of truth for planned work, and it now
+  carries phases N0 through N9.
 
 ## Purpose
 

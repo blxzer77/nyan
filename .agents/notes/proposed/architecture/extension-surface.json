@@ -1,0 +1,1784 @@
+{
+  "schemaVersion": 1,
+  "description": "N0 inventory for the durable product-path migration. Machine-readable source for the tables in 2026-10-15-durable-migration-inventory.md.",
+  "sources": {
+    "events": "packages/coding-agent/src/core/extensions/types.ts",
+    "extensionInterface": "packages/coding-agent/src/core/extensions/types.ts ExtensionAPI",
+    "prototype": "packages/coding-agent/src/experimental/durable"
+  },
+  "enums": {
+    "kind": [
+      "admission",
+      "observe"
+    ],
+    "timing": [
+      "streaming",
+      "discrete",
+      "lifecycle"
+    ],
+    "destination": [
+      "hook:beforeRequest",
+      "hook:afterResponse",
+      "hook:onYield",
+      "hook:beforeTool",
+      "hook:afterTool",
+      "hook:afterTools",
+      "hook:beforeCompact",
+      "durable-capability",
+      "product-api",
+      "internal-view",
+      "drop"
+    ],
+    "rerunnable": [
+      "true",
+      "false",
+      "needs-review",
+      "n/a"
+    ],
+    "decision": [
+      "keep",
+      "adapt",
+      "reduce",
+      "drop"
+    ]
+  },
+  "durableHooks": [
+    "beforeRequest",
+    "afterResponse",
+    "onYield",
+    "beforeTool",
+    "afterTool",
+    "afterTools",
+    "beforeCompact"
+  ],
+  "events": [
+    {
+      "event": "project_trust",
+      "line": 1597,
+      "eventType": "ProjectTrustEvent",
+      "resultType": "ProjectTrustResult",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Decide project trust before any agent run",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1597"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/project-trust.ts"
+        ],
+        "test": [
+          "test/extensions-runner.test.ts",
+          "test/package-command-paths.test.ts",
+          "test/resource-loader.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "resources_discover",
+      "line": 1598,
+      "eventType": "ResourcesDiscoverEvent",
+      "resultType": "ResourcesDiscoverResult>,",
+      "kind": "admission",
+      "timing": "lifecycle",
+      "nyanSemantics": "Contribute skill, prompt, and theme resources to the registry",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1599"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/dynamic-resources/index.ts"
+        ],
+        "test": []
+      }
+    },
+    {
+      "event": "session_start",
+      "line": 1602,
+      "eventType": "SessionStartEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "lifecycle",
+      "nyanSemantics": "Startup, reload, new, resume, or fork; extensions connect MCP and report state here",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1602"
+      ],
+      "consumers": {
+        "builtin": [
+          "src/extensions/herdr/index.ts",
+          "src/extensions/mcp/index.ts"
+        ],
+        "core": [],
+        "example": [
+          "examples/extensions/border-status-editor.ts",
+          "examples/extensions/claude-rules.ts",
+          "examples/extensions/custom-header.ts",
+          "examples/extensions/dynamic-tools.ts",
+          "examples/extensions/event-bus.ts",
+          "examples/extensions/file-trigger.ts",
+          "examples/extensions/github-issue-autocomplete.ts",
+          "examples/extensions/gondolin/index.ts",
+          "examples/extensions/hidden-thinking-label.ts",
+          "examples/extensions/mac-system-theme.ts",
+          "examples/extensions/modal-editor.ts",
+          "examples/extensions/plan-mode/index.ts",
+          "examples/extensions/preset.ts",
+          "examples/extensions/project-trust.ts",
+          "examples/extensions/rainbow-editor.ts",
+          "examples/extensions/rpc-demo.ts",
+          "examples/extensions/sandbox/index.ts",
+          "examples/extensions/ssh.ts",
+          "examples/extensions/status-line.ts",
+          "examples/extensions/tic-tac-toe.ts",
+          "examples/extensions/todo.ts",
+          "examples/extensions/tools.ts",
+          "examples/extensions/widget-placement.ts",
+          "examples/extensions/working-indicator.ts",
+          "examples/extensions/working-message-test.ts"
+        ],
+        "test": [
+          "test/agent-session-dynamic-provider.test.ts",
+          "test/agent-session-dynamic-tools.test.ts",
+          "test/agent-session-runtime-events.test.ts",
+          "test/builtin-tool-strict-mode.test.ts",
+          "test/default-tools-setting.test.ts",
+          "test/suite/agent-session-mcp.test.ts",
+          "test/suite/agent-session-model-extension.test.ts",
+          "test/suite/agent-session-runtime.test.ts",
+          "test/suite/regressions/exclude-tools.test.ts",
+          "test/suite/regressions/no-builtin-tools-keeps-extension-tools.test.ts",
+          "test/suite/regressions/replaced-session-context.test.ts",
+          "test/suite/regressions/session-start-notify.test.ts",
+          "test/suite/regressions/tools-allowlist-filters-extension-tools.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "session_info_changed",
+      "line": 1603,
+      "eventType": "SessionInfoChangedEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Session name or metadata changed; no extension consumer",
+      "destination": "internal-view",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1603"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": [
+          "test/suite/regressions/session-name-event.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "session_before_switch",
+      "line": 1604,
+      "eventType": "SessionBeforeSwitchEvent",
+      "resultType": "SessionBeforeSwitchResult>,",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Cancel a session switch",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1605"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/confirm-destructive.ts",
+          "examples/extensions/dirty-repo-guard.ts",
+          "examples/extensions/rpc-demo.ts"
+        ],
+        "test": [
+          "test/agent-session-runtime-events.test.ts",
+          "test/suite/agent-session-runtime.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "session_before_fork",
+      "line": 1608,
+      "eventType": "SessionBeforeForkEvent",
+      "resultType": "SessionBeforeForkResult>,",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Cancel a fork or skip conversation restore",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "adapt",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1609"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/confirm-destructive.ts",
+          "examples/extensions/dirty-repo-guard.ts",
+          "examples/extensions/git-checkpoint.ts"
+        ],
+        "test": [
+          "test/agent-session-runtime-events.test.ts",
+          "test/suite/agent-session-runtime.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "session_before_compact",
+      "line": 1612,
+      "eventType": "SessionBeforeCompactEvent",
+      "resultType": "SessionBeforeCompactResult>,",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Last non-empty result wins; supplies cancel plus firstKeptEntryId, details, and usage",
+      "destination": "hook:beforeCompact",
+      "rerunnable": "true",
+      "decision": "adapt",
+      "openQuestion": "durable beforeCompact is first-decision-wins and returns only decline or summary",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1613"
+      ],
+      "capability": "compaction-result-fidelity",
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/custom-compaction.ts"
+        ],
+        "test": [
+          "test/compaction-extensions-example.test.ts",
+          "test/suite/agent-session-boundaries.test.ts",
+          "test/suite/agent-session-compaction-model-overrides.test.ts",
+          "test/suite/agent-session-compaction.test.ts",
+          "test/suite/agent-session-prompt.test.ts",
+          "test/suite/regressions/auto-compaction-cancellation.test.ts",
+          "test/suite/regressions/compaction-reason.test.ts",
+          "test/suite/regressions/context-handler-system-messages.test.ts",
+          "test/suite/regressions/manual-compact-during-response.test.ts",
+          "test/suite/regressions/pre-prompt-compaction-no-continue.test.ts",
+          "test/suite/regressions/rpc-prompt-during-compaction.test.ts",
+          "test/suite/regressions/tree-during-compaction.test.ts",
+          "test/suite/virtual-models.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "session_compact",
+      "line": 1616,
+      "eventType": "SessionCompactEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Compaction finished; no extension consumer",
+      "destination": "internal-view",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1616"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": [
+          "test/compaction-extensions-example.test.ts",
+          "test/suite/regressions/compaction-reason.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "session_compact_failed",
+      "line": 1617,
+      "eventType": "SessionCompactFailedEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Compaction failed; no extension consumer",
+      "destination": "internal-view",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1617"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": [
+          "test/suite/agent-session-compaction.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "session_shutdown",
+      "line": 1618,
+      "eventType": "SessionShutdownEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "lifecycle",
+      "nyanSemantics": "Session closing; extensions flush and release",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1618"
+      ],
+      "consumers": {
+        "builtin": [
+          "src/extensions/herdr/index.ts",
+          "src/extensions/mcp/index.ts"
+        ],
+        "core": [],
+        "example": [
+          "examples/extensions/auto-commit-on-exit.ts",
+          "examples/extensions/border-status-editor.ts",
+          "examples/extensions/gondolin/index.ts",
+          "examples/extensions/mac-system-theme.ts",
+          "examples/extensions/sandbox/index.ts",
+          "examples/extensions/system-prompt-header.ts",
+          "examples/extensions/titlebar-spinner.ts"
+        ],
+        "test": [
+          "test/agent-session-runtime-events.test.ts",
+          "test/suite/agent-session-model-extension.test.ts",
+          "test/suite/agent-session-runtime.test.ts",
+          "test/suite/regressions/replaced-session-context.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "mcp_servers_change",
+      "line": 1619,
+      "eventType": "McpServersChangeEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "MCP server set changed",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1619"
+      ],
+      "consumers": {
+        "builtin": [
+          "src/extensions/mcp/index.ts"
+        ],
+        "core": [],
+        "example": [],
+        "test": []
+      }
+    },
+    {
+      "event": "session_before_tree",
+      "line": 1620,
+      "eventType": "SessionBeforeTreeEvent",
+      "resultType": "SessionBeforeTreeResult>,",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Cancel branch summarization or supply its summary and label",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "adapt",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1621"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": [
+          "test/branch-summary-extensions.test.ts",
+          "test/suite/regressions/tree-cancel-compacting.test.ts",
+          "test/suite/regressions/tree-during-compaction.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "session_tree",
+      "line": 1624,
+      "eventType": "SessionTreeEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Conversation tree changed",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "adapt",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1624"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/tic-tac-toe.ts",
+          "examples/extensions/todo.ts",
+          "examples/extensions/tools.ts"
+        ],
+        "test": []
+      }
+    },
+    {
+      "event": "context",
+      "line": 1625,
+      "eventType": "ContextEvent",
+      "resultType": "ContextEventResult",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Phase one of two: sees the conversation only, and nyan restores prompt and tool state after each handler",
+      "destination": "durable-capability",
+      "rerunnable": "true",
+      "decision": "adapt",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1625"
+      ],
+      "capability": "phased-request-transform",
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/plan-mode/index.ts"
+        ],
+        "test": [
+          "test/extensions-runner.test.ts",
+          "test/suite/agent-session-model-extension.test.ts",
+          "test/suite/regressions/context-handler-system-messages.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "context_with_system",
+      "line": 1626,
+      "eventType": "ContextWithSystemEvent",
+      "resultType": "ContextEventResult",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Phase two: sees the full transcript including system and tool declarations, output used as returned",
+      "destination": "durable-capability",
+      "rerunnable": "true",
+      "decision": "adapt",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1626"
+      ],
+      "capability": "phased-request-transform",
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": [
+          "test/suite/regressions/context-handler-system-messages.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "cache_warming_decision",
+      "line": 1627,
+      "eventType": "CacheWarmingDecisionEvent",
+      "resultType": "CacheWarmingDecisionEventResult>,",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "The prompt-cache warmer decides whether to warm",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1628"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": [
+          "test/cache-warmer.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "before_provider_request",
+      "line": 1631,
+      "eventType": "BeforeProviderRequestEvent",
+      "resultType": "BeforeProviderRequestEventResult>,",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Replace the assembled provider request body",
+      "destination": "durable-capability",
+      "rerunnable": "true",
+      "decision": "adapt",
+      "openQuestion": "durable beforeRequest receives model messages, not the provider payload",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1632"
+      ],
+      "capability": "provider-payload-hook",
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/provider-payload.ts"
+        ],
+        "test": []
+      }
+    },
+    {
+      "event": "before_provider_headers",
+      "line": 1635,
+      "eventType": "BeforeProviderHeadersEvent",
+      "resultType": null,
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Observe and mutate outgoing provider headers per request",
+      "destination": "durable-capability",
+      "rerunnable": "needs-review",
+      "decision": "adapt",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1635"
+      ],
+      "capability": "provider-header-hook",
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": [
+          "test/extensions-runner.test.ts",
+          "test/sdk-stream-options.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "after_provider_response",
+      "line": 1636,
+      "eventType": "AfterProviderResponseEvent",
+      "resultType": null,
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Fires once status and headers arrive, before the stream is consumed; exposes status and headers",
+      "destination": "durable-capability",
+      "rerunnable": "true",
+      "decision": "adapt",
+      "openQuestion": "durable afterResponse receives only a terminal AssistantMessage",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1636"
+      ],
+      "capability": "provider-response-observe",
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/provider-payload.ts"
+        ],
+        "test": []
+      }
+    },
+    {
+      "event": "provider_stream_event",
+      "line": 1637,
+      "eventType": "ProviderStreamEvent",
+      "resultType": null,
+      "kind": "admission",
+      "timing": "streaming",
+      "nyanSemantics": "Raw provider stream frames",
+      "destination": "durable-capability",
+      "rerunnable": "needs-review",
+      "decision": "adapt",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1637"
+      ],
+      "capability": "streaming-channel",
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/debug-provider.ts"
+        ],
+        "test": [
+          "test/sdk-stream-options.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "before_agent_start",
+      "line": 1638,
+      "eventType": "BeforeAgentStartEvent",
+      "resultType": "BeforeAgentStartEventResult>,",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Inject a starting custom message and replace the system prompt for the run",
+      "destination": "hook:beforeRequest",
+      "rerunnable": "true",
+      "decision": "adapt",
+      "openQuestion": "durable beforeRequest runs on every request attempt including recovery, not once per run",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1639"
+      ],
+      "consumers": {
+        "builtin": [
+          "src/extensions/mcp/index.ts"
+        ],
+        "core": [],
+        "example": [
+          "examples/extensions/claude-rules.ts",
+          "examples/extensions/gondolin/index.ts",
+          "examples/extensions/pirate.ts",
+          "examples/extensions/plan-mode/index.ts",
+          "examples/extensions/preset.ts",
+          "examples/extensions/prompt-customizer.ts",
+          "examples/extensions/ssh.ts",
+          "examples/extensions/tic-tac-toe.ts"
+        ],
+        "test": [
+          "test/extensions-runner.test.ts",
+          "test/suite/agent-session-model-extension.test.ts",
+          "test/suite/agent-session-prompt.test.ts",
+          "test/suite/regressions/context-handler-system-messages.test.ts",
+          "test/suite/regressions/extension-active-tools-next-turn.test.ts",
+          "test/suite/virtual-models.test.ts",
+          "test/system-prompt-updates.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "agent_start",
+      "line": 1642,
+      "eventType": "AgentStartEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Agent run started",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1642"
+      ],
+      "consumers": {
+        "builtin": [
+          "src/extensions/herdr/index.ts"
+        ],
+        "core": [],
+        "example": [
+          "examples/extensions/border-status-editor.ts",
+          "examples/extensions/system-prompt-header.ts",
+          "examples/extensions/titlebar-spinner.ts",
+          "examples/sdk/06-extensions.ts"
+        ],
+        "test": [
+          "test/extensions-discovery.test.ts",
+          "test/suite/agent-session-boundaries.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "agent_end",
+      "line": 1643,
+      "eventType": "AgentEndEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Agent run ended; no built-in extension consumer",
+      "destination": "internal-view",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1643"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/git-merge-and-resolve.ts",
+          "examples/extensions/plan-mode/index.ts",
+          "examples/sdk/06-extensions.ts"
+        ],
+        "test": [
+          "test/extensions-discovery.test.ts",
+          "test/extensions-runner.test.ts",
+          "test/suite/agent-session-boundaries.test.ts",
+          "test/suite/agent-session-queue.test.ts",
+          "test/suite/regressions/agent-settled-event.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "agent_before_settle",
+      "line": 1644,
+      "eventType": "AgentBeforeSettleEvent",
+      "resultType": "AgentBeforeSettleEventResult>,",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Before final settlement: appends arbitrary entries and may force one more provider request",
+      "destination": "durable-capability",
+      "rerunnable": "true",
+      "decision": "adapt",
+      "openQuestion": "durable onYield returns only {continue}, so it cannot append entries",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1645"
+      ],
+      "capability": "settlement-entry-write",
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": [
+          "test/extensions-runner.test.ts",
+          "test/suite/agent-session-boundaries.test.ts",
+          "test/suite/virtual-models.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "agent_settled",
+      "line": 1648,
+      "eventType": "AgentSettledEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Agent fully settled",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1648"
+      ],
+      "consumers": {
+        "builtin": [
+          "src/extensions/herdr/index.ts"
+        ],
+        "core": [],
+        "example": [
+          "examples/extensions/border-status-editor.ts",
+          "examples/extensions/git-checkpoint.ts",
+          "examples/extensions/notify.ts",
+          "examples/extensions/titlebar-spinner.ts"
+        ],
+        "test": [
+          "test/suite/agent-session-boundaries.test.ts",
+          "test/suite/regressions/agent-settled-event.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "ui_prompt_start",
+      "line": 1649,
+      "eventType": "UIPromptStartEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "A UI prompt opened; the Herdr extension reports blocked state here",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1649"
+      ],
+      "consumers": {
+        "builtin": [
+          "src/extensions/herdr/index.ts"
+        ],
+        "core": [],
+        "example": [],
+        "test": []
+      }
+    },
+    {
+      "event": "ui_prompt_end",
+      "line": 1650,
+      "eventType": "UIPromptEndEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "A UI prompt closed; the Herdr extension clears blocked state here",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1650"
+      ],
+      "consumers": {
+        "builtin": [
+          "src/extensions/herdr/index.ts"
+        ],
+        "core": [],
+        "example": [],
+        "test": []
+      }
+    },
+    {
+      "event": "turn_start",
+      "line": 1651,
+      "eventType": "TurnStartEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Turn started",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1651"
+      ],
+      "consumers": {
+        "builtin": [
+          "src/extensions/mcp/index.ts"
+        ],
+        "core": [],
+        "example": [
+          "examples/extensions/debug-provider.ts",
+          "examples/extensions/git-checkpoint.ts",
+          "examples/extensions/preset.ts",
+          "examples/extensions/rpc-demo.ts",
+          "examples/extensions/status-line.ts"
+        ],
+        "test": []
+      }
+    },
+    {
+      "event": "turn_end",
+      "line": 1652,
+      "eventType": "TurnEndEvent",
+      "resultType": "TurnEndEventResult",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Turn boundary: appends arbitrary entries and may force another turn",
+      "destination": "durable-capability",
+      "rerunnable": "true",
+      "decision": "adapt",
+      "openQuestion": "durable onYield returns only {continue}, so it cannot append entries",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1652"
+      ],
+      "capability": "settlement-entry-write",
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/debug-provider.ts",
+          "examples/extensions/plan-mode/index.ts",
+          "examples/extensions/rpc-demo.ts",
+          "examples/extensions/status-line.ts",
+          "examples/extensions/trigger-compact.ts"
+        ],
+        "test": [
+          "test/suite/agent-session-boundaries.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "message_start",
+      "line": 1653,
+      "eventType": "MessageStartEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Message started; no extension consumer",
+      "destination": "internal-view",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1653"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": [
+          "test/suite/agent-session-retry-events.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "message_update",
+      "line": 1654,
+      "eventType": "MessageUpdateEvent",
+      "resultType": null,
+      "kind": "admission",
+      "timing": "streaming",
+      "nyanSemantics": "Token-by-token assistant updates; streamed by --mode json and rendered by the TUI",
+      "destination": "durable-capability",
+      "rerunnable": "needs-review",
+      "decision": "adapt",
+      "openQuestion": "a documented non-interactive interface consumes this, so it cannot be reduced",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1654"
+      ],
+      "capability": "streaming-channel",
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": []
+      }
+    },
+    {
+      "event": "message_end",
+      "line": 1655,
+      "eventType": "MessageEndEvent",
+      "resultType": "MessageEndEventResult",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Replace the finalized message of any role, including user, toolResult, and custom",
+      "destination": "durable-capability",
+      "rerunnable": "needs-review",
+      "decision": "adapt",
+      "openQuestion": "durable afterResponse observes the assistant message and returns void",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1655"
+      ],
+      "capability": "message-rewrite",
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/debug-provider.ts"
+        ],
+        "test": [
+          "test/suite/agent-session-boundaries.test.ts",
+          "test/suite/agent-session-retry-events.test.ts",
+          "test/suite/agent-session-runtime.test.ts",
+          "test/suite/lax-message-content.test.ts",
+          "test/suite/regressions/agent-session-event-settlement.test.ts",
+          "test/suite/regressions/message-end-cost-override.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "tool_execution_start",
+      "line": 1656,
+      "eventType": "ToolExecutionStartEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Tool execution started; streamed by --mode json and rendered by the TUI",
+      "destination": "internal-view",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1656"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": []
+      }
+    },
+    {
+      "event": "tool_execution_update",
+      "line": 1657,
+      "eventType": "ToolExecutionUpdateEvent",
+      "resultType": null,
+      "kind": "admission",
+      "timing": "streaming",
+      "nyanSemantics": "Partial tool output; streamed by --mode json and rendered by the TUI",
+      "destination": "durable-capability",
+      "rerunnable": "needs-review",
+      "decision": "adapt",
+      "openQuestion": "a documented non-interactive interface consumes this, so it cannot be reduced",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1657"
+      ],
+      "capability": "streaming-channel",
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": []
+      }
+    },
+    {
+      "event": "tool_execution_end",
+      "line": 1658,
+      "eventType": "ToolExecutionEndEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Tool execution finished; streamed by --mode json and rendered by the TUI",
+      "destination": "internal-view",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1658"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": []
+      }
+    },
+    {
+      "event": "model_select",
+      "line": 1659,
+      "eventType": "ModelSelectEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Model changed for the session",
+      "destination": "internal-view",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1659"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/model-status.ts"
+        ],
+        "test": [
+          "test/suite/agent-session-model-extension.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "thinking_level_select",
+      "line": 1660,
+      "eventType": "ThinkingLevelSelectEvent",
+      "resultType": null,
+      "kind": "observe",
+      "timing": "discrete",
+      "nyanSemantics": "Thinking level changed",
+      "destination": "drop",
+      "rerunnable": "n/a",
+      "decision": "drop",
+      "openQuestion": "no consumer anywhere in the repository; drop unless a release note records the removal",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1660"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [],
+        "test": []
+      }
+    },
+    {
+      "event": "tool_call",
+      "line": 1661,
+      "eventType": "ToolCallEvent",
+      "resultType": "ToolCallEventResult",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Argument replacement with first-block-wins; arguments are fixed after intent",
+      "destination": "hook:beforeTool",
+      "rerunnable": "true",
+      "decision": "adapt",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1661"
+      ],
+      "consumers": {
+        "builtin": [
+          "src/extensions/mcp/index.ts"
+        ],
+        "core": [],
+        "example": [
+          "examples/extensions/permission-gate.ts",
+          "examples/extensions/plan-mode/index.ts",
+          "examples/extensions/protected-paths.ts",
+          "examples/extensions/rpc-demo.ts",
+          "examples/sdk/06-extensions.ts"
+        ],
+        "test": [
+          "test/extensions-discovery.test.ts",
+          "test/extensions-runner.test.ts",
+          "test/suite/agent-session-codemode.test.ts",
+          "test/suite/agent-session-model-extension.test.ts",
+          "test/suite/agent-session-tool-orchestration.test.ts",
+          "test/suite/regressions/agent-session-event-settlement.test.ts",
+          "test/suite/regressions/blocked-tool-terminate.test.ts",
+          "test/suite/regressions/parallel-preflight-abort.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "tool_result",
+      "line": 1662,
+      "eventType": "ToolResultEvent",
+      "resultType": "ToolResultEventResult",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Result replacement over content, details, structuredContent, isError, and usage",
+      "destination": "hook:afterTool",
+      "rerunnable": "true",
+      "decision": "adapt",
+      "openQuestion": "the field mapping onto durable's tool result type is unverified",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1662"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/git-checkpoint.ts"
+        ],
+        "test": [
+          "test/extensions-runner.test.ts",
+          "test/suite/agent-session-codemode.test.ts",
+          "test/suite/agent-session-model-extension.test.ts",
+          "test/suite/regressions/parallel-preflight-abort.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "user_bash",
+      "line": 1663,
+      "eventType": "UserBashEvent",
+      "resultType": "UserBashEventResult",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Supply custom shell operations or fully handle a user ! command",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1663"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/gondolin/index.ts",
+          "examples/extensions/interactive-shell.ts",
+          "examples/extensions/sandbox/index.ts",
+          "examples/extensions/ssh.ts"
+        ],
+        "test": [
+          "test/extensions-runner.test.ts",
+          "test/suite/regressions/user-bash-fail-closed.test.ts"
+        ]
+      }
+    },
+    {
+      "event": "input",
+      "line": 1664,
+      "eventType": "InputEvent",
+      "resultType": "InputEventResult",
+      "kind": "admission",
+      "timing": "discrete",
+      "nyanSemantics": "Input pipeline: continue, transform, or handled",
+      "destination": "product-api",
+      "rerunnable": "n/a",
+      "decision": "keep",
+      "openQuestion": null,
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1664"
+      ],
+      "consumers": {
+        "builtin": [],
+        "core": [],
+        "example": [
+          "examples/extensions/inline-bash.ts",
+          "examples/extensions/input-transform-streaming.ts",
+          "examples/extensions/input-transform.ts"
+        ],
+        "test": [
+          "test/agent-session-concurrent.test.ts",
+          "test/extensions-input-event.test.ts",
+          "test/rpc-prompt-response-semantics.test.ts",
+          "test/suite/agent-session-model-extension.test.ts",
+          "test/suite/agent-session-prompt.test.ts",
+          "test/suite/agent-session-queue.test.ts"
+        ]
+      }
+    }
+  ],
+  "api": [
+    {
+      "api": "registerTool",
+      "line": 1671,
+      "category": "registry",
+      "nyanSemantics": "Register a tool with its schema and renderer",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1671"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "registerCommand",
+      "line": 1680,
+      "category": "registry",
+      "nyanSemantics": "Register a slash command",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1680"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "registerShortcut",
+      "line": 1683,
+      "category": "registry",
+      "nyanSemantics": "Bind a key to an action",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1683"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "registerFlag",
+      "line": 1692,
+      "category": "registry",
+      "nyanSemantics": "Declare a CLI flag and its value shape",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1692"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "getFlag",
+      "line": 1708,
+      "category": "registry",
+      "nyanSemantics": "Read a declared flag value",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1708"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "registerMessageRenderer",
+      "line": 1715,
+      "category": "rendering",
+      "nyanSemantics": "Render a custom message type",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1715"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "registerMarkdownTransformer",
+      "line": 1718,
+      "category": "rendering",
+      "nyanSemantics": "Transform markdown before rendering",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1718"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "registerEntryRenderer",
+      "line": 1721,
+      "category": "rendering",
+      "nyanSemantics": "Render a custom entry type",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1721"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "registerToolRenderer",
+      "line": 1724,
+      "category": "rendering",
+      "nyanSemantics": "Render a tool call and result",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1724"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "sendMessage",
+      "line": 1731,
+      "category": "write",
+      "nyanSemantics": "Append a custom message, optionally starting a turn",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1731"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "sendUserMessage",
+      "line": 1741,
+      "category": "write",
+      "nyanSemantics": "Append a user message, optionally starting a turn",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1741"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "appendEntry",
+      "line": 1747,
+      "category": "write",
+      "nyanSemantics": "Append an opaque custom entry",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1747"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "setSessionName",
+      "line": 1754,
+      "category": "write",
+      "nyanSemantics": "Rename the session",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1754"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "getSessionName",
+      "line": 1757,
+      "category": "read",
+      "nyanSemantics": "Read the session name",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1757"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "setLabel",
+      "line": 1760,
+      "category": "write",
+      "nyanSemantics": "Label an entry",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1760"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "exec",
+      "line": 1763,
+      "category": "effect",
+      "nyanSemantics": "Run a subprocess and capture its result",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1763"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "getActiveTools",
+      "line": 1766,
+      "category": "read",
+      "nyanSemantics": "List the active tool names",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1766"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "getAllTools",
+      "line": 1769,
+      "category": "read",
+      "nyanSemantics": "List every available tool",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1769"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "getSettings",
+      "line": 1772,
+      "category": "read",
+      "nyanSemantics": "Read the effective settings",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1772"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "setActiveTools",
+      "line": 1778,
+      "category": "write",
+      "nyanSemantics": "Replace the active tool set",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1778"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "getCommands",
+      "line": 1781,
+      "category": "read",
+      "nyanSemantics": "List registered slash commands",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1781"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "setModel",
+      "line": 1791,
+      "category": "write",
+      "nyanSemantics": "Switch the session model",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1791"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "getThinkingLevel",
+      "line": 1794,
+      "category": "read",
+      "nyanSemantics": "Read the thinking level",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1794"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "setThinkingLevel",
+      "line": 1800,
+      "category": "write",
+      "nyanSemantics": "Set the thinking level",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1800"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "registerProvider",
+      "line": 1858,
+      "category": "registry",
+      "nyanSemantics": "Register a model provider",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1858"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "unregisterProvider",
+      "line": 1874,
+      "category": "registry",
+      "nyanSemantics": "Remove a model provider",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1874"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "registerMcpServer",
+      "line": 1894,
+      "category": "registry",
+      "nyanSemantics": "Register an MCP server",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1894"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "unregisterMcpServer",
+      "line": 1897,
+      "category": "registry",
+      "nyanSemantics": "Remove an MCP server",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1897"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "getMcpServers",
+      "line": 1900,
+      "category": "read",
+      "nyanSemantics": "List registered MCP servers",
+      "destination": "product-api",
+      "decision": "keep",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1900"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "registerVirtualModel",
+      "line": 1911,
+      "category": "registry",
+      "nyanSemantics": "Register a virtual model",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1911"
+      ],
+      "notes": ""
+    },
+    {
+      "api": "unregisterVirtualModel",
+      "line": 1914,
+      "category": "registry",
+      "nyanSemantics": "Remove a virtual model",
+      "destination": "product-api",
+      "decision": "adapt",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1914"
+      ],
+      "notes": ""
+    }
+  ],
+  "prototypeFiles": [
+    {
+      "file": "main.ts",
+      "path": "packages/coding-agent/src/experimental/durable/main.ts",
+      "decision": "promote",
+      "purpose": "Entry point: parse --continue, open the runtime, run the TUI",
+      "evidence": [
+        "packages/coding-agent/src/experimental/durable/main.ts"
+      ],
+      "notes": "README claims are not verification evidence",
+      "lines": 20
+    },
+    {
+      "file": "runtime.ts",
+      "path": "packages/coding-agent/src/experimental/durable/runtime.ts",
+      "decision": "rework",
+      "purpose": "Harness composition, SQLite storage, view and controller boundary",
+      "evidence": [
+        "packages/coding-agent/src/experimental/durable/runtime.ts"
+      ],
+      "notes": "README claims are not verification evidence",
+      "lines": 369
+    },
+    {
+      "file": "harness-setup.ts",
+      "path": "packages/coding-agent/src/experimental/durable/harness-setup.ts",
+      "decision": "promote",
+      "purpose": "HTTP, settings, coding registry, execution envs, initial model",
+      "evidence": [
+        "packages/coding-agent/src/experimental/durable/harness-setup.ts"
+      ],
+      "notes": "README claims are not verification evidence",
+      "lines": 117
+    },
+    {
+      "file": "prompt.ts",
+      "path": "packages/coding-agent/src/experimental/durable/prompt.ts",
+      "decision": "promote",
+      "purpose": "Nyan's system prompt as a durable extension with cached resources",
+      "evidence": [
+        "packages/coding-agent/src/experimental/durable/prompt.ts"
+      ],
+      "notes": "README claims are not verification evidence",
+      "lines": 74
+    },
+    {
+      "file": "sessions.ts",
+      "path": "packages/coding-agent/src/experimental/durable/sessions.ts",
+      "decision": "rework",
+      "purpose": "Session directory, lock, and --continue selection",
+      "evidence": [
+        "packages/coding-agent/src/experimental/durable/sessions.ts"
+      ],
+      "notes": "README claims are not verification evidence",
+      "lines": 56
+    },
+    {
+      "file": "subagent.ts",
+      "path": "packages/coding-agent/src/experimental/durable/subagent.ts",
+      "decision": "promote",
+      "purpose": "Foreground subagent as a child conversation owned by the call",
+      "evidence": [
+        "packages/coding-agent/src/experimental/durable/subagent.ts"
+      ],
+      "notes": "README claims are not verification evidence",
+      "lines": 55
+    },
+    {
+      "file": "tui.ts",
+      "path": "packages/coding-agent/src/experimental/durable/tui.ts",
+      "decision": "rework",
+      "purpose": "Durable TUI; superseded by the P9 rewrite",
+      "evidence": [
+        "packages/coding-agent/src/experimental/durable/tui.ts"
+      ],
+      "notes": "README claims are not verification evidence",
+      "lines": 658
+    },
+    {
+      "file": "model-runtime-adapter.ts",
+      "path": "packages/coding-agent/src/experimental/durable/model-runtime-adapter.ts",
+      "decision": "promote",
+      "purpose": "Re-export of the model runtime adapter",
+      "evidence": [
+        "packages/coding-agent/src/experimental/durable/model-runtime-adapter.ts"
+      ],
+      "notes": "README claims are not verification evidence",
+      "lines": 1
+    },
+    {
+      "file": "README.md",
+      "path": "packages/coding-agent/src/experimental/durable/README.md",
+      "decision": "rework",
+      "purpose": "Prototype documentation; claims must be re-verified before promotion",
+      "evidence": [
+        "packages/coding-agent/src/experimental/durable/README.md"
+      ],
+      "notes": "README claims are not verification evidence",
+      "lines": 66
+    }
+  ],
+  "capabilities": {
+    "phased-request-transform": "Two ordered request transforms with different visibility, plus restoration of prompt and tool state between them.",
+    "provider-payload-hook": "A hook over the assembled provider request body, distinct from the model messages.",
+    "provider-header-hook": "A hook that can read and mutate outgoing provider headers.",
+    "provider-response-observe": "Observation at the point status and headers arrive, before the stream is consumed.",
+    "streaming-channel": "Bounded per-event delivery for streamed deltas, with ordering and backpressure rules.",
+    "message-rewrite": "Rewriting a finalized message of any role before it is committed.",
+    "settlement-entry-write": "Appending arbitrary entries and forcing another request at the settlement boundary.",
+    "compaction-result-fidelity": "A compaction hook that returns a kept-entry boundary, details, and usage, not only a summary string."
+  },
+  "extraSurface": [
+    {
+      "area": "ExtensionUIContext",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:149"
+      ],
+      "summary": "Dialog, status, widget, header, footer, editor, and autocomplete surface available to extensions.",
+      "decision": "adapt"
+    },
+    {
+      "area": "ExtensionContext and tool/command/replaced-session contexts",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:326"
+      ],
+      "summary": "Abort, session and tree operations, reload, and nested-tool capability handed to handlers.",
+      "decision": "adapt"
+    },
+    {
+      "area": "ToolDefinition contract",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:609",
+        "packages/coding-agent/src/core/extensions/types.ts:621",
+        "packages/coding-agent/src/core/extensions/types.ts:638",
+        "packages/coding-agent/src/core/extensions/types.ts:647"
+      ],
+      "summary": "exposure, reachesTools, prepareLoadout, executionMode, renderers, and structured output; durable declares a different tool contract.",
+      "decision": "adapt"
+    },
+    {
+      "area": "Resource loading",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:732"
+      ],
+      "summary": "Skills, prompt templates, themes, images, and their discovery precedence.",
+      "decision": "adapt"
+    },
+    {
+      "area": "MCP lifecycle",
+      "evidence": [
+        "packages/coding-agent/src/extensions/mcp/index.ts"
+      ],
+      "summary": "Connection, authentication, and resource tools across server changes and session lifecycle.",
+      "decision": "adapt"
+    },
+    {
+      "area": "Session tree and fork",
+      "evidence": [
+        "packages/coding-agent/src/core/extensions/types.ts:1604",
+        "packages/coding-agent/src/core/extensions/types.ts:1620"
+      ],
+      "summary": "Branch summarization, tree switching, and fork behaviour the prototype README excludes.",
+      "decision": "adapt"
+    },
+    {
+      "area": "Non-interactive event interface",
+      "evidence": [
+        "packages/coding-agent/src/modes/json-event.ts:10",
+        "packages/coding-agent/docs/json.md"
+      ],
+      "summary": "--mode json streams message_update and tool events; the roadmap requires that interface not to regress.",
+      "decision": "keep"
+    }
+  ]
+}
