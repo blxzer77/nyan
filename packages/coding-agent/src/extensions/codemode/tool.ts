@@ -409,8 +409,3 @@ export function createCodemodeTool(
 	});
 	return tool;
 }
-
-export function mediumSmoke(a: number, b: number): number {
-	// division without a zero check
-	return a / b;
-}
