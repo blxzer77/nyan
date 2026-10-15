@@ -540,8 +540,9 @@ describe("Context overflow error handling", () => {
 
 	describe.skipIf(!process.env.OPENROUTER_API_KEY)("OpenRouter", () => {
 		// Anthropic backend
-		it("anthropic/claude-sonnet-4 via OpenRouter - should detect overflow via isContextOverflow", async () => {
-			const model = getModel("openrouter", "anthropic/claude-sonnet-4");
+		it("an available Anthropic Sonnet via OpenRouter - should detect overflow via isContextOverflow", async () => {
+			const model = getModels("openrouter").find((candidate) => candidate.id.startsWith("anthropic/claude-sonnet-"));
+			if (model === undefined) throw new Error("OpenRouter has no Anthropic Sonnet model in the generated catalog");
 			const result = await testContextOverflow(model, process.env.OPENROUTER_API_KEY!);
 			logResult(result);
 

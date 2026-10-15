@@ -145,6 +145,8 @@ function isPlainRuntimeMetadataCommand(parsed: Args): boolean {
 /** The durable product path accepts the common new-session flags; legacy session selectors stay on compatibility paths. */
 function canRunDurableProductPath(parsed: Args, allowMultipleMessages = false): boolean {
 	return (
+		parsed.help !== true &&
+		parsed.listModels === undefined &&
 		parsed.resume !== true &&
 		parsed.session === undefined &&
 		parsed.sessionId === undefined &&
