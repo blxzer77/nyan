@@ -121,6 +121,7 @@ Run `npm run version:set -- X.Y.Z` (it also dates the changelog), commit, then p
 ## Roadmap
 
 - Read `ROADMAP.md` before starting work; it lists the active lines, the queue, and decisions waiting on the owner.
+- When a unit of work finishes, update `ROADMAP.md` in the same change: keep Active, Queue, and Decisions accurate, record verification evidence, and commit the handoff-ready state so continuing elsewhere requires only a push.
 - A PR that finishes or changes a roadmap item updates `ROADMAP.md` in the same PR (status, gantt bar, and the table row).
 - Do not decide an item listed under "Decisions"; add new owner decisions there, keep working on the reversible part with the recommended option, and say so in the PR.
 
