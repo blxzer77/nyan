@@ -6,7 +6,7 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ### Changed
 
-- The default interactive and text print session paths now use the durable Harness and SQLite under `~/.nyan/agent/sessions-durable/`; `--continue` resumes the newest durable session for the current directory. Legacy JSONL sessions selected through compatibility flags are opened read-only, so their source files are never migrated or appended to.
+- The default interactive and text print session paths now use the durable Harness and SQLite under `~/.nyan/agent/sessions-durable/`; `--continue` resumes the newest durable session for the current directory. Eligible `--mode json` and `--mode rpc` invocations now use durable storage and recovery. Legacy JSONL sessions selected through compatibility flags are opened read-only, so their source files are never migrated or appended to.
 
 ## [1.3.0] - 2026-10-14
 

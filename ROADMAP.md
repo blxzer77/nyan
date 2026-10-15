@@ -342,10 +342,12 @@ compatibility event. N1's first slice is now implemented: the durable runtime is
 `src/core/durable`, its TUI adapter into `src/modes/durable`, the default interactive path uses it,
 and new sessions live below `~/.nyan/agent/sessions-durable/`. Eligible text print runs now also use
 the durable path and wait for the durable submission settlement before rendering the final answer.
-Legacy JSONL sessions selected through compatibility flags are now opened read-only; JSON/RPC modes
-still use the compatibility path until their durable non-interactive adapters are complete. Evidence
-for this slice is
-`npm run check`, `npm run build:offline`, the durable session-policy test, the print/RPC regression
+Legacy JSONL sessions selected through compatibility flags are now opened read-only. Eligible JSON/RPC
+invocations now use durable storage, event translation, and recovery; legacy RPC filesystem/session
+commands still return named unavailable responses, and invocations with legacy selectors remain on the
+compatibility path. Evidence for this slice is
+`npm run check`, `npm run build:offline`, the durable session-policy and JSON-event tests, the durable
+JSON/RPC no-model smoke tests, the durable generation/tool recovery tests, the print/RPC regression
 subset, the no-model durable print smoke test, and source plus built-bundle tmux startup with
 `NYAN_OFFLINE=1`. The corrected inventory raises N2's scope: 8 durable capabilities must be added,
 and two events are part of the documented `--mode json` contract.

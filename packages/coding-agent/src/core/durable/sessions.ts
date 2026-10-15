@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readdir, realpath } from "node:fs/promises";
+import { mkdir, readdir, realpath, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import { getAgentDir } from "../../config.ts";
@@ -24,11 +24,22 @@ export async function selectSession(cwdInput: string, continueSession: boolean):
 	let created = false;
 	if (continueSession) {
 		const entries = await readdir(root, { withFileTypes: true });
-		const newest = entries
+		const candidates = entries
 			.filter((entry) => entry.isDirectory() && /^\d{13}-[0-9a-f-]{36}$/u.test(entry.name))
 			.map((entry) => entry.name)
 			.sort()
-			.at(-1);
+			.reverse();
+		let newest: string | undefined;
+		for (const candidate of candidates) {
+			try {
+				if ((await stat(join(root, candidate, "session.sqlite"))).isFile()) {
+					newest = candidate;
+					break;
+				}
+			} catch {
+				// A directory left before SQLite was created is not a resumable session.
+			}
+		}
 		if (!newest) throw new Error(`No durable session exists for ${cwd}`);
 		directory = join(root, newest);
 	} else {

@@ -71,8 +71,10 @@ import { printTimings, resetTimings, time } from "./core/timings.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/trust-manager.ts";
 import { builtInExtensions } from "./extensions/index.ts";
 import { loadMcpCommand } from "./extensions/mcp/cli.lazy.ts";
+import { runDurableJson } from "./modes/durable/json.ts";
 import { runDurableInteractive } from "./modes/durable/main.ts";
 import { runDurablePrint } from "./modes/durable/print.ts";
+import { runDurableRpc } from "./modes/durable/rpc.ts";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { cleanupManagedInstall, handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./ui/theme/theme.ts";
@@ -744,6 +746,40 @@ export async function main(args: string[], options?: MainOptions) {
 			...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
 		});
 		stopThemeWatcher();
+		return;
+	}
+
+	if (appMode === "rpc" && canRunDurableProductPath(parsed, true)) {
+		await runDurableRpc({
+			cwd,
+			settingsManager: startupSettingsManager,
+			...(parsed.provider === undefined && parsed.model === undefined
+				? {}
+				: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
+			...(parsed.thinking === undefined ? {} : { thinkingLevel: parsed.thinking }),
+			...(parsed.apiKey === undefined ? {} : { apiKey: parsed.apiKey }),
+		});
+		return;
+	}
+
+	if (appMode === "json" && canRunDurableProductPath(parsed, true)) {
+		const stdinContent = await readPipedStdin();
+		const initial = await prepareInitialMessage(parsed, stdinContent);
+		const exitCode = await runDurableJson({
+			cwd,
+			continueSession: parsed.continue === true,
+			settingsManager: startupSettingsManager,
+			...(parsed.provider === undefined && parsed.model === undefined
+				? {}
+				: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
+			...(parsed.thinking === undefined ? {} : { thinkingLevel: parsed.thinking }),
+			...(parsed.apiKey === undefined ? {} : { apiKey: parsed.apiKey }),
+			...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
+			...(initial.initialImages === undefined ? {} : { initialImages: initial.initialImages }),
+			messages: parsed.messages,
+		});
+		stopThemeWatcher();
+		if (exitCode !== 0) process.exitCode = exitCode;
 		return;
 	}
 
