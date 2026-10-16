@@ -1,8 +1,9 @@
 import type { AssistantMessage, Message, ModelThinkingLevel, SimpleStreamOptions } from "@ny4n/ai/contracts";
 import { calculateContextTokens, estimateMessageTokens } from "@ny4n/ai/utils/estimate";
 import { isRetryableAssistantError, retryDelayMs } from "@ny4n/ai/utils/retry";
-import type { Context, Draft } from "@ny4n/chord";
+import { type Context, copyJson, type Draft, type JsonValue } from "@ny4n/chord";
 import { CompactionEntry } from "../entries.ts";
+import { errorMessage } from "../errors.ts";
 import { defineTask } from "../tasks.ts";
 import type {
 	ConversationId,
@@ -29,11 +30,12 @@ import type {
 	CompactionHooks,
 	CompactionReason,
 	CompactionResult,
+	CompactionSummary,
 	ContextView,
 	ConversationStreamOptions,
 	ModelRef,
 } from "./types.ts";
-import { recordUsage } from "./usage.ts";
+import { recordUsage, usageProblem } from "./usage.ts";
 
 export type CompactionInput = { reason: CompactionReason; instructions?: string };
 
@@ -132,12 +134,16 @@ export const CompactionTask = defineTask<CompactionInput, CompactionCheckpoint, 
 				firstKept,
 				...(instructions === undefined ? {} : { instructions }),
 			};
-			let decision: { readonly decline: true } | { readonly summary: string } | undefined;
+			let decision: { readonly decline: true } | CompactionSummary | undefined;
 			await runtime.hooks.each("beforeCompact", async (hook) => {
 				if (decision === undefined) decision = await hook(compaction, runtime, context);
 			});
 			if (decision !== undefined && "decline" in decision) return complete(runtime, context);
-			if (decision !== undefined) return place(runtime, firstKept, decision.summary, context);
+			if (decision !== undefined) {
+				const checked = checkSummary(view, firstKept, decision);
+				if ("problem" in checked) return failHookResult(runtime, checked.reason, checked.problem, context);
+				return place(runtime, checked.firstKept, checked.summary, context);
+			}
 			const request: SummaryRequest = {
 				attempt: 1,
 				model: ref,
@@ -279,7 +285,7 @@ export function selectCut(view: ContextView, keepRecentTokens: number): number |
 	return undefined;
 }
 
-function isCandidate(contributions: ContextView["contributions"], index: number): boolean {
+export function isCandidate(contributions: ContextView["contributions"], index: number): boolean {
 	const first = contributions[index]![0];
 	if (first?.role === "assistant") return true;
 	if (first?.role !== "user") return false;
@@ -399,11 +405,69 @@ function truncate(text: string, maxChars: number): string {
 	return `${text.slice(0, maxChars)}\n\n[... ${text.length - maxChars} more characters truncated]`;
 }
 
+/** A hook's summary after the checks the commit cannot do, or why it cannot be placed. */
+type CheckedSummary =
+	| { readonly firstKept: EntryId; readonly summary: Supplied }
+	| { readonly reason: string; readonly problem: string };
+
+/** What a hook supplied beyond the cut: details already copied as strict JSON, and usage already checked. */
+type Supplied = Pick<CompactionSummary, "usage"> & { readonly text: string; readonly details?: JsonValue };
+
+/**
+ * Check a hook's summary against the context range selection read. Placing it happens in a commit, where a bad value
+ * would not be noticed (`head`) or would throw (`details`, `usage`) and fault the task, so every value is checked here.
+ */
+function checkSummary(view: ContextView, selected: EntryId, decision: CompactionSummary): CheckedSummary {
+	const invalid = (reason: string, problem: string) => ({ reason, problem });
+	let firstKept = selected;
+	if (decision.firstKept !== undefined) {
+		firstKept = decision.firstKept;
+		const index = view.entries.findIndex((entry) => entry.id === firstKept);
+		const start = view.head === undefined ? 0 : 1;
+		if (index < start) {
+			return invalid("invalid_first_kept", `Entry ${firstKept} is not an active entry after the head marker`);
+		}
+		if (!isCandidate(view.contributions, index)) {
+			return invalid(
+				"invalid_first_kept",
+				`Entry ${firstKept} is not a valid cut: it would split a tool call from its result`,
+			);
+		}
+		if (!view.contributions.slice(start, index).some((contribution) => contribution.length > 0)) {
+			return invalid("invalid_first_kept", `Nothing before entry ${firstKept} contributes messages to summarize`);
+		}
+	}
+	let details: JsonValue | undefined;
+	if (decision.details !== undefined) {
+		try {
+			details = copyJson(decision.details, { omitUndefinedProperties: true });
+		} catch (error) {
+			return invalid("invalid_details", `Compaction details are not strict JSON: ${errorMessage(error)}`);
+		}
+	}
+	if (decision.usage !== undefined) {
+		const { model, usage } = decision.usage;
+		if (typeof model?.provider !== "string" || typeof model.modelId !== "string") {
+			return invalid("invalid_usage", "Compaction usage must name its model as { provider, modelId }");
+		}
+		const problem = usageProblem(usage);
+		if (problem !== undefined) return invalid("invalid_usage", `Compaction usage is unusable: ${problem}`);
+	}
+	return {
+		firstKept,
+		summary: {
+			text: decision.summary,
+			...(details === undefined ? {} : { details }),
+			...(decision.usage === undefined ? {} : { usage: decision.usage }),
+		},
+	};
+}
+
 /** Place a summary supplied by a hook in its own commit. */
-async function place(runtime: Runtime, firstKept: EntryId, summary: string, context: Context): Promise<void> {
+async function place(runtime: Runtime, firstKept: EntryId, supplied: Supplied, context: Context): Promise<void> {
 	await runtime.commit(
 		async (tx, current) =>
-			placeSummary(tx, runtime, current, await tx.doc(LiveDoc, runtime.conversationId), firstKept, summary),
+			placeSummary(tx, runtime, current, await tx.doc(LiveDoc, runtime.conversationId), firstKept, supplied),
 		context,
 	);
 }
@@ -420,16 +484,27 @@ async function placeSummary(
 	current: RunningTask<CompactionInput, CompactionCheckpoint, CompactionResult>,
 	live: Draft<LiveState>,
 	firstKept: EntryId,
-	summary: string,
+	supplied: string | Supplied,
 ): Promise<Next> {
 	removeCompactionStatus(live, runtime.taskId);
 	delete live.compactionFailure;
+	const { text: summary, details, usage } = typeof supplied === "string" ? { text: supplied } : supplied;
+	// Only a hook's own summarization is added here; the summarize path already recorded its attempts.
+	if (usage !== undefined) {
+		await recordUsage(
+			tx,
+			runtime.conversationId,
+			"models",
+			`${usage.model.provider}/${usage.model.modelId}`,
+			usage.usage,
+		);
+	}
 	const text = `${SUMMARY_PREFIX}${summary}${SUMMARY_SUFFIX}`;
 	const entry = {
 		kind: CompactionEntry.kind,
 		head: firstKept,
 		model: [{ role: "user", content: [{ type: "text", text }], timestamp: runtime.now() }],
-		data: { reason: current.input.reason },
+		data: { reason: current.input.reason, ...(details === undefined ? {} : { details }) },
 	} satisfies EntryDraft;
 	const result: CompactionResult =
 		current.owner === undefined
@@ -451,6 +526,14 @@ async function complete(runtime: Runtime, context: Context): Promise<void> {
 	await runtime.commit(async (tx) => {
 		removeCompactionStatus(await tx.doc(LiveDoc, runtime.conversationId), runtime.taskId);
 		return { status: "terminal", outcome: { status: "completed", result: {} } };
+	}, context);
+}
+
+/** Fail with `reason` and leave the live context unchanged: a hook supplied a result that cannot be placed. */
+async function failHookResult(runtime: Runtime, reason: string, message: string, context: Context): Promise<void> {
+	await runtime.commit(async (tx) => {
+		failCompactionStatus(await tx.doc(LiveDoc, runtime.conversationId), runtime.taskId, message);
+		return { status: "terminal", outcome: { status: "failed", error: { message, detail: { reason } } } };
 	}, context);
 }
 

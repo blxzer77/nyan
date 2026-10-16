@@ -23,6 +23,9 @@ export type {
 	Message,
 	Model,
 	ModelThinkingLevel,
+	ProviderHeaders,
+	ProviderResponse,
+	RequestTransforms,
 	SimpleStreamOptions,
 	StopReason,
 	SystemMessage,
@@ -47,6 +50,7 @@ import type {
 	DeferredFetchOptions,
 	DeferredHandle,
 	Model,
+	RequestTransforms,
 	SimpleStreamOptions,
 } from "../types.ts";
 
@@ -59,7 +63,11 @@ import type {
  */
 export interface ModelRuntime {
 	getModel(provider: string, id: string): Model<Api> | undefined;
-	streamSimple(model: Model<Api>, context: Context, options?: SimpleStreamOptions): AssistantMessageEventStream;
+	streamSimple(
+		model: Model<Api>,
+		context: Context,
+		options?: SimpleStreamOptions & RequestTransforms,
+	): AssistantMessageEventStream;
 	completeSimple(model: Model<Api>, context: Context, options?: SimpleStreamOptions): Promise<AssistantMessage>;
 	fetchDeferred(model: Model<Api>, handle: DeferredHandle, options?: DeferredFetchOptions): Promise<AssistantMessage>;
 	cancelDeferred(model: Model<Api>, handle: DeferredHandle, options?: DeferredCancelOptions): Promise<void>;

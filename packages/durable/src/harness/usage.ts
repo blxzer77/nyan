@@ -70,3 +70,32 @@ export function addUsageState(sum: UsageState, state: Readonly<UsageState>): voi
 		}
 	}
 }
+
+const USAGE_COUNTERS = ["input", "output", "cacheRead", "cacheWrite", "totalTokens"] as const;
+const COST_COUNTERS = ["input", "output", "cacheRead", "cacheWrite", "total"] as const;
+
+function finiteCounters(value: unknown, keys: readonly string[]): boolean {
+	if (value === null || typeof value !== "object") return false;
+	return keys.every((key) => Number.isFinite((value as Record<string, unknown>)[key]));
+}
+
+/**
+ * Why `usage`, which a hook supplied, cannot be added to the ledger, or `undefined` when it can. `recordUsage` runs
+ * inside a commit, where a missing or non-finite counter, or a value that is not strict JSON, would throw and fault the
+ * task. The optional counters count too: a string would be concatenated, not added.
+ */
+export function usageProblem(usage: unknown): string | undefined {
+	if (!finiteCounters(usage, USAGE_COUNTERS) || !finiteCounters((usage as { cost?: unknown }).cost, COST_COUNTERS)) {
+		return "its usage or cost has a missing or non-finite counter";
+	}
+	const optional = usage as { cacheWrite1h?: unknown; reasoning?: unknown };
+	for (const [name, value] of Object.entries({ cacheWrite1h: optional.cacheWrite1h, reasoning: optional.reasoning })) {
+		if (value !== undefined && !Number.isFinite(value)) return `its usage counter ${name} is not a finite number`;
+	}
+	try {
+		copyJson(usage as Usage, { omitUndefinedProperties: true });
+	} catch (error) {
+		return `its usage is not strict JSON: ${error instanceof Error ? error.message : String(error)}`;
+	}
+	return undefined;
+}

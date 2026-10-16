@@ -44,6 +44,7 @@ import type {
 	ToolRegistration,
 } from "./types.ts";
 import { recordUsage } from "./usage.ts";
+import { Delivery } from "./util.ts";
 
 /**
  * A model-issued call, read from its assistant entry, or a nested call a running tool made through `executeTool()`,
@@ -276,6 +277,9 @@ async function run(
 	const reported: Reported = { output: new OutputBuffer(limits), limits, diagnostics: [], details: undefined };
 	const streams = input.kind === "model" || input.progress !== false;
 	const progress = publishProgress(runtime, reported, streams, context);
+	const updates = streams ? await toolUpdateDelivery(runtime, call, limits, context) : undefined;
+	// Output arrives as bytes or text; `stream` keeps a character that a chunk boundary splits.
+	const decoder = new TextDecoder();
 	/** Nested call admissions this invocation started; cleanup waits for them, so it sees every nested call. */
 	const admissions: Promise<unknown>[] = [];
 	// A caller that can rerun reattaches to its nested calls and child tasks after a restart; any other caller never
@@ -299,6 +303,13 @@ async function run(
 		output: (chunk, skipped) => {
 			assertLive();
 			if (reported.output.push(chunk, skipped)) progress.mark();
+			if (updates !== undefined) {
+				const text = typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
+				updates.push({
+					...(text === "" ? {} : { output: text }),
+					...(skipped === undefined || skipped.bytes === 0 ? {} : { droppedBytes: skipped.bytes }),
+				});
+			}
 		},
 		outputWindow:
 			limits.retain === "tail"
@@ -316,13 +327,16 @@ async function run(
 		},
 		diagnostic: (diagnostic) => {
 			assertLive();
-			reported.diagnostics.push(copyJson(diagnostic, { omitUndefinedProperties: true }) as ToolDiagnostic);
+			const recorded = copyJson(diagnostic, { omitUndefinedProperties: true }) as ToolDiagnostic;
+			reported.diagnostics.push(recorded);
 			progress.mark();
+			updates?.push({ diagnostics: [recorded] });
 		},
 		details: async (value, detailsContext) => {
 			assertLive();
 			detailsContext.abortSignal?.throwIfAborted();
 			reported.details = copyJson(value, { omitUndefinedProperties: true });
+			updates?.push({ details: reported.details });
 			const committed = progress.markAndWait();
 			// Cancelling the wait leaves the update in place; the commit's own outcome stays observed.
 			committed.catch(() => {});
@@ -416,6 +430,14 @@ async function run(
 	// No admission starts after `ended`; let those underway commit, so settlement aborts and lists their calls.
 	await Promise.allSettled(admissions);
 	reported.output.end();
+	// Observers have seen every update before the call settles. Only an abort rejects the drain, and the settling
+	// commit then rejects too.
+	try {
+		await updates?.drain();
+	} catch (error) {
+		if (!runtime.signal.aborted) throw error;
+	}
+	updates?.stop();
 	// Details still waiting for a progress commit settle with the terminal commit, the final flush.
 	const pending = await progress.stop();
 	try {
@@ -426,6 +448,69 @@ async function run(
 		throw error;
 	}
 	for (const waiter of pending) waiter.resolve();
+}
+
+/** What `onToolUpdate` observers get: the changes since their previous delivery. */
+type ToolUpdate = {
+	readonly output?: string;
+	readonly droppedBytes?: number;
+	readonly details?: JsonValue;
+	readonly diagnostics?: readonly ToolDiagnostic[];
+};
+
+/**
+ * Sequential delivery of a running call's updates to `onToolUpdate` observers, or `undefined` when none is registered.
+ * The tool's `output()` and `diagnostic()` are synchronous, so the producer cannot wait: at most one delivery is in
+ * flight and one is pending, and updates arriving meanwhile coalesce (spec §7.2, "Streaming hooks").
+ */
+async function toolUpdateDelivery(
+	runtime: Runtime,
+	call: ToolHookCall,
+	limits: OutputLimits,
+	context: Context,
+): Promise<Delivery<ToolUpdate> | undefined> {
+	if (!(await runtime.hooks.has("onToolUpdate"))) return undefined;
+	return new Delivery<ToolUpdate>({
+		deliver: (update) => runtime.hooks.each("onToolUpdate", (hook) => hook({ call, ...update }, runtime, context)),
+		context,
+		onError: (error) => runtime.report(error),
+		merge: (waiting, next) => mergeToolUpdates(waiting, next, limits.maxBytes),
+	});
+}
+
+/**
+ * `next` folded into the `waiting` update: output appends, the newest details win, diagnostics append. Pending output is
+ * capped at `maxBytes` bytes; when it overflows, its oldest part is dropped and counted in `droppedBytes`.
+ */
+function mergeToolUpdates(waiting: ToolUpdate, next: ToolUpdate, maxBytes: number): ToolUpdate {
+	let output = `${waiting.output ?? ""}${next.output ?? ""}`;
+	let droppedBytes = (waiting.droppedBytes ?? 0) + (next.droppedBytes ?? 0);
+	const excess = utf8ByteLength(output) - maxBytes;
+	if (excess > 0) {
+		const dropped = dropFront(output, excess);
+		output = dropped.rest;
+		droppedBytes += dropped.bytes;
+	}
+	const details = next.details !== undefined ? next.details : waiting.details;
+	const diagnostics = [...(waiting.diagnostics ?? []), ...(next.diagnostics ?? [])];
+	return {
+		...(output === "" ? {} : { output }),
+		...(droppedBytes === 0 ? {} : { droppedBytes }),
+		...(details === undefined ? {} : { details }),
+		...(diagnostics.length === 0 ? {} : { diagnostics }),
+	};
+}
+
+/** `text` without its first code points, at least `bytes` UTF-8 bytes of them, and how many bytes that was. */
+function dropFront(text: string, bytes: number): { readonly rest: string; readonly bytes: number } {
+	let dropped = 0;
+	let end = 0;
+	for (const character of text) {
+		if (dropped >= bytes) break;
+		dropped += utf8ByteLength(character);
+		end += character.length;
+	}
+	return { rest: text.slice(end), bytes: dropped };
 }
 
 /**

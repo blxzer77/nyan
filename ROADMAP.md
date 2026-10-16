@@ -33,20 +33,21 @@ gantt
     N9 TUI rewrite :crit, n9, after n5, 28d
 
     section Bun-first
-    Phase 2 runtime adapter :bun2, after n0, 10d
+    Phase 2 runtime adapter :active, bun2, after n0, 10d
     Phase 3 compatibility remainder :crit, bun3, after bun2, 21d
     Phase 4 release hardening :crit, bun4, after bun3, 14d
 ```
 
 The Queue table records complete multi-parent dependencies where the compact Gantt representation uses one primary predecessor. Critical bars identify work waiting on an owner decision or on a task blocked by one. GitHub's current Mermaid renderer keeps the today marker on by default but rejects an explicit `todayMarker on` directive and its style form for this chart; the valid chart therefore relies on that default.
 
-The verified baseline is `origin/main` at `589be2d73` after the N0 inventory and durable-path classification commits. The Nyan tree has 12 packages and has no `packages/context`, `packages/retrieval`, `packages/decision`, or `packages/coding-agent/src/core/context-governance` implementation. Pactile's source, tests, design documents, evidence fixtures, and the external retrieval worker are available as migration inputs, not as Nyan completion evidence. The 1.3.0 Herdr, Bun, and provider fixes are published; they do not implement Context Governance. On 2026-10-15 the owner fixed the target architecture for compression, memory, retrieval, decision, egress, and the terminal UI, and selected the implementation shape; those decisions are recorded in the [Decided architecture](#decided-architecture-2026-10-15), [Implementation orchestration](#implementation-orchestration-2026-10-15), and [TUI rewrite](#tui-rewrite) sections below. They are planning records, not implementation evidence, and no implementation line is active.
+The verified baseline is `origin/main` at `589be2d73` after the N0 inventory and durable-path classification commits. The Nyan tree has 12 packages and has no `packages/context`, `packages/retrieval`, `packages/decision`, or `packages/coding-agent/src/core/context-governance` implementation. Pactile's source, tests, design documents, evidence fixtures, and the external retrieval worker are available as migration inputs, not as Nyan completion evidence. The 1.3.0 Herdr, Bun, and provider fixes are published; they do not implement Context Governance. On 2026-10-15 the owner fixed the target architecture for compression, memory, retrieval, decision, egress, and the terminal UI, and selected the implementation shape; those decisions are recorded in the [Decided architecture](#decided-architecture-2026-10-15), [Implementation orchestration](#implementation-orchestration-2026-10-15), and [TUI rewrite](#tui-rewrite) sections below. They are planning records, not implementation evidence. N2 and Bun Phase 2 are now the two active implementation lines.
 
 ### Status key
 
 | Status | Meaning |
 | --- | --- |
 | Done | Implemented or formally published in Nyan and supported by repository or GitHub evidence |
+| Active | Implementation is currently in progress and has a defined gate |
 | Partial | A related Nyan slice exists, but the requested item is not complete |
 | Queued | No Nyan implementation has started; it is scheduled in the Queue |
 | Blocked | Queued work cannot cross an owner decision, permission, evidence, or readiness gate |
@@ -62,7 +63,7 @@ The following assessment covers every numbered item from the handoff. A source f
 | Item | Status | Judgement and destination |
 | --- | --- | --- |
 | Phase 1 CI and parity | Done | PR #10 added seven-package Bun CI; PRs #12, #13, and #14 covered the remaining package and HTTP differences. |
-| Phase 2 runtime adapter | Queued | `isBunBinary` and `process.versions.bun` checks remain scattered; no dedicated adapter, layer registration, or design note exists. Queue as Bun Phase 2. |
+| Phase 2 runtime adapter | Active | The first batch freezes a pure runtime identity contract and begins HTTP/non-HTTP consumer convergence. The implemented boundary is recorded in [the parallelization note](.agents/notes/implemented/architecture/2026-10-16-bun-runtime-adapter-parallelization.md); full Phase 2 remains incomplete. |
 | Phase 3 HTTP, WebSocket, SQLite, subprocess, and worker work | Partial | Bun native fetch and idle-timeout behavior are implemented by PR #13, and WebSocket-related parity fixes are merged. A unified adapter, SQLite evaluation, source-loader, subprocess, worker, and complete cross-runtime validation remain. Queue as Bun Phase 3. |
 | Phase 4 size, startup, signing, and install guidance | Partial | Standalone Bun binaries are released by PR #7 and release attestation is present through PR #15. Size/startup benchmarks, signing certificate scope, and provider-independent install documentation remain. Queue as Bun Phase 4. |
 
@@ -271,7 +272,7 @@ Durable already provides the Context Operation primitives: the effect sandwich (
 | N8 external search, fetch, and evidence | `SearchHit` to `Fetch` to `Evidence` to citation, with the fixed safety constraints. | No search hit becomes a citation without a fetch record and a response hash. |
 | N9 TUI rewrite | The [TUI rewrite](#tui-rewrite) design. | Every durable operation state renders from the view, and no recovery logic lives in the TUI. |
 
-N0 and N1 are complete. N2 is now active; every phase carries a gate that must pass with recorded evidence before the next phase starts, and each phase is a separate change that can be reverted on its own.
+N0 and N1 are complete. N2 and Bun Phase 2 are now active as the two allowed WIP lines; every phase carries a gate that must pass with recorded evidence before the next phase starts, and each phase is a separate change that can be reverted on its own. The Bun Phase 2 boundary and reservation are recorded in [the parallelization note](.agents/notes/implemented/architecture/2026-10-16-bun-runtime-adapter-parallelization.md).
 
 ## Decided architecture (2026-10-15; retrieval revision 2026-10-16)
 
@@ -334,7 +335,10 @@ The rewrite is a new line that does not change the non-interactive `print`, `jso
 
 | Line | Item | Owner | Branch / PR | Next step |
 | --- | --- | --- | --- | --- |
-| Migration | N2 extension and hook adaptation | Blxze | `main`; N2 active | Reconnect the classified extension surface, add the eight durable capabilities, and preserve the JSON/RPC event contract |
+| Migration | N2 extension and hook adaptation | Blxze | `n2-durable-hooks` | Task A is implemented: the eight durable capabilities exist in `packages/durable` as nine hook members plus `HookRunner.has()` (contract and evidence in the [N2 hooks note](.agents/notes/proposed/architecture/2026-10-16-durable-n2-capability-hooks.md); scope reductions await Decision #23). Not done: the JSON/RPC product APIs (task B, the 12 commands that still answer unavailable) and the coding-agent extension adapter that maps Nyan's `context`, `message_end`, `turn_end`, `agent_before_settle`, and tool-update handlers onto these hooks (task C). The N2 gate is open until both land |
+| Bun-first | Phase 2 runtime adapter | Blxze | `n2-durable-hooks` | Batches 1 to 3 are in: pure `runtime.ts` in `coding-agent` and `ai`, and the HTTP dispatcher, output guard, user-agent, bug-report, and `ai` provider-env, env-api-keys, Codex, and Bedrock checks use it. Remaining: `utils/image-resize.ts`, `bun/restore-sandbox-env.ts`, `core/extensions/loader.ts`, `main.ts`, `experimental/*`, the `packages/ai` loader path, and a compiled-binary and bundled-node check before the Phase 2 gate closes |
+
+N2 task A evidence (2026-10-16): `npm run check` exits 0; `packages/durable` runs 1302 passed under Node, the whole suite twice (normal and `NYAN_DURABLE_DOCUMENT_RETENTION_MS=0`), and the new hook, delivery, and chord tests also pass under Bun (68 and 6). Two tests fail for reasons unrelated to the change: `test/tools-images.test.ts` "prepares in a worker thread" asserts a wall-clock bound that a loaded machine misses, and the live `test/provider-session-cache-e2e.test.ts` is rejected by the provider ("The 'gpt-5.5' model is not supported when using Codex with a ChatGPT account"). Each new behavior was checked by disabling the code under test and confirming a test fails. An independent review found five blocking problems, all fixed and re-tested; the follow-up review of those fixes did not complete because the review model returned a connection error, so the fixes are covered by tests and mutation checks only. Not verified: a crash between a boundary hook and its commit, and Bedrock's `onResponse` frequency under SDK retries.
 
 N0 and N1 are complete: the inventory gate is wired into `npm run check`, the durable runtime is
 promoted into `src/core/durable`, its TUI adapter into `src/modes/durable`, and the default
@@ -356,7 +360,7 @@ raises N2's scope: 8 durable capabilities must be added, and two events are part
 | Order | Line | Item | Depends on |
 | --- | --- | --- | --- |
 | 1 | Migration | N0 inventory and extension classification | Done: gate wired, reviewed, and owner decisions #18–#21 recorded |
-| 2 | Bun-first | Phase 2 runtime adapter | Bun Phase 1 parity fixes; independent of N0 |
+| 2 | Bun-first | Phase 2 runtime adapter | Bun Phase 1 parity fixes; independent of N0 and N2; now active as the second WIP line |
 | 3 | Migration | N1 product path switch to durable | N0 complete |
 | 4 | Migration | N2 extension and hook adaptation | N1 |
 | 5 | Context governance | N3 content-addressed artifact store | N2 |
@@ -395,6 +399,7 @@ Do not close or reinterpret these entries without an owner decision. Work may co
 | 20 | How is the settlement boundary expressed? | Resolved 2026-10-15: widen the durable hook so settlement entry writes remain durable and recoverable; do not model it as `onYield` | Resolved; N2 |
 | 21 | Are the events with no extension consumer removed? | Resolved 2026-10-15: retain all four streamed events and retain `thinking_level_select` as a product-API compatibility event; no event is removed in N2 | Resolved; N2 |
 | 22 | May N1 close with legacy RPC product APIs deferred? | Resolved 2026-10-16: close N1 with durable JSON/RPC core lifecycle and event/recovery evidence; bash, queue mutation, entry/tree access, fork, export, and related product APIs are explicit N2 scope | Resolved; N2 |
+| 23 | Accept three scope reductions in the N2 durable hooks? (a) `message_end` rewrite covers the assistant role only; tool results rewrite through `afterTool`, user input through the `input` event, and durable has no `custom` role. (b) Settlement hooks do not fire for an error or aborted turn, which ends through the failure path. (c) `messageEntryId` is absent for a final-answer turn because the answer commits together with the boundary. (d) A boundary hook cannot write a `compaction` draft or a head marker; compaction stays the durable compaction task's job. | Accept all four. Every repository consumer of `message_end` rewrite works on assistant messages (tests, the cost override, the cliproxyapi normalizer); (b) and (c) are consequences of keeping the boundary atomic with the turn outcome; (d) keeps N4's governed compaction the only writer of compaction entries. Implemented under this recommendation until answered; see the [N2 hooks note](.agents/notes/proposed/architecture/2026-10-16-durable-n2-capability-hooks.md) | N2 gate: "every `durable-capability` entry is either satisfied or has a recorded owner decision reducing it" |
 
 ## Done
 

@@ -2678,16 +2678,26 @@ consuming commit may rerun them. Abort errors always propagate.
 
 | hook | composition | ordinary throw |
 |---|---|---|
+| `transformConversation` | replacement chain, before `beforeRequest` | report, continue |
 | `beforeRequest` | replacement chain | report, continue |
+| `beforeProviderRequest` | replacement chain | report, continue |
+| `beforeProviderHeaders` | replacement chain | report, continue |
+| `afterProviderResponse` | all observers | report, continue |
+| `onProviderStreamEvent` | all observers, sequential | report, continue |
+| `onStreamEvent` | all observers, sequential | report, continue |
+| `rewriteMessage` | replacement chain, before `afterResponse` | report, continue |
 | `afterResponse` | all observers | report, continue |
 | `onYield` | first continuation wins | report, continue |
+| `onBoundary` | accumulating chain | report, continue |
 | `beforeTool` | argument replacement chain; first block wins | block tool with error text |
 | `afterTool` | result replacement chain | report, continue |
+| `onToolUpdate` | all observers, sequential, coalesced | report, continue |
 | `afterTools` | all observers | report, continue |
 | `beforeCompact` | first decision wins | report, continue |
 
-Hooks use task memos for durable first-writer-wins decisions. There is no public
-semantic event channel; current UI status is document state.
+Hooks use task memos for durable first-writer-wins decisions. The public status
+channel is document state and the committed agent events (section 9.4,
+experimental); the streaming hooks below are a live tap that is not durable.
 
 ```ts
 type HookResult<T> = T | undefined | Promise<T | undefined>;
@@ -2715,7 +2725,69 @@ interface GenerationHooks {
   onYield(answer: AssistantMessage, api: HookApi, context: Context): HookResult<{ readonly continue: UserInput }>;
   /** After every tool of the round is terminal; `results` are the round's result entries in call order. */
   afterTools(assistant: EntryId, results: readonly EntryId[], api: HookApi, context: Context): void | Promise<void>;
+  /**
+   * Phase one of the request transform, before `beforeRequest`. `messages` is the request without system messages. A
+   * returned list that is not element-wise identical to the one received replaces it, and the request becomes
+   * `[getCurrentSystemMessage(before), ...returned]` (just `returned` without a system message).
+   */
+  transformConversation(
+    request: { readonly messages: readonly Message[] },
+    api: HookApi,
+    context: Context,
+  ): HookResult<{ readonly messages: readonly Message[] }>;
+  /** The terminal assistant message of `request` or `poll`, before `afterResponse`; a valid replacement is used. */
+  rewriteMessage(message: AssistantMessage, api: HookApi, context: Context): HookResult<{ readonly message: AssistantMessage }>;
+  /** The provider body of one request attempt. May run more than once per attempt; must be idempotent. */
+  beforeProviderRequest(
+    request: { readonly payload: unknown; readonly model: Model<Api> },
+    api: HookApi,
+    context: Context,
+  ): HookResult<{ readonly payload: unknown }>;
+  /** The request headers after authentication and `ConversationStreamOptions.headers` merged, before the adapter's defaults. */
+  beforeProviderHeaders(
+    request: { readonly headers: Readonly<ProviderHeaders>; readonly model: Model<Api> },
+    api: HookApi,
+    context: Context,
+  ): HookResult<{ readonly headers: ProviderHeaders }>;
+  /** Status and headers arrived, body not consumed yet. Each adapter decides how often it calls this; some never do. */
+  afterProviderResponse(
+    response: { readonly status: number; readonly headers: Readonly<Record<string, string>>; readonly model: Model<Api> },
+    api: HookApi,
+    context: Context,
+  ): void | Promise<void>;
+  /** One parsed provider stream frame, read-only. Adapter-owned. */
+  onProviderStreamEvent(frame: { readonly data: unknown; readonly model: Model<Api> }, api: HookApi, context: Context): void | Promise<void>;
+  /** Every event of the request's assistant stream in provider order, including `start`, `done`, and `error`. */
+  onStreamEvent(
+    stream: { readonly event: AssistantMessageEvent; readonly attempt: number },
+    api: HookApi,
+    context: Context,
+  ): void | Promise<void>;
+  /** A turn or run boundary; see "Boundary hooks" below. */
+  onBoundary(boundary: GenerationBoundary, api: HookApi, context: Context): HookResult<BoundaryDecision>;
 }
+
+type GenerationBoundary = {
+  /** `turn_end`: after a turn that produced an answer or finished a tool round. `settle`: the run would end. */
+  readonly kind: "turn_end" | "settle";
+  /** The turn's assistant message; for `settle`, the final answer. */
+  readonly assistant: AssistantMessage;
+  /** Absent when the answer is committed together with the boundary, as for a final answer. */
+  readonly assistantEntry?: EntryId;
+  /** The tool round's result entries in call order; empty for an answer. */
+  readonly toolResults: readonly EntryId[];
+  /** What earlier handlers of this boundary asked for. */
+  readonly entries: readonly BoundaryEntry[];
+  readonly continue: boolean;
+};
+/** User messages and data only: no head marker, no `nyan.` kind. */
+type BoundaryEntry = {
+  readonly kind: string;
+  readonly model?: readonly UserMessage[];
+  readonly data?: JsonValue;
+  readonly edits?: readonly ContextEdit[];
+};
+type BoundaryDecision = { readonly entries?: readonly BoundaryEntry[]; readonly continue?: boolean };
 
 /** `parent` is set for a nested call (section 7.3). */
 type ToolHookCall = ToolCall & { readonly parent?: { readonly taskId: TaskId; readonly callId: string } };
@@ -2734,7 +2806,30 @@ interface ToolHooks {
     api: HookApi,
     context: Context,
   ): HookResult<ToolExecutionResult>;
+  /** Running output, details, or diagnostics changed; see "Streaming hooks" below. */
+  onToolUpdate(
+    update: {
+      readonly call: ToolHookCall;
+      readonly output?: string;
+      readonly droppedBytes?: number;
+      readonly details?: JsonValue;
+      readonly diagnostics?: readonly ToolDiagnostic[];
+    },
+    api: HookApi,
+    context: Context,
+  ): void | Promise<void>;
 }
+
+/** A summary a `beforeCompact` hook supplies; it is assumed to cover every entry before `firstKept`. */
+type CompactionSummary = {
+  readonly summary: string;
+  /** Instead of the entry range selection chose; must be a valid cut (section 8.7). */
+  readonly firstKept?: EntryId;
+  /** Strict JSON, stored as `data.details` of the compaction entry. */
+  readonly details?: JsonValue;
+  /** Spend of the extension's own summarization, added to `nyan.usage.models`. */
+  readonly usage?: { readonly model: ModelRef; readonly usage: Usage };
+};
 
 interface CompactionHooks {
   /**
@@ -2752,7 +2847,7 @@ interface CompactionHooks {
     },
     api: HookApi,
     context: Context,
-  ): HookResult<{ readonly decline: true } | { readonly summary: string }>;
+  ): HookResult<{ readonly decline: true } | CompactionSummary>;
 }
 ```
 
@@ -2767,6 +2862,118 @@ composes differently, such as `beforeTool` turning a throw into a block, or stop
 after a first decision, does so inside its own `invoke`. Hooks receive the task's
 runtime as their `HookApi`; hook memos and the task's own memos share one
 namespace, so hook authors prefix their memo names.
+
+`runtime.hooks.has(name)` resolves the phase's agent once and reports whether any
+handler under `name` exists, by the predicate `each` applies. A task asks before
+it builds anything a hook would consume, so a hook nobody registered costs
+nothing: no provider callback is set, no delivery runs, and the request, the
+commits, and the events are those of a conversation without hooks. An adapter
+that registers a member unconditionally makes `has` true and pays for it.
+
+**Request hooks.** `transformConversation` runs first. Handlers see the request
+without system messages, in extension order, each seeing the previous output. A
+returned list that is not element-wise identical (by object identity) to the one
+the handler received replaces it, and prompt and tool state is restored: the
+request becomes the merged current system message followed by the returned list.
+That collapses the positional system entries into one leading message and so
+changes the prompt-cache prefix. An identical list leaves the request untouched.
+`beforeRequest` then runs over the full request, system messages included. Both
+run before every request attempt, including the resend after recovery. Neither is
+durable; the committed messages are unchanged.
+
+**Provider hooks.** `beforeProviderRequest`, `beforeProviderHeaders`,
+`afterProviderResponse`, and `onProviderStreamEvent` reach the model runtime as
+the request options `onPayload`, `transformHeaders`, `onResponse`, and
+`onProviderStreamEvent`, each only when `has` is true. A callback handed to the
+model runtime never throws except on abort: an adapter may await it unguarded or
+wrap a throw into a stream error, and `each` reports an ordinary throw and goes
+on. Every wait for a handler races the invocation's abort, so a hook that never
+returns delays only until abort. What the adapters call is what the coding agent's
+own events see: `onPayload` can run again within one attempt (an adapter that
+rebuilds its body calls it again), `onResponse` is not called by every adapter
+and may be called once per HTTP try, and frames come only from adapters that
+support them and are not marked when an adapter repeats them after its own
+retry. Header transforms run after the model runtime merged authentication and
+the request's headers and before the adapter adds its defaults; a `null` value
+removes a header. None of this is recovered: the resend after a crash rebuilds
+all four.
+
+**Streaming hooks.** `onStreamEvent`, `onProviderStreamEvent`, and `onToolUpdate`
+are a live, in-memory tap and are not durable. Delivery is sequential per source:
+every handler sees event `k`, in extension order, before any handler sees event
+`k+1`. Every wait races the invocation's abort; after abort the rest of the
+source is discarded.
+- Provider frames are awaited by the adapter, so a slow observer slows stream
+  reading.
+- Assistant events are pushed into the stream's own queue, so no consumer can slow
+  the provider. They go through a FIFO drained by one pump that the read loop never
+  waits for, so observers cannot stall the throttled partial commit (section 8.3)
+  or the abort path. The FIFO is as large as the response, which `maxTokens`
+  bounds. It is drained before the terminal message is classified, so observers
+  have seen every event when `afterResponse` runs. `event.partial` is the
+  provider's live object and may be ahead of the event when an observer lags.
+- Tool updates come from `output()` and `diagnostic()`, which are synchronous, so
+  the producer cannot wait. At most one delivery is in flight and one is pending;
+  updates arriving meanwhile coalesce: output appends, the newest details win,
+  diagnostics append. Pending output is capped at the tool's `outputLimits.maxBytes`;
+  past that its oldest part is dropped and counted in `droppedBytes`, which also
+  counts output an environment window skipped. Observers get the pushed chunks, not
+  the retained window of the result. They have seen every update before the call
+  settles (before `afterTool`). A nested call that publishes no progress delivers
+  none.
+
+After a crash the request is resent and the assistant stream starts again with
+`start`; `attempt` counts the generation's retries and does not change on a
+resend, so a new `start` is the only mark of it. A rerun of a replay-safe tool
+reports from scratch. The committed agent events (section 9.4) remain the source
+for hosts and UIs.
+
+**Message rewrite.** `rewriteMessage` is typed to the assistant role and runs for
+the terminal message of `request` or `poll`, before `afterResponse` and before
+classification; it does not run for a deferred result or for a partial converted
+to an aborted entry. A replacement is used for everything after: the answer, the
+usage ledger, and the tool calls. It is checked first: an assistant message, a known
+stop reason other than `deferred`, finite numeric usage and cost, and strict JSON.
+An invalid replacement is reported and ignored, because the classification commit
+would throw on it. `afterResponse` observes the message that will be committed.
+
+**Boundary hooks.** `onBoundary` runs `turn_end` after every turn that produced an
+answer or finished a tool round, and `settle` when the run would end: a final
+answer that neither `onYield` nor an earlier `onBoundary` handler asked to continue,
+or a tool round that `terminate` or `handoff` ends. At a final answer the order is
+`onYield`, `turn_end`, then `settle`; `entries` and `continue` accumulate across
+handlers and across the two calls, and a handler's `entries` replaces the list so
+far. A turn that ends in an error or an abort has no boundary.
+
+The generation task appends the returned entries in the commit that ends the turn
+or settles the run: `prepareBoundary`, the answer, the entries, then queued inputs
+(section 6). A crash before that commit reruns the hook; a crash after it leaves
+the entries exactly once, attributed to the generation task. Only the Harness
+writes model context to a busy conversation, which is why a hook returns drafts
+instead of writing.
+
+The drafts are checked before the commit, off the line, against the committed
+context, because `Tx.appendEntry` validates nothing about `head` or `edits` (a bad
+draft silently changes which entries are active) and a value that is not strict
+JSON throws inside the commit and would fault the task. A draft has only `kind`,
+`model`, `data`, and `edits`; its `kind` is non-empty and does not start with
+`nyan.`; `model` holds only user messages with a finite `timestamp`; every `edits`
+target is an entry of the active context with the action `omit`, or `replace` with
+a list of such user messages; and the draft copies as strict JSON. A rejected
+list is dropped as a whole and reported, and `continue` is dropped with it. The
+check reads the committed context before the commit, and a background compaction
+may land in between. An edit whose target that compaction left out of the active
+context then has no effect, because edits apply to active entries only; nothing
+is reported.
+
+`continue` asks for one more request after the entries. It is honored only at a
+final answer, only when no queued input and no reset was selected, and only when the
+entries contain a `model` message: the answer is appended first, and a request must
+not end with an assistant message. A `continue` without such a message is
+reported and dropped. A `continue` that a queued input or a reset overrides is
+ignored without a report, because the run goes on with that input; the drafted user
+message then stays in the context just before it. A tool round continues anyway, so
+`continue` there is ignored without a report.
 
 Selection decides which behavior a conversation has; the extension's own
 document holds that behavior's state:
@@ -3974,20 +4181,27 @@ The run's inputs live in `nyan.live.run`, not in the task input.
   as `reasoning` (omitted for `off`), the conversation's persisted provider
   `sessionId`, and the pinned `streamOptions`, committing throttled partials at
   most every `settings.progress.partialIntervalMs` (default 100 ms).
-  Before streaming, the `beforeRequest` chain may
-  replace the messages for this request only. Recovery resends the same
-  committed messages with the same pinned model, thinking level, and stream
-  options, and reruns `beforeRequest`.
+  Before streaming, the `transformConversation` chain and then the `beforeRequest`
+  chain may replace the messages for this request only (section 7.2). Registered
+  provider and streaming hooks reach the model runtime and the stream with the
+  request (section 7.2). Recovery resends the same committed messages with the
+  same pinned model, thinking level, and stream options, and reruns all of them.
+- `rewriteMessage` may replace every terminal message, from `request` or `poll`,
+  before `afterResponse`; a still deferred result is not terminal.
 - `afterResponse` observes every terminal message, from `request` or `poll`,
   before classification; a still deferred result is not terminal.
 - Before classifying, the handler stops the partial throttle and awaits any
   partial commit in flight, so no stale partial lands after the outcome. The
   terminal message is classified in one commit that also clears the partial:
   - `stop`/`length`: before the commit, the `onYield` chain runs; the first
-    `{ continue }` wins. The commit appends the answer and applies the final
-    boundary (section 6). With a continuation and no selected user item or
-    reset, it appends a `nyan.user` entry with the continuation content, creates a
-    successor generation, and hands it `nyan.live.run`, keeping the inputs open.
+    `{ continue }` wins. Then the `onBoundary` chain runs for `turn_end` and,
+    when nothing continues the run, for `settle` (section 7.2), and its entries
+    are checked. The commit appends the answer, then the checked entries, and
+    applies the final boundary (section 6). With a continuation and no selected
+    user item or reset, it appends a `nyan.user` entry with the continuation
+    content, creates a successor generation, and hands it `nyan.live.run`, keeping
+    the inputs open; an `onBoundary` `continue` hands over the same way without the
+    `nyan.user` entry.
     Otherwise it settles the run's inputs `done`, removes `run` and
     `generation`, and starts a successor run for the selected user items, if
     any; a dropped continuation is not retried. Both complete with
@@ -4115,8 +4329,10 @@ terminal. In a sequential round with calls left in `pending`, one commit creates
 the next call's owned tool task and waits on it again with the shorter `pending`.
 Otherwise it reads the tool records with `runtime.getTask()` and the round's
 result entries from the `nyan.live.tools` slots, runs the `afterTools` observers,
-and then commits once:
+runs the `onBoundary` chain for `turn_end`, and for `settle` when `terminate` or
+`handoff` ends the run (section 7.2), checks its entries, and then commits once:
 
+- It appends the checked `onBoundary` entries after the round's results.
 - It edits the conversation's stored `nyan.agent` `tools` and `modelTools` for
   every `addTools` name: an array gets the name appended unless it holds it
   already, and `{ remove }` loses the name. An unset `tools` already enables
@@ -4260,7 +4476,19 @@ Phases:
   the task fails with `no_model`. With nothing to compact it completes with
   `{}`. Otherwise the `beforeCompact` hooks (section 7.2) run with the
   summarized entries and messages; the first decision wins. `{ decline: true }` completes
-  with `{}`, and `{ summary }` is placed as below in the same commit. Without a
+  with `{}`, and a `CompactionSummary` is checked and then placed as below in the same
+  commit. The check covers what the commit cannot: `firstKept`, when given, must be an
+  active entry after the head marker that range selection's candidate rule accepts
+  (rule 1 above) and something before it must contribute messages, or the task fails
+  with `invalid_first_kept`; `details` must copy as strict JSON, or it fails with
+  `invalid_details`; `usage` must name its model as `{ provider, modelId }`, carry finite
+  numbers for every counter it has, optional ones included, and copy as strict JSON, or it fails with
+  `invalid_usage`. A failed check leaves the live
+  context unchanged. The placed entry's `head` is the hook's `firstKept` when given, its
+  `data` is `{ reason }` plus `details` when given, and its `usage` is added to
+  `nyan.usage.models["<provider>/<modelId>"]` in the same commit; only this path records
+  it, because the summarize path records its own attempts. The hook's summary is assumed
+  to cover every entry before `firstKept`; durable cannot check that. Without a
   decision, one commit moves to `summarize` with attempt 1, the agent's model
   and thinking level, the settings' stream options, `maxTokens` = `min(floor(0.8 *
   reserveTokens), model.maxTokens)` (the model's value only when positive), the

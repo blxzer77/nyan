@@ -161,6 +161,11 @@ export interface HookRunner<H extends object> {
 	 * handler runs; once the invocation is signalled, the error propagates. Composition happens inside `invoke`.
 	 */
 	each<K extends keyof H>(name: K, invoke: (handler: NonNullable<H[K]>) => void | Promise<void>): Promise<void>;
+	/**
+	 * Whether any handler named `name` is registered among the phase's resolved hooks, by the predicate `each` applies. A
+	 * task asks before it builds anything a hook would consume, so a hook nobody registered costs nothing.
+	 */
+	has<K extends keyof H>(name: K): Promise<boolean>;
 }
 
 /**

@@ -29,6 +29,6 @@ export const ToolResultEntry = defineEntry<{ diagnostics: ToolDiagnostic[] }>("n
 export const ResetEntry = defineEntry("nyan.reset");
 /**
  * Compaction summary: `model` is `[UserMessage]` with the wrapped summary, `head` the first kept entry. Written by
- * compaction tasks, directly or through a write submission.
+ * compaction tasks, directly or through a write submission. `details` is what a `beforeCompact` hook attached.
  */
-export const CompactionEntry = defineEntry<{ reason: CompactionReason }>("nyan.compaction");
+export const CompactionEntry = defineEntry<{ reason: CompactionReason; details?: JsonValue }>("nyan.compaction");

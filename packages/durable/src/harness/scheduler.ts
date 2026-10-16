@@ -1599,6 +1599,10 @@ export class TaskScheduler {
 			return phase.agent;
 		};
 		const hooks: HookRunner<Record<string, unknown>> = {
+			has: async (name) =>
+				agentHooks(await agent(), phase.task().definition.name).some(
+					(handlers) => typeof (handlers as Record<string, unknown>)[name] === "function",
+				),
 			each: async (name, invoke) => {
 				for (const handlers of agentHooks(await agent(), phase.task().definition.name)) {
 					const handler = (handlers as Record<string, unknown>)[name];
