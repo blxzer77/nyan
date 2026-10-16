@@ -14,7 +14,7 @@
 import type { RefreshModelsContext } from "@ny4n/ai";
 import { streamSimple as nyanStreamSimple } from "@ny4n/ai/compat";
 import { APP_NAME } from "../../config.ts";
-import { CredentialVerificationError } from "../../core/auth-guidance.ts";
+import { CredentialVerificationError, type CredentialVerificationReason } from "../../core/auth-guidance.ts";
 import type { ExtensionAPI, ExtensionContext, ProviderConfig } from "../../core/extensions/types.ts";
 import { loadCatalogCache, saveCatalogCache } from "./cache.ts";
 import {
@@ -23,7 +23,6 @@ import {
 	type ChatModelConfig,
 	type CpaModel,
 	fetchCatalog,
-	isUnauthorizedCatalogError,
 	mapCatalog,
 	reconcileCatalog,
 } from "./catalog.ts";
@@ -367,7 +366,13 @@ export class CatalogController {
 		const previous = this.inFlight;
 		const task: Promise<void> = (async () => {
 			await previous?.catch(() => {});
-			await this.runRefresh(options);
+			// A refresh never rejects (its callers rely on that). A failure it cannot place is recorded as a failed answer.
+			try {
+				await this.runRefresh(options);
+			} catch (error) {
+				this.lastError = errorMessage(error);
+				this.lastFailure = classifyFailure(error);
+			}
 		})();
 		this.inFlight = task;
 		try {
@@ -427,14 +432,16 @@ export class CatalogController {
 				return;
 			}
 			this.lastError = errorMessage(error);
-			this.lastFailure = classifyFailure(error);
-			if (isUnauthorizedCatalogError(error)) {
+			const failure = classifyFailure(error);
+			this.lastFailure = failure;
+			if (error instanceof CatalogHttpError && failure.reason === "rejected") {
 				this.notices.push(
 					rejectedKeyNotice(
 						this.agentDir,
 						identity.providerId,
 						identity.providerName,
 						options.credentialKey !== undefined,
+						error.status,
 					),
 				);
 			}
@@ -484,7 +491,7 @@ interface KnownModels {
 
 /** Why the last refresh had no usable answer: the proxy refused the credential, or it did not answer. */
 export interface CatalogFailure {
-	reason: "rejected" | "unavailable";
+	reason: CredentialVerificationReason;
 	message: string;
 }
 
@@ -508,8 +515,15 @@ function warnIfKeyOverridden(
 	credential: RefreshModelsContext["credential"],
 ): void {
 	const entered = credentialSecret(credential);
-	const runtimeKey = resolveConnection(agentDir, providerId)?.apiKey;
-	if (!entered || !runtimeKey || runtimeKey === entered) return;
+	if (!entered) return;
+	let runtimeKey: string | undefined;
+	try {
+		runtimeKey = resolveConnection(agentDir, providerId)?.apiKey;
+	} catch {
+		// A malformed CLIPROXYAPI_BASE_URL is reported by the refresh that follows; a hint about the key does not add to it.
+		return;
+	}
+	if (!runtimeKey || runtimeKey === entered) return;
 	const source = apiKeySource(agentDir, providerId);
 	if (source.kind === "environment") {
 		log.warn(overriddenKeyMessage("CLIPROXYAPI_API_KEY", providerId, credential?.type));
@@ -527,20 +541,31 @@ function overriddenKeyMessage(subject: string, providerId: string, credentialTyp
 
 /** Names the variable that sends the login to a base URL other than the one it checked, or undefined when none does. */
 function endpointOverrideNotice(entered: string, effective: string): string | undefined {
-	if (resolveEndpoints(entered).rootOrigin === resolveEndpoints(effective).rootOrigin) return undefined;
+	try {
+		if (resolveEndpoints(entered).rootOrigin === resolveEndpoints(effective).rootOrigin) return undefined;
+	} catch {
+		// A malformed override variable is reported by the refresh that follows; it must not fail a correct login.
+		return undefined;
+	}
 	return `CLIPROXYAPI_BASE_URL is set to ${effective}, so the model list and requests go there, not to the URL you entered (${entered}). The key was checked at ${entered}.`;
 }
 
 /** Says where the rejected key is set and how to correct it, since logging in does not always change it. */
-function rejectedKeyNotice(agentDir: string, providerId: string, providerName: string, verifying: boolean): string {
+function rejectedKeyNotice(
+	agentDir: string,
+	providerId: string,
+	providerName: string,
+	verifying: boolean,
+	status: number,
+): string {
 	const source = verifying ? undefined : apiKeySource(agentDir, providerId);
 	if (source?.kind === "environment") {
-		return "CLIProxyAPI rejected the API key in the environment variable CLIPROXYAPI_API_KEY (HTTP 401). Logging in does not change it: correct or unset that variable, then run /cpa-refresh.";
+		return `CLIProxyAPI rejected the API key in the environment variable CLIPROXYAPI_API_KEY (HTTP ${status}). Logging in does not change it: correct or unset that variable, then run /cpa-refresh.`;
 	}
 	if (source?.kind === "config") {
-		return `CLIProxyAPI rejected the apiKey in ${source.path} (HTTP 401). That field is read before the stored login: correct or remove it there, then run /cpa-refresh.`;
+		return `CLIProxyAPI rejected the apiKey in ${source.path} (HTTP ${status}). That field is read before the stored login: correct or remove it there, then run /cpa-refresh.`;
 	}
-	return `CLIProxyAPI rejected the credential (HTTP 401). Re-run /login ${providerName} to reconfigure.`;
+	return `CLIProxyAPI rejected the credential (HTTP ${status}). Re-run /login ${providerName} to reconfigure.`;
 }
 
 /** Resolve the connection a refresh needs. A `credentialKey` replaces the resolved key but keeps the endpoint. */

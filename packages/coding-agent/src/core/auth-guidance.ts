@@ -3,14 +3,16 @@ import { getDocsPath } from "../config.ts";
 
 const UNKNOWN_PROVIDER = "unknown";
 
+export type CredentialVerificationReason = "rejected" | "unavailable";
+
 /**
  * Login could not verify the credential it stored. `rejected`: the provider answered and refused the credential.
  * `unavailable`: no usable answer (network failure, timeout, server error), so nothing is known about the credential.
  */
 export class CredentialVerificationError extends Error {
-	readonly reason: "rejected" | "unavailable";
+	readonly reason: CredentialVerificationReason;
 
-	constructor(reason: "rejected" | "unavailable", message: string) {
+	constructor(reason: CredentialVerificationReason, message: string) {
 		super(message);
 		this.name = "CredentialVerificationError";
 		this.reason = reason;

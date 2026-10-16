@@ -632,6 +632,65 @@ describe("CLIProxyAPI extension", () => {
 			}
 		});
 
+		it("names the HTTP status of a key the proxy refuses with 403", async () => {
+			const server = createServer((_request, response) => {
+				response.writeHead(403, { "Content-Type": "application/json" });
+				response.end(JSON.stringify({ error: { message: "forbidden" } }));
+			});
+			servers.push(server);
+			server.listen(0, "127.0.0.1");
+			await once(server, "listening");
+			const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+			const restore = setEnv({ CLIPROXYAPI_BASE_URL: baseUrl, CLIPROXYAPI_API_KEY: "wrong-key" });
+			try {
+				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
+				await controller.refresh({ allowNetwork: true });
+				const notices = controller.takeNotices();
+				expect(notices[0]).toContain("(HTTP 403)");
+			} finally {
+				restore();
+			}
+		});
+
+		it("records a malformed CLIPROXYAPI_BASE_URL as a failed answer instead of rejecting", async () => {
+			const restore = setEnv({ CLIPROXYAPI_BASE_URL: "not a url", CLIPROXYAPI_API_KEY: "typed-key" });
+			try {
+				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
+				await expect(
+					controller.refresh({ allowNetwork: true, force: true, credentialKey: "typed-key" }),
+				).resolves.toBeDefined();
+				expect(controller.getLastFailure()).toMatchObject({ reason: "unavailable" });
+			} finally {
+				restore();
+			}
+		});
+
+		it("keeps a correct key when CLIPROXYAPI_BASE_URL is malformed", async () => {
+			const { baseUrl } = await proxy("typed-key");
+			const agentDir = agentDirWithoutPricing();
+			const restore = setEnv({ NYAN_CODING_AGENT_DIR: agentDir });
+			try {
+				const login = (await registeredCpa()).oauth?.login;
+				if (!login) throw new Error("no oauth login");
+				process.env.CLIPROXYAPI_BASE_URL = "not a url";
+				const answers = [baseUrl, "typed-key"];
+				// A third question would mean the login looped on a hint, so it fails loudly instead of answering forever.
+				const credential = await login({
+					onAuth: () => {},
+					onDeviceCode: () => {},
+					onPrompt: async () => {
+						const answer = answers.shift();
+						if (answer === undefined) throw new Error("the login asked more questions than expected");
+						return answer;
+					},
+					onSelect: async () => undefined,
+				});
+				expect(credential).toMatchObject({ access: "typed-key" });
+			} finally {
+				restore();
+			}
+		});
+
 		it("classifies a key the proxy refuses as rejected", async () => {
 			const { baseUrl } = await proxy("typed-key");
 			const restore = setEnv({ CLIPROXYAPI_BASE_URL: baseUrl });

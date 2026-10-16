@@ -164,10 +164,9 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 				throw new AuthCommandError(`Provider "${provider.name}" does not support OAuth login.`);
 			}
 			if (options.method === "api_key" && !hasApiKey) {
+				// Only reached for a provider with OAuth: the check above refuses one with neither method.
 				throw new AuthCommandError(
-					hasOAuth
-						? `Provider "${provider.name}" has no API key method here. Run ${APP_NAME} login ${provider.id} without --method to use its login flow.`
-						: `Provider "${provider.name}" does not support API key login.`,
+					`Provider "${provider.name}" has no API key method here. Run ${APP_NAME} login ${provider.id} without --method to use its login flow.`,
 				);
 			}
 			authType = options.method;
