@@ -244,6 +244,16 @@ describe("onBoundary drafts that cannot be used", () => {
 			{ action: "replace", messages: [{ role: "user", content: "x" }] },
 			"has a replacement user message without a timestamp",
 		],
+		[
+			"a replacement message without content",
+			{ action: "replace", messages: [{ role: "user", timestamp: 1 }] },
+			"has a replacement user message without content",
+		],
+		[
+			"an omit that carries messages",
+			{ action: "omit", messages: [{ role: "user", content: "x", timestamp: 1 }] },
+			"has an omit edit with messages",
+		],
 	];
 
 	it.each(badEdits)("drops %s even when its target is active", async (_label, edit, expected) => {

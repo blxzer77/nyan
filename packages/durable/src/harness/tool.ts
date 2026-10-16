@@ -43,7 +43,7 @@ import type {
 	ToolHooks,
 	ToolRegistration,
 } from "./types.ts";
-import { recordUsage } from "./usage.ts";
+import { recordUsage, usageProblem } from "./usage.ts";
 import { Delivery } from "./util.ts";
 
 /**
@@ -613,6 +613,17 @@ async function finalResult(
 			runtime.report(new Error(broken));
 		}
 	}
+	// The commit adds the usage to the ledger and throws on a counter it cannot add, which would lose the whole result:
+	// the tool's output is kept, its spend is not, and the break is told to the model, the program and the host.
+	if (final.usage !== undefined) {
+		const problem = usageProblem(final.usage);
+		if (problem !== undefined) {
+			const { usage: _dropped, ...rest } = final;
+			final = rest;
+			harness.push(unrecordedUsage(call.id, problem));
+			runtime.report(new Error(`Tool ${tool.name} returned usage that was not recorded: ${problem}`));
+		}
+	}
 	// Programs get the tool's own value: without a schema, its output. The model reads only `output`, so model-issued
 	// calls skip both.
 	if (input.kind === "nested" && tool.structuredOutputSchema === undefined) {
@@ -690,8 +701,14 @@ async function settle(
 		const result = build(slot);
 		let settled: ToolTaskResult;
 		if (input.kind === "nested") {
-			const nested = nestedResult(runtime.taskId, result, durationMs);
-			if (nested.usage !== undefined) await recordUsage(tx, conversationId, "tools", call.name, nested.usage);
+			let nested = nestedResult(runtime.taskId, result, durationMs);
+			if (nested.usage !== undefined) {
+				const problem = await recordUsage(tx, conversationId, "tools", call.name, nested.usage);
+				if (problem !== undefined) {
+					const { usage: _dropped, ...rest } = nested;
+					nested = { ...rest, diagnostics: [...rest.diagnostics, unrecordedUsage(call.id, problem)] };
+				}
+			}
 			// The caller is never terminal before its owned nested calls, so its document is open; another task in it is a
 			// bug, not a race.
 			const state = await tx.doc(NestedCallDoc, input.parent, input.key, null);
@@ -870,6 +887,15 @@ export function harnessError(code: string, message: string): ToolExecutionResult
 	return { output: [], isError: true, diagnostics: [toolDiagnostic(code, message)] };
 }
 
+/** The ledger counts one call's spend less than the tool reported; the call is named so a log line can be traced. */
+function unrecordedUsage(callId: string, problem: string): ToolDiagnostic {
+	return {
+		severity: "warn",
+		code: "invalid_usage",
+		message: `The usage of tool call ${callId} was not recorded, so nyan.usage counts less than the tool spent: ${problem}`,
+	};
+}
+
 function toolDiagnostic(code: string, message: string): ToolDiagnostic {
 	return { severity: "error", code, message };
 }
@@ -921,6 +947,15 @@ export async function appendToolResult(
 ): Promise<TypedEntry<{ diagnostics: ToolDiagnostic[] }>> {
 	const { timestamp, durationMs } = meta;
 	const diagnostics = [...(result.diagnostics ?? [])];
+	let usage = result.usage;
+	if (usage !== undefined) {
+		// Checked by `finalResult`; only a sum that overflows the ledger is left, and then the entry carries no usage.
+		const problem = await recordUsage(tx, conversationId, "tools", call.name, usage);
+		if (problem !== undefined) {
+			usage = undefined;
+			diagnostics.push(unrecordedUsage(call.id, problem));
+		}
+	}
 	const content: Content = [...(result.output ?? [])];
 	if (diagnostics.length > 0) content.push({ type: "text", text: renderDiagnostics(diagnostics) });
 	const message = {
@@ -929,12 +964,11 @@ export async function appendToolResult(
 		toolName: call.name,
 		content,
 		...(result.details === undefined ? {} : { details: result.details }),
-		...(result.usage === undefined ? {} : { usage: result.usage }),
+		...(usage === undefined ? {} : { usage }),
 		isError: result.isError ?? false,
 		...(durationMs === undefined ? {} : { durationMs }),
 		timestamp,
 	} as ToolResultMessage;
-	if (result.usage !== undefined) await recordUsage(tx, conversationId, "tools", call.name, result.usage);
 	return tx.appendEntry(ToolResultEntry, conversationId, { model: [message], data: { diagnostics } });
 }
 

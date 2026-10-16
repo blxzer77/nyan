@@ -35,7 +35,7 @@ import type {
 	ConversationStreamOptions,
 	ModelRef,
 } from "./types.ts";
-import { recordUsage, usageProblem } from "./usage.ts";
+import { recordProviderUsage, recordUsage, usageProblem } from "./usage.ts";
 
 export type CompactionInput = { reason: CompactionReason; instructions?: string };
 
@@ -196,10 +196,9 @@ export const CompactionTask = defineTask<CompactionInput, CompactionCheckpoint, 
 				attempt <= policy.maxRetries;
 			const until = retry ? runtime.now() + retryDelayMs(policy, attempt) : 0;
 			await runtime.commit(async (tx, current): Promise<Next> => {
-				await recordUsage(
+				await recordProviderUsage(
 					tx,
 					runtime.conversationId,
-					"models",
 					`${message.provider}/${message.model}`,
 					message.usage,
 				);
@@ -491,13 +490,10 @@ async function placeSummary(
 	const { text: summary, details, usage } = typeof supplied === "string" ? { text: supplied } : supplied;
 	// Only a hook's own summarization is added here; the summarize path already recorded its attempts.
 	if (usage !== undefined) {
-		await recordUsage(
-			tx,
-			runtime.conversationId,
-			"models",
-			`${usage.model.provider}/${usage.model.modelId}`,
-			usage.usage,
-		);
+		const key = `${usage.model.provider}/${usage.model.modelId}`;
+		// Each counter was checked, but the sum with the ledger can still overflow; the summary stands without its spend.
+		const problem = await recordUsage(tx, runtime.conversationId, "models", key, usage.usage);
+		if (problem !== undefined) runtime.report(new Error(`Compaction usage for ${key} was not recorded: ${problem}`));
 	}
 	const text = `${SUMMARY_PREFIX}${summary}${SUMMARY_SUFFIX}`;
 	const entry = {

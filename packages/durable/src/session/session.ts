@@ -513,6 +513,9 @@ export class SessionImpl implements Session {
 				});
 			this.#notifyClose();
 		}
+		// `#closing` is shared by every caller. When a caller's context is already aborted, `awaitWithContext` attaches a
+		// catch to it, which marks a failed close handled for all observers, not only that caller: a close that fails then
+		// surfaces through `report()` and the `closed` result, never as an unhandled rejection.
 		return awaitWithContext(this.#closing, context);
 	}
 

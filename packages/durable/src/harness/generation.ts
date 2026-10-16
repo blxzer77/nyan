@@ -691,11 +691,15 @@ async function runBoundary(
 	return { entries, continue: asked };
 }
 
-/** Why `messages` is not a list of user messages with timestamps, or `undefined`. Tool-call pairing depends on this. */
+/**
+ * Why `messages` is not a list of user messages with content and timestamps, or `undefined`. Tool-call pairing depends
+ * on the roles, and a request is built from the content: a message without it is rejected by the provider or throws.
+ */
 function userMessagesProblem(messages: unknown): string | undefined {
 	if (!Array.isArray(messages)) return "that is not a list";
 	for (const message of messages) {
 		if (message?.role !== "user") return "message that is not a user message";
+		if (typeof message.content !== "string" && !Array.isArray(message.content)) return "user message without content";
 		if (!Number.isFinite(message.timestamp)) return "user message without a timestamp";
 	}
 	return undefined;
@@ -734,6 +738,9 @@ function boundaryProblem(view: ContextView, entries: readonly BoundaryEntry[]): 
 				if (edit.action === "replace") {
 					const problem = userMessagesProblem(edit.messages);
 					if (problem !== undefined) return `${at} has a replacement ${problem}`;
+				} else if (edit.messages !== undefined) {
+					// Read nowhere for an omit, so a hook that sets it expects a replacement it will not get.
+					return `${at} has an omit edit with messages, which only a replace uses`;
 				}
 			}
 		}

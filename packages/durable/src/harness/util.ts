@@ -113,12 +113,24 @@ export class Delivery<T> {
 					await awaitWithContext(this.#deliver(this.#queue.shift() as T), this.#context);
 				} catch (error) {
 					if (this.#context.abortSignal?.aborted === true) this.stop();
-					else this.#onError(error);
+					else this.#report(error);
 				}
 			}
 		} finally {
 			// No await between the loop's last check and here, so a `push()` never lands in the gap.
 			this.#running = undefined;
+		}
+	}
+
+	/**
+	 * `onError` is the last reporter there is: when it throws too, nobody is left to tell, and letting the throw out would
+	 * end the pump as an unhandled rejection with `drain()` waiting on it. The next value is delivered as usual.
+	 */
+	#report(error: unknown): void {
+		try {
+			this.#onError(error);
+		} catch {
+			// Nothing owns this failure.
 		}
 	}
 

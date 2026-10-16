@@ -16,21 +16,22 @@ import {
 	LiveDoc,
 	MemoryStorage,
 	type ToolRegistration,
+	ToolResultEntry,
 	ToolTask,
 } from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
-import { type ChatSetup, chatSetup, openChat, textOf, waitFor } from "./chat-support.ts";
+import { allEntries, type ChatSetup, chatSetup, openChat, textOf, waitFor } from "./chat-support.ts";
 import { addHooks, addTool } from "./harness-support.ts";
 import { context } from "./session-support.ts";
 
 async function runOnce(
 	setup: ChatSetup,
 	steps: (FauxResponseStep | AssistantMessage)[],
-): Promise<{ status: string; harness: Harness }> {
+): Promise<{ status: string; harness: Harness; root: Awaited<ReturnType<typeof openChat>>["root"] }> {
 	setup.faux.setResponses(steps);
 	const { harness, root } = await openChat(new MemoryStorage(), setup);
 	const settled = await (await root.submit({ type: "input", content: "go" }, context)).wait(context);
-	return { status: settled.status, harness };
+	return { status: settled.status, harness, root };
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -318,13 +319,17 @@ describe("onToolUpdate", () => {
 		const setup = chatSetup();
 		addTool(
 			setup.registry,
-			reporting((api) => {
+			reporting(async (api) => {
 				api.output("x");
+				await api.details({ step: 1 }, context);
 			}),
 		);
-		const { status, harness } = await runOnce(setup, [CALL, DONE]);
+		const { status, harness, root } = await runOnce(setup, [CALL, DONE]);
 		expect(status).toBe("done");
 		expect(setup.reports).toEqual([]);
+		// The details the tool reported are the result's, since it returned none of its own.
+		const [result] = (await allEntries(root)).filter((entry) => ToolResultEntry.is(entry));
+		expect(result?.model?.[0]).toMatchObject({ role: "toolResult", details: { step: 1 } });
 		await harness.close(context);
 	});
 });

@@ -32,6 +32,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { selectCut, serializeConversation } from "../src/harness/compaction.ts";
 import { orderToolResults } from "../src/harness/context.ts";
+import { recordUsage } from "../src/harness/usage.ts";
 import { openNodeSqliteStorage } from "../src/storage/sqlite/node.ts";
 import { allEntries, type ChatSetup, chatSetup, openChat, textOf, toolsNamed, waitFor } from "./chat-support.ts";
 import { addHooks, addSection, addTask, addTool } from "./harness-support.ts";
@@ -2439,6 +2440,26 @@ describe("beforeCompact result", () => {
 		const messages = (await chat.root.context(context)).messages.filter((message) => message.role !== "system");
 		expect(userText(messages[0])).toContain("<summary>\nFROM HOOK\n</summary>");
 		expect(userText(messages[1])).toBe(text("u2", 100));
+		await chat.harness.close(context);
+	});
+
+	it("places the summary and reports the spend when it would make the ledger infinite", async () => {
+		const chat = await open();
+		await history(chat);
+		const huge = { ...spend, cost: { ...spend.cost, total: 1e308 } };
+		await chat.root.commit(async (tx) => {
+			await recordUsage(tx, chat.root.id, "models", "faux/faux-1", huge);
+		}, context);
+		const before = await usageOf(chat);
+		const { outcome } = await compactWith(chat, () => ({ summary: "S", usage: { model: faux, usage: huge } }));
+		expect(outcome.status).toBe("completed");
+		expect(compactions(await allEntries(chat.root))).toHaveLength(1);
+		// The ledger is as it was, and the host was told.
+		expect(await usageOf(chat)).toBe(before);
+		expect((await chat.harness.usage(context)).models["faux/faux-1"]?.cost.total).toBe(1e308);
+		expect(chat.setup.reports.map((error) => (error as Error).message)).toContainEqual(
+			expect.stringContaining("Compaction usage for faux/faux-1 was not recorded"),
+		);
 		await chat.harness.close(context);
 	});
 

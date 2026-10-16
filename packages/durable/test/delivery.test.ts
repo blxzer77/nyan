@@ -89,6 +89,36 @@ describe("Delivery", () => {
 		expect(errors.map(String)).toEqual(["Error: delivery failed"]);
 	});
 
+	it("keeps delivering when the error reporter itself throws, and drain still resolves", async () => {
+		const unhandled: unknown[] = [];
+		const onUnhandled = (error: unknown) => unhandled.push(error);
+		process.on("unhandledRejection", onUnhandled);
+		try {
+			const seen: number[] = [];
+			const queue = new Delivery<number>({
+				deliver: async (value) => {
+					await tick();
+					if (value === 1) throw new Error("delivery failed");
+					seen.push(value);
+				},
+				context: BACKGROUND_CONTEXT,
+				onError: () => {
+					throw new Error("reporter failed");
+				},
+			});
+			queue.push(1);
+			queue.push(2);
+			await queue.drain();
+			queue.push(3);
+			await queue.drain();
+			expect(seen).toEqual([2, 3]);
+			await new Promise((resolve) => setTimeout(resolve, 30));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
+	});
+
 	it("merges into the last waiting value, so at most one is pending behind the one in flight", async () => {
 		const seen: string[] = [];
 		const gate = Promise.withResolvers<void>();

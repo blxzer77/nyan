@@ -2934,8 +2934,8 @@ classification; it does not run for a deferred result or for a partial converted
 to an aborted entry. A replacement is used for everything after: the answer, the
 usage ledger, and the tool calls. It is checked first: an assistant message, a known
 stop reason other than `deferred`, a finite `timestamp`, a string `id` and `name` on
-every tool call, finite numeric usage and cost (the optional counters included), and
-strict JSON.
+every tool call, usage and cost whose counters (the optional ones included) are finite,
+non-negative numbers, with no field the ledger does not count, and strict JSON.
 An invalid replacement is reported and ignored, because the classification commit
 would throw on it. `afterResponse` observes the message that will be committed.
 
@@ -2959,9 +2959,10 @@ context, because `Tx.appendEntry` validates nothing about `head` or `edits` (a b
 draft silently changes which entries are active) and a value that is not strict
 JSON throws inside the commit and would fault the task. A draft has only `kind`,
 `model`, `data`, and `edits`; its `kind` is non-empty and does not start with
-`nyan.`; `model` holds only user messages with a finite `timestamp`; every `edits`
-target is an entry of the active context with the action `omit`, or `replace` with
-a list of such user messages; and the draft copies as strict JSON. A rejected
+`nyan.`; `model` holds only user messages with `content` (a string or a list) and a finite
+`timestamp`; every `edits` target is an entry of the active context with the action
+`omit`, which carries no `messages`, or `replace` with a list of such user messages;
+and the draft copies as strict JSON. A rejected
 list is dropped as a whole and reported, and `continue` is dropped with it. The
 check reads the committed context before the commit, and a background compaction
 may land in between. An edit whose target that compaction left out of the active
@@ -3564,6 +3565,16 @@ A result's `usage` is stored on the tool-result message and added to the
 conversation's `nyan.usage.tools[toolName]` in the result commit (section 8.6). A
 tool that runs an owned conversation must not report that conversation's spend
 again: the child's own `nyan.usage` already counts it (section 12).
+
+The usage is checked before that commit, after `afterTool`: every counter, the
+optional ones included, is a finite, non-negative number, there is no field the
+ledger does not count, and it copies as strict JSON. The commit would throw on a
+bad counter and lose the whole result, so a result whose usage fails the check
+keeps its output and loses the usage, gets a `warn` diagnostic with the code
+`invalid_usage`, and the host receives a report. A usage whose sum with the ledger
+would not be finite, such as two `1e308` costs, is dropped the same way when the
+commit finds it: the ledger keeps its earlier total, and the stored result or
+nested result carries the diagnostic and no usage.
 
 On reopen, a tool reruns only when both its stored intent policy and the current
 declaration, resolved as at `call`, say `safe`. A current `unsafe` declaration
@@ -4393,7 +4404,14 @@ Every summarization attempt of a compaction task adds its response's `usage` to
 `models` in the commit that classifies it (section 8.7); that spend has no entry,
 whether the summary is placed, fails, or ends stale. Failed and aborted attempts
 count. A fork starts at zero, so no spend is counted
-twice. `Harness.usage()` sums every conversation's document into the Session
+twice. The ledger can count less than was spent in two cases, each with a `warn`
+diagnostic or a report that names the call: a tool's usage that fails the check of
+section 7.3, or whose sum with the ledger is not finite, and a compaction hook's
+usage whose sum is not finite (section 8.7). The tool's output and the compaction's
+summary are kept. A provider response whose usage cannot be recorded does not take
+this path: its commit throws, the generation task faults, and the submission settles
+`unanswered` with reason `faulted` and the cause in `detail`; no answer entry is
+written. `Harness.usage()` sums every conversation's document into the Session
 total; other totals, such as an ownership subtree, are application sums over
 `scanConversations()`. Nothing stores a total across conversations.
 
@@ -4485,9 +4503,11 @@ Phases:
   active entry after the head marker that range selection's candidate rule accepts
   (rule 1 above) and something before it must contribute messages, or the task fails
   with `invalid_first_kept`; `details` must copy as strict JSON, or it fails with
-  `invalid_details`; `usage` must name its model as `{ provider, modelId }`, carry finite
-  numbers for every counter it has, optional ones included, and copy as strict JSON, or it fails with
-  `invalid_usage`. A failed check leaves the live
+  `invalid_details`; `usage` must name its model as `{ provider, modelId }`, carry finite,
+  non-negative numbers for every counter it has, optional ones included, have no field the
+  ledger does not count, and copy as strict JSON, or it fails with
+  `invalid_usage`. A usage that passes but whose sum with the ledger would not be finite
+  is not recorded: the summary is still placed and the host receives a report. A failed check leaves the live
   context unchanged. The placed entry's `head` is the hook's `firstKept` when given, its
   `data` is `{ reason }` plus `details` when given, and its `usage` is added to
   `nyan.usage.models["<provider>/<modelId>"]` in the same commit; only this path records
