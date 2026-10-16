@@ -86,4 +86,27 @@ describe("Context", () => {
 		await expect(work).resolves.toBe("completed later");
 		await expect(awaitWithContext(Promise.resolve("completed"), BACKGROUND_CONTEXT)).resolves.toBe("completed");
 	});
+
+	it("leaves no unhandled rejection when the work fails after the waiter gave up", async () => {
+		const unhandled: unknown[] = [];
+		const onUnhandled = (error: unknown) => unhandled.push(error);
+		process.on("unhandledRejection", onUnhandled);
+		try {
+			const early = new AbortController();
+			early.abort();
+			const late = new AbortController();
+			const fail = (message: string) =>
+				new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), 5));
+			// Already cancelled when the wait begins, and cancelled while waiting.
+			const before = awaitWithContext(fail("after early abort"), withAbortSignal(early.signal, BACKGROUND_CONTEXT));
+			const during = awaitWithContext(fail("after late abort"), withAbortSignal(late.signal, BACKGROUND_CONTEXT));
+			late.abort();
+			await expect(before).rejects.toMatchObject({ name: "AbortError" });
+			await expect(during).rejects.toMatchObject({ name: "AbortError" });
+			await new Promise((resolve) => setTimeout(resolve, 30));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
+	});
 });
