@@ -429,7 +429,7 @@ function checkSummary(view: ContextView, selected: EntryId, decision: Compaction
 		if (!isCandidate(view.contributions, index)) {
 			return invalid(
 				"invalid_first_kept",
-				`Entry ${firstKept} is not a valid cut: it would split a tool call from its result`,
+				`Entry ${firstKept} is not a valid cut: a summary cannot end right before it`,
 			);
 		}
 		if (!view.contributions.slice(start, index).some((contribution) => contribution.length > 0)) {

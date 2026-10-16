@@ -707,6 +707,7 @@ function userMessagesProblem(messages: unknown): string | undefined {
 
 const BOUNDARY_FIELDS: ReadonlySet<string> = new Set(["kind", "model", "data", "edits"]);
 const EDIT_ACTIONS: ReadonlySet<string> = new Set(["omit", "replace"]);
+const EDIT_FIELDS: ReadonlySet<string> = new Set(["target", "action", "messages"]);
 
 /**
  * Why the boundary drafts cannot be appended, or `undefined` when they can. `Tx.appendEntry` checks nothing about `head`
@@ -734,6 +735,9 @@ function boundaryProblem(view: ContextView, entries: readonly BoundaryEntry[]): 
 					return `${at} edits entry ${String(edit?.target)}, which is not in the active context`;
 				if (!EDIT_ACTIONS.has(edit.action))
 					return `${at} has an edit with the unknown action ${String(edit.action)}`;
+				const editExtra = Object.keys(edit).find((key) => !EDIT_FIELDS.has(key));
+				if (editExtra !== undefined)
+					return `${at} has an edit with a field \`${editExtra}\` that is not part of an edit`;
 				// A replacement is read as the target's messages on every context derivation; a missing list would throw there.
 				if (edit.action === "replace") {
 					const problem = userMessagesProblem(edit.messages);

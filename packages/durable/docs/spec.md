@@ -2917,10 +2917,13 @@ source is discarded.
   updates arriving meanwhile coalesce: output appends, the newest details win,
   diagnostics append. Pending output is capped at the tool's `outputLimits.maxBytes`;
   past that its oldest part is dropped and counted in `droppedBytes`, which also
-  counts output an environment window skipped. Observers get the pushed chunks, not
-  the retained window of the result. They have seen every update before the call
-  settles (before `afterTool`). A nested call that publishes no progress delivers
-  none.
+  counts output an environment window skipped. Pending diagnostics are not capped:
+  the call already keeps every diagnostic for its result. Observers get the pushed
+  chunks, not the retained window of the result, decoded as the retained output is:
+  a chunk that ends inside a character delivers nothing yet, and a character still
+  incomplete when the call's output ends arrives as U+FFFD in a last update. They have
+  seen every update before the call settles (before `afterTool`). A nested call that
+  publishes no progress delivers none.
 
 After a crash the request is resent and the assistant stream starts again with
 `start`; `attempt` counts the generation's retries and does not change on a
@@ -2961,8 +2964,9 @@ JSON throws inside the commit and would fault the task. A draft has only `kind`,
 `model`, `data`, and `edits`; its `kind` is non-empty and does not start with
 `nyan.`; `model` holds only user messages with `content` (a string or a list) and a finite
 `timestamp`; every `edits` target is an entry of the active context with the action
-`omit`, which carries no `messages`, or `replace` with a list of such user messages;
-and the draft copies as strict JSON. A rejected
+`omit`, which carries no `messages`, or `replace` with a list of such user messages,
+and an edit has no field besides `target`, `action`, and `messages`; and the draft
+copies as strict JSON. A rejected
 list is dropped as a whole and reported, and `continue` is dropped with it. The
 check reads the committed context before the commit, and a background compaction
 may land in between. An edit whose target that compaction left out of the active

@@ -249,6 +249,7 @@ describe("onBoundary drafts that cannot be used", () => {
 			{ action: "replace", messages: [{ role: "user", timestamp: 1 }] },
 			"has a replacement user message without content",
 		],
+		["an edit with an unknown field", { action: "omit", note: "why" }, "has an edit with a field `note`"],
 		[
 			"an omit that carries messages",
 			{ action: "omit", messages: [{ role: "user", content: "x", timestamp: 1 }] },

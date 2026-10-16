@@ -118,6 +118,7 @@ export class OutputBuffer {
 	 */
 	readonly #decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 	#started = false;
+	#lastPush: { readonly pending: string; readonly text: string } = { pending: "", text: "" };
 	/** Stored chunks: for head the start of the stream, for tail a suffix that still contains the next window. */
 	#chunks: { readonly text: string; readonly bytes: number; readonly newlines: number }[] = [];
 	#storedBytes = 0;
@@ -129,6 +130,14 @@ export class OutputBuffer {
 
 	constructor(limits: OutputLimits) {
 		this.#limits = limits;
+	}
+
+	/**
+	 * The text the latest `push` decoded: `pending` completes an earlier byte chunk's character as U+FFFD and comes before
+	 * the skip, `text` follows it. Observers that want the same text as the buffer read it here instead of decoding again.
+	 */
+	get lastPush(): { readonly pending: string; readonly text: string } {
+		return this.#lastPush;
 	}
 
 	/** Bytes currently held; bounded by the limits plus one chunk. */
@@ -148,6 +157,7 @@ export class OutputBuffer {
 		const first = !this.#started && pending === "" && skipped === undefined;
 		if (pending !== "" || text !== "" || skipped !== undefined) this.#started = true;
 		if (first && typeof chunk !== "string" && text.startsWith("\ufeff")) text = text.slice(1);
+		this.#lastPush = { pending, text };
 		if (skipped === undefined) return this.#accept(pending + text);
 		if (this.#limits.retain !== "tail") throw new Error("Skipped output requires tail retention");
 		this.#accept(pending);
@@ -167,9 +177,11 @@ export class OutputBuffer {
 		this.#storedNewlines = 0;
 	}
 
-	/** Flush an incomplete trailing character as a replacement character; call when the stream ends. */
-	end(): void {
-		this.#accept(this.#decoder.decode());
+	/** Flush an incomplete trailing character as a replacement character; call when the stream ends. Returns the flushed text. */
+	end(): string {
+		const flushed = this.#decoder.decode();
+		this.#accept(flushed);
+		return flushed;
 	}
 
 	#accept(text: string): boolean {

@@ -278,8 +278,6 @@ async function run(
 	const streams = input.kind === "model" || input.progress !== false;
 	const progress = publishProgress(runtime, reported, streams, context);
 	const updates = streams ? await toolUpdateDelivery(runtime, call, limits, context) : undefined;
-	// Output arrives as bytes or text; `stream` keeps a character that a chunk boundary splits.
-	const decoder = new TextDecoder();
 	/** Nested call admissions this invocation started; cleanup waits for them, so it sees every nested call. */
 	const admissions: Promise<unknown>[] = [];
 	// A caller that can rerun reattaches to its nested calls and child tasks after a restart; any other caller never
@@ -304,11 +302,19 @@ async function run(
 			assertLive();
 			if (reported.output.push(chunk, skipped)) progress.mark();
 			if (updates !== undefined) {
-				const text = typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
-				updates.push({
-					...(text === "" ? {} : { output: text }),
-					...(skipped === undefined || skipped.bytes === 0 ? {} : { droppedBytes: skipped.bytes }),
-				});
+				// The text the buffer decoded, so observers and the retained output agree on a split character.
+				const { pending, text } = reported.output.lastPush;
+				const droppedBytes = skipped === undefined ? 0 : skipped.bytes;
+				// A character completed by a skip comes before the skipped output, the rest after it.
+				if (droppedBytes > 0 && pending !== "") updates.push({ output: pending });
+				const output = droppedBytes > 0 ? text : pending + text;
+				// A chunk that ends inside a character decodes to nothing; there is nothing to report yet.
+				if (output !== "" || droppedBytes > 0) {
+					updates.push({
+						...(output === "" ? {} : { output }),
+						...(droppedBytes === 0 ? {} : { droppedBytes }),
+					});
+				}
 			}
 		},
 		outputWindow:
@@ -429,7 +435,9 @@ async function run(
 	ended = true;
 	// No admission starts after `ended`; let those underway commit, so settlement aborts and lists their calls.
 	await Promise.allSettled(admissions);
-	reported.output.end();
+	// A character that the last chunk left incomplete is flushed as U+FFFD, for observers as for the retained output.
+	const flushed = reported.output.end();
+	if (flushed !== "") updates?.push({ output: flushed });
 	// Observers have seen every update before the call settles. Only an abort rejects the drain, and the settling
 	// commit then rejects too.
 	try {
@@ -458,6 +466,9 @@ type ToolUpdate = {
 	readonly diagnostics?: readonly ToolDiagnostic[];
 };
 
+/** An update still waiting to be delivered: the delivery queue owns its diagnostics list, so a merge appends to it. */
+type PendingToolUpdate = Omit<ToolUpdate, "diagnostics"> & { diagnostics?: ToolDiagnostic[] };
+
 /**
  * Sequential delivery of a running call's updates to `onToolUpdate` observers, or `undefined` when none is registered.
  * The tool's `output()` and `diagnostic()` are synchronous, so the producer cannot wait: at most one delivery is in
@@ -468,9 +479,9 @@ async function toolUpdateDelivery(
 	call: ToolHookCall,
 	limits: OutputLimits,
 	context: Context,
-): Promise<Delivery<ToolUpdate> | undefined> {
+): Promise<Delivery<PendingToolUpdate> | undefined> {
 	if (!(await runtime.hooks.has("onToolUpdate"))) return undefined;
-	return new Delivery<ToolUpdate>({
+	return new Delivery<PendingToolUpdate>({
 		deliver: (update) => runtime.hooks.each("onToolUpdate", (hook) => hook({ call, ...update }, runtime, context)),
 		context,
 		onError: (error) => runtime.report(error),
@@ -480,9 +491,15 @@ async function toolUpdateDelivery(
 
 /**
  * `next` folded into the `waiting` update: output appends, the newest details win, diagnostics append. Pending output is
- * capped at `maxBytes` bytes; when it overflows, its oldest part is dropped and counted in `droppedBytes`.
+ * capped at `maxBytes` bytes; when it overflows, its oldest part is dropped and counted in `droppedBytes`. Pending
+ * diagnostics are not capped, because `Reported.diagnostics` already keeps every one for the result; they are appended
+ * in place, so a delivery that stays in flight does not make each push copy the whole list.
  */
-function mergeToolUpdates(waiting: ToolUpdate, next: ToolUpdate, maxBytes: number): ToolUpdate {
+export function mergeToolUpdates(
+	waiting: PendingToolUpdate,
+	next: PendingToolUpdate,
+	maxBytes: number,
+): PendingToolUpdate {
 	let output = `${waiting.output ?? ""}${next.output ?? ""}`;
 	let droppedBytes = (waiting.droppedBytes ?? 0) + (next.droppedBytes ?? 0);
 	const excess = utf8ByteLength(output) - maxBytes;
@@ -492,7 +509,8 @@ function mergeToolUpdates(waiting: ToolUpdate, next: ToolUpdate, maxBytes: numbe
 		droppedBytes += dropped.bytes;
 	}
 	const details = next.details !== undefined ? next.details : waiting.details;
-	const diagnostics = [...(waiting.diagnostics ?? []), ...(next.diagnostics ?? [])];
+	const diagnostics = waiting.diagnostics ?? [];
+	if (next.diagnostics !== undefined) diagnostics.push(...next.diagnostics);
 	return {
 		...(output === "" ? {} : { output }),
 		...(droppedBytes === 0 ? {} : { droppedBytes }),

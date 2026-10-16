@@ -790,8 +790,9 @@ export interface GenerationHooks {
 	 * The terminal assistant message of `request` or `poll`, before `afterResponse` and before classification; a
 	 * replacement chain. A valid returned message replaces it, so the answer, the usage ledger, and the tool calls all
 	 * use the replacement, and `afterResponse` observes the message that will be committed. A replacement must be an
-	 * assistant message with a known stop reason other than `deferred`, numeric usage and cost, and strict JSON content;
-	 * an invalid one is reported and ignored, because the classification commit would throw on it. Not called for a
+	 * assistant message with a known stop reason other than `deferred`, usage and cost made of finite, non-negative numbers
+	 * with no field the ledger does not count, and strict JSON content; an invalid one is reported and ignored, because the
+	 * classification commit would throw on it. Not called for a
 	 * deferred result, nor for a partial converted to an aborted entry.
 	 */
 	rewriteMessage(
@@ -921,8 +922,9 @@ export interface ToolHooks {
 	 * `diagnostic()` are synchronous, so at most one delivery is in flight and one is pending: updates arriving meanwhile
 	 * coalesce (output appends, the newest details win, diagnostics append). Pending output is capped at the tool's
 	 * `outputLimits.maxBytes`; its oldest part is dropped past that and counted in `droppedBytes`, which also counts
-	 * output an environment window skipped. Observers get the pushed chunks, not the retained window of the result, and
-	 * have seen every update before the call settles. A rerun of a replay-safe tool reports from scratch.
+	 * output an environment window skipped. Pending diagnostics are not capped, since the call keeps every one for its
+	 * result. Observers get the pushed chunks, not the retained window of the result, decoded as the retained output is
+	 * (a chunk that ends inside a character delivers nothing yet), and have seen every update before the call settles. A rerun of a replay-safe tool reports from scratch.
 	 */
 	onToolUpdate(
 		update: {

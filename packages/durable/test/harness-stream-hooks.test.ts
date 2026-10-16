@@ -15,11 +15,13 @@ import {
 	type Harness,
 	LiveDoc,
 	MemoryStorage,
+	type ToolDiagnostic,
 	type ToolRegistration,
 	ToolResultEntry,
 	ToolTask,
 } from "@ny4n/durable";
 import { describe, expect, it } from "vitest";
+import { mergeToolUpdates } from "../src/harness/tool.ts";
 import { allEntries, type ChatSetup, chatSetup, openChat, textOf, waitFor } from "./chat-support.ts";
 import { addHooks, addTool } from "./harness-support.ts";
 import { context } from "./session-support.ts";
@@ -292,6 +294,64 @@ describe("onToolUpdate", () => {
 		// Every pushed byte was either delivered or counted as dropped.
 		expect(new TextEncoder().encode(delivered).length + dropped).toBe(chunks.join("").length);
 		await harness.close(context);
+	});
+
+	it("delivers a character split across byte chunks once, and nothing for the chunk that ends inside it", async () => {
+		const setup = chatSetup();
+		// U+00E9 is C3 A9, U+20AC is E2 82 AC.
+		const chunks = [[0xc3], [0xa9], [0xe2, 0x82], [0xac]].map((bytes) => new Uint8Array(bytes));
+		addTool(
+			setup.registry,
+			reporting(async (api) => {
+				for (const chunk of chunks) {
+					api.output(chunk);
+					// One delivery per chunk, so a chunk that decodes to nothing would show up as its own update.
+					await sleep(20);
+				}
+			}),
+		);
+		const updates: { output?: string }[] = [];
+		addHooks(setup.registry, ToolTask, {
+			onToolUpdate: (update) =>
+				void updates.push({ ...(update.output === undefined ? {} : { output: update.output }) }),
+		});
+		const { status, harness } = await runOnce(setup, [CALL, DONE]);
+		expect(status).toBe("done");
+		// Before the fix every chunk was delivered, two of them as an update without content.
+		expect(updates).toEqual([{ output: "é" }, { output: "€" }]);
+		await harness.close(context);
+	});
+
+	it("delivers the replacement character for a character the output ends inside", async () => {
+		const setup = chatSetup();
+		addTool(
+			setup.registry,
+			reporting((api) => {
+				api.output("ok ");
+				api.output(new Uint8Array([0xe2, 0x82]));
+			}),
+		);
+		let delivered = "";
+		addHooks(setup.registry, ToolTask, {
+			onToolUpdate: (update) => {
+				delivered += update.output ?? "";
+			},
+		});
+		const { status, harness } = await runOnce(setup, [CALL, DONE]);
+		expect(status).toBe("done");
+		// The retained output ends the same way: `OutputBuffer.end()` flushes the decoder.
+		expect(delivered).toBe("ok \ufffd");
+		await harness.close(context);
+	});
+
+	it("appends pending diagnostics in place instead of copying the list on every push", () => {
+		const diagnostic = (message: string): ToolDiagnostic => ({ severity: "info", message });
+		const waiting = { diagnostics: [diagnostic("a")] };
+		const merged = mergeToolUpdates(waiting, { diagnostics: [diagnostic("b")] }, 1024);
+		expect(merged.diagnostics).toBe(waiting.diagnostics);
+		expect(merged.diagnostics?.map((item) => item.message)).toEqual(["a", "b"]);
+		// Without diagnostics on either side the result has none either.
+		expect(mergeToolUpdates({ output: "x" }, { output: "y" }, 1024)).toEqual({ output: "xy" });
 	});
 
 	it("reports an observer's throw and keeps the call running", async () => {
