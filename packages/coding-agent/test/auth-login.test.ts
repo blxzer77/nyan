@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Writable } from "node:stream";
@@ -194,12 +194,16 @@ describe("api key login method", () => {
 async function loginWithInput(
 	lines: string[],
 	factory: InlineExtension,
-	options: { args?: string[]; method?: "oauth" | "api_key" } = {},
+	options: { args?: string[]; method?: "oauth" | "api_key"; seedAuth?: Record<string, unknown> } = {},
 ): Promise<{ output: string; queries: string[] }> {
 	const cwd = tempDir();
 	const output = collectingOutput();
 	const queries: string[] = [];
 	let next = 0;
+	if (options.seedAuth) {
+		mkdirSync(join(cwd, "agent"), { recursive: true });
+		writeFileSync(join(cwd, "agent", "auth.json"), JSON.stringify(options.seedAuth));
+	}
 	await runAuthLogin(parseArgs(options.args ?? ["--provider", "test-prov"]), {
 		cwd,
 		agentDir: join(cwd, "agent"),
@@ -302,6 +306,37 @@ describe("login verifies the stored credential", () => {
 			"Logged in to Test Provider. The credential is stored and was not verified: fetch failed",
 		);
 		expect(output).not.toContain("Verified:");
+	});
+
+	it("says the stored credential was replaced when a rejected key fails verification", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.allowNetwork || context.force !== true) return [];
+			throw new CredentialVerificationError("rejected", "models request failed: 401 Unauthorized");
+		});
+		await expect(
+			loginWithInput([], factory, { seedAuth: { "test-prov": { type: "api_key", key: "previous-key" } } }),
+		).rejects.toThrow(/401 Unauthorized.*replaced the previously stored credential, which is not restored/su);
+	});
+
+	it("says the stored credential was replaced when the provider does not answer", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.allowNetwork || context.force !== true) return [];
+			throw new CredentialVerificationError("unavailable", "fetch failed");
+		});
+		const { output } = await loginWithInput([], factory, {
+			seedAuth: { "test-prov": { type: "api_key", key: "previous-key" } },
+		});
+		expect(output).toContain("replaced the previously stored credential, which is not restored");
+	});
+
+	it("does not claim a replacement when nothing was stored before the login", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.allowNetwork || context.force !== true) return [];
+			throw new CredentialVerificationError("rejected", "models request failed: 401 Unauthorized");
+		});
+		const error = await loginWithInput([], factory).catch((caught: unknown) => caught);
+		expect(String(error)).toContain("The credential is stored. Correct it");
+		expect(String(error)).not.toContain("replaced");
 	});
 });
 
