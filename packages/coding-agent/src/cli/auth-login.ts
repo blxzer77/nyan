@@ -38,14 +38,16 @@ function describeError(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
+/** Told when a verification failure has replaced the stored credential, which the login does not restore. */
+const REPLACED_CREDENTIAL_NOTICE =
+	"The key just entered replaced the previously stored credential, which is not restored.";
+
 /**
  * Says what happened, what was kept, and what to do, rather than only that it failed. The login commits the key before it
  * verifies it, so a failed verification has already replaced any credential that was stored, and the message says so.
  */
 function credentialNotVerified(provider: Provider, detail: string, replacedStored: boolean): AuthCommandError {
-	const kept = replacedStored
-		? "The key just entered replaced the previously stored credential, which is not restored. "
-		: "The credential is stored. ";
+	const kept = replacedStored ? `${REPLACED_CREDENTIAL_NOTICE} ` : "The credential is stored. ";
 	return new AuthCommandError(
 		`Logged in to ${provider.name}, but the credential could not be verified: ${detail}\n` +
 			`${kept}Correct it and run ${APP_NAME} login ${provider.id} again.`,
@@ -285,9 +287,7 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 				),
 			);
 			if (replacedStored) {
-				write(
-					chalk.yellow("The key just entered replaced the previously stored credential, which is not restored."),
-				);
+				write(chalk.yellow(REPLACED_CREDENTIAL_NOTICE));
 			}
 			write(chalk.dim(`Run ${APP_NAME} login ${provider.id} again once the provider is reachable to verify it.`));
 			return;

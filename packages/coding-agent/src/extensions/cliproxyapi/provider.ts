@@ -502,8 +502,9 @@ function classifyFailure(error: unknown): CatalogFailure {
 
 /** The secret a stored credential carries: an API key, or the access token of an OAuth login. */
 function credentialSecret(credential: RefreshModelsContext["credential"]): string | undefined {
-	const secret =
-		credential?.type === "api_key" ? credential.key : credential?.type === "oauth" ? credential.access : undefined;
+	let secret: string | undefined;
+	if (credential?.type === "api_key") secret = credential.key;
+	else if (credential?.type === "oauth") secret = credential.access;
 	const trimmed = secret?.trim();
 	return trimmed ? trimmed : undefined;
 }
