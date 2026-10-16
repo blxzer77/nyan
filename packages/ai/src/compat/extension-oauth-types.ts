@@ -1,6 +1,6 @@
 import type { OAuthCredentials } from "../auth/types.ts";
 
-/** Legacy extension OAuth prompt. */
+/** Legacy extension OAuth prompt. `allowEmpty` defaults to true and is honored by the login consumers. */
 export interface OAuthPrompt {
 	message: string;
 	placeholder?: string;

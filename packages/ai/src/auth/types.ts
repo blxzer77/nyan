@@ -123,11 +123,25 @@ export type AuthType = "api_key" | "oauth";
  * callback wins.
  */
 export type AuthPrompt = { signal?: AbortSignal } & (
-	| { type: "text"; message: string; placeholder?: string }
-	| { type: "secret"; message: string; placeholder?: string }
+	| ({ type: "text" } & AuthTextPromptFields)
+	| ({ type: "secret" } & AuthTextPromptFields)
 	| { type: "select"; message: string; options: readonly { id: string; label: string; description?: string }[] }
-	| { type: "manual_code"; message: string; placeholder?: string }
+	| ({ type: "manual_code" } & AuthTextPromptFields)
 );
+
+/** Shared shape of the prompts that ask the user to type an answer. */
+export interface AuthTextPromptFields {
+	message: string;
+	placeholder?: string;
+	/**
+	 * Whether an empty answer is accepted. Defaults to true, which returns the empty string.
+	 *
+	 * Set false for an answer the provider cannot work without: the consumer asks again instead of returning
+	 * nothing. A consumer that ignores it lets an empty answer through, so a provider that relies on it must
+	 * still treat an empty string as possible unless it knows which consumer it runs under.
+	 */
+	allowEmpty?: boolean;
+}
 
 export interface AuthInfoLink {
 	url: string;

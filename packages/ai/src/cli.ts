@@ -35,12 +35,19 @@ async function answerPrompt(rl: ReturnType<typeof createInterface>, authPrompt: 
 		for (let index = 0; index < authPrompt.options.length; index++) {
 			console.log(`  ${index + 1}. ${authPrompt.options[index].label}`);
 		}
-		const choice = Number.parseInt(await prompt(rl, `Enter number (1-${authPrompt.options.length}): `), 10) - 1;
-		const selected = authPrompt.options[choice];
-		if (!selected) throw new Error("Invalid selection");
-		return selected.id;
+		for (;;) {
+			const choice = Number.parseInt(await prompt(rl, `Enter number (1-${authPrompt.options.length}): `), 10) - 1;
+			const selected = authPrompt.options[choice];
+			if (selected) return selected.id;
+			console.log(`Enter a number between 1 and ${authPrompt.options.length}.`);
+		}
 	}
-	return prompt(rl, `${authPrompt.message}${authPrompt.placeholder ? ` (${authPrompt.placeholder})` : ""}: `);
+	const hint = authPrompt.placeholder ? ` (${authPrompt.placeholder})` : "";
+	for (;;) {
+		const answer = (await prompt(rl, `${authPrompt.message}${hint}: `)).trim();
+		if (answer !== "" || authPrompt.allowEmpty !== false) return answer;
+		console.log("An answer is required.");
+	}
 }
 
 async function login(providerId: string): Promise<void> {
