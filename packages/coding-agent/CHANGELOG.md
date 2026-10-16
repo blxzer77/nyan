@@ -24,6 +24,7 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 - `nyan login` and `nyan auth login` stopped with `Invalid selection` when a choice was not one of the offered numbers, and treated any answer other than `2` at the authentication-method prompt as OAuth. Both now re-ask.
 - `nyan login` and `nyan auth login` announced `Successfully logged in` without checking that the credential works. They now verify it with the provider's own model listing, which authenticates with the credential just stored, and report a rejected credential as a failure with its reason. A provider that offers no such check is reported as stored and unverified rather than implied to work.
 - `nyan login` reported a provider whose model listing failed during the post-login credential synchronization as `Credential login committed for <provider>, but local synchronization failed`, naming neither the cause nor what to do. It now reports the provider's own error and says the credential is stored.
+- The Xiaomi MiMo providers follow the rename of their models on models.dev (`mimo-v2.5-pro` to `mimo-v2.6-pro`). The built-in default model id and the tests that name it had gone stale, which left the provider without a usable default and the generated model catalogs unable to satisfy those ids.
 
 ## [1.3.0] - 2026-10-14
 
