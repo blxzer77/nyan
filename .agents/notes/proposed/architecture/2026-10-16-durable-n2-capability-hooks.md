@@ -199,9 +199,9 @@ Drafts are checked before the commit, off the line, against `runtime.context()`.
 
 **Compaction result.** The checks fail the compaction with a named reason and leave the live context unchanged: `invalid_first_kept`, `invalid_details`, or `invalid_usage`. `firstKept` must be an entry of the active context after the head marker that the cut-candidate rule accepts (an assistant or user contribution, never a tool result, never a user entry that a result of the preceding assistant's calls still follows). That rule is `isCandidate` in `harness/compaction.ts`, which is not exported today; it is exported for this check. `place()` currently receives the `firstKept` that `select` computed, so a hook's value needs a new parameter. The summary is assumed to cover every entry before `firstKept`; durable cannot check that. `details` is strict JSON stored as `data.details` of the compaction entry. `usage` must name its model as `{ provider, modelId }` and carry finite counters. It is recorded in the summary-placing commit of the hook path only, so the summarize path does not count it twice.
 
-### Accepted reductions that need the owner
+### Accepted reductions
 
-Recorded as ROADMAP decision #23, with the recommendation below implemented until the owner answers.
+ROADMAP decision #23: the owner accepted all four of these reductions on 2026-10-16.
 - `rewriteMessage` covers the assistant role. A `toolResult` rewrite maps to `afterTool`, which runs before its commit. A `user` message enters through the Session line, where no task or hook runs; Nyan's `input` event (product API) covers that need. The `custom` role does not exist in durable. Every repository consumer rewrites assistant messages: the tests, the cost override, and the cliproxyapi transient-error normalizer.
 - Boundary hooks do not fire for an error or aborted turn. Those end the run through the failure path, which has no boundary commit, and the TUI and `--mode json` already report them through `task_failed` and `agent_end`.
 - `messageEntryId` is absent for a final-answer turn because the answer is committed together with the boundary.
