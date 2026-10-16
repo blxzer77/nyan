@@ -87,26 +87,72 @@ describe("Context", () => {
 		await expect(awaitWithContext(Promise.resolve("completed"), BACKGROUND_CONTEXT)).resolves.toBe("completed");
 	});
 
-	it("leaves no unhandled rejection when the work fails after the waiter gave up", async () => {
+	/** Unhandled rejections raised while `run` and a further 30 ms go by. */
+	async function unhandledDuring(run: () => Promise<void>): Promise<unknown[]> {
 		const unhandled: unknown[] = [];
 		const onUnhandled = (error: unknown) => unhandled.push(error);
 		process.on("unhandledRejection", onUnhandled);
 		try {
-			const early = new AbortController();
-			early.abort();
-			const late = new AbortController();
-			const fail = (message: string) =>
-				new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), 5));
-			// Already cancelled when the wait begins, and cancelled while waiting.
-			const before = awaitWithContext(fail("after early abort"), withAbortSignal(early.signal, BACKGROUND_CONTEXT));
-			const during = awaitWithContext(fail("after late abort"), withAbortSignal(late.signal, BACKGROUND_CONTEXT));
-			late.abort();
-			await expect(before).rejects.toMatchObject({ name: "AbortError" });
-			await expect(during).rejects.toMatchObject({ name: "AbortError" });
+			await run();
 			await new Promise((resolve) => setTimeout(resolve, 30));
-			expect(unhandled).toEqual([]);
+			return unhandled;
 		} finally {
 			process.off("unhandledRejection", onUnhandled);
 		}
+	}
+
+	const failsLater = (message: string) =>
+		new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), 5));
+
+	// The regression guard: an already cancelled context returns before the work gets any observer, so `awaitWithContext`
+	// must mark the work handled itself.
+	it("leaves no unhandled rejection when the work fails after the context was already cancelled", async () => {
+		const early = new AbortController();
+		early.abort();
+		expect(
+			await unhandledDuring(async () => {
+				const waiting = awaitWithContext(
+					failsLater("after early abort"),
+					withAbortSignal(early.signal, BACKGROUND_CONTEXT),
+				);
+				await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+			}),
+		).toEqual([]);
+	});
+
+	it("accepts a thenable that is not a Promise when the context was already cancelled", async () => {
+		const early = new AbortController();
+		early.abort();
+		const thenable = {
+			// biome-ignore lint/suspicious/noThenProperty: the test needs a thenable that is not a Promise
+			then(_resolve: (value: string) => void, reject: (error: unknown) => void) {
+				setTimeout(() => reject(new Error("thenable failed")), 5);
+			},
+		};
+		expect(
+			await unhandledDuring(async () => {
+				const waiting = awaitWithContext(
+					thenable as unknown as Promise<string>,
+					withAbortSignal(early.signal, BACKGROUND_CONTEXT),
+				);
+				await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+			}),
+		).toEqual([]);
+	});
+
+	// Not a guard for that fix: the waiter's own `then` already observes the work, so this passes without it. It pins
+	// that cancelling mid-wait stays quiet.
+	it("leaves no unhandled rejection when the work fails after a cancel during the wait", async () => {
+		const late = new AbortController();
+		expect(
+			await unhandledDuring(async () => {
+				const waiting = awaitWithContext(
+					failsLater("after late abort"),
+					withAbortSignal(late.signal, BACKGROUND_CONTEXT),
+				);
+				late.abort();
+				await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+			}),
+		).toEqual([]);
 	});
 });

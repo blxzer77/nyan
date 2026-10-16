@@ -100,7 +100,8 @@ export function awaitWithContext<T>(promise: Promise<T>, context: Context): Prom
 	const signal = context.abortSignal;
 	if (signal === undefined) return promise;
 	if (signal.aborted) {
-		promise.catch(() => {});
+		// `Promise.resolve`: a thenable that is not a Promise has no `catch`, and was accepted before this was added.
+		Promise.resolve(promise).catch(() => {});
 		return Promise.reject(abortError(signal));
 	}
 	return new Promise<T>((resolve, reject) => {
