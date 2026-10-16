@@ -21,6 +21,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveBunExecutable } from "./bun-command.mjs";
 
 const PLATFORMS = ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64", "windows-x64", "windows-arm64"];
 
@@ -73,7 +74,7 @@ function buildPlatform(platform, out) {
 	// ./src/extensions/codemode/worker.ts. Disabling bunfig.toml and .env autoload keeps a project's
 	// preload scripts and env files out of the executable's startup.
 	run(
-		"bun",
+		resolveBunExecutable(),
 		[
 			"build",
 			"--compile",
