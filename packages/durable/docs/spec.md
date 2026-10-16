@@ -2933,7 +2933,9 @@ the terminal message of `request` or `poll`, before `afterResponse` and before
 classification; it does not run for a deferred result or for a partial converted
 to an aborted entry. A replacement is used for everything after: the answer, the
 usage ledger, and the tool calls. It is checked first: an assistant message, a known
-stop reason other than `deferred`, finite numeric usage and cost, and strict JSON.
+stop reason other than `deferred`, a finite `timestamp`, a string `id` and `name` on
+every tool call, finite numeric usage and cost (the optional counters included), and
+strict JSON.
 An invalid replacement is reported and ignored, because the classification commit
 would throw on it. `afterResponse` observes the message that will be committed.
 
@@ -2970,10 +2972,12 @@ is reported.
 final answer, only when no queued input and no reset was selected, and only when the
 entries contain a `model` message: the answer is appended first, and a request must
 not end with an assistant message. A `continue` without such a message is
-reported and dropped. A `continue` that a queued input or a reset overrides is
-ignored without a report, because the run goes on with that input; the drafted user
-message then stays in the context just before it. A tool round continues anyway, so
-`continue` there is ignored without a report.
+reported and dropped. A `continue` that a queued input overrides is ignored without
+a report, because the run goes on with that input; the drafted user message then
+stays in the context just before it. A queued reset overrides it too, and the run
+ends: the reset is a `head: "self"` write that follows the drafts, so the drafts
+stay in the transcript but leave the active context. A tool round continues anyway,
+so `continue` there is ignored without a report.
 
 Selection decides which behavior a conversation has; the extension's own
 document holds that behavior's state:
