@@ -13,6 +13,7 @@ import {
 	validateAuthCommandArgs,
 } from "../src/cli/auth-command.ts";
 import { runAuthLogin } from "../src/cli/auth-login.ts";
+import { CredentialVerificationError } from "../src/core/auth-guidance.ts";
 import { readStoredCredential } from "../src/core/auth-storage.ts";
 import type { ExtensionAPI, InlineExtension, ProviderConfig } from "../src/core/extensions/types.ts";
 
@@ -175,6 +176,20 @@ describe("login interaction", () => {
 	});
 });
 
+describe("api key login method", () => {
+	it("explains the login flow instead of refusing the method for a provider that has OAuth", async () => {
+		await expect(
+			loginWithInput(
+				[],
+				oauthFactory(async () => ({ refresh: "r", access: "a", expires: Date.now() + 100000 })),
+				{ method: "api_key" },
+			),
+		).rejects.toThrow(
+			'Provider "Test Provider" has no API key method here. Run nyan login test-prov without --method to use its login flow.',
+		);
+	});
+});
+
 /** Runs a login against an injected answer source, which needs no terminal. */
 async function loginWithInput(
 	lines: string[],
@@ -264,6 +279,28 @@ describe("login verifies the stored credential", () => {
 		// Anthropic and other built-in providers declare no refreshModels, so nothing is spent to verify them.
 		const { output } = await loginWithInput([], oauthFactory(loggedIn));
 		expect(output).toContain("Logged in to Test Provider. The credential is stored and was not verified.");
+		expect(output).not.toContain("Verified:");
+	});
+
+	it("fails when the provider refuses the credential, and says the credential is kept", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.allowNetwork || context.force !== true) return [];
+			throw new CredentialVerificationError("rejected", "models request failed: 401 Unauthorized");
+		});
+		await expect(loginWithInput([], factory)).rejects.toThrow(
+			/could not be verified: models request failed: 401 Unauthorized.*The credential is stored/su,
+		);
+	});
+
+	it("reports a provider that did not answer as stored and unverified, never as verified", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.allowNetwork || context.force !== true) return [];
+			throw new CredentialVerificationError("unavailable", "fetch failed");
+		});
+		const { output } = await loginWithInput([], factory);
+		expect(output).toContain(
+			"Logged in to Test Provider. The credential is stored and was not verified: fetch failed",
+		);
 		expect(output).not.toContain("Verified:");
 	});
 });

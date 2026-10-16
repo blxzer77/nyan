@@ -4,7 +4,7 @@ import type { AuthEvent, AuthPrompt, AuthType, Provider } from "@ny4n/ai";
 import chalk from "chalk";
 import { APP_NAME, getAgentDir } from "../config.ts";
 import { createAgentSessionServices } from "../core/agent-session-services.ts";
-import { compareLoginProviders } from "../core/auth-guidance.ts";
+import { CredentialVerificationError, compareLoginProviders } from "../core/auth-guidance.ts";
 import type { InlineExtension } from "../core/extensions/types.ts";
 import { CredentialSynchronizationError } from "../core/model-runtime.ts";
 import { openBrowser } from "../utils/open-browser.ts";
@@ -157,7 +157,11 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 				throw new AuthCommandError(`Provider "${provider.name}" does not support OAuth login.`);
 			}
 			if (options.method === "api_key" && !hasApiKey) {
-				throw new AuthCommandError(`Provider "${provider.name}" does not support API key login.`);
+				throw new AuthCommandError(
+					hasOAuth
+						? `Provider "${provider.name}" has no API key method here. Run ${APP_NAME} login ${provider.id} without --method to use its login flow.`
+						: `Provider "${provider.name}" does not support API key login.`,
+				);
 			}
 			authType = options.method;
 		} else if (hasOAuth && hasApiKey) {
@@ -257,13 +261,24 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 		// The provider's own model refresh authenticates with the credential just stored, so its outcome is the
 		// verification: a rejected credential fails here instead of at the first request.
 		write(chalk.dim(`Verifying the credential and refreshing models for ${provider.name}...`));
+		// `force` makes the provider fetch now and authenticate with the credential just stored, not a cached answer.
 		const refreshed = await modelRuntime
-			.refresh({ providers: [provider.id], allowNetwork: true, signal: abortController.signal })
+			.refresh({ providers: [provider.id], allowNetwork: true, force: true, signal: abortController.signal })
 			.catch((error: unknown): never => {
 				throw credentialNotVerified(provider, describeError(error));
 			});
 		if (refreshed.aborted) throw new AuthCommandError("Login cancelled");
 		const failure = refreshed.errors.get(provider.id);
+		if (failure instanceof CredentialVerificationError && failure.reason === "unavailable") {
+			// No answer is not a refusal: the credential is kept, and a list of zero models is never reported as verified.
+			write(
+				chalk.yellow(
+					`Logged in to ${provider.name}. The credential is stored and was not verified: ${failure.message}`,
+				),
+			);
+			write(chalk.dim(`Run ${APP_NAME} login ${provider.id} again once the provider is reachable to verify it.`));
+			return;
+		}
 		if (failure) throw credentialNotVerified(provider, failure.message);
 
 		const models = modelRuntime.getModels(provider.id);

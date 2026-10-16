@@ -218,9 +218,13 @@ To use a service-account key file instead, set `GOOGLE_APPLICATION_CREDENTIALS` 
 
 CLIProxyAPI connects Nyan to a local or remote [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) server. It dynamically fetches models via `/v1/models?client_version=pi`, serves every model in the proxy's catalog over HTTP/SSE through `/backend-api/codex` (the catalog's `prefer_websockets` flag only describes the proxy's own upstream transport), and supports model overrides, Fast mode (`/fast`), request pausing (`/pause`, `/continue`), and exact throughput tracking (`/cpa-usage`).
 
-Authenticate interactively with `/login CLIProxyAPI` (or via CLI `nyan login cliproxyapi` / `nyan auth login --provider cliproxyapi`), enter the base URL (defaults to `http://127.0.0.1:8317`), and enter your proxy API key.
+Authenticate interactively with `/login CLIProxyAPI` (or via CLI `nyan login cliproxyapi` / `nyan auth login --provider cliproxyapi`), enter the base URL (defaults to `http://127.0.0.1:8317`), and enter your proxy API key. Login checks the key against the proxy's model list before it reports success.
 
-Alternatively, configure connection parameters via environment variables or `~/.nyan/agent/cliproxyapi.json` (or `~/.pi/agent/cliproxyapi.json`):
+Do not pass `--method` for CLIProxyAPI. `--method api_key` is refused unless a key is already configured, and a key that method stores is not yet used for requests (they fail with `Provider is not configured`). The login without `--method` is the one that works.
+
+Login tells you when a setting moves the key or the URL away from what you entered. `CLIPROXYAPI_API_KEY` (or the `apiKey` field of `cliproxyapi.json`) changes the key that the model list is fetched with, while requests use the stored login. `CLIPROXYAPI_BASE_URL` sends the model list and requests to the URL it names, not to the one you entered, and the key is checked at the entered URL. A key the proxy rejects at startup names the setting it came from.
+
+Alternatively, configure connection parameters via environment variables or `~/.nyan/agent/cliproxyapi.json`:
 
 | Variable | Config field | Default |
 |---|---|---|

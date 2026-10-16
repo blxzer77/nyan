@@ -2,11 +2,10 @@
  * Configuration, identity and endpoint resolution for the CLIProxyAPI provider.
  *
  * Resolution order for connection settings:
- *   env CLIPROXYAPI_* > ~/.nyan/agent/cliproxyapi.json (or ~/.pi/agent/cliproxyapi.json) > /login credential in auth.json > default baseUrl
+ *   env CLIPROXYAPI_* > ~/.nyan/agent/cliproxyapi.json > /login credential in auth.json > default baseUrl
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { readStoredCredential } from "../../core/auth-storage.ts";
 
@@ -160,13 +159,7 @@ export function configPath(agentDir: string): string {
 }
 
 export function loadConfig(agentDir: string): ConfigFile {
-	let parsed = readJsonObject(configPath(agentDir));
-	if (!parsed) {
-		const piFallback = join(homedir(), ".pi", "agent", CONFIG_FILE_NAME);
-		if (existsSync(piFallback)) {
-			parsed = readJsonObject(piFallback);
-		}
-	}
+	const parsed = readJsonObject(configPath(agentDir));
 	return parsed ? (parsed as ConfigFile) : {};
 }
 
@@ -278,13 +271,7 @@ export function resolvePauseDefault(agentDir: string): boolean {
 
 function loadAuthConnection(agentDir: string, providerId: string): { baseUrl?: string; apiKey?: string } | null {
 	const authPath = join(agentDir, AUTH_FILE_NAME);
-	let entry = readStoredCredential(providerId, authPath);
-	if (!entry) {
-		const piAuthPath = join(homedir(), ".pi", "agent", AUTH_FILE_NAME);
-		if (existsSync(piAuthPath)) {
-			entry = readStoredCredential(providerId, piAuthPath);
-		}
-	}
+	const entry = readStoredCredential(providerId, authPath);
 	if (!entry) {
 		return null;
 	}
@@ -342,6 +329,25 @@ export function resolveConnection(agentDir: string, providerId: string): Resolve
 	return { baseUrlInput, apiKey, ...(codexWsApiKey ? { codexWsApiKey } : {}), ...resolveEndpoints(baseUrlInput) };
 }
 
+/** Where the key the model list is fetched with comes from, in the order `resolveConnection` reads it. */
+export type ApiKeySource =
+	| { readonly kind: "environment" }
+	| { readonly kind: "config"; readonly path: string }
+	| { readonly kind: "stored" }
+	| { readonly kind: "none" };
+
+export function apiKeySource(agentDir: string, providerId: string): ApiKeySource {
+	if (firstNonEmpty(process.env.CLIPROXYAPI_API_KEY)) return { kind: "environment" };
+	if (firstNonEmpty(loadConfigSafe(agentDir).config.apiKey)) return { kind: "config", path: configPath(agentDir) };
+	let auth: { apiKey?: string } | null = null;
+	try {
+		auth = loadAuthConnection(agentDir, providerId);
+	} catch {
+		auth = null;
+	}
+	return auth?.apiKey ? { kind: "stored" } : { kind: "none" };
+}
+
 export function defaultBaseUrlInput(agentDir: string, providerId: string): string {
 	const { config } = loadConfigSafe(agentDir);
 	let authBaseUrl: string | undefined;
@@ -364,14 +370,7 @@ export function hasStoredLogin(agentDir: string, providerId: string): boolean {
 export function overridesPath(agentDir: string, config: ConfigFile): string {
 	const configured = firstNonEmpty(process.env.CLIPROXYAPI_OVERRIDES_FILE, config.overridesFile);
 	if (!configured) {
-		const primary = join(agentDir, OVERRIDES_FILE_NAME);
-		if (!existsSync(primary)) {
-			const piFallback = join(homedir(), ".pi", "agent", OVERRIDES_FILE_NAME);
-			if (existsSync(piFallback)) {
-				return piFallback;
-			}
-		}
-		return primary;
+		return join(agentDir, OVERRIDES_FILE_NAME);
 	}
 	return /^([A-Za-z]:[\\/]|\/)/.test(configured) ? configured : join(agentDir, configured);
 }
