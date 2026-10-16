@@ -15,6 +15,17 @@ Extensions, prompt templates, and skills can add commands. The command menu in N
 | `/login [provider]` | Add provider authentication |
 | `/logout` | Remove provider authentication |
 | `/llama` | Manage models on the configured llama.cpp router |
+| `/cpa-refresh` | Force refresh the CLIProxyAPI model catalog |
+| `/cpa-models [id]` | List CLIProxyAPI models with limits and overrides, or view one model in detail |
+| `/cpa-pin [id]` | Toggle pin for a model, ensuring it stays in the catalog |
+| `/cpa-hide [id]` | Toggle visibility for a model in the picker |
+| `/cpa-show [id]` | Surface a model marked hidden by the catalog |
+| `/cpa-doctor` | Show CLIProxyAPI provider configuration and diagnostics |
+| `/cpa-usage [reset]` | Show token usage, estimated cost, time to first token, and throughput for the session |
+| `/cpa-quota` | Show the 5 hour and weekly plan quota of the accounts behind CLIProxyAPI |
+| `/cpa-overrides [show\|init]` | Show or seed the model overrides file |
+| `/fast` | Toggle Fast mode (priority service tier) |
+| `/pause`, `/continue` | Pause or resume provider requests |
 
 ## Sessions and context
 

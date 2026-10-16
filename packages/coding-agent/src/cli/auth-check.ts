@@ -1,5 +1,8 @@
 import type { CredentialStore } from "@ny4n/ai";
 import { getAuthCredential } from "../core/auth-credential.ts";
+import { createEventBus } from "../core/event-bus.ts";
+import { createExtensionRuntime, loadExtensionFromFactory } from "../core/extensions/loader.ts";
+import type { InlineExtension } from "../core/extensions/types.ts";
 import { resolveCliModel } from "../core/model-resolver.ts";
 import { ModelRuntime } from "../core/model-runtime.ts";
 import { InMemoryCodingAgentModelsStore } from "../core/models-store.ts";
@@ -64,11 +67,42 @@ export async function getProviderCredential(
 	return getAuthCredential(await modelRuntime.getAuth(providerId));
 }
 
-export async function createAuthCheckModelRuntime(credentials: CredentialStore): Promise<ModelRuntime> {
-	return ModelRuntime.create({
+export async function registerExtensionProviders(
+	runtime: ModelRuntime,
+	extensionFactories?: InlineExtension[],
+): Promise<void> {
+	if (!extensionFactories || extensionFactories.length === 0) return;
+	const extRuntime = createExtensionRuntime();
+	for (const factory of extensionFactories) {
+		const fn = typeof factory === "function" ? factory : factory.factory;
+		if (fn) {
+			await loadExtensionFromFactory(
+				fn,
+				process.cwd(),
+				createEventBus(),
+				extRuntime,
+				typeof factory === "object" ? `builtin:${factory.name}` : "<inline>",
+			);
+		}
+	}
+	for (const { name, config } of extRuntime.pendingProviderRegistrations) {
+		runtime.registerProvider(name, config);
+	}
+	for (const { provider } of extRuntime.pendingNativeProviderRegistrations) {
+		runtime.registerNativeProvider(provider);
+	}
+}
+
+export async function createAuthCheckModelRuntime(
+	credentials: CredentialStore,
+	extensionFactories?: InlineExtension[],
+): Promise<ModelRuntime> {
+	const runtime = await ModelRuntime.create({
 		credentials,
 		modelsStore: new InMemoryCodingAgentModelsStore(),
 		allowModelNetwork: false,
 		refreshOnCreate: false,
 	});
+	await registerExtensionProviders(runtime, extensionFactories);
+	return runtime;
 }

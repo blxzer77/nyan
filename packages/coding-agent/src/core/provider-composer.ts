@@ -354,9 +354,13 @@ function adaptOAuth(config: ExtensionOAuthConfig): OAuthAuth {
 			const credential = await config.login({
 				onAuth: (info) => callbacks.notify({ type: "auth_url", ...info }),
 				onDeviceCode: (info) => callbacks.notify({ type: "device_code", ...info }),
+				// `allowEmpty` rides along in the spread: the legacy prompt type and the canonical text prompt share
+				// the field, so an extension's requirement reaches whichever consumer is running.
 				onPrompt: (prompt) => callbacks.prompt({ type: "text", ...prompt }),
 				onProgress: (message) => callbacks.notify({ type: "progress", message }),
-				onManualCodeInput: () => callbacks.prompt({ type: "manual_code", message: "Paste the authorization code" }),
+				// An empty authorization code can never be exchanged, so this prompt requires an answer.
+				onManualCodeInput: () =>
+					callbacks.prompt({ type: "manual_code", message: "Paste the authorization code", allowEmpty: false }),
 				onSelect: (prompt) => callbacks.prompt({ type: "select", ...prompt }),
 				signal: callbacks.signal,
 			});

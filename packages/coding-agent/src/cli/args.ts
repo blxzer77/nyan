@@ -288,7 +288,8 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} update [source|self|nyan]   Update nyan, extensions, or model catalogs
   ${APP_NAME} list                      List installed extensions from settings
   ${APP_NAME} config [-l]               Open TUI to enable/disable package resources (Tab switches scope)
-  ${APP_NAME} auth <command>            Print credentials or check provider readiness
+  ${APP_NAME} auth <command>            Print credentials, check readiness, or sign in
+  ${APP_NAME} login [provider]          Sign in to a provider and save the credential
   ${APP_NAME} mcp <command>             Check MCP servers, sign in to or out of OAuth servers
   ${APP_NAME} <command> --help          Show help for install/remove/uninstall/update/list/config/auth/mcp
 
@@ -345,6 +346,9 @@ Extensions can register additional flags (e.g., --plan from plan-mode extension)
 ${chalk.bold("Examples:")}
   # Print a provider API key for an external client
   ${APP_NAME} auth print-api-key --provider openai
+
+  # Sign in to a provider, choosing from a list when none is named
+  ${APP_NAME} login
 
   # Print an OAuth bearer token for an external client (refreshes if expired)
   ${APP_NAME} auth print-bearer-token --provider openai-codex

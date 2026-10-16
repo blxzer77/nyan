@@ -15,10 +15,12 @@ import {
 	checkProviderAuth,
 	createAuthCheckModelRuntime,
 	getProviderCredential,
+	registerExtensionProviders,
 } from "./cli/auth-check.ts";
 import {
 	type AuthCommand,
 	AuthCommandError,
+	formatAuthCommandError,
 	getAuthCommandName,
 	getAuthCommandUsage,
 	isAuthCommandHelp,
@@ -26,6 +28,7 @@ import {
 	printAuthCommandHelp,
 	validateAuthCommandArgs,
 } from "./cli/auth-command.ts";
+import { runAuthLogin } from "./cli/auth-login.ts";
 import { resolveCredentialForPrint } from "./cli/credential-print.ts";
 import { processFileArguments } from "./cli/file-processor.ts";
 import { buildInitialMessage } from "./cli/initial-message.ts";
@@ -178,7 +181,7 @@ function canRunDurableProductPath(parsed: Args, allowMultipleMessages = false): 
 	);
 }
 
-async function runAuthCommand(args: string[]): Promise<boolean> {
+async function runAuthCommand(args: string[], extensionFactories?: InlineExtension[]): Promise<boolean> {
 	if (isAuthCommandHelp(args)) {
 		printAuthCommandHelp();
 		return true;
@@ -207,9 +210,15 @@ async function runAuthCommand(args: string[]): Promise<boolean> {
 		if (parsed.diagnostics.length > 0) {
 			throw new AuthCommandError(parsed.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
 		}
+		if (command.kind === "login") {
+			await runAuthLogin(parsed, { extensionFactories, method: command.method });
+			return true;
+		}
+
 		if (command.kind !== "check") {
 			const signal = AbortSignal.timeout(15_000);
 			const modelRuntime = await ModelRuntime.create({ allowModelNetwork: false, signal });
+			await registerExtensionProviders(modelRuntime, extensionFactories);
 			const credential = await resolveCredentialForPrint(
 				parsed,
 				modelRuntime,
@@ -226,7 +235,7 @@ async function runAuthCommand(args: string[]): Promise<boolean> {
 		let credential: string | undefined;
 		try {
 			const credentials = command.noRefresh ? new ReadOnlyAuthStorage() : AuthStorage.create();
-			const modelRuntime = await createAuthCheckModelRuntime(credentials);
+			const modelRuntime = await createAuthCheckModelRuntime(credentials, extensionFactories);
 			result = await checkProviderAuth(parsed, modelRuntime, { refresh: !command.noRefresh });
 			if (command.credentials && result.status === "ready") {
 				credential = await getProviderCredential(result.provider, modelRuntime, credentials, {
@@ -249,8 +258,7 @@ async function runAuthCommand(args: string[]): Promise<boolean> {
 		process.stdout.write(`${output}\n`);
 		process.exitCode = result.status === "ready" ? 0 : result.status === "not_ready" ? 1 : 2;
 	} catch (error) {
-		const message = error instanceof AuthCommandError ? error.message : "Failed to resolve credential";
-		console.error(chalk.red(`Error: ${message}`));
+		console.error(chalk.red(`Error: ${formatAuthCommandError(command.kind, error)}`));
 		process.exitCode = command.kind === "check" ? 2 : 1;
 	}
 	return true;
@@ -629,7 +637,7 @@ export async function main(args: string[], options?: MainOptions) {
 		process.env.NYAN_SKIP_VERSION_CHECK = "1";
 	}
 
-	if (await runAuthCommand(args)) {
+	if (await runAuthCommand(args, extensionFactories)) {
 		return;
 	}
 

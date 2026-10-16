@@ -62,6 +62,7 @@ This table covers providers with a single primary API-key variable. Providers th
 | Xiaomi MiMo Token Plan (China) | `XIAOMI_TOKEN_PLAN_CN_API_KEY` |
 | Xiaomi MiMo Token Plan (Amsterdam) | `XIAOMI_TOKEN_PLAN_AMS_API_KEY` |
 | Xiaomi MiMo Token Plan (Singapore) | `XIAOMI_TOKEN_PLAN_SGP_API_KEY` |
+| CLIProxyAPI | `CLIPROXYAPI_API_KEY` |
 
 Anthropic also recognizes `ANTHROPIC_OAUTH_TOKEN` as an API credential and `ANTHROPIC_AUTH_TOKEN` as bearer authentication.
 
@@ -212,3 +213,37 @@ gcloud auth application-default login
 ```
 
 To use a service-account key file instead, set `GOOGLE_APPLICATION_CREDENTIALS` along with the project and location.
+
+### CLIProxyAPI
+
+CLIProxyAPI connects Nyan to a local or remote [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) server. It dynamically fetches models via `/v1/models?client_version=pi`, serves every model in the proxy's catalog over HTTP/SSE through `/backend-api/codex` (the catalog's `prefer_websockets` flag only describes the proxy's own upstream transport), and supports model overrides, Fast mode (`/fast`), request pausing (`/pause`, `/continue`), and exact throughput tracking (`/cpa-usage`).
+
+Authenticate interactively with `/login CLIProxyAPI` (or via CLI `nyan login cliproxyapi` / `nyan auth login --provider cliproxyapi`), enter the base URL (defaults to `http://127.0.0.1:8317`), and enter your proxy API key.
+
+Alternatively, configure connection parameters via environment variables or `~/.nyan/agent/cliproxyapi.json` (or `~/.pi/agent/cliproxyapi.json`):
+
+| Variable | Config field | Default |
+|---|---|---|
+| `CLIPROXYAPI_BASE_URL` | `baseUrl` | `http://127.0.0.1:8317` |
+| `CLIPROXYAPI_API_KEY` | `apiKey` | — |
+| `CLIPROXYAPI_PROVIDER_ID` | `providerId` | `cliproxyapi` |
+| `CLIPROXYAPI_PROVIDER_NAME` | `providerName` | `CLIProxyAPI` |
+| `CLIPROXYAPI_FAST` | `fast` | `false` |
+| `CLIPROXYAPI_PAUSE` | `pause` | `false` |
+| `CLIPROXYAPI_OVERRIDES_FILE` | `overridesFile` | `cliproxyapi-overrides.json` |
+| `CLIPROXYAPI_MANAGEMENT_KEY` | `managementKey` | — |
+
+#### Request metrics and plan quota
+
+Every request through CLIProxyAPI produces one record with time to first token (`ttftMs`), the generation window and tokens per second, total time, HTTP status, token counts, estimated cost, retry count, and the gateway trace id. Time spent in `/pause` is excluded from every duration. A figure that could not be observed is absent, not zero. `/cpa-usage` summarizes the session.
+
+The 5 hour and weekly plan quota belongs to the accounts behind the proxy, and CLIProxyAPI does not send it to a client by default: it filters `codex.rate_limits` stream events, and it forwards `x-codex-*` response headers only when it runs with `passthrough-headers: true`. Nyan reads it from either source:
+
+- **Management API (recommended).** Set `CLIPROXYAPI_MANAGEMENT_KEY` (or `managementKey` in `cliproxyapi.json`) to the proxy's management key, the `secret-key` of the management settings in its `config.yaml`. The proxy keeps only a bcrypt hash of it, so you cannot read the plaintext back; keep it when you set it. Nyan polls `GET /v0/management/auth-files` read-only, at most once a minute, at session start and after each finished run, and returns one entry per pooled Codex or Claude account. This key is not the API key and gives admin access to the proxy; keep it as private as `auth.json`.
+
+  The proxy counts a request with a missing or wrong management key as a failed attempt, and five failures ban the client address from the management API for 30 minutes. When the proxy sits behind a port forward or reverse proxy, every client shares one address, so a ban hits everyone, including scanners' failures. Nyan therefore never sends a key the proxy has already rejected until the key changes, waits out a ban instead of retrying, and shows both states in `/cpa-quota` and `/cpa-doctor`.
+- **Response headers.** With `passthrough-headers: true` on the proxy, the quota of the account that served the last request is read from that response.
+
+Windows are identified by their length (300 minutes is the 5 hour window, 10080 the weekly one), not by the upstream's `primary`/`secondary` names. A Codex plus plan reports only a weekly window. A Claude account reports `5h` and `7d` windows with the upstream's own `allowed`/`rejected` verdict. `/cpa-quota` prints the result, or says which source is missing. A figure whose window has already reset is marked stale.
+
+Other code can subscribe to the extension event bus: `cliproxyapi:request` carries each request record and `cliproxyapi:quota` the current quota view.

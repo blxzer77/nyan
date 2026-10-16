@@ -18,6 +18,11 @@ export class LoginDialogComponent extends Container implements Focusable {
 	private abortController = new AbortController();
 	private inputResolver?: (value: string) => void;
 	private inputRejecter?: (error: Error) => void;
+	/**
+	 * Refuses a submitted value while it returns false. The input stays in place and the reason appears below it,
+	 * so a prompt that requires an answer cannot continue with an empty one.
+	 */
+	private inputAccepts?: (value: string) => boolean;
 	private onComplete: (success: boolean, message?: string) => void;
 
 	// Focusable implementation - propagate to input for IME cursor positioning
@@ -57,13 +62,20 @@ export class LoginDialogComponent extends Container implements Focusable {
 		// Input (always present, used when needed)
 		this.input = new Input();
 		this.input.onSubmit = () => {
-			if (this.inputResolver) {
-				const value = this.input.getValue();
-				this.replaceInputWithSubmittedText(value);
-				this.inputResolver(value);
-				this.inputResolver = undefined;
-				this.inputRejecter = undefined;
+			if (!this.inputResolver) return;
+			const value = this.input.getValue();
+			if (this.inputAccepts && !this.inputAccepts(value)) {
+				// Ask again instead of resolving. Re-showing the prompt would add this input a second time, so only the
+				// reason is appended.
+				this.contentContainer.addChild(new Text(theme.fg("warning", "An answer is required."), 1, 0));
+				this.input.setValue("");
+				this.tui.requestRender();
+				return;
 			}
+			this.replaceInputWithSubmittedText(value);
+			this.inputResolver(value);
+			this.inputResolver = undefined;
+			this.inputRejecter = undefined;
 		};
 		this.input.onEscape = () => {
 			this.cancel();
@@ -81,6 +93,12 @@ export class LoginDialogComponent extends Container implements Focusable {
 		this.contentContainer.children = this.contentContainer.children.map((child) =>
 			child === this.input ? new Text(`> ${value}`, 0, 0) : child,
 		);
+	}
+
+	/** Whether the prompt now accepting input insists on a non-empty answer. */
+	private setAcceptance(allowEmpty: boolean | undefined): void {
+		// Judged after trimming, so a line of spaces is not an answer.
+		this.inputAccepts = allowEmpty === false ? (value) => value.trim() !== "" : undefined;
 	}
 
 	private cancel(): void {
@@ -133,7 +151,8 @@ export class LoginDialogComponent extends Container implements Focusable {
 	/**
 	 * Show input for manual code/URL entry (for callback server providers)
 	 */
-	showManualInput(prompt: string): Promise<string> {
+	showManualInput(prompt: string, options: { allowEmpty?: boolean } = {}): Promise<string> {
+		this.setAcceptance(options.allowEmpty);
 		this.input.setValue("");
 		this.contentContainer.addChild(new Spacer(1));
 		this.contentContainer.addChild(new Text(theme.fg("dim", prompt), 1, 0));
@@ -151,7 +170,8 @@ export class LoginDialogComponent extends Container implements Focusable {
 	 * Called by onPrompt callback - show prompt and wait for input
 	 * Note: Does NOT clear content, appends to existing (preserves URL from showAuth)
 	 */
-	showPrompt(message: string, placeholder?: string): Promise<string> {
+	showPrompt(message: string, placeholder?: string, options: { allowEmpty?: boolean } = {}): Promise<string> {
+		this.setAcceptance(options.allowEmpty);
 		this.contentContainer.addChild(new Spacer(1));
 		this.contentContainer.addChild(new Text(theme.fg("text", message), 1, 0));
 		if (placeholder) {

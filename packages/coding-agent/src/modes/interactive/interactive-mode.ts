@@ -68,6 +68,7 @@ import {
 import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.ts";
 import { type AgentSessionRuntime, SessionImportFileNotFoundError } from "../../core/agent-session-runtime.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../../core/agent-session-services.ts";
+import { compareLoginProviders } from "../../core/auth-guidance.ts";
 import {
 	CACHE_TTL_MS,
 	type CacheMiss,
@@ -393,7 +394,7 @@ function getLoginProviderCompletionOptions(
 			subscription: provider.subscription,
 		});
 	}
-	return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+	return Array.from(byId.values()).sort(compareLoginProviders);
 }
 
 function getLoginProviderSearchText(provider: LoginProviderCompletionOption): string {
@@ -5771,7 +5772,7 @@ export class InteractiveMode {
 				});
 			}
 		}
-		return options.sort((a, b) => a.name.localeCompare(b.name));
+		return options.sort(compareLoginProviders);
 	}
 
 	private async getLogoutProviderOptions(): Promise<AuthSelectorProvider[]> {
@@ -6209,9 +6210,9 @@ export class InteractiveMode {
 		if (prompt.type === "select") {
 			response = this.showAuthSelect(dialog, prompt, providerId);
 		} else if (prompt.type === "manual_code") {
-			response = dialog.showManualInput(prompt.message);
+			response = dialog.showManualInput(prompt.message, { allowEmpty: prompt.allowEmpty });
 		} else {
-			response = dialog.showPrompt(prompt.message, prompt.placeholder);
+			response = dialog.showPrompt(prompt.message, prompt.placeholder, { allowEmpty: prompt.allowEmpty });
 		}
 		if (!prompt.signal) return response;
 		if (prompt.signal.aborted) throw new Error("Login cancelled");

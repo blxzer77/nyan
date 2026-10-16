@@ -12,7 +12,8 @@ nyan uninstall <source> [options]
 nyan update [target] [options]
 nyan list
 nyan config [options]
-nyan auth <check|print-api-key|print-bearer-token> [options]
+nyan auth <check|print-api-key|print-bearer-token|login> [options]
+nyan login [provider]
 nyan mcp <list|login|logout> [options]
 ```
 
@@ -294,26 +295,35 @@ Add `--force` to reinstall Nyan when the selected update includes Nyan.
 
 ```sh
 nyan auth check --provider openai --json
+nyan login cliproxyapi
+nyan auth login --provider openai --method api_key
 ```
 
-Authentication commands require `--provider <provider>` or `--model <model>`. See [Providers](providers.md) for supported methods.
+Authentication commands require `--provider <provider>` or `--model <model>`, except the login commands, where the provider is optional and an omitted one opens a selection list. See [Providers](providers.md) for supported methods.
 
 | Command | Description |
 |---|---|
 | `nyan auth check` | Print `ready`, `not_ready`, or `invalid`; exit with status `0`, `1`, or `2`, respectively |
 | `nyan auth print-api-key` | Print the resolved API key |
 | `nyan auth print-bearer-token` | Print a resolved OAuth bearer token |
+| `nyan login [provider]` | Sign in and save the credential; without a provider, choose from a list |
+| `nyan auth login` | The same login, with `--provider` and `--method` as flags |
 
 | Option | Applies to | Description |
 |---|---|---|
-| `--provider <provider>` | All | Resolve credentials for a provider |
-| `--model <model>` | All | Resolve credentials from a model; may be combined with `--provider` |
+| `--provider <provider>` | All | Resolve credentials for a provider, or login with it |
+| `--model <model>` | All but login | Resolve credentials from a model; may be combined with `--provider` |
+| `--method <oauth\|api_key>` | `auth login` | Skip the method question; the provider must offer that method |
 | `--json` | `auth check` | Write the structured result as JSON |
 | `--credentials` | `auth check` | Emit the resolved credential when ready |
 | `--no-refresh` | `auth check` | Do not refresh expired OAuth credentials; refresh is the default |
 | `--min-expiry <duration>` | `print-bearer-token` | Require remaining token lifetime using `ms`, `s`, `m`, or `h`, such as `30m` |
 
 Credential-printing commands write secrets to stdout.
+
+Login asks its questions on a terminal, and stops with instructions when stdin is not one, so a script cannot end up waiting for input that will never arrive. In a non-interactive environment, set the provider's environment variable or write the credential to `auth.json` directly. A prompt's placeholder is shown as a hint only: answering with an empty line never stores it. A prompt that requires an answer is asked again rather than continued with an empty one.
+
+A login is verified where the provider can list its own models, because that listing authenticates with the credential just stored. A credential the provider rejects is reported as a failure, with the reason, instead of being announced as a successful login. A provider with no such check is reported as stored but unverified: the only way to exercise it is an inference request, which spends tokens, so `nyan login` does not make one. `nyan auth check` reports readiness for any provider.
 
 ## MCP commands
 

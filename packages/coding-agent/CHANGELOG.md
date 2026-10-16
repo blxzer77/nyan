@@ -4,9 +4,26 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+### Added
+
+- Built-in `CLIProxyAPI` provider (`builtin:cliproxyapi`) supporting `/login CLIProxyAPI` and CLI `nyan login cliproxyapi` / `nyan auth login --provider cliproxyapi`. It discovers models from the proxy, provides declarative model limits and thinking level overrides, priority Fast mode (`/fast`), request pause gate (`/pause`, `/continue`), real token throughput reporting, and `/cpa-*` management commands. Existing `cliproxyapi.json`, overrides, cache, and auth credentials from `~/.nyan/agent` and legacy `~/.pi/agent` are loaded automatically.
+- CLIProxyAPI telemetry: one record per request with time to first token, generation window, tokens per second, total time (excluding `/pause`), HTTP status, tokens, estimated cost, retries, and trace id, published on the `cliproxyapi:request` extension event. The 5 hour and weekly plan quota of the Codex and Claude accounts behind the proxy is read from the proxy's management API (`CLIPROXYAPI_MANAGEMENT_KEY`) or from `x-codex-*` and `anthropic-ratelimit-unified-*` response headers when the proxy runs with `passthrough-headers: true`, shown by the new `/cpa-quota`, and published on `cliproxyapi:quota`. Nyan stops sending a management key the proxy rejected and waits out the proxy's 30 minute ban. See [Providers](docs/providers.md#cliproxyapi).
+- CLI login commands `nyan auth login [--provider <provider>] [--method <oauth|api_key>]` and `nyan login [provider]` to authenticate with providers directly from the terminal without entering interactive mode.
+- An extension login prompt can require an answer with `onPrompt({ allowEmpty: false })`. The prompt is asked again instead of returning an empty string, and both `nyan login` and the interactive dialog honor it. `allowEmpty` defaults to true, and the manual authorization-code prompt requires an answer because an empty code can never be exchanged.
+
 ### Changed
 
 - The default interactive and text print session paths now use the durable Harness and SQLite under `~/.nyan/agent/sessions-durable/`; `--continue` resumes the newest durable session for the current directory. Eligible `--mode json` and `--mode rpc` invocations now use durable storage and recovery. Legacy JSONL sessions selected through compatibility flags are opened read-only, so their source files are never migrated or appended to.
+- `nyan login` and `nyan auth login` ask their questions on a terminal only. With piped or absent stdin they stop with instructions instead of waiting for input that cannot arrive.
+- The `@ny4n/ai` development CLI (`npx @ny4n/ai login`) trims a typed answer, asks again when a choice is not one of the offered numbers instead of exiting with `Invalid selection`, and refuses an empty answer to a prompt that requires one.
+
+### Fixed
+
+- `nyan auth check`, `nyan auth print-api-key`, `nyan auth print-bearer-token`, and `nyan login` reported every unexpected failure as `Failed to resolve credential`, hiding the cause. They now name the phase that failed and the error behind it.
+- `nyan login` and `nyan auth login` substituted a prompt's placeholder for an empty answer. At CLIProxyAPI's API-key prompt this made an empty answer look like a real key, so the provider skipped its own empty-key check and sent the literal `sk-...` to the proxy, which failed with a misleading validation error instead of saying the key was empty. A placeholder is a hint, as it is in the interactive dialog, and an empty answer stays empty.
+- `nyan login` and `nyan auth login` stopped with `Invalid selection` when a choice was not one of the offered numbers, and treated any answer other than `2` at the authentication-method prompt as OAuth. Both now re-ask.
+- `nyan login` and `nyan auth login` announced `Successfully logged in` without checking that the credential works. They now verify it with the provider's own model listing, which authenticates with the credential just stored, and report a rejected credential as a failure with its reason. A provider that offers no such check is reported as stored and unverified rather than implied to work.
+- `nyan login` reported a provider whose model listing failed during the post-login credential synchronization as `Credential login committed for <provider>, but local synchronization failed`, naming neither the cause nor what to do. It now reports the provider's own error and says the credential is stored.
 
 ## [1.3.0] - 2026-10-14
 

@@ -43,6 +43,43 @@ describe("LoginDialogComponent OAuth prompts", () => {
 		setKeybindings(new KeybindingsManager());
 	});
 
+	test("refuses an empty answer when the prompt requires one", async () => {
+		const dialog = createDialog();
+
+		const required = dialog.showPrompt("Enter API key:", "sk-...", { allowEmpty: false });
+		dialog.handleInput("\n");
+		expect(renderDialog(dialog).join("\n")).toContain("An answer is required.");
+
+		// Spaces alone are not an answer either.
+		dialog.handleInput("   \n");
+		expect(countRenderedValue(renderDialog(dialog), "   ")).toBe(0);
+
+		dialog.handleInput("sk-real");
+		dialog.handleInput("\n");
+		await expect(required).resolves.toBe("sk-real");
+	});
+
+	test("accepts an empty answer when the prompt allows one", async () => {
+		const dialog = createDialog();
+
+		const optional = dialog.showPrompt("Optional label:");
+		dialog.handleInput("\n");
+		await expect(optional).resolves.toBe("");
+		expect(renderDialog(dialog).join("\n")).not.toContain("An answer is required.");
+	});
+
+	test("refuses an empty manual code", async () => {
+		const dialog = createDialog();
+
+		const manualInput = dialog.showManualInput("Paste callback URL:", { allowEmpty: false });
+		dialog.handleInput("\n");
+		expect(renderDialog(dialog).join("\n")).toContain("An answer is required.");
+
+		dialog.handleInput("http://127.0.0.1:1455/auth/callback?code=abc");
+		dialog.handleInput("\n");
+		await expect(manualInput).resolves.toBe("http://127.0.0.1:1455/auth/callback?code=abc");
+	});
+
 	test("keeps previous prompt input stable when a later prompt is active", async () => {
 		const dialog = createDialog();
 
