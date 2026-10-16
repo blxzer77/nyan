@@ -11,7 +11,7 @@ const NODE_OS_SPECIFIER = "node:" + "os";
 const NODE_PATH_SPECIFIER = "node:" + "path";
 
 // Eagerly load in Node.js/Bun environment only
-if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
+if (isNodeLikeRuntime()) {
 	dynamicImport(NODE_FS_SPECIFIER).then((m) => {
 		_existsSync = (m as typeof import("node:fs")).existsSync;
 	});
@@ -25,6 +25,7 @@ if (typeof process !== "undefined" && (process.versions?.node || process.version
 
 import type { KnownProvider, ProviderEnv } from "./types.ts";
 import { getProviderEnvValue } from "./utils/provider-env.ts";
+import { isNodeLikeRuntime } from "./utils/runtime.ts";
 
 export const ANTHROPIC_AUTH_TOKEN_ENV = "ANTHROPIC_AUTH_TOKEN";
 export const ANTHROPIC_OAUTH_TOKEN_ENV = "ANTHROPIC_OAUTH_TOKEN";
@@ -48,8 +49,7 @@ function hasVertexAdcCredentials(env?: ProviderEnv): boolean {
 		// return false WITHOUT caching so the next call retries once they're ready.
 		// Only cache false permanently in a browser environment where fs is never available.
 		if (!_existsSync || !_homedir || !_join) {
-			const isNode = typeof process !== "undefined" && (process.versions?.node || process.versions?.bun);
-			if (!isNode) {
+			if (!isNodeLikeRuntime()) {
 				// Definitively in a browser — safe to cache false permanently
 				cachedVertexAdcCredentialsExists = false;
 			}

@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import * as undici from "undici";
+import { runningUnderBun } from "../runtime.ts";
 import { createIdleTimeoutFetch } from "./idle-timeout-fetch.ts";
 
 export const DEFAULT_HTTP_IDLE_TIMEOUT_MS = 300_000;
@@ -101,7 +102,7 @@ export function configureHttpDispatcher(timeoutMs: number = DEFAULT_HTTP_IDLE_TI
 	if (normalizedTimeoutMs === undefined) {
 		throw new Error(`Invalid HTTP idle timeout: ${String(timeoutMs)}`);
 	}
-	if (typeof process.versions.bun === "string") {
+	if (runningUnderBun()) {
 		configureNativeFetch(normalizedTimeoutMs);
 		return;
 	}

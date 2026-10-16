@@ -1,4 +1,5 @@
 import type { ProviderEnv } from "../types.ts";
+import { runningUnderBun } from "./runtime.ts";
 
 let procEnvCache: Map<string, string> | null = null;
 
@@ -13,7 +14,7 @@ let procEnvCache: Map<string, string> | null = null;
  * must not depend on process.env having been patched.
  */
 function getBunSandboxEnvValue(name: string): string | undefined {
-	if (typeof process === "undefined" || !process.versions?.bun || Object.keys(process.env).length > 0) {
+	if (!runningUnderBun() || Object.keys(process.env).length > 0) {
 		return undefined;
 	}
 

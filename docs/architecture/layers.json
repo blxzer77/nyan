@@ -351,7 +351,8 @@
 					"paths": [
 						"utils/",
 						"config.ts",
-						"identity.ts"
+						"identity.ts",
+						"runtime.ts"
 					],
 					"mayDependOn": []
 				},

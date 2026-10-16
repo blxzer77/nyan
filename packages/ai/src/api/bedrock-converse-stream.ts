@@ -56,6 +56,7 @@ import { parseStreamingJson } from "../utils/json-parse.ts";
 import { calculateCost } from "../utils/model-operations.ts";
 import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
+import { isNodeLikeRuntime } from "../utils/runtime.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { getSystemMessageText } from "../utils/text.ts";
 import {
@@ -189,7 +190,7 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 		const useBearerToken = bearerToken !== undefined && !skipAuth;
 
 		// in Node.js/Bun environment only
-		if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
+		if (isNodeLikeRuntime()) {
 			// Region resolution: ARN-embedded > explicit option > env vars > SDK default chain.
 			// When the model ID is an inference profile ARN, extract the region from it.
 			// This avoids conflicts with AWS_REGION set for other services.

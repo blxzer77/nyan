@@ -1,4 +1,6 @@
+import { getRuntimeLabel } from "../runtime.ts";
+
 export function getNyanUserAgent(version: string): string {
-	const runtime = process.versions.bun ? `bun/${process.versions.bun}` : `node/${process.version}`;
+	const runtime = getRuntimeLabel();
 	return `nyan/${version} (${process.platform}; ${runtime}; ${process.arch})`;
 }
