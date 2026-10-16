@@ -43,7 +43,8 @@ import type {
 	ToolHooks,
 	ToolRegistration,
 } from "./types.ts";
-import { recordUsage } from "./usage.ts";
+import { recordUsage, usageProblem } from "./usage.ts";
+import { Delivery } from "./util.ts";
 
 /**
  * A model-issued call, read from its assistant entry, or a nested call a running tool made through `executeTool()`,
@@ -276,6 +277,7 @@ async function run(
 	const reported: Reported = { output: new OutputBuffer(limits), limits, diagnostics: [], details: undefined };
 	const streams = input.kind === "model" || input.progress !== false;
 	const progress = publishProgress(runtime, reported, streams, context);
+	const updates = streams ? await toolUpdateDelivery(runtime, call, limits, context) : undefined;
 	/** Nested call admissions this invocation started; cleanup waits for them, so it sees every nested call. */
 	const admissions: Promise<unknown>[] = [];
 	// A caller that can rerun reattaches to its nested calls and child tasks after a restart; any other caller never
@@ -299,6 +301,21 @@ async function run(
 		output: (chunk, skipped) => {
 			assertLive();
 			if (reported.output.push(chunk, skipped)) progress.mark();
+			if (updates !== undefined) {
+				// The text the buffer decoded, so observers and the retained output agree on a split character.
+				const { pending, text } = reported.output.lastPush;
+				const droppedBytes = skipped === undefined ? 0 : skipped.bytes;
+				// A character completed by a skip comes before the skipped output, the rest after it.
+				if (droppedBytes > 0 && pending !== "") updates.push({ output: pending });
+				const output = droppedBytes > 0 ? text : pending + text;
+				// A chunk that ends inside a character decodes to nothing; there is nothing to report yet.
+				if (output !== "" || droppedBytes > 0) {
+					updates.push({
+						...(output === "" ? {} : { output }),
+						...(droppedBytes === 0 ? {} : { droppedBytes }),
+					});
+				}
+			}
 		},
 		outputWindow:
 			limits.retain === "tail"
@@ -316,13 +333,16 @@ async function run(
 		},
 		diagnostic: (diagnostic) => {
 			assertLive();
-			reported.diagnostics.push(copyJson(diagnostic, { omitUndefinedProperties: true }) as ToolDiagnostic);
+			const recorded = copyJson(diagnostic, { omitUndefinedProperties: true }) as ToolDiagnostic;
+			reported.diagnostics.push(recorded);
 			progress.mark();
+			updates?.push({ diagnostics: [recorded] });
 		},
 		details: async (value, detailsContext) => {
 			assertLive();
 			detailsContext.abortSignal?.throwIfAborted();
 			reported.details = copyJson(value, { omitUndefinedProperties: true });
+			updates?.push({ details: reported.details });
 			const committed = progress.markAndWait();
 			// Cancelling the wait leaves the update in place; the commit's own outcome stays observed.
 			committed.catch(() => {});
@@ -415,7 +435,17 @@ async function run(
 	ended = true;
 	// No admission starts after `ended`; let those underway commit, so settlement aborts and lists their calls.
 	await Promise.allSettled(admissions);
-	reported.output.end();
+	// A character that the last chunk left incomplete is flushed as U+FFFD, for observers as for the retained output.
+	const flushed = reported.output.end();
+	if (flushed !== "") updates?.push({ output: flushed });
+	// Observers have seen every update before the call settles. Only an abort rejects the drain, and the settling
+	// commit then rejects too.
+	try {
+		await updates?.drain();
+	} catch (error) {
+		if (!runtime.signal.aborted) throw error;
+	}
+	updates?.stop();
 	// Details still waiting for a progress commit settle with the terminal commit, the final flush.
 	const pending = await progress.stop();
 	try {
@@ -426,6 +456,79 @@ async function run(
 		throw error;
 	}
 	for (const waiter of pending) waiter.resolve();
+}
+
+/** What `onToolUpdate` observers get: the changes since their previous delivery. */
+type ToolUpdate = {
+	readonly output?: string;
+	readonly droppedBytes?: number;
+	readonly details?: JsonValue;
+	readonly diagnostics?: readonly ToolDiagnostic[];
+};
+
+/** An update still waiting to be delivered: the delivery queue owns its diagnostics list, so a merge appends to it. */
+type PendingToolUpdate = Omit<ToolUpdate, "diagnostics"> & { diagnostics?: ToolDiagnostic[] };
+
+/**
+ * Sequential delivery of a running call's updates to `onToolUpdate` observers, or `undefined` when none is registered.
+ * The tool's `output()` and `diagnostic()` are synchronous, so the producer cannot wait: at most one delivery is in
+ * flight and one is pending, and updates arriving meanwhile coalesce (spec §7.2, "Streaming hooks").
+ */
+async function toolUpdateDelivery(
+	runtime: Runtime,
+	call: ToolHookCall,
+	limits: OutputLimits,
+	context: Context,
+): Promise<Delivery<PendingToolUpdate> | undefined> {
+	if (!(await runtime.hooks.has("onToolUpdate"))) return undefined;
+	return new Delivery<PendingToolUpdate>({
+		deliver: (update) => runtime.hooks.each("onToolUpdate", (hook) => hook({ call, ...update }, runtime, context)),
+		context,
+		onError: (error) => runtime.report(error),
+		merge: (waiting, next) => mergeToolUpdates(waiting, next, limits.maxBytes),
+	});
+}
+
+/**
+ * `next` folded into the `waiting` update: output appends, the newest details win, diagnostics append. Pending output is
+ * capped at `maxBytes` bytes; when it overflows, its oldest part is dropped and counted in `droppedBytes`. Pending
+ * diagnostics are not capped, because `Reported.diagnostics` already keeps every one for the result; they are appended
+ * in place, so a delivery that stays in flight does not make each push copy the whole list.
+ */
+export function mergeToolUpdates(
+	waiting: PendingToolUpdate,
+	next: PendingToolUpdate,
+	maxBytes: number,
+): PendingToolUpdate {
+	let output = `${waiting.output ?? ""}${next.output ?? ""}`;
+	let droppedBytes = (waiting.droppedBytes ?? 0) + (next.droppedBytes ?? 0);
+	const excess = utf8ByteLength(output) - maxBytes;
+	if (excess > 0) {
+		const dropped = dropFront(output, excess);
+		output = dropped.rest;
+		droppedBytes += dropped.bytes;
+	}
+	const details = next.details !== undefined ? next.details : waiting.details;
+	const diagnostics = waiting.diagnostics ?? [];
+	if (next.diagnostics !== undefined) diagnostics.push(...next.diagnostics);
+	return {
+		...(output === "" ? {} : { output }),
+		...(droppedBytes === 0 ? {} : { droppedBytes }),
+		...(details === undefined ? {} : { details }),
+		...(diagnostics.length === 0 ? {} : { diagnostics }),
+	};
+}
+
+/** `text` without its first code points, at least `bytes` UTF-8 bytes of them, and how many bytes that was. */
+function dropFront(text: string, bytes: number): { readonly rest: string; readonly bytes: number } {
+	let dropped = 0;
+	let end = 0;
+	for (const character of text) {
+		if (dropped >= bytes) break;
+		dropped += utf8ByteLength(character);
+		end += character.length;
+	}
+	return { rest: text.slice(end), bytes: dropped };
 }
 
 /**
@@ -528,6 +631,17 @@ async function finalResult(
 			runtime.report(new Error(broken));
 		}
 	}
+	// The commit adds the usage to the ledger and throws on a counter it cannot add, which would lose the whole result:
+	// the tool's output is kept, its spend is not, and the break is told to the model, the program and the host.
+	if (final.usage !== undefined) {
+		const problem = usageProblem(final.usage);
+		if (problem !== undefined) {
+			const { usage: _dropped, ...rest } = final;
+			final = rest;
+			harness.push(unrecordedUsage(call.id, problem));
+			runtime.report(new Error(`Tool ${tool.name} returned usage that was not recorded: ${problem}`));
+		}
+	}
 	// Programs get the tool's own value: without a schema, its output. The model reads only `output`, so model-issued
 	// calls skip both.
 	if (input.kind === "nested" && tool.structuredOutputSchema === undefined) {
@@ -605,8 +719,14 @@ async function settle(
 		const result = build(slot);
 		let settled: ToolTaskResult;
 		if (input.kind === "nested") {
-			const nested = nestedResult(runtime.taskId, result, durationMs);
-			if (nested.usage !== undefined) await recordUsage(tx, conversationId, "tools", call.name, nested.usage);
+			let nested = nestedResult(runtime.taskId, result, durationMs);
+			if (nested.usage !== undefined) {
+				const problem = await recordUsage(tx, conversationId, "tools", call.name, nested.usage);
+				if (problem !== undefined) {
+					const { usage: _dropped, ...rest } = nested;
+					nested = { ...rest, diagnostics: [...rest.diagnostics, unrecordedUsage(call.id, problem)] };
+				}
+			}
 			// The caller is never terminal before its owned nested calls, so its document is open; another task in it is a
 			// bug, not a race.
 			const state = await tx.doc(NestedCallDoc, input.parent, input.key, null);
@@ -785,6 +905,15 @@ export function harnessError(code: string, message: string): ToolExecutionResult
 	return { output: [], isError: true, diagnostics: [toolDiagnostic(code, message)] };
 }
 
+/** The ledger counts one call's spend less than the tool reported; the call is named so a log line can be traced. */
+function unrecordedUsage(callId: string, problem: string): ToolDiagnostic {
+	return {
+		severity: "warn",
+		code: "invalid_usage",
+		message: `The usage of tool call ${callId} was not recorded, so nyan.usage counts less than the tool spent: ${problem}`,
+	};
+}
+
 function toolDiagnostic(code: string, message: string): ToolDiagnostic {
 	return { severity: "error", code, message };
 }
@@ -836,6 +965,15 @@ export async function appendToolResult(
 ): Promise<TypedEntry<{ diagnostics: ToolDiagnostic[] }>> {
 	const { timestamp, durationMs } = meta;
 	const diagnostics = [...(result.diagnostics ?? [])];
+	let usage = result.usage;
+	if (usage !== undefined) {
+		// Checked by `finalResult`; only a sum that overflows the ledger is left, and then the entry carries no usage.
+		const problem = await recordUsage(tx, conversationId, "tools", call.name, usage);
+		if (problem !== undefined) {
+			usage = undefined;
+			diagnostics.push(unrecordedUsage(call.id, problem));
+		}
+	}
 	const content: Content = [...(result.output ?? [])];
 	if (diagnostics.length > 0) content.push({ type: "text", text: renderDiagnostics(diagnostics) });
 	const message = {
@@ -844,12 +982,11 @@ export async function appendToolResult(
 		toolName: call.name,
 		content,
 		...(result.details === undefined ? {} : { details: result.details }),
-		...(result.usage === undefined ? {} : { usage: result.usage }),
+		...(usage === undefined ? {} : { usage }),
 		isError: result.isError ?? false,
 		...(durationMs === undefined ? {} : { durationMs }),
 		timestamp,
 	} as ToolResultMessage;
-	if (result.usage !== undefined) await recordUsage(tx, conversationId, "tools", call.name, result.usage);
 	return tx.appendEntry(ToolResultEntry, conversationId, { model: [message], data: { diagnostics } });
 }
 

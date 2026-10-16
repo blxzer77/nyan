@@ -3,7 +3,7 @@ import { copyJson, type Draft } from "@ny4n/chord";
 import { AssistantEntry } from "../entries.ts";
 import type { ConversationId, Tx, TypedEntry } from "../types.ts";
 import type { LiveState } from "./live.ts";
-import { recordUsage } from "./usage.ts";
+import { recordProviderUsage } from "./usage.ts";
 
 /**
  * Append a committed partial left by an interrupted, aborted, faulted, or orphaned attempt as an aborted assistant
@@ -25,6 +25,6 @@ export async function appendAssistant(
 	conversationId: ConversationId,
 	message: AssistantMessage,
 ): Promise<TypedEntry<never>> {
-	await recordUsage(tx, conversationId, "models", `${message.provider}/${message.model}`, message.usage);
+	await recordProviderUsage(tx, conversationId, `${message.provider}/${message.model}`, message.usage);
 	return tx.appendEntry(AssistantEntry, conversationId, { model: [message] });
 }

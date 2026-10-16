@@ -48,6 +48,7 @@ import type {
 	ProviderImages,
 	ProviderRequestOptions,
 	ProviderStreams,
+	RequestTransforms,
 	SimpleStreamOptions,
 	TranscriptContext,
 } from "./types.ts";
@@ -106,10 +107,8 @@ export interface ModelsRefreshResult {
 	errors: ReadonlyMap<string, Error>;
 }
 
-export interface ModelsRequestTransforms {
-	/** Transform fully assembled model/auth/request headers before provider dispatch. */
-	transformHeaders?: (headers: ProviderHeaders) => ProviderHeaders | Promise<ProviderHeaders>;
-}
+/** The request transforms `Models` applies; the contract type lets a runtime consumer such as durable name them. */
+export type ModelsRequestTransforms = RequestTransforms;
 
 export type ModelsApiStreamOptions<TApi extends Api> = ApiStreamOptions<TApi> & ModelsRequestTransforms;
 export type ModelsSimpleStreamOptions = SimpleStreamOptions & ModelsRequestTransforms;

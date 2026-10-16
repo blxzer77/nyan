@@ -1,21 +1,35 @@
 import type {
 	Api,
 	AssistantMessage,
+	AssistantMessageEvent,
 	DeferredHandle,
 	Message,
 	Model,
 	ModelThinkingLevel,
+	ProviderHeaders,
+	RequestTransforms,
 	SimpleStreamOptions,
+	StopReason,
 	ToolCall,
 } from "@ny4n/ai/contracts";
 import { isContextOverflow } from "@ny4n/ai/utils/overflow";
 import { isRetryableAssistantError, retryDelayMs } from "@ny4n/ai/utils/retry";
-import { getCurrentTools } from "@ny4n/ai/utils/transcript";
+import { getCurrentSystemMessage, getCurrentTools } from "@ny4n/ai/utils/transcript";
 import { type Context, copyJson, type Draft, type JsonValue } from "@ny4n/chord";
+import { awaitWithContext } from "@ny4n/chord/context";
 import { AssistantEntry, ResetEntry, SystemEntry, UserEntry } from "../entries.ts";
 import type { ExecutionEnv } from "../env/index.ts";
 import { defineTask } from "../tasks.ts";
-import type { EntryId, NextTaskState, TaskId, TaskOutcome, TaskRuntime, Tx } from "../types.ts";
+import type {
+	ConversationId,
+	EntryDraft,
+	EntryId,
+	NextTaskState,
+	TaskId,
+	TaskOutcome,
+	TaskRuntime,
+	Tx,
+} from "../types.ts";
 import { addTools } from "./agent.ts";
 import { appendAssistant, convertPartial } from "./assistant.ts";
 import { createCompaction, estimateContext, selectCut } from "./compaction.ts";
@@ -27,16 +41,20 @@ import { ensureProviderSessionId } from "./provider.ts";
 import { createGeneration, generationTaskReference, handOver, startRun } from "./run.ts";
 import { appendToolResult, harnessError, ToolTask, type ToolTaskResult } from "./tool.ts";
 import type {
+	BoundaryEntry,
 	CompactionPolicy,
 	CompactionResult,
 	ContextView,
 	ConversationStreamOptions,
+	GenerationBoundary,
 	GenerationHooks,
 	ModelRef,
 	PromptInput,
 	ToolControl,
 	UserInput,
 } from "./types.ts";
+import { usageProblem } from "./usage.ts";
+import { Delivery } from "./util.ts";
 
 export type GenerationInput = Record<string, never>;
 
@@ -197,15 +215,21 @@ export const GenerationTask = defineTask<GenerationInput, GenerationCheckpoint, 
 			if (model === undefined) return failNoModel(runtime, ref, context);
 			const view = await runtime.context(conversationId, context, { at: cutoff });
 			let messages = view.messages;
+			await runtime.hooks.each("transformConversation", async (hook) => {
+				const visible = messages.filter((message) => message.role !== "system");
+				const replaced = await hook({ messages: visible }, runtime, context);
+				if (replaced !== undefined) messages = restoreSystem(messages, visible, replaced.messages);
+			});
 			await runtime.hooks.each("beforeRequest", async (hook) => {
 				const replaced = await hook({ messages }, runtime, context);
 				if (replaced !== undefined) messages = replaced.messages;
 			});
-			const options: SimpleStreamOptions = {
+			const options: SimpleStreamOptions & RequestTransforms = {
 				...streamOptions,
 				signal: runtime.signal,
 				sessionId: await ensureProviderSessionId(runtime, context),
 				...(thinkingLevel === "off" ? {} : { reasoning: thinkingLevel }),
+				...(await providerCallbacks(runtime, model, context)),
 			};
 			const message = await streamResponse(runtime, model, messages, options, attempt, context);
 			const request = { attempt, compacted, model: ref, cutoff, messages: view.messages };
@@ -365,16 +389,72 @@ async function failNoModel(runtime: Runtime, ref: ModelRef | undefined, context:
 	}, context);
 }
 
+type ProviderCallbacks = RequestTransforms &
+	Pick<SimpleStreamOptions, "onPayload" | "onResponse" | "onProviderStreamEvent">;
+
+/**
+ * The model-runtime callbacks that registered provider hooks turn on (spec §8.3). A hook nobody registered leaves its
+ * callback unset, so the request is the one a conversation without hooks sends. A callback never throws except on abort:
+ * `each` reports an ordinary throw and goes on, an adapter may await the callback unguarded, and every wait races the
+ * invocation signal so a hook that never returns delays only until abort. All four run again for a resent request.
+ */
+async function providerCallbacks(runtime: Runtime, model: Model<Api>, context: Context): Promise<ProviderCallbacks> {
+	const callbacks: ProviderCallbacks = {};
+	const each = <
+		K extends "beforeProviderRequest" | "beforeProviderHeaders" | "afterProviderResponse" | "onProviderStreamEvent",
+	>(
+		name: K,
+		invoke: (hook: NonNullable<GenerationHooks[K]>) => void | Promise<void>,
+	): Promise<void> => awaitWithContext(runtime.hooks.each(name, invoke), context);
+	if (await runtime.hooks.has("beforeProviderRequest")) {
+		callbacks.onPayload = async (payload) => {
+			let current = payload;
+			await each("beforeProviderRequest", async (hook) => {
+				const replaced = await hook({ payload: current, model }, runtime, context);
+				if (replaced !== undefined) current = replaced.payload;
+			});
+			// `undefined` keeps the adapter's own body.
+			return current === payload ? undefined : current;
+		};
+	}
+	if (await runtime.hooks.has("beforeProviderHeaders")) {
+		callbacks.transformHeaders = async (headers) => {
+			let current: ProviderHeaders = headers;
+			await each("beforeProviderHeaders", async (hook) => {
+				const replaced = await hook({ headers: current, model }, runtime, context);
+				if (replaced !== undefined) current = replaced.headers;
+			});
+			return current;
+		};
+	}
+	if (await runtime.hooks.has("afterProviderResponse")) {
+		callbacks.onResponse = (response) =>
+			each("afterProviderResponse", (hook) =>
+				hook({ status: response.status, headers: response.headers, model }, runtime, context),
+			);
+	}
+	if (await runtime.hooks.has("onProviderStreamEvent")) {
+		callbacks.onProviderStreamEvent = (data) =>
+			each("onProviderStreamEvent", (hook) => hook({ data, model }, runtime, context));
+	}
+	return callbacks;
+}
+
 /**
  * Stream one request and return the terminal message. Partials commit as trailing writes at most every
  * `progress.partialIntervalMs` (default 100 ms) with one commit in flight; `finally` stops the throttle and awaits that
  * commit, so no stale partial lands after the outcome.
+ *
+ * `onStreamEvent` observers get every event through a `Delivery` that the read loop never waits for, so they cannot stall
+ * the partial throttle or the abort path; it is drained, racing the signal, before the terminal message is returned, so
+ * observers have seen every event when `afterResponse` runs. `event.partial` is the provider's live object, as in the
+ * coding agent's `message_update`, and may be ahead of the event when an observer lags.
  */
 async function streamResponse(
 	runtime: Runtime,
 	model: Model<Api>,
 	messages: readonly Message[],
-	options: SimpleStreamOptions,
+	options: SimpleStreamOptions & RequestTransforms,
 	attempt: number,
 	context: Context,
 ): Promise<AssistantMessage> {
@@ -407,36 +487,114 @@ async function streamResponse(
 				if (pending !== undefined && !stopped) timer = setTimeout(flush, interval);
 			});
 	};
+	const observed = (await runtime.hooks.has("onStreamEvent"))
+		? new Delivery<AssistantMessageEvent>({
+				deliver: (event) =>
+					runtime.hooks.each("onStreamEvent", (hook) => hook({ event, attempt }, runtime, context)),
+				context,
+				onError: (error) => runtime.report(error),
+			})
+		: undefined;
 	try {
 		const events = runtime.models.streamSimple(model, { messages: [...messages] }, options);
 		for await (const event of events) {
+			observed?.push(event);
 			// A partial without content, such as nyan-ai's opening `start` event, shows nothing; a deferred response
 			// never gets past it, so it never leaves a partial.
 			if (event.type === "done" || event.type === "error" || event.partial.content.length === 0) continue;
 			pending = event.partial;
 			if (timer === undefined && inFlight === undefined) timer = setTimeout(flush, interval);
 		}
+		await observed?.drain();
 		return await events.result();
 	} finally {
+		observed?.stop();
 		stopped = true;
 		clearTimeout(timer);
 		await inFlight;
 	}
 }
 
+/**
+ * The request after a phase-one transform returned `returned` for the `visible` messages it received: unchanged when
+ * the handler returned the same messages, otherwise prompt and tool state restored in front of the returned list.
+ */
+function restoreSystem(
+	current: readonly Message[],
+	visible: readonly Message[],
+	returned: readonly Message[],
+): readonly Message[] {
+	if (returned.length === visible.length && returned.every((message, index) => message === visible[index])) {
+		return current;
+	}
+	const head = getCurrentSystemMessage(current);
+	return head === undefined ? returned : [head, ...returned];
+}
+
+/** Every stop reason; a `Record` so a new one cannot be forgotten here. */
+const STOP_REASONS: Record<StopReason, true> = {
+	stop: true,
+	length: true,
+	toolUse: true,
+	error: true,
+	aborted: true,
+	pending: true,
+	deferred: true,
+};
+
+/** Why `message` cannot replace a terminal assistant message, or `undefined` when it can. */
+function replacementProblem(message: AssistantMessage): string | undefined {
+	if (message === null || typeof message !== "object" || message.role !== "assistant")
+		return "it is not an assistant message";
+	if (!Array.isArray(message.content)) return "its content is not a list";
+	if (!Object.hasOwn(STOP_REASONS, message.stopReason))
+		return `its stop reason ${String(message.stopReason)} is unknown`;
+	if (message.stopReason === "deferred") return "a message cannot be rewritten into a deferred result";
+	if (!Number.isFinite(message.timestamp)) return "it has no timestamp";
+	for (const part of message.content) {
+		if (part?.type === "toolCall" && (typeof part.id !== "string" || typeof part.name !== "string")) {
+			return "a tool call has no id or name";
+		}
+	}
+	const usage = usageProblem(message.usage);
+	if (usage !== undefined) return usage;
+	try {
+		copyJson(message, { omitUndefinedProperties: true });
+	} catch (error) {
+		return `it is not strict JSON: ${error instanceof Error ? error.message : String(error)}`;
+	}
+	return undefined;
+}
+
+/** `message` after the `rewriteMessage` chain; an invalid replacement is reported and ignored. */
+async function rewritten(runtime: Runtime, message: AssistantMessage, context: Context): Promise<AssistantMessage> {
+	let current = message;
+	await runtime.hooks.each("rewriteMessage", async (hook) => {
+		const replaced = await hook(current, runtime, context);
+		if (replaced === undefined) return;
+		const problem = replacementProblem(replaced.message);
+		if (problem !== undefined) {
+			runtime.report(new Error(`rewriteMessage returned a message that cannot be used: ${problem}`));
+			return;
+		}
+		current = replaced.message;
+	});
+	return current;
+}
+
 /** Classify a terminal provider message in one commit that also clears the partial. */
 async function classify(
 	runtime: Runtime,
 	request: Request,
-	message: AssistantMessage,
+	provided: AssistantMessage,
 	context: Context,
 ): Promise<void> {
 	// An abort mark or close: the abort invocation or the reopened run handles the committed state.
 	runtime.signal.throwIfAborted();
 	const conversationId = runtime.conversationId;
 	const { attempt, compacted, model: ref, cutoff } = request;
-	if (message.stopReason === "deferred" && message.deferred !== undefined) {
-		const handle = message.deferred;
+	if (provided.stopReason === "deferred" && provided.deferred !== undefined) {
+		const handle = provided.deferred;
 		const pollAt = Math.max(
 			runtime.now() + (handle.pollAfterMs ?? DEFAULT_POLL_AFTER_MS),
 			request.pollAt === undefined ? Number.NEGATIVE_INFINITY : request.pollAt + 1,
@@ -456,6 +614,7 @@ async function classify(
 		}, context);
 		return;
 	}
+	const message = await rewritten(runtime, provided, context);
 	await runtime.hooks.each("afterResponse", (hook) => hook(message, runtime, context));
 	const calls = message.content.filter((content): content is ToolCall => content.type === "toolCall");
 	if (message.stopReason === "toolUse" && calls.length > 0) {
@@ -514,6 +673,128 @@ async function classify(
 	}, context);
 }
 
+const NO_DECISION = { entries: [], continue: false } as const;
+
+/** The boundary chain: each handler sees, and may replace, what the handlers before it asked for. */
+async function runBoundary(
+	runtime: Runtime,
+	boundary: Pick<GenerationBoundary, "kind" | "assistant" | "assistantEntry" | "toolResults">,
+	soFar: { readonly entries: readonly BoundaryEntry[]; readonly continue: boolean },
+	context: Context,
+): Promise<{ readonly entries: readonly BoundaryEntry[]; readonly continue: boolean }> {
+	let { entries, continue: asked } = soFar;
+	await runtime.hooks.each("onBoundary", async (hook) => {
+		const decision = await hook({ ...boundary, entries, continue: asked }, runtime, context);
+		if (decision?.entries !== undefined) entries = decision.entries;
+		if (decision?.continue !== undefined) asked = decision.continue;
+	});
+	return { entries, continue: asked };
+}
+
+/**
+ * Why `messages` is not a list of user messages with content and timestamps, or `undefined`. Tool-call pairing depends
+ * on the roles, and a request is built from the content: a message without it is rejected by the provider or throws.
+ */
+function userMessagesProblem(messages: unknown): string | undefined {
+	if (!Array.isArray(messages)) return "that is not a list";
+	for (const message of messages) {
+		if (message?.role !== "user") return "message that is not a user message";
+		if (typeof message.content !== "string" && !Array.isArray(message.content)) return "user message without content";
+		if (!Number.isFinite(message.timestamp)) return "user message without a timestamp";
+	}
+	return undefined;
+}
+
+const BOUNDARY_FIELDS: ReadonlySet<string> = new Set(["kind", "model", "data", "edits"]);
+const EDIT_ACTIONS: ReadonlySet<string> = new Set(["omit", "replace"]);
+const EDIT_FIELDS: ReadonlySet<string> = new Set(["target", "action", "messages"]);
+
+/**
+ * Why the boundary drafts cannot be appended, or `undefined` when they can. `Tx.appendEntry` checks nothing about `head`
+ * or `edits`: a bad draft does not throw, it silently changes which entries are active, and a value that is not strict
+ * JSON throws inside the commit and faults the generation. So the drafts are checked here, off the line, against the
+ * committed context; it stays current because only the Harness writes model context to a busy conversation.
+ */
+function boundaryProblem(view: ContextView, entries: readonly BoundaryEntry[]): string | undefined {
+	const active = new Set(view.entries.map((entry) => entry.id));
+	for (const [index, draft] of entries.entries()) {
+		const at = `entry ${index}`;
+		if (draft === null || typeof draft !== "object") return `${at} is not an object`;
+		const extra = Object.keys(draft).find((key) => !BOUNDARY_FIELDS.has(key));
+		if (extra !== undefined) return `${at} has a field \`${extra}\` that a boundary hook may not set`;
+		if (typeof draft.kind !== "string" || draft.kind.length === 0) return `${at} has no kind`;
+		if (draft.kind.startsWith("nyan.")) return `${at} has the built-in kind ${draft.kind}`;
+		if (draft.model !== undefined) {
+			const problem = userMessagesProblem(draft.model);
+			if (problem !== undefined) return `${at} has a model ${problem}`;
+		}
+		if (draft.edits !== undefined) {
+			if (!Array.isArray(draft.edits)) return `${at} has edits that are not a list`;
+			for (const edit of draft.edits) {
+				if (!active.has(edit?.target))
+					return `${at} edits entry ${String(edit?.target)}, which is not in the active context`;
+				if (!EDIT_ACTIONS.has(edit.action))
+					return `${at} has an edit with the unknown action ${String(edit.action)}`;
+				const editExtra = Object.keys(edit).find((key) => !EDIT_FIELDS.has(key));
+				if (editExtra !== undefined)
+					return `${at} has an edit with a field \`${editExtra}\` that is not part of an edit`;
+				// A replacement is read as the target's messages on every context derivation; a missing list would throw there.
+				if (edit.action === "replace") {
+					const problem = userMessagesProblem(edit.messages);
+					if (problem !== undefined) return `${at} has a replacement ${problem}`;
+				} else if (edit.messages !== undefined) {
+					// Read nowhere for an omit, so a hook that sets it expects a replacement it will not get.
+					return `${at} has an omit edit with messages, which only a replace uses`;
+				}
+			}
+		}
+		try {
+			copyJson(draft as unknown as JsonValue, { omitUndefinedProperties: true });
+		} catch (error) {
+			return `${at} is not strict JSON: ${error instanceof Error ? error.message : String(error)}`;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * The boundary decision after the checks the commit cannot do. Rejected drafts are dropped as a whole and reported, and
+ * `continue` goes with them; a `continue` that would end the request with an assistant message is reported and dropped.
+ */
+async function checkedBoundary(
+	runtime: Runtime,
+	hooked: { readonly entries: readonly BoundaryEntry[]; readonly continue: boolean },
+	context: Context,
+): Promise<{ readonly entries: readonly BoundaryEntry[]; readonly continue: boolean }> {
+	if (hooked.entries.length > 0) {
+		const view = await runtime.context(runtime.conversationId, context);
+		const problem = boundaryProblem(view, hooked.entries);
+		if (problem !== undefined) {
+			runtime.report(new Error(`onBoundary returned entries that cannot be used: ${problem}`));
+			return NO_DECISION;
+		}
+	}
+	if (hooked.continue && !hooked.entries.some((entry) => (entry.model?.length ?? 0) > 0)) {
+		runtime.report(
+			new Error("onBoundary asked to continue without a user message, so the request would end with the answer"),
+		);
+		return { entries: hooked.entries, continue: false };
+	}
+	return hooked;
+}
+
+/** Append the checked drafts, in order, as the generation task's own entries. */
+async function appendBoundaryEntries(
+	tx: Tx,
+	conversationId: ConversationId,
+	entries: readonly BoundaryEntry[],
+): Promise<void> {
+	for (const draft of entries) {
+		const copy = copyJson(draft as unknown as JsonValue, { omitUndefinedProperties: true }) as unknown as EntryDraft;
+		await tx.appendEntry(conversationId, copy);
+	}
+}
+
 /**
  * A final answer; the final boundary places queued items (spec §6). The first `onYield` continuation appends a user
  * message and hands the run to a successor generation, but only when the boundary selected no user item and no reset.
@@ -526,16 +807,30 @@ async function answer(runtime: Runtime, message: AssistantMessage, context: Cont
 		continuation = (await hook(message, runtime, context))?.continue;
 	});
 	const conversationId = runtime.conversationId;
+	// `settle` asks only when nothing else already continues the run.
+	const ended = { assistant: message, toolResults: [] } as const;
+	let hooked = await runBoundary(runtime, { kind: "turn_end", ...ended }, NO_DECISION, context);
+	if (continuation === undefined && !hooked.continue) {
+		hooked = await runBoundary(runtime, { kind: "settle", ...ended }, hooked, context);
+	}
+	hooked = await checkedBoundary(runtime, hooked, context);
 	await runtime.commit(async (tx): Promise<Next> => {
 		// Queue modes are read on the Session line, when the boundary is decided.
 		const boundary = await prepareBoundary(tx, conversationId, runtime.settings);
 		const live = await tx.doc(LiveDoc, conversationId);
 		const entry = await appendAssistant(tx, conversationId, message);
+		await appendBoundaryEntries(tx, conversationId, hooked.entries);
 		const result: Next = { status: "terminal", outcome: { status: "completed", result: { entryId: entry.id } } };
 		const { users, reset } = await applyBoundary(tx, boundary, "final", runtime.now());
 		if (continuation !== undefined && users.length === 0 && !reset) {
 			const user = { role: "user", content: continuation, timestamp: runtime.now() } as const;
 			await tx.appendEntry(UserEntry, conversationId, { model: [user] });
+			handOver(live, runtime.taskId, await createGeneration(tx, conversationId));
+			delete live.generation;
+			return result;
+		}
+		if (hooked.continue && users.length === 0 && !reset) {
+			// The drafts hold a user message (checked), so the request after the answer does not end with an assistant one.
 			handOver(live, runtime.taskId, await createGeneration(tx, conversationId));
 			delete live.generation;
 			return result;
@@ -630,9 +925,21 @@ async function finishToolRound(
 	const added = [...controls.values()].flatMap((control) => control?.addTools ?? []);
 	// The last handoff in call order wins.
 	const handoff = [...controls.values()].findLast((control) => control?.handoff !== undefined)?.handoff;
+	// The tool-calling answer is committed, so the boundary can name its entries. A round continues anyway, so `continue`
+	// does not matter here; `settle` asks only when `terminate` or `handoff` ends the run.
+	const turn = (await runtime.entry(AssistantEntry, assistant, context))?.model?.[0];
+	let hooked: { readonly entries: readonly BoundaryEntry[]; readonly continue: boolean } = NO_DECISION;
+	if (turn?.role === "assistant") {
+		const ended = { assistant: turn, assistantEntry: assistant, toolResults: results } as const;
+		hooked = await runBoundary(runtime, { kind: "turn_end", ...ended }, NO_DECISION, context);
+		if (terminate || handoff !== undefined)
+			hooked = await runBoundary(runtime, { kind: "settle", ...ended }, hooked, context);
+		hooked = await checkedBoundary(runtime, { entries: hooked.entries, continue: false }, context);
+	}
 	await runtime.commit(async (tx): Promise<Next> => {
 		const boundary = await prepareBoundary(tx, conversationId, runtime.settings);
 		if (added.length > 0) await addTools(tx, conversationId, added);
+		await appendBoundaryEntries(tx, conversationId, hooked.entries);
 		const live = await tx.doc(LiveDoc, conversationId);
 		const now = runtime.now();
 		if (terminate || handoff !== undefined) {

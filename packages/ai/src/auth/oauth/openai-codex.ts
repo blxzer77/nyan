@@ -7,13 +7,14 @@
 
 // NEVER convert to top-level imports - breaks browser/Vite builds
 let _randomBytes: typeof import("node:crypto").randomBytes | null = null;
-if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
+if (isNodeLikeRuntime()) {
 	import("node:crypto").then((m) => {
 		_randomBytes = m.randomBytes;
 	});
 }
 
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
+import { isNodeLikeRuntime } from "../../utils/runtime.ts";
 import type { LoginOptions, OAuthAuth, OAuthCredential, ProviderAuthInteraction } from "../types.ts";
 import { startOAuthCallbackServer, waitForCallbackOrManualInput } from "./callback-server.ts";
 import { pollOAuthDeviceCodeFlow } from "./device-code.ts";

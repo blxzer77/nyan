@@ -93,12 +93,17 @@ export function withCancel(context: Context): {
 
 /**
  * Observe a promise until it settles or the invocation is cancelled.
- * Cancellation rejects only this waiter; it does not cancel the underlying promise.
+ * Cancellation rejects only this waiter; it does not cancel the underlying promise. Once the waiter has given up, the
+ * promise's own failure has no observer left, so it is marked handled instead of surfacing as an unhandled rejection.
  */
 export function awaitWithContext<T>(promise: Promise<T>, context: Context): Promise<T> {
 	const signal = context.abortSignal;
 	if (signal === undefined) return promise;
-	if (signal.aborted) return Promise.reject(abortError(signal));
+	if (signal.aborted) {
+		// `Promise.resolve`: a thenable that is not a Promise has no `catch`, and was accepted before this was added.
+		Promise.resolve(promise).catch(() => {});
+		return Promise.reject(abortError(signal));
+	}
 	return new Promise<T>((resolve, reject) => {
 		const onAbort = (): void => reject(abortError(signal));
 		signal.addEventListener("abort", onAbort, { once: true });

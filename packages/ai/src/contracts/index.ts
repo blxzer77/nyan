@@ -23,6 +23,9 @@ export type {
 	Message,
 	Model,
 	ModelThinkingLevel,
+	ProviderHeaders,
+	ProviderResponse,
+	RequestTransforms,
 	SimpleStreamOptions,
 	StopReason,
 	SystemMessage,
@@ -47,6 +50,7 @@ import type {
 	DeferredFetchOptions,
 	DeferredHandle,
 	Model,
+	RequestTransforms,
 	SimpleStreamOptions,
 } from "../types.ts";
 
@@ -56,10 +60,18 @@ import type {
  * `Models` implements this shape, but the durable layer only depends on these
  * operations. Provider catalogs, credentials, OAuth, and provider mutation
  * stay behind the host's adapter and are not part of the durable contract.
+ *
+ * `streamSimple` may be given `RequestTransforms` (the `transformHeaders` of a durable hook). An implementer applies
+ * them itself, as `Models` does, or hands the options on to a delegate that does; it must not pass them to a raw
+ * provider adapter, which ignores them.
  */
 export interface ModelRuntime {
 	getModel(provider: string, id: string): Model<Api> | undefined;
-	streamSimple(model: Model<Api>, context: Context, options?: SimpleStreamOptions): AssistantMessageEventStream;
+	streamSimple(
+		model: Model<Api>,
+		context: Context,
+		options?: SimpleStreamOptions & RequestTransforms,
+	): AssistantMessageEventStream;
 	completeSimple(model: Model<Api>, context: Context, options?: SimpleStreamOptions): Promise<AssistantMessage>;
 	fetchDeferred(model: Model<Api>, handle: DeferredHandle, options?: DeferredFetchOptions): Promise<AssistantMessage>;
 	cancelDeferred(model: Model<Api>, handle: DeferredHandle, options?: DeferredCancelOptions): Promise<void>;

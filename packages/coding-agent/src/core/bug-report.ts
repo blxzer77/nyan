@@ -3,6 +3,7 @@ import type { AgentMessage, StreamFn, ThinkingLevel } from "@ny4n/agent-core";
 import { contentText, normalizeContext, type RetryPolicy, uuidv7 } from "@ny4n/ai";
 import type { Api, Model, Provider, SimpleStreamOptions } from "@ny4n/ai/compat";
 import { VERSION } from "../config.ts";
+import { getRuntimeLabel } from "../runtime.ts";
 import { getNyanUserAgent } from "../utils/nyan-user-agent.ts";
 import { writeZipArchive } from "../utils/zip.ts";
 import { completeSummarization, estimateTokens, getSummarizationFailure } from "./compaction/compaction.ts";
@@ -68,7 +69,7 @@ function collectEnvironment() {
 	return {
 		version: VERSION,
 		userAgent: getNyanUserAgent(VERSION),
-		runtime: process.versions.bun ? `bun/${process.versions.bun}` : `node/${process.version}`,
+		runtime: getRuntimeLabel(),
 		platform: process.platform,
 		arch: process.arch,
 		osRelease: os.release(),

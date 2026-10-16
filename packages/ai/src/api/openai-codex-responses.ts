@@ -30,6 +30,7 @@ import { headersToRecord } from "../utils/headers.ts";
 import { clampThinkingLevel } from "../utils/model-operations.ts";
 import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
 import { getNyanUserAgent } from "../utils/nyan-user-agent.ts";
+import { isNodeLikeRuntime, runningUnderBun } from "../utils/runtime.ts";
 import { getSystemMessageText } from "../utils/text.ts";
 import {
 	getDeclaredTools,
@@ -205,7 +206,7 @@ type ProcessWithBuiltinModule = typeof process & {
 };
 
 function loadNodeZlib(): typeof NodeZlib | null {
-	if (typeof process === "undefined" || !(process.versions?.node || process.versions?.bun)) {
+	if (!isNodeLikeRuntime()) {
 		return null;
 	}
 	return (process as ProcessWithBuiltinModule).getBuiltinModule?.("node:zlib") ?? null;
@@ -996,7 +997,7 @@ let _cachedWebsocket: { base: unknown; ctor: WebSocketConstructor } | null = nul
 async function getWebSocketConstructor(env?: ProviderEnv): Promise<WebSocketConstructor | null> {
 	// bun doesn't respect http proxy envs, ref: https://github.com/oven-sh/bun/issues/15489
 	// TODO: remove this when bun supports proxy envs in websocket.
-	if (typeof process !== "undefined" && process.versions?.bun) {
+	if (runningUnderBun()) {
 		const base = (globalThis as { WebSocket?: unknown }).WebSocket;
 		if (typeof base !== "function") return null;
 		if (!env && _cachedWebsocket?.base === base) return _cachedWebsocket.ctor;

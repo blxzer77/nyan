@@ -4,6 +4,7 @@ import { homedir } from "os";
 import { basename, dirname, join, resolve, sep, win32 } from "path";
 import { fileURLToPath } from "url";
 import { PRODUCT_IDENTITY, resolveConfiguredProductIdentity } from "./identity.ts";
+import { isBunBinary, isBundledNode, runningUnderBun } from "./runtime.ts";
 import { spawnProcessSync } from "./utils/child-process.ts";
 import { normalizePath } from "./utils/paths.ts";
 import { stripBom } from "./utils/text.ts";
@@ -15,19 +16,8 @@ import { stripBom } from "./utils/text.ts";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/**
- * Detect if we're running as a Bun compiled binary.
- * Bun binaries have import.meta.url containing "$bunfs", "~BUN", or "%7EBUN" (Bun's virtual filesystem path)
- */
-export const isBunBinary =
-	import.meta.url.includes("$bunfs") || import.meta.url.includes("~BUN") || import.meta.url.includes("%7EBUN");
-
-/** Detect if Bun is the runtime (compiled binary or bun run) */
-export const isBunRuntime = !!process.versions.bun;
-
-/** Detect the esbuild-bundled Node.js distribution. */
-declare const NYAN_BUNDLED_NODE: boolean;
-export const isBundledNode = typeof NYAN_BUNDLED_NODE !== "undefined" && NYAN_BUNDLED_NODE;
+// Keep these names exported from config.ts for SDK and extension compatibility.
+export { isBunBinary, isBundledNode, isBunRuntime } from "./runtime.ts";
 
 // =============================================================================
 // Install Method Detection
@@ -75,11 +65,6 @@ function makeSelfUpdateCommandStep(command: string, args: string[]): SelfUpdateC
 		args,
 		display: [command, ...args].map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)).join(" "),
 	};
-}
-
-/** Read each time it is needed, so the marker is not frozen at module load (tests set it for both branches). */
-function runningUnderBun(): boolean {
-	return typeof process.versions.bun === "string";
 }
 
 export function detectInstallMethod(): InstallMethod {

@@ -32,6 +32,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { selectCut, serializeConversation } from "../src/harness/compaction.ts";
 import { orderToolResults } from "../src/harness/context.ts";
+import { recordUsage } from "../src/harness/usage.ts";
 import { openNodeSqliteStorage } from "../src/storage/sqlite/node.ts";
 import { allEntries, type ChatSetup, chatSetup, openChat, textOf, toolsNamed, waitFor } from "./chat-support.ts";
 import { addHooks, addSection, addTask, addTool } from "./harness-support.ts";
@@ -2385,5 +2386,153 @@ describe("context contributions", () => {
 		const prompt = userText(chat.faux.summaryRequests[0]!.messages[1]);
 		expect(prompt).toContain("<conversation>\n[User]: H\n\n[User]: a\n</conversation>");
 		await chat.harness.close(context);
+	});
+});
+
+describe("beforeCompact result", () => {
+	const spend = {
+		input: 7,
+		output: 3,
+		cacheRead: 0,
+		cacheWrite: 0,
+		totalTokens: 10,
+		cost: { input: 0.1, output: 0.2, cacheRead: 0, cacheWrite: 0, total: 0.3 },
+	};
+	const faux = { provider: "faux", modelId: "faux-1" };
+
+	type Seen = { entries: readonly EntryRecord[]; firstKept: number };
+
+	/** Run a manual compaction with a hook that answers `decide(compaction)`, and return what it saw and the outcome. */
+	async function compactWith(chat: Chat, decide: (compaction: Seen) => unknown) {
+		const seen: Seen[] = [];
+		addHooks(chat.setup.registry, CompactionTask, {
+			beforeCompact: (compaction) => {
+				seen.push(compaction);
+				return decide(compaction) as never;
+			},
+		});
+		const outcome = await result(chat, await chat.root.compact(undefined, context));
+		return { seen: seen[0]!, outcome };
+	}
+
+	const compactions = (entries: readonly EntryRecord[]) => entries.filter((entry) => entry.kind === "nyan.compaction");
+	const usageOf = async (chat: Chat) => (await chat.harness.usage(context)).models["faux/faux-1"]?.input ?? 0;
+
+	it("places the hook's firstKept, details, and usage on the compaction entry and in the ledger", async () => {
+		const chat = await open();
+		await history(chat);
+		const before = await usageOf(chat);
+		const { seen, outcome } = await compactWith(chat, (compaction) => ({
+			summary: "FROM HOOK",
+			// An earlier cut than the one range selection chose: keep the second turn verbatim.
+			firstKept: compaction.entries[3]!.id,
+			details: { artifacts: ["a.ts"], version: 2 },
+			usage: { model: faux, usage: spend },
+		}));
+		expect(outcome.status).toBe("completed");
+		expect(seen.firstKept).not.toBe(seen.entries[3]!.id);
+		const [placed] = compactions(await allEntries(chat.root));
+		expect(placed!.head).toBe(seen.entries[3]!.id);
+		expect(placed!.data).toEqual({ reason: "manual", details: { artifacts: ["a.ts"], version: 2 } });
+		// The hook's own spend is counted once, and no summarization request was made.
+		expect((await usageOf(chat)) - before).toBe(7);
+		expect(chat.faux.summaryRequests).toHaveLength(0);
+		const messages = (await chat.root.context(context)).messages.filter((message) => message.role !== "system");
+		expect(userText(messages[0])).toContain("<summary>\nFROM HOOK\n</summary>");
+		expect(userText(messages[1])).toBe(text("u2", 100));
+		await chat.harness.close(context);
+	});
+
+	it("places the summary and reports the spend when it would make the ledger infinite", async () => {
+		const chat = await open();
+		await history(chat);
+		const huge = { ...spend, cost: { ...spend.cost, total: 1e308 } };
+		await chat.root.commit(async (tx) => {
+			await recordUsage(tx, chat.root.id, "models", "faux/faux-1", huge);
+		}, context);
+		const before = await usageOf(chat);
+		const { outcome } = await compactWith(chat, () => ({ summary: "S", usage: { model: faux, usage: huge } }));
+		expect(outcome.status).toBe("completed");
+		expect(compactions(await allEntries(chat.root))).toHaveLength(1);
+		// The ledger is as it was, and the host was told.
+		expect(await usageOf(chat)).toBe(before);
+		expect((await chat.harness.usage(context)).models["faux/faux-1"]?.cost.total).toBe(1e308);
+		expect(chat.setup.reports.map((error) => (error as Error).message)).toContainEqual(
+			expect.stringContaining("Compaction usage for faux/faux-1 was not recorded"),
+		);
+		await chat.harness.close(context);
+	});
+
+	it("keeps an entry with only a summary exactly as before: no details, no usage", async () => {
+		const chat = await open();
+		await history(chat);
+		const before = await usageOf(chat);
+		const { outcome } = await compactWith(chat, () => ({ summary: "PLAIN" }));
+		expect(outcome.status).toBe("completed");
+		expect(compactions(await allEntries(chat.root))[0]!.data).toEqual({ reason: "manual" });
+		expect(await usageOf(chat)).toBe(before);
+		await chat.harness.close(context);
+	});
+
+	async function failsWith(chat: Chat, reason: string, supply: (compaction: Seen) => Record<string, unknown>) {
+		await history(chat);
+		const entriesBefore = await allEntries(chat.root);
+		const before = await usageOf(chat);
+		const { outcome } = await compactWith(chat, (compaction) => ({ summary: "S", ...supply(compaction) }) as never);
+		expect(outcome).toMatchObject({ status: "failed", error: { detail: { reason } } });
+		// The live context is as it was: no summary entry, no status left behind, no spend recorded.
+		expect(await allEntries(chat.root)).toEqual(entriesBefore);
+		expect((await live(chat)).compactions).toBeUndefined();
+		expect(await usageOf(chat)).toBe(before);
+		await chat.harness.close(context);
+	}
+
+	it("fails with invalid_first_kept for an entry that is not active", async () => {
+		await failsWith(await open(), "invalid_first_kept", () => ({ firstKept: 999_999 }));
+	});
+
+	it("fails with invalid_first_kept when nothing before the entry contributes messages", async () => {
+		await failsWith(await open(), "invalid_first_kept", (compaction) => ({ firstKept: compaction.entries[0]!.id }));
+	});
+
+	it("fails with invalid_first_kept for a cut that would separate a tool call from its result", async () => {
+		const chat = await open();
+		addTool(
+			chat.setup.registry,
+			defineTool({
+				name: "read",
+				description: "read",
+				parameters: Type.Object({}),
+				execute: async () => ({ output: [{ type: "text", text: "contents" }] }),
+			}),
+		);
+		await chat.root.configure({ tools: toolsNamed(chat.setup, "read") }, context);
+		chat.faux.agent.push(fauxAssistantMessage([fauxToolCall("read", {}, { id: "c1" })], { stopReason: "toolUse" }));
+		await turn(chat, text("u0", 100), text("a0", 100));
+		await failsWith(chat, "invalid_first_kept", (compaction) => ({
+			firstKept: compaction.entries.find((entry) => entry.kind === "nyan.tool-result")!.id,
+		}));
+	});
+
+	it("fails with invalid_details for details that are not strict JSON", async () => {
+		await failsWith(await open(), "invalid_details", () => ({ details: { value: Number.NaN } }));
+	});
+
+	it("fails with invalid_usage for usage that cannot be added to the ledger", async () => {
+		await failsWith(await open(), "invalid_usage", () => ({
+			usage: { model: faux, usage: { ...spend, input: Number.NaN } },
+		}));
+		await failsWith(await open(), "invalid_usage", () => ({ usage: { model: "faux/faux-1", usage: spend } }));
+	});
+
+	it.each([
+		["a non-finite cacheWrite1h", { cacheWrite1h: Number.NaN }],
+		["a non-finite reasoning counter", { reasoning: Number.POSITIVE_INFINITY }],
+		["a string reasoning counter", { reasoning: "5" }],
+		["a function-valued field", { extra: () => {} }],
+	])("fails with invalid_usage, not a faulted task, for usage with %s", async (_label, extra) => {
+		await failsWith(await open(), "invalid_usage", () => ({
+			usage: { model: faux, usage: { ...spend, ...extra } as typeof spend },
+		}));
 	});
 });

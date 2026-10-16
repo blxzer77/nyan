@@ -1,9 +1,14 @@
 import type {
+	Api,
 	AssistantMessage,
+	AssistantMessageEvent,
 	CacheRetention,
 	Message,
+	Model,
 	ModelRuntime,
 	ModelThinkingLevel,
+	ProviderHeaders,
+	ProviderResponse,
 	Static,
 	Tool,
 	ToolCall,
@@ -16,6 +21,7 @@ import type {
 import type { AttachedReplicatedState, Context, JsonValue } from "@ny4n/chord";
 import type { ExecutionEnv, ShellOutputSkip, ShellOutputWindow } from "../env/index.ts";
 import type {
+	ContextEdit,
 	ConversationId,
 	ConversationOwnership,
 	ConversationRecord,
@@ -767,7 +773,126 @@ export interface GenerationHooks {
 	onYield(answer: AssistantMessage, api: HookApi, context: Context): HookResult<{ readonly continue: UserInput }>;
 	/** After every tool of the round is terminal; `results` are the round's result entries in call order. */
 	afterTools(assistant: EntryId, results: readonly EntryId[], api: HookApi, context: Context): void | Promise<void>;
+	/**
+	 * Phase one of the request transform, before every request attempt, including recovery, and before `beforeRequest`;
+	 * a replacement chain. `messages` is the request without system messages. A returned list that is not element-wise
+	 * identical to the one received replaces it, and the Harness restores prompt and tool state: the request becomes
+	 * `[getCurrentSystemMessage(before), ...returned]`, or `returned` when there is no system message. That collapses the
+	 * positional system entries into one leading message and so changes the prompt-cache prefix. An identical list leaves
+	 * the request untouched. Return conversation messages only; system messages belong to the Harness. The list is
+	 * `readonly`: a handler returns a new list rather than editing the one it received.
+	 */
+	transformConversation(
+		request: { readonly messages: readonly Message[] },
+		api: HookApi,
+		context: Context,
+	): HookResult<{ readonly messages: readonly Message[] }>;
+	/**
+	 * The terminal assistant message of `request` or `poll`, before `afterResponse` and before classification; a
+	 * replacement chain. A valid returned message replaces it, so the answer, the usage ledger, and the tool calls all
+	 * use the replacement, and `afterResponse` observes the message that will be committed. A replacement must be an
+	 * assistant message with a known stop reason other than `deferred`, usage and cost made of finite, non-negative numbers
+	 * with no field the ledger does not count, and strict JSON content; an invalid one is reported and ignored, because the
+	 * classification commit would throw on it. Not called for a
+	 * deferred result, nor for a partial converted to an aborted entry.
+	 */
+	rewriteMessage(
+		message: AssistantMessage,
+		api: HookApi,
+		context: Context,
+	): HookResult<{ readonly message: AssistantMessage }>;
+	/**
+	 * A turn or run boundary; an accumulating chain, each handler seeing what earlier ones asked for. `turn_end` follows
+	 * every turn that produced an answer or finished a tool round; `settle` follows when the run would end, which is a
+	 * final answer no handler asked to continue, or a tool round whose `terminate` or `handoff` ends it. The entries a
+	 * boundary returns are appended by the generation task in the commit that ends the turn or settles the run, after the
+	 * answer and before queued inputs, so a crash before that commit reruns the hook and a crash after it leaves the
+	 * entries exactly once. A turn that ends in an error or an abort has no boundary: it ends through the failure path.
+	 */
+	onBoundary(boundary: GenerationBoundary, api: HookApi, context: Context): HookResult<BoundaryDecision>;
+	/**
+	 * The provider body of one request attempt; a replacement chain. It may run more than once in an attempt, as the
+	 * model runtime's `onPayload` does when an adapter rebuilds its body, so it must be idempotent. Registering it turns
+	 * `onPayload` on for the request.
+	 */
+	beforeProviderRequest(
+		request: { readonly payload: unknown; readonly model: Model<Api> },
+		api: HookApi,
+		context: Context,
+	): HookResult<{ readonly payload: unknown }>;
+	/**
+	 * The request headers once the model runtime merged authentication and `ConversationStreamOptions.headers`, before the
+	 * provider adapter adds its own defaults; a replacement chain, `null` removes a header. Once per attempt. Registering
+	 * it turns `transformHeaders` on for the request.
+	 */
+	beforeProviderHeaders(
+		request: { readonly headers: Readonly<ProviderHeaders>; readonly model: Model<Api> },
+		api: HookApi,
+		context: Context,
+	): HookResult<{ readonly headers: ProviderHeaders }>;
+	/**
+	 * Status and headers of the provider's HTTP response arrived and the body is not consumed yet, which waits for the
+	 * observers. Every adapter that calls the model runtime's `onResponse` decides how often; some never do.
+	 */
+	afterProviderResponse(
+		response: Readonly<ProviderResponse> & { readonly model: Model<Api> },
+		api: HookApi,
+		context: Context,
+	): void | Promise<void>;
+	/**
+	 * One parsed provider stream frame before normalization, read-only; observers. Adapter-owned: only adapters that
+	 * support frames call it, and a frame an adapter repeats after its own retry is not marked.
+	 */
+	onProviderStreamEvent(
+		frame: { readonly data: unknown; readonly model: Model<Api> },
+		api: HookApi,
+		context: Context,
+	): void | Promise<void>;
+	/**
+	 * Every event of the request's assistant stream in provider order, including `start`, `done`, and `error`;
+	 * observers. Live and not durable: after a crash the resent request streams again, and a new `start` is the only
+	 * mark of it, because `attempt` counts the generation's retries and a resend keeps it. Delivery is sequential and
+	 * lossless but off the stream's path (spec §7.2), and every event has been delivered before `afterResponse` runs.
+	 */
+	onStreamEvent(
+		stream: { readonly event: AssistantMessageEvent; readonly attempt: number },
+		api: HookApi,
+		context: Context,
+	): void | Promise<void>;
 }
+
+/** An entry draft a boundary hook may return: user messages and data only, no head marker, no built-in kind. */
+export type BoundaryEntry = {
+	/** Non-empty and not starting with `nyan.`: built-in kinds carry built-in meaning. */
+	readonly kind: string;
+	/** User messages only, so a draft cannot break tool-call pairing. */
+	readonly model?: readonly UserMessage[];
+	readonly data?: JsonValue;
+	/** Each target must be an entry of the active context. */
+	readonly edits?: readonly ContextEdit[];
+};
+
+/** What a boundary hook receives: the boundary, and what earlier handlers of it asked for. */
+export type GenerationBoundary = {
+	readonly kind: "turn_end" | "settle";
+	/** The turn's assistant message; for `settle`, the final answer. */
+	readonly assistant: AssistantMessage;
+	/** Absent when the answer is committed together with the boundary, as for a final answer. */
+	readonly assistantEntry?: EntryId;
+	/** The tool round's result entries in call order; empty for an answer. */
+	readonly toolResults: readonly EntryId[];
+	readonly entries: readonly BoundaryEntry[];
+	readonly continue: boolean;
+};
+
+/**
+ * A boundary hook's answer. `entries` replaces the list so far. `continue` asks for one more request after the entries;
+ * it is honored only at a final answer, only when no queued input and no reset was selected, and only when the entries
+ * contain a `model` message, because the answer is appended first and a request must not end with an assistant message.
+ * A tool round continues anyway, so `continue` there is ignored without a report. If the entries are rejected, `continue`
+ * is dropped with them.
+ */
+export type BoundaryDecision = { readonly entries?: readonly BoundaryEntry[]; readonly continue?: boolean };
 
 /** A call as tool hooks see it; `parent` is set for a nested call, one a running tool made through `executeTool()`. */
 export type ToolHookCall = ToolCall & {
@@ -789,7 +914,46 @@ export interface ToolHooks {
 		api: HookApi,
 		context: Context,
 	): HookResult<ToolExecutionResult>;
+	/**
+	 * Running output, details, or diagnostics of a call changed; observers, live and not durable. The tool's `output()` and
+	 * `diagnostic()` are synchronous, so at most one delivery is in flight and one is pending: updates arriving meanwhile
+	 * coalesce (output appends, the newest details win, diagnostics append). Pending output is capped at the tool's
+	 * `outputLimits.maxBytes`; its oldest part is dropped past that and counted in `droppedBytes`, which also counts
+	 * output an environment window skipped. Pending diagnostics are not capped, since the call keeps every one for its
+	 * result. Observers get the pushed chunks, not the retained window of the result, decoded as the retained output is
+	 * (a chunk that ends inside a character delivers nothing yet), and have seen every update before the call settles. A rerun of a replay-safe tool reports from scratch.
+	 */
+	onToolUpdate(
+		update: {
+			readonly call: ToolHookCall;
+			readonly output?: string;
+			readonly droppedBytes?: number;
+			readonly details?: JsonValue;
+			readonly diagnostics?: readonly ToolDiagnostic[];
+		},
+		api: HookApi,
+		context: Context,
+	): void | Promise<void>;
 }
+
+/**
+ * A summary a `beforeCompact` hook supplies. The summary is assumed to cover every entry before `firstKept`; durable
+ * cannot check that.
+ */
+export type CompactionSummary = {
+	readonly summary: string;
+	/**
+	 * First entry kept verbatim, instead of the one range selection chose. It must be an active entry after the head
+	 * marker that is a valid cut: it starts with a user or assistant message, never with a tool result, and not with a user
+	 * entry that a result of the preceding assistant's calls still follows; and something before it must contribute
+	 * messages. Otherwise the compaction fails with `invalid_first_kept` and the live context is unchanged.
+	 */
+	readonly firstKept?: EntryId;
+	/** Strict JSON, stored on the compaction entry as `data.details`. */
+	readonly details?: JsonValue;
+	/** Spend of the extension's own summarization, added to `nyan.usage.models["<provider>/<modelId>"]`. */
+	readonly usage?: { readonly model: ModelRef; readonly usage: Usage };
+};
 
 /** Hooks of the built-in compaction task. */
 export interface CompactionHooks {
@@ -808,5 +972,5 @@ export interface CompactionHooks {
 		},
 		api: HookApi,
 		context: Context,
-	): HookResult<{ readonly decline: true } | { readonly summary: string }>;
+	): HookResult<{ readonly decline: true } | CompactionSummary>;
 }

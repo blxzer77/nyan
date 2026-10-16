@@ -1,3 +1,5 @@
+import { runningUnderBun } from "../runtime.ts";
+
 interface StdoutTakeoverState {
 	rawStdoutWrite: (chunk: string, callback?: (error?: Error | null) => void) => boolean;
 	rawStderrWrite: (chunk: string, callback?: (error?: Error | null) => void) => boolean;
@@ -70,7 +72,7 @@ export function takeOverStdout(): void {
 	// Node's console writes through process.stdout.write, so the replacement above already redirects it. Bun's console
 	// writes to file descriptor 1 itself and would still reach stdout, which in json and rpc mode carries the protocol.
 	let originalConsole: Pick<Console, StdoutConsoleMethod> | undefined;
-	if (typeof process.versions.bun === "string") {
+	if (runningUnderBun()) {
 		originalConsole = {} as Pick<Console, StdoutConsoleMethod>;
 		for (const method of STDOUT_CONSOLE_METHODS) {
 			(originalConsole as Record<string, unknown>)[method] = console[method];

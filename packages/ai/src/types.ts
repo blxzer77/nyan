@@ -141,6 +141,15 @@ export interface ProviderResponse {
 	headers: Record<string, string>;
 }
 
+/**
+ * Request transforms a model runtime applies and a raw provider adapter does not. `Models` runs them after it merges
+ * authentication and `headers` and strips them before it calls the adapter, so an adapter used directly ignores them.
+ */
+export interface RequestTransforms {
+	/** Transform the request headers the caller and the provider's authentication supplied; `null` removes a header. */
+	transformHeaders?: (headers: ProviderHeaders) => ProviderHeaders | Promise<ProviderHeaders>;
+}
+
 /** Authentication, HTTP transport, and lifecycle callbacks shared by provider requests. */
 export interface ProviderRequestOptions<TModel = Model<Api>> {
 	signal?: AbortSignal;
