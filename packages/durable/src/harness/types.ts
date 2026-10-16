@@ -8,6 +8,7 @@ import type {
 	ModelRuntime,
 	ModelThinkingLevel,
 	ProviderHeaders,
+	ProviderResponse,
 	Static,
 	Tool,
 	ToolCall,
@@ -834,11 +835,7 @@ export interface GenerationHooks {
 	 * observers. Every adapter that calls the model runtime's `onResponse` decides how often; some never do.
 	 */
 	afterProviderResponse(
-		response: {
-			readonly status: number;
-			readonly headers: Readonly<Record<string, string>>;
-			readonly model: Model<Api>;
-		},
+		response: Readonly<ProviderResponse> & { readonly model: Model<Api> },
 		api: HookApi,
 		context: Context,
 	): void | Promise<void>;
