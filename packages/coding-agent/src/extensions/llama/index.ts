@@ -15,16 +15,16 @@ function modelIsLoaded(model: LlamaModelInfo): boolean {
 	return model.status.value === "loaded" || model.status.value === "sleeping";
 }
 
-/**
- * A coded connection failure on either runtime, or the text an error without a code used to be matched by. A certificate
- * failure is not a connection failure: Node reports it as "fetch failed" too, so the code is checked first and shown.
- */
 /** A certificate failure by code, or by text where the code was lost (a message that only says what the failure was). */
 function isCertificateFailure(error: unknown): boolean {
 	if (certificateErrorCode(error) !== undefined) return true;
 	return error instanceof Error && transportErrorMessages(error).some(isCertificateErrorMessage);
 }
 
+/**
+ * A coded connection failure on either runtime, or, for an error without a code, the text it used to be matched by. A
+ * certificate failure is not a connection failure (Node reports it as "fetch failed" too), so it is checked first.
+ */
 function isConnectionFailure(error: unknown): boolean {
 	// A certificate is shown even when a connection code is also on the chain.
 	if (isCertificateFailure(error)) return false;

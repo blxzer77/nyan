@@ -210,6 +210,8 @@ describe("retry classification of transport failures", () => {
 		// The stored text of an HTTP error is "<status>: <body>"; the status makes it a server error.
 		expect(retryable("503: upstream says certificate expired")).toBe(true);
 		expect(retryable("Provider error (429): certificate verify failed")).toBe(true);
+		expect(retryable("Request failed with status code 500: certificate expired")).toBe(true);
+		expect(retryable("HTTP 503: certificate expired")).toBe(true);
 	});
 
 	it("does not read a port, an IPv6 group, or a millisecond value as a status", () => {
@@ -217,5 +219,6 @@ describe("retry classification of transport failures", () => {
 		expect(retryable('ERR_TLS_CERT_ALTNAME_INVALID fetching "https://api.example.com:500/"')).toBe(false);
 		expect(retryable("unable to verify the first certificate at ::500 (self signed certificate)")).toBe(false);
 		expect(retryable("self signed certificate, seen at 2026-10-17T12:00:00.500Z")).toBe(false);
+		expect(retryable("500 ms elapsed: self signed certificate")).toBe(false);
 	});
 });

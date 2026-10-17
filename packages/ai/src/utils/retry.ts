@@ -9,11 +9,13 @@ function escapeRegExp(text: string): string {
 }
 
 /**
- * An HTTP status that makes a failure worth retrying, where a status is written in a stored message: at the start
- * ("503: ..."), in parentheses ("Provider error (429): ..."), or after a `code` or `status` key. A port, an IPv6 group, or
- * a millisecond value does not match.
+ * A retryable HTTP status where a status is written in a stored message: at the start with a colon ("503: ...", the
+ * form formatProviderError writes), in parentheses ("Provider error (429): ..."), or after "HTTP", "status", "status code"
+ * or "code" (also as a JSON key). A port, an IPv6 group, a millisecond value, or a leading number without a colon does not
+ * match.
  */
-const RETRYABLE_HTTP_STATUS_TOKEN = /(?:^|\(|\b(?:code|status)"?\s*[:=]\s*)(?:408|409|429|5\d{2})\b/i;
+const RETRYABLE_HTTP_STATUS_TOKEN =
+	/^(?:408|409|429|5\d{2})\s*:|\((?:408|409|429|5\d{2})\)|\b(?:http|status(?:\s+code)?|code)"?\s*[:=]?\s*(?:408|409|429|5\d{2})\b/i;
 
 /**
  * Certificate and host-name verification failures. These are the OpenSSL verification names Node and Bun both report,
