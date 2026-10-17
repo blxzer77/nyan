@@ -844,8 +844,9 @@ export class ModelRuntime implements Models {
 					try {
 						await this.refreshProviderAvailability(providerId, operationSignal(options.signal));
 					} catch (error) {
-						// A verification keeps the refresh's own error, the cause of a refusal; an availability failure that follows does not replace it.
-						if (!options.signal?.aborted && !(options.verifyCredential === true && errors.has(providerId))) {
+						// A verification's answer is its verdict and the refresh's own error. An availability failure after it is neither, so it is not
+						// recorded beside them.
+						if (!options.signal?.aborted && options.verifyCredential !== true) {
 							errors.set(providerId, error instanceof Error ? error : new Error(String(error)));
 						}
 					}

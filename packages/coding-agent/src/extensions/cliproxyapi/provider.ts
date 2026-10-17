@@ -27,6 +27,7 @@ import {
 } from "./catalog.ts";
 import {
 	apiKeySource,
+	CONFIG_FILE_NAME,
 	CREDENTIAL_TTL_MS,
 	DEFAULT_BASE_URL,
 	defaultBaseUrlInput,
@@ -417,7 +418,7 @@ export class CatalogController {
 		} catch (error) {
 			// A base URL that does not parse leaves nothing to fetch from. It is recorded like a failed fetch, not thrown: the
 			// login's own sync would otherwise fail a login whose key was just verified at the URL it entered.
-			const message = `CLIProxyAPI base URL is not valid (${errorMessage(error)}). Check CLIPROXYAPI_BASE_URL, cliproxyapi.json, and the stored login.`;
+			const message = `CLIProxyAPI base URL is not valid (${errorMessage(error)}). Check CLIPROXYAPI_BASE_URL, ${CONFIG_FILE_NAME}, and the stored login.`;
 			// A verification's answer is about its own base URL, so it goes to the verification and not the session's status.
 			outcome.failure = { reason: "unavailable", message };
 			if (options.verification === undefined) {
@@ -447,7 +448,7 @@ export class CatalogController {
 		const known = this.knownModels(connection.modelsUrl);
 
 		if (!options.allowNetwork && options.verification === undefined) {
-			if (!verifiesOtherEndpoint && known.models.length > 0) {
+			if (known.models.length > 0) {
 				this.applyCatalog(known.models, known.source === "cache" ? "cache" : "remote", known.fetchedAt ?? 0);
 			}
 			return;
@@ -612,7 +613,7 @@ function rejectedKeyNotice(agentDir: string, providerId: string, providerName: s
 		return `CLIProxyAPI rejected the API key in the environment variable CLIPROXYAPI_API_KEY (HTTP ${status}). Logging in does not change it: correct or unset that variable, then run /cpa-refresh.`;
 	}
 	if (source.kind === "config") {
-		return `CLIProxyAPI rejected the apiKey in ${source.path} (HTTP ${status}). That field is read before the stored login: correct or remove it there, then run /cpa-refresh.`;
+		return `CLIProxyAPI rejected the apiKey in ${source.path} (HTTP ${status}). That field is read before the stored login: correct or remove it there, then run /cpa-refresh. If a login saved that key, log in again instead.`;
 	}
 	return `CLIProxyAPI rejected the credential (HTTP ${status}). Re-run /login ${providerName} to reconfigure.`;
 }
@@ -730,6 +731,7 @@ export function buildProviderRegistration(options: ProviderRegistrationOptions):
 				force: true,
 				signal: ctx.signal,
 				verification: { apiKey: entered, baseUrlInput },
+				pricing: "background",
 			});
 			const failure = verification.verificationFailure;
 			if (failure && !ctx.signal.aborted) {
