@@ -223,12 +223,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The executables embed the dist/ that prepare built and the tests and the pack job used. Nothing in this job
+      # rebuilds it, so the attested binaries contain the bytes that were verified.
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
+
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
         with:
           node-version: ${{ env.NODE_VERSION }}
           bun-version: ${{ env.BUN_VERSION }}
           bun: 'true'
+          install: 'false'
           model-data: 'true'
 
       - name: Download Linux native prebuilds
@@ -249,9 +255,6 @@ jobs:
         with:
           name: native-win32-universal
           path: packages/tui/native/win32/prebuilds
-
-      - name: Build offline
-        run: npm run build:offline
 
       - name: Compile binaries
         run: node scripts/build-binaries.mjs --out release-assets
