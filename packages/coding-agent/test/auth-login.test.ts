@@ -13,7 +13,6 @@ import {
 	validateAuthCommandArgs,
 } from "../src/cli/auth-command.ts";
 import { runAuthLogin } from "../src/cli/auth-login.ts";
-import { CredentialVerificationError } from "../src/core/auth-guidance.ts";
 import { readStoredCredential } from "../src/core/auth-storage.ts";
 import type { ExtensionAPI, InlineExtension, ProviderConfig } from "../src/core/extensions/types.ts";
 
@@ -288,8 +287,9 @@ describe("login verifies the stored credential", () => {
 
 	it("fails when the provider refuses the credential, and says the credential is kept", async () => {
 		const factory = oauthFactory(loggedIn, async (context) => {
-			if (!context.allowNetwork || context.force !== true) return [];
-			throw new CredentialVerificationError("rejected", "models request failed: 401 Unauthorized");
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("rejected");
+			throw new Error("models request failed: 401 Unauthorized");
 		});
 		await expect(loginWithInput([], factory)).rejects.toThrow(
 			/could not be verified: models request failed: 401 Unauthorized.*The credential is stored/su,
@@ -298,8 +298,9 @@ describe("login verifies the stored credential", () => {
 
 	it("reports a provider that did not answer as stored and unverified, never as verified", async () => {
 		const factory = oauthFactory(loggedIn, async (context) => {
-			if (!context.allowNetwork || context.force !== true) return [];
-			throw new CredentialVerificationError("unavailable", "fetch failed");
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("unavailable");
+			throw new Error("fetch failed");
 		});
 		const { output } = await loginWithInput([], factory);
 		expect(output).toContain(
@@ -310,8 +311,9 @@ describe("login verifies the stored credential", () => {
 
 	it("says the stored credential was replaced when a rejected key fails verification", async () => {
 		const factory = oauthFactory(loggedIn, async (context) => {
-			if (!context.allowNetwork || context.force !== true) return [];
-			throw new CredentialVerificationError("rejected", "models request failed: 401 Unauthorized");
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("rejected");
+			throw new Error("models request failed: 401 Unauthorized");
 		});
 		await expect(
 			loginWithInput([], factory, { seedAuth: { "test-prov": { type: "api_key", key: "previous-key" } } }),
@@ -320,8 +322,9 @@ describe("login verifies the stored credential", () => {
 
 	it("says the stored credential was replaced when the provider does not answer", async () => {
 		const factory = oauthFactory(loggedIn, async (context) => {
-			if (!context.allowNetwork || context.force !== true) return [];
-			throw new CredentialVerificationError("unavailable", "fetch failed");
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("unavailable");
+			throw new Error("fetch failed");
 		});
 		const { output } = await loginWithInput([], factory, {
 			seedAuth: { "test-prov": { type: "api_key", key: "previous-key" } },
@@ -331,8 +334,9 @@ describe("login verifies the stored credential", () => {
 
 	it("does not claim a replacement when nothing was stored before the login", async () => {
 		const factory = oauthFactory(loggedIn, async (context) => {
-			if (!context.allowNetwork || context.force !== true) return [];
-			throw new CredentialVerificationError("rejected", "models request failed: 401 Unauthorized");
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("rejected");
+			throw new Error("models request failed: 401 Unauthorized");
 		});
 		const error = await loginWithInput([], factory).catch((caught: unknown) => caught);
 		expect(String(error)).toContain("The credential is stored. Correct it");

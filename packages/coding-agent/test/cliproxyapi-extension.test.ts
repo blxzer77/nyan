@@ -407,7 +407,7 @@ describe("CLIProxyAPI extension", () => {
 				const snapshot = await controller.refresh({
 					allowNetwork: true,
 					force: true,
-					credentialKey: "typed-key",
+					verification: { apiKey: "typed-key" },
 				});
 				expect(controller.getLastFailure()).toBeUndefined();
 				expect(snapshot.models.map((model) => model.meta.id)).toEqual(["verify-model"]);
@@ -448,13 +448,32 @@ describe("CLIProxyAPI extension", () => {
 		}
 
 		/** The context a login's verification refresh receives: a forced refresh with the stored credential. */
-		function verificationContext(key: string, type: "oauth" | "api_key"): RefreshModelsContext {
+		function verificationContext(
+			key: string,
+			type: "oauth" | "api_key",
+			verdicts: string[] = [],
+		): RefreshModelsContext {
 			const credential =
 				type === "oauth"
 					? { type: "oauth" as const, access: key, refresh: "", expires: Date.now() + 100_000 }
 					: { type: "api_key" as const, key };
 			return {
 				credential,
+				publish: async () => true,
+				allowNetwork: true,
+				force: true,
+				signal: new AbortController().signal,
+				verifyCredential: true,
+				reportCredentialVerdict: (verdict) => {
+					verdicts.push(verdict);
+				},
+			};
+		}
+
+		/** The context of an ordinary refresh (startup, /cpa-refresh, nyan update models): no verification flag. */
+		function ordinaryContext(key: string): RefreshModelsContext {
+			return {
+				credential: { type: "api_key" as const, key },
 				publish: async () => true,
 				allowNetwork: true,
 				force: true,
@@ -623,7 +642,7 @@ describe("CLIProxyAPI extension", () => {
 				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
 				// The environment-key refresh is still in flight when the verification starts, as at extension load.
 				const startup = controller.refresh({ allowNetwork: true });
-				await controller.refresh({ allowNetwork: true, force: true, credentialKey: "typed-key" });
+				await controller.refresh({ allowNetwork: true, force: true, verification: { apiKey: "typed-key" } });
 				await startup;
 				expect(controller.getLastFailure()).toBeUndefined();
 				expect(seen).toContain("Bearer typed-key");
@@ -657,7 +676,7 @@ describe("CLIProxyAPI extension", () => {
 			try {
 				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
 				await expect(
-					controller.refresh({ allowNetwork: true, force: true, credentialKey: "typed-key" }),
+					controller.refresh({ allowNetwork: true, force: true, verification: { apiKey: "typed-key" } }),
 				).resolves.toBeDefined();
 				expect(controller.getLastFailure()).toMatchObject({ reason: "unavailable" });
 			} finally {
@@ -691,12 +710,95 @@ describe("CLIProxyAPI extension", () => {
 			}
 		});
 
+		it("an ordinary refresh uses the key the runtime resolves, not the stored login's", async () => {
+			const { baseUrl, seen } = await proxy("env-key");
+			const restore = setEnv({
+				NYAN_CODING_AGENT_DIR: agentDirWithoutPricing(),
+				CLIPROXYAPI_BASE_URL: baseUrl,
+				CLIPROXYAPI_API_KEY: "env-key",
+			});
+			try {
+				const refreshModels = (await registeredCpa()).refreshModels;
+				if (!refreshModels) throw new Error("no refreshModels");
+				await expect(refreshModels(ordinaryContext("stored-key"))).resolves.toBeDefined();
+				expect(seen).toEqual(["Bearer env-key"]);
+			} finally {
+				restore();
+			}
+		});
+
+		it("an ordinary refresh that the proxy refuses throws nothing, as before login verification existed", async () => {
+			const { baseUrl } = await proxy("other-key");
+			const restore = setEnv({
+				NYAN_CODING_AGENT_DIR: agentDirWithoutPricing(),
+				CLIPROXYAPI_BASE_URL: baseUrl,
+				CLIPROXYAPI_API_KEY: "env-key",
+			});
+			try {
+				const refreshModels = (await registeredCpa()).refreshModels;
+				if (!refreshModels) throw new Error("no refreshModels");
+				await expect(refreshModels(ordinaryContext("stored-key"))).resolves.toBeDefined();
+			} finally {
+				restore();
+			}
+		});
+
+		it("a verification authenticates with the stored key and reports a refusal as rejected", async () => {
+			const { baseUrl } = await proxy("typed-key");
+			const restore = setEnv({ NYAN_CODING_AGENT_DIR: agentDirWithoutPricing(), CLIPROXYAPI_BASE_URL: baseUrl });
+			const verdicts: string[] = [];
+			try {
+				const refreshModels = (await registeredCpa()).refreshModels;
+				if (!refreshModels) throw new Error("no refreshModels");
+				await expect(refreshModels(verificationContext("wrong-key", "api_key", verdicts))).rejects.toThrow(/401/);
+				expect(verdicts).toEqual(["rejected"]);
+			} finally {
+				restore();
+			}
+		});
+
+		it("a verification reports a proxy that does not answer as unavailable", async () => {
+			const closed = createServer();
+			closed.listen(0, "127.0.0.1");
+			await once(closed, "listening");
+			const port = (closed.address() as AddressInfo).port;
+			await new Promise<void>((resolve) => closed.close(() => resolve()));
+			const restore = setEnv({
+				NYAN_CODING_AGENT_DIR: agentDirWithoutPricing(),
+				CLIPROXYAPI_BASE_URL: `http://127.0.0.1:${port}`,
+			});
+			const verdicts: string[] = [];
+			try {
+				const refreshModels = (await registeredCpa()).refreshModels;
+				if (!refreshModels) throw new Error("no refreshModels");
+				await expect(refreshModels(verificationContext("typed-key", "api_key", verdicts))).rejects.toThrow();
+				expect(verdicts).toEqual(["unavailable"]);
+			} finally {
+				restore();
+			}
+		});
+
+		it("a verification of a stored login with no key is refused as rejected", async () => {
+			const restore = setEnv({ NYAN_CODING_AGENT_DIR: agentDirWithoutPricing() });
+			const verdicts: string[] = [];
+			try {
+				const refreshModels = (await registeredCpa()).refreshModels;
+				if (!refreshModels) throw new Error("no refreshModels");
+				await expect(refreshModels(verificationContext("  ", "api_key", verdicts))).rejects.toThrow(
+					/no key to verify/,
+				);
+				expect(verdicts).toEqual(["rejected"]);
+			} finally {
+				restore();
+			}
+		});
+
 		it("classifies a key the proxy refuses as rejected", async () => {
 			const { baseUrl } = await proxy("typed-key");
 			const restore = setEnv({ CLIPROXYAPI_BASE_URL: baseUrl });
 			try {
 				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
-				await controller.refresh({ allowNetwork: true, force: true, credentialKey: "wrong-key" });
+				await controller.refresh({ allowNetwork: true, force: true, verification: { apiKey: "wrong-key" } });
 				expect(controller.getLastFailure()).toMatchObject({ reason: "rejected" });
 			} finally {
 				restore();
@@ -712,7 +814,7 @@ describe("CLIProxyAPI extension", () => {
 			const restore = setEnv({ CLIPROXYAPI_BASE_URL: `http://127.0.0.1:${port}` });
 			try {
 				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
-				await controller.refresh({ allowNetwork: true, force: true, credentialKey: "typed-key" });
+				await controller.refresh({ allowNetwork: true, force: true, verification: { apiKey: "typed-key" } });
 				expect(controller.getLastFailure()).toMatchObject({ reason: "unavailable" });
 			} finally {
 				restore();

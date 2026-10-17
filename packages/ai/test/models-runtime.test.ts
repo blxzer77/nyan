@@ -291,6 +291,50 @@ describe("Models runtime", () => {
 		expect(calls).toEqual(["two:cache", "two:network"]);
 	});
 
+	it("returns the verdict a provider reports for a verification refresh, from the network phase only", async () => {
+		const seen: Array<{ allowNetwork: boolean; verifyCredential: boolean | undefined }> = [];
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "login",
+				refreshModels: async (context) => {
+					seen.push({ allowNetwork: context.allowNetwork, verifyCredential: context.verifyCredential });
+					if (!context.verifyCredential || !context.allowNetwork) return;
+					context.reportCredentialVerdict?.("rejected");
+					throw new Error("401 Unauthorized");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["login"], verifyCredential: true, force: true });
+
+		expect(seen).toEqual([
+			{ allowNetwork: false, verifyCredential: undefined },
+			{ allowNetwork: true, verifyCredential: true },
+		]);
+		expect(result.verdicts?.get("login")).toBe("rejected");
+		expect(result.errors.get("login")?.message).toBe("401 Unauthorized");
+	});
+
+	it("records no verdict for a refresh that is not a verification", async () => {
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "plain",
+				refreshModels: async (context) => {
+					expect(context.verifyCredential).toBeUndefined();
+					expect(context.reportCredentialVerdict).toBeUndefined();
+					context.reportCredentialVerdict?.("unavailable");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["plain"], force: true });
+
+		expect(result.errors.size).toBe(0);
+		expect(result.verdicts?.size).toBe(0);
+	});
+
 	it("restores cached models before waiting for network auth", async () => {
 		const store = new InMemoryModelsStore();
 		await store.write("dynamic", { models: [testModel("dynamic", "cached")] });

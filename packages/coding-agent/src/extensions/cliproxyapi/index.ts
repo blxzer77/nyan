@@ -310,7 +310,13 @@ export default async function cliproxyApiExtension(pi: ExtensionAPI): Promise<vo
 	});
 
 	registerConfigured = async (baseUrlInput: string, apiKey: string): Promise<void> => {
-		await catalog.refresh({ allowNetwork: true, force: true, pricing: "background" });
+		// The login has just checked this key and base URL against the proxy. A refresh that then fails, for example on a
+		// malformed CLIPROXYAPI_BASE_URL, must not turn a correct login into a validation failure, so it is only logged.
+		try {
+			await catalog.refresh({ allowNetwork: true, force: true, pricing: "background" });
+		} catch (error) {
+			log.debug("catalog refresh after login failed", errorMessage(error));
+		}
 		fastMode.setSupportedModelIds(catalog.fastModelIds());
 		activeConnection = { baseUrlInput, apiKey };
 		registerProvider({

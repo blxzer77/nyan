@@ -14,7 +14,6 @@
 import type { RefreshModelsContext } from "@ny4n/ai";
 import { streamSimple as nyanStreamSimple } from "@ny4n/ai/compat";
 import { APP_NAME } from "../../config.ts";
-import { CredentialVerificationError, type CredentialVerificationReason } from "../../core/auth-guidance.ts";
 import type { ExtensionAPI, ExtensionContext, ProviderConfig } from "../../core/extensions/types.ts";
 import { loadCatalogCache, saveCatalogCache } from "./cache.ts";
 import {
@@ -90,6 +89,16 @@ export interface CatalogControllerOptions {
 	onCatalogUpdated?: () => void;
 }
 
+/** Options of one catalog refresh. Presence of `verification` is what makes a refresh a login verification. */
+interface CatalogRefreshOptions {
+	allowNetwork: boolean;
+	force?: boolean;
+	signal?: AbortSignal;
+	pricing?: PricingMode;
+	/** A login's verification: fetch with this key, never with the one the connection resolves. */
+	verification?: { readonly apiKey: string };
+}
+
 export class CatalogController {
 	private models: CatalogModel[] = [];
 	private fetchedAt: number | undefined;
@@ -100,6 +109,7 @@ export class CatalogController {
 	private costCatalogFetch: Promise<void> | undefined;
 	private notices: string[] = [];
 	private inFlight: Promise<void> | undefined;
+	private inFlightVerifying = false;
 	private overrides: CompiledOverrides | undefined;
 	/** The raw entries of the last successful fetch, for repricing without a refetch. */
 	private lastEntries: CpaModel[] | undefined;
@@ -349,24 +359,26 @@ export class CatalogController {
 	/**
 	 * Fetch the catalog and update in-memory state.
 	 *
-	 * Never rejects: a failed fetch keeps the previously known models so the picker
-	 * does not empty out because the proxy hiccuped.
+	 * An ordinary refresh keeps the previously known models when the fetch fails, so the picker does not empty out
+	 * because the proxy hiccuped, and it throws only for what it cannot read (as it always has). A verification never
+	 * rejects: its failure is recorded in `getLastFailure()`, which is the answer the login reports.
 	 */
-	async refresh(options: {
-		allowNetwork: boolean;
-		force?: boolean;
-		signal?: AbortSignal;
-		pricing?: PricingMode;
-		/** Authenticate with this key instead of the resolved one. Used to verify a credential being logged in. */
-		credentialKey?: string;
-	}): Promise<CatalogSnapshot> {
-		// Refreshes run one at a time. Joining one in flight would hand a verification the answer for another key (the
-		// startup refresh uses the environment key). A refresh inside the throttle window is skipped by `shouldFetch`,
-		// so concurrent callers still share one request.
+	async refresh(options: CatalogRefreshOptions): Promise<CatalogSnapshot> {
+		// An ordinary refresh may share an ordinary refresh already in flight, as it did before login verification. A
+		// verification never shares a result: it waits for whatever is in flight and then fetches with its own key. The
+		// throttle in `shouldFetch` still lets concurrent ordinary callers share one request.
+		const verifying = options.verification !== undefined;
+		if (this.inFlight && !verifying && !this.inFlightVerifying) {
+			await this.inFlight;
+			return this.getSnapshot();
+		}
 		const previous = this.inFlight;
 		const task: Promise<void> = (async () => {
 			await previous?.catch(() => {});
-			// A refresh never rejects (its callers rely on that). A failure it cannot place is recorded as a failed answer.
+			if (!verifying) {
+				await this.runRefresh(options);
+				return;
+			}
 			try {
 				await this.runRefresh(options);
 			} catch (error) {
@@ -375,27 +387,25 @@ export class CatalogController {
 			}
 		})();
 		this.inFlight = task;
+		this.inFlightVerifying = verifying;
 		try {
 			await task;
 		} finally {
-			if (this.inFlight === task) this.inFlight = undefined;
+			if (this.inFlight === task) {
+				this.inFlight = undefined;
+				this.inFlightVerifying = false;
+			}
 		}
 		return this.getSnapshot();
 	}
 
-	private async runRefresh(options: {
-		allowNetwork: boolean;
-		force?: boolean;
-		signal?: AbortSignal;
-		pricing?: PricingMode;
-		credentialKey?: string;
-	}): Promise<void> {
+	private async runRefresh(options: CatalogRefreshOptions): Promise<void> {
 		const overrides = loadOverrides(this.agentDir);
 		this.overrides = overrides;
 		this.lastFailure = undefined;
 
 		const identity = resolveIdentity(this.agentDir);
-		const connection = resolveConnectionForRefresh(this.agentDir, identity.providerId, options.credentialKey);
+		const connection = resolveConnectionForRefresh(this.agentDir, identity.providerId, options.verification?.apiKey);
 		if (!connection) {
 			this.lastError = "no CLIProxyAPI credential configured";
 			log.debug("refresh skipped: not configured");
@@ -434,18 +444,17 @@ export class CatalogController {
 			this.lastError = errorMessage(error);
 			const failure = classifyFailure(error);
 			this.lastFailure = failure;
-			if (error instanceof CatalogHttpError && failure.reason === "rejected") {
-				this.notices.push(
-					rejectedKeyNotice(
-						this.agentDir,
-						identity.providerId,
-						identity.providerName,
-						options.credentialKey !== undefined,
-						error.status,
-					),
-				);
+			if (options.verification === undefined) {
+				if (failure.reason === "rejected" && failure.httpStatus !== undefined) {
+					this.notices.push(
+						rejectedKeyNotice(this.agentDir, identity.providerId, identity.providerName, failure.httpStatus),
+					);
+				}
+				log.warn(`catalog refresh failed: ${this.lastError}`);
+			} else {
+				// The login reports a verification's failure itself, so it adds no notice and no second warning.
+				log.debug(`credential verification failed: ${this.lastError}`);
 			}
-			log.warn(`catalog refresh failed: ${this.lastError}`);
 
 			// Keep the known list so a proxy hiccup does not empty the picker.
 			if (known.models.length > 0) {
@@ -489,15 +498,25 @@ interface KnownModels {
 	source: "remote" | "cache" | "none";
 }
 
-/** Why the last refresh had no usable answer: the proxy refused the credential, or it did not answer. */
+/**
+ * Why the last refresh had no usable answer. `reason` is the discriminant: `rejected` when the proxy refused the key,
+ * `unavailable` when it gave no usable answer at all.
+ */
 export interface CatalogFailure {
-	reason: CredentialVerificationReason;
+	reason: "rejected" | "unavailable";
 	message: string;
+	/** The HTTP status the proxy answered with, when it answered. */
+	httpStatus?: number;
 }
 
 function classifyFailure(error: unknown): CatalogFailure {
-	const refused = error instanceof CatalogHttpError && (error.status === 401 || error.status === 403);
-	return { reason: refused ? "rejected" : "unavailable", message: errorMessage(error) };
+	const httpStatus = error instanceof CatalogHttpError ? error.status : undefined;
+	const refused = httpStatus === 401 || httpStatus === 403;
+	return {
+		reason: refused ? "rejected" : "unavailable",
+		message: errorMessage(error),
+		...(httpStatus !== undefined ? { httpStatus } : {}),
+	};
 }
 
 /** The secret a stored credential carries: an API key, or the access token of an OAuth login. */
@@ -509,14 +528,8 @@ function credentialSecret(credential: RefreshModelsContext["credential"]): strin
 	return trimmed ? trimmed : undefined;
 }
 
-/** Warns when the key the model list is fetched with is not the one this login just entered. */
-function warnIfKeyOverridden(
-	agentDir: string,
-	providerId: string,
-	credential: RefreshModelsContext["credential"],
-): void {
-	const entered = credentialSecret(credential);
-	if (!entered) return;
+/** Warns when the key the model list is fetched with is not the one this login entered. */
+function warnIfKeyOverridden(agentDir: string, providerId: string, entered: string, credentialType: string): void {
 	let runtimeKey: string | undefined;
 	try {
 		runtimeKey = resolveConnection(agentDir, providerId)?.apiKey;
@@ -527,9 +540,9 @@ function warnIfKeyOverridden(
 	if (!runtimeKey || runtimeKey === entered) return;
 	const source = apiKeySource(agentDir, providerId);
 	if (source.kind === "environment") {
-		log.warn(overriddenKeyMessage("CLIPROXYAPI_API_KEY", providerId, credential?.type));
+		log.warn(overriddenKeyMessage("CLIPROXYAPI_API_KEY", providerId, credentialType));
 	} else if (source.kind === "config") {
-		log.warn(overriddenKeyMessage(`The apiKey field in ${source.path}`, providerId, credential?.type));
+		log.warn(overriddenKeyMessage(`The apiKey field in ${source.path}`, providerId, credentialType));
 	}
 }
 
@@ -552,32 +565,26 @@ function endpointOverrideNotice(entered: string, effective: string): string | un
 }
 
 /** Says where the rejected key is set and how to correct it, since logging in does not always change it. */
-function rejectedKeyNotice(
-	agentDir: string,
-	providerId: string,
-	providerName: string,
-	verifying: boolean,
-	status: number,
-): string {
-	const source = verifying ? undefined : apiKeySource(agentDir, providerId);
-	if (source?.kind === "environment") {
+function rejectedKeyNotice(agentDir: string, providerId: string, providerName: string, status: number): string {
+	const source = apiKeySource(agentDir, providerId);
+	if (source.kind === "environment") {
 		return `CLIProxyAPI rejected the API key in the environment variable CLIPROXYAPI_API_KEY (HTTP ${status}). Logging in does not change it: correct or unset that variable, then run /cpa-refresh.`;
 	}
-	if (source?.kind === "config") {
+	if (source.kind === "config") {
 		return `CLIProxyAPI rejected the apiKey in ${source.path} (HTTP ${status}). That field is read before the stored login: correct or remove it there, then run /cpa-refresh.`;
 	}
 	return `CLIProxyAPI rejected the credential (HTTP ${status}). Re-run /login ${providerName} to reconfigure.`;
 }
 
-/** Resolve the connection a refresh needs. A `credentialKey` replaces the resolved key but keeps the endpoint. */
+/** Resolve the connection a refresh needs. A verification's key replaces the resolved key but keeps the endpoint. */
 function resolveConnectionForRefresh(
 	agentDir: string,
 	providerId: string,
-	credentialKey?: string,
+	verificationKey?: string,
 ): { modelsUrl: string; apiKey: string; baseUrlInput: string } | null {
-	if (credentialKey !== undefined) {
+	if (verificationKey !== undefined) {
 		const baseUrlInput = defaultBaseUrlInput(agentDir, providerId);
-		return { modelsUrl: resolveEndpoints(baseUrlInput).modelsUrl, apiKey: credentialKey, baseUrlInput };
+		return { modelsUrl: resolveEndpoints(baseUrlInput).modelsUrl, apiKey: verificationKey, baseUrlInput };
 	}
 	const connection = resolveConnection(agentDir, providerId);
 	return connection
@@ -626,20 +633,31 @@ export function buildProviderRegistration(options: ProviderRegistrationOptions):
 		...(apiKey ? { apiKey } : {}),
 		models: catalog.configs(),
 		refreshModels: async (ctx: RefreshModelsContext) => {
-			// A forced refresh is how login verifies the credential it just stored. That verdict must be about this
-			// credential, not an environment key the connection would prefer, and it must say whether the proxy refused
-			// the credential or did not answer. An ordinary refresh keeps the last list and throws nothing.
-			const verifying = ctx.force === true && ctx.allowNetwork;
-			if (verifying) warnIfKeyOverridden(agentDir, providerId, ctx.credential);
+			// Ordinary refreshes (startup, /cpa-refresh, `nyan update models`) use the key nyan resolves, keep the last list
+			// on failure and throw nothing, as they did before login verification existed.
+			if (ctx.verifyCredential !== true || !ctx.allowNetwork) {
+				await catalog.refresh({ allowNetwork: ctx.allowNetwork, force: ctx.force === true, signal: ctx.signal });
+				return catalog.configs();
+			}
+			// A verification authenticates with the key the login stored, never with one the connection would prefer, and
+			// reports its verdict. A stored login with no key cannot be verified, so the login is refused.
+			const credential = ctx.credential;
+			const entered = credentialSecret(credential);
+			if (credential === undefined || entered === undefined) {
+				ctx.reportCredentialVerdict?.("rejected");
+				throw new Error("the stored login has no key to verify");
+			}
+			warnIfKeyOverridden(agentDir, providerId, entered, credential.type);
 			await catalog.refresh({
-				allowNetwork: ctx.allowNetwork,
-				force: ctx.force === true,
+				allowNetwork: true,
+				force: true,
 				signal: ctx.signal,
-				...(verifying ? { credentialKey: credentialSecret(ctx.credential) } : {}),
+				verification: { apiKey: entered },
 			});
-			const failure = verifying ? catalog.getLastFailure() : undefined;
-			if (failure && !ctx.signal?.aborted) {
-				throw new CredentialVerificationError(failure.reason, failure.message);
+			const failure = catalog.getLastFailure();
+			if (failure && !ctx.signal.aborted) {
+				ctx.reportCredentialVerdict?.(failure.reason);
+				throw new Error(failure.message);
 			}
 			return catalog.configs();
 		},

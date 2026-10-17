@@ -75,6 +75,13 @@ export interface ModelsPublication {
 	update?: () => void;
 }
 
+/**
+ * The outcome of a login's verification refresh, reported by the provider. A stable discriminant: consumers dispatch on
+ * this value, not on the error object. `rejected`: the provider answered and refused the credential. `unavailable`: there
+ * was no usable answer (no connection, a timeout, a server error), so nothing is known about the credential.
+ */
+type CredentialVerdict = "rejected" | "unavailable";
+
 export interface RefreshModelsContext {
 	/** Effective configured credential. OAuth credentials are refreshed before network access. */
 	credential?: Credential;
@@ -91,6 +98,13 @@ export interface RefreshModelsContext {
 	force?: boolean;
 	/** Always present, including when the public refresh caller omits its optional signal. */
 	signal: AbortSignal;
+	/**
+	 * Set only for a login's verification refresh (`ModelsRefreshOptions.verifyCredential`). `credential` is then the one
+	 * the login stored, and the provider should authenticate with it.
+	 */
+	verifyCredential?: boolean;
+	/** Reports the verdict of a verification refresh. Present only when `verifyCredential` is set. */
+	reportCredentialVerdict?(verdict: CredentialVerdict): void;
 }
 
 export interface ModelsRefreshOptions {
@@ -100,11 +114,18 @@ export interface ModelsRefreshOptions {
 	/** Bypass provider freshness checks and fetch immediately when network access is allowed. */
 	force?: boolean;
 	signal?: AbortSignal;
+	/**
+	 * A login's verification: each refreshed provider authenticates with the credential the runtime stores for it, and the
+	 * verdict a provider reports is returned in `ModelsRefreshResult.verdicts`. Other refreshes never report verdicts.
+	 */
+	verifyCredential?: boolean;
 }
 
 export interface ModelsRefreshResult {
 	aborted: boolean;
 	errors: ReadonlyMap<string, Error>;
+	/** Verdicts of verification refreshes, by provider ID. Empty unless `verifyCredential` was set. */
+	verdicts?: ReadonlyMap<string, CredentialVerdict>;
 }
 
 /** The request transforms `Models` applies; the contract type lets a runtime consumer such as durable name them. */
@@ -533,6 +554,7 @@ class ModelsImpl implements MutableModels {
 		force: boolean | undefined,
 		generation: number,
 		signal: AbortSignal,
+		verification: { report(verdict: CredentialVerdict): void } | undefined,
 	): Promise<void> {
 		const stored = await this.modelsStore.read(provider.id, { signal });
 		await provider.refreshModels({
@@ -542,6 +564,7 @@ class ModelsImpl implements MutableModels {
 			allowNetwork,
 			force: allowNetwork ? force : undefined,
 			signal,
+			...(verification ? { verifyCredential: true, reportCredentialVerdict: verification.report } : {}),
 		});
 	}
 
@@ -549,7 +572,8 @@ class ModelsImpl implements MutableModels {
 		const allowNetwork = options.allowNetwork ?? true;
 		const callerSignal = operationSignal(options.signal);
 		const errors = new Map<string, Error>();
-		if (callerSignal.aborted) return { aborted: true, errors };
+		const verdicts = new Map<string, CredentialVerdict>();
+		if (callerSignal.aborted) return { aborted: true, errors, verdicts };
 		const selected = options.providers ? new Set(options.providers) : undefined;
 		const refreshable = Array.from(this.providers.values()).filter(
 			(provider): provider is Provider & Required<Pick<Provider, "refreshModels">> =>
@@ -570,13 +594,33 @@ class ModelsImpl implements MutableModels {
 					}
 
 					// Restore cached provider state before auth resolution or network access.
-					await this.runProviderRefreshPhase(provider, storedCredential, false, undefined, generation, signal);
+					await this.runProviderRefreshPhase(
+						provider,
+						storedCredential,
+						false,
+						undefined,
+						generation,
+						signal,
+						undefined,
+					);
 					if (credentialError !== undefined) throw credentialError;
 					if (!allowNetwork || signal.aborted) return;
 
 					const credential = await this.resolveRefreshCredential(provider, storedCredential, signal);
 					if (!credential) return;
-					await this.runProviderRefreshPhase(provider, credential, true, options.force, generation, signal);
+					const verification =
+						options.verifyCredential === true
+							? { report: (verdict: CredentialVerdict) => verdicts.set(provider.id, verdict) }
+							: undefined;
+					await this.runProviderRefreshPhase(
+						provider,
+						credential,
+						true,
+						options.force,
+						generation,
+						signal,
+						verification,
+					);
 				})();
 
 				try {
@@ -604,7 +648,7 @@ class ModelsImpl implements MutableModels {
 			if (!callerSignal.aborted) throw error;
 		}
 
-		return { aborted: callerSignal.aborted, errors: new Map(errors) };
+		return { aborted: callerSignal.aborted, errors: new Map(errors), verdicts: new Map(verdicts) };
 	}
 
 	private async resolveRefreshCredential(

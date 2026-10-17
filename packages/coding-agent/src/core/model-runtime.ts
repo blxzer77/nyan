@@ -833,6 +833,7 @@ export class ModelRuntime implements Models {
 		const result = ((await this.models.refresh(refreshOptions)) as ModelsRefreshResult | undefined) ?? {
 			aborted: refreshOptions.signal?.aborted ?? false,
 			errors: new Map(),
+			verdicts: new Map(),
 		};
 		const errors = new Map(result.errors);
 		this.updateModelSnapshot();
@@ -855,7 +856,11 @@ export class ModelRuntime implements Models {
 				// Availability errors are recorded by the latest pass; refreshed models remain usable.
 			}
 		}
-		return { aborted: result.aborted || (options.signal?.aborted ?? false), errors };
+		return {
+			aborted: result.aborted || (options.signal?.aborted ?? false),
+			errors,
+			verdicts: new Map(result.verdicts ?? []),
+		};
 	}
 
 	registerNativeProvider(provider: Provider): void {
