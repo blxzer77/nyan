@@ -1,3 +1,5 @@
+import { certificateErrorCode } from "./transport-error.ts";
+
 const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
 
 interface ProviderRetryOptions {
@@ -27,6 +29,9 @@ function isRetryableProviderError(error: ProviderError): boolean {
 	if (shouldRetry === "true") return true;
 	if (shouldRetry === "false") return false;
 
+	// A certificate failure has no status, and retrying it repeats the same request. This is the rule `retry.ts` applies
+	// to the stored message; this layer sees the error object itself, so it reads the code directly.
+	if (certificateErrorCode(error) !== undefined) return false;
 	if (error.status === undefined) return true;
 	return (
 		error.status === 408 ||

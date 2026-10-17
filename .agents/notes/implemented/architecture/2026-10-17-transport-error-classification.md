@@ -27,6 +27,8 @@ Measured with `packages/ai/test/transport-error.test.ts` (fixtures built from th
 4. A certificate code is appended to the stored message when the message does not already say it (`errorMessageWithCertificateCode`). Node's text would otherwise hide the reason from the classifier, which only sees the string. Only certificate codes are appended; every other message is unchanged.
 5. The certificate list is copied into `retry.ts` and checked against `transport-error.ts` by a test. The copy exists because a runtime import from `retry.ts` adds a file to durable's entry graph, which has a fixed budget (`scripts/check-entry-graphs.mjs`); the budget was not raised.
 6. `formatVersionCheckError` and the llama extension's connection test read the same codes, so they show the code on Bun as they already did on Node. The llama test keeps its old text match as a fallback, so an uncoded error behaves as before.
+7. The inner retry layer (`retryProviderRequest` in `utils/provider-retry.ts`, used by the provider SDK paths when `retry.provider.maxRetries` is set) applies the same rule: a certificate code on the error or its cause is not retried. Without this, a certificate failure with a status-less SDK error was retried by that layer before the outer classifier saw it. This was found in review of the PR, not in the first version of this batch.
+8. Undici codes are listed one by one as connection errors: the socket, closed, connect-timeout, headers-timeout and body-timeout codes. `UND_ERR_*` as a prefix also matched a cancelled request (`UND_ERR_ABORTED`), a non-2xx response, and a bad argument, none of which mean the server was not reached.
 
 ## Evidence
 
@@ -40,4 +42,5 @@ Measured with `packages/ai/test/transport-error.test.ts` (fixtures built from th
 
 - Certificate and host-name failures under Bun on Linux and macOS, and in a compiled executable (probes ran under `bun`).
 - A real TLS server behind a proxy (`CONNECT`). The probes used a local HTTPS server with a generated certificate.
-- Bedrock and the AWS SDK's own retry layer, which do not go through `retry.ts` for transport failures in the same way.
+- Bedrock and the AWS SDK's own retry layer. The AWS SDK retries inside its own handler, which `retryProviderRequest` does not wrap, so a certificate failure there is not covered by batch 1.
+- The OpenAI and Anthropic SDKs' own `maxRetries` (set to zero by nyan, so not exercised here), and any SDK retry that runs before `retryProviderRequest` sees the error.

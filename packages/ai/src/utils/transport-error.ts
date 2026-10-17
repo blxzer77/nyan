@@ -28,6 +28,25 @@ export function transportErrorCodes(error: unknown): string[] {
 	return codes;
 }
 
+/**
+ * Every error on the chain that has a non-empty message, outermost first, in the same walk as `transportErrorCodes()`.
+ * Used where a message is needed rather than a code (a diagnostic line that names the cause).
+ */
+export function transportErrorMessages(error: unknown): string[] {
+	const messages: string[] = [];
+	const seen = new Set<unknown>();
+	const visit = (value: unknown, depth: number): void => {
+		if (typeof value !== "object" || value === null || seen.has(value) || depth > MAX_CAUSE_DEPTH) return;
+		seen.add(value);
+		const { message, cause, errors } = value as { message?: unknown; cause?: unknown; errors?: unknown };
+		if (typeof message === "string" && message.length > 0) messages.push(message);
+		if (Array.isArray(errors)) for (const member of errors) visit(member, depth + 1);
+		visit(cause, depth + 1);
+	};
+	visit(error, 0);
+	return messages;
+}
+
 /** The outermost code of a failed request, or `undefined` when the error carries none. */
 export function transportErrorCode(error: unknown): string | undefined {
 	return transportErrorCodes(error)[0];
@@ -77,8 +96,10 @@ export function certificateErrorCode(error: unknown): string | undefined {
 }
 
 /**
- * Failures to reach the server at all. A caller may retry these; they say nothing about the request itself.
- * `UND_ERR_*` are undici's socket and timeout codes.
+ * Failures to reach the server, or to get a usable response from it. A caller may retry these; they say nothing about
+ * the request itself. The undici codes are listed one by one: `UND_ERR_*` also covers a cancelled request
+ * (`UND_ERR_ABORTED`), a non-2xx response (`UND_ERR_RESPONSE_STATUS_CODE`), and a bad argument (`UND_ERR_INVALID_ARG`),
+ * and none of those means the server could not be reached.
  */
 const CONNECTION_ERROR_CODES: ReadonlySet<string> = new Set([
 	"ECONNREFUSED",
@@ -91,10 +112,17 @@ const CONNECTION_ERROR_CODES: ReadonlySet<string> = new Set([
 	"ENETUNREACH",
 	"ENETDOWN",
 	"EPIPE",
+	// undici: the socket failed, the connection closed before the response, or a timeout fired before the headers or
+	// the body. `UND_ERR_HEADERS_TIMEOUT` and `UND_ERR_BODY_TIMEOUT` are also what nyan's idle-timeout wrapper reports.
+	"UND_ERR_SOCKET",
+	"UND_ERR_CLOSED",
+	"UND_ERR_CONNECT_TIMEOUT",
+	"UND_ERR_HEADERS_TIMEOUT",
+	"UND_ERR_BODY_TIMEOUT",
 ]);
 
 export function isConnectionErrorCode(code: string): boolean {
-	return CONNECTION_ERROR_CODES.has(code) || code.startsWith("UND_ERR");
+	return CONNECTION_ERROR_CODES.has(code);
 }
 
 /** True when the error, or an error below it, is a failure to reach the server. */

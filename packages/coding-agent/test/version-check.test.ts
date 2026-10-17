@@ -103,6 +103,15 @@ describe("version checks", () => {
 		expect(formatVersionCheckError(error)).toBe("fetch failed (ETIMEDOUT, ENETUNREACH)");
 	});
 
+	it("names the first underlying message when no error on the chain has a code", () => {
+		// The members of the cause only carry text, so the detail has to come from their messages.
+		const error = new Error("fetch failed", {
+			cause: new AggregateError([new Error("connect failed to 127.0.0.1:443"), new Error("connect failed to ::1")]),
+		});
+
+		expect(formatVersionCheckError(error)).toBe("fetch failed (cause: connect failed to 127.0.0.1:443)");
+	});
+
 	it("returns the active package metadata from the version check api", async () => {
 		const fetchMock = vi.fn(async () =>
 			Response.json({

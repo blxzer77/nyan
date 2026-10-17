@@ -10,6 +10,7 @@ import {
 	isConnectionErrorCode,
 	transportErrorCode,
 	transportErrorCodes,
+	transportErrorMessages,
 } from "../src/utils/transport-error.ts";
 
 /** The shapes measured on Node 24 (undici): `fetch failed` with the code on the cause. */
@@ -85,6 +86,25 @@ describe("certificate code lists", () => {
 });
 
 describe("connection and certificate codes", () => {
+	it("does not treat an undici code that is not a lost connection as one", () => {
+		// A cancelled request, a non-2xx response, and a bad argument all carry UND_ERR_* codes.
+		for (const code of ["UND_ERR_ABORTED", "UND_ERR_RESPONSE_STATUS_CODE", "UND_ERR_INVALID_ARG"]) {
+			expect(isConnectionErrorCode(code), code).toBe(false);
+		}
+	});
+
+	it("treats the undici socket and timeout codes as connection errors", () => {
+		for (const code of [
+			"UND_ERR_SOCKET",
+			"UND_ERR_CLOSED",
+			"UND_ERR_CONNECT_TIMEOUT",
+			"UND_ERR_HEADERS_TIMEOUT",
+			"UND_ERR_BODY_TIMEOUT",
+		]) {
+			expect(isConnectionErrorCode(code), code).toBe(true);
+		}
+	});
+
 	it("classifies a refused or dropped connection as a connection error", () => {
 		expect(isConnectionError(bunFetchError("ECONNREFUSED", "refused"))).toBe(true);
 		expect(isConnectionError(nodeFetchError("UND_ERR_SOCKET"))).toBe(true);
@@ -110,6 +130,22 @@ describe("connection and certificate codes", () => {
 				bunFetchError("ERR_TLS_CERT_ALTNAME_INVALID", "ERR_TLS_CERT_ALTNAME_INVALID fetching https://x/"),
 			),
 		).toBe("ERR_TLS_CERT_ALTNAME_INVALID fetching https://x/");
+	});
+});
+
+describe("messages on the chain", () => {
+	it("lists each error's message, outermost first, members of an AggregateError included", () => {
+		const error = new TypeError("fetch failed", {
+			cause: new AggregateError([
+				new Error("connect ECONNREFUSED 127.0.0.1:443"),
+				new Error("connect ECONNREFUSED ::1"),
+			]),
+		});
+		expect(transportErrorMessages(error)).toEqual([
+			"fetch failed",
+			"connect ECONNREFUSED 127.0.0.1:443",
+			"connect ECONNREFUSED ::1",
+		]);
 	});
 });
 
