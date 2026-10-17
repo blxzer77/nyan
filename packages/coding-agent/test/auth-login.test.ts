@@ -248,6 +248,7 @@ describe("login verifies the stored credential", () => {
 			// the verification itself.
 			if (!context.allowNetwork) return [];
 			networkRefreshes++;
+			context.reportCredentialVerdict?.("verified");
 			return oneModel(context);
 		});
 		const { output } = await loginWithInput([], factory);
@@ -282,12 +283,23 @@ describe("login verifies the stored credential", () => {
 	it("reports a provider that accepts the credential but lists no models as verified, without claiming a model", async () => {
 		const factory = oauthFactory(loggedIn, async (context) => {
 			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("verified");
 			return [];
 		});
 		const { output } = await loginWithInput([], factory);
 		expect(output).toContain(
 			"Logged in to Test Provider. The provider accepted the credential, but lists no models.",
 		);
+		expect(output).not.toContain("Verified:");
+	});
+
+	it("does not count a provider that completes without reporting a verdict as verified", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			return [];
+		});
+		const { output } = await loginWithInput([], factory);
+		expect(output).toContain("Logged in to Test Provider. The credential is stored and was not verified");
 		expect(output).not.toContain("Verified:");
 	});
 

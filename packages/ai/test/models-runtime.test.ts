@@ -335,6 +335,16 @@ describe("Models runtime", () => {
 		expect(result.verdicts?.size).toBe(0);
 	});
 
+	it("a verification whose provider completes in silence is unavailable, never verified", async () => {
+		const models = createModels();
+		models.setProvider(testProvider({ id: "silent", refreshModels: async () => {} }));
+
+		const result = await models.refresh({ providers: ["silent"], verifyCredential: true });
+
+		expect(result.verdicts?.get("silent")).toBe("unavailable");
+		expect(result.errors.size).toBe(0);
+	});
+
 	it("a verification fetches even when the caller did not ask for force", async () => {
 		const seen: Array<boolean | undefined> = [];
 		const models = createModels();
@@ -344,6 +354,7 @@ describe("Models runtime", () => {
 				refreshModels: async (context) => {
 					if (!context.verifyCredential) return;
 					seen.push(context.force);
+					context.reportCredentialVerdict?.("verified");
 				},
 			}),
 		);

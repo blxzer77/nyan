@@ -759,6 +759,20 @@ describe("CLIProxyAPI extension", () => {
 			}
 		});
 
+		it("a verification the proxy accepts reports the credential verified", async () => {
+			const { baseUrl } = await proxy("typed-key");
+			const restore = setEnv({ NYAN_CODING_AGENT_DIR: agentDirWithoutPricing(), CLIPROXYAPI_BASE_URL: baseUrl });
+			const verdicts: string[] = [];
+			try {
+				const refreshModels = (await registeredCpa()).refreshModels;
+				if (!refreshModels) throw new Error("no refreshModels");
+				await refreshModels(verificationContext("typed-key", "api_key", verdicts));
+				expect(verdicts).toEqual(["verified"]);
+			} finally {
+				restore();
+			}
+		});
+
 		it("a verification reports a proxy that does not answer as unavailable", async () => {
 			const closed = createServer();
 			closed.listen(0, "127.0.0.1");

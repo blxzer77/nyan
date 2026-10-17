@@ -662,6 +662,8 @@ export function buildProviderRegistration(options: ProviderRegistrationOptions):
 				ctx.reportCredentialVerdict?.(failure.reason);
 				throw new Error(failure.message);
 			}
+			// The proxy accepted the credential it was just given, and the provider says so. A cancelled check says nothing.
+			if (!ctx.signal.aborted) ctx.reportCredentialVerdict?.("verified");
 			return catalog.configs();
 		},
 		oauth: {
