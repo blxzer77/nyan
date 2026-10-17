@@ -7,8 +7,11 @@
  *
  * - Every public package must carry the same version (lockstep); `--expect-version` also pins it to a release tag.
  * - Packages publish after the workspace packages they depend on.
- * - A package version that is already on the registry is skipped, so a failed release can be re-run.
- * - Nothing is rebuilt here; run the build first. `--dry-run` runs `npm publish --dry-run`, which packs each tarball.
+ * - A package version that is already on the registry is skipped, so a failed release can be re-run. A dry run packs it
+ *   with `npm pack --dry-run` instead (the tarball contents are still checked): npm refuses to publish over a
+ *   published version even as a dry run.
+ * - Nothing is rebuilt here; run the build first. `--dry-run` runs `npm publish --dry-run`, which packs each tarball, or
+ *   `npm pack --dry-run` for a version that is already published.
  */
 
 import { readFileSync } from "node:fs";
@@ -63,8 +66,12 @@ const visit = (pkg) => {
 for (const pkg of packages) visit(pkg);
 
 function onRegistry(name, wanted) {
+	// A dry run must not wait through npm's default retries and its five-minute fetch timeout when the registry cannot be
+	// reached; no answer counts as not published, the same as a 404.
+	const networkArgs = dryRun ? ["--fetch-retries=0", "--fetch-timeout=15000"] : [];
+	const viewArgs = ["view", `${name}@${wanted}`, "version", "--json", ...networkArgs];
 	try {
-		return execNpmSync(["view", `${name}@${wanted}`, "version", "--json"], { encoding: "utf8", stdio: "pipe" }).trim().length > 0;
+		return execNpmSync(viewArgs, { encoding: "utf8", stdio: "pipe" }).trim().length > 0;
 	} catch {
 		// 404: the version (or the package) has not been published yet.
 		return false;
@@ -73,8 +80,18 @@ function onRegistry(name, wanted) {
 
 console.log(`${dryRun ? "Dry run: " : ""}publishing ${ordered.length} packages at ${version}`);
 for (const { directory, manifest } of ordered) {
-	if (!dryRun && onRegistry(manifest.name, version)) {
+	const published = onRegistry(manifest.name, version);
+	if (published && !dryRun) {
 		console.log(`  ${manifest.name}@${version} is already published, skipping`);
+		continue;
+	}
+	if (published) {
+		console.log(`  ${manifest.name}@${version} already published; packed only`);
+		try {
+			execNpmSync(["pack", resolve(directory), "--dry-run", "--ignore-scripts"], { stdio: "inherit" });
+		} catch {
+			fail(`npm pack failed for ${manifest.name}`);
+		}
 		continue;
 	}
 	// An absolute path: npm reads a bare `packages/x` as the GitHub shorthand user/repo, which only Windows' backslashes avoid.
