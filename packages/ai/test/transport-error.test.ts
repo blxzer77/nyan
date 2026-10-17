@@ -205,4 +205,10 @@ describe("retry classification of transport failures", () => {
 	])("keeps retrying a connection failure: %s", (_label, errorMessage) => {
 		expect(retryable(errorMessage)).toBe(true);
 	});
+
+	it("keeps retrying a server error whose stored body names a certificate", () => {
+		// The stored text of an HTTP error is "<status>: <body>"; the status makes it a server error.
+		expect(retryable("503: upstream says certificate expired")).toBe(true);
+		expect(retryable("Provider error (429): certificate verify failed")).toBe(true);
+	});
 });

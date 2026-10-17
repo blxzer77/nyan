@@ -4,6 +4,13 @@ function buildProviderErrorPattern(patterns: readonly string[]): RegExp {
 	return new RegExp(patterns.join("|"), "i");
 }
 
+function escapeRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** An HTTP status that makes a failure worth retrying, as a whole token in a stored message. */
+const RETRYABLE_HTTP_STATUS_TOKEN = /\b(?:408|409|429|5\d{2})\b/;
+
 /**
  * Certificate and host-name verification failures. These are the OpenSSL verification names Node and Bun both report,
  * plus Node's host-name check. Retrying cannot fix any of them: the server or the local trust store has to change.
@@ -44,7 +51,7 @@ export const CERTIFICATE_ERROR_CODE_LIST: readonly string[] = [
  */
 const CERTIFICATE_MESSAGE_PATTERN = new RegExp(
 	[
-		...CERTIFICATE_ERROR_CODE_LIST.map((code) => `\\b${code}\\b`),
+		...CERTIFICATE_ERROR_CODE_LIST.map((code) => `\\b${escapeRegExp(code)}\\b`),
 		"self.?signed certificate",
 		"unable to verify the first certificate",
 		"certificate (?:has )?expired",
@@ -324,7 +331,9 @@ export async function retryAssistantCall(
 export function isRetryableAssistantError(message: AssistantMessage): boolean {
 	if (message.stopReason !== "error" || !message.errorMessage) return false;
 	const errorMessage = message.errorMessage;
-	if (isCertificateErrorMessage(errorMessage)) return false;
+	// A stored HTTP status means the text after it is a response body (see provider-retry.ts): a server error is retried
+	// even when its body names a certificate. Only text without a retryable status is a certificate failure.
+	if (!RETRYABLE_HTTP_STATUS_TOKEN.test(errorMessage) && isCertificateErrorMessage(errorMessage)) return false;
 	if (NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN.test(errorMessage)) return false;
 	return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
 }

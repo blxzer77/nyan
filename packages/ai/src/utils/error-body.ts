@@ -45,11 +45,12 @@ export function normalizeProviderError(error: unknown): NormalizedProviderError 
 	const sdkError = error as SdkErrorShape;
 	const status = extractStatus(sdkError);
 	const body = extractBody(sdkError);
-	const messageCarriesBody = body === undefined || error.message.includes(body);
+	const message = errorMessageWithCertificateCode(error);
+	const messageCarriesBody = body === undefined || message.includes(body);
 	return {
 		status,
 		body,
-		message: errorMessageWithCertificateCode(error),
+		message,
 		messageCarriesBody,
 	} satisfies NormalizedProviderError;
 }

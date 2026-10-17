@@ -18,8 +18,10 @@ function modelIsLoaded(model: LlamaModelInfo): boolean {
  * failure is not a connection failure: Node reports it as "fetch failed" too, so the code is checked first and shown.
  */
 function isConnectionFailure(error: unknown): boolean {
+	// A certificate is shown even when a connection code is also on the chain.
+	if (certificateErrorCode(error) !== undefined) return false;
 	if (isConnectionError(error)) return true;
-	if (!(error instanceof Error) || certificateErrorCode(error) !== undefined) return false;
+	if (!(error instanceof Error)) return false;
 	const message = `${error.name} ${error.message}`.toLowerCase();
 	return message.includes("fetch failed") || message.includes("timeout") || message.includes("network");
 }
@@ -233,7 +235,7 @@ export default function llamaExtension(nyan: ExtensionAPI): void {
 					if (!refreshed) return;
 					catalog = refreshed;
 					if (actionError && !isConnectionFailure(actionError)) {
-						ctx.ui.notify(actionError instanceof Error ? actionError.message : String(actionError), "error");
+						ctx.ui.notify(connectionErrorMessage(actionError), "error");
 					}
 				}
 			});

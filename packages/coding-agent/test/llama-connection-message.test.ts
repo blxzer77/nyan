@@ -20,6 +20,17 @@ describe("llama connection error message", () => {
 		expect(connectionErrorMessage(node)).toBe("fetch failed (DEPTH_ZERO_SELF_SIGNED_CERT)");
 	});
 
+	it("shows the certificate when a connection code is also on the chain", () => {
+		// Undici can report several addresses at once: one refused, one with a bad certificate.
+		const error = new TypeError("fetch failed", {
+			cause: new AggregateError([
+				Object.assign(new Error("connect ECONNREFUSED ::1"), { code: "ECONNREFUSED" }),
+				Object.assign(new Error("self-signed certificate"), { code: "DEPTH_ZERO_SELF_SIGNED_CERT" }),
+			]),
+		});
+		expect(connectionErrorMessage(error)).toBe("fetch failed (DEPTH_ZERO_SELF_SIGNED_CERT)");
+	});
+
 	it("keeps the text of an error that has no code", () => {
 		expect(connectionErrorMessage(new Error("model not found"))).toBe("model not found");
 		expect(connectionErrorMessage("plain")).toBe("plain");
