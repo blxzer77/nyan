@@ -360,7 +360,8 @@ export class CatalogController {
 	 * Fetch the catalog and update in-memory state.
 	 *
 	 * An ordinary refresh keeps the previously known models when the fetch fails, so the picker does not empty out
-	 * because the proxy hiccuped, and it throws only for what it cannot read (as it always has). A verification never
+	 * because the proxy hiccuped, and it throws only for a settings file it cannot read. An unusable base URL is recorded as a failure, like a failed
+	 * fetch. A verification never
 	 * rejects: its failure is returned as `verificationFailure`, which is the answer the login reports.
 	 */
 	async refresh(options: CatalogRefreshOptions): Promise<CatalogSnapshot & { verificationFailure?: CatalogFailure }> {
@@ -403,12 +404,23 @@ export class CatalogController {
 	}
 
 	private async runRefresh(options: CatalogRefreshOptions): Promise<void> {
+		this.lastFailure = undefined;
 		const overrides = loadOverrides(this.agentDir);
 		this.overrides = overrides;
-		this.lastFailure = undefined;
 
 		const identity = resolveIdentity(this.agentDir);
-		const connection = resolveConnectionForRefresh(this.agentDir, identity.providerId, options.verification);
+		let connection: ReturnType<typeof resolveConnectionForRefresh>;
+		try {
+			connection = resolveConnectionForRefresh(this.agentDir, identity.providerId, options.verification);
+		} catch (error) {
+			// A base URL that does not parse leaves nothing to fetch from. It is recorded like a failed fetch, not thrown: the
+			// login's own sync would otherwise fail a login whose key was just verified at the URL it entered.
+			const message = `CLIProxyAPI base URL is not valid (${errorMessage(error)}). Check CLIPROXYAPI_BASE_URL and cliproxyapi.json.`;
+			this.lastError = message;
+			this.lastFailure = { reason: "unavailable", message };
+			if (options.verification === undefined) this.notices.push(message);
+			return;
+		}
 		if (!connection) {
 			this.lastError = "no CLIProxyAPI credential configured";
 			log.debug("refresh skipped: not configured");

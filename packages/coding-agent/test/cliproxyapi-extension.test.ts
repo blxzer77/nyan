@@ -685,6 +685,20 @@ describe("CLIProxyAPI extension", () => {
 			expect(verdicts).toEqual([]);
 		});
 
+		it("records an unusable base URL as a failure instead of throwing from an ordinary refresh", async () => {
+			const restore = setEnv({ CLIPROXYAPI_BASE_URL: "not a url", CLIPROXYAPI_API_KEY: "env-key" });
+			try {
+				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
+				// The login's own sync and startup both make this call; neither may fail a login over the setting.
+				await expect(controller.refresh({ allowNetwork: false })).resolves.toBeDefined();
+				expect(controller.getLastFailure()).toMatchObject({ reason: "unavailable" });
+				expect(controller.getLastError()).toContain("base URL is not valid");
+				expect(controller.takeNotices()).toEqual([expect.stringContaining("base URL is not valid")]);
+			} finally {
+				restore();
+			}
+		});
+
 		it("does not hand a verification the answer of a refresh made with another key", async () => {
 			const { baseUrl, seen } = await proxy("typed-key");
 			const restore = setEnv({ CLIPROXYAPI_BASE_URL: baseUrl, CLIPROXYAPI_API_KEY: "env-key" });

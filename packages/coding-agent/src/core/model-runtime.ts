@@ -844,7 +844,8 @@ export class ModelRuntime implements Models {
 					try {
 						await this.refreshProviderAvailability(providerId, operationSignal(options.signal));
 					} catch (error) {
-						if (!options.signal?.aborted) {
+						// The refresh's own error is the cause. An availability failure that follows does not replace it.
+						if (!options.signal?.aborted && !errors.has(providerId)) {
 							errors.set(providerId, error instanceof Error ? error : new Error(String(error)));
 						}
 					}

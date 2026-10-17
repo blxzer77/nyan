@@ -319,9 +319,8 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 		} else {
 			write(chalk.green(`Logged in to ${provider.name}. Verified: ${models.length} model(s) available.`));
 		}
-		// The verdict decided the login. A refresh error that is not the verification's (such as the availability refresh)
-		// is shown beside it.
-		if (failure) write(chalk.yellow(`Could not refresh model availability: ${failure.message}`));
+		// The verdict decided the login; the refresh's error, if it reported one, is shown beside it.
+		if (failure) write(chalk.yellow(`The model refresh reported an error: ${failure.message}`));
 	} finally {
 		rl?.close();
 		process.off("SIGINT", onSigInt);
