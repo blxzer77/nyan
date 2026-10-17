@@ -1,0 +1,74 @@
+name: Setup Nyan
+
+description: Install the pinned Nyan toolchain, dependencies, and fixed model-data snapshot.
+
+inputs:
+  node-version:
+    description: Node.js version
+    required: false
+    default: '24'
+  bun-version:
+    description: Bun version
+    required: false
+    default: '1.4.2'
+  npm-version:
+    description: >-
+      npm version to install. Pinned because the npm bundled with a Node patch release changes how optional
+      platform peers (for example @emnapi/*) are resolved, which makes `npm ci` reject a lockfile that another
+      npm version generated.
+    required: false
+    default: '11.19.0'
+  install:
+    description: Run npm ci without lifecycle scripts
+    required: false
+    default: 'true'
+  bun:
+    description: Install Bun
+    required: false
+    default: 'false'
+  model-data:
+    description: Restore and verify the fixed model-data snapshot
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+
+    - name: Setup Bun
+      if: inputs.bun == 'true'
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      with:
+        bun-version: ${{ inputs.bun-version }}
+
+    - name: Pin npm
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "$(npm --version)" != "${{ inputs.npm-version }}" ]]; then
+          npm install --global "npm@${{ inputs.npm-version }}"
+        fi
+        npm --version
+
+    - name: Verify toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        node --version
+        npm --version
+        if [[ "${{ inputs.bun }}" == "true" ]]; then bun --version; fi
+
+    - name: Install dependencies without lifecycle scripts
+      if: inputs.install == 'true'
+      shell: bash
+      run: npm ci --ignore-scripts --no-audit --no-fund
+
+    - name: Restore fixed model-data snapshot
+      if: inputs.model-data == 'true'
+      shell: bash
+      run: node scripts/ci-model-data.mjs --restore

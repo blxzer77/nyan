@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    { "name": "empty-payload", "bytesHex": "", "expected": "reject" },
+    { "name": "truncated-map-value", "bytesHex": "a16161", "expected": "reject" },
+    { "name": "invalid-utf8", "bytesHex": "63ffffff", "expected": "reject" },
+    { "name": "trailing-data", "bytesHex": "0000", "expected": "reject" },
+    { "name": "unsupported-tag", "bytesHex": "c0", "expected": "reject" },
+    { "name": "null", "bytesHex": "f6", "expected": "accept" },
+    { "name": "single-entry-map", "bytesHex": "a1616101", "expected": "accept" }
+  ]
+}

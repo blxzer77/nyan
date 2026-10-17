@@ -1,150 +1,411 @@
-name: Nyan CI
+name: Nyan quality gate
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+  workflow_dispatch:
 
 concurrency:
-  group: nyan-ci-${{ github.ref }}
+  group: nyan-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
+env:
+  NODE_VERSION: '24'
+  NPM_VERSION: '11.19.0'
+  BUN_VERSION: '1.4.2'
+  NYAN_OFFLINE: '1'
+
 jobs:
-  quality:
-    name: Build, check and test (Ubuntu)
-    # Linux/x64 jobs run on the self-hosted nyan-dev-01 runner. A pull request
-    # whose code comes from another repository falls back to a GitHub-hosted
-    # runner: the self-hosted runner users hold NOPASSWD sudo and the docker
-    # group, so untrusted fork code must not execute there. Compare repository
-    # names rather than head.repo.fork, which is true for every PR while this
-    # repository is itself a fork of an upstream project.
-    runs-on: ${{ ((github.event_name == 'pull_request') && (github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
-    timeout-minutes: 30
+  policy:
+    name: Policy and impact
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    timeout-minutes: 5
+    outputs:
+      full_suite: ${{ steps.impact.outputs.full_suite }}
+      node_packages: ${{ steps.impact.outputs.node_packages }}
+      bun_packages: ${{ steps.impact.outputs.bun_packages }}
+      risk: ${{ steps.impact.outputs.risk }}
+      deep_required: ${{ steps.impact.outputs.deep_required }}
+      windows_required: ${{ steps.impact.outputs.windows_required }}
+      mcp_required: ${{ steps.impact.outputs.mcp_required }}
+      fork_pr: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install system dependencies
+      - name: Pin npm
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
-          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd   # -f: self-hosted runners keep /usr/local across runs
+          if [ "$(npm --version)" != "${{ env.NPM_VERSION }}" ]; then
+            npm install --global "npm@${{ env.NPM_VERSION }}"
+          fi
+          npm --version
 
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+      - name: Install policy dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Build
-        run: npm run build
+      - name: Validate workflows and policy
+        run: node scripts/validate-workflows.mjs
+
+      - name: Actionlint
+        run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.7
+
+      - name: Compute change impact
+        id: impact
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/ci-impact.mjs
+
+      - name: Show policy
+        run: node --input-type=commonjs -e "console.log(JSON.stringify(require('./.github/quality/policy.json'), null, 2))"
+
+  prepare:
+    name: Prepare build artifact
+    needs: policy
+    if: needs.policy.outputs.fork_pr != 'true'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Linux build dependencies on hosted runners
+        if: runner.environment == 'github-hosted'
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          model-data: 'true'
+
+      - name: Build offline
+        run: npm run build:offline
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nyan-dist-${{ github.sha }}
+          path: |
+            packages/*/dist
+            .ci/model-data.lock.json
+          # The model-data manifest is `dist/providers/data/.manifest.json`; upload-artifact skips dotfiles unless this
+          # is set, and without it every consumer fails to import `./data/.manifest.json` from `dist/providers/all.js`.
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+
+  static:
+    name: Static checks
+    needs: [policy, prepare]
+    if: needs.policy.outputs.fork_pr != 'true'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Linux build dependencies on hosted runners
+        if: runner.environment == 'github-hosted'
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          model-data: 'true'
+
+      - name: Download build artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: nyan-dist-${{ github.sha }}
 
       - name: Check
         run: npm run check
 
-      - name: Test
-        run: npm test
-
-  bun:
-    name: Test on Bun (Ubuntu)
-    runs-on: ${{ ((github.event_name == 'pull_request') && (github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
-    timeout-minutes: 30
+  node-tests:
+    name: Node tests (${{ matrix.package }})
+    needs: [policy, prepare]
+    if: needs.policy.outputs.fork_pr != 'true' && needs.policy.result == 'success' && needs.prepare.result == 'success'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        package: ${{ fromJSON(needs.policy.outputs.node_packages) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Install Linux build dependencies on hosted runners
+        if: runner.environment == 'github-hosted'
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
         with:
-          node-version: 24
-          cache: npm
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          model-data: 'true'
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Download build artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          bun-version: 1.4.2
+          name: nyan-dist-${{ github.sha }}
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
-          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd   # -f: self-hosted runners keep /usr/local across runs
+      - name: Run root script tests
+        if: matrix.package == 'root'
+        run: npm run test:scripts
 
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+      - name: Run package tests
+        if: matrix.package != 'root'
+        run: npm --workspace "packages/${{ matrix.package }}" test
 
-      - name: Build
-        run: npm run build
+  bun-tests:
+    name: Bun tests (${{ matrix.package }})
+    needs: [policy, prepare]
+    if: needs.policy.outputs.fork_pr != 'true' && needs.policy.result == 'success' && needs.prepare.result == 'success'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        package: ${{ fromJSON(needs.policy.outputs.bun_packages) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Test
-        run: npm run test:bun
+      - name: Install Linux build dependencies on hosted runners
+        if: runner.environment == 'github-hosted'
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
 
-  windows:
-    name: Build and check (Windows)
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun-version: ${{ env.BUN_VERSION }}
+          bun: 'true'
+          model-data: 'true'
+
+      - name: Download build artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: nyan-dist-${{ github.sha }}
+
+      - name: Run Bun package tests
+        run: npm run test:bun -- "${{ matrix.package }}"
+
+      - name: Run durable retention tests under Bun
+        if: matrix.package == 'durable'
+        env:
+          NYAN_DURABLE_DOCUMENT_RETENTION_MS: '0'
+        run: npm run test:bun -- durable
+
+  windows-smoke:
+    name: Windows build and check
+    needs: [policy, prepare]
+    if: needs.policy.outputs.fork_pr != 'true' && needs.policy.result == 'success' && needs.prepare.result == 'success'
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+      - name: Pin npm
+        shell: bash
+        run: |
+          if [ "$(npm --version)" != "${{ env.NPM_VERSION }}" ]; then
+            npm install --global "npm@${{ env.NPM_VERSION }}"
+          fi
+          npm --version
 
-      - name: Build
-        run: npm run build
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Restore fixed model-data snapshot
+        shell: pwsh
+        run: node scripts/ci-model-data.mjs --restore
+
+      - name: Build offline
+        run: npm run build:offline
 
       - name: Check
         run: npm run check
-
-  supply-chain:
-    name: Dependency audit
-    runs-on: ${{ ((github.event_name == 'pull_request') && (github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Audit production dependencies
-        run: node scripts/npm-audit.mjs
 
   mcp-conformance:
     name: MCP conformance
-    runs-on: ${{ ((github.event_name == 'pull_request') && (github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    needs: [policy, prepare]
+    if: needs.policy.outputs.fork_pr != 'true' && needs.policy.result == 'success' && needs.prepare.result == 'success'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
         with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          model-data: 'true'
 
       - name: MCP conformance
         run: npm run test:mcp-conformance
+
+  supply-chain:
+    name: Supply chain and secrets
+    needs: policy
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Pin npm
+        run: |
+          if [ "$(npm --version)" != "${{ env.NPM_VERSION }}" ]; then
+            npm install --global "npm@${{ env.NPM_VERSION }}"
+          fi
+          npm --version
+
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Gitleaks
+        run: |
+          scan_dir="$(mktemp -d)"
+          trap 'rm -rf "$scan_dir"' EXIT
+          git archive HEAD | tar -x -C "$scan_dir"
+          docker run --rm -v "$scan_dir:/repo:ro" zricethezav/gitleaks:v8.28.0 detect --no-git --source /repo --config /repo/.gitleaks.toml --no-banner --redact
+
+      - name: npm audit
+        run: node scripts/npm-audit.mjs
+
+      - name: Verify npm registry signatures
+        run: npm audit signatures --omit=dev
+
+      - name: Trivy filesystem scan on main
+        if: github.event_name != 'pull_request'
+        run: docker run --rm -v "$PWD:/repo:ro" aquasec/trivy:0.68.2 fs --scanners vuln,secret,misconfig --skip-dirs /repo/node_modules --skip-dirs /repo/.git --exit-code 1 --severity HIGH,CRITICAL /repo
+
+  deep-gate:
+    name: Deep verification
+    needs: [policy, prepare, static, node-tests, bun-tests]
+    if: needs.policy.outputs.fork_pr != 'true' && needs.policy.outputs.deep_required == 'true' && needs.policy.result == 'success'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    timeout-minutes: 30
+    concurrency:
+      group: nyan-deep-gate
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Linux build dependencies on hosted runners
+        if: runner.environment == 'github-hosted'
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun-version: ${{ env.BUN_VERSION }}
+          bun: 'true'
+          model-data: 'true'
+
+      - name: Download build artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: nyan-dist-${{ github.sha }}
+
+      - name: Run critical recovery and package tests
+        run: |
+          npm run test:scripts
+          npm --workspace packages/ai test
+          npm --workspace packages/agent test
+          npm --workspace packages/durable test
+          npm --workspace packages/coding-agent test
+          npm --workspace packages/protocol test
+
+      - name: Run Bun critical parity tests
+        run: |
+          npm run test:bun -- ai
+          npm run test:bun -- agent
+          npm run test:bun -- durable
+          npm run test:bun -- coding-agent
+          npm run test:bun -- protocol
+
+      - name: Run deterministic protocol fuzz harness
+        env:
+          FUZZ_RUNS: '5000'
+          FUZZ_SEED: '20261017'
+        run: npm run test:fuzz:protocol
+
+      - name: Run protocol mutation testing
+        run: npm run test:mutation
+
+      - name: Upload deep-testing reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nyan-deep-testing-${{ github.sha }}
+          path: |
+            .artifacts/fuzz
+            .artifacts/stryker
+          if-no-files-found: ignore
+          retention-days: 7
+
+  gate:
+    name: Merge gate
+    needs: [policy, prepare, static, node-tests, bun-tests, windows-smoke, mcp-conformance, supply-chain, deep-gate]
+    if: always()
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Evaluate required results
+        env:
+          CI_GATE_RESULTS: >-
+            {"policy":"${{ needs.policy.result }}","prepare":"${{ needs.prepare.result }}","static":"${{ needs.static.result }}","node-tests":"${{ needs.node-tests.result }}","bun-tests":"${{ needs.bun-tests.result }}","windows-smoke":"${{ needs.windows-smoke.result }}","mcp-conformance":"${{ needs.mcp-conformance.result }}","supply-chain":"${{ needs.supply-chain.result }}","deep-gate":"${{ needs.deep-gate.result }}"}
+          CI_GATE_REQUIRED: ${{ needs.policy.outputs.fork_pr == 'true' && '["policy","supply-chain"]' || (needs.policy.outputs.deep_required == 'true' && '["policy","prepare","static","node-tests","bun-tests","windows-smoke","mcp-conformance","supply-chain","deep-gate"]' || '["policy","prepare","static","node-tests","bun-tests","windows-smoke","mcp-conformance","supply-chain"]') }}
+        run: node scripts/ci-gate.mjs
