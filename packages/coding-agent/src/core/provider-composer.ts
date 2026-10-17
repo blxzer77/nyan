@@ -103,6 +103,11 @@ export interface ProviderConfigInput {
 	headers?: Record<string, string>;
 	authHeader?: boolean;
 	oauth?: ExtensionOAuthConfig;
+	/**
+	 * The API key resolves requests (a stored key, the configured key) but is not offered as a login method. Only the provider
+	 * that sets it changes; every other provider keeps the API-key login it has.
+	 */
+	apiKeyResolveOnly?: boolean;
 	models?: ProviderModelConfig[];
 	refreshModels?(context: RefreshModelsContext): Promise<ProviderModelConfig[]>;
 }
@@ -423,18 +428,23 @@ function composeApiKeyAuth(
 	const inherited = base?.auth.apiKey;
 	const rawKey = configuredApiKey(config, extension);
 	const oauth = extension?.oauth ?? base?.auth.oauth;
-	// OAuth-only providers get no fabricated API-key login method.
-	if (!inherited && rawKey === undefined && oauth) return undefined;
+	const resolveOnly = extension?.apiKeyResolveOnly === true;
+	// OAuth-only providers get no fabricated API-key login method, unless their key only resolves requests.
+	if (!inherited && rawKey === undefined && oauth && !resolveOnly) return undefined;
 	const rawHeaders = configuredHeaders(config, extension);
 	const authHeader = extension?.authHeader ?? config?.authHeader ?? false;
 	return {
 		name: inherited?.name ?? "API key",
-		login:
-			inherited?.login ??
-			(async (interaction: AuthInteraction) => ({
-				type: "api_key",
-				key: await interaction.prompt({ type: "secret", message: "Enter API key" }),
-			})),
+		...(resolveOnly
+			? {}
+			: {
+					login:
+						inherited?.login ??
+						(async (interaction: AuthInteraction) => ({
+							type: "api_key",
+							key: await interaction.prompt({ type: "secret", message: "Enter API key" }),
+						})),
+				}),
 		check: async (input) => {
 			if (input.credential) {
 				if (inherited?.check) return inherited.check(input);

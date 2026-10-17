@@ -32,7 +32,6 @@ import {
 	DEFAULT_BASE_URL,
 	defaultBaseUrlInput,
 	firstNonEmpty,
-	hasStoredLogin,
 	isConfiguredDefaultModel,
 	loadConfigSafe,
 	loadConfiguredDefault,
@@ -676,7 +675,9 @@ export interface ProviderRegistrationOptions {
 }
 
 /** Build the `/login` handler set and the provider config. */
-export function buildProviderRegistration(options: ProviderRegistrationOptions): ProviderConfig {
+export function buildProviderRegistration(
+	options: ProviderRegistrationOptions,
+): ProviderConfig & { apiKeyResolveOnly: true } {
 	const { agentDir, providerId, providerName, baseUrlInput, apiKey, catalog } = options;
 	const endpoints = resolveEndpoints(baseUrlInput);
 	const defaultBaseUrl = firstNonEmpty(baseUrlInput, DEFAULT_BASE_URL)!;
@@ -684,6 +685,8 @@ export function buildProviderRegistration(options: ProviderRegistrationOptions):
 
 	return {
 		name: providerName,
+		// The key the model list is fetched with resolves requests only: a login's key is stored and resolved, never offered as an API-key login.
+		apiKeyResolveOnly: true,
 		baseUrl: endpoints.inferenceBaseUrl,
 		// The catalog maps every model to `openai-responses`, so this handler is not
 		// selected today. It stays wired so an explicit `openai-codex-responses`
@@ -835,8 +838,8 @@ export function buildProviderRegistration(options: ProviderRegistrationOptions):
 /** Register or replace the provider with the current catalog. */
 export function registerProvider(options: ProviderRegistrationOptions): void {
 	const { pi, providerId, catalog } = options;
-	const hasLogin = hasStoredLogin(options.agentDir, providerId);
-	const apiKey = hasLogin ? undefined : options.apiKey;
+	// The configured or ambient key stays registered even when a login is stored: the stored key resolves through the same method.
+	const apiKey = options.apiKey;
 	// Replace the previous registration so an older ambient key cannot linger.
 	pi.unregisterProvider(providerId);
 	pi.registerProvider(providerId, buildProviderRegistration({ ...options, apiKey }));

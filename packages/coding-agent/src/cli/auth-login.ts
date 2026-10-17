@@ -154,7 +154,8 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 		}
 
 		const hasOAuth = Boolean(provider.auth.oauth);
-		const hasApiKey = Boolean(provider.auth.apiKey);
+		// A key method without a login only resolves requests; it is not an API-key login.
+		const hasApiKey = Boolean(provider.auth.apiKey?.login);
 		if (!hasOAuth && !hasApiKey) {
 			throw new AuthCommandError(`Provider "${provider.name}" does not support login.`);
 		}

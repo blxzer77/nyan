@@ -5761,7 +5761,7 @@ export class InteractiveMode {
 					subscription,
 				});
 			}
-			if ((!authType || authType === "api_key") && provider.auth.apiKey) {
+			if ((!authType || authType === "api_key") && provider.auth.apiKey?.login) {
 				options.push({
 					id: provider.id,
 					name: provider.name,
