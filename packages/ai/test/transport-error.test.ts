@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { fauxAssistantMessage } from "../src/providers/faux.ts";
-import { isRetryableAssistantError } from "../src/utils/retry.ts";
+import { isCertificateErrorMessage, isRetryableAssistantError } from "../src/utils/retry.ts";
 import {
-	CERTIFICATE_ERROR_CODE_LIST,
 	certificateErrorCode,
 	errorMessageWithCertificateCode,
 	isConnectionError,
@@ -75,14 +73,30 @@ describe("transport error codes", () => {
 	});
 });
 
-describe("certificate code lists", () => {
-	it("agree between transport-error.ts and the copy in retry.ts", () => {
-		const retrySource = readFileSync(new URL("../src/utils/retry.ts", import.meta.url), "utf8");
-		const block = /const CERTIFICATE_CODES_IN_RETRY = \[([\s\S]*?)\];/.exec(retrySource)?.[1];
-		expect(block, "the copy in retry.ts is present").toBeDefined();
-		const inRetry = [...(block ?? "").matchAll(/"([A-Z0-9_]+)"/g)].map((m) => m[1]).sort();
-		expect(inRetry).toEqual([...CERTIFICATE_ERROR_CODE_LIST].sort());
+describe("certificate messages", () => {
+	it.each([
+		// Each phrase is the only one that matches its message, so removing either one fails a case.
+		[
+			"Node's host name text, the first phrase alone",
+			"fetch failed: Hostname/IP does not match certificate's altnames",
+		],
+		[
+			"Node's host name text, the second phrase alone",
+			"fetch failed: Host: localhost. is not in the cert's altnames: DNS:other.test",
+		],
+		["Bun's self-signed text", "self signed certificate"],
+		["a code in the text", "fetch failed (DEPTH_ZERO_SELF_SIGNED_CERT)"],
+		["expired", "certificate has expired"],
+	])("names a certificate failure: %s", (_label, message) => {
+		expect(isCertificateErrorMessage(message)).toBe(true);
 	});
+
+	it.each(["connect ECONNREFUSED 127.0.0.1:443", "certificate pinning is enabled for this account", "fetch failed"])(
+		"does not name a certificate failure in: %s",
+		(message) => {
+			expect(isCertificateErrorMessage(message)).toBe(false);
+		},
+	);
 });
 
 describe("connection and certificate codes", () => {
@@ -161,6 +175,10 @@ describe("retry classification of transport failures", () => {
 		["Node: self-signed leaf with the code", "fetch failed (DEPTH_ZERO_SELF_SIGNED_CERT)"],
 		["Node: unknown issuer", "fetch failed (UNABLE_TO_GET_ISSUER_CERT_LOCALLY)"],
 		["Node: host name mismatch", "fetch failed (ERR_TLS_CERT_ALTNAME_INVALID)"],
+		[
+			"Node: host name mismatch, stored as text without the code",
+			"fetch failed: Hostname/IP does not match certificate's altnames: Host: localhost. is not in the cert's altnames: DNS:other.test",
+		],
 		["Bun: self-signed, code only in the message", "self signed certificate"],
 		[
 			"Bun: host name mismatch, code in the message",

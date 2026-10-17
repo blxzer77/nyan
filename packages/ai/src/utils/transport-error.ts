@@ -7,8 +7,11 @@
  * `APIConnectionError("Connection error.")` with the fetch error as its cause. The code is therefore looked up on the
  * error and then down its cause chain.
  *
- * This module imports nothing, so it can sit in the browser-safe `utils` layer.
+ * The certificate code list is owned by `retry.ts`, where the message classifier that needs it also lives. This module
+ * imports that list and nothing else. `retry.ts` must not import this module: durable's entry graph has a fixed budget
+ * (`scripts/check-entry-graphs.mjs`), and that import would add a file to it.
  */
+import { CERTIFICATE_ERROR_CODE_LIST } from "./retry.ts";
 
 const MAX_CAUSE_DEPTH = 6;
 
@@ -56,38 +59,6 @@ export function transportErrorCode(error: unknown): string | undefined {
 	return transportErrorCodes(error)[0];
 }
 
-/**
- * Certificate and host-name verification failures. These are the OpenSSL verification names Node and Bun both report,
- * plus Node's host-name check. Retrying cannot fix any of them: the server or the local trust store has to change.
- */
-export const CERTIFICATE_ERROR_CODE_LIST: readonly string[] = [
-	"UNABLE_TO_GET_ISSUER_CERT",
-	"UNABLE_TO_GET_CRL",
-	"UNABLE_TO_DECRYPT_CERT_SIGNATURE",
-	"UNABLE_TO_DECRYPT_CRL_SIGNATURE",
-	"UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY",
-	"CERT_SIGNATURE_FAILURE",
-	"CRL_SIGNATURE_FAILURE",
-	"CERT_NOT_YET_VALID",
-	"CERT_HAS_EXPIRED",
-	"CRL_NOT_YET_VALID",
-	"CRL_HAS_EXPIRED",
-	"ERROR_IN_CERT_NOT_BEFORE_FIELD",
-	"ERROR_IN_CERT_NOT_AFTER_FIELD",
-	"DEPTH_ZERO_SELF_SIGNED_CERT",
-	"SELF_SIGNED_CERT_IN_CHAIN",
-	"UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
-	"UNABLE_TO_VERIFY_LEAF_SIGNATURE",
-	"CERT_CHAIN_TOO_LONG",
-	"CERT_REVOKED",
-	"INVALID_CA",
-	"PATH_LENGTH_EXCEEDED",
-	"INVALID_PURPOSE",
-	"CERT_UNTRUSTED",
-	"CERT_REJECTED",
-	"HOSTNAME_MISMATCH",
-	"ERR_TLS_CERT_ALTNAME_INVALID",
-];
 const CERTIFICATE_ERROR_CODES: ReadonlySet<string> = new Set(CERTIFICATE_ERROR_CODE_LIST);
 
 export function isCertificateErrorCode(code: string): boolean {

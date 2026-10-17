@@ -4,13 +4,11 @@ function buildProviderErrorPattern(patterns: readonly string[]): RegExp {
 	return new RegExp(patterns.join("|"), "i");
 }
 
-// Certificate and host-name verification failures. A retry sends the same request to the same server and gets the same
-// answer, so these are not retried on either runtime. The codes are the ones `transportErrorCodes()` reads from the
-// error. The list is copied from `transport-error.ts`, which is the single authority; the test `transport-error.test.ts`
-// fails if the two differ. It is copied because a runtime import here would add a file to durable's entry graph, and
-// that graph has a fixed budget (`scripts/check-entry-graphs.mjs`). The phrases cover messages that Bun writes without
-// the code, and messages that were stored as text.
-const CERTIFICATE_CODES_IN_RETRY = [
+/**
+ * Certificate and host-name verification failures. These are the OpenSSL verification names Node and Bun both report,
+ * plus Node's host-name check. Retrying cannot fix any of them: the server or the local trust store has to change.
+ */
+export const CERTIFICATE_ERROR_CODE_LIST: readonly string[] = [
 	"UNABLE_TO_GET_ISSUER_CERT",
 	"UNABLE_TO_GET_CRL",
 	"UNABLE_TO_DECRYPT_CERT_SIGNATURE",
@@ -38,15 +36,33 @@ const CERTIFICATE_CODES_IN_RETRY = [
 	"HOSTNAME_MISMATCH",
 	"ERR_TLS_CERT_ALTNAME_INVALID",
 ];
-const NON_RETRYABLE_CERTIFICATE_ERROR_PATTERN = buildProviderErrorPattern([
-	...CERTIFICATE_CODES_IN_RETRY.map((code) => `\\b${code}\\b`),
-	"self.?signed certificate",
-	"unable to verify the first certificate",
-	"certificate (?:has )?expired",
-	"certificate is not yet valid",
-	"certificate verify failed",
-	"altnames?\\b.*(?:invalid|not match)",
-]);
+
+/**
+ * Phrases that name a certificate failure in a message. They cover what is stored as text (an assistant message's
+ * `errorMessage`) and what Bun writes without a code. Node's host-name text is "Hostname/IP does not match certificate's
+ * altnames: ..."; the code `ERR_TLS_CERT_ALTNAME_INVALID` is matched by the code list below.
+ */
+const CERTIFICATE_MESSAGE_PATTERN = new RegExp(
+	[
+		...CERTIFICATE_ERROR_CODE_LIST.map((code) => `\\b${code}\\b`),
+		"self.?signed certificate",
+		"unable to verify the first certificate",
+		"certificate (?:has )?expired",
+		"certificate is not yet valid",
+		"certificate verify failed",
+		"does not match certificate",
+		"not in the cert'?s altnames",
+	].join("|"),
+	"i",
+);
+
+/**
+ * True when a message names a certificate or host-name failure. Used where only text is left: a message stored as text,
+ * or a cause whose code is missing. A certificate failure is not retried on either runtime.
+ */
+export function isCertificateErrorMessage(message: string): boolean {
+	return CERTIFICATE_MESSAGE_PATTERN.test(message);
+}
 
 const NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN = buildProviderErrorPattern([
 	// OpenCode Go/free-tier limits returned as 429 JSON error types by OpenCode's
@@ -301,7 +317,7 @@ export async function retryAssistantCall(
 export function isRetryableAssistantError(message: AssistantMessage): boolean {
 	if (message.stopReason !== "error" || !message.errorMessage) return false;
 	const errorMessage = message.errorMessage;
-	if (NON_RETRYABLE_CERTIFICATE_ERROR_PATTERN.test(errorMessage)) return false;
+	if (isCertificateErrorMessage(errorMessage)) return false;
 	if (NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN.test(errorMessage)) return false;
 	return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
 }

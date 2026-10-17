@@ -13,6 +13,20 @@ describe("provider request retries", () => {
 		vi.useRealTimers();
 	});
 
+	it("does not retry a certificate failure whose cause has only the message (Bun's text)", async () => {
+		// Bun writes the reason as text and no code exists to read.
+		const fetchFailure = new TypeError("self signed certificate");
+		const sdkError = Object.assign(new Error("Connection error."), {
+			status: undefined,
+			headers: undefined,
+			cause: fetchFailure,
+		});
+		const request = vi.fn<() => Promise<string>>().mockRejectedValue(sdkError);
+
+		await expect(retryProviderRequest(request, { maxRetries: 2 })).rejects.toBe(sdkError);
+		expect(request).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not retry a certificate failure, even though an SDK connection error has no status", async () => {
 		// The SDK wraps the fetch failure as `Connection error.`; the certificate code is on its cause.
 		const fetchFailure = Object.assign(new TypeError("fetch failed"), {
