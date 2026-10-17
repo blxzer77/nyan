@@ -325,6 +325,8 @@ Login asks its questions on a terminal, and stops with instructions when stdin i
 
 A login is verified where the provider can list its own models, because that listing authenticates with the credential just stored. A credential the provider rejects is reported as a failure, with the reason, instead of being announced as a successful login. A provider with no such check is reported as stored but unverified: the only way to exercise it is an inference request, which spends tokens, so `nyan login` does not make one. `nyan auth check` reports readiness for any provider.
 
+A login exits with status 0 once the credential is stored, even when it was not verified. A zero status means the credential was saved, not that it works. The last line the login prints decides: `Verified:` or `accepted the credential` means the provider confirmed it, and `was not verified` means it did not. A script that needs proof must read that line.
+
 ## MCP commands
 
 These commands work outside a session, so agents can run them through `bash`. See [MCP Servers](mcp.md).

@@ -218,7 +218,7 @@ To use a service-account key file instead, set `GOOGLE_APPLICATION_CREDENTIALS` 
 
 CLIProxyAPI connects Nyan to a local or remote [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) server. It dynamically fetches models via `/v1/models?client_version=pi`, serves every model in the proxy's catalog over HTTP/SSE through `/backend-api/codex` (the catalog's `prefer_websockets` flag only describes the proxy's own upstream transport), and supports model overrides, Fast mode (`/fast`), request pausing (`/pause`, `/continue`), and exact throughput tracking (`/cpa-usage`).
 
-Authenticate interactively with `/login CLIProxyAPI` (or via CLI `nyan login cliproxyapi` / `nyan auth login --provider cliproxyapi`), enter the base URL (defaults to `http://127.0.0.1:8317`), and enter your proxy API key. Login checks the key against the proxy's model list before it reports success.
+Authenticate interactively with `/login CLIProxyAPI` (or via CLI `nyan login cliproxyapi` / `nyan auth login --provider cliproxyapi`), enter the base URL (defaults to `http://127.0.0.1:8317`), and enter your proxy API key. Login checks the key against the proxy's model list before it reports success. Its exit status is 0 once the key is stored, even when the proxy could not be reached to check it, so read the line it prints: `Verified:` or `accepted the credential` means the key was checked, and `was not verified` means it was not.
 
 Do not pass `--method` for CLIProxyAPI. `--method api_key` is refused unless a key is already configured, and a key that method stores is not yet used for requests (they fail with `Provider is not configured`). The login without `--method` is the one that works.
 
