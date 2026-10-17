@@ -86,7 +86,7 @@ jobs:
 
       - name: Install Linux build dependencies on hosted runners
         if: runner.environment == 'github-hosted'
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+        run: bash .github/scripts/apt-install.sh libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -123,7 +123,7 @@ jobs:
 
       - name: Install Linux build dependencies on hosted runners
         if: runner.environment == 'github-hosted'
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+        run: bash .github/scripts/apt-install.sh libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -157,7 +157,7 @@ jobs:
 
       - name: Install Linux build dependencies on hosted runners
         if: runner.environment == 'github-hosted'
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+        run: bash .github/scripts/apt-install.sh libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -196,7 +196,7 @@ jobs:
 
       - name: Install Linux build dependencies on hosted runners
         if: runner.environment == 'github-hosted'
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+        run: bash .github/scripts/apt-install.sh libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -336,7 +336,7 @@ jobs:
 
       - name: Install Linux build dependencies on hosted runners
         if: runner.environment == 'github-hosted'
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+        run: bash .github/scripts/apt-install.sh libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
