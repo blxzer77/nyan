@@ -22,6 +22,7 @@ import { getNyanUserAgent } from "../utils/nyan-user-agent.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
 import { getCurrentTools, resolveTranscript } from "../utils/transcript.ts";
+import { errorMessageWithCertificateCode } from "../utils/transport-error.ts";
 import { getJsonSchemaToolParameters, resolveJsonSchemaStrictSampling } from "./constrained-sampling.ts";
 import { buildBaseOptions } from "./simple-options.ts";
 import { transformMessages } from "./transform-messages.ts";
@@ -275,8 +276,9 @@ function formatMistralError(error: unknown): string {
 		if (statusCode !== undefined && bodyText) {
 			return `Mistral API error (${statusCode}): ${truncateErrorText(bodyText, MAX_MISTRAL_ERROR_BODY_CHARS)}`;
 		}
-		if (statusCode !== undefined) return `Mistral API error (${statusCode}): ${error.message}`;
-		return error.message;
+		if (statusCode !== undefined)
+			return `Mistral API error (${statusCode}): ${errorMessageWithCertificateCode(error)}`;
+		return errorMessageWithCertificateCode(error);
 	}
 	return safeJsonStringify(error);
 }

@@ -16,6 +16,7 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 - The default interactive and text print session paths now use the durable Harness and SQLite under `~/.nyan/agent/sessions-durable/`; `--continue` resumes the newest durable session for the current directory. Eligible `--mode json` and `--mode rpc` invocations now use durable storage and recovery. Legacy JSONL sessions selected through compatibility flags are opened read-only, so their source files are never migrated or appended to.
 - `nyan login` and `nyan auth login` ask their questions on a terminal only. With piped or absent stdin they stop with instructions instead of waiting for input that cannot arrive.
 - The `@ny4n/ai` development CLI (`npx @ny4n/ai login`) trims a typed answer, asks again when a choice is not one of the offered numbers instead of exiting with `Invalid selection`, and refuses an empty answer to a prompt that requires one.
+- A request that fails certificate or host-name verification (an untrusted or self-signed certificate, an expired certificate, a certificate for another host name) is no longer retried, on Node and Bun alike. Node used to retry these failures, which repeated the same request with the same certificate. The error now names the certificate code in its message, for example `fetch failed (DEPTH_ZERO_SELF_SIGNED_CERT)`. To trust a private certificate authority, set `NODE_EXTRA_CA_CERTS` as before.
 
 ### Fixed
 

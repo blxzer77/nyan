@@ -4,6 +4,50 @@ function buildProviderErrorPattern(patterns: readonly string[]): RegExp {
 	return new RegExp(patterns.join("|"), "i");
 }
 
+// Certificate and host-name verification failures. A retry sends the same request to the same server and gets the same
+// answer, so these are not retried on either runtime. The codes are the ones `transportErrorCodes()` reads from the
+// error. The list is copied from `transport-error.ts`, which is the single authority; the test `transport-error.test.ts`
+// fails if the two differ. It is copied because a runtime import here would add a file to durable's entry graph, and
+// that graph has a fixed budget (`scripts/check-entry-graphs.mjs`). The phrases cover messages that Bun writes without
+// the code, and messages that were stored as text.
+const CERTIFICATE_CODES_IN_RETRY = [
+	"UNABLE_TO_GET_ISSUER_CERT",
+	"UNABLE_TO_GET_CRL",
+	"UNABLE_TO_DECRYPT_CERT_SIGNATURE",
+	"UNABLE_TO_DECRYPT_CRL_SIGNATURE",
+	"UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY",
+	"CERT_SIGNATURE_FAILURE",
+	"CRL_SIGNATURE_FAILURE",
+	"CERT_NOT_YET_VALID",
+	"CERT_HAS_EXPIRED",
+	"CRL_NOT_YET_VALID",
+	"CRL_HAS_EXPIRED",
+	"ERROR_IN_CERT_NOT_BEFORE_FIELD",
+	"ERROR_IN_CERT_NOT_AFTER_FIELD",
+	"DEPTH_ZERO_SELF_SIGNED_CERT",
+	"SELF_SIGNED_CERT_IN_CHAIN",
+	"UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+	"UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+	"CERT_CHAIN_TOO_LONG",
+	"CERT_REVOKED",
+	"INVALID_CA",
+	"PATH_LENGTH_EXCEEDED",
+	"INVALID_PURPOSE",
+	"CERT_UNTRUSTED",
+	"CERT_REJECTED",
+	"HOSTNAME_MISMATCH",
+	"ERR_TLS_CERT_ALTNAME_INVALID",
+];
+const NON_RETRYABLE_CERTIFICATE_ERROR_PATTERN = buildProviderErrorPattern([
+	...CERTIFICATE_CODES_IN_RETRY.map((code) => `\\b${code}\\b`),
+	"self.?signed certificate",
+	"unable to verify the first certificate",
+	"certificate (?:has )?expired",
+	"certificate is not yet valid",
+	"certificate verify failed",
+	"altnames?\\b.*(?:invalid|not match)",
+]);
+
 const NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN = buildProviderErrorPattern([
 	// OpenCode Go/free-tier limits returned as 429 JSON error types by OpenCode's
 	// Zen API. These are subscription/account limits, not transient throttles.
@@ -69,6 +113,10 @@ const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
 	"reset before headers",
 	"socket hang up",
 	"socket connection was closed",
+	// Bun's native fetch reports a refused connection with its code in the message (Node reports "fetch failed"
+	// and keeps the code on the cause, which the text patterns above already cover).
+	"ECONNREFUSED",
+	"unable to connect",
 	"timed? out",
 	"timeout",
 	"terminated",
@@ -253,6 +301,7 @@ export async function retryAssistantCall(
 export function isRetryableAssistantError(message: AssistantMessage): boolean {
 	if (message.stopReason !== "error" || !message.errorMessage) return false;
 	const errorMessage = message.errorMessage;
+	if (NON_RETRYABLE_CERTIFICATE_ERROR_PATTERN.test(errorMessage)) return false;
 	if (NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN.test(errorMessage)) return false;
 	return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
 }
