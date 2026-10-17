@@ -23,8 +23,9 @@ describe("loadEntriesFromFile", () => {
 	let tempDir: string;
 
 	beforeEach(() => {
-		tempDir = join(tmpdir(), `session-test-${Date.now()}`);
-		mkdirSync(tempDir, { recursive: true });
+		// mkdtempSync guarantees a unique directory. A shared `Date.now()` name collides when two suites
+		// start in the same millisecond, and one suite's cleanup then deletes the other's directory.
+		tempDir = mkdtempSync(join(tmpdir(), "session-test-"));
 	});
 
 	afterEach(() => {
@@ -193,8 +194,7 @@ describe("findMostRecentSession", () => {
 	let tempDir: string;
 
 	beforeEach(() => {
-		tempDir = join(tmpdir(), `session-test-${Date.now()}`);
-		mkdirSync(tempDir, { recursive: true });
+		tempDir = mkdtempSync(join(tmpdir(), "session-test-"));
 	});
 
 	afterEach(() => {
@@ -285,7 +285,7 @@ describe("SessionManager custom flat session directory", () => {
 	let projectB: string;
 
 	beforeEach(() => {
-		tempDir = join(tmpdir(), `session-test-${Date.now()}`);
+		tempDir = mkdtempSync(join(tmpdir(), "session-test-"));
 		projectA = join(tempDir, "project-a");
 		projectB = join(tempDir, "project-b");
 		mkdirSync(projectA, { recursive: true });
@@ -359,8 +359,7 @@ describe("SessionManager.setSessionFile with corrupted files", () => {
 	let tempDir: string;
 
 	beforeEach(() => {
-		tempDir = join(tmpdir(), `session-test-${Date.now()}`);
-		mkdirSync(tempDir, { recursive: true });
+		tempDir = mkdtempSync(join(tmpdir(), "session-test-"));
 	});
 
 	afterEach(() => {

@@ -317,9 +317,25 @@ jobs:
       - name: Verify npm registry signatures
         run: npm audit signatures --omit=dev
 
-      - name: Trivy filesystem scan on main
-        if: github.event_name != 'pull_request'
-        run: docker run --rm -v "$PWD:/repo:ro" aquasec/trivy:0.68.2 fs --scanners vuln,secret,misconfig --skip-dirs /repo/node_modules --skip-dirs /repo/.git --exit-code 1 --severity HIGH,CRITICAL /repo
+      - name: Trivy filesystem scan
+        # Runs on pull requests too, so a dependency with a known vulnerability is caught before
+        # it reaches main rather than by the push build afterwards. Pull requests block only on
+        # CRITICAL so a HIGH disclosed in the vulnerability database overnight does not turn
+        # every open pull request red; main and the nightly scan block on HIGH as well.
+        #
+        # Examples ship their own stale `package-lock.json` (still pinned at 1.1.0 while the
+        # package is at 1.3.0) that never takes part in the build; scanning them reports
+        # vulnerabilities in dependency trees nothing here installs. The build uses the root
+        # lockfile, which is scanned. `.trivyignore.yaml` carries the accepted risks.
+        run: >-
+          docker run --rm -v "$PWD:/repo:ro" aquasec/trivy:0.68.2 fs
+          --scanners vuln,secret,misconfig
+          --skip-dirs /repo/node_modules --skip-dirs /repo/.git
+          --skip-files '/repo/packages/coding-agent/examples/**/package-lock.json'
+          --ignorefile /repo/.trivyignore.yaml
+          --exit-code 1
+          --severity ${{ github.event_name == 'pull_request' && 'CRITICAL' || 'HIGH,CRITICAL' }}
+          /repo
 
   deep-gate:
     name: Deep verification
