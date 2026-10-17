@@ -301,6 +301,8 @@ describe("login verifies the stored credential", () => {
 		const { output } = await loginWithInput([], factory);
 		expect(output).toContain("Logged in to Test Provider. The credential is stored and was not verified");
 		expect(output).not.toContain("Verified:");
+		// A provider that reports no verdict gets no retry advice: retrying would not change its answer.
+		expect(output).not.toContain("again once the provider is reachable");
 	});
 
 	it("does not call a verification that threw without a verdict rejected", async () => {

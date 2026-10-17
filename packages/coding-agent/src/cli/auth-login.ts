@@ -287,14 +287,18 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 		// The provider's verdict is the discriminant; the error text is only for display.
 		const verdict = refreshed.verdicts?.get(provider.id) ?? "unavailable";
 		const failure = refreshed.errors.get(provider.id);
-		if (verdict === "unavailable") {
-			// No answer is not a refusal: the credential is kept, and the login says it was not verified.
-			const detail = failure?.message ?? "the provider gave no usable answer";
-			write(chalk.yellow(`Logged in to ${provider.name}. The credential is stored and was not verified: ${detail}`));
+		// Only the provider's own `verified` verdict proves the credential, so anything else that is not a refusal ends here
+		// as not verified. A failed check says why and when to retry; a provider that reports no verdict gets no retry
+		// advice, because retrying would not change its answer.
+		if (verdict !== "verified" && verdict !== "rejected") {
+			const reason = failure?.message ?? "the provider did not confirm the credential";
+			write(chalk.yellow(`Logged in to ${provider.name}. The credential is stored and was not verified: ${reason}`));
 			if (replacedStored) {
 				write(chalk.yellow(REPLACED_CREDENTIAL_NOTICE));
 			}
-			write(chalk.dim(`Run ${APP_NAME} login ${provider.id} again once the provider is reachable to verify it.`));
+			if (failure) {
+				write(chalk.dim(`Run ${APP_NAME} login ${provider.id} again once the provider is reachable to verify it.`));
+			}
 			return;
 		}
 		if (verdict === "rejected") {

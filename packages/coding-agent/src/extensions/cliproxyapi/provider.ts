@@ -363,7 +363,7 @@ export class CatalogController {
 	 * because the proxy hiccuped, and it throws only for what it cannot read (as it always has). A verification never
 	 * rejects: its failure is recorded in `getLastFailure()`, which is the answer the login reports.
 	 */
-	async refresh(options: CatalogRefreshOptions): Promise<CatalogSnapshot> {
+	async refresh(options: CatalogRefreshOptions): Promise<CatalogSnapshot & { verificationFailure?: CatalogFailure }> {
 		// An ordinary refresh may share an ordinary refresh already in flight, as it did before login verification. A
 		// verification never shares a result: it waits for whatever is in flight and then fetches with its own key. The
 		// throttle in `shouldFetch` still lets concurrent ordinary callers share one request.
@@ -372,6 +372,8 @@ export class CatalogController {
 			await this.inFlight;
 			return this.getSnapshot();
 		}
+		// The verification's own outcome, captured inside its task: the shared `lastFailure` is only read for display.
+		let verificationFailure: CatalogFailure | undefined;
 		const previous = this.inFlight;
 		const task: Promise<void> = (async () => {
 			await previous?.catch(() => {});
@@ -385,6 +387,7 @@ export class CatalogController {
 				this.lastError = errorMessage(error);
 				this.lastFailure = classifyFailure(error);
 			}
+			verificationFailure = this.lastFailure;
 		})();
 		this.inFlight = task;
 		this.inFlightVerifying = verifying;
@@ -396,7 +399,7 @@ export class CatalogController {
 				this.inFlightVerifying = false;
 			}
 		}
-		return this.getSnapshot();
+		return { ...this.getSnapshot(), ...(verifying ? { verificationFailure } : {}) };
 	}
 
 	private async runRefresh(options: CatalogRefreshOptions): Promise<void> {
@@ -651,13 +654,13 @@ export function buildProviderRegistration(options: ProviderRegistrationOptions):
 				throw new Error("the stored login has no key to verify");
 			}
 			warnIfKeyOverridden(agentDir, providerId, entered, credential.type);
-			await catalog.refresh({
+			const verification = await catalog.refresh({
 				allowNetwork: true,
 				force: true,
 				signal: ctx.signal,
 				verification: { apiKey: entered },
 			});
-			const failure = catalog.getLastFailure();
+			const failure = verification.verificationFailure;
 			if (failure && !ctx.signal.aborted) {
 				ctx.reportCredentialVerdict?.(failure.reason);
 				throw new Error(failure.message);
