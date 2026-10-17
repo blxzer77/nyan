@@ -77,9 +77,9 @@ export interface ModelsPublication {
 
 /**
  * The outcome of a login's verification refresh. A stable discriminant: consumers dispatch on this value, not on the
- * error object. `verified`: the provider confirmed that it authenticated with the credential. `rejected`: the provider
- * refused it, or there was no credential to verify. `unavailable`: anything else, including a refresh that completed
- * without a verdict, so a silent provider never verifies a credential.
+ * error object. `verified`: the refresh completed and the provider did not refuse the credential, or it said so itself.
+ * `rejected`: the provider refused it, or there was no credential to verify. `unavailable`: the refresh was skipped or
+ * superseded, or it threw without a verdict.
  */
 type CredentialVerdict = "verified" | "rejected" | "unavailable";
 
@@ -590,6 +590,7 @@ class ModelsImpl implements MutableModels {
 			refreshable.map(async (provider) => {
 				const { generation, controller } = this.beginProviderRefresh(provider.id);
 				const signal = AbortSignal.any([callerSignal, controller.signal]);
+				let reachedProvider = false;
 				const operation = (async () => {
 					let storedCredential: Credential | undefined;
 					let credentialError: unknown;
@@ -625,6 +626,7 @@ class ModelsImpl implements MutableModels {
 						? { report: (verdict: CredentialVerdict) => verdicts.set(provider.id, verdict) }
 						: undefined;
 					// A verification always fetches: a provider's freshness check must not let it skip the network.
+					reachedProvider = true;
 					await this.runProviderRefreshPhase(
 						provider,
 						credential,
@@ -652,10 +654,11 @@ class ModelsImpl implements MutableModels {
 						this.refreshControllers.delete(provider.id);
 					}
 				}
-				// A verification ends in a verdict for every provider. Only the provider's own verdict proves the credential, so a
-				// refresh that was skipped, superseded, or completed in silence (or threw without a verdict) is unavailable.
+				// A verification ends in a verdict for every provider. A refresh that completed without a refusal is verified; one
+				// that threw, or was skipped or superseded, gave no usable answer and is unavailable.
 				if (verifying && !verdicts.has(provider.id)) {
-					verdicts.set(provider.id, "unavailable");
+					const completed = reachedProvider && !signal.aborted && !errors.has(provider.id);
+					verdicts.set(provider.id, completed ? "verified" : "unavailable");
 				}
 			}),
 		);

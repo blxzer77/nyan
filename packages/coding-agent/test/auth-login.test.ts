@@ -293,16 +293,16 @@ describe("login verifies the stored credential", () => {
 		expect(output).not.toContain("Verified:");
 	});
 
-	it("does not count a provider that completes without reporting a verdict as verified", async () => {
+	it("a provider that completes without reporting a verdict is verified, as a refresh that completes always was", async () => {
 		const factory = oauthFactory(loggedIn, async (context) => {
 			if (!context.verifyCredential) return [];
 			return [];
 		});
 		const { output } = await loginWithInput([], factory);
-		expect(output).toContain("Logged in to Test Provider. The credential is stored and was not verified");
-		expect(output).not.toContain("Verified:");
-		// A provider that reports no verdict gets no retry advice: retrying would not change its answer.
-		expect(output).not.toContain("again once the provider is reachable");
+		expect(output).toContain(
+			"Logged in to Test Provider. The provider accepted the credential, but lists no models.",
+		);
+		expect(output).not.toContain("was not verified");
 	});
 
 	it("does not call a verification that threw without a verdict rejected", async () => {

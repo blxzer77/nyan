@@ -335,13 +335,13 @@ describe("Models runtime", () => {
 		expect(result.verdicts?.size).toBe(0);
 	});
 
-	it("a verification whose provider completes in silence is unavailable, never verified", async () => {
+	it("a verification whose provider completes without a refusal is verified", async () => {
 		const models = createModels();
 		models.setProvider(testProvider({ id: "silent", refreshModels: async () => {} }));
 
 		const result = await models.refresh({ providers: ["silent"], verifyCredential: true });
 
-		expect(result.verdicts?.get("silent")).toBe("unavailable");
+		expect(result.verdicts?.get("silent")).toBe("verified");
 		expect(result.errors.size).toBe(0);
 	});
 
