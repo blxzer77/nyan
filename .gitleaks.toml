@@ -1,0 +1,14 @@
+[allowlist]
+description = "Reviewed schema identifiers in Pactile reference fixtures are not credentials."
+regexTarget = "match"
+regexes = [
+  '''__pactileRunLedgerV1''',
+  '''effect-orphan-1'''
+]
+paths = [
+  '''^references/pactile-context-governance/source/pactile/runtime/run-ledger\.ts\.txt$''',
+  '''^references/pactile-context-governance/tests/pactile/runtime/run-ledger\.test\.ts\.txt$''',
+  '''(^|/)node_modules/''',
+  '''(^|/)dist/''',
+  '''^\.git/'''
+]

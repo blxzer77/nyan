@@ -1,0 +1,145 @@
+name: Nyan nightly deep verification
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nyan-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '24'
+  BUN_VERSION: '1.4.2'
+  NYAN_OFFLINE: '1'
+
+jobs:
+  node-full:
+    name: Full Node suite
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 30
+    concurrency:
+      group: nyan-nightly-node
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          model-data: 'true'
+
+      - name: Full build
+        run: npm run build:offline
+
+      - name: Full Node suite
+        run: npm test
+
+  bun-full:
+    name: Full Bun suite
+    needs: node-full
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 30
+    concurrency:
+      group: nyan-nightly-bun
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun-version: ${{ env.BUN_VERSION }}
+          bun: 'true'
+          model-data: 'true'
+
+      - name: Full build
+        run: npm run build:offline
+
+      - name: Full Bun suite
+        run: npm run test:bun
+
+      - name: Durable retention suite under Bun
+        env:
+          NYAN_DURABLE_DOCUMENT_RETENTION_MS: '0'
+        run: npm run test:bun -- durable
+
+  recovery:
+    name: Durable and protocol deep checks
+    needs: node-full
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 30
+    concurrency:
+      group: nyan-nightly-heavy
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'true'
+          model-data: 'true'
+
+      - name: Build offline
+        run: npm run build:offline
+
+      - name: Recovery and protocol suites
+        run: |
+          npm run test:scripts
+          npm --workspace packages/durable test
+          npm --workspace packages/agent test
+          npm --workspace packages/coding-agent test
+          npm --workspace packages/protocol test
+          npm --workspace packages/server test
+          npm --workspace packages/client test
+
+  fuzz-and-mutation:
+    name: Protocol fuzz and mutation testing
+    needs: recovery
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 30
+    concurrency:
+      group: nyan-nightly-mutation
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          model-data: 'true'
+
+      - name: Run deterministic protocol fuzz harness
+        env:
+          FUZZ_RUNS: '10000'
+          FUZZ_SEED: '20261017'
+        run: npm run test:fuzz:protocol
+
+      - name: Run protocol mutation testing
+        run: npm run test:mutation
+
+      - name: Upload deep-testing reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nyan-nightly-deep-testing-${{ github.sha }}
+          path: |
+            .artifacts/fuzz
+            .artifacts/stryker
+          if-no-files-found: ignore
+          retention-days: 14
