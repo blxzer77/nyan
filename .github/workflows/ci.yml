@@ -156,9 +156,9 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      # Peak live test jobs: 8 here and 4 under Bun, plus static, mcp, windows, deep and gate. That is 17 against the
-      # measured limit of 20.
-      max-parallel: 8
+      # Both matrices together can exceed the measured limit of 20 live jobs; GitHub then queues the rest, which is
+      # safe. These values are the width the matrices are allowed, not a promise that all of them run at once.
+      max-parallel: 12
       matrix:
         include: ${{ fromJSON(needs.policy.outputs.node_shards) }}
     steps:
@@ -214,7 +214,7 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 8
       matrix:
         include: ${{ fromJSON(needs.policy.outputs.bun_shards) }}
     steps:
