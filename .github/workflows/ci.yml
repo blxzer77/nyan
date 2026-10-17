@@ -1,18 +1,12 @@
 name: Nyan quality gate
 
-# Pull-request work runs on GitHub-hosted runners only. The account allows 20 concurrent
-# jobs (measured with the 40-job probe in the note), which absorbs the 14-way test fan-out.
+# Pull-request work runs on GitHub-hosted runners only. The account allows 20 concurrent jobs (measured with a 40-job
+# probe), which absorbs the test fan-out. Self-hosted runners are absent here on purpose: their six slots are shared by
+# every open pull request, and a job queued behind other sessions' work costs more than the work itself.
 #
-# Self-hosted runners are deliberately absent here. They are a fixed pool of six slots on a
-# 6-vCPU host that every open pull request shares: with two other pull requests open, the
-# first run of this pipeline made `prepare` queue 260 s for a slot, and three self-hosted jobs
-# ran strictly one after another. With `prepare` at the head of the critical path that single
-# wait was larger than the entire test phase it feeds. The heavy, non-urgent work — nightly
-# suites and the release build — runs on that host instead, where queueing cannot delay a
-# pull request.
-#
-# Because no pull-request job touches self-hosted, a fork pull request runs the same jobs as
-# an internal one, so there is no fork-specific guard or runner selection left to maintain.
+# Shape: policy selects packages and expands the large suites into shards; prepare installs and builds once and packs
+# the workspace; every test job unpacks that archive instead of installing again. A fork pull request runs the same
+# jobs as an internal one, because no job here needs a credential or a self-hosted host.
 
 on:
   push:
@@ -39,16 +33,15 @@ env:
 jobs:
   policy:
     name: Policy and impact
-    # Runs only scripts/ci-impact.mjs, which imports Node built-ins alone, so it needs no
-    # install. Workflow validation moved to `static`, which already has node_modules and runs
-    # the same script through `npm run check`. This job gates every other job, so its latency
-    # is on the critical path.
+    # Imports Node built-ins only (ci-impact.mjs, ci-shards.mjs), so it needs no install.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       full_suite: ${{ steps.impact.outputs.full_suite }}
       node_packages: ${{ steps.impact.outputs.node_packages }}
       bun_packages: ${{ steps.impact.outputs.bun_packages }}
+      node_shards: ${{ steps.shards.outputs.node_shards }}
+      bun_shards: ${{ steps.shards.outputs.bun_shards }}
       risk: ${{ steps.impact.outputs.risk }}
       deep_required: ${{ steps.impact.outputs.deep_required }}
       windows_required: ${{ steps.impact.outputs.windows_required }}
@@ -71,31 +64,26 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node scripts/ci-impact.mjs
 
+      - name: Expand test shards
+        id: shards
+        env:
+          NODE_PACKAGES: ${{ steps.impact.outputs.node_packages }}
+          BUN_PACKAGES: ${{ steps.impact.outputs.bun_packages }}
+        run: node scripts/ci-shards.mjs
+
       - name: Show policy
         run: node --input-type=commonjs -e "console.log(JSON.stringify(require('./.github/quality/policy.json'), null, 2))"
 
   prepare:
-    name: Prepare build artifact
+    name: Prepare workspace
+    # The only install and build of the run. Packs node_modules, the built packages and the model-data lock into one
+    # archive; every test job restores it with `restore-workspace` instead of installing again.
     needs: policy
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Ensure fd and ripgrep
-        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, as it is here, a
-        # missing binary is not downloaded: the tool reports itself unavailable. Install only what is missing and
-        # print what the image provides, so the run log records the runner's state rather than assuming it.
-        # The cairo/pango/jpeg/gif/rsvg libraries are not installed any more: `canvas` is imported only by a one-off
-        # generator script, and `npm ci --ignore-scripts` never builds its native module.
-        run: |
-          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
-          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            sudo apt-get update
-            sudo apt-get install -y ripgrep fd-find
-          fi
-          echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -107,27 +95,27 @@ jobs:
       - name: Build offline
         run: npm run build:offline
 
-      - name: Upload build artifact
+      - name: Pack the workspace
+        run: |
+          set -euo pipefail
+          tar -cf - node_modules packages/*/dist .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
+          ls -lh nyan-workspace.tar.gz
+
+      - name: Upload the workspace
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: nyan-dist-${{ github.sha }}
-          path: |
-            packages/*/dist
-            .ci/model-data.lock.json
-          # The model-data manifest is `dist/providers/data/.manifest.json`; upload-artifact skips dotfiles unless this
-          # is set, and without it every consumer fails to import `./data/.manifest.json` from `dist/providers/all.js`.
-          include-hidden-files: true
+          name: nyan-workspace-${{ github.sha }}
+          path: nyan-workspace.tar.gz
+          # The archive is already compressed; store it as-is instead of wrapping it in a second compressed archive.
+          compression-level: 0
           if-no-files-found: error
           retention-days: 3
 
   static:
     name: Static checks
-    # `npm run check` reads `packages/*/src` only: tsconfig maps every `@ny4n/*` specifier to sources, and the
-    # architecture, entry-graph and import checks either skip `dist` or map dist paths onto their `.ts` source. So
-    # this job needs no build artifact and does not wait for `prepare`.
-    #
-    # It installs its own dependencies instead. That is a deliberate trade: one uncached install is cheaper than
-    # serializing behind the build, and it keeps this check reporting even when the build fails.
+    # `npm run check` reads `packages/*/src` only, so this job installs its own dependencies and does not wait for
+    # `prepare`: an uncached install is cheaper than queueing behind the build, and the check reports even if the build
+    # fails. It also runs validate-workflows, so the workflow files are checked here.
     needs: [policy]
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -136,11 +124,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Ensure fd and ripgrep
-        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, as it is here, a
-        # missing binary is not downloaded: the tool reports itself unavailable. Install only what is missing and
-        # print what the image provides, so the run log records the runner's state rather than assuming it.
-        # The cairo/pango/jpeg/gif/rsvg libraries are not installed any more: `canvas` is imported only by a one-off
-        # generator script, and `npm ci --ignore-scripts` never builds its native module.
+        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, a missing binary is
+        # not downloaded: the tool reports itself unavailable. The image does not provide them (measured), so install
+        # only what is missing and print what the image had.
         run: |
           echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
           if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
@@ -160,57 +146,65 @@ jobs:
         run: npm run check
 
   node-tests:
-    name: Node tests (${{ matrix.package }})
+    name: Node tests (${{ matrix.name }})
     needs: [policy, prepare]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      # At most 18 jobs are live at once (8 here, 4 bun, then static, mcp, windows and gate),
-      # against the measured 20-job account limit.
+      # Peak live test jobs: 8 here and 4 under Bun, plus static, mcp, windows, deep and gate. That is 17 against the
+      # measured limit of 20.
       max-parallel: 8
       matrix:
-        package: ${{ fromJSON(needs.policy.outputs.node_packages) }}
+        include: ${{ fromJSON(needs.policy.outputs.node_shards) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Ensure fd and ripgrep
-        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, as it is here, a
-        # missing binary is not downloaded: the tool reports itself unavailable. Install only what is missing and
-        # print what the image provides, so the run log records the runner's state rather than assuming it.
-        # The cairo/pango/jpeg/gif/rsvg libraries are not installed any more: `canvas` is imported only by a one-off
-        # generator script, and `npm ci --ignore-scripts` never builds its native module.
         run: |
           echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
           if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
             sudo apt-get update
             sudo apt-get install -y ripgrep fd-find
           fi
-          echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
         with:
           node-version: ${{ env.NODE_VERSION }}
           bun: 'false'
+          install: 'false'
           model-data: 'true'
-
-      - name: Download build artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: nyan-dist-${{ github.sha }}
 
       - name: Run root script tests
         if: matrix.package == 'root'
         run: npm run test:scripts
 
       - name: Run package tests
-        if: matrix.package != 'root'
+        if: matrix.package != 'root' && matrix.shard == ''
         run: npm --workspace "packages/${{ matrix.package }}" test
 
+      - name: Run a shard of package tests
+        # Direct `node` calls, not `npm`: npm swallows `--shard=` before the script sees it (measured), so the shard would
+        # silently run every file. durable runs its suite twice, and both passes take the same shard.
+        if: matrix.shard != ''
+        working-directory: packages/${{ matrix.package }}
+        env:
+          PACKAGE: ${{ matrix.package }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          node ../../node_modules/vitest/vitest.mjs --run "--shard=$SHARD"
+          if [ "$PACKAGE" = "durable" ]; then
+            node scripts/test-without-document-retention.mjs "--shard=$SHARD"
+          fi
+
   bun-tests:
-    name: Bun tests (${{ matrix.package }})
+    name: Bun tests (${{ matrix.name }})
     needs: [policy, prepare]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -218,24 +212,21 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        package: ${{ fromJSON(needs.policy.outputs.bun_packages) }}
+        include: ${{ fromJSON(needs.policy.outputs.bun_shards) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Ensure fd and ripgrep
-        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, as it is here, a
-        # missing binary is not downloaded: the tool reports itself unavailable. Install only what is missing and
-        # print what the image provides, so the run log records the runner's state rather than assuming it.
-        # The cairo/pango/jpeg/gif/rsvg libraries are not installed any more: `canvas` is imported only by a one-off
-        # generator script, and `npm ci --ignore-scripts` never builds its native module.
         run: |
           echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
           if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
             sudo apt-get update
             sudo apt-get install -y ripgrep fd-find
           fi
-          echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -243,21 +234,34 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           bun-version: ${{ env.BUN_VERSION }}
           bun: 'true'
+          install: 'false'
           model-data: 'true'
 
-      - name: Download build artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: nyan-dist-${{ github.sha }}
-
       - name: Run Bun package tests
-        run: npm run test:bun -- "${{ matrix.package }}"
+        env:
+          PACKAGE: ${{ matrix.package }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SHARD" ]; then
+            node scripts/test-bun.mjs "$PACKAGE" "--shard=$SHARD"
+          else
+            node scripts/test-bun.mjs "$PACKAGE"
+          fi
 
       - name: Run durable retention tests under Bun
         if: matrix.package == 'durable'
         env:
           NYAN_DURABLE_DOCUMENT_RETENTION_MS: '0'
-        run: npm run test:bun -- durable
+          PACKAGE: durable
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SHARD" ]; then
+            node scripts/test-bun.mjs "$PACKAGE" "--shard=$SHARD"
+          else
+            node scripts/test-bun.mjs "$PACKAGE"
+          fi
 
   windows-smoke:
     name: Windows build and check
@@ -316,6 +320,7 @@ jobs:
 
   supply-chain:
     name: Supply chain and secrets
+    # Self-hosted was rejected here by measurement: a job queued behind other sessions added minutes to the critical path.
     needs: policy
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -355,15 +360,13 @@ jobs:
         run: npm audit signatures --omit=dev
 
       - name: Trivy filesystem scan
-        # Runs on pull requests too, so a dependency with a known vulnerability is caught before
-        # it reaches main rather than by the push build afterwards. Pull requests block only on
-        # CRITICAL so a HIGH disclosed in the vulnerability database overnight does not turn
-        # every open pull request red; main and the nightly scan block on HIGH as well.
+        # Runs on pull requests too, so a dependency with a known vulnerability is caught before it reaches main. Pull
+        # requests block only on CRITICAL, so a HIGH disclosed overnight does not turn every open pull request red; main
+        # and the nightly scan block on HIGH as well.
         #
-        # Examples ship their own stale `package-lock.json` (still pinned at 1.1.0 while the
-        # package is at 1.3.0) that never takes part in the build; scanning them reports
-        # vulnerabilities in dependency trees nothing here installs. The build uses the root
-        # lockfile, which is scanned. `.trivyignore.yaml` carries the accepted risks.
+        # The examples' own lockfiles are skipped: they are pinned at 1.1.0 while the package is at 1.3.0 and take no
+        # part in a build, so they report dependency trees nothing here installs. `.trivyignore.yaml` carries the
+        # accepted risks.
         run: >-
           docker run --rm -v "$PWD:/repo:ro" aquasec/trivy:0.68.2 fs
           --scanners vuln,secret,misconfig
@@ -376,10 +379,8 @@ jobs:
 
   deep-gate:
     name: Deep verification
-    # Only what the sharded matrices do not already run. The five package suites and their Bun
-    # parity pass used 328 s of the old 445 s here while `node-tests` and `bun-tests` ran the
-    # same suites in the same run; what remains is the 5 000-run protocol fuzz and the mutation
-    # run. It no longer serializes pull requests against each other either.
+    # Only what the sharded matrices do not already run: the protocol fuzz and the mutation run. The package suites are
+    # covered by node-tests and bun-tests in the same run, so repeating them here only added time.
     needs: [policy, prepare]
     if: needs.policy.outputs.deep_required == 'true' && needs.policy.result == 'success'
     runs-on: ubuntu-latest
@@ -388,31 +389,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Ensure fd and ripgrep
-        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, as it is here, a
-        # missing binary is not downloaded: the tool reports itself unavailable. Install only what is missing and
-        # print what the image provides, so the run log records the runner's state rather than assuming it.
-        # The cairo/pango/jpeg/gif/rsvg libraries are not installed any more: `canvas` is imported only by a one-off
-        # generator script, and `npm ci --ignore-scripts` never builds its native module.
-        run: |
-          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
-          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            sudo apt-get update
-            sudo apt-get install -y ripgrep fd-find
-          fi
-          echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
         with:
           node-version: ${{ env.NODE_VERSION }}
           bun: 'false'
+          install: 'false'
           model-data: 'true'
-
-      - name: Download build artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: nyan-dist-${{ github.sha }}
 
       - name: Run deterministic protocol fuzz harness
         env:

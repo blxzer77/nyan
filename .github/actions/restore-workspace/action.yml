@@ -1,0 +1,22 @@
+name: Restore workspace
+
+description: >-
+  Unpack the workspace that the prepare job packed for this commit (node_modules, the built packages and the model-data
+  lock), in place of an install and a build. The archive is one file, so every job that uses it gets the same bytes the
+  prepare job built.
+
+runs:
+  using: composite
+  steps:
+    - name: Download the prepared workspace
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      with:
+        name: nyan-workspace-${{ github.sha }}
+        path: .ci-workspace
+
+    - name: Unpack the prepared workspace
+      shell: bash
+      run: |
+        set -euo pipefail
+        tar -xzf .ci-workspace/nyan-workspace.tar.gz
+        rm -rf .ci-workspace
