@@ -11,6 +11,13 @@ inputs:
     description: Bun version
     required: false
     default: '1.4.2'
+  npm-version:
+    description: >-
+      npm version to install. Pinned because the npm bundled with a Node patch release changes how optional
+      platform peers (for example @emnapi/*) are resolved, which makes `npm ci` reject a lockfile that another
+      npm version generated.
+    required: false
+    default: '11.19.0'
   install:
     description: Run npm ci without lifecycle scripts
     required: false
@@ -38,6 +45,15 @@ runs:
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       with:
         bun-version: ${{ inputs.bun-version }}
+
+    - name: Pin npm
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "$(npm --version)" != "${{ inputs.npm-version }}" ]]; then
+          npm install --global "npm@${{ inputs.npm-version }}"
+        fi
+        npm --version
 
     - name: Verify toolchain
       shell: bash

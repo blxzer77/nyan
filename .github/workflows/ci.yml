@@ -18,6 +18,7 @@ permissions:
 
 env:
   NODE_VERSION: '24'
+  NPM_VERSION: '11.19.0'
   BUN_VERSION: '1.4.2'
   NYAN_OFFLINE: '1'
 
@@ -46,6 +47,13 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+
+      - name: Pin npm
+        run: |
+          if [ "$(npm --version)" != "${{ env.NPM_VERSION }}" ]; then
+            npm install --global "npm@${{ env.NPM_VERSION }}"
+          fi
+          npm --version
 
       - name: Install policy dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
@@ -225,6 +233,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      - name: Pin npm
+        shell: bash
+        run: |
+          if [ "$(npm --version)" != "${{ env.NPM_VERSION }}" ]; then
+            npm install --global "npm@${{ env.NPM_VERSION }}"
+          fi
+          npm --version
+
       - name: Install dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
 
@@ -274,6 +290,13 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+
+      - name: Pin npm
+        run: |
+          if [ "$(npm --version)" != "${{ env.NPM_VERSION }}" ]; then
+            npm install --global "npm@${{ env.NPM_VERSION }}"
+          fi
+          npm --version
 
       - name: Install dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
