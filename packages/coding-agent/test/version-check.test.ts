@@ -112,6 +112,17 @@ describe("version checks", () => {
 		expect(formatVersionCheckError(error)).toBe("fetch failed (cause: connect failed to 127.0.0.1:443)");
 	});
 
+	it("adds the code of an error that carries it itself (Bun)", () => {
+		expect(formatVersionCheckError(Object.assign(new TypeError("Unable to connect"), { code: "ECONNREFUSED" }))).toBe(
+			"Unable to connect (ECONNREFUSED)",
+		);
+	});
+
+	it("does not repeat a code that the message already names", () => {
+		const error = Object.assign(new TypeError("ECONNREFUSED: Unable to connect"), { code: "ECONNREFUSED" });
+		expect(formatVersionCheckError(error)).toBe("ECONNREFUSED: Unable to connect");
+	});
+
 	it("returns the active package metadata from the version check api", async () => {
 		const fetchMock = vi.fn(async () =>
 			Response.json({

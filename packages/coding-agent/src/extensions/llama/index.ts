@@ -1,4 +1,8 @@
-import { isConnectionError } from "@ny4n/ai/utils/transport-error";
+import {
+	certificateErrorCode,
+	errorMessageWithCertificateCode,
+	isConnectionError,
+} from "@ny4n/ai/utils/transport-error";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/types.ts";
 import { formatBytes, LlamaClient, type LlamaModelInfo, normalizeLlamaServerUrl } from "./client.ts";
 import { findHuggingFaceToken, HuggingFaceClient } from "./huggingface.ts";
@@ -9,15 +13,20 @@ function modelIsLoaded(model: LlamaModelInfo): boolean {
 	return model.status.value === "loaded" || model.status.value === "sleeping";
 }
 
-/** A coded connection failure on either runtime, or the text an error without a code used to be matched by. */
+/**
+ * A coded connection failure on either runtime, or the text an error without a code used to be matched by. A certificate
+ * failure is not a connection failure: Node reports it as "fetch failed" too, so the code is checked first and shown.
+ */
 function isConnectionFailure(error: unknown): boolean {
 	if (isConnectionError(error)) return true;
-	if (!(error instanceof Error)) return false;
+	if (!(error instanceof Error) || certificateErrorCode(error) !== undefined) return false;
 	const message = `${error.name} ${error.message}`.toLowerCase();
 	return message.includes("fetch failed") || message.includes("timeout") || message.includes("network");
 }
 
-function connectionErrorMessage(error: unknown): string {
+export function connectionErrorMessage(error: unknown): string {
+	if (error instanceof Error && certificateErrorCode(error) !== undefined)
+		return errorMessageWithCertificateCode(error);
 	if (isConnectionFailure(error)) return "Could not connect to the server.";
 	return error instanceof Error ? error.message : String(error);
 }
