@@ -98,7 +98,11 @@ jobs:
       - name: Pack the workspace
         run: |
           set -euo pipefail
-          tar -cf - node_modules packages/*/dist .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
+          # npm workspaces nest a dependency whose version conflicts with the hoisted one: `openai` lives in
+          # packages/ai/node_modules, not in the root. Pack every nested node_modules, or a restored job cannot resolve it.
+          # nullglob drops a pattern with no match instead of failing, since not every package nests anything.
+          shopt -s nullglob
+          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
           ls -lh nyan-workspace.tar.gz
 
       - name: Upload the workspace
