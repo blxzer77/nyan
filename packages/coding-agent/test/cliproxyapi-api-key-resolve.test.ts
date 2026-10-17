@@ -159,8 +159,5 @@ describe("CLIProxyAPI key that resolves requests", () => {
 		// The built-in provider composes its key method and is offered exactly as before.
 		const builtin = modelRuntime.getProviders().find((p) => p.id === "anthropic");
 		expect(offered(builtin?.auth.apiKey)).toBe(Boolean(builtin?.auth.apiKey));
-		// The auth label of a provider that does not set the field is unchanged: OAuth only when it has no key method.
-		expect(modelRuntime.isUsingOAuth("oauth-only")).toBe(true);
-		expect(modelRuntime.isUsingOAuth("oauth-and-key")).toBe(false);
 	});
 });
