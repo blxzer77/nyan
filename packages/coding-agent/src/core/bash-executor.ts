@@ -78,20 +78,22 @@ export async function executeBashWithOperations(
 	 * Close the full-output file and wait until everything is on disk. The result names this path for the model and the
 	 * user to read, so it must not be returned while the stream still holds unwritten output.
 	 */
-	const closeTempFile = async (): Promise<void> => {
+	const closeTempFile = async (): Promise<Error | undefined> => {
 		const stream = tempFileStream;
 		if (stream !== undefined) {
 			await new Promise<void>((resolve) => {
 				if (stream.closed) return resolve();
+				// A failed write destroys the stream; settle on either event, so the captured error is reported rather than awaited.
+				stream.once("error", () => resolve());
 				stream.once("close", () => resolve());
 				stream.end();
 			});
 		}
-		if (tempFileError !== undefined) {
-			throw new Error(`Could not write the full output to ${tempFilePath}: ${tempFileError.message}`, {
-				cause: tempFileError,
-			});
-		}
+		return tempFileError === undefined
+			? undefined
+			: new Error(`Could not write the full output to ${tempFilePath}: ${tempFileError.message}`, {
+					cause: tempFileError,
+				});
 	};
 
 	const decoder = new TextDecoder();
@@ -148,7 +150,7 @@ export async function executeBashWithOperations(
 		// An aborted command still returns the output it produced so far
 		if (!options?.signal?.aborted) {
 			// The command's error is the one to report; a file that cannot be closed adds nothing to it.
-			await closeTempFile().catch(() => {});
+			await closeTempFile();
 			throw err;
 		}
 	}
@@ -159,14 +161,16 @@ export async function executeBashWithOperations(
 	if (truncationResult.truncated) {
 		ensureTempFile();
 	}
-	await closeTempFile();
+	const saveError = await closeTempFile();
 	const cancelled = options?.signal?.aborted ?? false;
+	const shown = truncationResult.truncated ? truncationResult.content : fullOutput;
 
+	// The command ran and its output is shown; a full-output file that could not be written is said so, and has no path.
 	return {
-		output: truncationResult.truncated ? truncationResult.content : fullOutput,
+		output: saveError === undefined ? shown : `${shown}\n\n[Full output was not saved: ${saveError.message}]`,
 		exitCode: cancelled ? undefined : (exitCode ?? undefined),
 		cancelled,
 		truncated: truncationResult.truncated,
-		fullOutputPath: tempFilePath,
+		fullOutputPath: saveError === undefined ? tempFilePath : undefined,
 	};
 }
