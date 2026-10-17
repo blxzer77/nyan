@@ -105,6 +105,9 @@ jobs:
           path: |
             packages/*/dist
             .ci/model-data.lock.json
+          # The model-data manifest is `dist/providers/data/.manifest.json`; upload-artifact skips dotfiles unless this
+          # is set, and without it every consumer fails to import `./data/.manifest.json` from `dist/providers/all.js`.
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 3
 
@@ -342,6 +345,11 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           bun: 'true'
           model-data: 'true'
+
+      - name: Download build artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: nyan-dist-${{ github.sha }}
 
       - name: Run critical recovery and package tests
         run: |
