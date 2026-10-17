@@ -1,6 +1,6 @@
 # Agent Note: Hosted parallel CI/CD for Nyan
 
-Status: partially implemented: the pull-request path runs green at 4.3 min (run `39045207907`, all 33 jobs on hosted); workspace prewarm, sharding, nightly and release are not done yet
+Status: pull-request path green at 3.48 min (run `39049211499`, 40 jobs, all hosted, peak 20 live jobs); workspace prewarm and sharding are done; nightly and release are not done yet
 
 Supersedes the runner-placement and job-shape bullets of [Nyan quality workflow architecture](2026-10-17-quality-workflow.md). The impact classifier, fail-closed gate, risk tiers, model-data snapshot, artifact reuse, and "publish exactly the verified bytes" decisions stay.
 
@@ -391,14 +391,48 @@ Critical path in `39045207907`: `policy` 13 s, `prepare` 40 s, then the longest 
 dominates pays an install before its tests. Splitting coding-agent into weighted shards and handing every
 Linux job the prebuilt workspace are the two changes that remain to reach the 3-4 minute target.
 
+### Measured pull-request pipeline, with the critical path
+
+| run | change | wall clock | result |
+| --- | --- | --- | --- |
+| `39038704551` | self-hosted `prepare`, `supply-chain`, `deep-gate` | 10.0 min | green, but `prepare` queued 260 s behind two other pull requests |
+| `39039960657` | everything hosted | 4.8 min | one Bun flake, green on rerun |
+| `39043358794` | apt reduced to fd and ripgrep, durable forwarding | 5.0 min | Bun codemode failure (root-caused above) |
+| `39045207907` | codemode wait | 4.3 min | green, 33 of 33 |
+| `39047357144` | workspace restored, coding-agent and durable sharded | 4.4 min | 4 failures: `openai` missing from the archive |
+| `39048565260` | nested `node_modules` packed | 4.4 min | green, 40 of 40, but the Bun matrix ran in four waves of width 4 |
+| `39049211499` | matrix widths 12 (Node) and 8 (Bun) | **3.48 min** | green, 40 of 40, peak 20 live jobs |
+
+Critical path in `39049211499`: `policy` 11 s, `prepare` starts at +14 s and runs 39 s (install, build, pack,
+upload), the matrix starts at about +58 s, the longest shard ends about 200 s, and `Merge gate` runs 8 s.
+Deep verification (fuzz plus mutation) is the other long job in the high-risk path; it ends inside the same
+window.
+
+### Found while implementing
+
+- **npm workspaces nest a conflicting dependency.** `openai` is installed in `packages/ai/node_modules`, not at
+  the root. The first archive packed only the root `node_modules`, and every restored job failed with
+  `Cannot find package 'openai'`, including the Cloudflare compat test that uses that client. Pack every
+  `packages/*/node_modules` too. Checked locally: the archive holds `packages/ai/node_modules/openai/package.json`.
+- **npm swallows `--shard=`.** `npm run test:bun -- durable --shard=1/64` ran the full package. The sharded
+  jobs therefore call `node` directly, and `scripts/test-bun.mjs` takes `--shard=i/n` itself.
+- **A matrix width is a cap, not a wait.** With `max-parallel` at 4 for Bun, 14 jobs ran in four waves and
+  the gate waited for the last wave. The account limit is 20 live jobs; a wider matrix is queued by GitHub,
+  not failed, so the widths are set above what can run and the account limit does the scheduling.
+- **The archive is stored uncompressed by upload-artifact.** `compression-level: 0`; the file is already
+  gzip, so a second wrapper would only cost time. The archive is 101 MB.
+
 ### Still unverified, and each needs a run before the corresponding claim is made
 
 1. ~~**Real concurrent-job limit**~~: measured at 20 (probe `39038007064`).
 2. **Ubuntu-latest without the cairo/pango libraries**: verified in run `39043358794` and `39045207907`: `build:offline`, `npm run check`, the coding-agent and durable suites, and `test:mcp-conformance` pass with those five `apt-get` packages removed.
    **fd and ripgrep are not removable.** The probe step printed `image before: rg=missing fd=missing fdfind=missing` on `ubuntu-latest`, and with `NYAN_OFFLINE` set `ensureTool` returns undefined rather than downloading, so the `find` and `grep` tools would be unavailable. They are installed conditionally, only when missing (about 12 s when needed).
-3. **Workspace artifact**: `tar -xf` of a 100 MB zstd archive plus `npx vitest` in a shard, with
-   `node_modules/@ny4n/*` symlinks resolving. Not implemented yet.
-4. **`bun --bun <vitest> --run --shard=i/n`** accepts the shard flag through `scripts/test-bun.mjs`.
+3. ~~**Workspace artifact**~~: verified in `39049211499`. The prepare job packs node_modules, every nested
+   `packages/*/node_modules`, the built packages and the model-data lock into a 101 MB gzip; every test job
+   restores it and runs without `npm ci`. The restored `@ny4n/*` workspace links resolve (the tests import
+   each other through them).
+4. ~~**`bun --bun <vitest> --run --shard=i/n`**~~: verified. `scripts/test-bun.mjs` forwards `--shard=i/n`; the
+   sharded Bun jobs in `39049211499` pass, and locally `--shard=1/64` on durable ran two files and 22 tests.
 5. **Durable shard forwarding**: verified. `scripts/test-without-document-retention.mjs` now forwards `process.argv.slice(2)`; `--shard=1/64` ran two files and 22 tests.
 6. ~~**`static` without `dist`**~~: verified in run `39039960657` — `static` starts 3 s after `policy`,
    concurrently with `prepare`, and passes. Source-level support: `check-architecture-layers.mjs` skips
