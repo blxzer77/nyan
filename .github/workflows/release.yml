@@ -9,6 +9,10 @@ name: Release
 # Release tags are nyan-vX.Y.Z. The plain vX.Y.Z names belong to Pi: this repository inherited its tags, and v1.0.0 and
 # v1.1.0 already point at Pi releases. The tag version must equal the package version. A version with a pre-release suffix publishes under the `next` dist-tag.
 # A re-run skips versions that are already on the registry.
+#
+# The prepare job packs one workspace and the tests run from it; the pack job packs the verified packages from that
+# same workspace, and the publish job never rebuilds,
+# so what npm receives is what the smoke tests ran against.
 
 on:
   push:
@@ -27,33 +31,33 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  NODE_VERSION: '24'
+  NPM_VERSION: '11.19.0'
+  BUN_VERSION: '1.4.2'
+  NYAN_OFFLINE: '1'
+
 jobs:
-  verify:
-    name: Verify
+  prepare:
+    name: Build and expand the test plan
     runs-on: [self-hosted, Linux, X64, repo-nyan]
-    timeout-minutes: 30
+    timeout-minutes: 40
+    outputs:
+      node_shards: ${{ steps.shards.outputs.node_shards }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
         with:
-          node-version: 24
-          cache: npm
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
-          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd   # -f: self-hosted runners keep /usr/local across runs
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          model-data: 'true'
 
       - name: Changelog has the release
         if: github.ref_type == 'tag'
-        # The tag is nyan-vX.Y.Z, so look for a pre-release suffix in the version only, not in the whole tag name.
+        shell: bash
         run: |
           version="${GITHUB_REF_NAME#nyan-v}"
           if [[ "$version" == *-* ]]; then
@@ -62,14 +66,145 @@ jobs:
             node scripts/changelog-release.mjs --check "$version"
           fi
 
-      - name: Build
-        run: npm run build
+      - name: Build offline
+        run: npm run build:offline
+
+      - name: Pack the workspace
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
+          ls -lh nyan-workspace.tar.gz
+
+      - name: Upload the workspace
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nyan-workspace-${{ github.sha }}
+          path: nyan-workspace.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Select every package
+        # Tags and manual runs select the full suite: ci-impact treats a push or a run with no changed files that way.
+        id: impact
+        run: node scripts/ci-impact.mjs
+
+      - name: Expand test shards
+        id: shards
+        env:
+          NODE_PACKAGES: ${{ steps.impact.outputs.node_packages }}
+          BUN_PACKAGES: ${{ steps.impact.outputs.bun_packages }}
+        run: node scripts/ci-shards.mjs
+
+  check:
+    name: Check
+    needs: prepare
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          install: 'false'
+          model-data: 'true'
 
       - name: Check
         run: npm run check
 
-      - name: Test
-        run: npm test
+  tests:
+    name: Tests (${{ matrix.name }})
+    needs: prepare
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.node_shards) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Ensure fd and ripgrep
+        run: |
+          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
+            sudo apt-get update
+            sudo apt-get install -y ripgrep fd-find
+          fi
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          install: 'false'
+          model-data: 'true'
+
+      - name: Run root script tests
+        if: matrix.package == 'root'
+        run: npm run test:scripts
+
+      - name: Run package tests
+        if: matrix.package != 'root' && matrix.shard == ''
+        run: npm --workspace "packages/${{ matrix.package }}" test
+
+      - name: Run a shard of package tests
+        if: matrix.shard != ''
+        working-directory: packages/${{ matrix.package }}
+        env:
+          PACKAGE: ${{ matrix.package }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          node ../../node_modules/vitest/vitest.mjs --run "--shard=$SHARD"
+          if [ "$PACKAGE" = "durable" ]; then
+            node scripts/test-without-document-retention.mjs "--shard=$SHARD"
+          fi
+
+  pack:
+    name: Pack verified packages
+    # Runs only after the check and every test shard passed, from the workspace they tested. --skip-build packs the
+    # dist/ that prepare built: nothing here rebuilds, so the archive published is the archive that was tested.
+    needs: [prepare, check, tests]
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          install: 'false'
+          model-data: 'true'
+
+      - name: Pack verified packages
+        run: node scripts/pack-packages.mjs --out .artifacts/packages --force --skip-build
+
+      - name: Upload verified packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nyan-packages
+          path: .artifacts/packages
+          if-no-files-found: error
+          retention-days: 14
 
   native:
     name: Native prebuilds
@@ -77,7 +212,7 @@ jobs:
 
   binaries:
     name: Bun binaries
-    needs: native
+    needs: [pack, native]
     runs-on: [self-hosted, Linux, X64, repo-nyan]
     timeout-minutes: 30
     permissions:
@@ -86,43 +221,37 @@ jobs:
       attestations: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
         with:
-          node-version: 24
-          cache: npm
+          node-version: ${{ env.NODE_VERSION }}
+          bun-version: ${{ env.BUN_VERSION }}
+          bun: 'true'
+          model-data: 'true'
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Download native prebuilds
-        uses: actions/download-artifact@v4
+      - name: Download Linux native prebuilds
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: native-linux-*
           path: packages/tui/native/linux/prebuilds
           merge-multiple: true
 
       - name: Download macOS prebuilds
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: native-darwin-universal
           path: packages/tui/native/darwin/prebuilds
 
       - name: Download Windows prebuilds
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: native-win32-universal
           path: packages/tui/native/win32/prebuilds
 
-      - name: Build
-        run: npm run build
+      - name: Build offline
+        run: npm run build:offline
 
       - name: Compile binaries
         run: node scripts/build-binaries.mjs --out release-assets
@@ -130,7 +259,7 @@ jobs:
       # A Sigstore-signed statement that these files were built by this workflow from this commit. The smoke and
       # publish jobs download the same bytes, so what is attested is what is released.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             release-assets/*.tar.gz
@@ -138,7 +267,7 @@ jobs:
             release-assets/SHA256SUMS
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nyan-binaries
           path: |
@@ -146,6 +275,7 @@ jobs:
             release-assets/*.zip
             release-assets/SHA256SUMS
           if-no-files-found: error
+          retention-days: 14
 
   binary-smoke:
     name: Smoke ${{ matrix.platform }}
@@ -156,21 +286,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: [self-hosted, Linux, X64, repo-nyan], platform: linux-x64 }
+          - { runner: ubuntu-latest, platform: linux-x64 }
           - { runner: ubuntu-24.04-arm, platform: linux-arm64 }
           - { runner: macos-15, platform: darwin-arm64 }
           - { runner: windows-latest, platform: windows-x64 }
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: nyan-binaries
           path: release-assets
@@ -203,8 +333,8 @@ jobs:
         run: node scripts/smoke-test-binary-update.mjs "${{ steps.extract.outputs.binary }}" "${{ matrix.platform }}"
 
   publish:
-    name: Publish
-    needs: [verify, native, binary-smoke]
+    name: Publish verified artifacts
+    needs: [pack, native, binary-smoke]
     # npm verifies the runner environment when it accepts a provenance bundle and rejects a
     # `self-hosted` runner: "Only 'github-hosted' runners are supported when publishing with
     # provenance". This job therefore stays on a GitHub-hosted runner while the build jobs use the
@@ -218,50 +348,57 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           registry-url: https://registry.npmjs.org
 
+      - name: Pin npm
+        run: |
+          if [ "$(npm --version)" != "${{ env.NPM_VERSION }}" ]; then
+            npm install --global "npm@${{ env.NPM_VERSION }}"
+          fi
+          npm --version
+
       - name: Install dependencies
-        run: npm ci --ignore-scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Download native prebuilds
-        uses: actions/download-artifact@v4
+      - name: Download verified packages
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          pattern: native-linux-*
-          path: packages/tui/native/linux/prebuilds
-          merge-multiple: true
+          name: nyan-packages
+          path: release-packages
 
-      - name: Download macOS prebuilds
-        uses: actions/download-artifact@v4
-        with:
-          name: native-darwin-universal
-          path: packages/tui/native/darwin/prebuilds
+      - name: Verify the artifact set was packed from this commit
+        run: |
+          node --input-type=module -e '
+          import { readFileSync } from "node:fs";
+          const { source } = JSON.parse(readFileSync("release-packages/manifest.json", "utf8"));
+          if (source?.dirty) {
+            console.error("Refusing to publish an artifact set that was packed from a dirty tree");
+            process.exit(1);
+          }
+          if (source?.commit !== process.env.GITHUB_SHA) {
+            console.error(`Artifact set is from ${source?.commit}, expected ${process.env.GITHUB_SHA}`);
+            process.exit(1);
+          }
+          console.log(`Artifact set was packed from ${source.commit}`);
+          '
 
-      - name: Download Windows prebuilds
-        uses: actions/download-artifact@v4
-        with:
-          name: native-win32-universal
-          path: packages/tui/native/win32/prebuilds
-
-      - name: Build
-        run: npm run build
-
-      - name: Publish
+      - name: Publish exact verified package artifacts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
         run: |
+          args=(--manifest release-packages/manifest.json)
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             version="${GITHUB_REF_NAME#nyan-v}"
-            args=(--expect-version "$version")
+            args+=(--expect-version "$version")
             [[ "$version" == *-* ]] && args+=(--tag next)
-          else
-            args=()
           fi
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${{ inputs.dry_run }}" == "true" ]]; then
             args+=(--dry-run)
@@ -270,7 +407,7 @@ jobs:
 
       - name: Download binaries
         if: github.ref_type == 'tag'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: nyan-binaries
           path: release-assets
@@ -279,6 +416,7 @@ jobs:
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           prerelease=()
           # The tag is nyan-vX.Y.Z; only a suffix on the version itself (1.2.0-rc.1) makes a pre-release.

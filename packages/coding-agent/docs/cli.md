@@ -323,7 +323,9 @@ Credential-printing commands write secrets to stdout.
 
 Login asks its questions on a terminal, and stops with instructions when stdin is not one, so a script cannot end up waiting for input that will never arrive. In a non-interactive environment, set the provider's environment variable or write the credential to `auth.json` directly. A prompt's placeholder is shown as a hint only: answering with an empty line never stores it. A prompt that requires an answer is asked again rather than continued with an empty one.
 
-A login is verified where the provider can list its own models, because that listing authenticates with the credential just stored. A credential the provider rejects is reported as a failure, with the reason, instead of being announced as a successful login. A provider with no such check is reported as stored but unverified: the only way to exercise it is an inference request, which spends tokens, so `nyan login` does not make one. `nyan auth check` reports readiness for any provider.
+A login is verified where the provider can list its own models, because that listing authenticates with the credential just stored. A credential the provider rejects is reported as a failure, with the reason, instead of being announced as a successful login. A listing that completes without the provider refusing the credential is reported as verified, even by a provider that does not check the key itself. So `Verified` does not always mean the key was checked. `nyan login` never makes an inference request to check a credential, because that would spend tokens. `nyan auth check` reports readiness for any provider.
+
+A login exits with status 0 once the credential is stored, even when it was not verified. A zero status means the credential was saved, not that it works. The last line the login prints decides: `Verified:` or `accepted the credential` means the listing completed without a refusal, and `was not verified` means it failed or was cancelled. A script that needs proof must read that line, and cannot assume the key was checked.
 
 ## MCP commands
 

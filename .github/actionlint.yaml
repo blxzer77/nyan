@@ -1,0 +1,12 @@
+self-hosted-runner:
+  labels:
+    - repo-nyan
+
+config-variables: null
+
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      - 'SC2193'
+      - 'SC2155'
+      - 'SC2016'

@@ -111,10 +111,6 @@ export class CatalogHttpError extends Error {
 	}
 }
 
-export function isUnauthorizedCatalogError(error: unknown): boolean {
-	return error instanceof CatalogHttpError && error.status === 401;
-}
-
 /** Fields worth surfacing in `/cpa-models` even though nyan cannot act on them. */
 const EXTRA_FIELDS = [
 	"auto_compact_token_limit",

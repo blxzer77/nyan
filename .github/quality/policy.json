@@ -1,0 +1,61 @@
+{
+	"schemaVersion": 1,
+	"pullRequest": {
+		"targetP95Minutes": 10,
+		"deepGateTimeoutMinutes": 30,
+		"impactAnalysisFailClosed": true,
+		"aiBlockingRequiresValidation": true,
+		"concurrencyBudget": {
+			"githubHosted": 20,
+			"selfHosted": 6,
+			"measuredAt": "2026-10-17",
+			"method": "40-job ubuntu-latest sleep probe, peak overlap read from the job intervals"
+		},
+		"required": [
+			"policy",
+			"prepare",
+			"static",
+			"node-tests",
+			"bun-tests",
+			"windows-smoke",
+			"mcp-conformance",
+			"supply-chain"
+		],
+		"advisory": ["ai-review"]
+	},
+	"criticalPaths": [
+		"packages/ai/src/api/**",
+		"packages/agent/src/**",
+		"packages/durable/src/harness/**",
+		"packages/durable/src/storage/**",
+		"packages/coding-agent/src/core/**",
+		"packages/protocol/src/**"
+	],
+	"highPaths": [
+		"packages/tui/src/**",
+		"packages/mcp/src/**",
+		"packages/codemode/src/**",
+		"packages/client/src/**",
+		"packages/server/src/**",
+		"packages/chord/src/**"
+	],
+	"security": {
+		"npmAuditMinimumSeverity": "moderate",
+		"newSecretsBlock": true,
+		"modelDataMustBeHashVerified": true
+	},
+	"deepTesting": {
+		"mutation": {
+			"scope": ["packages/protocol/src/cbor/**/*.ts"],
+			"minimumScore": 70,
+			"blockingOn": ["critical", "high", "nightly"]
+		},
+		"fuzz": {
+			"corpus": ".ci/fuzz-corpus/protocol.json",
+			"prRuns": 5000,
+			"nightlyRuns": 10000,
+			"seed": 20261017,
+			"blockingOn": ["critical", "high", "nightly"]
+		}
+	}
+}

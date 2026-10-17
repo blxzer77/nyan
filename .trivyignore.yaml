@@ -1,0 +1,20 @@
+# Trivy exemptions. Every entry needs a reason and an expiry date: Trivy starts failing
+# again on its own once `expired_at` passes, so an accepted risk cannot silently outlive
+# the reason it was accepted for.
+#
+# CI passes this file with --ignorefile.
+
+vulnerabilities:
+  - id: CVE-2026-85393
+    # `node-forge` reports a signature-forgery issue with no fixed release yet: 1.4.0 is the
+    # newest version on npm and Trivy still flags it. It is reachable only through
+    # `packages/coding-agent/examples/extensions/gondolin` -> `@earendil-works/gondolin`; the
+    # trace shows no path into a published @ny4n package, so no shipped artifact contains it.
+    # Review when node-forge publishes a fix, then drop this entry.
+    paths:
+      - package-lock.json
+      - packages/coding-agent/examples/extensions/gondolin/package-lock.json
+    statement: >-
+      node-forge 1.4.0 is the latest published version and has no fixed release. Only the
+      gondolin example extension depends on it; no published @ny4n package does.
+    expired_at: 2027-01-31
