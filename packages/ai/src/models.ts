@@ -625,35 +625,26 @@ class ModelsImpl implements MutableModels {
 						return;
 					}
 					// A verdict that a superseded or cancelled attempt reports answers a question no one is asking any more.
-					// A verdict reported after the provider's refresh has returned would be recorded after the outcome was decided, so it is refused.
-					let reporting = true;
+					// The first verdict of this attempt decides. That also refuses a late report: the attempt's own end sets its verdict
+					// before the refresh returns.
 					const verification = verifying
 						? {
 								report: (verdict: CredentialVerdict) => {
-									if (!reporting) {
-										throw new ModelsError(
-											"model_source",
-											`${provider.name} reported a verdict after its refresh had finished`,
-										);
-									}
-									if (!signal.aborted) verdicts.set(provider.id, verdict);
+									if (signal.aborted || verdicts.has(provider.id)) return;
+									verdicts.set(provider.id, verdict);
 								},
 							}
 						: undefined;
 					// A verification always fetches: a provider's freshness check must not let it skip the network.
 					reachedProvider = true;
-					try {
-						await this.runProviderRefreshPhase(provider, {
-							credential,
-							allowNetwork: true,
-							force: verifying ? true : options.force,
-							generation,
-							signal,
-							verification,
-						});
-					} finally {
-						reporting = false;
-					}
+					await this.runProviderRefreshPhase(provider, {
+						credential,
+						allowNetwork: true,
+						force: verifying ? true : options.force,
+						generation,
+						signal,
+						verification,
+					});
 				})();
 
 				try {

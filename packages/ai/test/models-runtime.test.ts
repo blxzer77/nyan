@@ -484,22 +484,50 @@ describe("Models runtime", () => {
 		expect(result.errors.get("broken")?.message).toBe("fetch failed");
 	});
 
-	it("refuses a verdict a provider reports after its refresh has finished", async () => {
+	it("ignores a verdict a provider reports after its refresh has finished", async () => {
 		const models = createModels();
-		let reportLater: ((verdict: "verified" | "rejected" | "unavailable") => void) | undefined;
+		let reportLate: ((verdict: "verified" | "rejected" | "unavailable") => void) | undefined;
 		models.setProvider(
 			testProvider({
-				id: "late",
+				id: "early",
 				refreshModels: async (context) => {
-					if (context.verifyCredential) reportLater = context.reportCredentialVerdict;
+					if (context.verifyCredential) reportLate = context.reportCredentialVerdict;
+				},
+			}),
+		);
+		// The second provider is still running when the first one's refresh has finished, so a late report would land in the window.
+		models.setProvider(
+			testProvider({
+				id: "slow",
+				refreshModels: async (context) => {
+					if (!context.verifyCredential) return;
+					await new Promise((resolve) => setTimeout(resolve, 30));
+					reportLate?.("rejected");
 				},
 			}),
 		);
 
-		const result = await models.refresh({ providers: ["late"], verifyCredential: true });
+		const result = await models.refresh({ providers: ["early", "slow"], verifyCredential: true });
 
-		expect(() => reportLater?.("rejected")).toThrow("reported a verdict after its refresh had finished");
-		expect(result.verdicts?.get("late")).toBe("verified");
+		expect(result.verdicts?.get("early")).toBe("verified");
+	});
+
+	it("keeps the first verdict a provider reports during one verification", async () => {
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "twice",
+				refreshModels: async (context) => {
+					if (!context.verifyCredential) return;
+					context.reportCredentialVerdict?.("rejected");
+					context.reportCredentialVerdict?.("verified");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["twice"], verifyCredential: true });
+
+		expect(result.verdicts?.get("twice")).toBe("rejected");
 	});
 
 	it("restores cached models before waiting for network auth", async () => {
