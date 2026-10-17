@@ -71,6 +71,26 @@ describe("CLIProxyAPI key that resolves requests", () => {
 		}
 	});
 
+	it("reports a stored login as OAuth on registration, even while the configured key only resolves requests", async () => {
+		const agentDir = mkdtempSync(join(tmpdir(), "nyan-cpa-agent-"));
+		dir = mkdtempSync(join(tmpdir(), "nyan-cpa-key-resolve-"));
+		try {
+			const store: CredentialStore = AuthStorage.create(join(dir, "auth.json"));
+			await store.modify(PROVIDER_ID, async () => ({
+				type: "oauth",
+				access: "oauth-access",
+				refresh: "",
+				expires: Date.now() + 60_000,
+			}));
+			const modelRuntime = await ModelRuntime.create({ credentials: store, modelsPath: join(dir, "models.json") });
+			modelRuntime.registerProvider(PROVIDER_ID, cliproxyRegistration(agentDir, "config-key"));
+
+			expect(modelRuntime.isUsingOAuth(PROVIDER_ID)).toBe(true);
+		} finally {
+			rmSync(agentDir, { recursive: true, force: true });
+		}
+	});
+
 	it("keeps resolving the configured key when no login is stored", async () => {
 		const agentDir = mkdtempSync(join(tmpdir(), "nyan-cpa-agent-"));
 		try {
@@ -139,5 +159,8 @@ describe("CLIProxyAPI key that resolves requests", () => {
 		// The built-in provider composes its key method and is offered exactly as before.
 		const builtin = modelRuntime.getProviders().find((p) => p.id === "anthropic");
 		expect(offered(builtin?.auth.apiKey)).toBe(Boolean(builtin?.auth.apiKey));
+		// The auth label of a provider that does not set the field is unchanged: OAuth only when it has no key method.
+		expect(modelRuntime.isUsingOAuth("oauth-only")).toBe(true);
+		expect(modelRuntime.isUsingOAuth("oauth-and-key")).toBe(false);
 	});
 });
