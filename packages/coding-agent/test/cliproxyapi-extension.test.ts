@@ -770,6 +770,41 @@ describe("CLIProxyAPI extension", () => {
 			}
 		});
 
+		it("reports a failed verification at another base URL without changing the session's status", async () => {
+			const { baseUrl } = await proxy("typed-key");
+			const restore = setEnv({ CLIPROXYAPI_BASE_URL: baseUrl });
+			try {
+				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
+				const result = await controller.refresh({
+					allowNetwork: true,
+					force: true,
+					verification: { apiKey: "typed-key", baseUrlInput: "http://127.0.0.1:1" },
+				});
+				expect(result.verificationFailure).toMatchObject({ reason: "unavailable" });
+				expect(controller.getLastError()).toBeUndefined();
+				expect(controller.getLastFailure()).toBeUndefined();
+			} finally {
+				restore();
+			}
+		});
+
+		it("applies a verification's catalog when the session's own base URL cannot be read", async () => {
+			const { baseUrl } = await proxy("typed-key");
+			const restore = setEnv({ CLIPROXYAPI_BASE_URL: "not a url" });
+			try {
+				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
+				const result = await controller.refresh({
+					allowNetwork: true,
+					force: true,
+					verification: { apiKey: "typed-key", baseUrlInput: baseUrl },
+				});
+				expect(result.verificationFailure).toBeUndefined();
+				expect(controller.getModels().map((model) => model.meta.id)).toEqual(["verify-model"]);
+			} finally {
+				restore();
+			}
+		});
+
 		it("does not hand a verification the answer of a refresh made with another key", async () => {
 			const { baseUrl, seen } = await proxy("typed-key");
 			const restore = setEnv({ CLIPROXYAPI_BASE_URL: baseUrl, CLIPROXYAPI_API_KEY: "env-key" });

@@ -379,16 +379,18 @@ export class CatalogController {
 		const task: Promise<void> = (async () => {
 			await previous?.catch(() => {});
 			if (!verifying) {
-				await this.runRefresh(options);
+				await this.runRefresh(options, {});
 				return;
 			}
+			const outcome: { failure?: CatalogFailure } = {};
 			try {
-				await this.runRefresh(options);
+				await this.runRefresh(options, outcome);
 			} catch (error) {
 				this.lastError = errorMessage(error);
 				this.lastFailure = classifyFailure(error);
+				outcome.failure = this.lastFailure;
 			}
-			verificationFailure = this.lastFailure;
+			verificationFailure = outcome.failure;
 		})();
 		this.inFlight = task;
 		this.inFlightVerifying = verifying;
@@ -403,8 +405,9 @@ export class CatalogController {
 		return { ...this.getSnapshot(), ...(verifying ? { verificationFailure } : {}) };
 	}
 
-	private async runRefresh(options: CatalogRefreshOptions): Promise<void> {
-		this.lastFailure = undefined;
+	private async runRefresh(options: CatalogRefreshOptions, outcome: { failure?: CatalogFailure }): Promise<void> {
+		// A verification at another base URL must not change what the session reports about its own catalog.
+		if (options.verification === undefined) this.lastFailure = undefined;
 		const overrides = loadOverrides(this.agentDir);
 		this.overrides = overrides;
 
@@ -426,11 +429,12 @@ export class CatalogController {
 			log.debug("refresh skipped: not configured");
 			return;
 		}
-		this.lastModelsUrl = connection.modelsUrl;
 		// A verification at a base URL other than the session's checks its key there and leaves the catalog and its cache alone.
+		// A session whose own base URL cannot be read has nothing to differ from: the login that set it up registered the URL it checked.
+		const sessionUrl = sessionModelsUrl(this.agentDir, identity.providerId);
 		const verifiesOtherEndpoint =
-			options.verification !== undefined &&
-			sessionModelsUrl(this.agentDir, identity.providerId) !== connection.modelsUrl;
+			options.verification !== undefined && sessionUrl !== "unreadable" && sessionUrl !== connection.modelsUrl;
+		if (!verifiesOtherEndpoint) this.lastModelsUrl = connection.modelsUrl;
 
 		await this.ensureCostCatalog(overrides.defaults.pricing, options.pricing ?? "await", options.signal);
 
@@ -461,23 +465,26 @@ export class CatalogController {
 			if (options.signal?.aborted) {
 				return;
 			}
-			this.lastError = errorMessage(error);
 			const failure = classifyFailure(error);
-			this.lastFailure = failure;
+			outcome.failure = failure;
+			if (!verifiesOtherEndpoint) {
+				this.lastError = errorMessage(error);
+				this.lastFailure = failure;
+			}
 			if (options.verification === undefined) {
 				if (failure.reason === "rejected" && failure.httpStatus !== undefined) {
 					this.notices.push(
 						rejectedKeyNotice(this.agentDir, identity.providerId, identity.providerName, failure.httpStatus),
 					);
 				}
-				log.warn(`catalog refresh failed: ${this.lastError}`);
+				log.warn(`catalog refresh failed: ${errorMessage(error)}`);
 			} else {
 				// The login reports a verification's failure itself, so it adds no notice and no second warning.
-				log.debug(`credential verification failed: ${this.lastError}`);
+				log.debug(`credential verification failed: ${errorMessage(error)}`);
 			}
 
 			// Keep the known list so a proxy hiccup does not empty the picker.
-			if (known.models.length > 0) {
+			if (!verifiesOtherEndpoint && known.models.length > 0) {
 				this.applyCatalog(known.models, known.source === "cache" ? "cache" : "remote", known.fetchedAt ?? 0);
 			}
 		}
@@ -614,12 +621,15 @@ function isUsableBaseUrl(baseUrlInput: string): boolean {
 	}
 }
 
-/** The models URL the session's catalog uses, or undefined when its settings cannot be resolved. */
-function sessionModelsUrl(agentDir: string, providerId: string): string | undefined {
+/**
+ * The models URL the session's catalog uses, from the base URL the session connects to whether or not it has a key.
+ * `"unreadable"` when that base URL does not parse, which leaves nothing to differ from.
+ */
+function sessionModelsUrl(agentDir: string, providerId: string): string {
 	try {
-		return resolveConnection(agentDir, providerId)?.modelsUrl;
+		return resolveEndpoints(defaultBaseUrlInput(agentDir, providerId)).modelsUrl;
 	} catch {
-		return undefined;
+		return "unreadable";
 	}
 }
 
