@@ -1,15 +1,7 @@
-import type { ModelThinkingLevel } from "@ny4n/ai";
-import { type DurableModelSelection, type OpenDurableResult, openDurable } from "../../core/durable/runtime.ts";
-import type { SettingsManager } from "../../core/settings-manager.ts";
+import { type OpenDurableOptions, type OpenDurableResult, openDurable } from "../../core/durable/runtime.ts";
 import { runDurableTui } from "./tui.ts";
 
-export interface DurableInteractiveOptions {
-	readonly cwd: string;
-	readonly continueSession: boolean;
-	readonly settingsManager: SettingsManager;
-	readonly model?: DurableModelSelection;
-	readonly thinkingLevel?: ModelThinkingLevel;
-	readonly apiKey?: string;
+export interface DurableInteractiveOptions extends OpenDurableOptions {
 	readonly initialMessage?: string;
 }
 

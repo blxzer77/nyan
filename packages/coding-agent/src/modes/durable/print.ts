@@ -1,16 +1,9 @@
-import type { AssistantMessage, ImageContent, ModelThinkingLevel } from "@ny4n/ai";
+import type { AssistantMessage, ImageContent } from "@ny4n/ai";
 import type { UserInput } from "@ny4n/durable";
-import { type DurableModelSelection, openDurable } from "../../core/durable/runtime.ts";
+import { type OpenDurableOptions, openDurable } from "../../core/durable/runtime.ts";
 import { flushRawStdout, writeRawStdout } from "../../core/output-guard.ts";
-import type { SettingsManager } from "../../core/settings-manager.ts";
 
-export interface DurablePrintOptions {
-	readonly cwd: string;
-	readonly continueSession: boolean;
-	readonly settingsManager: SettingsManager;
-	readonly model?: DurableModelSelection;
-	readonly thinkingLevel?: ModelThinkingLevel;
-	readonly apiKey?: string;
+export interface DurablePrintOptions extends OpenDurableOptions {
 	readonly initialMessage?: string;
 	readonly initialImages?: ImageContent[];
 	readonly messages?: readonly string[];
