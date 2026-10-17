@@ -427,6 +427,10 @@ export class CatalogController {
 			return;
 		}
 		this.lastModelsUrl = connection.modelsUrl;
+		// A verification at a base URL other than the session's checks its key there and leaves the catalog and its cache alone.
+		const verifiesOtherEndpoint =
+			options.verification !== undefined &&
+			sessionModelsUrl(this.agentDir, identity.providerId) !== connection.modelsUrl;
 
 		await this.ensureCostCatalog(overrides.defaults.pricing, options.pricing ?? "await", options.signal);
 
@@ -442,7 +446,8 @@ export class CatalogController {
 		const now = Date.now();
 		// Extension load, nyan's own model refresh and session_start can all fire within
 		// seconds of each other; an explicit force always goes to the network.
-		if (!this.shouldFetch(now, options.force)) {
+		// A verification always fetches: its verdict is about its key, not about a recent fetch.
+		if (!this.shouldFetch(now, options.force || options.verification !== undefined)) {
 			log.debug("catalog refresh skipped: a successful fetch happened moments ago");
 			return;
 		}
@@ -451,7 +456,7 @@ export class CatalogController {
 			const entries = await fetchCatalog(connection.modelsUrl, connection.apiKey, {
 				...(options.signal ? { signal: options.signal } : {}),
 			});
-			this.applyFetchedEntries(entries, known, now);
+			if (!verifiesOtherEndpoint) this.applyFetchedEntries(entries, known, now);
 		} catch (error) {
 			if (options.signal?.aborted) {
 				return;
@@ -606,6 +611,15 @@ function isUsableBaseUrl(baseUrlInput: string): boolean {
 		return true;
 	} catch {
 		return false;
+	}
+}
+
+/** The models URL the session's catalog uses, or undefined when its settings cannot be resolved. */
+function sessionModelsUrl(agentDir: string, providerId: string): string | undefined {
+	try {
+		return resolveConnection(agentDir, providerId)?.modelsUrl;
+	} catch {
+		return undefined;
 	}
 }
 

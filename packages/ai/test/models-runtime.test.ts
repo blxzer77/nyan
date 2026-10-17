@@ -484,6 +484,24 @@ describe("Models runtime", () => {
 		expect(result.errors.get("broken")?.message).toBe("fetch failed");
 	});
 
+	it("refuses a verdict a provider reports after its refresh has finished", async () => {
+		const models = createModels();
+		let reportLater: ((verdict: "verified" | "rejected" | "unavailable") => void) | undefined;
+		models.setProvider(
+			testProvider({
+				id: "late",
+				refreshModels: async (context) => {
+					if (context.verifyCredential) reportLater = context.reportCredentialVerdict;
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["late"], verifyCredential: true });
+
+		expect(() => reportLater?.("rejected")).toThrow("reported a verdict after its refresh had finished");
+		expect(result.verdicts?.get("late")).toBe("verified");
+	});
+
 	it("restores cached models before waiting for network auth", async () => {
 		const store = new InMemoryModelsStore();
 		await store.write("dynamic", { models: [testModel("dynamic", "cached")] });

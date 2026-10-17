@@ -735,6 +735,41 @@ describe("CLIProxyAPI extension", () => {
 			}
 		});
 
+		it("checks a login's key at the base URL it entered without replacing the session's catalog", async () => {
+			const { baseUrl, seen } = await proxy("typed-key");
+			const restore = setEnv({ CLIPROXYAPI_BASE_URL: "http://127.0.0.1:1" });
+			try {
+				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
+				const result = await controller.refresh({
+					allowNetwork: true,
+					force: true,
+					verification: { apiKey: "typed-key", baseUrlInput: baseUrl },
+				});
+				expect(result.verificationFailure).toBeUndefined();
+				expect(seen).toEqual(["Bearer typed-key"]);
+				expect(controller.getModels()).toEqual([]);
+			} finally {
+				restore();
+			}
+		});
+
+		it("always fetches a verification, even inside the throttle window of a recent fetch", async () => {
+			const { baseUrl, seen } = await proxy("typed-key");
+			const restore = setEnv({ CLIPROXYAPI_BASE_URL: baseUrl, CLIPROXYAPI_API_KEY: "typed-key" });
+			try {
+				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
+				await controller.refresh({ allowNetwork: true });
+				const result = await controller.refresh({
+					allowNetwork: true,
+					verification: { apiKey: "typed-key", baseUrlInput: baseUrl },
+				});
+				expect(result.verificationFailure).toBeUndefined();
+				expect(seen).toEqual(["Bearer typed-key", "Bearer typed-key"]);
+			} finally {
+				restore();
+			}
+		});
+
 		it("does not hand a verification the answer of a refresh made with another key", async () => {
 			const { baseUrl, seen } = await proxy("typed-key");
 			const restore = setEnv({ CLIPROXYAPI_BASE_URL: baseUrl, CLIPROXYAPI_API_KEY: "env-key" });

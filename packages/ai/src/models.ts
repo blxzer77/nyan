@@ -554,13 +554,16 @@ class ModelsImpl implements MutableModels {
 
 	private async runProviderRefreshPhase(
 		provider: Provider & Required<Pick<Provider, "refreshModels">>,
-		credential: Credential | undefined,
-		allowNetwork: boolean,
-		force: boolean | undefined,
-		generation: number,
-		signal: AbortSignal,
-		verification: { report(verdict: CredentialVerdict): void } | undefined,
+		phase: {
+			credential: Credential | undefined;
+			allowNetwork: boolean;
+			force: boolean | undefined;
+			generation: number;
+			signal: AbortSignal;
+			verification: { report(verdict: CredentialVerdict): void } | undefined;
+		},
 	): Promise<void> {
+		const { credential, allowNetwork, force, generation, signal, verification } = phase;
 		const stored = await this.modelsStore.read(provider.id, { signal });
 		await provider.refreshModels({
 			credential,
@@ -601,15 +604,14 @@ class ModelsImpl implements MutableModels {
 					}
 
 					// Restore cached provider state before auth resolution or network access.
-					await this.runProviderRefreshPhase(
-						provider,
-						storedCredential,
-						false,
-						undefined,
+					await this.runProviderRefreshPhase(provider, {
+						credential: storedCredential,
+						allowNetwork: false,
+						force: undefined,
 						generation,
 						signal,
-						undefined,
-					);
+						verification: undefined,
+					});
 					if (credentialError !== undefined) throw credentialError;
 					if (!allowNetwork || signal.aborted) return;
 
@@ -623,24 +625,35 @@ class ModelsImpl implements MutableModels {
 						return;
 					}
 					// A verdict that a superseded or cancelled attempt reports answers a question no one is asking any more.
+					// A verdict reported after the provider's refresh has returned would be recorded after the outcome was decided, so it is refused.
+					let reporting = true;
 					const verification = verifying
 						? {
 								report: (verdict: CredentialVerdict) => {
+									if (!reporting) {
+										throw new ModelsError(
+											"model_source",
+											`${provider.name} reported a verdict after its refresh had finished`,
+										);
+									}
 									if (!signal.aborted) verdicts.set(provider.id, verdict);
 								},
 							}
 						: undefined;
 					// A verification always fetches: a provider's freshness check must not let it skip the network.
 					reachedProvider = true;
-					await this.runProviderRefreshPhase(
-						provider,
-						credential,
-						true,
-						verifying ? true : options.force,
-						generation,
-						signal,
-						verification,
-					);
+					try {
+						await this.runProviderRefreshPhase(provider, {
+							credential,
+							allowNetwork: true,
+							force: verifying ? true : options.force,
+							generation,
+							signal,
+							verification,
+						});
+					} finally {
+						reporting = false;
+					}
 				})();
 
 				try {
