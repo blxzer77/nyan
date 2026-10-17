@@ -386,9 +386,8 @@ export class CatalogController {
 			try {
 				await this.runRefresh(options, outcome);
 			} catch (error) {
-				this.lastError = errorMessage(error);
-				this.lastFailure = classifyFailure(error);
-				outcome.failure = this.lastFailure;
+				// A verification's failure is its own answer. Like an ordinary refresh's, it is not recorded in the session's status.
+				outcome.failure = classifyFailure(error);
 			}
 			verificationFailure = outcome.failure;
 		})();
@@ -435,16 +434,19 @@ export class CatalogController {
 		}
 		// A verification at a base URL other than the session's checks its key there and leaves the catalog and its cache alone.
 		// A session whose own base URL cannot be read has nothing to differ from: the login that set it up registered the URL it checked.
-		const sessionUrl = sessionModelsUrl(this.agentDir, identity.providerId);
 		const verifiesOtherEndpoint =
-			options.verification !== undefined && sessionUrl !== "unreadable" && sessionUrl !== connection.modelsUrl;
+			options.verification !== undefined &&
+			isOtherEndpoint(this.agentDir, identity.providerId, connection.modelsUrl);
 		if (!verifiesOtherEndpoint) this.lastModelsUrl = connection.modelsUrl;
 
-		await this.ensureCostCatalog(overrides.defaults.pricing, options.pricing ?? "await", options.signal);
+		// Pricing only shapes the catalog a verification leaves alone, so a check at another endpoint does not wait for it.
+		if (!verifiesOtherEndpoint) {
+			await this.ensureCostCatalog(overrides.defaults.pricing, options.pricing ?? "await", options.signal);
+		}
 
 		const known = this.knownModels(connection.modelsUrl);
 
-		if (!options.allowNetwork) {
+		if (!options.allowNetwork && options.verification === undefined) {
 			if (!verifiesOtherEndpoint && known.models.length > 0) {
 				this.applyCatalog(known.models, known.source === "cache" ? "cache" : "remote", known.fetchedAt ?? 0);
 			}
@@ -623,6 +625,12 @@ function isUsableBaseUrl(baseUrlInput: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+/** Whether a verification's models URL is not the one the session's catalog uses. An unreadable session URL has nothing to differ from. */
+function isOtherEndpoint(agentDir: string, providerId: string, modelsUrl: string): boolean {
+	const sessionUrl = sessionModelsUrl(agentDir, providerId);
+	return sessionUrl !== "unreadable" && sessionUrl !== modelsUrl;
 }
 
 /**

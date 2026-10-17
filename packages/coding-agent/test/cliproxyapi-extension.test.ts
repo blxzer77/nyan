@@ -747,6 +747,36 @@ describe("CLIProxyAPI extension", () => {
 			}
 		});
 
+		it("records a verification's failure as its own answer when the settings file cannot be read", async () => {
+			const { baseUrl } = await proxy("typed-key");
+			const dir = agentDirWithoutPricing();
+			writeFileSync(join(dir, "cliproxyapi.json"), "{not json");
+			const controller = new CatalogController(dir, DEFAULT_PROVIDER_ID);
+			const result = await controller.refresh({
+				allowNetwork: true,
+				force: true,
+				verification: { apiKey: "typed-key", baseUrlInput: baseUrl },
+			});
+			expect(result.verificationFailure).toMatchObject({ reason: "unavailable" });
+			expect(controller.getLastError()).toBeUndefined();
+		});
+
+		it("always fetches a verification, even one asked not to use the network", async () => {
+			const { baseUrl, seen } = await proxy("typed-key");
+			const restore = setEnv({ CLIPROXYAPI_BASE_URL: baseUrl });
+			try {
+				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
+				const result = await controller.refresh({
+					allowNetwork: false,
+					verification: { apiKey: "typed-key", baseUrlInput: baseUrl },
+				});
+				expect(result.verificationFailure).toBeUndefined();
+				expect(seen).toEqual(["Bearer typed-key"]);
+			} finally {
+				restore();
+			}
+		});
+
 		it("checks a login's key at the base URL it entered without replacing the session's catalog", async () => {
 			const { baseUrl, seen } = await proxy("typed-key");
 			const restore = setEnv({ CLIPROXYAPI_BASE_URL: "http://127.0.0.1:1" });
