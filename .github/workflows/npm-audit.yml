@@ -1,31 +1,72 @@
-name: npm audit
+name: Nyan security and supply chain
 
 on:
   schedule:
     - cron: '37 7 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: nyan-security
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
+env:
+  NODE_VERSION: '24'
+  NPM_VERSION: '11.19.0'
+  NYAN_OFFLINE: '1'
+
 jobs:
-  audit:
+  scan:
+    name: Dependency, secret, image and SBOM scan
     runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
+
+      - name: Pin npm
+        run: |
+          if [ "$(npm --version)" != "${{ env.NPM_VERSION }}" ]; then
+            npm install --global "npm@${{ env.NPM_VERSION }}"
+          fi
+          npm --version
 
       - name: Install dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Audit production vulnerabilities
+      - name: npm audit
         run: node scripts/npm-audit.mjs
 
       - name: Verify registry signatures
         run: npm audit signatures --omit=dev
+
+      - name: Gitleaks
+        run: |
+          scan_dir="$(mktemp -d)"
+          trap 'rm -rf "$scan_dir"' EXIT
+          git archive HEAD | tar -x -C "$scan_dir"
+          docker run --rm -v "$scan_dir:/repo:ro" zricethezav/gitleaks:v8.28.0 detect --no-git --source /repo --config /repo/.gitleaks.toml --no-banner --redact
+
+      - name: Trivy filesystem scan
+        run: docker run --rm -v "$PWD:/repo:ro" aquasec/trivy:0.68.2 fs --scanners vuln,secret,misconfig --skip-dirs /repo/node_modules --skip-dirs /repo/.git --exit-code 1 --severity HIGH,CRITICAL /repo
+
+      - name: Generate SBOM
+        run: docker run --rm -v "$PWD:/repo" anchore/syft:v1.33.0 dir:/repo --exclude ./node_modules --exclude ./.git --exclude ./packages/*/dist -o cyclonedx-json=/repo/sbom.cdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nyan-sbom-${{ github.sha }}
+          path: sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 14

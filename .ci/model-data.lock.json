@@ -1,0 +1,178 @@
+{
+	"schemaVersion": 1,
+	"snapshot": "published-ai-1.3.0",
+	"generatedAt": "2026-10-15T00:40:22.591Z",
+	"source": "@ny4n/ai@1.3.0 npm tarball (initial fixed snapshot)",
+	"snapshotHash": "2328033031dcc7a394f53e789a5178d6e85d91c6646957ece1027729227d3d73",
+	"manifestHash": "3ff33886e93e5fb0c1e3e846f27daec50ac55913d875125772e722c4f34b3db2",
+	"files": [
+		{
+			"file": ".manifest.json",
+			"sha256": "3ff33886e93e5fb0c1e3e846f27daec50ac55913d875125772e722c4f34b3db2"
+		},
+		{
+			"file": "amazon-bedrock.json",
+			"sha256": "df227d426b678e44cd82deae1cf433855d6b27f36fedcff3ef4fb812fe882868"
+		},
+		{
+			"file": "ant-ling.json",
+			"sha256": "628feab3ef6c7d80ce96f75999804e1d9f05fec3851e5302e30fff3b69db90f6"
+		},
+		{
+			"file": "anthropic.json",
+			"sha256": "327ea610aca64889902458243e9b6a440eb678671f5993b88ad32ac6e827b587"
+		},
+		{
+			"file": "azure.json",
+			"sha256": "46c4e25b84463c6475e706c581196d2735c35feb9612d2efca0ab932c917d727"
+		},
+		{
+			"file": "baseten.json",
+			"sha256": "1fcdab8daf2881bd099eb08f9416f7df5bf39975937d2a63b841542bd032f2e6"
+		},
+		{
+			"file": "cerebras.json",
+			"sha256": "3eccb58c5de3d0dc7ba49dc6e477ba29f00cb3150ce0a35cc90d59e6b5ab368e"
+		},
+		{
+			"file": "cloudflare-ai-gateway.json",
+			"sha256": "388aefd2f1e5c5b0783673de1acda4a7ea8de853ebb5beeeede9646a90159a2a"
+		},
+		{
+			"file": "cloudflare-workers-ai.json",
+			"sha256": "98b9c8cb412139ae3f5d2f5e49134f8412ed4e139a12bf6cb3aeba38aacc6bb3"
+		},
+		{
+			"file": "deepseek.json",
+			"sha256": "10a296fb3e898f7715c80890c8af0af4f5fd58f22dbcd6612fdc5d762157ccdc"
+		},
+		{
+			"file": "fireworks.json",
+			"sha256": "8db3c11f65a5d76260d5040a5dc5a9ef0f35b92de8505a30907c2355c2837b36"
+		},
+		{
+			"file": "github-copilot.json",
+			"sha256": "1c7d77a4c320081bb0a80b2c8e185b34f07b73d38e67d20f3dcabcf72f2f8fcd"
+		},
+		{
+			"file": "google-vertex.json",
+			"sha256": "564d692a4292ef12e98c8ec056a39948ea64e10851f5ddaaebcc37b585545231"
+		},
+		{
+			"file": "google.json",
+			"sha256": "e13d3c51b13028d8253153165f7438ea2f3c3eaa8f209be952d3e9ded4494b5a"
+		},
+		{
+			"file": "groq.json",
+			"sha256": "910952ad9dad07856983459d63fce0148dba1203edd7b10d801a77c5824f3405"
+		},
+		{
+			"file": "huggingface.json",
+			"sha256": "6399e958790a9d90c21fb55d1cbef8569427a1ceb28de86dadeb3b4454ecfade"
+		},
+		{
+			"file": "kimi-coding.json",
+			"sha256": "582250b920454d98940da3e7e99d30b807edbea28f2eb8ac15f658d2ef41e8fc"
+		},
+		{
+			"file": "meta.json",
+			"sha256": "563f5ec07973f52ab8c3eb26ef91a36ad8a79e950b37174935666cdcb624bf35"
+		},
+		{
+			"file": "minimax-cn.json",
+			"sha256": "1bbfbd11c3edbd141841d3cef027e12157218f1aec92477e15772116c1fabe7a"
+		},
+		{
+			"file": "minimax.json",
+			"sha256": "a4b6864bd97eddf5749b2e117f643e751ec237408e8e24bec9e2f947782fa244"
+		},
+		{
+			"file": "mistral.json",
+			"sha256": "27aa66c71a0504b53dc87ec194286fa7e70b99747fc8df9b709b23b3548afe50"
+		},
+		{
+			"file": "moonshotai-cn.json",
+			"sha256": "79c9585dc84ee525ebaebbc78b3c55f3d369ec884d4f943488f1e0b14e3587f5"
+		},
+		{
+			"file": "moonshotai.json",
+			"sha256": "1da2c4e34f22aef17a07c974d85bdee8e1b68b6dc712e3769c935b3f1e7dadca"
+		},
+		{
+			"file": "nvidia.json",
+			"sha256": "cc7b418f706178f0aac2384324cd63f7641ff03656ef25551a1859e2c69381bc"
+		},
+		{
+			"file": "openai-codex.json",
+			"sha256": "3cc35a7e122e5c77ee8ec30a9a3bd8bd59629997e85ba2cb3f9e0ed62e9a09c0"
+		},
+		{
+			"file": "openai.json",
+			"sha256": "f4c1ac9f8f84cb9f2a952b0ceec51c90a38b31b4cdf33200e018ece9d408e95f"
+		},
+		{
+			"file": "opencode-go.json",
+			"sha256": "dcb44624d15d90aff3c35d672dd2a94fa93d368f0040e3d50d836ccd11e5c51b"
+		},
+		{
+			"file": "opencode.json",
+			"sha256": "0db59e2b739f4feea7f3e1b2982e3c0b53c63390e561acd6b1da56659049073b"
+		},
+		{
+			"file": "openrouter.json",
+			"sha256": "ca9655589325476595a1e035bd7ee0de8ca94c9fd204e0a1a31a1980a3056498"
+		},
+		{
+			"file": "qwen-token-plan-cn.json",
+			"sha256": "2469a4091c474ec3db0a49a9962d8d2726c074ad9065b96bc4e0c87861c4c6c5"
+		},
+		{
+			"file": "qwen-token-plan-individual.json",
+			"sha256": "0fb7cf64faf39d1a3b0a884210a86c87084b805eda15644f5f39293287b959dd"
+		},
+		{
+			"file": "qwen-token-plan.json",
+			"sha256": "eff10620cb577142de4ec02698d5961a71fda2fe4f6ae7ea9432bad9d6844176"
+		},
+		{
+			"file": "together.json",
+			"sha256": "52293df62191c8e799ae3632f8ab1b3f52ee626aee0280677086627b32864bf7"
+		},
+		{
+			"file": "typesafe.json",
+			"sha256": "a4429a2f696d5cc5273969af61a7310bda07d6bdcd27bf9ac9c76c534cc43716"
+		},
+		{
+			"file": "vercel-ai-gateway.json",
+			"sha256": "963b73e17d241e16d4bd647cd6db9612b19ef1a30826a766cf29ccab60abc78d"
+		},
+		{
+			"file": "xai.json",
+			"sha256": "879c49b78b663a52a220ac4ee013e726b10c4f50aaa03bc58ee53a4b54c76928"
+		},
+		{
+			"file": "xiaomi-token-plan-ams.json",
+			"sha256": "ca65178f4525d9705bc8d085ed136cecbe149c4080e857ea6a64ae643d2ac00a"
+		},
+		{
+			"file": "xiaomi-token-plan-cn.json",
+			"sha256": "b065326926681c2262084e59c1c19ebdaf146c07107b5242c76b456becf74db0"
+		},
+		{
+			"file": "xiaomi-token-plan-sgp.json",
+			"sha256": "92c3d6d707f81fd9cd2b6d1fb57dc431d90ba51e10fe49d97bc8806035c23492"
+		},
+		{
+			"file": "xiaomi.json",
+			"sha256": "b81d01a374f7b558728c78d81f4168efa9c8996e6e2b5618409a8094b083c759"
+		},
+		{
+			"file": "zai-coding-cn.json",
+			"sha256": "ee5ee705fb6e413a6088db5e3616c27fce802a8ece6c355f1db35490d787f610"
+		},
+		{
+			"file": "zai.json",
+			"sha256": "58e6642fdfb736f0b9a4a277c760c536a3cea66a030abbfb2615f7b2851d5c6f"
+		}
+	]
+}
