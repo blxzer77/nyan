@@ -83,8 +83,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+      - name: Ensure fd and ripgrep
+        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, as it is here, a
+        # missing binary is not downloaded: the tool reports itself unavailable. Install only what is missing and
+        # print what the image provides, so the run log records the runner's state rather than assuming it.
+        # The cairo/pango/jpeg/gif/rsvg libraries are not installed any more: `canvas` is imported only by a one-off
+        # generator script, and `npm ci --ignore-scripts` never builds its native module.
+        run: |
+          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
+          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
+            sudo apt-get update
+            sudo apt-get install -y ripgrep fd-find
+          fi
+          echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -124,8 +135,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+      - name: Ensure fd and ripgrep
+        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, as it is here, a
+        # missing binary is not downloaded: the tool reports itself unavailable. Install only what is missing and
+        # print what the image provides, so the run log records the runner's state rather than assuming it.
+        # The cairo/pango/jpeg/gif/rsvg libraries are not installed any more: `canvas` is imported only by a one-off
+        # generator script, and `npm ci --ignore-scripts` never builds its native module.
+        run: |
+          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
+          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
+            sudo apt-get update
+            sudo apt-get install -y ripgrep fd-find
+          fi
+          echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -153,8 +175,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+      - name: Ensure fd and ripgrep
+        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, as it is here, a
+        # missing binary is not downloaded: the tool reports itself unavailable. Install only what is missing and
+        # print what the image provides, so the run log records the runner's state rather than assuming it.
+        # The cairo/pango/jpeg/gif/rsvg libraries are not installed any more: `canvas` is imported only by a one-off
+        # generator script, and `npm ci --ignore-scripts` never builds its native module.
+        run: |
+          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
+          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
+            sudo apt-get update
+            sudo apt-get install -y ripgrep fd-find
+          fi
+          echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -190,8 +223,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+      - name: Ensure fd and ripgrep
+        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, as it is here, a
+        # missing binary is not downloaded: the tool reports itself unavailable. Install only what is missing and
+        # print what the image provides, so the run log records the runner's state rather than assuming it.
+        # The cairo/pango/jpeg/gif/rsvg libraries are not installed any more: `canvas` is imported only by a one-off
+        # generator script, and `npm ci --ignore-scripts` never builds its native module.
+        run: |
+          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
+          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
+            sudo apt-get update
+            sudo apt-get install -y ripgrep fd-find
+          fi
+          echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -344,8 +388,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+      - name: Ensure fd and ripgrep
+        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, as it is here, a
+        # missing binary is not downloaded: the tool reports itself unavailable. Install only what is missing and
+        # print what the image provides, so the run log records the runner's state rather than assuming it.
+        # The cairo/pango/jpeg/gif/rsvg libraries are not installed any more: `canvas` is imported only by a one-off
+        # generator script, and `npm ci --ignore-scripts` never builds its native module.
+        run: |
+          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
+          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
+            sudo apt-get update
+            sudo apt-get install -y ripgrep fd-find
+          fi
+          echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
