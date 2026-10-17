@@ -125,6 +125,10 @@ describe("connection and certificate codes", () => {
 			"fetch failed (DEPTH_ZERO_SELF_SIGNED_CERT)",
 		);
 		expect(errorMessageWithCertificateCode(nodeFetchError("ENOTFOUND"))).toBe("fetch failed");
+		// An empty message is not written as " (CODE)".
+		expect(
+			errorMessageWithCertificateCode(Object.assign(new TypeError(""), { code: "DEPTH_ZERO_SELF_SIGNED_CERT" })),
+		).toBe("DEPTH_ZERO_SELF_SIGNED_CERT");
 		expect(
 			errorMessageWithCertificateCode(
 				bunFetchError("ERR_TLS_CERT_ALTNAME_INVALID", "ERR_TLS_CERT_ALTNAME_INVALID fetching https://x/"),

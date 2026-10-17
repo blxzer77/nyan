@@ -12,19 +12,30 @@
 
 const MAX_CAUSE_DEPTH = 6;
 
+/**
+ * Visit the error, its cause, and the members of an `AggregateError`, outermost first. Each object is visited once, and
+ * the walk stops at `MAX_CAUSE_DEPTH`, so a cyclic or very deep chain ends.
+ */
+function walkErrorChain(error: unknown, visit: (value: Record<string, unknown>) => void): void {
+	const seen = new Set<unknown>();
+	const walk = (value: unknown, depth: number): void => {
+		if (typeof value !== "object" || value === null || seen.has(value) || depth > MAX_CAUSE_DEPTH) return;
+		seen.add(value);
+		const record = value as Record<string, unknown>;
+		visit(record);
+		const { errors, cause } = record;
+		if (Array.isArray(errors)) for (const member of errors) walk(member, depth + 1);
+		walk(cause, depth + 1);
+	};
+	walk(error, 0);
+}
+
 /** Every string `code` on the error and on the errors below it, outermost first. */
 export function transportErrorCodes(error: unknown): string[] {
 	const codes: string[] = [];
-	const seen = new Set<unknown>();
-	const visit = (value: unknown, depth: number): void => {
-		if (typeof value !== "object" || value === null || seen.has(value) || depth > MAX_CAUSE_DEPTH) return;
-		seen.add(value);
-		const { code, cause, errors } = value as { code?: unknown; cause?: unknown; errors?: unknown };
+	walkErrorChain(error, ({ code }) => {
 		if (typeof code === "string" && code.length > 0) codes.push(code);
-		if (Array.isArray(errors)) for (const member of errors) visit(member, depth + 1);
-		visit(cause, depth + 1);
-	};
-	visit(error, 0);
+	});
 	return codes;
 }
 
@@ -34,16 +45,9 @@ export function transportErrorCodes(error: unknown): string[] {
  */
 export function transportErrorMessages(error: unknown): string[] {
 	const messages: string[] = [];
-	const seen = new Set<unknown>();
-	const visit = (value: unknown, depth: number): void => {
-		if (typeof value !== "object" || value === null || seen.has(value) || depth > MAX_CAUSE_DEPTH) return;
-		seen.add(value);
-		const { message, cause, errors } = value as { message?: unknown; cause?: unknown; errors?: unknown };
+	walkErrorChain(error, ({ message }) => {
 		if (typeof message === "string" && message.length > 0) messages.push(message);
-		if (Array.isArray(errors)) for (const member of errors) visit(member, depth + 1);
-		visit(cause, depth + 1);
-	};
-	visit(error, 0);
+	});
 	return messages;
 }
 
@@ -139,5 +143,7 @@ export function isConnectionError(error: unknown): boolean {
  */
 export function errorMessageWithCertificateCode(error: Error): string {
 	const code = certificateErrorCode(error);
-	return code === undefined || error.message.includes(code) ? error.message : `${error.message} (${code})`;
+	if (code === undefined || error.message.includes(code)) return error.message;
+	// An empty message would otherwise read " (CODE)" with nothing before the code.
+	return error.message.length > 0 ? `${error.message} (${code})` : code;
 }
