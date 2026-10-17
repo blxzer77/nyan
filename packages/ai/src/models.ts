@@ -582,12 +582,20 @@ class ModelsImpl implements MutableModels {
 		const errors = new Map<string, Error>();
 		const verdicts = new Map<string, CredentialVerdict>();
 		const verifying = options.verifyCredential === true;
-		if (callerSignal.aborted) return { aborted: true, errors, verdicts };
+
 		const selected = options.providers ? new Set(options.providers) : undefined;
 		const refreshable = Array.from(this.providers.values()).filter(
 			(provider): provider is Provider & Required<Pick<Provider, "refreshModels">> =>
 				provider.refreshModels !== undefined && (!selected || selected.has(provider.id)),
 		);
+
+		// A refresh the caller had already stopped refreshes nothing; a verification still gives each provider it would have refreshed a verdict.
+		if (callerSignal.aborted) {
+			if (verifying) {
+				for (const provider of refreshable) verdicts.set(provider.id, "unavailable");
+			}
+			return { aborted: true, errors, verdicts };
+		}
 
 		const refresh = Promise.all(
 			refreshable.map(async (provider) => {

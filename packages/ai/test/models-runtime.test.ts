@@ -530,6 +530,18 @@ describe("Models runtime", () => {
 		expect(result.verdicts?.get("twice")).toBe("rejected");
 	});
 
+	it("settles a verification the caller had already stopped, one verdict per provider it would refresh", async () => {
+		const models = createModels();
+		models.setProvider(testProvider({ id: "stopped", refreshModels: async () => {} }));
+		const caller = new AbortController();
+		caller.abort();
+
+		const result = await models.refresh({ providers: ["stopped"], verifyCredential: true, signal: caller.signal });
+
+		expect(result.aborted).toBe(true);
+		expect(result.verdicts?.get("stopped")).toBe("unavailable");
+	});
+
 	it("gives every provider a verdict when the caller aborts a verification", async () => {
 		const models = createModels();
 		const caller = new AbortController();
