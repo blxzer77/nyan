@@ -19,8 +19,11 @@ import {
 	watchEvents,
 } from "@ny4n/durable";
 import { openNodeSqliteStorage } from "@ny4n/durable/storage/sqlite/node";
-import { ModelRuntime } from "../../core/model-runtime.ts";
-import { SettingsManager } from "../../core/settings-manager.ts";
+import { getAgentDir } from "../../config.ts";
+import type { AgentSessionRuntimeDiagnostic } from "../agent-session-services.ts";
+import type { ExtensionMode, InlineExtension, ProjectTrustContext } from "../extensions/types.ts";
+import type { ModelRuntime } from "../model-runtime.ts";
+import type { SettingsManager } from "../settings-manager.ts";
 import {
 	configureHarnessHttp,
 	createCodingRegistry,
@@ -29,6 +32,7 @@ import {
 	findInitialAgentModel,
 } from "./harness-setup.ts";
 import { createDurableModelRuntime } from "./model-runtime-adapter.ts";
+import { createDurableServices, type DurableResourceOptions } from "./services.ts";
 import { selectSession } from "./sessions.ts";
 import { Subagent } from "./subagent.ts";
 
@@ -98,15 +102,51 @@ export interface DurableModelSelection {
 	readonly modelId: string;
 }
 
+/** Thrown when the durable path cannot start because an extension or a resource is broken; it lists each error. */
+export class DurableStartupError extends Error {
+	readonly diagnostics: readonly AgentSessionRuntimeDiagnostic[];
+
+	constructor(diagnostics: readonly AgentSessionRuntimeDiagnostic[]) {
+		super(diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
+		this.name = "DurableStartupError";
+		this.diagnostics = diagnostics;
+	}
+}
+
 export interface OpenDurableOptions {
 	readonly cwd?: string;
 	readonly continueSession?: boolean;
 	/** Attach the durable event stream for a headless adapter. */
 	readonly eventStream?: boolean;
-	readonly settingsManager?: SettingsManager;
 	readonly model?: DurableModelSelection;
 	readonly thinkingLevel?: ModelThinkingLevel;
 	readonly apiKey?: string;
+	/** The resource flags of the command line, read by the resource loader. */
+	readonly resources?: DurableResourceOptions;
+	readonly extensionFactories?: readonly InlineExtension[];
+	readonly extensionFlagValues?: Map<string, boolean | string>;
+	/** Asks about project trust. Without it, undecided trust stays untrusted and nothing is asked. */
+	readonly projectTrustContext?: ProjectTrustContext;
+	/**
+	 * Receives each warning when the session is not interactive. Interactive sessions show warnings as notices instead.
+	 */
+	readonly onDiagnostic?: (diagnostic: AgentSessionRuntimeDiagnostic) => void;
+}
+
+/** Trust is never asked for, and undecided project trust stays untrusted. */
+function headlessTrustContext(cwd: string): ProjectTrustContext {
+	const mode: ExtensionMode = "print";
+	return {
+		cwd,
+		mode,
+		hasUI: false,
+		ui: {
+			select: async () => undefined,
+			confirm: async () => false,
+			input: async () => undefined,
+			notify: () => {},
+		},
+	};
 }
 
 export interface OpenDurableResult {
@@ -154,9 +194,18 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 	const envs = new ExecutionEnvs(location.cwd);
 	let harness: Harness | undefined;
 	try {
-		const modelRuntime = await ModelRuntime.create();
+		const services = await createDurableServices({
+			cwd: location.cwd,
+			agentDir: getAgentDir(),
+			resources: options.resources ?? {},
+			extensionFactories: options.extensionFactories ?? [],
+			extensionFlagValues: options.extensionFlagValues,
+			projectTrustContext: options.projectTrustContext ?? headlessTrustContext(location.cwd),
+		});
+		const errors = services.diagnostics.filter((diagnostic) => diagnostic.type === "error");
+		if (errors.length > 0) throw new DurableStartupError(errors);
+		const { modelRuntime, settingsManager } = services;
 		const durableModelRuntime = createDurableModelRuntime(modelRuntime);
-		const settingsManager = options.settingsManager ?? SettingsManager.create(location.cwd);
 		configureHarnessHttp(settingsManager);
 		const queueModes: {
 			steeringMode?: "all" | "one-at-a-time";
@@ -165,7 +214,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			retryEnabled?: boolean;
 		} = {};
 		const settings = createHarnessSettings(settingsManager, queueModes);
-		const registry = createCodingRegistry(settingsManager, location.cwd);
+		const registry = createCodingRegistry(settingsManager, location.cwd, services.resourceLoader);
 		registry.install(Subagent);
 
 		const pendingReports: unknown[] = [];
@@ -259,6 +308,11 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		const fail = (error: unknown): void => notice("error", error instanceof Error ? error.message : String(error));
 		report = (error) => notice("warning", error instanceof Error ? error.message : String(error));
 		for (const error of pendingReports) report(error);
+		for (const diagnostic of services.diagnostics) {
+			if (diagnostic.type === "error") continue;
+			if (options.onDiagnostic !== undefined) options.onDiagnostic(diagnostic);
+			else notice(diagnostic.type === "info" ? "info" : "warning", diagnostic.message);
+		}
 		let unsubscribe = conversation.subscribe((value) => update({ conversation: value }));
 		// Subagents appear as their conversations are created. A commit listener only records; it calls no Session API.
 		const unsubscribeCommits = harness.subscribeCommits((publication) => {
