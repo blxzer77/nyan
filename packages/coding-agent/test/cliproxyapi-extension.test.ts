@@ -735,6 +735,18 @@ describe("CLIProxyAPI extension", () => {
 			}
 		});
 
+		it("keeps one pending notice for a malformed base URL across the cache and network phases", async () => {
+			const restore = setEnv({ CLIPROXYAPI_BASE_URL: "not a url", CLIPROXYAPI_API_KEY: "env-key" });
+			try {
+				const controller = new CatalogController(agentDirWithoutPricing(), DEFAULT_PROVIDER_ID);
+				await controller.refresh({ allowNetwork: false });
+				await controller.refresh({ allowNetwork: true });
+				expect(controller.takeNotices()).toEqual([expect.stringContaining("base URL is not valid")]);
+			} finally {
+				restore();
+			}
+		});
+
 		it("checks a login's key at the base URL it entered without replacing the session's catalog", async () => {
 			const { baseUrl, seen } = await proxy("typed-key");
 			const restore = setEnv({ CLIPROXYAPI_BASE_URL: "http://127.0.0.1:1" });
@@ -855,8 +867,8 @@ describe("CLIProxyAPI extension", () => {
 						force: true,
 						verification: { apiKey: "typed-key", baseUrlInput: "not a url" },
 					}),
-				).resolves.toBeDefined();
-				expect(controller.getLastFailure()).toMatchObject({ reason: "unavailable" });
+				).resolves.toMatchObject({ verificationFailure: { reason: "unavailable" } });
+				expect(controller.getLastFailure()).toBeUndefined();
 			} finally {
 				restore();
 			}

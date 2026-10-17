@@ -419,9 +419,13 @@ export class CatalogController {
 			// A base URL that does not parse leaves nothing to fetch from. It is recorded like a failed fetch, not thrown: the
 			// login's own sync would otherwise fail a login whose key was just verified at the URL it entered.
 			const message = `CLIProxyAPI base URL is not valid (${errorMessage(error)}). Check CLIPROXYAPI_BASE_URL, cliproxyapi.json, and the stored login.`;
-			this.lastError = message;
-			this.lastFailure = { reason: "unavailable", message };
-			if (options.verification === undefined) this.notices.push(message);
+			// A verification's answer is about its own base URL, so it goes to the verification and not the session's status.
+			outcome.failure = { reason: "unavailable", message };
+			if (options.verification === undefined) {
+				this.lastError = message;
+				this.lastFailure = outcome.failure;
+				if (!this.notices.includes(message)) this.notices.push(message);
+			}
 			return;
 		}
 		if (!connection) {

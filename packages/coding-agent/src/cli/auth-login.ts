@@ -283,7 +283,11 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 			.catch((error: unknown): never => {
 				throw credentialNotVerified(provider, describeError(error), replacedStored);
 			});
-		if (refreshed.aborted) throw new AuthCommandError("Login cancelled");
+		if (refreshed.aborted) {
+			// The credential is already stored, and a cancelled login does not restore the one it replaced.
+			if (replacedStored) write(chalk.yellow(REPLACED_CREDENTIAL_NOTICE));
+			throw new AuthCommandError("Login cancelled");
+		}
 		// The provider's verdict is the discriminant; the error text is only for display.
 		const verdict = refreshed.verdicts?.get(provider.id) ?? "unavailable";
 		const failure = refreshed.errors.get(provider.id);
