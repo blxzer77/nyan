@@ -32,7 +32,12 @@ describe("ModelRuntime refresh errors", () => {
 			"refreshProviderAvailability",
 		).mockRejectedValue(new Error("availability failed"));
 
-		const result = await modelRuntime.refresh({ providers: ["flaky"], allowNetwork: true, force: true });
+		const result = await modelRuntime.refresh({
+			providers: ["flaky"],
+			allowNetwork: true,
+			force: true,
+			verifyCredential: true,
+		});
 
 		expect(result.errors.get("flaky")?.message).toBe("catalog refresh failed");
 	});

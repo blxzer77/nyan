@@ -324,7 +324,7 @@ describe("login verifies the stored credential", () => {
 		const { output } = await loginWithInput([], factory);
 		const lines = output.trimEnd().split("\n");
 		expect(lines.at(-1)).toContain("was not verified: fetch failed");
-		expect(output.indexOf("again once the provider is reachable")).toBeLessThan(output.indexOf("was not verified"));
+		expect(output.indexOf("again to verify it")).toBeLessThan(output.indexOf("was not verified"));
 	});
 
 	it("ends a verified login with the outcome line, after a refresh error that came after the verdict", async () => {

@@ -302,7 +302,7 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 				write(chalk.yellow(REPLACED_CREDENTIAL_NOTICE));
 			}
 			if (failure) {
-				write(chalk.dim(`Run ${APP_NAME} login ${provider.id} again once the provider is reachable to verify it.`));
+				write(chalk.dim(`Run ${APP_NAME} login ${provider.id} again to verify it.`));
 			}
 			write(chalk.yellow(`Logged in to ${provider.name}. The credential is stored and was not verified: ${reason}`));
 			return;
