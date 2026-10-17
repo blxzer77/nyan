@@ -85,6 +85,13 @@ describe("certificate messages", () => {
 			"fetch failed: Host: localhost. is not in the cert's altnames: DNS:other.test",
 		],
 		["Bun's self-signed text", "self signed certificate"],
+		// OpenSSL's readable texts, for codes that have another name: the message alone names the failure.
+		["unknown issuer, as text", "unable to get local issuer certificate"],
+		["unknown issuer, without 'local'", "unable to get issuer certificate"],
+		["host name mismatch, as text", "hostname mismatch"],
+		["revoked certificate", "certificate revoked"],
+		["certificate not trusted", "certificate not trusted"],
+		["invalid CA certificate", "invalid CA certificate"],
 		["a code in the text", "fetch failed (DEPTH_ZERO_SELF_SIGNED_CERT)"],
 		["expired", "certificate has expired"],
 	])("names a certificate failure: %s", (_label, message) => {

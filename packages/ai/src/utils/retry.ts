@@ -52,6 +52,13 @@ const CERTIFICATE_MESSAGE_PATTERN = new RegExp(
 		"certificate verify failed",
 		"does not match certificate",
 		"not in the cert'?s altnames",
+		// OpenSSL's readable text for a code that has another name: a missing issuer is "unable to get local issuer certificate"
+		// (UNABLE_TO_GET_ISSUER_CERT_LOCALLY), a host-name mismatch "hostname mismatch" (HOSTNAME_MISMATCH).
+		"unable to get (?:local )?issuer certificate",
+		"hostname mismatch",
+		"certificate (?:has been )?revoked",
+		"certificate (?:not trusted|rejected)",
+		"invalid CA certificate",
 	].join("|"),
 	"i",
 );
