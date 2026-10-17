@@ -678,6 +678,12 @@ class ModelsImpl implements MutableModels {
 			if (!callerSignal.aborted) throw error;
 		}
 
+		// Every provider a verification refreshed gets a verdict, even when the caller stopped the refresh before it finished.
+		if (verifying) {
+			for (const provider of refreshable) {
+				if (!verdicts.has(provider.id)) verdicts.set(provider.id, "unavailable");
+			}
+		}
 		return { aborted: callerSignal.aborted, errors: new Map(errors), verdicts: new Map(verdicts) };
 	}
 

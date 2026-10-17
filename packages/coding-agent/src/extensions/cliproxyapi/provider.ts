@@ -445,7 +445,7 @@ export class CatalogController {
 		const known = this.knownModels(connection.modelsUrl);
 
 		if (!options.allowNetwork) {
-			if (known.models.length > 0) {
+			if (!verifiesOtherEndpoint && known.models.length > 0) {
 				this.applyCatalog(known.models, known.source === "cache" ? "cache" : "remote", known.fetchedAt ?? 0);
 			}
 			return;

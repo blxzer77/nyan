@@ -530,6 +530,35 @@ describe("Models runtime", () => {
 		expect(result.verdicts?.get("twice")).toBe("rejected");
 	});
 
+	it("gives every provider a verdict when the caller aborts a verification", async () => {
+		const models = createModels();
+		const caller = new AbortController();
+		let verifyStarted!: () => void;
+		const started = new Promise<void>((resolve) => {
+			verifyStarted = resolve;
+		});
+		models.setProvider(
+			testProvider({
+				id: "waiting",
+				refreshModels: async (context) => {
+					if (!context.verifyCredential) return;
+					verifyStarted();
+					await new Promise<void>((resolve) => {
+						context.signal.addEventListener("abort", () => resolve(), { once: true });
+					});
+				},
+			}),
+		);
+
+		const verifying = models.refresh({ providers: ["waiting"], verifyCredential: true, signal: caller.signal });
+		await started;
+		caller.abort();
+		const result = await verifying;
+
+		expect(result.aborted).toBe(true);
+		expect(result.verdicts?.get("waiting")).toBe("unavailable");
+	});
+
 	it("restores cached models before waiting for network auth", async () => {
 		const store = new InMemoryModelsStore();
 		await store.write("dynamic", { models: [testModel("dynamic", "cached")] });
