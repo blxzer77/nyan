@@ -104,6 +104,7 @@ import {
 } from "../../core/model-resolver.ts";
 import { CredentialSynchronizationError } from "../../core/model-runtime.ts";
 import { DefaultPackageManager } from "../../core/package-manager.ts";
+import { isResolveOnlyApiKeyMethod } from "../../core/provider-composer.ts";
 import type { ResourceDiagnostic } from "../../core/resource-loader.ts";
 import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../core/session-cwd.ts";
 import {
@@ -5761,7 +5762,11 @@ export class InteractiveMode {
 					subscription,
 				});
 			}
-			if ((!authType || authType === "api_key") && provider.auth.apiKey) {
+			if (
+				(!authType || authType === "api_key") &&
+				provider.auth.apiKey &&
+				!isResolveOnlyApiKeyMethod(provider.auth.apiKey)
+			) {
 				options.push({
 					id: provider.id,
 					name: provider.name,

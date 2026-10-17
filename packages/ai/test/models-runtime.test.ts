@@ -291,6 +291,286 @@ describe("Models runtime", () => {
 		expect(calls).toEqual(["two:cache", "two:network"]);
 	});
 
+	it("returns the verdict a provider reports for a verification refresh, from the network phase only", async () => {
+		const seen: Array<{ allowNetwork: boolean; verifyCredential: boolean | undefined }> = [];
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "login",
+				refreshModels: async (context) => {
+					seen.push({ allowNetwork: context.allowNetwork, verifyCredential: context.verifyCredential });
+					if (!context.verifyCredential || !context.allowNetwork) return;
+					context.reportCredentialVerdict?.("rejected");
+					throw new Error("401 Unauthorized");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["login"], verifyCredential: true, force: true });
+
+		expect(seen).toEqual([
+			{ allowNetwork: false, verifyCredential: undefined },
+			{ allowNetwork: true, verifyCredential: true },
+		]);
+		expect(result.verdicts?.get("login")).toBe("rejected");
+		expect(result.errors.get("login")?.message).toBe("401 Unauthorized");
+	});
+
+	it("records no verdict for a refresh that is not a verification", async () => {
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "plain",
+				refreshModels: async (context) => {
+					expect(context.verifyCredential).toBeUndefined();
+					expect(context.reportCredentialVerdict).toBeUndefined();
+					context.reportCredentialVerdict?.("unavailable");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["plain"], force: true });
+
+		expect(result.errors.size).toBe(0);
+		expect(result.verdicts?.size).toBe(0);
+	});
+
+	it("a verification whose provider completes without a refusal is verified", async () => {
+		const models = createModels();
+		models.setProvider(testProvider({ id: "silent", refreshModels: async () => {} }));
+
+		const result = await models.refresh({ providers: ["silent"], verifyCredential: true });
+
+		expect(result.verdicts?.get("silent")).toBe("verified");
+		expect(result.errors.size).toBe(0);
+	});
+
+	it("a verification fetches even when the caller did not ask for force", async () => {
+		const seen: Array<boolean | undefined> = [];
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "fresh",
+				refreshModels: async (context) => {
+					if (!context.verifyCredential) return;
+					seen.push(context.force);
+					context.reportCredentialVerdict?.("verified");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["fresh"], verifyCredential: true });
+
+		expect(seen).toEqual([true]);
+		expect(result.verdicts?.get("fresh")).toBe("verified");
+	});
+
+	it("refuses a verification of a provider that has no credential to verify", async () => {
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "keyless",
+				auth: { apiKey: { name: "None", resolve: async () => undefined } },
+				refreshModels: async (context) => {
+					if (context.verifyCredential) throw new Error("the provider was called without a credential");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["keyless"], verifyCredential: true });
+
+		expect(result.verdicts?.get("keyless")).toBe("rejected");
+		expect(result.errors.get("keyless")?.message).toContain("has no credential to verify");
+	});
+
+	it("reports unavailable for a verification whose provider threw without a verdict", async () => {
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "throws",
+				refreshModels: async (context) => {
+					if (context.verifyCredential) throw new Error("fetch failed");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["throws"], verifyCredential: true });
+
+		expect(result.verdicts?.get("throws")).toBe("unavailable");
+		expect(result.errors.get("throws")?.message).toBe("fetch failed");
+	});
+
+	it("reports unavailable for a verification that another refresh of the same provider superseded", async () => {
+		const models = createModels();
+		let verifyStarted!: () => void;
+		const started = new Promise<void>((resolve) => {
+			verifyStarted = resolve;
+		});
+		models.setProvider(
+			testProvider({
+				id: "slow",
+				refreshModels: async (context) => {
+					if (!context.verifyCredential) return;
+					verifyStarted();
+					// Waits until another refresh of this provider supersedes this one.
+					await new Promise<void>((resolve) => {
+						context.signal.addEventListener("abort", () => resolve(), { once: true });
+					});
+				},
+			}),
+		);
+
+		const verifying = models.refresh({ providers: ["slow"], verifyCredential: true });
+		await started;
+		await models.refresh({ providers: ["slow"] });
+		const result = await verifying;
+
+		expect(result.verdicts?.get("slow")).toBe("unavailable");
+		expect(result.errors.size).toBe(0);
+	});
+
+	it("ignores a verdict that a superseded verification reports after it was superseded", async () => {
+		const models = createModels();
+		let verifyStarted!: () => void;
+		const started = new Promise<void>((resolve) => {
+			verifyStarted = resolve;
+		});
+		models.setProvider(
+			testProvider({
+				id: "late",
+				refreshModels: async (context) => {
+					if (!context.verifyCredential) return;
+					verifyStarted();
+					await new Promise<void>((resolve) => {
+						context.signal.addEventListener("abort", () => resolve(), { once: true });
+					});
+					// A provider that answers after it was superseded must not change the verdict.
+					context.reportCredentialVerdict?.("verified");
+				},
+			}),
+		);
+
+		const verifying = models.refresh({ providers: ["late"], verifyCredential: true });
+		await started;
+		await models.refresh({ providers: ["late"] });
+		const result = await verifying;
+
+		expect(result.verdicts?.get("late")).toBe("unavailable");
+	});
+
+	it("keeps every provider's verdict when another provider's verification throws", async () => {
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "broken",
+				refreshModels: async (context) => {
+					if (context.verifyCredential) throw new Error("fetch failed");
+				},
+			}),
+		);
+		models.setProvider(
+			testProvider({
+				id: "accepting",
+				refreshModels: async (context) => {
+					if (context.verifyCredential) context.reportCredentialVerdict?.("verified");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["broken", "accepting"], verifyCredential: true });
+
+		expect(result.verdicts?.get("broken")).toBe("unavailable");
+		expect(result.verdicts?.get("accepting")).toBe("verified");
+		expect(result.errors.get("broken")?.message).toBe("fetch failed");
+	});
+
+	it("ignores a verdict a provider reports after its refresh has finished", async () => {
+		const models = createModels();
+		let reportLate: ((verdict: "verified" | "rejected" | "unavailable") => void) | undefined;
+		models.setProvider(
+			testProvider({
+				id: "early",
+				refreshModels: async (context) => {
+					if (context.verifyCredential) reportLate = context.reportCredentialVerdict;
+				},
+			}),
+		);
+		// The second provider is still running when the first one's refresh has finished, so a late report would land in the window.
+		models.setProvider(
+			testProvider({
+				id: "slow",
+				refreshModels: async (context) => {
+					if (!context.verifyCredential) return;
+					await new Promise((resolve) => setTimeout(resolve, 30));
+					reportLate?.("rejected");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["early", "slow"], verifyCredential: true });
+
+		expect(result.verdicts?.get("early")).toBe("verified");
+	});
+
+	it("keeps the first verdict a provider reports during one verification", async () => {
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "twice",
+				refreshModels: async (context) => {
+					if (!context.verifyCredential) return;
+					context.reportCredentialVerdict?.("rejected");
+					context.reportCredentialVerdict?.("verified");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["twice"], verifyCredential: true });
+
+		expect(result.verdicts?.get("twice")).toBe("rejected");
+	});
+
+	it("settles a verification the caller had already stopped, one verdict per provider it would refresh", async () => {
+		const models = createModels();
+		models.setProvider(testProvider({ id: "stopped", refreshModels: async () => {} }));
+		const caller = new AbortController();
+		caller.abort();
+
+		const result = await models.refresh({ providers: ["stopped"], verifyCredential: true, signal: caller.signal });
+
+		expect(result.aborted).toBe(true);
+		expect(result.verdicts?.get("stopped")).toBe("unavailable");
+	});
+
+	it("gives every provider a verdict when the caller aborts a verification", async () => {
+		const models = createModels();
+		const caller = new AbortController();
+		let verifyStarted!: () => void;
+		const started = new Promise<void>((resolve) => {
+			verifyStarted = resolve;
+		});
+		models.setProvider(
+			testProvider({
+				id: "waiting",
+				refreshModels: async (context) => {
+					if (!context.verifyCredential) return;
+					verifyStarted();
+					await new Promise<void>((resolve) => {
+						context.signal.addEventListener("abort", () => resolve(), { once: true });
+					});
+				},
+			}),
+		);
+
+		const verifying = models.refresh({ providers: ["waiting"], verifyCredential: true, signal: caller.signal });
+		await started;
+		caller.abort();
+		const result = await verifying;
+
+		expect(result.aborted).toBe(true);
+		expect(result.verdicts?.get("waiting")).toBe("unavailable");
+	});
+
 	it("restores cached models before waiting for network auth", async () => {
 		const store = new InMemoryModelsStore();
 		await store.write("dynamic", { models: [testModel("dynamic", "cached")] });

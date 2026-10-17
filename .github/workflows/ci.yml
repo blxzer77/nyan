@@ -1,5 +1,13 @@
 name: Nyan quality gate
 
+# Pull-request work runs on GitHub-hosted runners only. The account allows 20 concurrent jobs (measured with a 40-job
+# probe), which absorbs the test fan-out. Self-hosted runners are absent here on purpose: their six slots are shared by
+# every open pull request, and a job queued behind other sessions' work costs more than the work itself.
+#
+# Shape: policy selects packages and expands the large suites into shards; prepare installs and builds once and packs
+# the workspace; every test job unpacks that archive instead of installing again. A fork pull request runs the same
+# jobs as an internal one, because no job here needs a credential or a self-hosted host.
+
 on:
   push:
     branches: [main]
@@ -25,17 +33,19 @@ env:
 jobs:
   policy:
     name: Policy and impact
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    # Imports Node built-ins only (ci-impact.mjs, ci-shards.mjs), so it needs no install.
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       full_suite: ${{ steps.impact.outputs.full_suite }}
       node_packages: ${{ steps.impact.outputs.node_packages }}
       bun_packages: ${{ steps.impact.outputs.bun_packages }}
+      node_shards: ${{ steps.shards.outputs.node_shards }}
+      bun_shards: ${{ steps.shards.outputs.bun_shards }}
       risk: ${{ steps.impact.outputs.risk }}
       deep_required: ${{ steps.impact.outputs.deep_required }}
       windows_required: ${{ steps.impact.outputs.windows_required }}
       mcp_required: ${{ steps.impact.outputs.mcp_required }}
-      fork_pr: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,23 +56,6 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Pin npm
-        run: |
-          if [ "$(npm --version)" != "${{ env.NPM_VERSION }}" ]; then
-            npm install --global "npm@${{ env.NPM_VERSION }}"
-          fi
-          npm --version
-
-      - name: Install policy dependencies
-        run: npm ci --ignore-scripts --no-audit --no-fund
-
-      - name: Validate workflows and policy
-        run: node scripts/validate-workflows.mjs
-
-      - name: Actionlint
-        run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.7
 
       - name: Compute change impact
         id: impact
@@ -71,22 +64,26 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node scripts/ci-impact.mjs
 
+      - name: Expand test shards
+        id: shards
+        env:
+          NODE_PACKAGES: ${{ steps.impact.outputs.node_packages }}
+          BUN_PACKAGES: ${{ steps.impact.outputs.bun_packages }}
+        run: node scripts/ci-shards.mjs
+
       - name: Show policy
         run: node --input-type=commonjs -e "console.log(JSON.stringify(require('./.github/quality/policy.json'), null, 2))"
 
   prepare:
-    name: Prepare build artifact
+    name: Prepare workspace
+    # The only install and build of the run. Packs node_modules, the built packages and the model-data lock into one
+    # archive; every test job restores it with `restore-workspace` instead of installing again.
     needs: policy
-    if: needs.policy.outputs.fork_pr != 'true'
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install Linux build dependencies on hosted runners
-        if: runner.environment == 'github-hosted'
-        run: bash .github/scripts/apt-install.sh libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -98,32 +95,48 @@ jobs:
       - name: Build offline
         run: npm run build:offline
 
-      - name: Upload build artifact
+      - name: Pack the workspace
+        run: |
+          set -euo pipefail
+          # npm workspaces nest a dependency whose version conflicts with the hoisted one: `openai` lives in
+          # packages/ai/node_modules, not in the root. Pack every nested node_modules, or a restored job cannot resolve it.
+          # nullglob drops a pattern with no match instead of failing, since not every package nests anything.
+          shopt -s nullglob
+          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
+          ls -lh nyan-workspace.tar.gz
+
+      - name: Upload the workspace
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: nyan-dist-${{ github.sha }}
-          path: |
-            packages/*/dist
-            .ci/model-data.lock.json
-          # The model-data manifest is `dist/providers/data/.manifest.json`; upload-artifact skips dotfiles unless this
-          # is set, and without it every consumer fails to import `./data/.manifest.json` from `dist/providers/all.js`.
-          include-hidden-files: true
+          name: nyan-workspace-${{ github.sha }}
+          path: nyan-workspace.tar.gz
+          # The archive is already compressed; store it as-is instead of wrapping it in a second compressed archive.
+          compression-level: 0
           if-no-files-found: error
           retention-days: 3
 
   static:
     name: Static checks
-    needs: [policy, prepare]
-    if: needs.policy.outputs.fork_pr != 'true'
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    # `npm run check` reads `packages/*/src` only, so this job installs its own dependencies and does not wait for
+    # `prepare`: an uncached install is cheaper than queueing behind the build, and the check reports even if the build
+    # fails. It also runs validate-workflows, so the workflow files are checked here.
+    needs: [policy]
+    runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Linux build dependencies on hosted runners
-        if: runner.environment == 'github-hosted'
-        run: bash .github/scripts/apt-install.sh libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+      - name: Ensure fd and ripgrep
+        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, a missing binary is
+        # not downloaded: the tool reports itself unavailable. The image does not provide them (measured), so install
+        # only what is missing and print what the image had.
+        run: |
+          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
+          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
+            bash .github/scripts/apt-install.sh ripgrep fd-find
+          fi
+          echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -131,72 +144,90 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           bun: 'false'
           model-data: 'true'
-
-      - name: Download build artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: nyan-dist-${{ github.sha }}
 
       - name: Check
         run: npm run check
 
   node-tests:
-    name: Node tests (${{ matrix.package }})
+    name: Node tests (${{ matrix.name }})
     needs: [policy, prepare]
-    if: needs.policy.outputs.fork_pr != 'true' && needs.policy.result == 'success' && needs.prepare.result == 'success'
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 2
+      # Both matrices together can exceed the measured limit of 20 live jobs; GitHub then queues the rest, which is
+      # safe. These values are the width the matrices are allowed, not a promise that all of them run at once.
+      max-parallel: 12
       matrix:
-        package: ${{ fromJSON(needs.policy.outputs.node_packages) }}
+        include: ${{ fromJSON(needs.policy.outputs.node_shards) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Linux build dependencies on hosted runners
-        if: runner.environment == 'github-hosted'
-        run: bash .github/scripts/apt-install.sh libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+      - name: Ensure fd and ripgrep
+        run: |
+          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
+          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
+            bash .github/scripts/apt-install.sh ripgrep fd-find
+          fi
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
         with:
           node-version: ${{ env.NODE_VERSION }}
           bun: 'false'
+          install: 'false'
           model-data: 'true'
-
-      - name: Download build artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: nyan-dist-${{ github.sha }}
 
       - name: Run root script tests
         if: matrix.package == 'root'
         run: npm run test:scripts
 
       - name: Run package tests
-        if: matrix.package != 'root'
+        if: matrix.package != 'root' && matrix.shard == ''
         run: npm --workspace "packages/${{ matrix.package }}" test
 
+      - name: Run a shard of package tests
+        # Direct `node` calls, not `npm`: npm swallows `--shard=` before the script sees it (measured), so the shard would
+        # silently run every file. durable runs its suite twice, and both passes take the same shard.
+        if: matrix.shard != ''
+        working-directory: packages/${{ matrix.package }}
+        env:
+          PACKAGE: ${{ matrix.package }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          node ../../node_modules/vitest/vitest.mjs --run "--shard=$SHARD"
+          if [ "$PACKAGE" = "durable" ]; then
+            node scripts/test-without-document-retention.mjs "--shard=$SHARD"
+          fi
+
   bun-tests:
-    name: Bun tests (${{ matrix.package }})
+    name: Bun tests (${{ matrix.name }})
     needs: [policy, prepare]
-    if: needs.policy.outputs.fork_pr != 'true' && needs.policy.result == 'success' && needs.prepare.result == 'success'
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 8
       matrix:
-        package: ${{ fromJSON(needs.policy.outputs.bun_packages) }}
+        include: ${{ fromJSON(needs.policy.outputs.bun_shards) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Linux build dependencies on hosted runners
-        if: runner.environment == 'github-hosted'
-        run: bash .github/scripts/apt-install.sh libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+      - name: Ensure fd and ripgrep
+        run: |
+          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
+          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
+            bash .github/scripts/apt-install.sh ripgrep fd-find
+          fi
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -204,26 +235,38 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           bun-version: ${{ env.BUN_VERSION }}
           bun: 'true'
+          install: 'false'
           model-data: 'true'
 
-      - name: Download build artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: nyan-dist-${{ github.sha }}
-
       - name: Run Bun package tests
-        run: npm run test:bun -- "${{ matrix.package }}"
+        env:
+          PACKAGE: ${{ matrix.package }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SHARD" ]; then
+            node scripts/test-bun.mjs "$PACKAGE" "--shard=$SHARD"
+          else
+            node scripts/test-bun.mjs "$PACKAGE"
+          fi
 
       - name: Run durable retention tests under Bun
         if: matrix.package == 'durable'
         env:
           NYAN_DURABLE_DOCUMENT_RETENTION_MS: '0'
-        run: npm run test:bun -- durable
+          PACKAGE: durable
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SHARD" ]; then
+            node scripts/test-bun.mjs "$PACKAGE" "--shard=$SHARD"
+          else
+            node scripts/test-bun.mjs "$PACKAGE"
+          fi
 
   windows-smoke:
     name: Windows build and check
     needs: [policy, prepare]
-    if: needs.policy.outputs.fork_pr != 'true' && needs.policy.result == 'success' && needs.prepare.result == 'success'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -260,8 +303,7 @@ jobs:
   mcp-conformance:
     name: MCP conformance
     needs: [policy, prepare]
-    if: needs.policy.outputs.fork_pr != 'true' && needs.policy.result == 'success' && needs.prepare.result == 'success'
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -279,8 +321,9 @@ jobs:
 
   supply-chain:
     name: Supply chain and secrets
+    # Self-hosted was rejected here by measurement: a job queued behind other sessions added minutes to the critical path.
     needs: policy
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -317,56 +360,46 @@ jobs:
       - name: Verify npm registry signatures
         run: npm audit signatures --omit=dev
 
-      - name: Trivy filesystem scan on main
-        if: github.event_name != 'pull_request'
-        run: docker run --rm -v "$PWD:/repo:ro" aquasec/trivy:0.68.2 fs --scanners vuln,secret,misconfig --skip-dirs /repo/node_modules --skip-dirs /repo/.git --exit-code 1 --severity HIGH,CRITICAL /repo
+      - name: Trivy filesystem scan
+        # Runs on pull requests too, so a dependency with a known vulnerability is caught before it reaches main. Pull
+        # requests block only on CRITICAL, so a HIGH disclosed overnight does not turn every open pull request red; main
+        # and the nightly scan block on HIGH as well.
+        #
+        # The examples' own lockfiles are skipped: they are pinned at 1.1.0 while the package is at 1.3.0 and take no
+        # part in a build, so they report dependency trees nothing here installs. `.trivyignore.yaml` carries the
+        # accepted risks.
+        run: >-
+          docker run --rm -v "$PWD:/repo:ro" aquasec/trivy:0.68.2 fs
+          --scanners vuln,secret,misconfig
+          --skip-dirs /repo/node_modules --skip-dirs /repo/.git
+          --skip-files '/repo/packages/coding-agent/examples/**/package-lock.json'
+          --ignorefile /repo/.trivyignore.yaml
+          --exit-code 1
+          --severity ${{ github.event_name == 'pull_request' && 'CRITICAL' || 'HIGH,CRITICAL' }}
+          /repo
 
   deep-gate:
     name: Deep verification
-    needs: [policy, prepare, static, node-tests, bun-tests]
-    if: needs.policy.outputs.fork_pr != 'true' && needs.policy.outputs.deep_required == 'true' && needs.policy.result == 'success'
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
-    timeout-minutes: 30
-    concurrency:
-      group: nyan-deep-gate
-      cancel-in-progress: false
+    # Only what the sharded matrices do not already run: the protocol fuzz and the mutation run. The package suites are
+    # covered by node-tests and bun-tests in the same run, so repeating them here only added time.
+    needs: [policy, prepare]
+    if: needs.policy.outputs.deep_required == 'true' && needs.policy.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Linux build dependencies on hosted runners
-        if: runner.environment == 'github-hosted'
-        run: bash .github/scripts/apt-install.sh libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
         with:
           node-version: ${{ env.NODE_VERSION }}
-          bun-version: ${{ env.BUN_VERSION }}
-          bun: 'true'
+          bun: 'false'
+          install: 'false'
           model-data: 'true'
-
-      - name: Download build artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: nyan-dist-${{ github.sha }}
-
-      - name: Run critical recovery and package tests
-        run: |
-          npm run test:scripts
-          npm --workspace packages/ai test
-          npm --workspace packages/agent test
-          npm --workspace packages/durable test
-          npm --workspace packages/coding-agent test
-          npm --workspace packages/protocol test
-
-      - name: Run Bun critical parity tests
-        run: |
-          npm run test:bun -- ai
-          npm run test:bun -- agent
-          npm run test:bun -- durable
-          npm run test:bun -- coding-agent
-          npm run test:bun -- protocol
 
       - name: Run deterministic protocol fuzz harness
         env:
@@ -392,7 +425,7 @@ jobs:
     name: Merge gate
     needs: [policy, prepare, static, node-tests, bun-tests, windows-smoke, mcp-conformance, supply-chain, deep-gate]
     if: always()
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -407,5 +440,5 @@ jobs:
         env:
           CI_GATE_RESULTS: >-
             {"policy":"${{ needs.policy.result }}","prepare":"${{ needs.prepare.result }}","static":"${{ needs.static.result }}","node-tests":"${{ needs.node-tests.result }}","bun-tests":"${{ needs.bun-tests.result }}","windows-smoke":"${{ needs.windows-smoke.result }}","mcp-conformance":"${{ needs.mcp-conformance.result }}","supply-chain":"${{ needs.supply-chain.result }}","deep-gate":"${{ needs.deep-gate.result }}"}
-          CI_GATE_REQUIRED: ${{ needs.policy.outputs.fork_pr == 'true' && '["policy","supply-chain"]' || (needs.policy.outputs.deep_required == 'true' && '["policy","prepare","static","node-tests","bun-tests","windows-smoke","mcp-conformance","supply-chain","deep-gate"]' || '["policy","prepare","static","node-tests","bun-tests","windows-smoke","mcp-conformance","supply-chain"]') }}
+          CI_GATE_REQUIRED: ${{ needs.policy.outputs.deep_required == 'true' && '["policy","prepare","static","node-tests","bun-tests","windows-smoke","mcp-conformance","supply-chain","deep-gate"]' || '["policy","prepare","static","node-tests","bun-tests","windows-smoke","mcp-conformance","supply-chain"]' }}
         run: node scripts/ci-gate.mjs

@@ -58,7 +58,8 @@ jobs:
           docker run --rm -v "$scan_dir:/repo:ro" zricethezav/gitleaks:v8.28.0 detect --no-git --source /repo --config /repo/.gitleaks.toml --no-banner --redact
 
       - name: Trivy filesystem scan
-        run: docker run --rm -v "$PWD:/repo:ro" aquasec/trivy:0.68.2 fs --scanners vuln,secret,misconfig --skip-dirs /repo/node_modules --skip-dirs /repo/.git --exit-code 1 --severity HIGH,CRITICAL /repo
+        # See ci.yml: the examples keep stale lockfiles that never take part in a build.
+        run: docker run --rm -v "$PWD:/repo:ro" aquasec/trivy:0.68.2 fs --scanners vuln,secret,misconfig --skip-dirs /repo/node_modules --skip-dirs /repo/.git --skip-files '/repo/packages/coding-agent/examples/**/package-lock.json' --ignorefile /repo/.trivyignore.yaml --exit-code 1 --severity HIGH,CRITICAL /repo
 
       - name: Generate SBOM
         run: docker run --rm -v "$PWD:/repo" anchore/syft:v1.33.0 dir:/repo --exclude ./node_modules --exclude ./.git --exclude ./packages/*/dist -o cyclonedx-json=/repo/sbom.cdx.json

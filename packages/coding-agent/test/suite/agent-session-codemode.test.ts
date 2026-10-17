@@ -15,11 +15,11 @@ import {
 } from "@ny4n/ai";
 import type { ToolResultMessage, Usage } from "@ny4n/ai/compat";
 import { Type } from "typebox";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "../../src/core/extensions/types.ts";
 import type { CustomEntry } from "../../src/core/session-manager.ts";
 import { createToolDefinitionFromAgentTool } from "../../src/core/tools/tool-definition-wrapper.ts";
-import { readCodemodeStore } from "../../src/extensions/codemode/execute.ts";
+import { codemodeWorkersInFlight, readCodemodeStore } from "../../src/extensions/codemode/execute.ts";
 import { createCodemodeExtension } from "../../src/extensions/codemode/index.ts";
 import {
 	CODEMODE_DOCS_PATH,
@@ -119,8 +119,11 @@ function checkSavedImages(text: string): string {
 describe("AgentSession codemode tool", () => {
 	const harnesses: Harness[] = [];
 
-	afterEach(() => {
+	afterEach(async () => {
 		while (harnesses.length > 0) harnesses.pop()?.cleanup();
+		// A script's worker is released only when it exits. Bun can take longer than Node to finish terminate(), so wait
+		// for the slot instead of assuming the next test starts with none held.
+		await vi.waitFor(() => expect(codemodeWorkersInFlight()).toBe(0), { timeout: 15_000 });
 	});
 
 	async function setup(extensionFactories?: HarnessOptions["extensionFactories"]) {
@@ -447,8 +450,9 @@ describe("AgentSession codemode tool", () => {
 describe("codemode options and store", () => {
 	const harnesses: Harness[] = [];
 
-	afterEach(() => {
+	afterEach(async () => {
 		while (harnesses.length > 0) harnesses.pop()?.cleanup();
+		await vi.waitFor(() => expect(codemodeWorkersInFlight()).toBe(0), { timeout: 15_000 });
 	});
 
 	// No tools override: the session builds its own codemode tool, including the store writer.
@@ -663,8 +667,9 @@ describe("codemode options and store", () => {
 describe("codemode models", () => {
 	const harnesses: Harness[] = [];
 
-	afterEach(() => {
+	afterEach(async () => {
 		while (harnesses.length > 0) harnesses.pop()?.cleanup();
+		await vi.waitFor(() => expect(codemodeWorkersInFlight()).toBe(0), { timeout: 15_000 });
 	});
 
 	const scorerModel: ClassifierModel<"test-classifier"> = {

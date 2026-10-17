@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Writable } from "node:stream";
@@ -175,16 +175,34 @@ describe("login interaction", () => {
 	});
 });
 
+describe("api key login method", () => {
+	it("explains the login flow instead of refusing the method for a provider that has OAuth", async () => {
+		await expect(
+			loginWithInput(
+				[],
+				oauthFactory(async () => ({ refresh: "r", access: "a", expires: Date.now() + 100000 })),
+				{ method: "api_key" },
+			),
+		).rejects.toThrow(
+			'Provider "Test Provider" has no API key method here. Run nyan login test-prov without --method to use its login flow.',
+		);
+	});
+});
+
 /** Runs a login against an injected answer source, which needs no terminal. */
 async function loginWithInput(
 	lines: string[],
 	factory: InlineExtension,
-	options: { args?: string[]; method?: "oauth" | "api_key" } = {},
+	options: { args?: string[]; method?: "oauth" | "api_key"; seedAuth?: Record<string, unknown> } = {},
 ): Promise<{ output: string; queries: string[] }> {
 	const cwd = tempDir();
 	const output = collectingOutput();
 	const queries: string[] = [];
 	let next = 0;
+	if (options.seedAuth) {
+		mkdirSync(join(cwd, "agent"), { recursive: true });
+		writeFileSync(join(cwd, "agent", "auth.json"), JSON.stringify(options.seedAuth));
+	}
 	await runAuthLogin(parseArgs(options.args ?? ["--provider", "test-prov"]), {
 		cwd,
 		agentDir: join(cwd, "agent"),
@@ -230,6 +248,7 @@ describe("login verifies the stored credential", () => {
 			// the verification itself.
 			if (!context.allowNetwork) return [];
 			networkRefreshes++;
+			context.reportCredentialVerdict?.("verified");
 			return oneModel(context);
 		});
 		const { output } = await loginWithInput([], factory);
@@ -239,7 +258,8 @@ describe("login verifies the stored credential", () => {
 
 	it("reports a rejected credential instead of claiming success", async () => {
 		const factory = oauthFactory(loggedIn, async (context) => {
-			if (!context.allowNetwork) return [];
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("rejected");
 			throw new Error("401 Invalid API key");
 		});
 		await expect(loginWithInput([], factory)).rejects.toThrow(
@@ -260,11 +280,128 @@ describe("login verifies the stored credential", () => {
 		);
 	});
 
+	it("reports a provider that accepts the credential but lists no models as verified, without claiming a model", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("verified");
+			return [];
+		});
+		const { output } = await loginWithInput([], factory);
+		expect(output).toContain(
+			"Logged in to Test Provider. The provider accepted the credential, but lists no models.",
+		);
+		expect(output).not.toContain("Verified:");
+	});
+
+	it("a provider that completes without reporting a verdict is verified, as a refresh that completes always was", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			return [];
+		});
+		const { output } = await loginWithInput([], factory);
+		expect(output).toContain(
+			"Logged in to Test Provider. The provider accepted the credential, but lists no models.",
+		);
+		expect(output).not.toContain("was not verified");
+	});
+
+	it("does not call a verification that threw without a verdict rejected", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			throw new Error("fetch failed");
+		});
+		const { output } = await loginWithInput([], factory);
+		expect(output).toContain(
+			"Logged in to Test Provider. The credential is stored and was not verified: fetch failed",
+		);
+	});
+
+	it("ends an unverified login with the outcome line, after the advice that precedes it", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			throw new Error("fetch failed");
+		});
+		const { output } = await loginWithInput([], factory);
+		const lines = output.trimEnd().split("\n");
+		expect(lines.at(-1)).toContain("was not verified: fetch failed");
+		expect(output.indexOf("again to verify it")).toBeLessThan(output.indexOf("was not verified"));
+	});
+
+	it("ends a verified login with the outcome line, after a refresh error that came after the verdict", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("verified");
+			throw new Error("publish failed");
+		});
+		const { output } = await loginWithInput([], factory);
+		const lines = output.trimEnd().split("\n");
+		expect(output).toContain("The model refresh reported an error: publish failed");
+		expect(lines.at(-1)).toMatch(/accepted the credential|Verified:/);
+	});
+
 	it("says it was not verified when the provider cannot be checked without a request", async () => {
 		// Anthropic and other built-in providers declare no refreshModels, so nothing is spent to verify them.
 		const { output } = await loginWithInput([], oauthFactory(loggedIn));
 		expect(output).toContain("Logged in to Test Provider. The credential is stored and was not verified.");
 		expect(output).not.toContain("Verified:");
+	});
+
+	it("fails when the provider refuses the credential, and says the credential is kept", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("rejected");
+			throw new Error("models request failed: 401 Unauthorized");
+		});
+		await expect(loginWithInput([], factory)).rejects.toThrow(
+			/could not be verified: models request failed: 401 Unauthorized.*The credential is stored/su,
+		);
+	});
+
+	it("reports a provider that did not answer as stored and unverified, never as verified", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("unavailable");
+			throw new Error("fetch failed");
+		});
+		const { output } = await loginWithInput([], factory);
+		expect(output).toContain(
+			"Logged in to Test Provider. The credential is stored and was not verified: fetch failed",
+		);
+		expect(output).not.toContain("Verified:");
+	});
+
+	it("says the stored credential was replaced when a rejected key fails verification", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("rejected");
+			throw new Error("models request failed: 401 Unauthorized");
+		});
+		await expect(
+			loginWithInput([], factory, { seedAuth: { "test-prov": { type: "api_key", key: "previous-key" } } }),
+		).rejects.toThrow(/401 Unauthorized.*replaced the previously stored credential, which is not restored/su);
+	});
+
+	it("says the stored credential was replaced when the provider does not answer", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("unavailable");
+			throw new Error("fetch failed");
+		});
+		const { output } = await loginWithInput([], factory, {
+			seedAuth: { "test-prov": { type: "api_key", key: "previous-key" } },
+		});
+		expect(output).toContain("replaced the previously stored credential, which is not restored");
+	});
+
+	it("does not claim a replacement when nothing was stored before the login", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("rejected");
+			throw new Error("models request failed: 401 Unauthorized");
+		});
+		const error = await loginWithInput([], factory).catch((caught: unknown) => caught);
+		expect(String(error)).toContain("The credential is stored. Correct it");
+		expect(String(error)).not.toContain("replaced");
 	});
 });
 
