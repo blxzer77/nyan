@@ -361,7 +361,7 @@ export class CatalogController {
 	 *
 	 * An ordinary refresh keeps the previously known models when the fetch fails, so the picker does not empty out
 	 * because the proxy hiccuped, and it throws only for what it cannot read (as it always has). A verification never
-	 * rejects: its failure is recorded in `getLastFailure()`, which is the answer the login reports.
+	 * rejects: its failure is returned as `verificationFailure`, which is the answer the login reports.
 	 */
 	async refresh(options: CatalogRefreshOptions): Promise<CatalogSnapshot & { verificationFailure?: CatalogFailure }> {
 		// An ordinary refresh may share an ordinary refresh already in flight, as it did before login verification. A
@@ -555,7 +555,7 @@ function warnIfKeyOverridden(agentDir: string, providerId: string, entered: stri
 function overriddenKeyMessage(subject: string, providerId: string, credentialType: string | undefined): string {
 	const head = `${subject} is set to a different key than the one just entered.`;
 	return credentialType === "api_key"
-		? `${head} The model list is fetched with that key. A login that stores an API key is not used for requests: run ${APP_NAME} login ${providerId} without --method.`
+		? `${head} The model list is fetched with that key. A key stored by an API-key login is not used for requests: run ${APP_NAME} login ${providerId} without --method.`
 		: `${head} The model list is fetched with that key, while requests use the key this login stored. Remove the setting so both use the same key.`;
 }
 
