@@ -5,6 +5,7 @@ import chalk from "chalk";
 import { APP_NAME, getAgentDir } from "../config.ts";
 import { createAgentSessionServices } from "../core/agent-session-services.ts";
 import { compareLoginProviders } from "../core/auth-guidance.ts";
+import { readStoredCredential } from "../core/auth-storage.ts";
 import type { InlineExtension } from "../core/extensions/types.ts";
 import { CredentialSynchronizationError } from "../core/model-runtime.ts";
 import { openBrowser } from "../utils/open-browser.ts";
@@ -37,11 +38,18 @@ function describeError(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-/** Says what happened, what was kept, and what to do, rather than only that it failed. */
-function credentialNotVerified(provider: Provider, detail: string): AuthCommandError {
+/** Told when a verification failure has replaced the stored credential, which the login does not restore. */
+const REPLACED_CREDENTIAL_NOTICE = "The new login replaced the previously stored credential, which is not restored.";
+
+/**
+ * Says what happened, what was kept, and what to do, rather than only that it failed. The login commits the key before it
+ * verifies it, so a failed verification has already replaced any credential that was stored, and the message says so.
+ */
+function credentialNotVerified(provider: Provider, detail: string, replacedStored: boolean): AuthCommandError {
+	const kept = replacedStored ? `${REPLACED_CREDENTIAL_NOTICE} ` : "The credential is stored. ";
 	return new AuthCommandError(
 		`Logged in to ${provider.name}, but the credential could not be verified: ${detail}\n` +
-			`The credential is stored; correct it and run ${APP_NAME} login ${provider.id} again.`,
+			`${kept}Correct it and run ${APP_NAME} login ${provider.id} again.`,
 	);
 }
 
@@ -157,7 +165,10 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 				throw new AuthCommandError(`Provider "${provider.name}" does not support OAuth login.`);
 			}
 			if (options.method === "api_key" && !hasApiKey) {
-				throw new AuthCommandError(`Provider "${provider.name}" does not support API key login.`);
+				// Only reached for a provider with OAuth: the check above refuses one with neither method.
+				throw new AuthCommandError(
+					`Provider "${provider.name}" has no API key method here. Run ${APP_NAME} login ${provider.id} without --method to use its login flow.`,
+				);
 			}
 			authType = options.method;
 		} else if (hasOAuth && hasApiKey) {
@@ -227,6 +238,8 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 
 		// A provider that cannot even restore its own model list fails inside the post-login synchronization, whose
 		// own message names neither the cause nor what to do. Its `cause` is the provider's failure, so report that.
+		// Read before the login writes the key: a failed verification replaces whatever is stored here.
+		const replacedStored = readStoredCredential(provider.id, join(agentDir, "auth.json")) !== undefined;
 		try {
 			await modelRuntime.login(
 				provider.id,
@@ -240,7 +253,7 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 			);
 		} catch (error) {
 			if (error instanceof CredentialSynchronizationError) {
-				throw credentialNotVerified(provider, describeError(error.cause));
+				throw credentialNotVerified(provider, describeError(error.cause), replacedStored);
 			}
 			throw error;
 		}
@@ -257,17 +270,62 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 		// The provider's own model refresh authenticates with the credential just stored, so its outcome is the
 		// verification: a rejected credential fails here instead of at the first request.
 		write(chalk.dim(`Verifying the credential and refreshing models for ${provider.name}...`));
+		// The verification flag makes the provider fetch now, authenticate with the credential just stored, and report a
+		// verdict. Nothing else about this refresh is inferred from its options.
 		const refreshed = await modelRuntime
-			.refresh({ providers: [provider.id], allowNetwork: true, signal: abortController.signal })
+			.refresh({
+				providers: [provider.id],
+				allowNetwork: true,
+				force: true,
+				verifyCredential: true,
+				signal: abortController.signal,
+			})
 			.catch((error: unknown): never => {
-				throw credentialNotVerified(provider, describeError(error));
+				throw credentialNotVerified(provider, describeError(error), replacedStored);
 			});
-		if (refreshed.aborted) throw new AuthCommandError("Login cancelled");
+		if (refreshed.aborted) {
+			// The credential is already stored, and a cancelled login does not restore the one it replaced.
+			if (replacedStored) write(chalk.yellow(REPLACED_CREDENTIAL_NOTICE));
+			throw new AuthCommandError("Login cancelled");
+		}
+		// The provider's verdict is the discriminant; the error text is only for display.
+		const verdict = refreshed.verdicts?.get(provider.id) ?? "unavailable";
 		const failure = refreshed.errors.get(provider.id);
-		if (failure) throw credentialNotVerified(provider, failure.message);
+		// `verified` means the listing completed without a refusal. It is not proof that the provider checked the key: a
+		// provider that ignores the verification flag is verified this way too. Anything else that is not a refusal ends here
+		// as not verified. A failed check says why and when to retry; a provider that reports no verdict gets no retry
+		// advice, because retrying would not change its answer.
+		if (verdict !== "verified" && verdict !== "rejected") {
+			const reason = failure?.message ?? "the provider did not confirm the credential";
+			// The outcome is the last line, because scripts read it: the advice above it is written first.
+			if (replacedStored) {
+				write(chalk.yellow(REPLACED_CREDENTIAL_NOTICE));
+			}
+			if (failure) {
+				write(chalk.dim(`Run ${APP_NAME} login ${provider.id} again once the provider is reachable to verify it.`));
+			}
+			write(chalk.yellow(`Logged in to ${provider.name}. The credential is stored and was not verified: ${reason}`));
+			return;
+		}
+		if (verdict === "rejected") {
+			throw credentialNotVerified(
+				provider,
+				failure?.message ?? "the provider refused the credential",
+				replacedStored,
+			);
+		}
 
+		// The refresh's error, if it reported one, is written before the outcome line, which stays last.
+		if (failure) write(chalk.yellow(`The model refresh reported an error: ${failure.message}`));
 		const models = modelRuntime.getModels(provider.id);
-		write(chalk.green(`Logged in to ${provider.name}. Verified: ${models.length} model(s) available.`));
+		if (models.length === 0) {
+			// The provider answered 200 to the credential, so it is accepted; it offers no model to say so with.
+			write(
+				chalk.green(`Logged in to ${provider.name}. The provider accepted the credential, but lists no models.`),
+			);
+		} else {
+			write(chalk.green(`Logged in to ${provider.name}. Verified: ${models.length} model(s) available.`));
+		}
 	} finally {
 		rl?.close();
 		process.off("SIGINT", onSigInt);

@@ -830,7 +830,9 @@ export class ModelRuntime implements Models {
 		};
 		// Published nyan-ai builds before ModelsStore returned void and accepted a provider ID.
 		// The fallback keeps source-mode CLI tests working without rebuilding workspace dependencies.
-		const result = ((await this.models.refresh(refreshOptions)) as ModelsRefreshResult | undefined) ?? {
+		const result: ModelsRefreshResult = ((await this.models.refresh(refreshOptions)) as
+			| ModelsRefreshResult
+			| undefined) ?? {
 			aborted: refreshOptions.signal?.aborted ?? false,
 			errors: new Map(),
 		};
@@ -842,7 +844,8 @@ export class ModelRuntime implements Models {
 					try {
 						await this.refreshProviderAvailability(providerId, operationSignal(options.signal));
 					} catch (error) {
-						if (!options.signal?.aborted) {
+						// The refresh's own error is the cause. An availability failure that follows does not replace it.
+						if (!options.signal?.aborted && !errors.has(providerId)) {
 							errors.set(providerId, error instanceof Error ? error : new Error(String(error)));
 						}
 					}
@@ -855,7 +858,11 @@ export class ModelRuntime implements Models {
 				// Availability errors are recorded by the latest pass; refreshed models remain usable.
 			}
 		}
-		return { aborted: result.aborted || (options.signal?.aborted ?? false), errors };
+		return {
+			aborted: result.aborted || (options.signal?.aborted ?? false),
+			errors,
+			...(result.verdicts ? { verdicts: result.verdicts } : {}),
+		};
 	}
 
 	registerNativeProvider(provider: Provider): void {

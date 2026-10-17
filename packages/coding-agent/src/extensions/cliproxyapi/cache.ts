@@ -12,8 +12,7 @@
  * The catalog response contains no credentials, so nothing secret is written.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CatalogModel } from "./catalog.ts";
 import { writeJsonAtomic } from "./config.ts";
@@ -51,18 +50,9 @@ function isCatalogModel(value: unknown): value is CatalogModel {
 }
 
 export function loadCatalogCache(agentDir: string, modelsUrl: string): CatalogCacheFile | undefined {
-	const primaryPath = cachePath(agentDir);
-	let targetPath = primaryPath;
-	if (!existsSync(primaryPath)) {
-		const piFallback = join(homedir(), ".pi", "agent", CACHE_FILE_NAME);
-		if (existsSync(piFallback)) {
-			targetPath = piFallback;
-		}
-	}
-
 	let raw: string;
 	try {
-		raw = readFileSync(targetPath, "utf8");
+		raw = readFileSync(cachePath(agentDir), "utf8");
 	} catch {
 		return undefined;
 	}
