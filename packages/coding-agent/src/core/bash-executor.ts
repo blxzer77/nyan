@@ -7,6 +7,7 @@
  */
 
 import type { WriteStream } from "node:fs";
+import { rm } from "node:fs/promises";
 import { splitIncompleteAnsiSuffix, stripAnsi } from "../utils/ansi.ts";
 import { createOutputFileStream } from "../utils/output-files.ts";
 import { sanitizeBinaryOutput } from "../utils/shell.ts";
@@ -89,11 +90,12 @@ export async function executeBashWithOperations(
 				stream.end();
 			});
 		}
-		return tempFileError === undefined
-			? undefined
-			: new Error(`Could not write the full output to ${tempFilePath}: ${tempFileError.message}`, {
-					cause: tempFileError,
-				});
+		if (tempFileError === undefined || tempFilePath === undefined) return undefined;
+		// Nothing will read the path, so the partial file is removed rather than left in the temp directory.
+		await rm(tempFilePath, { force: true }).catch(() => {});
+		return new Error(`Could not write the full output to ${tempFilePath}: ${tempFileError.message}`, {
+			cause: tempFileError,
+		});
 	};
 
 	const decoder = new TextDecoder();
