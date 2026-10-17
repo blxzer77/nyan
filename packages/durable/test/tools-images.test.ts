@@ -517,8 +517,15 @@ describe("createNodePhotonImages", () => {
 		};
 		const inline = await prepareOn(await createNodePhotonImages({ worker: false }));
 		const threaded = await prepareOn(processor);
-		expect(inline).toBeGreaterThan(200);
-		expect(threaded).toBeLessThan(100);
+		// Blocking is relative to the work: preparing on the main thread stalls the loop for the whole preparation, while
+		// the worker leaves only scheduling noise, which a loaded machine makes larger but not as large as the stall. An
+		// absolute bound measured 150 to 180 ms on a busy CI runner and failed.
+		expect(inline, "preparing on the main thread must stall the loop for this to measure anything").toBeGreaterThan(
+			200,
+		);
+		expect(threaded, `loop gap with the worker (${threaded} ms) against inline (${inline} ms)`).toBeLessThan(
+			inline / 3,
+		);
 	}, 60_000);
 
 	it("gives the same result as the calling thread, and keeps the caller's bytes", async () => {

@@ -2,7 +2,7 @@
 
 Planned work and its status. Updated in the PR that changes it.
 
-Last updated: 2026-10-16
+Last updated: 2026-10-17
 
 WIP rule: No more than two roadmap lines may be active simultaneously.
 
@@ -20,6 +20,7 @@ gantt
     N0 inventory and event classification :done, crit, n0, 2026-10-15, 10d
     N1 product path switch to durable :done, crit, n1, after n0, 21d
     N2 extension and hook adaptation :active, crit, n2, after n1, 21d
+    Durable session selection :n2s, after n2, 14d
 
     section Context governance
     N3 content-addressed artifact store :crit, n3, after n2, 14d
@@ -367,19 +368,20 @@ raises N2's scope: 8 durable capabilities must be added, and two events are part
 | 2 | Bun-first | Phase 2 runtime adapter | Done: closed by PR #32 |
 | 3 | Migration | N1 product path switch to durable | N0 complete |
 | 4 | Migration | N2 extension and hook adaptation | N1 |
-| 5 | Context governance | N3 content-addressed artifact store | N2 |
-| 6 | Context governance | N4 compaction semantics | N3 |
-| 7 | Context governance | N6 retrieval controller with all branches and remote hybrid code retrieval | N3; Decision #14 resolved; proposed retrieval architecture note |
-| 8 | Context governance | N7 decision providers and policy gate | N3; Owner Decision #4 |
-| 9 | Context governance | N5 memory lifecycle | N4; Owner Decisions #1 and #11 |
-| 10 | Context governance | N8 external search, fetch, and evidence | N6 and N7; Owner Decision #7 |
-| 11 | TUI | N9 TUI rewrite | N5 |
-| 12 | Bun-first | Phase 3 compatibility remainder | Bun Phase 2 (done); Decision #12 resolved 2026-10-17 |
-| 13 | Bun-first | Phase 4 release hardening | Bun Phase 3; Owner Decision #13 |
+| 5 | Migration | Durable session selection | N2; the flags `--session`, `--session-id`, `--resume`, `--fork`, `--session-dir`, `--no-session`, and `--name` keep the legacy route until this ships (Decision #25) |
+| 6 | Context governance | N3 content-addressed artifact store | N2 |
+| 7 | Context governance | N4 compaction semantics | N3 |
+| 8 | Context governance | N6 retrieval controller with all branches and remote hybrid code retrieval | N3; Decision #14 resolved; proposed retrieval architecture note |
+| 9 | Context governance | N7 decision providers and policy gate | N3; Owner Decision #4 |
+| 10 | Context governance | N5 memory lifecycle | N4; Owner Decisions #1 and #11 |
+| 11 | Context governance | N8 external search, fetch, and evidence | N6 and N7; Owner Decision #7 |
+| 12 | TUI | N9 TUI rewrite | N5 |
+| 13 | Bun-first | Phase 3 compatibility remainder | Bun Phase 2 (done); Decision #12 resolved 2026-10-17 |
+| 14 | Bun-first | Phase 4 release hardening | Bun Phase 3; Owner Decision #13 |
 
 ## Decisions waiting on the owner
 
-Do not close or reinterpret these entries without an owner decision. Work may continue on reversible preparation using the recommendation, but no approval gate may be crossed on that basis. Decision #8 was resolved on 2026-10-15: configuring a remote provider is the authorization, and no per-request approval is required. Decision #10 was resolved on 2026-10-15: durable owns the ContextOperation, artifact, receipt, checkpoint, and recovery runtime. Decision #14 was resolved on 2026-10-16: remote retrieval uses the server-side coordinator and staged dual-index publication described in the proposed architecture note. Decision #17 was resolved on 2026-10-15: the durable Harness becomes the product path rather than a runtime mounted beside `AgentSession`. Decision #23 was resolved on 2026-10-16: the owner accepted all four N2 scope reductions. Decision #12 was resolved on 2026-10-17: on Bun the HTTP client is Bun's native fetch, placed behind the runtime adapter; PR #13 was a partial slice of it.
+Do not close or reinterpret these entries without an owner decision. Work may continue on reversible preparation using the recommendation, but no approval gate may be crossed on that basis. Decision #8 was resolved on 2026-10-15: configuring a remote provider is the authorization, and no per-request approval is required. Decision #10 was resolved on 2026-10-15: durable owns the ContextOperation, artifact, receipt, checkpoint, and recovery runtime. Decision #14 was resolved on 2026-10-16: remote retrieval uses the server-side coordinator and staged dual-index publication described in the proposed architecture note. Decision #17 was resolved on 2026-10-15: the durable Harness becomes the product path rather than a runtime mounted beside `AgentSession`. Decision #23 was resolved on 2026-10-16: the owner accepted all four N2 scope reductions. Decision #12 was resolved on 2026-10-17: on Bun the HTTP client is Bun's native fetch, placed behind the runtime adapter; PR #13 was a partial slice of it. Decisions #24 and #25 were resolved on 2026-10-17: the durable RPC fork, clone, tree, and session switching follow option A, and session selection is not part of the N2 gate.
 
 | # | Question | Recommended | Blocks |
 | --- | --- | --- | --- |
@@ -404,6 +406,8 @@ Do not close or reinterpret these entries without an owner decision. Work may co
 | 21 | Are the events with no extension consumer removed? | Resolved 2026-10-15: retain all four streamed events and retain `thinking_level_select` as a product-API compatibility event; no event is removed in N2 | Resolved; N2 |
 | 22 | May N1 close with legacy RPC product APIs deferred? | Resolved 2026-10-16: close N1 with durable JSON/RPC core lifecycle and event/recovery evidence; bash, queue mutation, entry/tree access, fork, export, and related product APIs are explicit N2 scope | Resolved; N2 |
 | 23 | Accept four scope reductions in the N2 durable hooks? (a) `message_end` rewrite covers the assistant role only; tool results rewrite through `afterTool`, user input through the `input` event, and durable has no `custom` role. (b) Settlement hooks do not fire for an error or aborted turn, which ends through the failure path. (c) `messageEntryId` is absent for a final-answer turn because the answer commits together with the boundary. (d) A boundary hook cannot write a `compaction` draft or a head marker; compaction stays the durable compaction task's job. | Resolved 2026-10-16: the owner accepted all four. Every repository consumer of `message_end` rewrite works on assistant messages (tests, the cost override, the cliproxyapi normalizer); (b) and (c) are consequences of keeping the boundary atomic with the turn outcome; (d) keeps N4's governed compaction the only writer of compaction entries. Implemented as recommended; see the [N2 hooks note](.agents/notes/proposed/architecture/2026-10-16-durable-n2-capability-hooks.md) | N2 gate: "every `durable-capability` entry is either satisfied or has a recorded owner decision reducing it" |
+| 24 | How do `fork`, `clone`, `get_fork_messages`, `switch_session`, and `get_tree` work on the durable RPC path, where a conversation is a flat entry list with head markers and `Conversation.fork` makes a new conversation inside the same session? | Resolved 2026-10-17: option A. `fork` and `clone` call `Conversation.fork(at)` and switch the controller to the new conversation branch; `get_fork_messages` lists the user message entries; `switch_session` opens another session directory with the same reopen as `new_session`; `get_tree` returns the active chain with its head markers. After a fork the session id and session file do not change, and the tree is linear, so `get_tree` is a recorded reduction. Options not taken: forking into a new session directory (needs a durable capability to copy a conversation across storages) and answering `unavailable` | Resolved; N2 task B |
+| 25 | Are the session-selection flags part of the N2 gate? | Resolved 2026-10-17: no. `--session`, `--session-id`, `--resume`, `--fork`, `--session-dir`, `--no-session`, and `--name` are queued as "durable session selection" after N2 (Queue item 5) and keep the legacy route until it ships | Resolved; N2 gate, durable session selection |
 
 ## Done
 

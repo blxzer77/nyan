@@ -657,7 +657,9 @@ describe.skipIf(process.platform === "win32")("experimental durable server compo
 		await client.dispose();
 		clients.delete(client);
 		await expect.poll(() => runtime.workerPids.has("demo-1")).toBe(false);
-		expect(processExists(pid!)).toBe(false);
+		// The server forgets a worker when its control socket closes, which the worker does as it exits. The parent can
+		// see that close before it reaps the exited child, so the process table is checked until the child is gone.
+		await expect.poll(() => processExists(pid!), { timeout: 10_000 }).toBe(false);
 	});
 
 	test("starts one process per attached session and stops them during shutdown", async () => {

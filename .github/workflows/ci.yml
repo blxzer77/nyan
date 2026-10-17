@@ -134,8 +134,7 @@ jobs:
         run: |
           echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
           if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            sudo apt-get update
-            sudo apt-get install -y ripgrep fd-find
+            bash .github/scripts/apt-install.sh ripgrep fd-find
           fi
           echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
 
@@ -169,8 +168,7 @@ jobs:
         run: |
           echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
           if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            sudo apt-get update
-            sudo apt-get install -y ripgrep fd-find
+            bash .github/scripts/apt-install.sh ripgrep fd-find
           fi
 
       - name: Restore workspace
@@ -225,8 +223,7 @@ jobs:
         run: |
           echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
           if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            sudo apt-get update
-            sudo apt-get install -y ripgrep fd-find
+            bash .github/scripts/apt-install.sh ripgrep fd-find
           fi
 
       - name: Restore workspace
