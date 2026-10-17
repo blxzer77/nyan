@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { retryProviderRequest } from "../src/utils/provider-retry.ts";
 
-function providerError(status: number | undefined, headers?: Record<string, string>): Error {
-	return Object.assign(new Error(`Provider error: ${status}`), {
+function providerError(status: number | undefined, headers?: Record<string, string>, message?: string): Error {
+	return Object.assign(new Error(message ?? `Provider error: ${status}`), {
 		status,
 		headers: new Headers(headers),
 	});
@@ -11,6 +11,17 @@ function providerError(status: number | undefined, headers?: Record<string, stri
 describe("provider request retries", () => {
 	afterEach(() => {
 		vi.useRealTimers();
+	});
+
+	it("still retries a server error whose response body names a certificate", async () => {
+		// The message of an HTTP error is its response body; a 503 that mentions a certificate is still a 503.
+		const request = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(providerError(503, undefined, "upstream says: certificate expired"))
+			.mockResolvedValue("ok");
+
+		await expect(retryProviderRequest(request, { maxRetries: 1, maxRetryDelayMs: 0 })).resolves.toBe("ok");
+		expect(request).toHaveBeenCalledTimes(2);
 	});
 
 	it("does not retry a certificate failure whose cause has only the message (Bun's text)", async () => {

@@ -30,12 +30,14 @@ function isRetryableProviderError(error: ProviderError): boolean {
 	if (shouldRetry === "true") return true;
 	if (shouldRetry === "false") return false;
 
-	// A certificate failure has no status, and retrying it repeats the same request. The same rule `retry.ts` applies to the
-	// stored message, read here from the error and its causes: by code where there is one, by text where the cause has only
-	// a message (Bun's "self signed certificate").
+	// A certificate failure has no HTTP status, and retrying it repeats the same request. By code wherever it is on the
+	// chain; by text only when there is no status, because an HTTP error's message is the response body, which can name a
+	// certificate (a 503 whose body says "certificate expired" is still a server error to retry).
 	if (certificateErrorCode(error) !== undefined) return false;
-	if (transportErrorMessages(error).some(isCertificateErrorMessage)) return false;
-	if (error.status === undefined) return true;
+	if (error.status === undefined) {
+		if (transportErrorMessages(error).some(isCertificateErrorMessage)) return false;
+		return true;
+	}
 	return (
 		error.status === 408 ||
 		error.status === 409 ||
