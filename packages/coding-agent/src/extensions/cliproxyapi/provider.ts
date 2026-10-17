@@ -415,7 +415,7 @@ export class CatalogController {
 		} catch (error) {
 			// A base URL that does not parse leaves nothing to fetch from. It is recorded like a failed fetch, not thrown: the
 			// login's own sync would otherwise fail a login whose key was just verified at the URL it entered.
-			const message = `CLIProxyAPI base URL is not valid (${errorMessage(error)}). Check CLIPROXYAPI_BASE_URL and cliproxyapi.json.`;
+			const message = `CLIProxyAPI base URL is not valid (${errorMessage(error)}). Check CLIPROXYAPI_BASE_URL, cliproxyapi.json, and the stored login.`;
 			this.lastError = message;
 			this.lastFailure = { reason: "unavailable", message };
 			if (options.verification === undefined) this.notices.push(message);
@@ -599,6 +599,16 @@ function rejectedKeyNotice(agentDir: string, providerId: string, providerName: s
 	return `CLIProxyAPI rejected the credential (HTTP ${status}). Re-run /login ${providerName} to reconfigure.`;
 }
 
+/** Whether a base URL parses, so a session can register it. */
+function isUsableBaseUrl(baseUrlInput: string): boolean {
+	try {
+		resolveEndpoints(baseUrlInput);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 /** Resolve the connection a refresh needs. A verification uses the key and the base URL its login recorded. */
 function resolveConnectionForRefresh(
 	agentDir: string,
@@ -746,11 +756,16 @@ export function buildProviderRegistration(options: ProviderRegistrationOptions):
 							providerId,
 							providerName,
 						});
-						const override = endpointOverrideNotice(enteredBaseUrl, defaultBaseUrlInput(agentDir, providerId));
+						const savedBaseUrl = defaultBaseUrlInput(agentDir, providerId);
+						const usable = isUsableBaseUrl(savedBaseUrl);
+						const override = usable
+							? endpointOverrideNotice(enteredBaseUrl, savedBaseUrl)
+							: `CLIPROXYAPI_BASE_URL is not a valid base URL. This session uses ${enteredBaseUrl}; correct the setting to change it.`;
 						if (override) callbacks.onProgress?.(override);
 						// Validation only needs HTTP 200; the catalog itself is fetched by the
 						// refresh that `onConfigured` runs, and that path writes the cache.
-						await options.onConfigured?.(enteredBaseUrl, enteredApiKey);
+						// The session registers the base URL the catalog uses, so its model list and its requests agree.
+						await options.onConfigured?.(usable ? savedBaseUrl : enteredBaseUrl, enteredApiKey);
 						callbacks.onProgress?.(`Registered ${entries.length} model(s) from ${endpoints.modelsUrl}.`);
 						return {
 							refresh: encodeCredentialMeta(enteredBaseUrl),

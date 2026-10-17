@@ -699,6 +699,42 @@ describe("CLIProxyAPI extension", () => {
 			}
 		});
 
+		it("registers the base URL the catalog uses after a login, so requests go where the model list does", async () => {
+			const { baseUrl } = await proxy("typed-key");
+			const restore = setEnv({
+				NYAN_CODING_AGENT_DIR: agentDirWithoutPricing(),
+				CLIPROXYAPI_BASE_URL: "http://127.0.0.1:9",
+			});
+			try {
+				const runtime = createExtensionRuntime();
+				await loadExtensionFromFactory(
+					cliproxyApiExtension,
+					process.cwd(),
+					createEventBus(),
+					runtime,
+					"builtin:cliproxyapi",
+				);
+				const login = runtime.pendingProviderRegistrations.find((r) => r.name === DEFAULT_PROVIDER_ID)?.config.oauth
+					?.login;
+				if (!login) throw new Error("no oauth login");
+				const answers = [baseUrl, "typed-key"];
+				await login({
+					onAuth: () => {},
+					onDeviceCode: () => {},
+					onPrompt: async () => answers.shift() ?? "",
+					onProgress: () => {},
+					onSelect: async () => undefined,
+				});
+				// The login registers again after it stores the key; the registration replaces the first.
+				const registered = runtime.pendingProviderRegistrations.find((r) => r.name === DEFAULT_PROVIDER_ID)?.config
+					.baseUrl;
+				if (!registered) throw new Error("no registration after login");
+				expect(new URL(registered).port).toBe("9");
+			} finally {
+				restore();
+			}
+		});
+
 		it("does not hand a verification the answer of a refresh made with another key", async () => {
 			const { baseUrl, seen } = await proxy("typed-key");
 			const restore = setEnv({ CLIPROXYAPI_BASE_URL: baseUrl, CLIPROXYAPI_API_KEY: "env-key" });

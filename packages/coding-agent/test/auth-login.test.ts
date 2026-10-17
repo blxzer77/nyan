@@ -316,6 +316,29 @@ describe("login verifies the stored credential", () => {
 		);
 	});
 
+	it("ends an unverified login with the outcome line, after the advice that precedes it", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			throw new Error("fetch failed");
+		});
+		const { output } = await loginWithInput([], factory);
+		const lines = output.trimEnd().split("\n");
+		expect(lines.at(-1)).toContain("was not verified: fetch failed");
+		expect(output.indexOf("again once the provider is reachable")).toBeLessThan(output.indexOf("was not verified"));
+	});
+
+	it("ends a verified login with the outcome line, after a refresh error that came after the verdict", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("verified");
+			throw new Error("publish failed");
+		});
+		const { output } = await loginWithInput([], factory);
+		const lines = output.trimEnd().split("\n");
+		expect(output).toContain("The model refresh reported an error: publish failed");
+		expect(lines.at(-1)).toMatch(/accepted the credential|Verified:/);
+	});
+
 	it("says it was not verified when the provider cannot be checked without a request", async () => {
 		// Anthropic and other built-in providers declare no refreshModels, so nothing is spent to verify them.
 		const { output } = await loginWithInput([], oauthFactory(loggedIn));

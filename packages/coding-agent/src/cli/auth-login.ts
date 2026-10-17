@@ -293,13 +293,14 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 		// advice, because retrying would not change its answer.
 		if (verdict !== "verified" && verdict !== "rejected") {
 			const reason = failure?.message ?? "the provider did not confirm the credential";
-			write(chalk.yellow(`Logged in to ${provider.name}. The credential is stored and was not verified: ${reason}`));
+			// The outcome is the last line, because scripts read it: the advice above it is written first.
 			if (replacedStored) {
 				write(chalk.yellow(REPLACED_CREDENTIAL_NOTICE));
 			}
 			if (failure) {
 				write(chalk.dim(`Run ${APP_NAME} login ${provider.id} again once the provider is reachable to verify it.`));
 			}
+			write(chalk.yellow(`Logged in to ${provider.name}. The credential is stored and was not verified: ${reason}`));
 			return;
 		}
 		if (verdict === "rejected") {
@@ -310,6 +311,8 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 			);
 		}
 
+		// The refresh's error, if it reported one, is written before the outcome line, which stays last.
+		if (failure) write(chalk.yellow(`The model refresh reported an error: ${failure.message}`));
 		const models = modelRuntime.getModels(provider.id);
 		if (models.length === 0) {
 			// The provider answered 200 to the credential, so it is accepted; it offers no model to say so with.
@@ -319,8 +322,6 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 		} else {
 			write(chalk.green(`Logged in to ${provider.name}. Verified: ${models.length} model(s) available.`));
 		}
-		// The verdict decided the login; the refresh's error, if it reported one, is shown beside it.
-		if (failure) write(chalk.yellow(`The model refresh reported an error: ${failure.message}`));
 	} finally {
 		rl?.close();
 		process.off("SIGINT", onSigInt);
