@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { ExtensionAPI } from "../src/core/extensions/types.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
+import { isResolveOnlyApiKeyMethod } from "../src/core/provider-composer.ts";
 import { buildProviderRegistration, CatalogController } from "../src/extensions/cliproxyapi/provider.ts";
 
 const PROVIDER_ID = "cliproxyapi";
@@ -62,8 +63,9 @@ describe("CLIProxyAPI key that resolves requests", () => {
 			const provider = modelRuntime.getProviders().find((p) => p.id === PROVIDER_ID);
 
 			expect(provider?.auth.oauth?.login).toBeTypeOf("function");
-			expect(provider?.auth.apiKey).toBeDefined();
-			expect(provider?.auth.apiKey?.login).toBeUndefined();
+			const apiKey = provider?.auth.apiKey;
+			expect(apiKey).toBeDefined();
+			expect(apiKey && isResolveOnlyApiKeyMethod(apiKey)).toBe(true);
 		} finally {
 			rmSync(agentDir, { recursive: true, force: true });
 		}
@@ -112,14 +114,30 @@ describe("CLIProxyAPI key that resolves requests", () => {
 		});
 		for (const shape of shapes) modelRuntime.registerProvider(shape.id, shape.registration);
 
+		const offered = (apiKey: { login?: unknown } | undefined) =>
+			apiKey !== undefined && !isResolveOnlyApiKeyMethod(apiKey as Parameters<typeof isResolveOnlyApiKeyMethod>[0]);
 		for (const shape of shapes) {
 			const provider = modelRuntime.getProviders().find((p) => p.id === shape.id);
-			const offersApiKeyLogin = Boolean(provider?.auth.apiKey?.login);
-			const hadApiKeyMethod = Boolean(provider?.auth.apiKey);
-			expect(offersApiKeyLogin, shape.id).toBe(hadApiKeyMethod);
+			expect(offered(provider?.auth.apiKey), shape.id).toBe(Boolean(provider?.auth.apiKey));
 		}
-		// The built-in provider composes a login for its key, so it is offered exactly as before.
+		// Providers that do not set the field keep the rule they always had, including a key method with no login.
+		modelRuntime.registerNativeProvider({
+			id: "ambient-key",
+			name: "Ambient key",
+			auth: { apiKey: { name: "Ambient credentials", resolve: async () => undefined } },
+			getModels: () => [],
+			stream: () => {
+				throw new Error("unused");
+			},
+			streamSimple: () => {
+				throw new Error("unused");
+			},
+		} as never);
+		const ambient = modelRuntime.getProviders().find((p) => p.id === "ambient-key");
+		expect(ambient?.auth.apiKey).toBeDefined();
+		expect(offered(ambient?.auth.apiKey)).toBe(true);
+		// The built-in provider composes its key method and is offered exactly as before.
 		const builtin = modelRuntime.getProviders().find((p) => p.id === "anthropic");
-		expect(Boolean(builtin?.auth.apiKey?.login)).toBe(Boolean(builtin?.auth.apiKey));
+		expect(offered(builtin?.auth.apiKey)).toBe(Boolean(builtin?.auth.apiKey));
 	});
 });

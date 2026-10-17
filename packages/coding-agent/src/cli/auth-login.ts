@@ -8,6 +8,7 @@ import { compareLoginProviders } from "../core/auth-guidance.ts";
 import { readStoredCredential } from "../core/auth-storage.ts";
 import type { InlineExtension } from "../core/extensions/types.ts";
 import { CredentialSynchronizationError } from "../core/model-runtime.ts";
+import { isResolveOnlyApiKeyMethod } from "../core/provider-composer.ts";
 import { openBrowser } from "../utils/open-browser.ts";
 import type { Args } from "./args.ts";
 import { AuthCommandError, validateAuthCommandArgs } from "./auth-command.ts";
@@ -154,8 +155,8 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 		}
 
 		const hasOAuth = Boolean(provider.auth.oauth);
-		// A key method without a login only resolves requests; it is not an API-key login.
-		const hasApiKey = Boolean(provider.auth.apiKey?.login);
+		// A key method that only resolves requests is not an API-key login.
+		const hasApiKey = provider.auth.apiKey !== undefined && !isResolveOnlyApiKeyMethod(provider.auth.apiKey);
 		if (!hasOAuth && !hasApiKey) {
 			throw new AuthCommandError(`Provider "${provider.name}" does not support login.`);
 		}

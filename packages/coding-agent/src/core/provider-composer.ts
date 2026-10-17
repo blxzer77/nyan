@@ -419,6 +419,14 @@ async function configContextEnv(
 	return Object.keys(env).length > 0 ? env : undefined;
 }
 
+/** The API-key methods that only resolve requests (see ProviderConfigInput.apiKeyResolveOnly). */
+const resolveOnlyApiKeyMethods = new WeakSet<ApiKeyAuth>();
+
+/** Whether an API-key method only resolves requests, so it is not offered as a login method. */
+export function isResolveOnlyApiKeyMethod(method: ApiKeyAuth): boolean {
+	return resolveOnlyApiKeyMethods.has(method);
+}
+
 function composeApiKeyAuth(
 	providerId: string,
 	base: Provider | undefined,
@@ -433,7 +441,7 @@ function composeApiKeyAuth(
 	if (!inherited && rawKey === undefined && oauth && !resolveOnly) return undefined;
 	const rawHeaders = configuredHeaders(config, extension);
 	const authHeader = extension?.authHeader ?? config?.authHeader ?? false;
-	return {
+	const method: ApiKeyAuth = {
 		name: inherited?.name ?? "API key",
 		...(resolveOnly
 			? {}
@@ -488,6 +496,8 @@ function composeApiKeyAuth(
 			return { ...result, auth: withConfiguredAuth(result.auth, headers, authHeader) };
 		},
 	};
+	if (resolveOnly) resolveOnlyApiKeyMethods.add(method);
+	return method;
 }
 
 function composeOAuthAuth(
