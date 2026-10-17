@@ -13,6 +13,8 @@
 // Anthropic / `@google/genai` happy path where the SDK already folded the body
 // into the message, so providers can preserve it without double-printing.
 
+import { errorMessageWithCertificateCode } from "./transport-error.ts";
+
 export const MAX_PROVIDER_ERROR_BODY_CHARS = 4000;
 
 export interface NormalizedProviderError {
@@ -43,12 +45,12 @@ export function normalizeProviderError(error: unknown): NormalizedProviderError 
 	const sdkError = error as SdkErrorShape;
 	const status = extractStatus(sdkError);
 	const body = extractBody(sdkError);
-	const messageCarriesBody = body === undefined || error.message.includes(body);
-
+	const message = errorMessageWithCertificateCode(error);
+	const messageCarriesBody = body === undefined || message.includes(body);
 	return {
 		status,
 		body,
-		message: error.message,
+		message,
 		messageCarriesBody,
 	} satisfies NormalizedProviderError;
 }

@@ -4,6 +4,86 @@ function buildProviderErrorPattern(patterns: readonly string[]): RegExp {
 	return new RegExp(patterns.join("|"), "i");
 }
 
+function escapeRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * A retryable HTTP status where a status is written in a stored message: at the start, followed by a colon ("503: ...",
+ * the form formatProviderError writes) or by a space and a body ("503 {...}", the raw Anthropic SDK message; "500 ms" is a
+ * duration); in parentheses ("Provider error (429): ..."); or after "HTTP", "status", "status code" or "code", also as a
+ * JSON key. A port, an IPv6 group, a millisecond value, or a number inside a host name does not match.
+ */
+const RETRYABLE_HTTP_STATUS_TOKEN =
+	/^(?:408|409|429|5\d{2})(?:\s*:|\s+(?!ms\b))|\((?:408|409|429|5\d{2})\)|\b(?:http|status(?:\s+code)?|code)"?\s*[:=]?\s*(?:408|409|429|5\d{2})\b/i;
+
+/**
+ * Certificate and host-name verification failures. These are the OpenSSL verification names Node and Bun both report,
+ * plus Node's host-name check. Retrying cannot fix any of them: the server or the local trust store has to change.
+ */
+export const CERTIFICATE_ERROR_CODE_LIST: readonly string[] = [
+	"UNABLE_TO_GET_ISSUER_CERT",
+	"UNABLE_TO_GET_CRL",
+	"UNABLE_TO_DECRYPT_CERT_SIGNATURE",
+	"UNABLE_TO_DECRYPT_CRL_SIGNATURE",
+	"UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY",
+	"CERT_SIGNATURE_FAILURE",
+	"CRL_SIGNATURE_FAILURE",
+	"CERT_NOT_YET_VALID",
+	"CERT_HAS_EXPIRED",
+	"CRL_NOT_YET_VALID",
+	"CRL_HAS_EXPIRED",
+	"ERROR_IN_CERT_NOT_BEFORE_FIELD",
+	"ERROR_IN_CERT_NOT_AFTER_FIELD",
+	"DEPTH_ZERO_SELF_SIGNED_CERT",
+	"SELF_SIGNED_CERT_IN_CHAIN",
+	"UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+	"UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+	"CERT_CHAIN_TOO_LONG",
+	"CERT_REVOKED",
+	"INVALID_CA",
+	"PATH_LENGTH_EXCEEDED",
+	"INVALID_PURPOSE",
+	"CERT_UNTRUSTED",
+	"CERT_REJECTED",
+	"HOSTNAME_MISMATCH",
+	"ERR_TLS_CERT_ALTNAME_INVALID",
+];
+
+/**
+ * Phrases that name a certificate failure in a message. They cover what is stored as text (an assistant message's
+ * `errorMessage`) and what Bun writes without a code. Node's host-name text is "Hostname/IP does not match certificate's
+ * altnames: ..."; the code `ERR_TLS_CERT_ALTNAME_INVALID` is matched by the code list below.
+ */
+const CERTIFICATE_MESSAGE_PATTERN = new RegExp(
+	[
+		...CERTIFICATE_ERROR_CODE_LIST.map((code) => `\\b${escapeRegExp(code)}\\b`),
+		"self.?signed certificate",
+		"unable to verify the first certificate",
+		"certificate (?:has )?expired",
+		"certificate is not yet valid",
+		"certificate verify failed",
+		"does not match certificate",
+		"not in the cert'?s altnames",
+		// OpenSSL's readable text for a code that has another name: a missing issuer is "unable to get local issuer certificate"
+		// (UNABLE_TO_GET_ISSUER_CERT_LOCALLY), a host-name mismatch "hostname mismatch" (HOSTNAME_MISMATCH).
+		"unable to get (?:local )?issuer certificate",
+		"hostname mismatch",
+		"certificate (?:has been )?revoked",
+		"certificate (?:not trusted|rejected)",
+		"invalid CA certificate",
+	].join("|"),
+	"i",
+);
+
+/**
+ * True when a message names a certificate or host-name failure. Used where only text is left: a message stored as text,
+ * or a cause whose code is missing. A certificate failure is not retried on either runtime.
+ */
+export function isCertificateErrorMessage(message: string): boolean {
+	return CERTIFICATE_MESSAGE_PATTERN.test(message);
+}
+
 const NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN = buildProviderErrorPattern([
 	// OpenCode Go/free-tier limits returned as 429 JSON error types by OpenCode's
 	// Zen API. These are subscription/account limits, not transient throttles.
@@ -69,6 +149,10 @@ const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
 	"reset before headers",
 	"socket hang up",
 	"socket connection was closed",
+	// Bun's native fetch reports a refused connection with its code in the message (Node reports "fetch failed"
+	// and keeps the code on the cause, which the text patterns above already cover).
+	"ECONNREFUSED",
+	"unable to connect",
 	"timed? out",
 	"timeout",
 	"terminated",
@@ -253,6 +337,9 @@ export async function retryAssistantCall(
 export function isRetryableAssistantError(message: AssistantMessage): boolean {
 	if (message.stopReason !== "error" || !message.errorMessage) return false;
 	const errorMessage = message.errorMessage;
+	// A stored HTTP status means the text after it is a response body (see provider-retry.ts): a server error is retried
+	// even when its body names a certificate. Only text without a retryable status is a certificate failure.
+	if (!RETRYABLE_HTTP_STATUS_TOKEN.test(errorMessage) && isCertificateErrorMessage(errorMessage)) return false;
 	if (NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN.test(errorMessage)) return false;
 	return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
 }
