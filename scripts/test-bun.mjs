@@ -38,7 +38,13 @@ const SUITES = {
 	tui: ["test", "test/"],
 };
 
-const requested = process.argv.slice(2);
+const shardArgument = process.argv.slice(2).find((arg) => arg.startsWith("--shard="));
+const shard = shardArgument === undefined ? undefined : shardArgument.slice("--shard=".length);
+if (shard !== undefined && !/^\d+\/\d+$/.test(shard)) {
+	console.error(`--shard must look like 1/4, got ${shard}`);
+	process.exit(1);
+}
+const requested = process.argv.slice(2).filter((arg) => !arg.startsWith("--shard="));
 const unknown = requested.filter((name) => !(name in SUITES));
 if (unknown.length > 0) {
 	console.error(`Unknown package ${unknown.join(", ")}. Valid: ${Object.keys(SUITES).join(", ")}`);
@@ -47,8 +53,14 @@ if (unknown.length > 0) {
 
 const failed = [];
 for (const name of requested.length > 0 ? requested : Object.keys(SUITES)) {
-	console.log(`\n==> ${name} (bun ${SUITES[name].join(" ")})`);
-	const result = spawnSync(bun, SUITES[name], { cwd: join(repoRoot, "packages", name), stdio: "inherit" });
+	// tui runs node:test, which has no shard option. Refuse rather than run every test while claiming a shard.
+	if (shard !== undefined && name === "tui") {
+		console.error("tui uses node:test, which does not support --shard");
+		process.exit(1);
+	}
+	const args = shard === undefined ? SUITES[name] : [...SUITES[name], `--shard=${shard}`];
+	console.log(`\n==> ${name} (bun ${args.join(" ")})`);
+	const result = spawnSync(bun, args, { cwd: join(repoRoot, "packages", name), stdio: "inherit" });
 	if (result.error) {
 		console.error(`bun could not start: ${result.error.message}`);
 		process.exit(1);

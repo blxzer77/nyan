@@ -56,6 +56,15 @@ const MAX_CONCURRENT_MODEL_CALLS = 4;
 const CODEMODE_MEMORY_LIMIT_BYTES = 256 * 1024 * 1024;
 // Shared across calls and sessions. Allow one replacement while a cancelled worker is still exiting.
 const MAX_CONCURRENT_CODEMODE_WORKERS = 2;
+
+/**
+ * Workers that are running or still shutting down. A slot is held until the worker's `exit` event, not until
+ * `terminate()` is called, so this count can stay above zero after a script has already returned. Tests wait for it to
+ * reach zero before the next test starts.
+ */
+export function codemodeWorkersInFlight(): number {
+	return activeCodemodeWorkers;
+}
 let activeCodemodeWorkers = 0;
 const MODEL_TYPES: ReadonlySet<string> = new Set<ModelType>(["chat", "image", "classifier"]);
 

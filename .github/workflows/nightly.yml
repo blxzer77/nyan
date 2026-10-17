@@ -1,5 +1,9 @@
 name: Nyan nightly deep verification
 
+# Full suites, on the self-hosted host. Nothing here is on a pull-request path, so a queue on this host cannot delay a
+# pull request. The matrices stay below the host's six slots: six vitest pools on six cores measured at load 17-26 and
+# produced timing flakes, so the widths here are 2 + 2 + 1 = 5 live jobs.
+
 on:
   schedule:
     - cron: '17 2 * * *'
@@ -14,17 +18,18 @@ permissions:
 
 env:
   NODE_VERSION: '24'
+  NPM_VERSION: '11.19.0'
   BUN_VERSION: '1.4.2'
   NYAN_OFFLINE: '1'
 
 jobs:
-  node-full:
-    name: Full Node suite
+  prepare:
+    name: Prepare workspace and expand every package
     runs-on: [self-hosted, Linux, X64, repo-nyan]
     timeout-minutes: 30
-    concurrency:
-      group: nyan-nightly-node
-      cancel-in-progress: false
+    outputs:
+      node_shards: ${{ steps.shards.outputs.node_shards }}
+      bun_shards: ${{ steps.shards.outputs.bun_shards }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,23 +41,115 @@ jobs:
           bun: 'false'
           model-data: 'true'
 
-      - name: Full build
+      - name: Build offline
         run: npm run build:offline
 
-      - name: Full Node suite
-        run: npm test
+      - name: Pack the workspace
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
+          ls -lh nyan-workspace.tar.gz
 
-  bun-full:
-    name: Full Bun suite
-    needs: node-full
+      - name: Upload the workspace
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nyan-workspace-${{ github.sha }}
+          path: nyan-workspace.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Select every package
+        # No changed files in a scheduled run, so ci-impact selects the full suite.
+        id: impact
+        run: node scripts/ci-impact.mjs
+
+      - name: Expand test shards
+        id: shards
+        env:
+          NODE_PACKAGES: ${{ steps.impact.outputs.node_packages }}
+          BUN_PACKAGES: ${{ steps.impact.outputs.bun_packages }}
+        run: node scripts/ci-shards.mjs
+
+  node-tests:
+    name: Node tests (${{ matrix.name }})
+    needs: prepare
     runs-on: [self-hosted, Linux, X64, repo-nyan]
-    timeout-minutes: 30
-    concurrency:
-      group: nyan-nightly-bun
-      cancel-in-progress: false
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.node_shards) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Ensure fd and ripgrep
+        run: |
+          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
+          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
+            sudo apt-get update
+            sudo apt-get install -y ripgrep fd-find
+          fi
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          install: 'false'
+          model-data: 'true'
+
+      - name: Run root script tests
+        if: matrix.package == 'root'
+        run: npm run test:scripts
+
+      - name: Run package tests
+        if: matrix.package != 'root' && matrix.shard == ''
+        run: npm --workspace "packages/${{ matrix.package }}" test
+
+      - name: Run a shard of package tests
+        if: matrix.shard != ''
+        working-directory: packages/${{ matrix.package }}
+        env:
+          PACKAGE: ${{ matrix.package }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          node ../../node_modules/vitest/vitest.mjs --run "--shard=$SHARD"
+          if [ "$PACKAGE" = "durable" ]; then
+            node scripts/test-without-document-retention.mjs "--shard=$SHARD"
+          fi
+
+  bun-tests:
+    name: Bun tests (${{ matrix.name }})
+    needs: prepare
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.bun_shards) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Ensure fd and ripgrep
+        run: |
+          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
+          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
+            sudo apt-get update
+            sudo apt-get install -y ripgrep fd-find
+          fi
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -60,68 +157,54 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           bun-version: ${{ env.BUN_VERSION }}
           bun: 'true'
+          install: 'false'
           model-data: 'true'
 
-      - name: Full build
-        run: npm run build:offline
+      - name: Run Bun package tests
+        env:
+          PACKAGE: ${{ matrix.package }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SHARD" ]; then
+            node scripts/test-bun.mjs "$PACKAGE" "--shard=$SHARD"
+          else
+            node scripts/test-bun.mjs "$PACKAGE"
+          fi
 
-      - name: Full Bun suite
-        run: npm run test:bun
-
-      - name: Durable retention suite under Bun
+      - name: Run durable retention tests under Bun
+        if: matrix.package == 'durable'
         env:
           NYAN_DURABLE_DOCUMENT_RETENTION_MS: '0'
-        run: npm run test:bun -- durable
-
-  recovery:
-    name: Durable and protocol deep checks
-    needs: node-full
-    runs-on: [self-hosted, Linux, X64, repo-nyan]
-    timeout-minutes: 30
-    concurrency:
-      group: nyan-nightly-heavy
-      cancel-in-progress: false
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Nyan
-        uses: ./.github/actions/setup-nyan
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          bun: 'true'
-          model-data: 'true'
-
-      - name: Build offline
-        run: npm run build:offline
-
-      - name: Recovery and protocol suites
+          PACKAGE: durable
+          SHARD: ${{ matrix.shard }}
         run: |
-          npm run test:scripts
-          npm --workspace packages/durable test
-          npm --workspace packages/agent test
-          npm --workspace packages/coding-agent test
-          npm --workspace packages/protocol test
-          npm --workspace packages/server test
-          npm --workspace packages/client test
+          set -euo pipefail
+          if [ -n "$SHARD" ]; then
+            node scripts/test-bun.mjs "$PACKAGE" "--shard=$SHARD"
+          else
+            node scripts/test-bun.mjs "$PACKAGE"
+          fi
 
-  fuzz-and-mutation:
+  deep:
     name: Protocol fuzz and mutation testing
-    needs: recovery
+    # Runs in parallel with the suites: it needs only the workspace, not their results.
+    needs: prepare
     runs-on: [self-hosted, Linux, X64, repo-nyan]
-    timeout-minutes: 30
-    concurrency:
-      group: nyan-nightly-mutation
-      cancel-in-progress: false
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
         with:
           node-version: ${{ env.NODE_VERSION }}
           bun: 'false'
+          install: 'false'
           model-data: 'true'
 
       - name: Run deterministic protocol fuzz harness
