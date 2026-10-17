@@ -372,6 +372,23 @@ describe("Models runtime", () => {
 		expect(result.errors.get("keyless")?.message).toContain("has no credential to verify");
 	});
 
+	it("reports unavailable for a verification whose provider threw without a verdict", async () => {
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "throws",
+				refreshModels: async (context) => {
+					if (context.verifyCredential) throw new Error("fetch failed");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["throws"], verifyCredential: true });
+
+		expect(result.verdicts?.get("throws")).toBe("unavailable");
+		expect(result.errors.get("throws")?.message).toBe("fetch failed");
+	});
+
 	it("reports unavailable for a verification that another refresh of the same provider superseded", async () => {
 		const models = createModels();
 		let verifyStarted!: () => void;

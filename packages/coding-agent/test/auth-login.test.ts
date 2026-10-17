@@ -257,7 +257,8 @@ describe("login verifies the stored credential", () => {
 
 	it("reports a rejected credential instead of claiming success", async () => {
 		const factory = oauthFactory(loggedIn, async (context) => {
-			if (!context.allowNetwork) return [];
+			if (!context.verifyCredential) return [];
+			context.reportCredentialVerdict?.("rejected");
 			throw new Error("401 Invalid API key");
 		});
 		await expect(loginWithInput([], factory)).rejects.toThrow(
@@ -275,6 +276,29 @@ describe("login verifies the stored credential", () => {
 		});
 		await expect(loginWithInput([], factory)).rejects.toThrow(
 			/Logged in to Test Provider, but the credential could not be verified: catalog cache is unreadable/su,
+		);
+	});
+
+	it("reports a provider that accepts the credential but lists no models as verified, without claiming a model", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			return [];
+		});
+		const { output } = await loginWithInput([], factory);
+		expect(output).toContain(
+			"Logged in to Test Provider. The provider accepted the credential, but lists no models.",
+		);
+		expect(output).not.toContain("Verified:");
+	});
+
+	it("does not call a verification that threw without a verdict rejected", async () => {
+		const factory = oauthFactory(loggedIn, async (context) => {
+			if (!context.verifyCredential) return [];
+			throw new Error("fetch failed");
+		});
+		const { output } = await loginWithInput([], factory);
+		expect(output).toContain(
+			"Logged in to Test Provider. The credential is stored and was not verified: fetch failed",
 		);
 	});
 

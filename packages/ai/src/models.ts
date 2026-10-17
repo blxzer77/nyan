@@ -656,8 +656,10 @@ class ModelsImpl implements MutableModels {
 				}
 				// A verification ends in a verdict for every provider. One that completed without a refusal is verified; one that
 				// was skipped or superseded gave no answer, so it is unavailable. An empty verdict never reads as verified.
-				if (verifying && !verdicts.has(provider.id) && !errors.has(provider.id)) {
-					verdicts.set(provider.id, reachedProvider && !signal.aborted ? "verified" : "unavailable");
+				if (verifying && !verdicts.has(provider.id)) {
+					// A provider that threw without a verdict of its own gave no usable answer, as did one that never ran.
+					const completed = reachedProvider && !signal.aborted && !errors.has(provider.id);
+					verdicts.set(provider.id, completed ? "verified" : "unavailable");
 				}
 			}),
 		);

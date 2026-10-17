@@ -285,10 +285,10 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 			});
 		if (refreshed.aborted) throw new AuthCommandError("Login cancelled");
 		// The provider's verdict is the discriminant; the error text is only for display.
-		const verdict = refreshed.verdicts?.get(provider.id);
+		const verdict = refreshed.verdicts?.get(provider.id) ?? "unavailable";
 		const failure = refreshed.errors.get(provider.id);
 		if (verdict === "unavailable") {
-			// No answer is not a refusal: the credential is kept, and a list of zero models is never reported as verified.
+			// No answer is not a refusal: the credential is kept, and the login says it was not verified.
 			const detail = failure?.message ?? "the provider gave no usable answer";
 			write(chalk.yellow(`Logged in to ${provider.name}. The credential is stored and was not verified: ${detail}`));
 			if (replacedStored) {
@@ -297,7 +297,7 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 			write(chalk.dim(`Run ${APP_NAME} login ${provider.id} again once the provider is reachable to verify it.`));
 			return;
 		}
-		if (verdict === "rejected" || failure) {
+		if (verdict === "rejected") {
 			throw credentialNotVerified(
 				provider,
 				failure?.message ?? "the provider refused the credential",
@@ -306,7 +306,17 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 		}
 
 		const models = modelRuntime.getModels(provider.id);
-		write(chalk.green(`Logged in to ${provider.name}. Verified: ${models.length} model(s) available.`));
+		if (models.length === 0) {
+			// The provider answered 200 to the credential, so it is accepted; it offers no model to say so with.
+			write(
+				chalk.green(`Logged in to ${provider.name}. The provider accepted the credential, but lists no models.`),
+			);
+		} else {
+			write(chalk.green(`Logged in to ${provider.name}. Verified: ${models.length} model(s) available.`));
+		}
+		// The verdict decided the login. A refresh error that is not the verification's (such as the availability refresh)
+		// is shown beside it.
+		if (failure) write(chalk.yellow(`Could not refresh model availability: ${failure.message}`));
 	} finally {
 		rl?.close();
 		process.off("SIGINT", onSigInt);
