@@ -22,7 +22,11 @@ export interface NormalizedProviderError {
 	status?: number;
 	/** Raw HTTP body reason, already trimmed and truncated to the cap. */
 	body?: string;
-	/** `error.message`, or `safeJsonStringify(error)` for a non-`Error` throw. */
+	/**
+	 * `error.message`, or `safeJsonStringify(error)` for a non-`Error` throw. For a certificate failure the code (or the
+	 * cause's text, when there is no code) is appended, as `errorMessageWithCertificateCode()` does, so this is not always
+	 * equal to the SDK's own message.
+	 */
 	message: string;
 	/** True when `message` already contains the body (no separate body to add). */
 	messageCarriesBody: boolean;

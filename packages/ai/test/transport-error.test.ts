@@ -156,6 +156,22 @@ describe("connection and certificate codes", () => {
 			),
 		).toBe("ERR_TLS_CERT_ALTNAME_INVALID fetching https://x/");
 	});
+
+	it("adds the text of a cause that names a certificate when no code is on the chain", () => {
+		// An SDK wrapper over a runtime error that only says what failed: without this the stored message is "Connection error.".
+		const error = new Error("Connection error.", {
+			cause: new TypeError("fetch failed", { cause: new Error("self signed certificate") }),
+		});
+		expect(errorMessageWithCertificateCode(error)).toBe("Connection error. (self signed certificate)");
+		// A message that already says it, a chain without a certificate, and an empty message.
+		expect(errorMessageWithCertificateCode(new Error("self signed certificate"))).toBe("self signed certificate");
+		expect(errorMessageWithCertificateCode(new Error("Connection error.", { cause: new Error("timed out") }))).toBe(
+			"Connection error.",
+		);
+		expect(errorMessageWithCertificateCode(new Error("", { cause: new Error("self signed certificate") }))).toBe(
+			"self signed certificate",
+		);
+	});
 });
 
 describe("messages on the chain", () => {
@@ -177,6 +193,15 @@ describe("messages on the chain", () => {
 describe("retry classification of transport failures", () => {
 	const retryable = (errorMessage: string) =>
 		isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }));
+
+	it("does not retry a stored message that carries the certificate text of its cause", () => {
+		const error = new Error("Connection error.", {
+			cause: new TypeError("fetch failed", { cause: new Error("self signed certificate") }),
+		});
+		expect(retryable(errorMessageWithCertificateCode(error))).toBe(false);
+		// Without the appended text the same failure reads as a plain connection error.
+		expect(retryable(error.message)).toBe(true);
+	});
 
 	it.each([
 		["Node: self-signed leaf with the code", "fetch failed (DEPTH_ZERO_SELF_SIGNED_CERT)"],
@@ -223,5 +248,8 @@ describe("retry classification of transport failures", () => {
 		expect(retryable("unable to verify the first certificate at ::500 (self signed certificate)")).toBe(false);
 		expect(retryable("self signed certificate, seen at 2026-10-17T12:00:00.500Z")).toBe(false);
 		expect(retryable("500 ms elapsed: self signed certificate")).toBe(false);
+		expect(retryable("500  ms elapsed: self signed certificate")).toBe(false);
+		expect(retryable("500 msec elapsed: self signed certificate")).toBe(false);
+		expect(retryable("500 milliseconds elapsed: self signed certificate")).toBe(false);
 	});
 });

@@ -11,7 +11,7 @@
  * imports that list and nothing else. `retry.ts` must not import this module: durable's entry graph has a fixed budget
  * (`scripts/check-entry-graphs.mjs`), and that import would add a file to it.
  */
-import { CERTIFICATE_ERROR_CODE_LIST } from "./retry.ts";
+import { CERTIFICATE_ERROR_CODE_LIST, isCertificateErrorMessage } from "./retry.ts";
 
 const MAX_CAUSE_DEPTH = 6;
 
@@ -106,7 +106,8 @@ export function isConnectionError(error: unknown): boolean {
 }
 
 /**
- * `error.message`, with the certificate code appended when the message does not already say it.
+ * `error.message`, with the certificate code appended when the message does not already say it. When no code is on the
+ * chain, the text of a cause that names a certificate is appended instead.
  *
  * Node reports every request failure as "fetch failed" and keeps the reason on the cause, so a message that is stored
  * and classified later (the assistant message's `errorMessage`) would lose it. Only certificate codes are added: they
@@ -114,7 +115,14 @@ export function isConnectionError(error: unknown): boolean {
  */
 export function errorMessageWithCertificateCode(error: Error): string {
 	const code = certificateErrorCode(error);
-	if (code === undefined || error.message.includes(code)) return error.message;
-	// An empty message would otherwise read " (CODE)" with nothing before the code.
-	return error.message.length > 0 ? `${error.message} (${code})` : code;
+	if (code !== undefined) {
+		if (error.message.includes(code)) return error.message;
+		// An empty message would otherwise read " (CODE)" with nothing before the code.
+		return error.message.length > 0 ? `${error.message} (${code})` : code;
+	}
+	// No code on the chain: a failure that only says "self signed certificate" in a cause, under an SDK wrapper such as
+	// "Connection error.", would be stored without it and retried by the classifier, which sees only the stored string.
+	const text = transportErrorMessages(error).find(isCertificateErrorMessage);
+	if (text === undefined || text === error.message) return error.message;
+	return error.message.length > 0 ? `${error.message} (${text})` : text;
 }

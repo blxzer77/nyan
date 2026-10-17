@@ -37,7 +37,7 @@ function isConnectionFailure(error: unknown): boolean {
 export function connectionErrorMessage(error: unknown): string {
 	if (isCertificateFailure(error)) {
 		if (error instanceof Error) return errorMessageWithCertificateCode(error);
-		return certificateErrorCode(error) ?? transportErrorMessages(error)[0] ?? String(error);
+		return certificateErrorCode(error) ?? String(error);
 	}
 	if (isConnectionFailure(error)) return "Could not connect to the server.";
 	return error instanceof Error ? error.message : String(error);
