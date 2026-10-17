@@ -622,8 +622,13 @@ class ModelsImpl implements MutableModels {
 						}
 						return;
 					}
+					// A verdict that a superseded or cancelled attempt reports answers a question no one is asking any more.
 					const verification = verifying
-						? { report: (verdict: CredentialVerdict) => verdicts.set(provider.id, verdict) }
+						? {
+								report: (verdict: CredentialVerdict) => {
+									if (!signal.aborted) verdicts.set(provider.id, verdict);
+								},
+							}
 						: undefined;
 					// A verification always fetches: a provider's freshness check must not let it skip the network.
 					reachedProvider = true;

@@ -429,6 +429,61 @@ describe("Models runtime", () => {
 		expect(result.errors.size).toBe(0);
 	});
 
+	it("ignores a verdict that a superseded verification reports after it was superseded", async () => {
+		const models = createModels();
+		let verifyStarted!: () => void;
+		const started = new Promise<void>((resolve) => {
+			verifyStarted = resolve;
+		});
+		models.setProvider(
+			testProvider({
+				id: "late",
+				refreshModels: async (context) => {
+					if (!context.verifyCredential) return;
+					verifyStarted();
+					await new Promise<void>((resolve) => {
+						context.signal.addEventListener("abort", () => resolve(), { once: true });
+					});
+					// A provider that answers after it was superseded must not change the verdict.
+					context.reportCredentialVerdict?.("verified");
+				},
+			}),
+		);
+
+		const verifying = models.refresh({ providers: ["late"], verifyCredential: true });
+		await started;
+		await models.refresh({ providers: ["late"] });
+		const result = await verifying;
+
+		expect(result.verdicts?.get("late")).toBe("unavailable");
+	});
+
+	it("keeps every provider's verdict when another provider's verification throws", async () => {
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "broken",
+				refreshModels: async (context) => {
+					if (context.verifyCredential) throw new Error("fetch failed");
+				},
+			}),
+		);
+		models.setProvider(
+			testProvider({
+				id: "accepting",
+				refreshModels: async (context) => {
+					if (context.verifyCredential) context.reportCredentialVerdict?.("verified");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["broken", "accepting"], verifyCredential: true });
+
+		expect(result.verdicts?.get("broken")).toBe("unavailable");
+		expect(result.verdicts?.get("accepting")).toBe("verified");
+		expect(result.errors.get("broken")?.message).toBe("fetch failed");
+	});
+
 	it("restores cached models before waiting for network auth", async () => {
 		const store = new InMemoryModelsStore();
 		await store.write("dynamic", { models: [testModel("dynamic", "cached")] });

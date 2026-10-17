@@ -287,7 +287,8 @@ export async function runAuthLogin(args: Args, options: AuthLoginOptions = {}): 
 		// The provider's verdict is the discriminant; the error text is only for display.
 		const verdict = refreshed.verdicts?.get(provider.id) ?? "unavailable";
 		const failure = refreshed.errors.get(provider.id);
-		// Only the provider's own `verified` verdict proves the credential, so anything else that is not a refusal ends here
+		// `verified` means the listing completed without a refusal. It is not proof that the provider checked the key: a
+		// provider that ignores the verification flag is verified this way too. Anything else that is not a refusal ends here
 		// as not verified. A failed check says why and when to retry; a provider that reports no verdict gets no retry
 		// advice, because retrying would not change its answer.
 		if (verdict !== "verified" && verdict !== "rejected") {
