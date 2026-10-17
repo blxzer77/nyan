@@ -179,7 +179,8 @@ export default async function cliproxyApiExtension(pi: ExtensionAPI): Promise<vo
 		if (!model || (model.provider !== identity.providerId && model.provider !== "openai-codex")) {
 			return;
 		}
-		await waitForPauseToEnd(agentDir, pauseMode);
+		// ctx.signal is read before the first await: an abort or a closed Harness releases the wait.
+		await waitForPauseToEnd(agentDir, pauseMode, ctx.signal);
 
 		if (!fastMode.isEffectiveForModel(model, identity.providerId)) {
 			return undefined;
