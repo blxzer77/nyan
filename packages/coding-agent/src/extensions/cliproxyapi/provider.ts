@@ -147,7 +147,7 @@ export class CatalogController {
 		return this.lastError;
 	}
 
-	/** Why the last refresh produced no usable answer, or undefined after a successful one. */
+	/** Why the last fetch failed. A refresh that does not fetch (no credential, cache only, throttled) clears it; see `getLastError` for those. */
 	getLastFailure(): CatalogFailure | undefined {
 		return this.lastFailure;
 	}
@@ -535,7 +535,12 @@ function credentialSecret(credential: RefreshModelsContext["credential"]): strin
 }
 
 /** Warns when the key the model list is fetched with is not the one this login entered. */
-function warnIfKeyOverridden(agentDir: string, providerId: string, entered: string, credentialType: string): void {
+function warnIfKeyOverridden(
+	agentDir: string,
+	providerId: string,
+	entered: string,
+	credentialType: "api_key" | "oauth",
+): void {
 	let runtimeKey: string | undefined;
 	try {
 		runtimeKey = resolveConnection(agentDir, providerId)?.apiKey;
@@ -552,7 +557,7 @@ function warnIfKeyOverridden(agentDir: string, providerId: string, entered: stri
 	}
 }
 
-function overriddenKeyMessage(subject: string, providerId: string, credentialType: string | undefined): string {
+function overriddenKeyMessage(subject: string, providerId: string, credentialType: "api_key" | "oauth"): string {
 	const head = `${subject} is set to a different key than the one just entered.`;
 	return credentialType === "api_key"
 		? `${head} The model list is fetched with that key. A key stored by an API-key login is not used for requests: run ${APP_NAME} login ${providerId} without --method.`
