@@ -13,6 +13,9 @@ export default defineConfig({
 		// measurement past the budget even though the worker behaves correctly. Bound the pool in CI so the assertion
 		// keeps measuring the worker instead of the runner's scheduler.
 		maxWorkers: process.env.CI ? 2 : undefined,
+		// The durable suites drive real timers and SQLite I/O. A contended shared runner turns an occasional slow tick into
+		// a five-second timeout, so give CI the same headroom a slower workstation would implicitly get.
+		testTimeout: process.env.CI ? 15_000 : 5_000,
 	},
 	resolve: {
 		conditions: ["source"],
