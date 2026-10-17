@@ -1,5 +1,22 @@
 name: Nyan quality gate
 
+# Hybrid runner placement. GitHub-hosted runners absorb the fan-out (the account allows
+# 20 concurrent jobs, measured with .github/workflows/probe-concurrency.yml), while the
+# self-hosted host keeps the few jobs it is genuinely better at:
+#
+#   self-hosted  prepare        fastest install/build (~25% faster per core, warm npm cache),
+#                               and it is the head of the critical path
+#   self-hosted  supply-chain   Docker images and the Trivy vulnerability database are already
+#                               local; a hosted runner pulls ~128 MB of database per run
+#   self-hosted  deep-gate      CPU-bound fuzz and mutation, where a dedicated core keeps the
+#                               timing assertions honest
+#   hosted       everything else, including the 14-way test matrix that six self-hosted slots
+#                                       cannot absorb
+#
+# Because self-hosted runners stay in the pool, the fork-PR trust split stays too: a pull
+# request from another repository must never execute on a host whose users hold sudo and the
+# docker group.
+
 on:
   push:
     branches: [main]
@@ -25,7 +42,11 @@ env:
 jobs:
   policy:
     name: Policy and impact
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    # Runs only scripts/ci-impact.mjs, which imports Node built-ins alone, so it needs no
+    # install. Workflow validation moved to `static`, which already has node_modules and runs
+    # it through `npm run check`. This job sits in front of every other job, so its latency is
+    # on the critical path.
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       full_suite: ${{ steps.impact.outputs.full_suite }}
@@ -46,23 +67,6 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Pin npm
-        run: |
-          if [ "$(npm --version)" != "${{ env.NPM_VERSION }}" ]; then
-            npm install --global "npm@${{ env.NPM_VERSION }}"
-          fi
-          npm --version
-
-      - name: Install policy dependencies
-        run: npm ci --ignore-scripts --no-audit --no-fund
-
-      - name: Validate workflows and policy
-        run: node scripts/validate-workflows.mjs
-
-      - name: Actionlint
-        run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.7
 
       - name: Compute change impact
         id: impact
@@ -113,16 +117,20 @@ jobs:
 
   static:
     name: Static checks
-    needs: [policy, prepare]
-    if: needs.policy.outputs.fork_pr != 'true'
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    # `npm run check` reads `packages/*/src` only: tsconfig maps every `@ny4n/*` specifier to sources, and the
+    # architecture, entry-graph and import checks either skip `dist` or map dist paths onto their `.ts` source. So
+    # this job needs no build artifact and no longer waits for `prepare` to finish.
+    #
+    # It installs its own dependencies instead. That is a deliberate trade: paying one uncached install is cheaper
+    # than serializing a minute behind `prepare`, and it keeps this check reporting even when the build fails.
+    needs: [policy]
+    runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Linux build dependencies on hosted runners
-        if: runner.environment == 'github-hosted'
+      - name: Install Linux build dependencies
         run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
 
       - name: Setup Nyan
@@ -132,11 +140,6 @@ jobs:
           bun: 'false'
           model-data: 'true'
 
-      - name: Download build artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: nyan-dist-${{ github.sha }}
-
       - name: Check
         run: npm run check
 
@@ -144,19 +147,20 @@ jobs:
     name: Node tests (${{ matrix.package }})
     needs: [policy, prepare]
     if: needs.policy.outputs.fork_pr != 'true' && needs.policy.result == 'success' && needs.prepare.result == 'success'
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 2
+      # Eighteen jobs per run at most (8 here + 4 bun + static + mcp + windows + gate), against the
+      # measured 20-job account limit.
+      max-parallel: 8
       matrix:
         package: ${{ fromJSON(needs.policy.outputs.node_packages) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Linux build dependencies on hosted runners
-        if: runner.environment == 'github-hosted'
+      - name: Install Linux build dependencies
         run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
 
       - name: Setup Nyan
@@ -183,19 +187,18 @@ jobs:
     name: Bun tests (${{ matrix.package }})
     needs: [policy, prepare]
     if: needs.policy.outputs.fork_pr != 'true' && needs.policy.result == 'success' && needs.prepare.result == 'success'
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         package: ${{ fromJSON(needs.policy.outputs.bun_packages) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Linux build dependencies on hosted runners
-        if: runner.environment == 'github-hosted'
+      - name: Install Linux build dependencies
         run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
 
       - name: Setup Nyan
@@ -261,7 +264,7 @@ jobs:
     name: MCP conformance
     needs: [policy, prepare]
     if: needs.policy.outputs.fork_pr != 'true' && needs.policy.result == 'success' && needs.prepare.result == 'success'
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -279,6 +282,9 @@ jobs:
 
   supply-chain:
     name: Supply chain and secrets
+    # Self-hosted on purpose: gitleaks, Trivy and Syft run as containers whose images, and the
+    # ~128 MB Trivy vulnerability database, are already on this host. A hosted runner pulls all
+    # of that on every run for a scan that reads the same lockfile.
     needs: policy
     runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
     timeout-minutes: 15
@@ -339,13 +345,14 @@ jobs:
 
   deep-gate:
     name: Deep verification
-    needs: [policy, prepare, static, node-tests, bun-tests]
+    # Only what the sharded matrices do not already run. The five package suites and their Bun
+    # parity pass used 328 s of the old 445 s here while `node-tests` and `bun-tests` ran the
+    # same suites in the same run; what remains is the 5 000-run protocol fuzz and the mutation
+    # run. It no longer serializes across pull requests either.
+    needs: [policy, prepare]
     if: needs.policy.outputs.fork_pr != 'true' && needs.policy.outputs.deep_required == 'true' && needs.policy.result == 'success'
     runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
-    timeout-minutes: 30
-    concurrency:
-      group: nyan-deep-gate
-      cancel-in-progress: false
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -358,31 +365,13 @@ jobs:
         uses: ./.github/actions/setup-nyan
         with:
           node-version: ${{ env.NODE_VERSION }}
-          bun-version: ${{ env.BUN_VERSION }}
-          bun: 'true'
+          bun: 'false'
           model-data: 'true'
 
       - name: Download build artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: nyan-dist-${{ github.sha }}
-
-      - name: Run critical recovery and package tests
-        run: |
-          npm run test:scripts
-          npm --workspace packages/ai test
-          npm --workspace packages/agent test
-          npm --workspace packages/durable test
-          npm --workspace packages/coding-agent test
-          npm --workspace packages/protocol test
-
-      - name: Run Bun critical parity tests
-        run: |
-          npm run test:bun -- ai
-          npm run test:bun -- agent
-          npm run test:bun -- durable
-          npm run test:bun -- coding-agent
-          npm run test:bun -- protocol
 
       - name: Run deterministic protocol fuzz harness
         env:
@@ -408,7 +397,7 @@ jobs:
     name: Merge gate
     needs: [policy, prepare, static, node-tests, bun-tests, windows-smoke, mcp-conformance, supply-chain, deep-gate]
     if: always()
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && 'ubuntu-latest' || fromJSON('["self-hosted","Linux","X64","repo-nyan"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
