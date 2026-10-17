@@ -36,8 +36,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+          bash .github/scripts/apt-install.sh libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
           sudo ln -sf "$(which fdfind)" /usr/local/bin/fd   # -f: self-hosted runners keep /usr/local across runs
 
       - name: Install dependencies
@@ -73,8 +72,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+          bash .github/scripts/apt-install.sh libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
           sudo ln -sf "$(which fdfind)" /usr/local/bin/fd   # -f: self-hosted runners keep /usr/local across runs
 
       - name: Install dependencies
