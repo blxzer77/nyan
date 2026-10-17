@@ -1,5 +1,5 @@
 import { applyPatch } from "diff";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -864,15 +864,27 @@ describe("Coding Agent Tools", () => {
 			expect(result.truncated).toBe(true);
 			expect(fullOutputPath).toBeDefined();
 
-			for (let i = 0; i < 20 && (!fullOutputPath || !existsSync(fullOutputPath)); i++) {
-				await new Promise((resolve) => setTimeout(resolve, 10));
-			}
-
-			expect(fullOutputPath).toBeDefined();
+			// No waiting: the path in the result is for the model and the user to read at once, so the file is complete
+			// when the executor returns.
 			expect(existsSync(fullOutputPath!)).toBe(true);
 			const fullOutput = readFileSync(fullOutputPath!, "utf-8");
 			expect(fullOutput).toContain("1\n2\n3");
 			expect(fullOutput).toContain("2998\n2999\n3000");
+		});
+
+		it("executeBash returns the full output file only after all of it is written", async () => {
+			const line = `${"x".repeat(99)}\n`;
+			const lines = 60_000;
+			const result = await executeBashWithOperations("ignored", process.cwd(), {
+				exec: async (_command, _cwd, { onData }) => {
+					for (let i = 0; i < lines; i++) onData(Buffer.from(line));
+					return { exitCode: 0 };
+				},
+			});
+
+			expect(result.truncated).toBe(true);
+			// Read synchronously, with no wait between the return and the read.
+			expect(statSync(result.fullOutputPath!).size).toBe(line.length * lines);
 		});
 	});
 
