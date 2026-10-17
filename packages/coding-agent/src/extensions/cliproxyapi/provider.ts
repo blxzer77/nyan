@@ -95,8 +95,8 @@ interface CatalogRefreshOptions {
 	force?: boolean;
 	signal?: AbortSignal;
 	pricing?: PricingMode;
-	/** A login's verification: fetch with this key, never with the one the connection resolves. */
-	verification?: { readonly apiKey: string };
+	/** A login's verification: fetch with this key at this base URL, never with the ones the connection resolves. */
+	verification?: { readonly apiKey: string; readonly baseUrlInput: string };
 }
 
 export class CatalogController {
@@ -408,7 +408,7 @@ export class CatalogController {
 		this.lastFailure = undefined;
 
 		const identity = resolveIdentity(this.agentDir);
-		const connection = resolveConnectionForRefresh(this.agentDir, identity.providerId, options.verification?.apiKey);
+		const connection = resolveConnectionForRefresh(this.agentDir, identity.providerId, options.verification);
 		if (!connection) {
 			this.lastError = "no CLIProxyAPI credential configured";
 			log.debug("refresh skipped: not configured");
@@ -582,15 +582,15 @@ function rejectedKeyNotice(agentDir: string, providerId: string, providerName: s
 	return `CLIProxyAPI rejected the credential (HTTP ${status}). Re-run /login ${providerName} to reconfigure.`;
 }
 
-/** Resolve the connection a refresh needs. A verification's key replaces the resolved key but keeps the endpoint. */
+/** Resolve the connection a refresh needs. A verification uses the key and the base URL its login recorded. */
 function resolveConnectionForRefresh(
 	agentDir: string,
 	providerId: string,
-	verificationKey?: string,
+	verification?: { apiKey: string; baseUrlInput: string },
 ): { modelsUrl: string; apiKey: string; baseUrlInput: string } | null {
-	if (verificationKey !== undefined) {
-		const baseUrlInput = defaultBaseUrlInput(agentDir, providerId);
-		return { modelsUrl: resolveEndpoints(baseUrlInput).modelsUrl, apiKey: verificationKey, baseUrlInput };
+	if (verification !== undefined) {
+		const { apiKey, baseUrlInput } = verification;
+		return { modelsUrl: resolveEndpoints(baseUrlInput).modelsUrl, apiKey, baseUrlInput };
 	}
 	const connection = resolveConnection(agentDir, providerId);
 	return connection
@@ -653,12 +653,20 @@ export function buildProviderRegistration(options: ProviderRegistrationOptions):
 				ctx.reportCredentialVerdict?.("rejected");
 				throw new Error("the stored login has no key to verify");
 			}
+			// An OAuth login records the base URL it checked, and the key is verified there, not at whatever
+			// CLIPROXYAPI_BASE_URL names. An API-key login records none: its key is verified at the configured base URL,
+			// the one its requests use. A stored OAuth login with no recorded base URL is not guessed at: it stays unverified.
+			const recordedBaseUrl = credential.type === "oauth" ? decodeCredentialMeta(credential.refresh) : undefined;
+			if (credential.type === "oauth" && recordedBaseUrl === undefined) {
+				throw new Error("the stored login does not record the base URL it was checked at");
+			}
+			const baseUrlInput = recordedBaseUrl ?? defaultBaseUrlInput(agentDir, providerId);
 			warnIfKeyOverridden(agentDir, providerId, entered, credential.type);
 			const verification = await catalog.refresh({
 				allowNetwork: true,
 				force: true,
 				signal: ctx.signal,
-				verification: { apiKey: entered },
+				verification: { apiKey: entered, baseUrlInput },
 			});
 			const failure = verification.verificationFailure;
 			if (failure && !ctx.signal.aborted) {

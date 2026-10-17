@@ -860,7 +860,7 @@ export class ModelRuntime implements Models {
 		return {
 			aborted: result.aborted || (options.signal?.aborted ?? false),
 			errors,
-			verdicts: result.verdicts,
+			...(result.verdicts ? { verdicts: result.verdicts } : {}),
 		};
 	}
 
