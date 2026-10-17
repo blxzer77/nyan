@@ -1,7 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { getPackageDir, isBunBinary, isBundledNode } from "../config.ts";
+import { getPackageDir } from "../config.ts";
+import { isBunBinary, isBundledNode } from "../runtime.ts";
 import { sourceRuntimeArgs } from "./source-runtime-args.ts";
 
 export const INTERNAL_PROCESS_ENV = "__NYAN_INTERNAL_SPAWN";

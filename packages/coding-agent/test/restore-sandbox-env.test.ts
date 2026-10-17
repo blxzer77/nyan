@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setBunRuntimeMarker } from "./fixtures/runtime-marker.ts";
 
 const readFileSync = vi.fn();
 
@@ -8,7 +9,21 @@ vi.mock("node:fs", () => ({
 
 const { restoreSandboxEnv } = await import("../src/bun/restore-sandbox-env.ts");
 
+/** Empty process.env, as Bun does inside a sandbox, and return a function that puts the previous entries back. */
+function emptyProcessEnv(): () => void {
+	const backup = { ...process.env };
+	for (const key of Object.keys(process.env)) delete process.env[key];
+	return () => {
+		for (const key of Object.keys(process.env)) delete process.env[key];
+		Object.assign(process.env, backup);
+	};
+}
+
 describe("restoreSandboxEnv", () => {
+	beforeEach(() => {
+		readFileSync.mockReset();
+	});
+
 	it("does nothing when not running under bun", () => {
 		const originalVersions = Object.getOwnPropertyDescriptor(process, "versions");
 		Object.defineProperty(process, "versions", {
@@ -73,5 +88,42 @@ describe("restoreSandboxEnv", () => {
 			Object.defineProperty(process, "versions", originalVersions);
 		}
 		readFileSync.mockReset();
+	});
+
+	// The Bun guard is all that keeps a Node process with an empty environment from reading /proc/self/environ: the
+	// first case above has entries in process.env, so the second guard would return before it matters.
+	it("does not read /proc/self/environ outside Bun even when process.env is empty", () => {
+		const restoreMarker = setBunRuntimeMarker(undefined);
+		const restoreEnv = emptyProcessEnv();
+		try {
+			readFileSync.mockReturnValue("FOO=bar\0");
+
+			restoreSandboxEnv();
+
+			expect(readFileSync).not.toHaveBeenCalled();
+			expect(Object.keys(process.env)).toEqual([]);
+		} finally {
+			restoreEnv();
+			restoreMarker();
+		}
+	});
+
+	// The inline check this replaced tested truthiness. runningUnderBun() tests typeof, and the fallback in
+	// packages/ai/src/utils/provider-env.ts still tests truthiness. Bun never reports an empty marker, so only an injected
+	// one shows the difference; pinned so that changing either side is a deliberate decision.
+	it("takes an empty Bun marker as Bun", () => {
+		const restoreMarker = setBunRuntimeMarker("");
+		const restoreEnv = emptyProcessEnv();
+		try {
+			readFileSync.mockReturnValue("FOO=bar\0");
+
+			restoreSandboxEnv();
+
+			expect(readFileSync).toHaveBeenCalledWith("/proc/self/environ", "utf-8");
+			expect(process.env.FOO).toBe("bar");
+		} finally {
+			restoreEnv();
+			restoreMarker();
+		}
 	});
 });

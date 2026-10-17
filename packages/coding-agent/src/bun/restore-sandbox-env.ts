@@ -11,13 +11,14 @@
  */
 
 import { readFileSync } from "node:fs";
+import { runningUnderBun } from "../runtime.ts";
 
 /**
  * Restore environment variables from `/proc/self/environ` when running
  * inside a sandbox where Bun's `process.env` is empty.
  */
 export function restoreSandboxEnv(): void {
-	if (!process.versions?.bun) return;
+	if (!runningUnderBun()) return;
 
 	// If process.env already has entries, nothing to fix.
 	if (Object.keys(process.env).length > 0) return;

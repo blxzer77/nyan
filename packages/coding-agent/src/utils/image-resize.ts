@@ -1,4 +1,5 @@
 import { Worker } from "node:worker_threads";
+import { runningUnderBun } from "../runtime.ts";
 import {
 	IMAGE_RESIZE_WORKER_RESPONSE_TYPE,
 	type ImageResizeOptions,
@@ -95,7 +96,7 @@ export async function resizeImage(
 	// Bun compiled executables resolve worker entrypoints by string path, not via
 	// new URL(..., import.meta.url). Try the string path first under Bun so the
 	// release binary uses the embedded worker instead of falling back in-process.
-	if (typeof process.versions.bun === "string") {
+	if (runningUnderBun()) {
 		try {
 			return await resizeImageInWorker("./src/utils/image-resize-worker.ts", inputBytes, mimeType, options);
 		} catch {}

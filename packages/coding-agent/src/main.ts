@@ -36,15 +36,7 @@ import { listModels } from "./cli/list-models.ts";
 import { createProjectTrustContext } from "./cli/project-trust.ts";
 import { selectSession } from "./cli/session-picker.ts";
 import { shouldRunFirstTimeSetup, showFirstTimeSetup, showStartupSelector } from "./cli/startup-ui.ts";
-import {
-	APP_NAME,
-	ENV_SESSION_DIR,
-	expandTildePath,
-	getAgentDir,
-	getPackageDir,
-	isBunBinary,
-	VERSION,
-} from "./config.ts";
+import { APP_NAME, ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, VERSION } from "./config.ts";
 import { type CreateAgentSessionRuntimeFactory, createAgentSessionRuntime } from "./core/agent-session-runtime.ts";
 import {
 	type AgentSessionRuntimeDiagnostic,
@@ -80,6 +72,7 @@ import { runDurablePrint } from "./modes/durable/print.ts";
 import { runDurableRpc } from "./modes/durable/rpc.ts";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { cleanupManagedInstall, handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
+import { isBunBinary } from "./runtime.ts";
 import { initTheme, setThemeJsonValidator, stopThemeWatcher } from "./ui/theme/theme.ts";
 import { validateThemeJson } from "./ui/theme/theme-schema.ts";
 import { cleanupBinaryUpdateLeftovers } from "./utils/binary-update.ts";
