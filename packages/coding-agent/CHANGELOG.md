@@ -19,6 +19,7 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ### Fixed
 
+- A user ! bash command whose output is truncated returned the path of its full-output file before the file was completely written, so reading it at once could show a partial file. The path is now returned after the file is closed.
 - `nyan auth check`, `nyan auth print-api-key`, `nyan auth print-bearer-token`, and `nyan login` reported every unexpected failure as `Failed to resolve credential`, hiding the cause. They now name the phase that failed and the error behind it.
 - `nyan login` and `nyan auth login` substituted a prompt's placeholder for an empty answer. At CLIProxyAPI's API-key prompt this made an empty answer look like a real key, so the provider skipped its own empty-key check and sent the literal `sk-...` to the proxy, which failed with a misleading validation error instead of saying the key was empty. A placeholder is a hint, as it is in the interactive dialog, and an empty answer stays empty.
 - `nyan login` and `nyan auth login` stopped with `Invalid selection` when a choice was not one of the offered numbers, and treated any answer other than `2` at the authentication-method prompt as OAuth. Both now re-ask.
