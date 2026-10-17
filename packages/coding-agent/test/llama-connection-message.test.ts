@@ -31,6 +31,12 @@ describe("llama connection error message", () => {
 		expect(connectionErrorMessage(error)).toBe("fetch failed (DEPTH_ZERO_SELF_SIGNED_CERT)");
 	});
 
+	it("shows a certificate named only in the text, not as a connection failure", () => {
+		// The code was lost on the way: the message is all that says what failed.
+		const error = new TypeError("fetch failed: Hostname/IP does not match certificate's altnames: Host: localhost.");
+		expect(connectionErrorMessage(error)).toBe(error.message);
+	});
+
 	it("keeps the text of an error that has no code", () => {
 		expect(connectionErrorMessage(new Error("model not found"))).toBe("model not found");
 		expect(connectionErrorMessage("plain")).toBe("plain");

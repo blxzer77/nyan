@@ -1,7 +1,9 @@
+import { isCertificateErrorMessage } from "@ny4n/ai/utils/retry";
 import {
 	certificateErrorCode,
 	errorMessageWithCertificateCode,
 	isConnectionError,
+	transportErrorMessages,
 } from "@ny4n/ai/utils/transport-error";
 import type { ExtensionAPI, ExtensionCommandContext } from "../../core/extensions/types.ts";
 import { formatBytes, LlamaClient, type LlamaModelInfo, normalizeLlamaServerUrl } from "./client.ts";
@@ -17,9 +19,15 @@ function modelIsLoaded(model: LlamaModelInfo): boolean {
  * A coded connection failure on either runtime, or the text an error without a code used to be matched by. A certificate
  * failure is not a connection failure: Node reports it as "fetch failed" too, so the code is checked first and shown.
  */
+/** A certificate failure by code, or by text where the code was lost (a message that only says what the failure was). */
+function isCertificateFailure(error: unknown): boolean {
+	if (certificateErrorCode(error) !== undefined) return true;
+	return error instanceof Error && transportErrorMessages(error).some(isCertificateErrorMessage);
+}
+
 function isConnectionFailure(error: unknown): boolean {
 	// A certificate is shown even when a connection code is also on the chain.
-	if (certificateErrorCode(error) !== undefined) return false;
+	if (isCertificateFailure(error)) return false;
 	if (isConnectionError(error)) return true;
 	if (!(error instanceof Error)) return false;
 	const message = `${error.name} ${error.message}`.toLowerCase();
@@ -27,8 +35,7 @@ function isConnectionFailure(error: unknown): boolean {
 }
 
 export function connectionErrorMessage(error: unknown): string {
-	if (error instanceof Error && certificateErrorCode(error) !== undefined)
-		return errorMessageWithCertificateCode(error);
+	if (error instanceof Error && isCertificateFailure(error)) return errorMessageWithCertificateCode(error);
 	if (isConnectionFailure(error)) return "Could not connect to the server.";
 	return error instanceof Error ? error.message : String(error);
 }
