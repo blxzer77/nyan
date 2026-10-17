@@ -10,7 +10,8 @@ name: Release
 # v1.1.0 already point at Pi releases. The tag version must equal the package version. A version with a pre-release suffix publishes under the `next` dist-tag.
 # A re-run skips versions that are already on the registry.
 #
-# The verify job packs one artifact set and every later job downloads those exact bytes; the publish job never rebuilds,
+# The prepare job packs one workspace and the tests run from it; the pack job packs the verified packages from that
+# same workspace, and the publish job never rebuilds,
 # so what npm receives is what the smoke tests ran against.
 
 on:
@@ -37,10 +38,12 @@ env:
   NYAN_OFFLINE: '1'
 
 jobs:
-  verify:
-    name: Verify and pack
+  prepare:
+    name: Build and expand the test plan
     runs-on: [self-hosted, Linux, X64, repo-nyan]
     timeout-minutes: 40
+    outputs:
+      node_shards: ${{ steps.shards.outputs.node_shards }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,15 +69,133 @@ jobs:
       - name: Build offline
         run: npm run build:offline
 
+      - name: Pack the workspace
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
+          ls -lh nyan-workspace.tar.gz
+
+      - name: Upload the workspace
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nyan-workspace-${{ github.sha }}
+          path: nyan-workspace.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Select every package
+        # Tags and manual runs select the full suite: ci-impact treats a push or a run with no changed files that way.
+        id: impact
+        run: node scripts/ci-impact.mjs
+
+      - name: Expand test shards
+        id: shards
+        env:
+          NODE_PACKAGES: ${{ steps.impact.outputs.node_packages }}
+          BUN_PACKAGES: ${{ steps.impact.outputs.bun_packages }}
+        run: node scripts/ci-shards.mjs
+
+  check:
+    name: Check
+    needs: prepare
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          install: 'false'
+          model-data: 'true'
+
       - name: Check
         run: npm run check
 
-      - name: Test
-        run: npm test
+  tests:
+    name: Tests (${{ matrix.name }})
+    needs: prepare
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.node_shards) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Ensure fd and ripgrep
+        run: |
+          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
+            sudo apt-get update
+            sudo apt-get install -y ripgrep fd-find
+          fi
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          install: 'false'
+          model-data: 'true'
+
+      - name: Run root script tests
+        if: matrix.package == 'root'
+        run: npm run test:scripts
+
+      - name: Run package tests
+        if: matrix.package != 'root' && matrix.shard == ''
+        run: npm --workspace "packages/${{ matrix.package }}" test
+
+      - name: Run a shard of package tests
+        if: matrix.shard != ''
+        working-directory: packages/${{ matrix.package }}
+        env:
+          PACKAGE: ${{ matrix.package }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          node ../../node_modules/vitest/vitest.mjs --run "--shard=$SHARD"
+          if [ "$PACKAGE" = "durable" ]; then
+            node scripts/test-without-document-retention.mjs "--shard=$SHARD"
+          fi
+
+  pack:
+    name: Pack verified packages
+    # Runs only after the check and every test shard passed, from the workspace they tested. --skip-build packs the
+    # dist/ that prepare built: nothing here rebuilds, so the archive published is the archive that was tested.
+    needs: [prepare, check, tests]
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Restore workspace
+        uses: ./.github/actions/restore-workspace
+
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          install: 'false'
+          model-data: 'true'
 
       - name: Pack verified packages
-        # --skip-build reuses the dist/ that the offline build above produced, and --force replaces any stale artifact set
-        # so the manifest always describes the bytes that were just tested.
         run: node scripts/pack-packages.mjs --out .artifacts/packages --force --skip-build
 
       - name: Upload verified packages
@@ -91,7 +212,7 @@ jobs:
 
   binaries:
     name: Bun binaries
-    needs: native
+    needs: [pack, native]
     runs-on: [self-hosted, Linux, X64, repo-nyan]
     timeout-minutes: 30
     permissions:
@@ -165,7 +286,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: [self-hosted, Linux, X64, repo-nyan], platform: linux-x64 }
+          - { runner: ubuntu-latest, platform: linux-x64 }
           - { runner: ubuntu-24.04-arm, platform: linux-arm64 }
           - { runner: macos-15, platform: darwin-arm64 }
           - { runner: windows-latest, platform: windows-x64 }
@@ -213,7 +334,7 @@ jobs:
 
   publish:
     name: Publish verified artifacts
-    needs: [verify, native, binary-smoke]
+    needs: [pack, native, binary-smoke]
     # npm verifies the runner environment when it accepts a provenance bundle and rejects a
     # `self-hosted` runner: "Only 'github-hosted' runners are supported when publishing with
     # provenance". This job therefore stays on a GitHub-hosted runner while the build jobs use the
