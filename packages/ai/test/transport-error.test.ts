@@ -212,6 +212,9 @@ describe("retry classification of transport failures", () => {
 		expect(retryable("Provider error (429): certificate verify failed")).toBe(true);
 		expect(retryable("Request failed with status code 500: certificate expired")).toBe(true);
 		expect(retryable("HTTP 503: certificate expired")).toBe(true);
+		// The Anthropic SDK's raw message has a space, not a colon, after the status.
+		expect(retryable('503 {"error":{"message":"certificate has expired"}}')).toBe(true);
+		expect(retryable("500 certificate verify failed")).toBe(true);
 	});
 
 	it("does not read a port, an IPv6 group, or a millisecond value as a status", () => {

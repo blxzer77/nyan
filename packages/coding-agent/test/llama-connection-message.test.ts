@@ -37,6 +37,13 @@ describe("llama connection error message", () => {
 		expect(connectionErrorMessage(error)).toBe(error.message);
 	});
 
+	it("shows the code of a certificate failure that is not an Error object", () => {
+		// A thrown plain object is not an Error: its code is shown, not String(value).
+		expect(connectionErrorMessage({ code: "DEPTH_ZERO_SELF_SIGNED_CERT", message: "self-signed certificate" })).toBe(
+			"DEPTH_ZERO_SELF_SIGNED_CERT",
+		);
+	});
+
 	it("keeps the text of an error that has no code", () => {
 		expect(connectionErrorMessage(new Error("model not found"))).toBe("model not found");
 		expect(connectionErrorMessage("plain")).toBe("plain");

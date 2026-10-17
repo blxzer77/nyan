@@ -9,13 +9,13 @@ function escapeRegExp(text: string): string {
 }
 
 /**
- * A retryable HTTP status where a status is written in a stored message: at the start with a colon ("503: ...", the
- * form formatProviderError writes), in parentheses ("Provider error (429): ..."), or after "HTTP", "status", "status code"
- * or "code" (also as a JSON key). A port, an IPv6 group, a millisecond value, or a leading number without a colon does not
- * match.
+ * A retryable HTTP status where a status is written in a stored message: at the start, followed by a colon ("503: ...",
+ * the form formatProviderError writes) or by a space and a body ("503 {...}", the raw Anthropic SDK message; "500 ms" is a
+ * duration); in parentheses ("Provider error (429): ..."); or after "HTTP", "status", "status code" or "code", also as a
+ * JSON key. A port, an IPv6 group, a millisecond value, or a number inside a host name does not match.
  */
 const RETRYABLE_HTTP_STATUS_TOKEN =
-	/^(?:408|409|429|5\d{2})\s*:|\((?:408|409|429|5\d{2})\)|\b(?:http|status(?:\s+code)?|code)"?\s*[:=]?\s*(?:408|409|429|5\d{2})\b/i;
+	/^(?:408|409|429|5\d{2})(?:\s*:|\s+(?!ms\b))|\((?:408|409|429|5\d{2})\)|\b(?:http|status(?:\s+code)?|code)"?\s*[:=]?\s*(?:408|409|429|5\d{2})\b/i;
 
 /**
  * Certificate and host-name verification failures. These are the OpenSSL verification names Node and Bun both report,
