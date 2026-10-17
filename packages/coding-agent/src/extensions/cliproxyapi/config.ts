@@ -320,7 +320,7 @@ export function resolveConnection(agentDir: string, providerId: string): Resolve
 		auth?.baseUrl,
 		DEFAULT_BASE_URL,
 	)!;
-	const apiKey = firstNonEmpty(process.env.CLIPROXYAPI_API_KEY, config.apiKey, auth?.apiKey);
+	const apiKey = pickApiKey(agentDir, config, auth)?.apiKey;
 	if (!apiKey) {
 		return null;
 	}
@@ -336,16 +336,32 @@ export type ApiKeySource =
 	| { readonly kind: "stored" }
 	| { readonly kind: "none" };
 
+/**
+ * The API key a connection uses, and where it came from. This is the only place the order is written down: the environment,
+ * then cliproxyapi.json, then the stored login.
+ */
+function pickApiKey(
+	agentDir: string,
+	config: ConfigFile,
+	stored: { apiKey?: string } | null,
+): { apiKey: string; source: ApiKeySource } | undefined {
+	const environment = firstNonEmpty(process.env.CLIPROXYAPI_API_KEY);
+	if (environment) return { apiKey: environment, source: { kind: "environment" } };
+	const configured = firstNonEmpty(config.apiKey);
+	if (configured) return { apiKey: configured, source: { kind: "config", path: configPath(agentDir) } };
+	const storedKey = firstNonEmpty(stored?.apiKey);
+	return storedKey ? { apiKey: storedKey, source: { kind: "stored" } } : undefined;
+}
+
 export function apiKeySource(agentDir: string, providerId: string): ApiKeySource {
-	if (firstNonEmpty(process.env.CLIPROXYAPI_API_KEY)) return { kind: "environment" };
-	if (firstNonEmpty(loadConfigSafe(agentDir).config.apiKey)) return { kind: "config", path: configPath(agentDir) };
-	let auth: { apiKey?: string } | null = null;
+	const { config } = loadConfigSafe(agentDir);
+	let stored: { apiKey?: string } | null = null;
 	try {
-		auth = loadAuthConnection(agentDir, providerId);
+		stored = loadAuthConnection(agentDir, providerId);
 	} catch {
-		auth = null;
+		stored = null;
 	}
-	return auth?.apiKey ? { kind: "stored" } : { kind: "none" };
+	return pickApiKey(agentDir, config, stored)?.source ?? { kind: "none" };
 }
 
 export function defaultBaseUrlInput(agentDir: string, providerId: string): string {

@@ -335,6 +335,72 @@ describe("Models runtime", () => {
 		expect(result.verdicts?.size).toBe(0);
 	});
 
+	it("a verification fetches even when the caller did not ask for force", async () => {
+		const seen: Array<boolean | undefined> = [];
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "fresh",
+				refreshModels: async (context) => {
+					if (!context.verifyCredential) return;
+					seen.push(context.force);
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["fresh"], verifyCredential: true });
+
+		expect(seen).toEqual([true]);
+		expect(result.verdicts?.get("fresh")).toBe("verified");
+	});
+
+	it("refuses a verification of a provider that has no credential to verify", async () => {
+		const models = createModels();
+		models.setProvider(
+			testProvider({
+				id: "keyless",
+				auth: { apiKey: { name: "None", resolve: async () => undefined } },
+				refreshModels: async (context) => {
+					if (context.verifyCredential) throw new Error("the provider was called without a credential");
+				},
+			}),
+		);
+
+		const result = await models.refresh({ providers: ["keyless"], verifyCredential: true });
+
+		expect(result.verdicts?.get("keyless")).toBe("rejected");
+		expect(result.errors.get("keyless")?.message).toContain("has no credential to verify");
+	});
+
+	it("reports unavailable for a verification that another refresh of the same provider superseded", async () => {
+		const models = createModels();
+		let verifyStarted!: () => void;
+		const started = new Promise<void>((resolve) => {
+			verifyStarted = resolve;
+		});
+		models.setProvider(
+			testProvider({
+				id: "slow",
+				refreshModels: async (context) => {
+					if (!context.verifyCredential) return;
+					verifyStarted();
+					// Waits until another refresh of this provider supersedes this one.
+					await new Promise<void>((resolve) => {
+						context.signal.addEventListener("abort", () => resolve(), { once: true });
+					});
+				},
+			}),
+		);
+
+		const verifying = models.refresh({ providers: ["slow"], verifyCredential: true });
+		await started;
+		await models.refresh({ providers: ["slow"] });
+		const result = await verifying;
+
+		expect(result.verdicts?.get("slow")).toBe("unavailable");
+		expect(result.errors.size).toBe(0);
+	});
+
 	it("restores cached models before waiting for network auth", async () => {
 		const store = new InMemoryModelsStore();
 		await store.write("dynamic", { models: [testModel("dynamic", "cached")] });

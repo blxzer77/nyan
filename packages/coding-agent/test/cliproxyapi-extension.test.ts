@@ -14,7 +14,9 @@ import { SettingsManager } from "../src/core/settings-manager.ts";
 import { loadCatalogCache, saveCatalogCache } from "../src/extensions/cliproxyapi/cache.ts";
 import {
 	AUTH_FILE_NAME,
+	apiKeySource,
 	CONFIG_FILE_NAME,
+	configPath,
 	DEFAULT_PROVIDER_ID,
 	DEFAULT_PROVIDER_NAME,
 	loadConfig,
@@ -788,6 +790,32 @@ describe("CLIProxyAPI extension", () => {
 					/no key to verify/,
 				);
 				expect(verdicts).toEqual(["rejected"]);
+			} finally {
+				restore();
+			}
+		});
+
+		it("names the source of the key a connection uses, in the same order the connection reads it", () => {
+			const agentDir = agentDirWithoutPricing();
+			const restore = setEnv({ NYAN_CODING_AGENT_DIR: agentDir, CLIPROXYAPI_BASE_URL: "http://127.0.0.1:1" });
+			try {
+				writeFileSync(
+					join(agentDir, AUTH_FILE_NAME),
+					JSON.stringify({ [DEFAULT_PROVIDER_ID]: { type: "api_key", key: "stored-key" } }),
+				);
+				expect(apiKeySource(agentDir, DEFAULT_PROVIDER_ID)).toEqual({ kind: "stored" });
+				expect(resolveConnection(agentDir, DEFAULT_PROVIDER_ID)?.apiKey).toBe("stored-key");
+
+				saveConfig(agentDir, { apiKey: "config-key" });
+				expect(apiKeySource(agentDir, DEFAULT_PROVIDER_ID)).toEqual({
+					kind: "config",
+					path: configPath(agentDir),
+				});
+				expect(resolveConnection(agentDir, DEFAULT_PROVIDER_ID)?.apiKey).toBe("config-key");
+
+				process.env.CLIPROXYAPI_API_KEY = "env-key";
+				expect(apiKeySource(agentDir, DEFAULT_PROVIDER_ID)).toEqual({ kind: "environment" });
+				expect(resolveConnection(agentDir, DEFAULT_PROVIDER_ID)?.apiKey).toBe("env-key");
 			} finally {
 				restore();
 			}

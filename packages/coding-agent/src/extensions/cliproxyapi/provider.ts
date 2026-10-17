@@ -498,12 +498,15 @@ interface KnownModels {
 	source: "remote" | "cache" | "none";
 }
 
+/** The verdicts the refresh contract defines, read from the contract so the vocabulary cannot drift. */
+type CredentialVerdict = Parameters<NonNullable<RefreshModelsContext["reportCredentialVerdict"]>>[0];
+
 /**
  * Why the last refresh had no usable answer. `reason` is the discriminant: `rejected` when the proxy refused the key,
  * `unavailable` when it gave no usable answer at all.
  */
 export interface CatalogFailure {
-	reason: "rejected" | "unavailable";
+	reason: Exclude<CredentialVerdict, "verified">;
 	message: string;
 	/** The HTTP status the proxy answered with, when it answered. */
 	httpStatus?: number;

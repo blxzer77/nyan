@@ -50,11 +50,9 @@ function isCatalogModel(value: unknown): value is CatalogModel {
 }
 
 export function loadCatalogCache(agentDir: string, modelsUrl: string): CatalogCacheFile | undefined {
-	const targetPath = cachePath(agentDir);
-
 	let raw: string;
 	try {
-		raw = readFileSync(targetPath, "utf8");
+		raw = readFileSync(cachePath(agentDir), "utf8");
 	} catch {
 		return undefined;
 	}

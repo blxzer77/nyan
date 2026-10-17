@@ -830,10 +830,11 @@ export class ModelRuntime implements Models {
 		};
 		// Published nyan-ai builds before ModelsStore returned void and accepted a provider ID.
 		// The fallback keeps source-mode CLI tests working without rebuilding workspace dependencies.
-		const result = ((await this.models.refresh(refreshOptions)) as ModelsRefreshResult | undefined) ?? {
+		const result: ModelsRefreshResult = ((await this.models.refresh(refreshOptions)) as
+			| ModelsRefreshResult
+			| undefined) ?? {
 			aborted: refreshOptions.signal?.aborted ?? false,
 			errors: new Map(),
-			verdicts: new Map(),
 		};
 		const errors = new Map(result.errors);
 		this.updateModelSnapshot();
