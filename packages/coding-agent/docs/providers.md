@@ -220,7 +220,7 @@ CLIProxyAPI connects Nyan to a local or remote [CLIProxyAPI](https://github.com/
 
 Authenticate interactively with `/login CLIProxyAPI` (or via CLI `nyan login cliproxyapi` / `nyan auth login --provider cliproxyapi`), enter the base URL (defaults to `http://127.0.0.1:8317`), and enter your proxy API key. Login checks the key against the proxy's model list before it reports success. Its exit status is 0 once the key is stored, even when the proxy could not be reached to check it, so read the line it prints: `Verified:` or `accepted the credential` means the key was checked, and `was not verified` means it was not.
 
-Do not pass `--method` for CLIProxyAPI. `--method api_key` is refused unless a key is already configured, and a key that method stores is not yet used for requests (they fail with `Provider is not configured`). The login without `--method` is the one that works.
+Do not pass `--method` for CLIProxyAPI. `--method api_key` is refused with a pointer to the login without `--method`, which is the only login the provider offers. The key that login stores is the one requests use. `CLIPROXYAPI_API_KEY` and the `apiKey` field of `cliproxyapi.json` only change the key the model list is fetched with.
 
 Login tells you when a setting moves the key or the URL away from what you entered. `CLIPROXYAPI_API_KEY` (or the `apiKey` field of `cliproxyapi.json`) changes the key that the model list is fetched with, while requests use the stored login. `CLIPROXYAPI_BASE_URL` sends the model list and requests to the URL it names, not to the one you entered, and the key is checked at the entered URL. A key the proxy rejects at startup names the setting it came from.
 

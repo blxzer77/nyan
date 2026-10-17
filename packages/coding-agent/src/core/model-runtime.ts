@@ -921,7 +921,8 @@ export class ModelRuntime implements Models {
 		this.markProvisionallyConfigured(
 			providerId,
 			configuredRequestAuthStatus(this.config.getProvider(providerId), effective),
-			effective.oauth && !effective.apiKey ? "oauth" : "api_key",
+			// A key that only resolves requests leaves a login's kind as OAuth.
+			effective.oauth && (!effective.apiKey || effective.apiKeyResolveOnly === true) ? "oauth" : "api_key",
 		);
 		void this.refresh({ allowNetwork: false });
 	}
