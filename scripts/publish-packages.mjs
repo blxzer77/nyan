@@ -10,7 +10,8 @@
  * - A package version that is already on the registry is skipped, so a failed release can be re-run. A dry run packs it
  *   with `npm pack --dry-run` instead (the tarball contents are still checked): npm refuses to publish over a
  *   published version even as a dry run.
- * - Nothing is rebuilt here; run the build first. `--dry-run` runs `npm publish --dry-run`, which packs each tarball.
+ * - Nothing is rebuilt here; run the build first. `--dry-run` runs `npm publish --dry-run`, which packs each tarball, or
+ *   `npm pack --dry-run` for a version that is already published.
  */
 
 import { readFileSync } from "node:fs";
@@ -65,9 +66,10 @@ const visit = (pkg) => {
 for (const pkg of packages) visit(pkg);
 
 function onRegistry(name, wanted) {
-	// A dry run must not wait through npm's default retries when the registry cannot be reached; no answer counts as not
-	// published, the same as a 404.
-	const viewArgs = ["view", `${name}@${wanted}`, "version", "--json", ...(dryRun ? ["--fetch-retries=0"] : [])];
+	// A dry run must not wait through npm's default retries and its five-minute fetch timeout when the registry cannot be
+	// reached; no answer counts as not published, the same as a 404.
+	const networkArgs = dryRun ? ["--fetch-retries=0", "--fetch-timeout=15000"] : [];
+	const viewArgs = ["view", `${name}@${wanted}`, "version", "--json", ...networkArgs];
 	try {
 		return execNpmSync(viewArgs, { encoding: "utf8", stdio: "pipe" }).trim().length > 0;
 	} catch {
