@@ -172,7 +172,17 @@ jobs:
           fi
 
       - name: Restore workspace
+        id: restore
+        # The download takes about 15 s. One of sixty stalled for over fifteen minutes with the process idle, and a stalled
+        # download cannot be told from a slow one, so bound it and try once more instead of holding the job.
         uses: ./.github/actions/restore-workspace
+        timeout-minutes: 3
+        continue-on-error: true
+
+      - name: Restore workspace (retry)
+        if: steps.restore.outcome != 'success'
+        uses: ./.github/actions/restore-workspace
+        timeout-minutes: 5
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -227,7 +237,17 @@ jobs:
           fi
 
       - name: Restore workspace
+        id: restore
+        # The download takes about 15 s. One of sixty stalled for over fifteen minutes with the process idle, and a stalled
+        # download cannot be told from a slow one, so bound it and try once more instead of holding the job.
         uses: ./.github/actions/restore-workspace
+        timeout-minutes: 3
+        continue-on-error: true
+
+      - name: Restore workspace (retry)
+        if: steps.restore.outcome != 'success'
+        uses: ./.github/actions/restore-workspace
+        timeout-minutes: 5
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -391,7 +411,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Restore workspace
+        id: restore
+        # The download takes about 15 s. One of sixty stalled for over fifteen minutes with the process idle, and a stalled
+        # download cannot be told from a slow one, so bound it and try once more instead of holding the job.
         uses: ./.github/actions/restore-workspace
+        timeout-minutes: 3
+        continue-on-error: true
+
+      - name: Restore workspace (retry)
+        if: steps.restore.outcome != 'success'
+        uses: ./.github/actions/restore-workspace
+        timeout-minutes: 5
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
