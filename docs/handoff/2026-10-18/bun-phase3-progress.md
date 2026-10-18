@@ -34,9 +34,7 @@
 - OCR: no comment was posted on PR #57.
 ## Next
 
-Batch 5: source-loader smoke under Bun (
-yan-source.mjs fails with a missing 
-ode:module.registerHooks), subprocess and worker evidence; then the deferred batch 6 (Windows Bun job, Bun version alignment) and undici-on-Node-only. Unprocessed OCR findings and flaky tests are in `backlog-ocr-tests.md`.
+Batch 5: source-loader smoke under Bun (`nyan-source.mjs` fails with a missing `node:module.registerHooks`), subprocess and worker evidence; then the deferred batch 6 (Windows Bun job, Bun version alignment) and undici-on-Node-only. Unprocessed OCR findings and flaky tests are in `backlog-ocr-tests.md`.
 
 ## Open follow-ups from batch 1 (OCR on `e3969a613`, posted after the merge; owner agreed to fix later)
 
