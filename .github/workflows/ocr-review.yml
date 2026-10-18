@@ -182,7 +182,7 @@ jobs:
               print("::error::OCR_DISPATCH_TOKEN is not set")
               sys.exit(1)
           diff = open(os.path.join(os.environ["RUNNER_TEMP"], "range.diff"), encoding="utf-8").read()
-          payload = json.dumps({
+          payload_data = {
               "repo": os.environ["REPO"],
               "sha": os.environ["SHA"],
               "base_sha": os.environ["BASE"],
@@ -191,10 +191,13 @@ jobs:
               # `effort` is the dispatch service's accepted low/medium/high setting. This separate field is the
               # model's OpenAI Responses reasoning effort; it is deliberately xhigh for gpt-6.1-sol.
               "effort": os.environ["OCR_EFFORT"],
-              "reasoning_effort": os.environ["OCR_REASONING_EFFORT"],
               # 0 = no review time limit; the job's timeout-minutes decides how long it may run.
               "timeout_minutes": 0,
-          }).encode()
+          }
+          reasoning = os.environ.get("OCR_REASONING_EFFORT", "")
+          if reasoning and reasoning != "none":
+              payload_data["reasoning_effort"] = reasoning
+          payload = json.dumps(payload_data).encode()
           req = urllib.request.Request(
               os.environ["URL"].rstrip("/") + "/review",
               data=payload,
