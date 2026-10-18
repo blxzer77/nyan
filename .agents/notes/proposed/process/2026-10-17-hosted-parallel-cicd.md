@@ -1,6 +1,8 @@
 # Agent Note: Hosted parallel CI/CD for Nyan
 
-Status: pull-request path green at 3.48 min (run `39049211499`, 40 jobs, all hosted, peak 20 live jobs); workspace prewarm and sharding are done; nightly and release are not done yet
+Status: proposed
+
+Progress: implemented and merged for the pull-request path (3.48 min), nightly (9.1 min, self-hosted by decision), release (5.7 min, all hosted) and the daily scan. Still open: the OCR cadence ([own note](2026-10-18-ocr-review-cadence.md)), runner role labels, removing the six `nyan` runners, and rotating a token. The note moves to `implemented/` when those are decided.
 
 Supersedes the runner-placement and job-shape bullets of [Nyan quality workflow architecture](2026-10-17-quality-workflow.md). The impact classifier, fail-closed gate, risk tiers, model-data snapshot, artifact reuse, and "publish exactly the verified bytes" decisions stay.
 
@@ -55,9 +57,10 @@ Implemented for the pull-request path, with one correction to the original desig
 | --- | --- | --- | --- |
 | policy, static, prepare, matrices, deep, gate, supply-chain, mcp | `[self-hosted, Linux, X64, repo-nyan]` | `ubuntu-latest` | measured 20-job limit; per-run dedicated runners |
 | windows-smoke | `windows-latest` | unchanged | already hosted |
-| native `linux-x64` | self-hosted | not yet changed | pending with the release work |
-| release verify / binaries / smoke-linux | self-hosted | not yet changed | pending with the release work |
-| nightly | self-hosted | not yet changed | pending with the nightly work |
+| native `linux-x64`, release prepare / check / tests / pack / binaries / smoke linux-x64 | self-hosted | `ubuntu-latest` | a release dry run took 9.9 min on the shared host and 5.7 min hosted; see Phase 3 results |
+| npm-audit (daily scan) | self-hosted | `ubuntu-latest` | the same scanners already run hosted in the pull-request path |
+| nightly | self-hosted | self-hosted (decided, not a pull-request path) | matrix widths 2 + 2 + 1 so six vitest pools do not share six cores |
+| OCR review | self-hosted | self-hosted | the dispatch service on `nyan-dev-02` is reachable only over the tailnet; cadence is an open question |
 
 **Correction: nothing urgent runs on the self-hosted pool.** The first attempt kept `prepare`,
 `supply-chain` and `deep-gate` on self-hosted on the theory that warm npm cache, local Docker images
@@ -214,31 +217,20 @@ Removing `concurrency: nyan-deep-gate` lets two risky PRs verify at the same tim
 
 ### Nightly
 
-Today four jobs run strictly in series on `nyan-dev-01`, and `recovery` repeats the package list that `node-full` already ran. Target:
-
-- One reusable workflow owns install/build/test lanes so `ci.yml`, `nightly.yml`, and `release.yml` cannot drift. `nightly.yml` calls it with `mode: full`; `ci.yml` calls the same workflow with the impact-selected groups.
-- `node-full` and `bun-full` become matrix shards that run in parallel, not a `needs:` chain.
-- `recovery` is deleted; its coverage is the durable, agent, coding-agent, protocol, server and client shards.
-- `fuzz-and-mutation` runs `FUZZ_RUNS=10000` in parallel with the matrices instead of after `recovery`.
-- Everything runs on `ubuntu-latest`. Expected 30+ minutes of serial self-hosted work becomes about 8-10 minutes on hosted.
-
-Reusable-workflow shape: `prepare`, `static`, `node-tests`, `bun-tests` live in one `workflow_call` file with inputs `mode` and `groups`. Artifacts are run-scoped, so a `prepare` job inside the called workflow still feeds a `static` job declared in the caller if needed; keeping `static` inside the called workflow is simpler and is what this design assumes.
+`nightly.yml` runs on the self-hosted host. `prepare` builds once and expands every package into shards; a Node
+matrix and a Bun matrix (width 2 each) run the full suites from the restored workspace, and `deep` runs the
+protocol fuzz (10,000 runs) and the mutation test in parallel with them. `recovery` is gone: its package list
+repeated `node-full`. Measured at 9.1 min. See Phase 3 results for why it stays self-hosted and for what is still
+duplicated with `ci.yml`.
 
 ### Release
 
-Today: `verify` (build + check + `npm test`) 5.7 min serial, then `native` → `binaries` → 4 smokes → `publish`, total 8.7 min, with `verify` and `binaries` on self-hosted.
-
-Target:
-
-```
-verify (workflow_call, mode: full, ubuntu-latest)   ~3 min   build + check + sharded tests + pack
-native (unchanged matrix, linux-x64 moves to ubuntu-latest) ~1.5 min   parallel with verify
-binaries  needs [verify, native]                        ~1.5 min   ubuntu-latest
-smoke x4  needs binaries                                ~1 min     unchanged
-publish   needs [verify, native, smoke]                 ~1 min     ubuntu-latest
-```
-
-`verify` still packs the tarballs it tested and `publish` still uploads those artifacts, so the "same bytes" guarantee holds. Expected 8.7 → about 4-5 minutes, and no release work remains on `nyan-dev-01`.
+`release.yml` runs entirely on `ubuntu-latest`: `prepare` (build, pack the workspace, expand the shards), `check`
+and a Node shard matrix run in parallel, `pack` runs only after both passed and packs the tarballs with
+`--skip-build` from the restored workspace, `binaries` compiles from that same workspace without rebuilding,
+four smoke tests run on matching runners, and `publish` uploads the packed artifacts after checking that the
+manifest's commit equals `GITHUB_SHA` and that it was not dirty. Nothing after `prepare` rebuilds, so the bytes
+that were tested are the bytes that are published. Measured at 5.7 min for a dry run.
 
 ### Concurrency budget
 
@@ -248,12 +240,15 @@ only way to learn it: 40 `ubuntu-latest` jobs with a 90 s hold, `max-parallel: 4
 from the job intervals. Result: **20 concurrent jobs** (probe `39038007064`, peak at
 `2026-10-17T13:47:37Z`). Recorded as `pullRequest.concurrencyBudget` in `.github/quality/policy.json`.
 
-Peak in the implemented graph: `max-parallel: 8` node + `max-parallel: 4` bun + `static` + `mcp` +
-`windows` + `deep` + `gate` = 18 live jobs, two inside the limit. The first hybrid run and the
-implemented run both report their per-job start offsets, so a future regression in queueing is visible
-in `gh api .../jobs` without re-deriving the budget.
+Matrix widths are caps, not reservations: the Node matrix may use 12 and the Bun matrix 8, and together with
+`static`, `mcp`, `windows`, `deep` and `gate` the graph asks for more than 20 at once. GitHub queues the excess
+instead of failing it, so the account limit does the scheduling. Measured: peak 20 live jobs in run
+`39049211499` (3.48 min). Widths of 8 and 4 left the Bun matrix running in four waves and the gate waiting for the
+last one (4.4 min), which is why they were raised.
 
 ### Required checks
+
+Set on `main` after #39 merged: `Merge gate` alone, strict, applied to admins, no force push, no deletion.
 
 `policy.json` and `.github/quality/policy.json`'s `pullRequest.required` list eight job names, and branch protection must name each one. Every matrix rename (`Node tests (ai)` → `Node tests (small)`) therefore breaks a required check and leaves a PR permanently pending. Two changes:
 
@@ -289,7 +284,7 @@ Per-package jobs today localise a failure by name. Shards lose that. Compensate 
 - Weight-based shard groups are a maintained list. When a suite's slowest files change, the balance degrades silently until someone re-measures. Mitigation: keep the profile generator and re-measure quarterly, or accept `--shard` round-robin as the fallback when weights are older than the last 30 commits.
 - Deleting the fork-PR guards removes code paths that no longer have a purpose. It also means a fork PR now runs the same jobs as an internal one, which is only safe because no self-hosted runner is involved. This must not be reverted while self-hosted runners are still registered.
 - `merge_group` runs become cheap enough to keep enabled without slowing the queue.
-- The `17 concurrent jobs` peak leaves 3 slots at the assumed 20 limit. If the real limit is lower, wall clock degrades by one wave rather than failing.
+- A run asks for more concurrent jobs than the account allows and relies on queueing. If the real limit drops, wall clock degrades by a wave rather than failing, but two pull requests at once now compete for the same 20 slots.
 
 ## Verification
 
@@ -385,20 +380,6 @@ Bun job is the check for them.
 | `39039960657` | everything hosted | 4.8 min | one Bun flake, green on rerun |
 | `39043358794` | apt reduced to fd and ripgrep, durable forwarding | 5.0 min | Bun codemode failure (root-caused above) |
 | `39045207907` | codemode wait | 4.3 min | green, 33 of 33 |
-
-Critical path in `39045207907`: `policy` 13 s, `prepare` 40 s, then the longest shard `Node tests
-(coding-agent)` 187 s (queued 58 s). Matrix jobs still run `npm ci` through `setup-nyan`, so the shard that
-dominates pays an install before its tests. Splitting coding-agent into weighted shards and handing every
-Linux job the prebuilt workspace are the two changes that remain to reach the 3-4 minute target.
-
-### Measured pull-request pipeline, with the critical path
-
-| run | change | wall clock | result |
-| --- | --- | --- | --- |
-| `39038704551` | self-hosted `prepare`, `supply-chain`, `deep-gate` | 10.0 min | green, but `prepare` queued 260 s behind two other pull requests |
-| `39039960657` | everything hosted | 4.8 min | one Bun flake, green on rerun |
-| `39043358794` | apt reduced to fd and ripgrep, durable forwarding | 5.0 min | Bun codemode failure (root-caused above) |
-| `39045207907` | codemode wait | 4.3 min | green, 33 of 33 |
 | `39047357144` | workspace restored, coding-agent and durable sharded | 4.4 min | 4 failures: `openai` missing from the archive |
 | `39048565260` | nested `node_modules` packed | 4.4 min | green, 40 of 40, but the Bun matrix ran in four waves of width 4 |
 | `39049211499` | matrix widths 12 (Node) and 8 (Bun) | **3.48 min** | green, 40 of 40, peak 20 live jobs |
@@ -422,6 +403,65 @@ window.
 - **The archive is stored uncompressed by upload-artifact.** `compression-level: 0`; the file is already
   gzip, so a second wrapper would only cost time. The archive is 101 MB.
 
+### Phase 3 results: nightly, release, daily scan
+
+| workflow | run | runner | wall clock | notes |
+| --- | --- | --- | --- | --- |
+| nightly | `39071156179` | self-hosted | 13.6 min | failed: `Node tests (durable 3/3)`, see below. Dispatched together with the release run below, which shared the host |
+| nightly | `39080623279` | self-hosted | **9.1 min** | green, 34 jobs. `prepare` 38 s, `deep` 151 s (fuzz 10,000 runs 1 s, mutation 116 s). The last small packages queued up to 460 s behind the width-2 matrices |
+| release dry run | `39071159011` | self-hosted | 15.4 min | green, shared the host with the nightly above |
+| release dry run | `39081319777` | self-hosted | 9.9 min | green. `prepare` 38 s, `check` 46 s, test matrix ends at +402 s, `pack` 34 s, `binaries` 72 s, `publish` 34 s |
+| release dry run | `39082114809` | all hosted (31 of 31) | **5.7 min** | green. `prepare` 28 s, `check` 54 s, test matrix ends at +166 s, `pack` 25 s, `binaries` 65 s, `publish` 29 s |
+| npm-audit | `39082190075` | hosted | - | green |
+
+There is no earlier nightly run to compare with: the only two nightly runs ever recorded on this repository are
+the first two rows above, both of the new shape, so the previous "30+ minutes of serial work" in the Nightly
+section is an estimate, not a measurement.
+
+What was built differs from the targets above in these ways:
+
+- **Nightly stays self-hosted** (decided with the owner). It is not on any pull-request path, so queueing on
+  the shared host cannot delay a review. It is one `prepare` job plus a Node matrix, a Bun matrix and a
+  fuzz-and-mutation job that run in parallel; `recovery` is gone because its package list repeated
+  `node-full`. The widths are 2 + 2 + 1 live jobs; a wider matrix on six cores is what produced load 17-26
+  and the timing flakes. It is not a `workflow_call` shared with `ci.yml`: the three workflows still carry
+  their own copy of the shard steps. That duplication is real and is left for a follow-up.
+- **Release moved to hosted entirely**, not only the native build. The `verify` job is split into
+  `prepare` (build, pack the workspace, expand the shards), `check`, a shard matrix and `pack`, and
+  `pack` runs only after the first three pass, with `--skip-build` over the restored workspace. `publish`
+  still checks that the manifest's commit equals `GITHUB_SHA` and that it was not dirty.
+- **The binaries job no longer rebuilds.** It used to run `npm run build:offline` before compiling, so the
+  executables embedded a `dist/` that no test had run against. It now restores the same workspace archive
+  as the test shards and the pack job. The native prebuilds are downloaded after the restore; the archive
+  holds no `native/` directory, so nothing is overwritten.
+
+### Failures found after the merge, and what was done
+
+- **`experimental-remote-runtime` failed once on `main`** (run `39072482535`, Bun, coding-agent 2/2) and passed
+  on rerun, with identical code. Both sessions of the second server were missing from the list, not one.
+  `discoverUnixServers` gives each probe 1000 ms and silently omits a server whose probe times out; the
+  timer measures wall time, so a process that did not run for that long drops a healthy server. Reproduced
+  deterministically on Linux with Bun 1.4.2 by blocking the event loop while the probes are in flight (0 or
+  1 of 2 servers found; Node finds 2 of 2, which matches the failure never appearing in a Node shard). The
+  fix (PR #41) grants one more window when the timer fires more than 50 ms late. The unit test failed 3 of 3
+  before the change and passes 5 of 5 after. **Not shown:** the CI failure itself was not reproduced under
+  natural load; the mechanism and the symptom agree, but another trigger is not excluded. If the same
+  assertion fails again after #41, investigate again.
+- **`Node tests (durable 3/3)` failed in the first nightly** on `tools-images` ("prepares in a worker
+  thread, leaving the event loop free": 153 ms against a 100 ms bound). The nightly and a release dry run
+  had been dispatched together onto the same six runners. The second nightly, alone, passed. The assertion
+  measures event-loop lag, so it is load-sensitive by construction; it was not changed. Do not dispatch
+  nightly and release together, and keep release off the shared host (it is now).
+- **One workspace download stalled** for more than 15 minutes in `download-artifact` (process idle, no log
+  line) in release dry run `39079138864`; the other 59 took 13-16 s. Every restore is now limited to 3 minutes
+  and retried once for 5 (PR #42). A probe confirmed that a step that times out with
+  `continue-on-error` lets the next step see `outcome == 'failure'` and run. The retry branch itself has
+  not been exercised by a real stall.
+
+### OCR review
+
+Cadence, model and effort are a separate decision and have their own note: [OCR review cadence](2026-10-18-ocr-review-cadence.md). Nothing about OCR changed in this work; it is advisory and not part of `Merge gate`.
+
 ### Still unverified, and each needs a run before the corresponding claim is made
 
 1. ~~**Real concurrent-job limit**~~: measured at 20 (probe `39038007064`).
@@ -438,11 +478,13 @@ window.
    concurrently with `prepare`, and passes. Source-level support: `check-architecture-layers.mjs` skips
    `dist`, `check-entry-graphs.mjs` maps `./dist/x.js` onto `src/x.ts`, `check-ts-imports.mjs` ignores
    `dist`, and tsconfig maps every `@ny4n/*` specifier to sources.
-7. **Release timing** on a `workflow_dispatch` dry run before the next tag.
-8. **Nightly** after the sharding work; `nightly.yml` is unchanged so far and still self-hosted.
+7. ~~**Release timing**~~: measured, 5.7 min all hosted (run `39082114809`). A real tag has not been pushed; only dry runs.
+8. ~~**Nightly**~~: measured, 9.1 min (run `39080623279`). The scheduled 02:17 UTC trigger has not fired yet on the new shape.
 
 Owner actions that are not workflow edits:
 
 - Rotate the GitHub PAT found in plaintext in `/root/.npmrc` on `nyan-dev-01` (`//npm.pkg.github.com:_authToken=ghp_...`). Every self-hosted runner on that host can read it, and it will outlive this migration.
 - Confirm the plan's concurrent-job limit in Settings -> Billing -> Actions, and record it in `policy.json`.
-- Decide whether branch protection requires `Merge gate` alone or `Merge gate` plus `Policy and impact`.
+- ~~Decide whether branch protection requires `Merge gate` alone or plus `Policy and impact`~~: `Merge gate` alone is set on `main` (strict, applies to admins, no force push, no deletion).
+- Decide whether to remove the six `nyan` self-hosted runner services. Nothing on a pull-request path uses them now; nightly and OCR still do. The original proposal was a one-week window first.
+- Decide the OCR cadence ([note](2026-10-18-ocr-review-cadence.md)).
