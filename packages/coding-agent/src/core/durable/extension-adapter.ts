@@ -1,7 +1,16 @@
 import type { AsyncLocalStorage } from "node:async_hooks";
 import type { Api, Model } from "@ny4n/ai";
-import { defineExtension, type Extension, type GenerationHooks, GenerationTask, hook } from "@ny4n/durable";
+import {
+	defineExtension,
+	type Extension,
+	type GenerationHooks,
+	GenerationTask,
+	hook,
+	type ToolHooks,
+	ToolTask,
+} from "@ny4n/durable";
 import type { ExtensionRunner } from "../extensions/runner.ts";
+import { isJsonObject, isJsonValue } from "./extension-tools.ts";
 
 /**
  * The provider call that some async work belongs to: the model and abort signal the extension context reports as
@@ -95,10 +104,64 @@ export function createProviderHooks(runner: ExtensionRunner, scope: ProviderCall
 	return members;
 }
 
-/** The durable extension that carries the members. Empty when no loaded extension handles a provider event. */
-export function createHookAdapter(members: Partial<GenerationHooks>): Extension {
-	return defineExtension({
-		name: "nyan.extension-host",
-		hooks: Object.keys(members).length === 0 ? [] : [hook(GenerationTask, members)],
-	});
+/**
+ * The tool-event members: `tool_call` runs before a call's intent is recorded (`beforeTool`), and `tool_result` before
+ * its result is committed (`afterTool`). Each exists only when a loaded extension handles its event.
+ */
+export function createToolHooks(runner: ExtensionRunner): Partial<ToolHooks> {
+	const members: Partial<ToolHooks> = {};
+
+	if (runner.hasHandlers("tool_call")) {
+		members.beforeTool = async (call) => {
+			const input: Record<string, unknown> = { ...call.arguments };
+			const result = await runner.emitToolCall({
+				type: "tool_call",
+				toolCallId: call.id,
+				toolName: call.name,
+				input,
+			});
+			if (result?.block === true) return { block: result.reason ?? `Blocked by an extension: ${call.name}` };
+			// Handlers change the call by mutating `input`, as legacy does; the change replaces the arguments when it is JSON.
+			if (JSON.stringify(input) === JSON.stringify(call.arguments) || !isJsonObject(input)) return undefined;
+			return { arguments: input };
+		};
+	}
+
+	if (runner.hasHandlers("tool_result")) {
+		members.afterTool = async (call, result) => {
+			const changed = await runner.emitToolResult({
+				type: "tool_result",
+				toolCallId: call.id,
+				toolName: call.name,
+				input: { ...call.arguments },
+				content: result.output ?? [],
+				details: result.details,
+				isError: result.isError === true,
+			});
+			if (changed === undefined) return undefined;
+			return {
+				...result,
+				...(changed.content === undefined ? {} : { output: changed.content }),
+				...(changed.details === undefined || !isJsonValue(changed.details) ? {} : { details: changed.details }),
+				...(changed.isError === undefined ? {} : { isError: changed.isError }),
+				...(changed.structuredContent === undefined || !isJsonValue(changed.structuredContent)
+					? {}
+					: { structuredOutput: changed.structuredContent }),
+			};
+		};
+	}
+
+	return members;
+}
+
+/**
+ * The durable extension that carries the members of both tasks. It has no hooks when no loaded extension handles a
+ * provider or tool event, so such an installation adds nothing to either path.
+ */
+export function createHookAdapter(generation: Partial<GenerationHooks>, tools: Partial<ToolHooks>): Extension {
+	const hooks = [
+		...(Object.keys(generation).length === 0 ? [] : [hook(GenerationTask, generation)]),
+		...(Object.keys(tools).length === 0 ? [] : [hook(ToolTask, tools)]),
+	];
+	return defineExtension({ name: "nyan.extension-host", hooks });
 }

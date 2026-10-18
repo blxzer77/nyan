@@ -250,6 +250,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			compact: () => void controller.compact(undefined).catch(fail),
 			onExtensionError: (error) =>
 				notice("error", `Extension ${error.extensionPath} failed on ${error.event}: ${error.error}`),
+			installTools: (extension) => registry.install(extension),
 		});
 		registry.install(host.adapter);
 
@@ -399,8 +400,12 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		};
 		const controller: DurableController = {
 			submit: (text, whenBusy) =>
-				command(async () => watchAnswer(await current.submit({ type: "input", content: text, whenBusy }, context))),
+				command(async () => {
+					await host.beforePrompt(text);
+					watchAnswer(await current.submit({ type: "input", content: text, whenBusy }, context));
+				}),
 			submitAndWait: async (content, whenBusy) => {
+				await host.beforePrompt(content);
 				const submission = await current.submit({ type: "input", content, whenBusy }, context);
 				return submission.wait(context);
 			},
