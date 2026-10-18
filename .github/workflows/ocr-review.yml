@@ -114,11 +114,16 @@ jobs:
           esac
 
           # A bookmark that is not in this history (a rewritten branch, a run started on another ref) cannot be diffed.
+          # A base the caller named is never replaced silently: that run fails instead of reviewing something else.
           if [ -n "$base" ] && ! git merge-base --is-ancestor "$base" "$head"; then
+            if [ "$kind" = custom ]; then
+              echo "::error::$base is not an ancestor of $head, so there is no range between them"
+              exit 1
+            fi
             echo "::warning::$base is not an ancestor of $head; falling back to the last 24 hours"
             base=""
           fi
-          if [ -z "$base" ] && [ "$kind" != custom ]; then
+          if [ -z "$base" ]; then
             base="$(git rev-list -1 --before='24 hours ago' "$head" || true)"
             echo "No earlier review to continue from: reviewing the last 24 hours (base ${base:-none})."
           fi
