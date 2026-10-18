@@ -64,6 +64,8 @@ export interface ExtensionHostOptions {
 	 * its tools (`registerTool` after load, such as an MCP server that connects later).
 	 */
 	readonly installTools: (extension: Extension) => void;
+	/** Whether no run is in flight; `ctx.isIdle()` and extensions that wait for idle read it. */
+	readonly isIdle: () => boolean;
 }
 
 /** One open's view of the loaded extensions: a runner bound to this open, and the hook adapter it feeds. */
@@ -82,6 +84,8 @@ export interface ExtensionHost {
 	 */
 	beforePrompt(content: UserInput): Promise<void>;
 	start(reason: SessionStartEvent["reason"]): Promise<void>;
+	/** `agent_settled` for a run that ended, whatever its outcome: the quota poll and usage summary wait for it. */
+	settled(aborted: boolean): Promise<void>;
 	shutdown(reason: SessionShutdownEvent["reason"]): Promise<void>;
 }
 
@@ -151,8 +155,8 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 	const contextActions: ExtensionContextActions = {
 		getModel: () => calls.getStore()?.model ?? options.agentModel(),
 		getScopedModels: () => [],
-		isIdle: () => true,
-		isProjectTrusted: () => false,
+		isIdle: () => options.isIdle(),
+		isProjectTrusted: () => options.services.projectTrusted,
 		getSignal: () => calls.getStore()?.signal,
 		abort: () => options.abort(),
 		hasPendingMessages: () => false,
@@ -252,6 +256,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 			runner.emit({ type: "session_start", reason }).then(() => {
 				syncTools();
 			}),
+		settled: (aborted) => runner.emit({ type: "agent_settled", aborted }).then(() => undefined),
 		shutdown: (reason) =>
 			runner.emit({ type: "session_shutdown", reason }).then(async () => {
 				await codemodeSandbox?.close();
