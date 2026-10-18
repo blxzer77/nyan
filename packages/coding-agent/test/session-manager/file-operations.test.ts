@@ -160,34 +160,41 @@ describe("loadEntriesFromFile", () => {
 		}
 	});
 
-	it("opens session files larger than Node's max string length", () => {
-		const file = join(tempDir, "large.jsonl");
-		writeFileSync(
-			file,
-			'{"type":"session","version":3,"id":"abc","timestamp":"2025-01-01T00:00:00Z","cwd":"/tmp"}\n',
-		);
+	// The file has to be longer than the runtime's maximum string length: about 512 MiB on Node, about 2 GiB on Bun. NTFS
+	// does not store the gap as a sparse file, so on Windows under Bun the test writes about 2 GiB of zeros. That passes the
+	// 30 s timeout on a slow disk and fails with ENOSPC on a disk with less than about 3 GB free; it is not a defect of the
+	// session reader, which reads in chunks. Everywhere else the file is sparse or small enough.
+	it.skipIf(process.platform === "win32" && typeof process.versions.bun === "string")(
+		"opens session files larger than Node's max string length",
+		() => {
+			const file = join(tempDir, "large.jsonl");
+			writeFileSync(
+				file,
+				'{"type":"session","version":3,"id":"abc","timestamp":"2025-01-01T00:00:00Z","cwd":"/tmp"}\n',
+			);
 
-		const fd = openSync(file, "r+");
-		try {
-			const newline = Buffer.from("\n");
-			const stride = 16 * 1024 * 1024;
-			for (let offset = stride; offset <= bufferConstants.MAX_STRING_LENGTH + stride; offset += stride) {
-				writeSync(fd, newline, 0, newline.length, offset);
+			const fd = openSync(file, "r+");
+			try {
+				const newline = Buffer.from("\n");
+				const stride = 16 * 1024 * 1024;
+				for (let offset = stride; offset <= bufferConstants.MAX_STRING_LENGTH + stride; offset += stride) {
+					writeSync(fd, newline, 0, newline.length, offset);
+				}
+			} finally {
+				closeSync(fd);
 			}
-		} finally {
-			closeSync(fd);
-		}
 
-		appendFileSync(
-			file,
-			'{"type":"message","id":"1","parentId":null,"timestamp":"2025-01-01T00:00:01Z","message":{"role":"user","content":"hi","timestamp":1}}\n',
-		);
+			appendFileSync(
+				file,
+				'{"type":"message","id":"1","parentId":null,"timestamp":"2025-01-01T00:00:01Z","message":{"role":"user","content":"hi","timestamp":1}}\n',
+			);
 
-		const sessionManager = SessionManager.open(file, tempDir);
-		expect(sessionManager.getSessionId()).toBe("abc");
-		expect(sessionManager.getEntries()).toHaveLength(1);
-		expect(sessionManager.buildSessionContext().messages).toEqual([{ role: "user", content: "hi", timestamp: 1 }]);
-	});
+			const sessionManager = SessionManager.open(file, tempDir);
+			expect(sessionManager.getSessionId()).toBe("abc");
+			expect(sessionManager.getEntries()).toHaveLength(1);
+			expect(sessionManager.buildSessionContext().messages).toEqual([{ role: "user", content: "hi", timestamp: 1 }]);
+		},
+	);
 });
 
 describe("findMostRecentSession", () => {
