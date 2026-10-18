@@ -241,4 +241,50 @@ describe("durable path resources", () => {
 		new ProjectTrustStore(agentDir).set(cwd, true);
 		expect((await loaded()).some((path) => path.includes("probe-project"))).toBe(true);
 	});
+
+	test("--append-system-prompt text reaches the request", async () => {
+		await seedCatalog();
+		const durable = await openDurable({
+			cwd,
+			extensionFactories: builtInExtensions,
+			model: { provider: "cliproxyapi", modelId: "deepseek-flash" },
+			projectTrustContext: { ...headless, cwd },
+			resources: { appendSystemPrompt: ["MARKER-APPEND-QZ"] },
+		});
+		try {
+			await durable.controller.submitAndWait("hi", "followUp");
+			expect(stub.bodies.length).toBeGreaterThan(0);
+			expect(stub.bodies[0]).toContain("MARKER-APPEND-QZ");
+		} finally {
+			await durable.close();
+		}
+	});
+
+	test("an invalid settings file is reported as a diagnostic, not dropped", async () => {
+		await writeFile(join(agentDir, "settings.json"), "{ not json");
+		const seen: string[] = [];
+		const durable = await openDurable({
+			cwd,
+			extensionFactories: builtInExtensions,
+			projectTrustContext: { ...headless, cwd },
+			onDiagnostic: (diagnostic) => seen.push(diagnostic.message),
+		});
+		await durable.close();
+		expect(seen.some((message) => message.includes("Invalid settings file"))).toBe(true);
+	});
+
+	test("settingsOverrides apply to the session's settings, which the TUI reads for the theme", async () => {
+		await writeFile(join(agentDir, "settings.json"), JSON.stringify({ theme: "from-file" }));
+		const durable = await openDurable({
+			cwd,
+			extensionFactories: builtInExtensions,
+			projectTrustContext: { ...headless, cwd },
+			settingsOverrides: { theme: "from-flag" },
+		});
+		try {
+			expect(durable.settings.getThemeSetting()).toBe("from-flag");
+		} finally {
+			await durable.close();
+		}
+	});
 });
