@@ -140,7 +140,7 @@ function isPlainRuntimeMetadataCommand(parsed: Args): boolean {
 }
 
 /** The durable product path accepts the common new-session flags; legacy session selectors stay on compatibility paths. */
-function canRunDurableProductPath(parsed: Args, allowMultipleMessages = false): boolean {
+export function canRunDurableProductPath(parsed: Args, allowMultipleMessages = false): boolean {
 	return (
 		parsed.help !== true &&
 		parsed.listModels === undefined &&
@@ -156,6 +156,13 @@ function canRunDurableProductPath(parsed: Args, allowMultipleMessages = false): 
 		parsed.excludeTools === undefined &&
 		parsed.noTools !== true &&
 		parsed.noBuiltinTools !== true &&
+		// Legacy until task C connects extension tools and the durable resource bridge. `--extension` loads tools, and
+		// `--theme` and `--prompt-template` load resources the durable TUI and prompt do not read yet. They return to the
+		// durable path when C lands. `--no-mcp`, `--no-extensions`, `--no-themes`, and `--no-prompt-templates` only disable
+		// what the durable path has no part in, so they stay here.
+		parsed.extensions === undefined &&
+		parsed.themes === undefined &&
+		parsed.promptTemplates === undefined &&
 		parsed.tuiMode === undefined &&
 		parsed.fileArgs.length === 0 &&
 		(allowMultipleMessages || parsed.messages.length <= 1)
@@ -180,7 +187,7 @@ async function runDurableCommand<T>(run: () => Promise<T>): Promise<T> {
 }
 
 /** The durable path's options from the command line: model, resource flags, project trust, and extension flags. */
-function durableOptions(
+export function durableOptions(
 	parsed: Args,
 	cwd: string,
 	mode: AppMode,
@@ -212,6 +219,10 @@ function durableOptions(
 		},
 		extensionFactories,
 		extensionFlagValues: parsed.unknownFlags,
+		// Legacy applies `--use-theme` to its startup manager only in the interactive mode; the durable path does the same.
+		...(mode === "interactive" && parsed.useTheme !== undefined
+			? { settingsOverrides: { theme: parsed.useTheme } }
+			: {}),
 		projectTrustContext: createProjectTrustContext({ cwd, mode, settingsManager, hasUI: mode === "interactive" }),
 		...(mode === "interactive" ? {} : { onDiagnostic: printDurableDiagnostic }),
 	};

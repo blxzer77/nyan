@@ -17,7 +17,8 @@ const CONTRIBUTIONS = {
 };
 
 /** nyan's section order; `buildSystemPromptSections()` omits the ones without content. */
-const KEYS = ["preamble", "tools", "rules", "docs", "project_context", "skills", "cwd"] as const;
+// `addendum` carries `--append-system-prompt`; without it the appended text never reaches the request.
+const KEYS = ["preamble", "tools", "rules", "docs", "addendum", "project_context", "skills", "cwd"] as const;
 
 /** What the prompt takes from the resources of one directory. */
 interface PromptResources {
