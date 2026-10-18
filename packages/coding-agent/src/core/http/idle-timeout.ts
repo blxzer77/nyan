@@ -7,6 +7,9 @@
  * global fetch is wrapped by `createIdleTimeoutFetch`.
  *
  * Ownership and failure guarantees:
+ * - The timeout is a number, or a function that is read when each request starts, so one wrapper can follow a setting
+ *   that changes while a client holds it (see `native.ts`). A number that is not positive returns the fetch it was given;
+ *   a function that returns such a number makes the wrapper pass the request through untouched.
  * - The wrapper owns one AbortController per request. A timer abort rejects the pending `fetch()` or the pending body
  *   read with an error whose `code` is the undici one, so callers that classify undici failures (provider retry, MCP
  *   transport) treat both runtimes alike. A caller's own signal still aborts the request, with the caller's reason.
@@ -38,11 +41,21 @@ function requestSignal(
 	return typeof Request !== "undefined" && input instanceof Request ? input.signal : undefined;
 }
 
-/** Wrap `baseFetch` so a stalled response fails after `timeoutMs`. A `timeoutMs` of 0 returns `baseFetch` itself. */
-export function createIdleTimeoutFetch(baseFetch: FetchFunction, timeoutMs: number): FetchFunction {
-	if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return baseFetch;
+function isIdleTimeout(timeoutMs: number): boolean {
+	return Number.isFinite(timeoutMs) && timeoutMs > 0;
+}
+
+/**
+ * Wrap `baseFetch` so a stalled response fails after the idle timeout. A fixed `timeout` of 0 returns `baseFetch` itself;
+ * a function is called once per request.
+ */
+export function createIdleTimeoutFetch(baseFetch: FetchFunction, timeout: number | (() => number)): FetchFunction {
+	if (typeof timeout === "number" && !isIdleTimeout(timeout)) return baseFetch;
 
 	return async function idleTimeoutFetch(input, init) {
+		const timeoutMs = typeof timeout === "number" ? timeout : timeout();
+		if (!isIdleTimeout(timeoutMs)) return baseFetch(input, init);
+
 		const controller = new AbortController();
 		const callerSignal = requestSignal(input, init);
 		const signal = callerSignal ? AbortSignal.any([callerSignal, controller.signal]) : controller.signal;
