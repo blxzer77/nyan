@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Api, ImageContent, Model } from "@ny4n/ai";
+import type { CodemodeSandbox } from "@ny4n/codemode";
 import type { Extension, GenerationHooks, ToolHooks, UserInput } from "@ny4n/durable";
 import { ExtensionRunner } from "../extensions/runner.ts";
 import type {
@@ -9,7 +10,9 @@ import type {
 	ExtensionToolContext,
 	SessionShutdownEvent,
 	SessionStartEvent,
+	ToolInfo,
 } from "../extensions/types.ts";
+
 import { ModelRegistry } from "../model-registry.ts";
 import type { ReadonlySessionManager } from "../session-manager.ts";
 import {
@@ -27,6 +30,18 @@ import {
 	toDurableTool,
 	toolsExtension,
 } from "./extension-tools.ts";
+import {
+	CODEMODE_EXTENSION_NAME,
+	CODEMODE_TOOL_NAME,
+	codemodeExtension,
+	codemodeNamespaces,
+	createCodemodeSandbox,
+	inactiveExtension,
+	NATIVE_TOOL_INFOS,
+	TOOL_SEARCH_EXTENSION_NAME,
+	TOOL_SEARCH_TOOL_NAME,
+	toolSearchExtension,
+} from "./native-tools.ts";
 import type { DurableServices } from "./services.ts";
 
 /** Thrown by a Nyan API the durable path does not connect yet. Handlers that call it fail visibly, not silently. */
@@ -118,18 +133,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		getSessionName: () => unavailable("pi.getSessionName"),
 		setLabel: () => unavailable("pi.setLabel"),
 		getActiveTools: () => [...activeTools],
-		getAllTools: () =>
-			runner.getAllRegisteredTools().map(({ definition, sourceInfo }) => ({
-				name: definition.name,
-				description: definition.description,
-				parameters: definition.parameters,
-				promptGuidelines: definition.promptGuidelines,
-				reachesTools: definition.reachesTools,
-				exposure: definition.exposure ?? "direct",
-				namespace: definition.namespace,
-				annotations: definition.annotations,
-				sourceInfo,
-			})),
+		getAllTools: () => toolInfos(),
 		getSettings: () => options.services.settingsManager.getSettings(),
 		setActiveTools: (names) => {
 			activeTools.clear();
@@ -177,6 +181,52 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 			executeTool: async () => unavailable("ctx.executeTool"),
 		});
 	}
+	// The durable codemode sandbox: created on first activation, closed with the session.
+	let codemodeSandbox: CodemodeSandbox | undefined;
+	/** The runner's tools as `getAllTools()` reports them, then the native tools that no runner tool shadows. */
+	function toolInfos(): ToolInfo[] {
+		const registered = runner.getAllRegisteredTools();
+		const names = new Set(registered.map(({ definition }) => definition.name));
+		return [
+			...registered.map(({ definition, sourceInfo }) => ({
+				name: definition.name,
+				description: definition.description,
+				parameters: definition.parameters,
+				promptGuidelines: definition.promptGuidelines,
+				reachesTools: definition.reachesTools,
+				exposure: definition.exposure ?? "direct",
+				namespace: definition.namespace,
+				annotations: definition.annotations,
+				sourceInfo,
+			})),
+			...NATIVE_TOOL_INFOS.filter((info) => !names.has(info.name)),
+		];
+	}
+	function inlineBudget(): number | undefined {
+		const budget = options.services.settingsManager.getSettings().codemode?.inlineBudget;
+		return typeof budget === "number" && Number.isFinite(budget) && budget >= 0 ? budget : undefined;
+	}
+	/**
+	 * Installs the native tools for their active state. An inactive one is replaced by an empty extension of its name, so
+	 * the model is not offered it and the registry holds nothing of it.
+	 */
+	function syncNative(): void {
+		const namespaces = codemodeNamespaces(
+			runner
+				.getAllRegisteredTools()
+				.flatMap(({ definition }) => (definition.namespace === undefined ? [] : [definition.namespace])),
+		);
+		if (activeTools.has(CODEMODE_TOOL_NAME)) {
+			codemodeSandbox ??= createCodemodeSandbox();
+			options.installTools(codemodeExtension(codemodeSandbox, namespaces, inlineBudget()));
+		} else {
+			options.installTools(inactiveExtension(CODEMODE_EXTENSION_NAME));
+		}
+		options.installTools(
+			activeTools.has(TOOL_SEARCH_TOOL_NAME) ? toolSearchExtension() : inactiveExtension(TOOL_SEARCH_EXTENSION_NAME),
+		);
+	}
+
 	/** Installs the runner's current tools; the registry replaces the earlier set of this extension by name. */
 	function syncTools(): void {
 		const tools: BridgedTool[] = [];
@@ -189,6 +239,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 			if (registration !== undefined) tools.push({ definition, registration });
 		}
 		options.installTools(toolsExtension(tools));
+		syncNative();
 	}
 	runner.onError(options.onExtensionError);
 
@@ -201,7 +252,10 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 			runner.emit({ type: "session_start", reason }).then(() => {
 				syncTools();
 			}),
-		shutdown: (reason) => runner.emit({ type: "session_shutdown", reason }).then(() => undefined),
+		shutdown: (reason) =>
+			runner.emit({ type: "session_shutdown", reason }).then(async () => {
+				await codemodeSandbox?.close();
+			}),
 		beforePrompt: async (content) => {
 			const images = Array.isArray(content)
 				? content.filter((block): block is ImageContent => block.type === "image")
