@@ -57,23 +57,40 @@ function readPauseSetting(agentDir: string, fallback: boolean): boolean {
 }
 
 /**
- * Block until the persisted pause setting is false.
+ * Block until the persisted pause setting is false, or until `signal` aborts (the request was aborted or its Harness
+ * closed); an abort rejects with the signal's reason and leaves no timer behind.
  *
- * The setting is re-read from disk on every poll so `/continue` takes effect while
- * a request is already waiting.
+ * The setting is re-read from disk on every poll so `/continue` takes effect while a request is already waiting.
+ * The timer is not unref'd: a request waiting here must keep the process alive, or a print run would exit silently.
  */
 export async function waitForPauseToEnd(
 	agentDir: string,
 	controller: PauseController = pauseController,
+	signal?: AbortSignal,
 ): Promise<void> {
 	while (true) {
+		signal?.throwIfAborted();
 		const enabled = readPauseSetting(agentDir, controller.isEnabled());
 		controller.setEnabled(enabled);
 		if (!enabled) {
 			return;
 		}
-		await new Promise((resolve) => setTimeout(resolve, PAUSE_POLL_INTERVAL_MS));
+		await sleep(PAUSE_POLL_INTERVAL_MS, signal);
 	}
+}
+
+function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const onAbort = (): void => {
+			clearTimeout(timer);
+			reject(signal?.reason ?? new Error("pause wait aborted"));
+		};
+		const timer = setTimeout(() => {
+			signal?.removeEventListener("abort", onAbort);
+			resolve();
+		}, ms);
+		signal?.addEventListener("abort", onAbort, { once: true });
+	});
 }
 
 export function persistPausePreference(agentDir: string, enabled: boolean): void {

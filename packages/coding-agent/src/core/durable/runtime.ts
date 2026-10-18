@@ -21,10 +21,11 @@ import {
 import { openNodeSqliteStorage } from "@ny4n/durable/storage/sqlite/node";
 import { getAgentDir } from "../../config.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../agent-session-services.ts";
-import type { ExtensionMode, InlineExtension, ProjectTrustContext } from "../extensions/types.ts";
+import type { ExtensionMode, InlineExtension, ProjectTrustContext, SessionShutdownEvent } from "../extensions/types.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
+import { createExtensionHost, type ExtensionHost } from "./extension-host.ts";
 import {
 	configureHarnessHttp,
 	createCodingRegistry,
@@ -33,7 +34,7 @@ import {
 	findInitialAgentModel,
 } from "./harness-setup.ts";
 import { createDurableModelRuntime } from "./model-runtime-adapter.ts";
-import { createDurableServices, type DurableResourceOptions } from "./services.ts";
+import { createDurableServices, type DurableResourceOptions, type DurableServices } from "./services.ts";
 import { selectSession } from "./sessions.ts";
 import { Subagent } from "./subagent.ts";
 
@@ -126,6 +127,11 @@ export interface OpenDurableOptions {
 	readonly resources?: DurableResourceOptions;
 	readonly extensionFactories?: readonly InlineExtension[];
 	readonly extensionFlagValues?: Map<string, boolean | string>;
+	/**
+	 * Services of an earlier open in this process. Extensions are loaded once per process, so a reopen (RPC `new_session`)
+	 * passes the services it got from the first open.
+	 */
+	readonly services?: DurableServices;
 	/** Asks about project trust. Without it, undecided trust stays untrusted and nothing is asked. */
 	readonly projectTrustContext?: ProjectTrustContext;
 	/**
@@ -162,7 +168,10 @@ export interface OpenDurableResult {
 	readonly events?: AgentEventStream;
 	/** nyan's settings, for the TUI's theme and terminal capabilities. */
 	readonly settings: SettingsManager;
-	close(): Promise<void>;
+	/** The services this open used; pass them to a later open in the same process. */
+	readonly services: DurableServices;
+	/** Ends the session: `session_shutdown` with `reason` (default "quit"), then the storage is closed. */
+	close(reason?: SessionShutdownEvent["reason"]): Promise<void>;
 }
 
 /** The agent document of a view; absent while the conversation has none. */
@@ -200,16 +209,22 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 	const envs = new ExecutionEnvs(location.cwd);
 	let harness: Harness | undefined;
 	try {
-		const services = await createDurableServices({
-			cwd: location.cwd,
-			agentDir: getAgentDir(),
-			resources: options.resources ?? {},
-			extensionFactories: options.extensionFactories ?? [],
-			extensionFlagValues: options.extensionFlagValues,
-			projectTrustContext: options.projectTrustContext ?? headlessTrustContext(location.cwd),
-		});
-		const errors = services.diagnostics.filter((diagnostic) => diagnostic.type === "error");
-		if (errors.length > 0) throw new DurableStartupError(errors);
+		// Only the first open of a process creates services, so its diagnostics and errors are reported once.
+		const fresh = options.services === undefined;
+		const services =
+			options.services ??
+			(await createDurableServices({
+				cwd: location.cwd,
+				agentDir: getAgentDir(),
+				resources: options.resources ?? {},
+				extensionFactories: options.extensionFactories ?? [],
+				extensionFlagValues: options.extensionFlagValues,
+				projectTrustContext: options.projectTrustContext ?? headlessTrustContext(location.cwd),
+			}));
+		if (fresh) {
+			const errors = services.diagnostics.filter((diagnostic) => diagnostic.type === "error");
+			if (errors.length > 0) throw new DurableStartupError(errors);
+		}
 		if (options.settingsOverrides !== undefined) services.settingsManager.applyOverrides(options.settingsOverrides);
 		const { modelRuntime, settingsManager } = services;
 		const durableModelRuntime = createDurableModelRuntime(modelRuntime);
@@ -223,6 +238,20 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		const settings = createHarnessSettings(settingsManager, queueModes);
 		const registry = createCodingRegistry(settingsManager, location.cwd, services.resourceLoader);
 		registry.install(Subagent);
+		// Installed before the Harness opens: its members are read when the Harness starts a request.
+		const host: ExtensionHost = createExtensionHost({
+			services,
+			cwd: location.cwd,
+			agentModel: () => {
+				const ref = agentOf(state.conversation).model;
+				return ref === undefined ? undefined : modelRuntime.getModel(ref.provider, ref.modelId);
+			},
+			abort: () => void controller.abort(),
+			compact: () => void controller.compact(undefined).catch(fail),
+			onExtensionError: (error) =>
+				notice("error", `Extension ${error.extensionPath} failed on ${error.event}: ${error.error}`),
+		});
+		registry.install(host.adapter);
 
 		const pendingReports: unknown[] = [];
 		let report: (error: unknown) => void = (error) => pendingReports.push(error);
@@ -315,7 +344,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		const fail = (error: unknown): void => notice("error", error instanceof Error ? error.message : String(error));
 		report = (error) => notice("warning", error instanceof Error ? error.message : String(error));
 		for (const error of pendingReports) report(error);
-		for (const diagnostic of services.diagnostics) {
+		for (const diagnostic of fresh ? services.diagnostics : []) {
 			if (diagnostic.type === "error") continue;
 			if (options.onDiagnostic !== undefined) options.onDiagnostic(diagnostic);
 			else notice(diagnostic.type === "info" ? "info" : "warning", diagnostic.message);
@@ -476,6 +505,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		if (initial?.fallbackMessage !== undefined) notice("info", initial.fallbackMessage);
 		// The task panel starts open; /tasks hides it.
 		await controller.toggleTasks();
+		await host.start(location.created ? "startup" : "resume");
 		// Recovered work from an interrupted turn continues now.
 		harness.resume();
 
@@ -492,13 +522,15 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			modelRuntime,
 			...(events === undefined ? {} : { events }),
 			settings: settingsManager,
-			close() {
+			services,
+			close(reason = "quit") {
 				closing ??= (async () => {
 					unsubscribe();
 					unsubscribeCommits();
 					conversation.dispose();
 					closeTasks();
 					try {
+						await host.shutdown(reason);
 						await events?.stop();
 						// Close writes no outcome: a running turn resumes with --continue.
 						await opened.close(context);
