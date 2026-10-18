@@ -3,6 +3,7 @@ import net from "node:net";
 import tls from "node:tls";
 import * as undici from "undici";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetNativeFetchForTests } from "../src/core/http/native.ts";
 import { applyHttpProxySettings, configureHttpDispatcher } from "../src/core/http-dispatcher.ts";
 
 const PROXY_ENV_KEYS = ["HTTP_PROXY", "HTTPS_PROXY"] as const;
@@ -197,7 +198,9 @@ describe.runIf(isBun)("native fetch on Bun", () => {
 				process.env[key] = value;
 			}
 		}
-		// Back to the fetch that was global when the file loaded, so the next test configures from scratch.
+		// Back to the fetch that was global when the file loaded, with the dispatcher's memory of what it installed (and its
+		// one wrapper) forgotten, so every test configures from scratch and none depends on the one before it.
+		resetNativeFetchForTests();
 		globalThis.fetch = originalFetch;
 	});
 
@@ -211,9 +214,9 @@ describe.runIf(isBun)("native fetch on Bun", () => {
 		const wrapped = globalThis.fetch;
 		expect(wrapped).not.toBe(originalFetch);
 
+		// One wrapper for the life of the process: the timeout it applies is the one set last (see the captured-client tests).
 		configureHttpDispatcher(2_000);
-		expect(globalThis.fetch).not.toBe(wrapped);
-		expect(globalThis.fetch).not.toBe(originalFetch);
+		expect(globalThis.fetch).toBe(wrapped);
 
 		configureHttpDispatcher(0);
 		expect(globalThis.fetch).toBe(originalFetch);
@@ -230,6 +233,60 @@ describe.runIf(isBun)("native fetch on Bun", () => {
 			await new Promise<void>((resolve) => stalled.close(() => resolve()));
 		}
 	});
+
+	// A client built before the setting changed (an SDK client keeps the fetch it was constructed with) must follow it.
+	it("applies a changed timeout to a client that captured fetch before the change", async () => {
+		const stalled = http.createServer(() => {});
+		const port = await listen(stalled);
+		try {
+			configureHttpDispatcher(60_000);
+			const captured = globalThis.fetch;
+			expect(captured).not.toBe(originalFetch);
+			configureHttpDispatcher(200);
+			await expect(captured(`http://127.0.0.1:${port}/`)).rejects.toMatchObject({ code: "UND_ERR_HEADERS_TIMEOUT" });
+		} finally {
+			stalled.closeAllConnections();
+			await new Promise<void>((resolve) => stalled.close(() => resolve()));
+		}
+	}, 5_000);
+
+	it("stops applying the timeout to a captured client when the timeout is disabled", async () => {
+		const slow = http.createServer((_request, response) => {
+			setTimeout(() => response.end("late"), 500);
+		});
+		const port = await listen(slow);
+		try {
+			configureHttpDispatcher(200);
+			const captured = globalThis.fetch;
+			expect(captured).not.toBe(originalFetch);
+			configureHttpDispatcher(0);
+			expect(globalThis.fetch).toBe(originalFetch);
+			const response = await captured(`http://127.0.0.1:${port}/`);
+			expect(await response.text()).toBe("late");
+		} finally {
+			slow.closeAllConnections();
+			await new Promise<void>((resolve) => slow.close(() => resolve()));
+		}
+	}, 5_000);
+
+	it("updates the timeout a held wrapper applies even when someone else's fetch is the global one", async () => {
+		const stalled = http.createServer(() => {});
+		const port = await listen(stalled);
+		try {
+			configureHttpDispatcher(60_000);
+			const held = globalThis.fetch;
+			const custom = (async () => new Response("custom")) as typeof fetch;
+			globalThis.fetch = custom;
+
+			configureHttpDispatcher(200);
+
+			expect(globalThis.fetch).toBe(custom);
+			await expect(held(`http://127.0.0.1:${port}/`)).rejects.toMatchObject({ code: "UND_ERR_HEADERS_TIMEOUT" });
+		} finally {
+			stalled.closeAllConnections();
+			await new Promise<void>((resolve) => stalled.close(() => resolve()));
+		}
+	}, 5_000);
 
 	it("leaves a fetch that someone else installed alone", () => {
 		const custom = (async () => new Response("custom")) as typeof fetch;
