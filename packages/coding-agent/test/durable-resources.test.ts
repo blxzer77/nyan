@@ -184,11 +184,18 @@ describe("durable path resources", () => {
 		});
 		expect(services.diagnostics.filter((diagnostic) => diagnostic.type === "error")).toEqual([]);
 		const paths = services.resourceLoader.getExtensions().extensions.map((extension) => extension.path);
-		for (const name of ["cliproxyapi", "codemode", "tool-search", "mcp", "herdr"]) {
+		for (const name of ["cliproxyapi", "mcp", "herdr"]) {
 			expect(
 				paths.some((path) => path.includes(name)),
 				name,
 			).toBe(true);
+		}
+		// codemode and tool-search stay off on the durable path until batch 2b installs their durable versions.
+		for (const name of ["codemode", "tool-search"]) {
+			expect(
+				paths.some((path) => path.includes(name)),
+				name,
+			).toBe(false);
 		}
 
 		const withoutMcp = await createDurableServices({

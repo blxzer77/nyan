@@ -92,7 +92,9 @@ export async function createDurableServices(options: DurableServicesOptions): Pr
 			additionalThemePaths: resources.themePaths ? [...resources.themePaths] : undefined,
 			extensionFactories: [...options.extensionFactories],
 			noExtensions: resources.noExtensions,
-			disabledBuiltinExtensions: resources.noMcp ? ["mcp"] : undefined,
+			// codemode and tool-search stay off until batch 2b installs their durable versions: their legacy tools call
+			// `ctx.executeTool`, which the durable path does not provide yet.
+			disabledBuiltinExtensions: ["codemode", "tool-search", ...(resources.noMcp ? ["mcp"] : [])],
 			noSkills: resources.noSkills,
 			noPromptTemplates: resources.noPromptTemplates,
 			noThemes: resources.noThemes,

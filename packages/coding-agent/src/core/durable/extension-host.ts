@@ -1,11 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { Api, Model } from "@ny4n/ai";
-import type { Extension, GenerationHooks } from "@ny4n/durable";
+import type { Api, ImageContent, Model } from "@ny4n/ai";
+import type { Extension, GenerationHooks, ToolHooks, UserInput } from "@ny4n/durable";
 import { ExtensionRunner } from "../extensions/runner.ts";
 import type {
 	ExtensionActions,
 	ExtensionContextActions,
 	ExtensionError,
+	ExtensionToolContext,
 	SessionShutdownEvent,
 	SessionStartEvent,
 } from "../extensions/types.ts";
@@ -14,9 +15,18 @@ import type { ReadonlySessionManager } from "../session-manager.ts";
 import {
 	createHookAdapter,
 	createProviderHooks,
+	createToolHooks,
+	inProviderCall,
 	type ProviderCall,
 	type ProviderCallScope,
 } from "./extension-adapter.ts";
+import {
+	type BridgedTool,
+	isActiveByDefault,
+	type ToolBridge,
+	toDurableTool,
+	toolsExtension,
+} from "./extension-tools.ts";
 import type { DurableServices } from "./services.ts";
 
 /** Thrown by a Nyan API the durable path does not connect yet. Handlers that call it fail visibly, not silently. */
@@ -34,6 +44,11 @@ export interface ExtensionHostOptions {
 	readonly compact: () => void;
 	/** Errors thrown by extension handlers; the caller shows them. Without a listener they would vanish. */
 	readonly onExtensionError: (error: ExtensionError) => void;
+	/**
+	 * Installs the bridged tools in the session's registry. Called after `session_start` and whenever the runner refreshes
+	 * its tools (`registerTool` after load, such as an MCP server that connects later).
+	 */
+	readonly installTools: (extension: Extension) => void;
 }
 
 /** One open's view of the loaded extensions: a runner bound to this open, and the hook adapter it feeds. */
@@ -41,8 +56,16 @@ export interface ExtensionHost {
 	readonly runner: ExtensionRunner;
 	/** The provider-call members, bound to this open's runner. Tests call them directly; the adapter carries them. */
 	readonly providerHooks: Partial<GenerationHooks>;
+	/** The tool-event members: `tool_call` (beforeTool) and `tool_result` (afterTool). */
+	readonly toolHooks: Partial<ToolHooks>;
 	/** Install in the registry; carries no members when no loaded extension handles a provider event. */
 	readonly adapter: Extension;
+	/**
+	 * Runs `before_agent_start` for a prompt before it is submitted, so the servers a run lists are connected. MCP waits for
+	 * its direct servers here, as legacy does, so the first request declares their tools. Only the wait is applied: the
+	 * handlers' message and system-prompt changes are not, until the batch that connects `before_agent_start` fully.
+	 */
+	beforePrompt(content: UserInput): Promise<void>;
 	start(reason: SessionStartEvent["reason"]): Promise<void>;
 	shutdown(reason: SessionShutdownEvent["reason"]): Promise<void>;
 }
@@ -94,11 +117,26 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		setSessionName: () => unavailable("pi.setSessionName"),
 		getSessionName: () => unavailable("pi.getSessionName"),
 		setLabel: () => unavailable("pi.setLabel"),
-		getActiveTools: () => unavailable("pi.getActiveTools"),
-		getAllTools: () => unavailable("pi.getAllTools"),
+		getActiveTools: () => [...activeTools],
+		getAllTools: () =>
+			runner.getAllRegisteredTools().map(({ definition, sourceInfo }) => ({
+				name: definition.name,
+				description: definition.description,
+				parameters: definition.parameters,
+				promptGuidelines: definition.promptGuidelines,
+				reachesTools: definition.reachesTools,
+				exposure: definition.exposure ?? "direct",
+				namespace: definition.namespace,
+				annotations: definition.annotations,
+				sourceInfo,
+			})),
 		getSettings: () => options.services.settingsManager.getSettings(),
-		setActiveTools: () => unavailable("pi.setActiveTools"),
-		refreshTools: () => unavailable("pi.refreshTools"),
+		setActiveTools: (names) => {
+			activeTools.clear();
+			for (const name of names) activeTools.add(name);
+			syncTools();
+		},
+		refreshTools: () => syncTools(),
 		// Slash commands have no entry point on the durable path yet; RPC `get_commands` also answers none.
 		getCommands: () => [],
 		setModel: () => unavailable("pi.setModel"),
@@ -122,13 +160,60 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 
 	runner.bindCore(actions, contextActions);
 	const providerHooks = createProviderHooks(runner, calls);
+	const toolHooks = createToolHooks(runner);
+	// A tool call runs in its own call scope, so `ctx.signal` and `ctx.model` inside a tool belong to that call.
+	const bridge: ToolBridge = {
+		run: <T>(signal: AbortSignal | undefined, execute: (context: ExtensionToolContext) => Promise<T>) =>
+			inProviderCall(calls, undefined, signal, () => execute(toolContext())),
+	};
+	// `ctx.executeTool` and `ctx.tools` belong to codemode (batch 2b). Until then a tool that calls them fails visibly.
+	// The active set, as legacy keeps it: a tool enters it on first registration when it is active by default, and
+	// `setActiveTools()` replaces it. A tool that is not active is deferred here.
+	const activeTools = new Set<string>();
+	const seenTools = new Set<string>();
+	function toolContext(): ExtensionToolContext {
+		return Object.assign(runner.createContext(), {
+			tools: [],
+			executeTool: async () => unavailable("ctx.executeTool"),
+		});
+	}
+	/** Installs the runner's current tools; the registry replaces the earlier set of this extension by name. */
+	function syncTools(): void {
+		const tools: BridgedTool[] = [];
+		for (const { definition } of runner.getAllRegisteredTools()) {
+			if (!seenTools.has(definition.name)) {
+				seenTools.add(definition.name);
+				if (isActiveByDefault(definition)) activeTools.add(definition.name);
+			}
+			const registration = toDurableTool(definition, bridge, activeTools.has(definition.name));
+			if (registration !== undefined) tools.push({ definition, registration });
+		}
+		options.installTools(toolsExtension(tools));
+	}
 	runner.onError(options.onExtensionError);
 
 	return {
 		runner,
 		providerHooks,
-		adapter: createHookAdapter(providerHooks),
-		start: (reason) => runner.emit({ type: "session_start", reason }).then(() => undefined),
+		toolHooks,
+		adapter: createHookAdapter(providerHooks, toolHooks),
+		start: (reason) =>
+			runner.emit({ type: "session_start", reason }).then(() => {
+				syncTools();
+			}),
 		shutdown: (reason) => runner.emit({ type: "session_shutdown", reason }).then(() => undefined),
+		beforePrompt: async (content) => {
+			const images = Array.isArray(content)
+				? content.filter((block): block is ImageContent => block.type === "image")
+				: [];
+			const prompt =
+				typeof content === "string"
+					? content
+					: content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
+			await runner.emitBeforeAgentStart(
+				{ messageType: "user", prompt, ...(images.length === 0 ? {} : { images }) },
+				{ cwd: options.cwd },
+			);
+		},
 	};
 }
