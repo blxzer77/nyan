@@ -1,7 +1,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createIdleTimeoutFetch, HttpIdleTimeoutError } from "../src/core/idle-timeout-fetch.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createIdleTimeoutFetch, HttpIdleTimeoutError } from "../src/core/http/idle-timeout.ts";
 
 // These tests use real local servers and the runtime's own fetch, so they run on Node and on Bun.
 
@@ -36,6 +36,29 @@ async function failure(promise: Promise<unknown>): Promise<Error & { code?: stri
 describe("createIdleTimeoutFetch", () => {
 	it("returns the fetch it was given when the timeout is disabled", () => {
 		expect(createIdleTimeoutFetch(globalThis.fetch, 0)).toBe(globalThis.fetch);
+	});
+
+	it("reads a timeout given as a function when each request starts", async () => {
+		let timeoutMs = 0;
+		const fetchWithTimeout = createIdleTimeoutFetch(globalThis.fetch, () => timeoutMs);
+
+		// Disabled: the request reaches the base fetch exactly as it came, with no signal added.
+		const base = vi.fn<typeof fetch>(async () => new Response("plain"));
+		const init = { method: "POST" };
+		const passThrough = createIdleTimeoutFetch(base, () => timeoutMs);
+		const direct = await passThrough("http://example.invalid/", init);
+		expect(base.mock.calls[0]?.[1]).toBe(init);
+		expect(await direct.text()).toBe("plain");
+
+		// Enabled later: the same wrapper now applies it.
+		handler = () => {};
+		timeoutMs = TIMEOUT_MS;
+		expect((await failure(fetchWithTimeout(baseUrl))).code).toBe("UND_ERR_HEADERS_TIMEOUT");
+
+		// Disabled again: a prompt response is served as before.
+		timeoutMs = 0;
+		handler = (_request, response) => response.end("prompt");
+		expect(await (await fetchWithTimeout(baseUrl)).text()).toBe("prompt");
 	});
 
 	it("passes a prompt response through with its status, headers, url and body", async () => {
