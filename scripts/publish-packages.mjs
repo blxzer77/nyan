@@ -8,10 +8,11 @@
  * - Every public package must carry the same version (lockstep); `--expect-version` also pins it to a release tag.
  * - Packages publish after the workspace packages they depend on.
  * - A package version that is already on the registry is skipped, so a failed release can be re-run.
- * - Nothing is rebuilt here; run the build first. `--dry-run` runs `npm publish --dry-run`, which packs each tarball.
+ * - Nothing is rebuilt here; run the build first. `--artifact-dir` publishes exact tarballs packed by a prior verification job.
+ * - `--dry-run` runs `npm publish --dry-run`.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { execNpmSync } from "./npm-command.mjs";
 import { findPackageDirectories } from "./package-workspaces.mjs";
@@ -24,6 +25,7 @@ const option = (name) => {
 };
 const distTag = option("--tag");
 const expectedVersion = option("--expect-version");
+const artifactDirectory = option("--artifact-dir");
 
 function fail(message) {
 	console.error(message);
@@ -77,8 +79,15 @@ for (const { directory, manifest } of ordered) {
 		console.log(`  ${manifest.name}@${version} is already published, skipping`);
 		continue;
 	}
-	// An absolute path: npm reads a bare `packages/x` as the GitHub shorthand user/repo, which only Windows' backslashes avoid.
-	const publishArgs = ["publish", resolve(directory), "--access", "public", "--ignore-scripts"];
+	const target = artifactDirectory
+		? join(resolve(artifactDirectory), `${manifest.name.replace(/^@/, "").replaceAll("/", "-")}-${manifest.version}.tgz`)
+		: resolve(directory);
+	if (artifactDirectory && !existsSync(target)) fail(`Missing verified package artifact: ${target}`);
+	if (dryRun && artifactDirectory) {
+		console.log(`  ${manifest.name}@${version} verified at ${target}`);
+		continue;
+	}
+	const publishArgs = ["publish", target, "--access", "public", "--ignore-scripts"];
 	if (distTag) publishArgs.push("--tag", distTag);
 	if (dryRun) publishArgs.push("--dry-run");
 	else if (process.env.GITHUB_ACTIONS === "true") publishArgs.push("--provenance");

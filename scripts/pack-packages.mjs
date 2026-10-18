@@ -1,48 +1,32 @@
 #!/usr/bin/env node
 
-import { resolve } from "node:path";
-import { parseArgs } from "node:util";
-import { produceArtifactSet } from "./package-artifacts.mjs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { execNpmSync } from "./npm-command.mjs";
+import { findPackageDirectories } from "./package-workspaces.mjs";
 
-function printUsage() {
-	console.log(`Usage: node scripts/pack-packages.mjs --out <dir> [options]
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const outputIndex = process.argv.indexOf("--out");
+const outputDirectory = resolve(outputIndex >= 0 ? process.argv[outputIndex + 1] : ".artifacts/packages");
+if (outputIndex >= 0 && !process.argv[outputIndex + 1]) throw new Error("--out requires a directory");
 
-Builds every public package and writes one coherent local artifact set.
+rmSync(outputDirectory, { recursive: true, force: true });
+mkdirSync(outputDirectory, { recursive: true });
 
-Options:
-  --out <dir>            Output directory; .artifacts/ is ignored by Git
-  --force                Replace an existing output directory
-  --offline-model-data   Build with already-hydrated model data
-  --skip-build           Pack existing build output without rebuilding
-  --help                 Show this help
-`);
+const packages = findPackageDirectories(join(repoRoot, "packages"))
+	.map((directory) => ({ directory, manifest: JSON.parse(readFileSync(join(directory, "package.json"), "utf8")) }))
+	.filter(({ manifest }) => manifest.private !== true && !manifest.name?.includes("/examples/"));
+
+const packed = [];
+for (const { directory, manifest } of packages) {
+	const stdout = execNpmSync(["pack", resolve(directory), "--ignore-scripts", "--json", "--pack-destination", outputDirectory], {
+		cwd: repoRoot,
+		encoding: "utf8",
+		stdio: "pipe",
+	});
+	const result = JSON.parse(stdout)[0];
+	packed.push({ name: manifest.name, version: manifest.version, filename: result.filename, files: result.files?.length ?? 0 });
 }
 
-const { values } = parseArgs({
-	options: {
-		force: { type: "boolean", default: false },
-		help: { type: "boolean", default: false },
-		"offline-model-data": { type: "boolean", default: false },
-		out: { type: "string" },
-		"skip-build": { type: "boolean", default: false },
-	},
-});
-if (values.help) {
-	printUsage();
-	process.exit(0);
-}
-if (!values.out) throw new Error("--out is required");
-
-const artifactSet = produceArtifactSet({
-	build: !values["skip-build"],
-	force: values.force,
-	offlineModelData: values["offline-model-data"],
-	outDir: values.out,
-	repoRoot: process.cwd(),
-});
-console.log(`\nLocal package artifacts created: ${artifactSet.artifactDirectory}`);
-console.log(`Manifest: ${artifactSet.manifestPath}`);
-console.log("\nConnect an external npm project with:");
-console.log(
-	`  node ${resolve("scripts/use-local-packages.mjs")} --manifest ${artifactSet.manifestPath} --consumer <project> --package <name>`,
-);
+console.log(JSON.stringify({ outputDirectory, packages: packed }, null, 2));
