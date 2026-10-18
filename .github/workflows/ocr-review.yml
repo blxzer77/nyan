@@ -117,12 +117,16 @@ jobs:
 
           # A bookmark that is not in this history (a rewritten branch, a run started on another ref) cannot be diffed.
           # A base the caller named is never replaced silently: that run fails instead of reviewing something else.
+          # A bookmark is replaced, but never silently: the report says that earlier commits were not reviewed. Failing
+          # instead would stall the nightly for good, because a failed run never moves the bookmark.
+          note=""
           if [ -n "$base" ] && ! git merge-base --is-ancestor "$base" "$head"; then
             if [ "$kind" = custom ]; then
               echo "::error::$base is not an ancestor of $head, so there is no range between them"
               exit 1
             fi
             echo "::warning::$base is not an ancestor of $head; falling back to the last 24 hours"
+            note="The previous review point ${base:0:9} is not in this history, so this range starts 24 hours back. Commits before that were not reviewed."
             base=""
           fi
           if [ -z "$base" ]; then
@@ -134,6 +138,7 @@ jobs:
             echo "kind=$kind"
             echo "head=$head"
             echo "base=$base"
+            echo "note=$note"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build the diff
@@ -211,8 +216,11 @@ jobs:
           PY
 
       # The full text is kept before anything else is attempted, so a problem reporting it never loses a finished review.
+      # An upload that fails must not stop the report either: a failed step skips every step after it by default, and the
+      # report below also carries the text.
       - name: Keep the full review
         if: steps.range.outputs.base != '' && steps.diff.outputs.empty != 'true'
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ocr-review
@@ -230,6 +238,7 @@ jobs:
           COMMITS: ${{ steps.diff.outputs.commits }}
           FILES: ${{ steps.diff.outputs.files }}
           LINES: ${{ steps.diff.outputs.lines }}
+          NOTE: ${{ steps.range.outputs.note }}
         with:
           script: |
             const fs = require('fs');
@@ -240,7 +249,7 @@ jobs:
               core.setFailed('the rendered review lacks its marker; refusing to report it');
               return;
             }
-            const { KIND, BASE, HEAD, COMMITS, FILES, LINES, OCR_MODEL, OCR_EFFORT } = process.env;
+            const { KIND, BASE, HEAD, COMMITS, FILES, LINES, NOTE, OCR_MODEL, OCR_EFFORT } = process.env;
             const range = `${BASE.slice(0, 9)}..${HEAD.slice(0, 9)}`;
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             const header = [
@@ -248,11 +257,18 @@ jobs:
               `**Review:** \`${OCR_MODEL}\` at \`${OCR_EFFORT}\`. Advisory: nothing here blocks a merge or a release until a reproduction or a rule confirms it.`,
               `**Compare:** ${context.serverUrl}/${owner}/${repo}/compare/${BASE}...${HEAD}`,
               `**Run:** ${runUrl}`,
+              ...(NOTE ? ['', `> **Note:** ${NOTE}`] : []),
               '',
             ].join('\n');
 
-            // The run summary always gets the review: it needs no repository setting.
-            await core.summary.addRaw(header + '\n' + review).write();
+            // The run summary always gets the review: it needs no repository setting. A step summary is limited to 1 MiB,
+            // and failing to write it must not stop the issue below, so cut it and carry on.
+            try {
+              const summary = header + '\n' + review;
+              await core.summary.addRaw(summary.length > 900000 ? summary.slice(0, 900000) + '\n\n> Cut: the full text is the `ocr-review` artifact.\n' : summary).write();
+            } catch (error) {
+              core.warning(`could not write the run summary: ${error.message}`);
+            }
 
             // An issue body is limited to 65,536 characters; the full text is also the run artifact.
             const limit = 60000;
