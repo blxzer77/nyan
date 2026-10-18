@@ -40,7 +40,7 @@ env:
 jobs:
   prepare:
     name: Build and expand the test plan
-    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     outputs:
       node_shards: ${{ steps.shards.outputs.node_shards }}
@@ -100,7 +100,7 @@ jobs:
   check:
     name: Check
     needs: prepare
-    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -133,11 +133,11 @@ jobs:
   tests:
     name: Tests (${{ matrix.name }})
     needs: prepare
-    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 12
       matrix:
         include: ${{ fromJSON(needs.prepare.outputs.node_shards) }}
     steps:
@@ -198,7 +198,7 @@ jobs:
     # Runs only after the check and every test shard passed, from the workspace they tested. --skip-build packs the
     # dist/ that prepare built: nothing here rebuilds, so the archive published is the archive that was tested.
     needs: [prepare, check, tests]
-    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -243,7 +243,7 @@ jobs:
   binaries:
     name: Bun binaries
     needs: [pack, native]
-    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
@@ -253,12 +253,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The executables embed the dist/ that prepare built and the tests and the pack job used. Nothing in this job
+      # rebuilds it, so the attested binaries contain the bytes that were verified.
+      - name: Restore workspace
+        id: restore
+        # The download takes about 15 s. One of sixty stalled for over fifteen minutes with the process idle, and a stalled
+        # download cannot be told from a slow one, so bound it and try once more instead of holding the job.
+        uses: ./.github/actions/restore-workspace
+        timeout-minutes: 3
+        continue-on-error: true
+
+      - name: Restore workspace (retry)
+        if: steps.restore.outcome != 'success'
+        uses: ./.github/actions/restore-workspace
+        timeout-minutes: 5
+
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
         with:
           node-version: ${{ env.NODE_VERSION }}
           bun-version: ${{ env.BUN_VERSION }}
           bun: 'true'
+          install: 'false'
           model-data: 'true'
 
       - name: Download Linux native prebuilds
@@ -279,9 +295,6 @@ jobs:
         with:
           name: native-win32-universal
           path: packages/tui/native/win32/prebuilds
-
-      - name: Build offline
-        run: npm run build:offline
 
       - name: Compile binaries
         run: node scripts/build-binaries.mjs --out release-assets
@@ -367,9 +380,9 @@ jobs:
     needs: [pack, native, binary-smoke]
     # npm verifies the runner environment when it accepts a provenance bundle and rejects a
     # `self-hosted` runner: "Only 'github-hosted' runners are supported when publishing with
-    # provenance". This job therefore stays on a GitHub-hosted runner while the build jobs use the
-    # self-hosted one. `actions/attest-build-provenance` in the binaries job is a GitHub service and
-    # is not affected.
+    # provenance". Every job of this workflow runs on a GitHub-hosted runner, so the verified bytes are built, tested
+    # and published on the same kind of machine. `actions/attest-build-provenance` in the binaries job is a GitHub
+    # service and is not affected.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm
