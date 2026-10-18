@@ -479,7 +479,7 @@ Cadence, model and effort are a separate decision and have their own note: [OCR 
    `dist`, `check-entry-graphs.mjs` maps `./dist/x.js` onto `src/x.ts`, `check-ts-imports.mjs` ignores
    `dist`, and tsconfig maps every `@ny4n/*` specifier to sources.
 7. ~~**Release timing**~~: measured, 5.7 min all hosted (run `39082114809`). A real tag has not been pushed; only dry runs.
-8. ~~**Nightly**~~: measured, 9.1 min (run `39080623279`). The scheduled 02:17 UTC trigger has not fired yet on the new shape.
+8. ~~**Nightly**~~: measured, 9.1 min (run `39080623279`). The scheduled trigger has not fired yet on the new shape. Scheduled runs on this repository start hours after their cron time: the daily scan (cron 07:37 UTC) started 4.1, 5.1, 5.2, 5.4, 7.6 and 9.3 hours late over the last six days (median 5.4 h). At 02:40 UTC, 23 minutes after its cron time, the nightly (cron 02:17 UTC) had not started. So the cron time is not the start time: if the nightly has to finish before a given hour, the cron has to be set earlier by the observed delay, and that delay is not controlled by this repository.
 
 Owner actions that are not workflow edits:
 
