@@ -20,7 +20,13 @@ import {
 	type ProviderCall,
 	type ProviderCallScope,
 } from "./extension-adapter.ts";
-import { type BridgedTool, type ToolBridge, toDurableTool, toolsExtension } from "./extension-tools.ts";
+import {
+	type BridgedTool,
+	isActiveByDefault,
+	type ToolBridge,
+	toDurableTool,
+	toolsExtension,
+} from "./extension-tools.ts";
 import type { DurableServices } from "./services.ts";
 
 /** Thrown by a Nyan API the durable path does not connect yet. Handlers that call it fail visibly, not silently. */
@@ -111,10 +117,25 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		setSessionName: () => unavailable("pi.setSessionName"),
 		getSessionName: () => unavailable("pi.getSessionName"),
 		setLabel: () => unavailable("pi.setLabel"),
-		getActiveTools: () => unavailable("pi.getActiveTools"),
-		getAllTools: () => unavailable("pi.getAllTools"),
+		getActiveTools: () => [...activeTools],
+		getAllTools: () =>
+			runner.getAllRegisteredTools().map(({ definition, sourceInfo }) => ({
+				name: definition.name,
+				description: definition.description,
+				parameters: definition.parameters,
+				promptGuidelines: definition.promptGuidelines,
+				reachesTools: definition.reachesTools,
+				exposure: definition.exposure ?? "direct",
+				namespace: definition.namespace,
+				annotations: definition.annotations,
+				sourceInfo,
+			})),
 		getSettings: () => options.services.settingsManager.getSettings(),
-		setActiveTools: () => unavailable("pi.setActiveTools"),
+		setActiveTools: (names) => {
+			activeTools.clear();
+			for (const name of names) activeTools.add(name);
+			syncTools();
+		},
 		refreshTools: () => syncTools(),
 		// Slash commands have no entry point on the durable path yet; RPC `get_commands` also answers none.
 		getCommands: () => [],
@@ -146,6 +167,10 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 			inProviderCall(calls, undefined, signal, () => execute(toolContext())),
 	};
 	// `ctx.executeTool` and `ctx.tools` belong to codemode (batch 2b). Until then a tool that calls them fails visibly.
+	// The active set, as legacy keeps it: a tool enters it on first registration when it is active by default, and
+	// `setActiveTools()` replaces it. A tool that is not active is deferred here.
+	const activeTools = new Set<string>();
+	const seenTools = new Set<string>();
 	function toolContext(): ExtensionToolContext {
 		return Object.assign(runner.createContext(), {
 			tools: [],
@@ -156,7 +181,11 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 	function syncTools(): void {
 		const tools: BridgedTool[] = [];
 		for (const { definition } of runner.getAllRegisteredTools()) {
-			const registration = toDurableTool(definition, bridge);
+			if (!seenTools.has(definition.name)) {
+				seenTools.add(definition.name);
+				if (isActiveByDefault(definition)) activeTools.add(definition.name);
+			}
+			const registration = toDurableTool(definition, bridge, activeTools.has(definition.name));
 			if (registration !== undefined) tools.push({ definition, registration });
 		}
 		options.installTools(toolsExtension(tools));

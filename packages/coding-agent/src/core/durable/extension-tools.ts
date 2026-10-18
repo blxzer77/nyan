@@ -38,19 +38,35 @@ export function isJsonObject(value: unknown): value is JsonObject {
 type Execution = Awaited<ReturnType<ToolDefinition["execute"]>>;
 
 /**
- * The durable registration of one Nyan tool. The mapping table is in the hooks note (`Tool mapping`); fields the durable
- * path does not use are listed there with the reason. Returns undefined for `hidden` tools: legacy registers them but
- * nothing reaches them, so they are not installed.
+ * Legacy activates `direct` and `model-only` tools when they are registered and the other exposures not, unless the tool's
+ * `defaultActive` says otherwise. The active set changes later through `setActiveTools()`.
  */
-export function toDurableTool(definition: ToolDefinition, bridge: ToolBridge): ToolRegistration | undefined {
+export function isActiveByDefault(definition: ToolDefinition): boolean {
+	const exposure: ToolExposure = definition.exposure ?? "direct";
+	return definition.defaultActive ?? (exposure === "direct" || exposure === "model-only");
+}
+
+/**
+ * The durable registration of one Nyan tool. The mapping table is in the hooks note; fields the durable path does not use
+ * are listed there with the reason. `active` is the tool's place in the active set: an inactive tool is one the model gets
+ * only after it is activated (tool search loads it in batch 2b), which is `deferred` here. Returns undefined for `hidden`
+ * tools: legacy registers them but nothing reaches them, so they are not installed.
+ */
+export function toDurableTool(
+	definition: ToolDefinition,
+	bridge: ToolBridge,
+	active: boolean,
+): ToolRegistration | undefined {
 	const exposure: ToolExposure = definition.exposure ?? "direct";
 	if (exposure === "hidden") return undefined;
-	// Legacy activates `direct` and `model-only` tools on registration and the others not; an inactive tool is one the
-	// model gets only after tool search loads it, which is `deferred` here.
-	const activeByDefault = definition.defaultActive ?? (exposure === "direct" || exposure === "model-only");
-	const deferred = exposure === "deferred" || (!activeByDefault && exposure !== "codemode");
+	// A codemode tool that is active is declared to the model, as legacy declares it.
+	const deferred = !active && exposure !== "codemode";
 	const callers =
-		exposure === "codemode" ? (["tools"] as const) : exposure === "model-only" ? (["model"] as const) : undefined;
+		exposure === "codemode" && !active
+			? (["tools"] as const)
+			: exposure === "model-only"
+				? (["model"] as const)
+				: undefined;
 	return defineTool({
 		name: definition.name,
 		description: definition.description,

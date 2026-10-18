@@ -115,7 +115,13 @@ test("an MCP tool is offered, runs in a local stdio child, and the child exits w
 		expect(settled.status).toBe("done");
 		expect(toolName, JSON.stringify({ offered, notices: durable.view.current().notices })).toBeDefined();
 		expect(offered[0]).toContain(toolName);
-		expect(texts[0]).toContain("via-mcp");
+		// The tool's own result, not the arguments the model sent: a blocked call has an error result instead.
+		const messages: { role: string; isError?: boolean; content?: unknown }[] = JSON.parse(texts[0] ?? "[]");
+		const toolResult = messages.find((message) => message.role === "toolResult");
+		expect(toolResult?.isError).toBe(false);
+		expect(JSON.stringify(toolResult?.content)).toContain("via-mcp");
+		// The MCP tool_call handler reads the runner's tool list; a handler error would show here as a notice.
+		expect(durable.view.current().notices.map((notice) => notice.message)).toEqual([]);
 		pid = Number(await readFile(pidFile, "utf8"));
 		expect(Number.isInteger(pid)).toBe(true);
 	} finally {

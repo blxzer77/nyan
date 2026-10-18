@@ -245,6 +245,42 @@ describe("extension tools on the durable path", () => {
 		expect(runs).toEqual(["x"]);
 	});
 
+	test("setActiveTools activates a deferred tool, which is offered from the next request", async () => {
+		const seen: Seen[] = [];
+		const runs: string[] = [];
+		const session = await open(
+			[
+				recording(seen, () => call("activate", { text: "now" })),
+				recording(seen, () => call("later", { text: "x" }, "t2")),
+				recording(seen, () => text("done")),
+			],
+			[
+				(pi) => {
+					pi.registerTool(
+						textTool(
+							"later",
+							(input) => {
+								runs.push(input);
+								return "later ran";
+							},
+							{ exposure: "deferred" },
+						),
+					);
+					pi.registerTool(
+						textTool("activate", () => {
+							pi.setActiveTools([...pi.getActiveTools(), "later"]);
+							return "activated";
+						}),
+					);
+				},
+			],
+		);
+		expect(await say(session, "go")).toBe("done");
+		expect(seen[0]?.offered).not.toContain("later");
+		expect(seen[1]?.offered).toContain("later");
+		expect(runs).toEqual(["x"]);
+	});
+
 	test("exposure decides who is offered a tool: direct tools are offered; codemode, deferred, and hidden are not", async () => {
 		const seen: Seen[] = [];
 		const session = await open(
