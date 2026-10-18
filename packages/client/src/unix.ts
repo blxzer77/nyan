@@ -10,6 +10,9 @@ const DEFAULT_DISCOVERY_TIMEOUT_MS = 1_000;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const UNIX_SOCKET_SUFFIX = ".sock";
 const MAX_CONCURRENT_DISCOVERY_PROBES = 16;
+// A probe timer that fires later than this after its due time says this process was not running, not that the server
+// was slow. Ordinary timer jitter stays far below it.
+const PROBE_STALL_TOLERANCE_MS = 50;
 
 export interface UnixTransportOptions {
 	path: string;
@@ -239,16 +242,15 @@ async function probeUnixServer(route: UnixServerRoute, timeoutMs: number): Promi
 				socket = created;
 			}),
 	});
-	let timeout: ReturnType<typeof setTimeout> | undefined;
+	let cancelTimeout: (() => void) | undefined;
 	try {
 		await Promise.race([
 			client.connect(),
 			new Promise<never>((_, reject) => {
-				timeout = setTimeout(() => {
+				cancelTimeout = startProbeTimeout(timeoutMs, () => {
 					socket?.destroy();
 					reject(new UnixDiscoveryTimeoutError());
-				}, timeoutMs);
-				timeout.unref();
+				});
 			}),
 		]);
 		return route;
@@ -270,7 +272,7 @@ async function probeUnixServer(route: UnixServerRoute, timeoutMs: number): Promi
 		}
 		throw error;
 	} finally {
-		if (timeout) clearTimeout(timeout);
+		cancelTimeout?.();
 		await client.dispose();
 		const activeSocket = socket;
 		if (activeSocket && !activeSocket.destroyed) activeSocket.destroy();
@@ -281,6 +283,33 @@ async function probeUnixServer(route: UnixServerRoute, timeoutMs: number): Promi
 }
 
 class UnixDiscoveryTimeoutError extends Error {}
+
+/**
+ * Time one probe without charging the server for time this process spent not running. Under CPU starvation or a long
+ * synchronous task the timer and the server's reply become ready together, and the timer runs first; dropping the
+ * server then would present a partial list as a complete one. A timer that fires overdue grants one more full window,
+ * which lets the reply already waiting in the socket be read. A server that is silent while this process runs freely
+ * still times out after `timeoutMs`.
+ */
+function startProbeTimeout(timeoutMs: number, onExpired: () => void): () => void {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let extended = false;
+	const arm = (): void => {
+		const armedAt = performance.now();
+		timer = setTimeout(() => {
+			const overdueMs = performance.now() - armedAt - timeoutMs;
+			if (!extended && overdueMs > PROBE_STALL_TOLERANCE_MS) {
+				extended = true;
+				arm();
+				return;
+			}
+			onExpired();
+		}, timeoutMs);
+		timer.unref();
+	};
+	arm();
+	return () => clearTimeout(timer);
+}
 
 function isErrorCode(error: unknown, code: string): boolean {
 	let current = error;
