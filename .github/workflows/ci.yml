@@ -46,6 +46,8 @@ jobs:
       deep_required: ${{ steps.impact.outputs.deep_required }}
       windows_required: ${{ steps.impact.outputs.windows_required }}
       mcp_required: ${{ steps.impact.outputs.mcp_required }}
+      internal: ${{ steps.split.outputs.internal }}
+      self_hosted_shards: ${{ steps.split.outputs.self_hosted_shards }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,6 +58,28 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
+
+      - name: Decide the runner split
+        # Code from this repository and from `main` may use the self-hosted host; a fork pull request may not, because
+        # those users hold NOPASSWD sudo and the docker group on it. `pullRequest.selfHostedShards` in policy.json
+        # sets how many of the slowest shards use the six self-hosted slots; both pools then work at the same time.
+        id: split
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          shards=$(node --input-type=commonjs -e "process.stdout.write(String(require('./.github/quality/policy.json').pullRequest.selfHostedShards ?? 0))")
+          internal=false
+          if [ "$EVENT_NAME" = push ] || [ "$EVENT_NAME" = merge_group ]; then
+            internal=true
+          elif [ "$HEAD_REPO" = "$BASE_REPO" ]; then
+            internal=true
+          fi
+          echo "internal=$internal" >> "$GITHUB_OUTPUT"
+          echo "self_hosted_shards=$shards" >> "$GITHUB_OUTPUT"
+          echo "trusted source: $internal; self-hosted shards: $shards"
 
       - name: Compute change impact
         id: impact
@@ -69,6 +93,8 @@ jobs:
         env:
           NODE_PACKAGES: ${{ steps.impact.outputs.node_packages }}
           BUN_PACKAGES: ${{ steps.impact.outputs.bun_packages }}
+          INTERNAL_PR: ${{ steps.split.outputs.internal }}
+          SELF_HOSTED_SHARDS: ${{ steps.split.outputs.self_hosted_shards }}
         run: node scripts/ci-shards.mjs
 
       - name: Show policy
@@ -151,13 +177,14 @@ jobs:
   node-tests:
     name: Node tests (${{ matrix.name }})
     needs: [policy, prepare]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Each job names its own pool in the matrix, so the hosted and self-hosted runners work on the same run.
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       # Both matrices together can exceed the measured limit of 20 live jobs; GitHub then queues the rest, which is
       # safe. These values are the width the matrices are allowed, not a promise that all of them run at once.
-      max-parallel: 12
+      max-parallel: 20
       matrix:
         include: ${{ fromJSON(needs.policy.outputs.node_shards) }}
     steps:
@@ -218,11 +245,11 @@ jobs:
   bun-tests:
     name: Bun tests (${{ matrix.name }})
     needs: [policy, prepare]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 14
       matrix:
         include: ${{ fromJSON(needs.policy.outputs.bun_shards) }}
     steps:
