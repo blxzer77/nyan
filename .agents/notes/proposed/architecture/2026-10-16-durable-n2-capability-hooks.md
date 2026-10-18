@@ -285,7 +285,9 @@ MCP acceptance: `test/durable-mcp.test.ts`.
 | `exposure: "codemode"` | `callers: ["tools"]` | never offered to the model; reached by codemode (2b) |
 | `exposure: "deferred"` | `deferred: true` | offered only after tool search loads it (2b) |
 | `exposure: "hidden"` | not installed | legacy registers it but nothing reaches it |
-| `defaultActive: false` on a direct or model-only tool | `deferred: true` | legacy would not activate it; loadable by tool search (2b) |
+| `defaultActive` (or the default for the exposure) and `setActiveTools()` | the active set; a tool that is not active is `deferred: true` | legacy's active set decides what is declared to the model. The host keeps the set: a tool enters it on first registration when `isActiveByDefault`, and `setActiveTools(names)` replaces it, then re-installs the tools |
+| `getAllTools()` | the runner's registered tools as `ToolInfo` (name, description, parameters, promptGuidelines, reachesTools, exposure, namespace, annotations, sourceInfo) | MCP's `tool_call` handler reads it to find the owner of a call; without it every MCP call on this path is blocked (found by the MCP test) |
+| `getActiveTools()` | the active set | MCP reads it when it activates codemode or tool search (2b) |
 | `namespace` | dropped (R5) | codemode and tool-search namespaces: batch 2b |
 | `annotations` | dropped (R6) | MCP hints for permission checks; no durable permission path yet |
 | `constrainedSampling` | dropped (R2) | no per-tool provider sampling in durable |
@@ -322,6 +324,7 @@ Both event members exist only when a loaded extension handles the event (`HookRu
 | R12 | `terminate` on a blocked call | durable has no batch-stop on block | later |
 | R13 | `before_agent_start` message and system-prompt changes | only the wait is applied in 2a (see below) | batch 3 |
 | R14 | `before_agent_start` prompt sections (MCP's `mcp_servers` section) | not rendered | batch 3 |
+| R15 | MCP's codemode and tool-search auto-activation | MCP looks for the nyan tools named `codemode` and `tool_search` with `reachesTools`; the durable versions are Harness tools, not runner tools, so they are not seen | 2b |
 
 ### `before_agent_start`: the wait only (2a)
 
