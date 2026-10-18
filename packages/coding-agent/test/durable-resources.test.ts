@@ -88,7 +88,12 @@ describe("durable path resources", () => {
 	afterEach(async () => {
 		vi.unstubAllEnvs();
 		await stub.close();
-		await Promise.all([rm(home, { recursive: true, force: true }), rm(cwd, { recursive: true, force: true })]);
+		// A durable session worker can still be writing under $HOME when the test ends, which makes `rm` fail with ENOTEMPTY
+		// when a directory is repopulated between its unlink and rmdir steps (`force: true` only ignores ENOENT).
+		// Seen on main as `ENOTEMPTY: directory not empty, rmdir '/tmp/nyan-durable-home-.../.nyan/agent'`, in run
+		// 39121338206. Retrying is Node's documented remedy for a temp-tree removal racing another process.
+		const removeOptions = { recursive: true, force: true, maxRetries: 10, retryDelay: 100 } as const;
+		await Promise.all([rm(home, removeOptions), rm(cwd, removeOptions)]);
 	});
 
 	/**
