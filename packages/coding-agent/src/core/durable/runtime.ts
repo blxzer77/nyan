@@ -239,6 +239,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		const registry = createCodingRegistry(settingsManager, location.cwd, services.resourceLoader);
 		registry.install(Subagent);
 		// Installed before the Harness opens: its members are read when the Harness starts a request.
+		// Runs in flight: `ctx.isIdle()` answers false while one is.
+		let activeRuns = 0;
 		const host: ExtensionHost = createExtensionHost({
 			services,
 			cwd: location.cwd,
@@ -250,6 +252,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			compact: () => void controller.compact(undefined).catch(fail),
 			onExtensionError: (error) =>
 				notice("error", `Extension ${error.extensionPath} failed on ${error.event}: ${error.error}`),
+			installTools: (extension) => registry.install(extension),
+			isIdle: () => activeRuns === 0,
 		});
 		registry.install(host.adapter);
 
@@ -380,8 +384,25 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			queue = queue.then(operation).catch(fail);
 			return queue;
 		};
+		const isAborted = (settled: SettledSubmissionRecord): boolean =>
+			settled.status === "unanswered" && settled.reason === "aborted";
+		// `agent_settled` follows every run that ends, whatever its outcome: the quota poll and usage summary wait for it.
+		const settle = (submission: Submission): Promise<SettledSubmissionRecord> => {
+			activeRuns += 1;
+			return submission
+				.wait(context)
+				.then(async (settled) => {
+					activeRuns -= 1;
+					await host.settled(isAborted(settled));
+					return settled;
+				})
+				.catch((error: unknown) => {
+					activeRuns -= 1;
+					throw error;
+				});
+		};
 		const watchAnswer = (submission: Submission): void => {
-			void submission.wait(context).then((settled) => {
+			void settle(submission).then((settled) => {
 				if (settled.status === "unanswered" && settled.reason !== "aborted") {
 					notice(
 						"error",
@@ -399,10 +420,14 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		};
 		const controller: DurableController = {
 			submit: (text, whenBusy) =>
-				command(async () => watchAnswer(await current.submit({ type: "input", content: text, whenBusy }, context))),
+				command(async () => {
+					await host.beforePrompt(text);
+					watchAnswer(await current.submit({ type: "input", content: text, whenBusy }, context));
+				}),
 			submitAndWait: async (content, whenBusy) => {
+				await host.beforePrompt(content);
 				const submission = await current.submit({ type: "input", content, whenBusy }, context);
-				return submission.wait(context);
+				return settle(submission);
 			},
 			compact: (instructions) =>
 				command(async () => {

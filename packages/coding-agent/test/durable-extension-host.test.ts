@@ -309,6 +309,8 @@ describe("durable extension host", () => {
 			abort: () => {},
 			compact: () => {},
 			onExtensionError: () => {},
+			installTools: () => {},
+			isIdle: () => true,
 		});
 		expect(host.adapter.hooks ?? []).toHaveLength(0);
 	});

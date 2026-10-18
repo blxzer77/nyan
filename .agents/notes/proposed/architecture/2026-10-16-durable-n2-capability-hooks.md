@@ -259,3 +259,155 @@ Not verified:
 - A crash between the boundary hook and its commit (the hook rerun and the entries appended exactly once) is argued from the commit structure, not tested.
 - A header set to `null` is dropped by the Anthropic and OpenAI SDKs according to their `buildHeaders` sources, which the reviewer read and nobody ran against a provider; whether Bedrock's `onResponse` runs once under SDK retries is not checked.
 - That the coding-agent adapter can express Nyan's `context`, `message_end`, `turn_end`, and `agent_before_settle` handlers over these hooks; that is task C.
+
+## Tool bridge mapping (task C, batch 2a)
+
+The bridge (`core/durable/extension-tools.ts`, `extension-adapter.ts`, `extension-host.ts`) maps each Nyan tool that the runner
+holds to a durable registration, installed in one extension `nyan.extension-tools` that the host replaces by name on every
+sync: after `session_start` and on each `refreshTools` (`pi.registerTool` after load calls it). `hidden` tools are not
+installed. Mapping tests: `test/durable-extension-tools-mapping.test.ts`; behaviour: `test/durable-extension-tools.test.ts`;
+MCP acceptance: `test/durable-mcp.test.ts`.
+
+### Field by field
+
+| Nyan (`ToolDefinition`) | Durable | Note |
+| --- | --- | --- |
+| `name` | `name` | |
+| `description` | `description` | |
+| `parameters` | `parameters` | legacy requires an object schema; kept |
+| `label` | dropped (R1) | the durable TUI shows no tool labels |
+| `promptSnippet`, `promptGuidelines` | extension `section` `extension_tools` | rendered for the tools the request offers, as legacy's system prompt does for custom tools |
+| `prepareArguments` | `prepareArguments` | same contract |
+| `executionMode` | `executionMode` | same values |
+| `outputSchema` | `structuredOutputSchema` | a result without `structuredContent` becomes an error result (legacy: text only). A deliberate change; the legacy docs already require the pair |
+| `exposure: "direct"` | default callers, not deferred | offered to the model; callable from tools |
+| `exposure: "model-only"` | `callers: ["model"]` | offered; scripts cannot call it |
+| `exposure: "codemode"` | `callers: ["tools"]` | never offered to the model; reached by codemode (2b) |
+| `exposure: "deferred"` | `deferred: true` | offered only after tool search loads it (2b) |
+| `exposure: "hidden"` | not installed | legacy registers it but nothing reaches it |
+| `defaultActive` (or the default for the exposure) and `setActiveTools()` | the active set; a tool that is not active is `deferred: true` | legacy's active set decides what is declared to the model. The host keeps the set: a tool enters it on first registration when `isActiveByDefault`, and `setActiveTools(names)` replaces it, then re-installs the tools |
+| `getAllTools()` | the runner's registered tools as `ToolInfo` (name, description, parameters, promptGuidelines, reachesTools, exposure, namespace, annotations, sourceInfo) | MCP's `tool_call` handler reads it to find the owner of a call; without it every MCP call on this path is blocked (found by the MCP test) |
+| `getActiveTools()` | the active set | MCP reads it when it activates codemode or tool search (2b) |
+| `namespace` | dropped (R5) | codemode and tool-search namespaces: batch 2b |
+| `annotations` | dropped (R6) | MCP hints for permission checks; no durable permission path yet |
+| `constrainedSampling` | dropped (R2) | no per-tool provider sampling in durable |
+| `prepareLoadout` | dropped (R7) | loadout of codemode and tool-search: batch 2b |
+| `reachesTools` | dropped (R8) | the `tool_call` wait for MCP servers a codemode call may reach: batch 2b |
+| `renderShell`, `renderCall`, `renderResult` | host side (R3) | rendering stays with the host; the durable TUI shows calls as text |
+| `replay` (durable only) | default `unsafe` | legacy has no replay notion; an interrupted call is not rerun |
+| `execute(toolCallId, params, signal, onUpdate, ctx)` | `execute(args, api, context)` | `toolCallId` = `api.callId`; `params` = `args`; `signal` = `context.abortSignal`; `onUpdate` text = `api.output` (partial details are not streamed, R9); `ctx` = the runner's context with `tools: []` and `executeTool` unavailable (R10, 2b) |
+| result `content` | `output` | |
+| result `details` | `details` | JSON only; a non-JSON value is dropped (R11) |
+| result `structuredContent` | `structuredOutput` | JSON only |
+| result `isError` | `isError` | |
+| result `usage` | `usage` | |
+| result `terminate` | `control.terminate` | |
+| `tool_call` event | `beforeTool` | `block` and `reason` map to `block`; a changed `input` (mutated in place) replaces the arguments when JSON; `terminate` on a block is dropped (R12) |
+| `tool_result` event | `afterTool` | `content`, `details` (JSON), `isError`, `structuredContent` replace the result; a result the handler does not change is kept |
+
+Both event members exist only when a loaded extension handles the event (`HookRunner.has()`, S5).
+
+### Decision 4 reduction list (what the durable path does not carry yet)
+
+| # | Item | Why | Owner batch |
+| --- | --- | --- | --- |
+| R1 | `label` | durable TUI shows no tool labels | none (decide with the TUI rewrite, N9) |
+| R2 | `constrainedSampling` | no durable equivalent | none |
+| R3 | renderers (`renderShell`, `renderCall`, `renderResult`) | rendering is host-side; the durable TUI prints tool calls as text | N9 |
+| R5 | `namespace` | needed by codemode and tool-search | 2b |
+| R6 | `annotations` | no durable permission path | later |
+| R7 | `prepareLoadout` | codemode and tool-search loadouts | 2b |
+| R8 | `reachesTools` | codemode and tool-search waits | 2b |
+| R9 | streamed `details` (partial) | final details only | later |
+| R10 | `ctx.tools`, `ctx.executeTool` | codemode | 2b |
+| R11 | non-JSON `details` or `structuredContent` | durable transcript holds JSON | none (the tool's own fault) |
+| R12 | `terminate` on a blocked call | durable has no batch-stop on block | later |
+| R13 | `before_agent_start` message and system-prompt changes | only the wait is applied in 2a (see below) | batch 3 |
+| R14 | `before_agent_start` prompt sections (MCP's `mcp_servers` section) | not rendered | batch 3 |
+| R15 | MCP's codemode and tool-search auto-activation | MCP looks for the nyan tools named `codemode` and `tool_search` with `reachesTools`; the durable versions are Harness tools, not runner tools, so they are not seen | 2b |
+
+### `before_agent_start`: the wait only (2a)
+
+MCP waits for its direct servers in `before_agent_start`, so a first prompt lists their tools (legacy behaviour, measured
+in the MCP test: without the wait the first request has no MCP tool). The durable controller therefore runs the handlers
+before it submits a prompt (`submit`, `submitAndWait`). The handlers' changes are not applied (R13, R14). The event fires
+for every submitted prompt, including ones that queue behind a running turn; A9 (once per prompt, not per tool round) is
+batch 3's to finish.
+
+### Spec 7.5 check (2a, before the bridge)
+
+`packages/durable/test/registry-late-install.test.ts`: an extension installed after `Harness.open` is in the next request's
+declared tools (`getCurrentTools` of the messages); a second install under the same name replaces the first; an install
+during a run is in that run's next request. All pass, so the bridge relies on the runtime behaviour, not on the spec alone.
+
+### Batch 2a notes
+
+- `disabledBuiltinExtensions` now always lists `codemode` and `tool-search`: their legacy tools call `ctx.executeTool`, which the
+  durable path does not provide. Batch 2b installs the durable versions in their place.
+- MCP's default exposure is `codemode`: on this path an MCP tool with the default is reachable only through codemode (2b).
+  The MCP test sets `exposure: "direct"` in `mcp.json`.
+
+
+## Batch 2b: codemode and tool search on the durable path
+
+Both are native tools, not runner tools: `core/durable/native-tools.ts` builds the durable extensions (`codemode`, `tool-search`), and the host installs them. While a native tool is active its extension is installed; while it is not, an empty extension of the same name replaces it, so the registry holds nothing of it. The active set is the same one the bridged tools use (`setActiveTools`, `getActiveTools`), so one model decides visibility for every tool:
+
+- `codemode` and `tool_search` are `model-only` and inactive by default, as the legacy definitions are.
+- `getAllTools()` reports both, whether active or not, with the metadata MCP reads (`exposure`, `reachesTools`). MCP's
+  auto-activation (unchanged) therefore sees them: its `setActiveTools([..., "codemode"])` installs the durable codemode.
+- A codemode-exposed tool is `callers: ["tools"]` while codemode is inactive, and callable by scripts once it is active.
+
+### Sandbox and worker slots
+
+- `createCodemodeSandbox()` is the legacy construction: wasm from `getQuickJSWasmPath()`, worker from `getCodemodeWorkerSpecifier()`
+  (both in `src/config.ts`), the memory limit, and `acquireWorker`. The slot counter and the limit are in
+  `core/codemode-workers.ts`, shared with the legacy extension, so one process holds at most two workers on either path.
+- The limit refuses a third script; it does not queue it. That is the current behaviour, kept (the owner's decision).
+- The sandbox is created on the first activation and closed with the session.
+
+### Namespaces
+
+Durable groups tools by name prefix. A tool's `namespace.name` is its prefix, so an MCP tool (`mcp__<server>__…`) is
+grouped under its server. Aliases are not used on this path. The namespaces are recomputed on every sync, so a server
+that connects later is listed.
+
+### Lifecycle boundary: `before_agent_start` (decision 4)
+
+- **Before a submitted prompt** (`submit`, `submitAndWait`): `before_agent_start` runs, and only its wait is applied. MCP's
+  wait for its direct servers belongs to the preparation of the first model request, so it runs before the prompt is
+  submitted. This is the only effect of the hook on this path.
+- **Not applied yet** (batch 3): the handlers' message and system-prompt changes (R13), and the prompt sections they add
+  (R14). The event fires for every submitted prompt, including ones that queue behind a running turn; A9 (once per
+  prompt, not per tool round) is batch 3's.
+- Nothing else in the request path waits on a handler before the first request.
+
+### Reduction list: status after 2b
+
+| # | Status |
+| --- | --- |
+| R5 `namespace` | done for codemode (name prefix; aliases not used) |
+| R7 `prepareLoadout` | not used by any extension that reaches this path yet; batch 3 |
+| R8 `reachesTools` | done for the native tools: `"all"` (see R19) |
+| R10 `ctx.tools`, `ctx.executeTool` | codemode scripts call the tools through the durable nested calls; `ctx.executeTool` for an extension tool stays unavailable |
+| R13, R14 | batch 3 (above) |
+| R15 MCP codemode and tool-search activation | done: MCP's logic is unchanged and sees both tools through `getAllTools` |
+| R16 `models` namespace, classifiers, and image generation in scripts | not connected: the durable codemode takes no model globals yet |
+| R17 `codemode.mode: "only"` | not connected: direct tools are always declared |
+| R18 tool search loads deferred tools only | legacy also loads `codemode`-exposed tools; durable does not, so they are reached through codemode only |
+| R19 `reachesTools` of codemode is `"all"` | legacy narrows it to the servers a script names; `"all"` makes MCP wait for every server before a codemode call (slower, not wrong) |
+| R20 `inlineBudget` | read from the settings at each sync; the legacy setting mode is not used |
+
+## Batch 3, first slice: host events, context, and the two state answers
+
+- **`agent_settled`** is emitted after every run that ends, whatever its outcome (`aborted` when the run was aborted). It
+  fires from the durable controller's settle path (`submit`, `submitAndWait`), which is where a run's terminal settlement is
+  known. Legacy's rule is unchanged: every settled run, including `unanswered` (the quota poll depends on it).
+- **`context`** maps to `transformConversation`. The handler sees the request without system messages, as legacy shows it.
+  The member returns a list only when one differs from the request: returning an unchanged list would still replace it,
+  which collapses the system entries into one leading message and changes the prompt-cache prefix.
+- **`ctx.isIdle()`** answers from a run counter in `runtime.ts` (false while a run is in flight). **`ctx.isProjectTrusted()`**
+  answers from the services' trust decision; when trust had to be resolved by the reload, the services now report the
+  decision that reload reached instead of the initial `false`.
+- Still open in batch 3: the slash commands and UI subset (decision 4), the `before_agent_start` message and system-prompt
+  changes (R13/R14), prompt templates, `agent_end`, `model_select`, and the real `ctx.sessionManager`. `agent_end` would
+  need the run's messages; it is not emitted yet (R21).

@@ -73,6 +73,8 @@ describe("provider call scope", () => {
 			abort: () => {},
 			compact: () => {},
 			onExtensionError: () => {},
+			installTools: () => {},
+			isIdle: () => true,
 		});
 		const member = host.providerHooks.beforeProviderRequest;
 		if (member === undefined) throw new Error("no before_provider_request member was registered");

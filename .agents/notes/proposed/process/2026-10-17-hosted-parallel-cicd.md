@@ -2,7 +2,7 @@
 
 Status: proposed
 
-Progress: implemented and merged for the pull-request path (3.48 min), nightly (9.1 min, self-hosted by decision), release (5.7 min, all hosted) and the daily scan. Still open: the OCR cadence ([own note](2026-10-18-ocr-review-cadence.md)), runner role labels, removing the six `nyan` runners, and rotating a token. The note moves to `implemented/` when those are decided.
+Progress: implemented and merged for the pull-request path (3.48 min), nightly (9.1 min, self-hosted by decision), release (5.7 min, all hosted), the daily scan and batched OCR. OCR is recorded in the [implemented OCR note](../../implemented/process/2026-10-18-ocr-review-cadence.md). Still open: runner role labels, removing the six `nyan` runners, and rotating a token.
 
 Supersedes the runner-placement and job-shape bullets of [Nyan quality workflow architecture](2026-10-17-quality-workflow.md). The impact classifier, fail-closed gate, risk tiers, model-data snapshot, artifact reuse, and "publish exactly the verified bytes" decisions stay.
 
@@ -60,7 +60,7 @@ Implemented for the pull-request path, with one correction to the original desig
 | native `linux-x64`, release prepare / check / tests / pack / binaries / smoke linux-x64 | self-hosted | `ubuntu-latest` | a release dry run took 9.9 min on the shared host and 5.7 min hosted; see Phase 3 results |
 | npm-audit (daily scan) | self-hosted | `ubuntu-latest` | the same scanners already run hosted in the pull-request path |
 | nightly | self-hosted | self-hosted (decided, not a pull-request path) | matrix widths 2 + 2 + 1 so six vitest pools do not share six cores |
-| OCR review | self-hosted | self-hosted | the dispatch service on `nyan-dev-02` is reachable only over the tailnet; cadence is an open question |
+| OCR review | self-hosted on every PR push | self-hosted in daily and release batches | the dispatch service on `nyan-dev-02` is tailnet-only; `gpt-6.1-sol` at service maximum `high`, advisory |
 
 **Correction: nothing urgent runs on the self-hosted pool.** The first attempt kept `prepare`,
 `supply-chain` and `deep-gate` on self-hosted on the theory that warm npm cache, local Docker images
@@ -460,7 +460,7 @@ What was built differs from the targets above in these ways:
 
 ### OCR review
 
-Cadence, model and effort are a separate decision and have their own note: [OCR review cadence](2026-10-18-ocr-review-cadence.md). Nothing about OCR changed in this work; it is advisory and not part of `Merge gate`.
+OCR now runs in daily and pre-release batches, using `gpt-6.1-sol` at the dispatch service's maximum `high` effort. It is advisory and not part of `Merge gate`; the implemented decision and verification are in [the OCR note](../../implemented/process/2026-10-18-ocr-review-cadence.md). Repository Issues are currently disabled, so each result is kept in the run summary and a 30-day artifact.
 
 ### Still unverified, and each needs a run before the corresponding claim is made
 
@@ -487,4 +487,4 @@ Owner actions that are not workflow edits:
 - Confirm the plan's concurrent-job limit in Settings -> Billing -> Actions, and record it in `policy.json`.
 - ~~Decide whether branch protection requires `Merge gate` alone or plus `Policy and impact`~~: `Merge gate` alone is set on `main` (strict, applies to admins, no force push, no deletion).
 - Decide whether to remove the six `nyan` self-hosted runner services. Nothing on a pull-request path uses them now; nightly and OCR still do. The original proposal was a one-week window first.
-- Decide the OCR cadence ([note](2026-10-18-ocr-review-cadence.md)).
+- ~~Decide the OCR cadence~~: implemented as daily and pre-release batches; see [the OCR note](../../implemented/process/2026-10-18-ocr-review-cadence.md).
