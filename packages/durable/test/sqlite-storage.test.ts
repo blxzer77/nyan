@@ -1,7 +1,6 @@
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import type { Context, JsonValue } from "@ny4n/chord";
 import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
 import { registerStorageConformance } from "@ny4n/durable/testing";
@@ -23,6 +22,7 @@ import type {
 	TaskRecord,
 } from "../src/types.ts";
 import { ROOT_CONVERSATION_ID } from "../src/types.ts";
+import { openInspector, type SqliteInspector } from "./fixtures/sqlite-inspector.ts";
 
 const context = BACKGROUND_CONTEXT;
 const openStorages = new Set<SqliteStorage>();
@@ -149,13 +149,13 @@ function pendingTask(id: TaskId<JsonValue>): TaskRecord<JsonValue, JsonValue, Js
 	};
 }
 
-function scalar(db: DatabaseSync, sql: string): number {
+function scalar(db: SqliteInspector, sql: string): number {
 	const row = db.prepare(sql).get() as { readonly value: number };
 	return row.value;
 }
 
 function revisionCount(path: string, documentId: DocumentId): number {
-	const db = new DatabaseSync(path, { readOnly: true });
+	const db = openInspector(path, { readOnly: true });
 	try {
 		const row = db
 			.prepare("SELECT count(*) AS count FROM document_revisions WHERE document_id = ?")
@@ -194,7 +194,7 @@ describe("Pico SqliteStorage", () => {
 		const { storage, path } = await createSqliteStorage();
 		await storage.close(context);
 		openStorages.delete(storage);
-		const database = new DatabaseSync(path);
+		const database = openInspector(path);
 		try {
 			database.exec("DELETE FROM durable_metadata");
 		} finally {
@@ -217,7 +217,7 @@ describe("Pico SqliteStorage", () => {
 			],
 			context,
 		);
-		const database = new DatabaseSync(path);
+		const database = openInspector(path);
 		try {
 			database.prepare("DELETE FROM document_revisions WHERE document_id = ?").run(id);
 		} finally {
@@ -292,7 +292,7 @@ describe("Pico SqliteStorage", () => {
 		(first.value.rows as Array<{ id: number }>)[0]!.id = 99;
 		expect((await storage.document(id, "current", context))?.value).toEqual(expected);
 
-		const database = new DatabaseSync(path);
+		const database = openInspector(path);
 		try {
 			database
 				.prepare(`UPDATE document_revisions SET content = ? WHERE document_id = ? AND seq =
@@ -330,7 +330,7 @@ describe("Pico SqliteStorage", () => {
 			2,
 		);
 
-		const db = new DatabaseSync(path, { readOnly: true });
+		const db = openInspector(path, { readOnly: true });
 		try {
 			expect(scalar(db, "SELECT count(*) AS value FROM entries")).toBe(1);
 			expect(scalar(db, "SELECT next_seq AS value FROM durable_metadata WHERE singleton = 1")).toBe(3);
@@ -384,7 +384,7 @@ describe("Pico SqliteStorage", () => {
 		const { storage, path } = await createSqliteStorage();
 		await storage.close(context);
 		openStorages.delete(storage);
-		const db = new DatabaseSync(path, { readOnly: true });
+		const db = openInspector(path, { readOnly: true });
 		try {
 			const plans = [
 				db
@@ -459,7 +459,7 @@ describe("Pico SqliteStorage", () => {
 			);
 		}
 		expect(revisionCount(path, id)).toBe(11);
-		const revisions = new DatabaseSync(path, { readOnly: true });
+		const revisions = openInspector(path, { readOnly: true });
 		try {
 			const row = revisions
 				.prepare(
@@ -509,7 +509,7 @@ describe("Pico SqliteStorage", () => {
 		}
 		const walPath = `${path}-wal`;
 		expect((await stat(walPath)).size).toBeLessThan(512 * 1024);
-		const observer = new DatabaseSync(path, { readOnly: true });
+		const observer = openInspector(path, { readOnly: true });
 		try {
 			expect(scalar(observer, "SELECT count(*) AS value FROM entries")).toBe(20);
 			await storage.close(context);
@@ -539,7 +539,7 @@ describe("Pico SqliteStorage", () => {
 			[{ type: "document.change", id, content: { kind: "base", version: 1, value: { text: "small" } } }],
 			context,
 		);
-		const before = new DatabaseSync(path, { readOnly: true });
+		const before = openInspector(path, { readOnly: true });
 		let pagesAfterDelete: number;
 		let freeAfterDelete: number;
 		try {
@@ -553,7 +553,7 @@ describe("Pico SqliteStorage", () => {
 			[{ type: "document.change", id, content: { kind: "base", version: 1, value: { text: large } } }],
 			context,
 		);
-		const after = new DatabaseSync(path, { readOnly: true });
+		const after = openInspector(path, { readOnly: true });
 		try {
 			const pagesAfterReuse = scalar(after, "SELECT page_count AS value FROM pragma_page_count() ");
 			const freeAfterReuse = scalar(after, "SELECT freelist_count AS value FROM pragma_freelist_count() ");
