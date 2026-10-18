@@ -64,8 +64,10 @@ env:
   # The only model this repository sends to OCR. The id is the one in packages/ai/scripts/generate-models.ts.
   OCR_MODEL: gpt-6.1-sol
   # The OCR command behind the dispatch service accepts low, medium and high; "xhigh" is rejected there
-  # (`--effort: invalid effort "xhigh": must be one of low, medium, high`, checked 2026-10-18). High is its maximum.
+  # (`--effort: invalid effort "xhigh": must be one of low, medium, high`, checked 2026-10-18). High is its maximum
+  # for the OCR dispatcher itself; the model's reasoning strength is sent separately below.
   OCR_EFFORT: high
+  OCR_REASONING_EFFORT: xhigh
 
 jobs:
   review:
@@ -180,16 +182,22 @@ jobs:
               print("::error::OCR_DISPATCH_TOKEN is not set")
               sys.exit(1)
           diff = open(os.path.join(os.environ["RUNNER_TEMP"], "range.diff"), encoding="utf-8").read()
-          payload = json.dumps({
+          payload_data = {
               "repo": os.environ["REPO"],
               "sha": os.environ["SHA"],
               "base_sha": os.environ["BASE"],
               "diff": diff,
               "model": os.environ["OCR_MODEL"],
+              # `effort` is the dispatch service's accepted low/medium/high setting. This separate field is the
+              # model's OpenAI Responses reasoning effort; it is deliberately xhigh for gpt-6.1-sol.
               "effort": os.environ["OCR_EFFORT"],
               # 0 = no review time limit; the job's timeout-minutes decides how long it may run.
               "timeout_minutes": 0,
-          }).encode()
+          }
+          reasoning = os.environ.get("OCR_REASONING_EFFORT", "")
+          if reasoning and reasoning != "none":
+              payload_data["reasoning_effort"] = reasoning
+          payload = json.dumps(payload_data).encode()
           req = urllib.request.Request(
               os.environ["URL"].rstrip("/") + "/review",
               data=payload,
@@ -249,12 +257,12 @@ jobs:
               core.setFailed('the rendered review lacks its marker; refusing to report it');
               return;
             }
-            const { KIND, BASE, HEAD, COMMITS, FILES, LINES, NOTE, OCR_MODEL, OCR_EFFORT } = process.env;
+            const { KIND, BASE, HEAD, COMMITS, FILES, LINES, NOTE, OCR_MODEL, OCR_EFFORT, OCR_REASONING_EFFORT } = process.env;
             const range = `${BASE.slice(0, 9)}..${HEAD.slice(0, 9)}`;
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             const header = [
               `**Range:** \`${range}\` (${KIND}), ${COMMITS} commits, ${FILES} files, ${LINES} diff lines`,
-              `**Review:** \`${OCR_MODEL}\` at \`${OCR_EFFORT}\`. Advisory: nothing here blocks a merge or a release until a reproduction or a rule confirms it.`,
+              `**Review:** \`${OCR_MODEL}\`, model reasoning \`${OCR_REASONING_EFFORT}\`, dispatcher effort \`${OCR_EFFORT}\`. Advisory: nothing here blocks a merge or a release until a reproduction or a rule confirms it.`,
               `**Compare:** ${context.serverUrl}/${owner}/${repo}/compare/${BASE}...${HEAD}`,
               `**Run:** ${runUrl}`,
               ...(NOTE ? ['', `> **Note:** ${NOTE}`] : []),
