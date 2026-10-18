@@ -97,5 +97,7 @@ These variables are read by Nyan itself:
 | `NYAN_TUI_ESC_TIMEOUT` | How long to wait after a lone ESC before treating it as Escape, in milliseconds; defaults to `100` over SSH and `10` otherwise. Increase if Alt-key input is misread as Escape |
 | `VISUAL`, `EDITOR` | External editor fallback when `externalEditor` is unset |
 | `HTTP_PROXY`, `HTTPS_PROXY` | Proxy outbound HTTP requests. On Node, Nyan installs an undici proxy agent (a plain-HTTP origin goes through a CONNECT tunnel). In the standalone executable Bun's own fetch reads these variables; which requests it proxies and in which form is Bun's behavior and can differ per platform |
+| `NODE_EXTRA_CA_CERTS` | Path to a PEM file of extra certificate authorities to trust, for a private CA or a TLS-inspecting proxy. Read once, when the process starts. Works on Node and in the standalone executable |
+| `NODE_OPTIONS=--use-system-ca` | Makes Node trust the operating system certificate store. The standalone executable (Bun) does not read `NODE_OPTIONS`: Nyan prints a warning once at start-up when this is set there, and the system store stays unused. Set `NODE_USE_SYSTEM_CA=1` or `BUN_OPTIONS=--use-system-ca` before starting Nyan instead, or use `NODE_EXTRA_CA_CERTS`. Checked on Windows only; where it has no effect, `NODE_EXTRA_CA_CERTS` is the supported way |
 
 Provider credentials such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and provider-specific configuration are listed in [Providers](providers.md#use-an-api-key-from-the-environment).
