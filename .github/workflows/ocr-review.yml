@@ -63,7 +63,9 @@ permissions:
 env:
   # The only model this repository sends to OCR. The id is the one in packages/ai/scripts/generate-models.ts.
   OCR_MODEL: gpt-6.1-sol
-  OCR_EFFORT: xhigh
+  # The OCR command behind the dispatch service accepts low, medium and high; "xhigh" is rejected there
+  # (`--effort: invalid effort "xhigh": must be one of low, medium, high`, checked 2026-10-18). High is its maximum.
+  OCR_EFFORT: high
 
 jobs:
   review:
