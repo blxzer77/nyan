@@ -46,6 +46,13 @@ describe("warnIfSystemCaIgnoredByBun", () => {
 		expect(warn).toHaveBeenCalledWith(SYSTEM_CA_IGNORED_MESSAGE);
 	});
 
+	it("says what to set, in the words the maintainers chose", () => {
+		expect(SYSTEM_CA_IGNORED_MESSAGE).toBe(
+			"NODE_OPTIONS=--use-system-ca does not enable the OS certificate store under Bun or compiled Bun binaries. " +
+				"Set NODE_USE_SYSTEM_CA=1, use BUN_OPTIONS=--use-system-ca, or set NODE_EXTRA_CA_CERTS to a CA file.",
+		);
+	});
+
 	it("names the variables that work", () => {
 		expect(SYSTEM_CA_IGNORED_MESSAGE).toContain("NODE_USE_SYSTEM_CA=1");
 		expect(SYSTEM_CA_IGNORED_MESSAGE).toContain("BUN_OPTIONS=--use-system-ca");

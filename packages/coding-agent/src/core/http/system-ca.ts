@@ -29,8 +29,8 @@ export function systemCaIgnoredByBun(env: NodeJS.ProcessEnv, execArgv: readonly 
 }
 
 export const SYSTEM_CA_IGNORED_MESSAGE =
-	"NODE_OPTIONS=--use-system-ca has no effect under Bun, so the operating system certificate store is not used. " +
-	"Set NODE_USE_SYSTEM_CA=1 or BUN_OPTIONS=--use-system-ca before starting, or point NODE_EXTRA_CA_CERTS at the CA file.";
+	"NODE_OPTIONS=--use-system-ca does not enable the OS certificate store under Bun or compiled Bun binaries. " +
+	"Set NODE_USE_SYSTEM_CA=1, use BUN_OPTIONS=--use-system-ca, or set NODE_EXTRA_CA_CERTS to a CA file.";
 
 let warned = false;
 
