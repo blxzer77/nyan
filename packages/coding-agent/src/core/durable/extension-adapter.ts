@@ -1,5 +1,6 @@
 import type { AsyncLocalStorage } from "node:async_hooks";
-import type { Api, Model } from "@ny4n/ai";
+import type { AgentMessage } from "@ny4n/agent-core";
+import type { Api, Message, Model } from "@ny4n/ai";
 import {
 	defineExtension,
 	type Extension,
@@ -39,6 +40,19 @@ export function inProviderCall<T>(
 }
 
 /**
+ * The conversation message a handler returned. `context` may also yield custom messages, which the durable request cannot
+ * carry, so they are dropped.
+ */
+function isPlainMessage(message: AgentMessage): message is Message {
+	return (
+		message.role === "user" ||
+		message.role === "assistant" ||
+		message.role === "toolResult" ||
+		message.role === "system"
+	);
+}
+
+/**
  * The generation-hook members that carry the Nyan handlers. A member exists only when a loaded extension handles its
  * event, so an installation without such handlers costs nothing on the request path: the hook members switch provider
  * callbacks on, see `HookRunner.has()`.
@@ -48,6 +62,16 @@ export function inProviderCall<T>(
  */
 export function createProviderHooks(runner: ExtensionRunner, scope: ProviderCallScope): Partial<GenerationHooks> {
 	const members: Partial<GenerationHooks> = {};
+
+	if (runner.hasHandlers("context")) {
+		members.transformConversation = async ({ messages }) => {
+			const before = JSON.stringify(messages);
+			const next = (await runner.emitContext([...messages])).filter(isPlainMessage);
+			// Returning an unchanged list would still replace the request, which collapses the system entries into one
+			// leading message and changes the prompt-cache prefix; an unchanged result therefore stays undefined.
+			return JSON.stringify(next) === before ? undefined : { messages: next };
+		};
+	}
 
 	if (runner.hasHandlers("before_provider_request")) {
 		members.beforeProviderRequest = async ({ payload, model }, _api, context) =>

@@ -46,6 +46,8 @@ export interface DurableServicesOptions {
 export interface DurableServices extends AgentSessionServices {
 	/** Diagnostics from loading and project trust, as the legacy runtime reports them. */
 	readonly diagnostics: AgentSessionRuntimeDiagnostic[];
+	/** Whether project-local resources are trusted for this directory, as `ctx.isProjectTrusted()` answers it. */
+	readonly projectTrusted: boolean;
 }
 
 /**
@@ -61,10 +63,12 @@ export async function createDurableServices(options: DurableServicesOptions): Pr
 	// Project trust is decided by the extensions' `project_trust` handlers, then the stored decision, then the prompt.
 	// Until it is decided, project settings stay off, as in the legacy runtime (main.ts createRuntime).
 	const resolveTrust = resources.trustOverride === undefined && trustRequired;
-	const projectTrusted = resolveTrust
+	const initiallyTrusted = resolveTrust
 		? false
 		: (resources.trustOverride ?? (!trustRequired || trustStore.get(cwd) === true));
-	const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted });
+	// The decision the reload for project trust reached, when one ran; without it the reloaded resources stay untrusted.
+	let decidedTrust: boolean | undefined;
+	const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: initiallyTrusted });
 
 	const services = await createAgentSessionServices({
 		cwd,
@@ -74,15 +78,18 @@ export async function createDurableServices(options: DurableServicesOptions): Pr
 		extensionFlagValues: options.extensionFlagValues,
 		resourceLoaderReloadOptions: resolveTrust
 			? {
-					resolveProjectTrust: async ({ extensionsResult }: { extensionsResult: LoadExtensionsResult }) =>
-						resolveProjectTrusted({
+					resolveProjectTrust: async ({ extensionsResult }: { extensionsResult: LoadExtensionsResult }) => {
+						const trusted = await resolveProjectTrusted({
 							cwd,
 							trustStore,
 							defaultProjectTrust: settingsManager.getDefaultProjectTrust(),
 							extensionsResult,
 							projectTrustContext: options.projectTrustContext,
 							onExtensionError: (message) => trustDiagnostics.push({ type: "warning", message }),
-						}),
+						});
+						decidedTrust = trusted;
+						return trusted;
+					},
 				}
 			: undefined,
 		resourceLoaderOptions: {
@@ -120,7 +127,7 @@ export async function createDurableServices(options: DurableServicesOptions): Pr
 			message: `Extension package "${path}": ${warning}`,
 		})),
 	];
-	return { ...services, diagnostics };
+	return { ...services, diagnostics, projectTrusted: resolveTrust ? (decidedTrust ?? false) : initiallyTrusted };
 }
 
 /**
