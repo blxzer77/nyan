@@ -396,3 +396,18 @@ that connects later is listed.
 | R18 tool search loads deferred tools only | legacy also loads `codemode`-exposed tools; durable does not, so they are reached through codemode only |
 | R19 `reachesTools` of codemode is `"all"` | legacy narrows it to the servers a script names; `"all"` makes MCP wait for every server before a codemode call (slower, not wrong) |
 | R20 `inlineBudget` | read from the settings at each sync; the legacy setting mode is not used |
+
+## Batch 3, first slice: host events, context, and the two state answers
+
+- **`agent_settled`** is emitted after every run that ends, whatever its outcome (`aborted` when the run was aborted). It
+  fires from the durable controller's settle path (`submit`, `submitAndWait`), which is where a run's terminal settlement is
+  known. Legacy's rule is unchanged: every settled run, including `unanswered` (the quota poll depends on it).
+- **`context`** maps to `transformConversation`. The handler sees the request without system messages, as legacy shows it.
+  The member returns a list only when one differs from the request: returning an unchanged list would still replace it,
+  which collapses the system entries into one leading message and changes the prompt-cache prefix.
+- **`ctx.isIdle()`** answers from a run counter in `runtime.ts` (false while a run is in flight). **`ctx.isProjectTrusted()`**
+  answers from the services' trust decision; when trust had to be resolved by the reload, the services now report the
+  decision that reload reached instead of the initial `false`.
+- Still open in batch 3: the slash commands and UI subset (decision 4), the `before_agent_start` message and system-prompt
+  changes (R13/R14), prompt templates, `agent_end`, `model_select`, and the real `ctx.sessionManager`. `agent_end` would
+  need the run's messages; it is not emitted yet (R21).
