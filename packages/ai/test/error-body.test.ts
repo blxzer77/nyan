@@ -182,6 +182,22 @@ describe("normalizeProviderError", () => {
 	});
 });
 
+describe("normalizeProviderError certificate message", () => {
+	it("appends the certificate code, so the message is not always the SDK's own", () => {
+		const error = new TypeError("fetch failed", {
+			cause: Object.assign(new Error("certificate has expired"), { code: "CERT_HAS_EXPIRED" }),
+		});
+		expect(normalizeProviderError(error).message).toBe("fetch failed (CERT_HAS_EXPIRED)");
+	});
+
+	it("leaves the message of a failure that is not a certificate failure unchanged", () => {
+		const error = new TypeError("fetch failed", {
+			cause: Object.assign(new Error("refused"), { code: "ECONNREFUSED" }),
+		});
+		expect(normalizeProviderError(error).message).toBe("fetch failed");
+	});
+});
+
 describe("formatProviderError", () => {
 	it("surfaces status and body without a prefix", () => {
 		const norm = normalizeProviderError(

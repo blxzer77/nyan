@@ -1,3 +1,4 @@
+import { transportErrorCodes, transportErrorMessages } from "@ny4n/ai/utils/transport-error";
 import { compare, valid } from "semver";
 import { PACKAGE_NAME } from "../config.ts";
 import { fetchWithRetry } from "./management-http.ts";
@@ -26,23 +27,16 @@ export interface LatestNyanRelease {
 	note?: string;
 }
 
-/** Include useful errno details hidden behind Node's generic "fetch failed" error. */
+/**
+ * Include useful errno details hidden behind the generic "fetch failed" error. The codes come from the error and its
+ * causes on either runtime (Node keeps them on the cause, Bun on the error); a code already in the message is not repeated.
+ */
 export function formatVersionCheckError(error: unknown): string {
 	const rootMessage = error instanceof Error && error.message ? error.message : String(error);
-	const cause = error instanceof Error ? error.cause : undefined;
-	const causes = cause instanceof AggregateError ? cause.errors : cause === undefined ? [] : [cause];
-	const codes = causes
-		.map((value) =>
-			typeof value === "object" && value !== null && "code" in value && typeof value.code === "string"
-				? value.code
-				: undefined,
-		)
-		.filter((code): code is string => code !== undefined);
-
-	if (codes.length > 0) return `${rootMessage} (${[...new Set(codes)].join(", ")})`;
-	const causeMessage = causes.find(
-		(value): value is Error => value instanceof Error && Boolean(value.message),
-	)?.message;
+	const codes = [...new Set(transportErrorCodes(error))].filter((code) => !rootMessage.includes(code));
+	if (codes.length > 0) return `${rootMessage} (${codes.join(", ")})`;
+	// No code anywhere on the chain: name the first underlying message, including the members of an AggregateError.
+	const causeMessage = transportErrorMessages(error).find((message) => message !== rootMessage);
 	return causeMessage ? `${rootMessage} (cause: ${causeMessage})` : rootMessage;
 }
 

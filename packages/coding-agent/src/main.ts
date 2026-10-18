@@ -45,6 +45,7 @@ import {
 } from "./core/agent-session-services.ts";
 import { formatNoModelsAvailableMessage } from "./core/auth-guidance.ts";
 import { AuthStorage, ReadOnlyAuthStorage } from "./core/auth-storage.ts";
+import { DurableStartupError, type OpenDurableOptions } from "./core/durable/runtime.ts";
 import { exportFromFile } from "./core/export-html/index.ts";
 import type { InlineExtension } from "./core/extensions/types.ts";
 import { applyHttpProxySettings, configureHttpDispatcher } from "./core/http-dispatcher.ts";
@@ -155,23 +156,65 @@ function canRunDurableProductPath(parsed: Args, allowMultipleMessages = false): 
 		parsed.excludeTools === undefined &&
 		parsed.noTools !== true &&
 		parsed.noBuiltinTools !== true &&
-		parsed.systemPrompt === undefined &&
-		parsed.appendSystemPrompt === undefined &&
-		parsed.extensions === undefined &&
-		parsed.noExtensions !== true &&
-		parsed.noMcp !== true &&
-		parsed.noSkills !== true &&
-		parsed.skills === undefined &&
-		parsed.promptTemplates === undefined &&
-		parsed.noPromptTemplates !== true &&
-		parsed.themes === undefined &&
-		parsed.noThemes !== true &&
-		parsed.noContextFiles !== true &&
 		parsed.tuiMode === undefined &&
-		parsed.projectTrustOverride === undefined &&
 		parsed.fileArgs.length === 0 &&
 		(allowMultipleMessages || parsed.messages.length <= 1)
 	);
+}
+
+/** Prints a warning or an error from the durable path's startup, as the legacy path prints its startup diagnostics. */
+function printDurableDiagnostic(diagnostic: AgentSessionRuntimeDiagnostic): void {
+	const color = diagnostic.type === "error" ? chalk.red : chalk.yellow;
+	console.error(color(`${diagnostic.type === "error" ? "Error" : "Warning"}: ${diagnostic.message}`));
+}
+
+/** Runs one durable command. A broken extension or resource stops it with each error printed, as the legacy path does. */
+async function runDurableCommand<T>(run: () => Promise<T>): Promise<T> {
+	try {
+		return await run();
+	} catch (error) {
+		if (!(error instanceof DurableStartupError)) throw error;
+		for (const diagnostic of error.diagnostics) printDurableDiagnostic(diagnostic);
+		process.exit(1);
+	}
+}
+
+/** The durable path's options from the command line: model, resource flags, project trust, and extension flags. */
+function durableOptions(
+	parsed: Args,
+	cwd: string,
+	mode: AppMode,
+	settingsManager: SettingsManager,
+	extensionFactories: readonly InlineExtension[],
+): OpenDurableOptions {
+	return {
+		cwd,
+		continueSession: parsed.continue === true,
+		...(parsed.provider === undefined && parsed.model === undefined
+			? {}
+			: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
+		...(parsed.thinking === undefined ? {} : { thinkingLevel: parsed.thinking }),
+		...(parsed.apiKey === undefined ? {} : { apiKey: parsed.apiKey }),
+		resources: {
+			extensionPaths: resolveCliPaths(cwd, parsed.extensions),
+			skillPaths: resolveCliPaths(cwd, parsed.skills),
+			promptTemplatePaths: resolveCliPaths(cwd, parsed.promptTemplates),
+			themePaths: resolveCliPaths(cwd, parsed.themes),
+			noExtensions: parsed.noExtensions,
+			noMcp: parsed.noMcp,
+			noSkills: parsed.noSkills,
+			noPromptTemplates: parsed.noPromptTemplates,
+			noThemes: parsed.noThemes,
+			noContextFiles: parsed.noContextFiles,
+			systemPrompt: parsed.systemPrompt,
+			appendSystemPrompt: parsed.appendSystemPrompt,
+			trustOverride: parsed.projectTrustOverride,
+		},
+		extensionFactories,
+		extensionFlagValues: parsed.unknownFlags,
+		projectTrustContext: createProjectTrustContext({ cwd, mode, settingsManager, hasUI: mode === "interactive" }),
+		...(mode === "interactive" ? {} : { onDiagnostic: printDurableDiagnostic }),
+	};
 }
 
 async function runAuthCommand(args: string[], extensionFactories?: InlineExtension[]): Promise<boolean> {
@@ -737,50 +780,34 @@ export async function main(args: string[], options?: MainOptions) {
 		canRunDurableProductPath(parsed)
 	) {
 		const initial = await prepareInitialMessage(parsed);
-		await runDurableInteractive({
-			cwd,
-			continueSession: parsed.continue === true,
-			settingsManager: startupSettingsManager,
-			...(parsed.provider === undefined && parsed.model === undefined
-				? {}
-				: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
-			...(parsed.thinking === undefined ? {} : { thinkingLevel: parsed.thinking }),
-			...(parsed.apiKey === undefined ? {} : { apiKey: parsed.apiKey }),
-			...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
-		});
+		await runDurableCommand(() =>
+			runDurableInteractive({
+				...durableOptions(parsed, cwd, "interactive", startupSettingsManager, extensionFactories),
+				...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
+			}),
+		);
 		stopThemeWatcher();
 		return;
 	}
 
 	if (appMode === "rpc" && canRunDurableProductPath(parsed, true)) {
-		await runDurableRpc({
-			cwd,
-			settingsManager: startupSettingsManager,
-			...(parsed.provider === undefined && parsed.model === undefined
-				? {}
-				: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
-			...(parsed.thinking === undefined ? {} : { thinkingLevel: parsed.thinking }),
-			...(parsed.apiKey === undefined ? {} : { apiKey: parsed.apiKey }),
-		});
+		await runDurableCommand(() =>
+			runDurableRpc(durableOptions(parsed, cwd, "rpc", startupSettingsManager, extensionFactories)),
+		);
 		return;
 	}
 
 	if (appMode === "json" && canRunDurableProductPath(parsed, true)) {
 		const stdinContent = await readPipedStdin();
 		const initial = await prepareInitialMessage(parsed, stdinContent);
-		const exitCode = await runDurableJson({
-			cwd,
-			continueSession: parsed.continue === true,
-			settingsManager: startupSettingsManager,
-			...(parsed.provider === undefined && parsed.model === undefined
-				? {}
-				: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
-			...(parsed.thinking === undefined ? {} : { thinkingLevel: parsed.thinking }),
-			...(parsed.apiKey === undefined ? {} : { apiKey: parsed.apiKey }),
-			...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
-			...(initial.initialImages === undefined ? {} : { initialImages: initial.initialImages }),
-			messages: parsed.messages,
-		});
+		const exitCode = await runDurableCommand(() =>
+			runDurableJson({
+				...durableOptions(parsed, cwd, "json", startupSettingsManager, extensionFactories),
+				...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
+				...(initial.initialImages === undefined ? {} : { initialImages: initial.initialImages }),
+				messages: parsed.messages,
+			}),
+		);
 		stopThemeWatcher();
 		if (exitCode !== 0) process.exitCode = exitCode;
 		return;
@@ -789,19 +816,14 @@ export async function main(args: string[], options?: MainOptions) {
 	if (appMode === "print" && parsed.mode !== "json" && canRunDurableProductPath(parsed, true)) {
 		const stdinContent = await readPipedStdin();
 		const initial = await prepareInitialMessage(parsed, stdinContent);
-		const exitCode = await runDurablePrint({
-			cwd,
-			continueSession: parsed.continue === true,
-			settingsManager: startupSettingsManager,
-			...(parsed.provider === undefined && parsed.model === undefined
-				? {}
-				: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
-			...(parsed.thinking === undefined ? {} : { thinkingLevel: parsed.thinking }),
-			...(parsed.apiKey === undefined ? {} : { apiKey: parsed.apiKey }),
-			...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
-			...(initial.initialImages === undefined ? {} : { initialImages: initial.initialImages }),
-			messages: parsed.messages,
-		});
+		const exitCode = await runDurableCommand(() =>
+			runDurablePrint({
+				...durableOptions(parsed, cwd, "print", startupSettingsManager, extensionFactories),
+				...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
+				...(initial.initialImages === undefined ? {} : { initialImages: initial.initialImages }),
+				messages: parsed.messages,
+			}),
+		);
 		stopThemeWatcher();
 		if (exitCode !== 0) process.exitCode = exitCode;
 		return;

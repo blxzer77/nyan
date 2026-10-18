@@ -1,6 +1,6 @@
 import { defineExtension, type PromptInput, section } from "@ny4n/durable";
 import { getAgentDir } from "../../config.ts";
-import { loadProjectContextFiles } from "../../core/resource-loader.ts";
+import { loadProjectContextFiles, type ResourceLoader } from "../../core/resource-loader.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { loadSkills, type Skill } from "../../core/skills.ts";
 import { buildSystemPromptSections } from "../../core/system-prompt.ts";
@@ -19,21 +19,41 @@ const CONTRIBUTIONS = {
 /** nyan's section order; `buildSystemPromptSections()` omits the ones without content. */
 const KEYS = ["preamble", "tools", "rules", "docs", "project_context", "skills", "cwd"] as const;
 
+/** What the prompt takes from the resources of one directory. */
+interface PromptResources {
+	readonly contextFiles: { path: string; content: string }[];
+	readonly skills: Skill[];
+	/** The loader's system prompt override and appended text; the session's own directory only. */
+	readonly customPrompt?: string;
+	readonly appendSystemPrompt?: string;
+}
+
 /**
  * nyan's system prompt as one extension: the sections of `buildSystemPromptSections()` for the request's tools and the
- * conversation's directory. Context files and skills load once per directory, like nyan at startup.
+ * conversation's directory. For the session's directory the resource loader supplies context files, skills, and the
+ * system prompt options, exactly as the legacy path reads them. Other directories load their own context files and
+ * skills once, like nyan at startup.
  */
-export function createNyanPrompt(settings: SettingsManager, fallbackCwd: string) {
-	const resources = new Map<string, { contextFiles: { path: string; content: string }[]; skills: Skill[] }>();
-	const load = (cwd: string) => {
-		let found = resources.get(cwd);
+export function createNyanPrompt(settings: SettingsManager, fallbackCwd: string, loader?: ResourceLoader) {
+	const loaded = new Map<string, PromptResources>();
+	const load = (cwd: string): PromptResources => {
+		if (cwd === fallbackCwd && loader !== undefined) {
+			const appendSystemPrompt = loader.getAppendSystemPrompt();
+			return {
+				contextFiles: loader.getAgentsFiles().agentsFiles,
+				skills: loader.getSkills().skills,
+				customPrompt: loader.getSystemPrompt(),
+				appendSystemPrompt: appendSystemPrompt.length > 0 ? appendSystemPrompt.join("\n\n") : undefined,
+			};
+		}
+		let found = loaded.get(cwd);
 		if (found === undefined) {
 			const agentDir = getAgentDir();
 			found = {
 				contextFiles: loadProjectContextFiles({ cwd, agentDir }),
 				skills: loadSkills({ cwd, agentDir, skillPaths: settings.getSkillPaths(), includeDefaults: true }).skills,
 			};
-			resources.set(cwd, found);
+			loaded.set(cwd, found);
 		}
 		return found;
 	};

@@ -6,6 +6,7 @@ import { CodingTools } from "@ny4n/durable/tools";
 import { applyHttpProxySettings, configureHttpDispatcher } from "../../core/http-dispatcher.ts";
 import { findInitialModel, resolveCliModel } from "../../core/model-resolver.ts";
 import type { ModelRuntime } from "../../core/model-runtime.ts";
+import type { ResourceLoader } from "../../core/resource-loader.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { createNyanPrompt } from "./prompt.ts";
 
@@ -56,11 +57,15 @@ export function createHarnessSettings(
 	};
 }
 
-/** A registry with nyan's coding tools and system prompt. */
-export function createCodingRegistry(settingsManager: SettingsManager, cwd: string): Registry {
+/** A registry with nyan's coding tools and system prompt, built from the session's resource loader. */
+export function createCodingRegistry(
+	settingsManager: SettingsManager,
+	cwd: string,
+	resources?: ResourceLoader,
+): Registry {
 	const registry = createRegistry();
 	registry.install(CodingTools);
-	registry.install(createNyanPrompt(settingsManager, cwd));
+	registry.install(createNyanPrompt(settingsManager, cwd, resources));
 	return registry;
 }
 

@@ -1,27 +1,20 @@
 import { join } from "node:path";
 import type { AgentMessage } from "@ny4n/agent-core";
-import { getSupportedThinkingLevels, type ModelThinkingLevel } from "@ny4n/ai";
+import { getSupportedThinkingLevels } from "@ny4n/ai";
 import type { AgentState, LiveState, UsageState } from "@ny4n/durable";
-import { type DurableModelSelection, type OpenDurableResult, openDurable } from "../../core/durable/runtime.ts";
+import { type OpenDurableOptions, type OpenDurableResult, openDurable } from "../../core/durable/runtime.ts";
 import {
 	flushRawStdout,
 	takeOverStdout,
 	waitForRawStdoutBackpressure,
 	writeRawStdout,
 } from "../../core/output-guard.ts";
-import type { SettingsManager } from "../../core/settings-manager.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "../rpc/jsonl.ts";
 import type { RpcCommand, RpcResponse, RpcSessionState } from "../rpc/rpc-types.ts";
 import { DurableJsonEventAdapter } from "./json-events.ts";
 
-export interface DurableRpcOptions {
-	readonly cwd: string;
-	readonly settingsManager: SettingsManager;
-	readonly model?: DurableModelSelection;
-	readonly thinkingLevel?: ModelThinkingLevel;
-	readonly apiKey?: string;
-}
+export type DurableRpcOptions = OpenDurableOptions;
 
 /** Run the durable product path with the JSON-lines RPC protocol. */
 export async function runDurableRpc(options: DurableRpcOptions): Promise<never> {
@@ -65,15 +58,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 
 	const replaceSession = async (continueSession: boolean): Promise<void> => {
 		await durable.close();
-		durable = await openDurable({
-			cwd: options.cwd,
-			continueSession,
-			settingsManager: options.settingsManager,
-			...(options.model === undefined ? {} : { model: options.model }),
-			...(options.thinkingLevel === undefined ? {} : { thinkingLevel: options.thinkingLevel }),
-			...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
-			eventStream: true,
-		});
+		durable = await openDurable({ ...options, continueSession, eventStream: true });
 		bindEvents();
 	};
 

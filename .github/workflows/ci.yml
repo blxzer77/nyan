@@ -134,8 +134,7 @@ jobs:
         run: |
           echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
           if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            sudo apt-get update
-            sudo apt-get install -y ripgrep fd-find
+            bash .github/scripts/apt-install.sh ripgrep fd-find
           fi
           echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
 
@@ -169,12 +168,21 @@ jobs:
         run: |
           echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
           if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            sudo apt-get update
-            sudo apt-get install -y ripgrep fd-find
+            bash .github/scripts/apt-install.sh ripgrep fd-find
           fi
 
       - name: Restore workspace
+        id: restore
+        # The download takes about 15 s. One of sixty stalled for over fifteen minutes with the process idle, and a stalled
+        # download cannot be told from a slow one, so bound it and try once more instead of holding the job.
         uses: ./.github/actions/restore-workspace
+        timeout-minutes: 3
+        continue-on-error: true
+
+      - name: Restore workspace (retry)
+        if: steps.restore.outcome != 'success'
+        uses: ./.github/actions/restore-workspace
+        timeout-minutes: 5
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -225,12 +233,21 @@ jobs:
         run: |
           echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
           if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            sudo apt-get update
-            sudo apt-get install -y ripgrep fd-find
+            bash .github/scripts/apt-install.sh ripgrep fd-find
           fi
 
       - name: Restore workspace
+        id: restore
+        # The download takes about 15 s. One of sixty stalled for over fifteen minutes with the process idle, and a stalled
+        # download cannot be told from a slow one, so bound it and try once more instead of holding the job.
         uses: ./.github/actions/restore-workspace
+        timeout-minutes: 3
+        continue-on-error: true
+
+      - name: Restore workspace (retry)
+        if: steps.restore.outcome != 'success'
+        uses: ./.github/actions/restore-workspace
+        timeout-minutes: 5
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -394,7 +411,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Restore workspace
+        id: restore
+        # The download takes about 15 s. One of sixty stalled for over fifteen minutes with the process idle, and a stalled
+        # download cannot be told from a slow one, so bound it and try once more instead of holding the job.
         uses: ./.github/actions/restore-workspace
+        timeout-minutes: 3
+        continue-on-error: true
+
+      - name: Restore workspace (retry)
+        if: steps.restore.outcome != 'success'
+        uses: ./.github/actions/restore-workspace
+        timeout-minutes: 5
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
