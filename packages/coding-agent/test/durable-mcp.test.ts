@@ -9,6 +9,7 @@ import {
 	fauxProvider,
 	fauxText,
 	fauxToolCall,
+	Type,
 } from "@ny4n/ai";
 import { getCurrentTools } from "@ny4n/ai/utils/transcript";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -129,5 +130,83 @@ test("an MCP tool is offered, runs in a local stdio child, and the child exits w
 	}
 	if (pid === undefined) throw new Error("the MCP child did not record its pid");
 	// Closing the session shuts the MCP client down, which ends the stdio child.
+	expect(await exited(pid)).toBe(true);
+});
+
+test("an MCP tool with the default exposure is reached through codemode: MCP activates codemode, and a script calls the tool", async () => {
+	const pidFile = join(home, "mcp-probe-codemode.pid");
+	await writeFile(
+		join(agentDir, "mcp.json"),
+		JSON.stringify({ mcpServers: { probe: { command: process.execPath, args: [wrapper, pidFile] } } }),
+	);
+	const faux = fauxProvider();
+	const offered: string[][] = [];
+	const messages: string[] = [];
+	const record =
+		(answer: () => AssistantMessage): FauxResponseStep =>
+		(context): AssistantMessage => {
+			offered.push(getCurrentTools(context.messages).map((tool) => tool.name));
+			messages.push(JSON.stringify(context.messages));
+			return answer();
+		};
+	faux.setResponses([
+		record(() => fauxAssistantMessage([fauxToolCall("wait", {}, { id: "w1" })], { stopReason: "toolUse" })),
+		record(() =>
+			fauxAssistantMessage(
+				[
+					fauxToolCall(
+						"codemode",
+						{ code: "text(await tools.mcp__probe__echo({ text: 'via-codemode' }));" },
+						{ id: "c1" },
+					),
+				],
+				{ stopReason: "toolUse" },
+			),
+		),
+		record(() => fauxAssistantMessage([fauxText("done")])),
+	]);
+	const model = faux.getModel();
+	const provider: InlineExtension = (pi: ExtensionAPI) => {
+		pi.registerProvider(faux.provider);
+		// Waits until the MCP tool is registered. Codemode may be active before that: MCP activates it from the config at
+		// session start, before the server has connected.
+		pi.registerTool({
+			name: "wait",
+			label: "wait",
+			description: "Waits until codemode is active.",
+			parameters: Type.Object({}),
+			execute: async () => {
+				const ready = () =>
+					pi.getActiveTools().includes("codemode") &&
+					pi.getAllTools().some((tool) => tool.name === "mcp__probe__echo");
+				for (let attempt = 0; attempt < 400 && !ready(); attempt += 1) {
+					await new Promise((resolve) => setTimeout(resolve, 50));
+				}
+				return { content: [{ type: "text", text: "waited" }], details: undefined };
+			},
+		});
+	};
+
+	const durable: OpenDurableResult = await openDurable({
+		cwd,
+		extensionFactories: [provider, ...builtInExtensions],
+		model: { provider: model.provider, modelId: model.id },
+		projectTrustContext: { ...headless, cwd },
+	});
+	let pid: number | undefined;
+	try {
+		expect((await durable.controller.submitAndWait("go", "followUp")).status).toBe("done");
+		expect(offered[1]).toContain("codemode");
+		expect(offered[1]).not.toContain("mcp__probe__echo");
+		const last = (JSON.parse(messages[2] ?? "[]") as { role: string; isError?: boolean; content?: unknown }[])
+			.filter((message) => message.role === "toolResult")
+			.at(-1);
+		expect(last?.isError, JSON.stringify(last?.content)).toBe(false);
+		expect(JSON.stringify(last?.content)).toContain("via-codemode");
+		pid = Number(await readFile(pidFile, "utf8"));
+	} finally {
+		await durable.close("quit");
+	}
+	if (pid === undefined) throw new Error("the MCP child did not record its pid");
 	expect(await exited(pid)).toBe(true);
 });
