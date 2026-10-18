@@ -24,6 +24,7 @@ import type { AgentSessionRuntimeDiagnostic } from "../agent-session-services.ts
 import type { ExtensionMode, InlineExtension, ProjectTrustContext } from "../extensions/types.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import type { SettingsManager } from "../settings-manager.ts";
+import type { Settings } from "../settings-schema.ts";
 import {
 	configureHarnessHttp,
 	createCodingRegistry,
@@ -131,6 +132,11 @@ export interface OpenDurableOptions {
 	 * Receives each warning when the session is not interactive. Interactive sessions show warnings as notices instead.
 	 */
 	readonly onDiagnostic?: (diagnostic: AgentSessionRuntimeDiagnostic) => void;
+	/**
+	 * Settings applied over the loaded ones before the session opens, as the legacy path applies `--use-theme` to its startup
+	 * manager. The interactive TUI reads the theme from the same manager, so the override reaches it.
+	 */
+	readonly settingsOverrides?: Partial<Settings>;
 }
 
 /** Trust is never asked for, and undecided project trust stays untrusted. */
@@ -204,6 +210,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		});
 		const errors = services.diagnostics.filter((diagnostic) => diagnostic.type === "error");
 		if (errors.length > 0) throw new DurableStartupError(errors);
+		if (options.settingsOverrides !== undefined) services.settingsManager.applyOverrides(options.settingsOverrides);
 		const { modelRuntime, settingsManager } = services;
 		const durableModelRuntime = createDurableModelRuntime(modelRuntime);
 		configureHarnessHttp(settingsManager);
