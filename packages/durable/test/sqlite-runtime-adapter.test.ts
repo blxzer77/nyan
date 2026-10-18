@@ -85,7 +85,6 @@ describe("the SQLite adapter for this runtime", () => {
 			["-2^53", -(2n ** 53n)],
 			["-2^53 - 1", -(2n ** 53n) - 1n],
 			["int64 max", INT64_MAX],
-			["int64 min", INT64_MIN],
 		])("throws a RangeError instead of rounding %s when it is read", async (_label, value) => {
 			const database = await open();
 			await table(database);
@@ -99,6 +98,29 @@ describe("the SQLite adapter for this runtime", () => {
 				message: `Value is too large to be represented as a JavaScript number: ${value}`,
 			});
 			await expect(all).rejects.toBeInstanceOf(RangeError);
+		});
+
+		it("never loses precision on int64 min, whether the binding throws or returns the double", async () => {
+			// -2^63 is exactly representable as a double, and node:sqlite's rule for that one value depends on the Node
+			// version: 24.3.0 throws a RangeError, a newer 24.x in CI returns -9223372036854775808. This adapter throws, like
+			// 24.3.0. What both must do is keep the value exact rather than round it.
+			const database = await open();
+			await table(database);
+			await database.run("INSERT INTO t (id, n) VALUES (?, ?)", 1, INT64_MIN);
+
+			const outcome = await database.get<{ n: number }>("SELECT n FROM t").then(
+				(row) => row,
+				(error: unknown) => error,
+			);
+			if (outcome instanceof Error) {
+				expect(outcome).toMatchObject({
+					name: "RangeError",
+					message: `Value is too large to be represented as a JavaScript number: ${INT64_MIN}`,
+				});
+			} else {
+				// The double is exactly -2^63, so converting it back gives the stored integer, not a rounded one.
+				expect(BigInt(outcome.n)).toBe(INT64_MIN);
+			}
 		});
 
 		it("reads the exact text of an integer that is too large to read as a number", async () => {
