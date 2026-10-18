@@ -210,7 +210,17 @@ jobs:
           open(os.path.join(os.environ["RUNNER_TEMP"], "ocr_comment.md"), "w", encoding="utf-8").write(data.get("comment") or "")
           PY
 
-      - name: Open the review issue
+      # The full text is kept before anything else is attempted, so a problem reporting it never loses a finished review.
+      - name: Keep the full review
+        if: steps.range.outputs.base != '' && steps.diff.outputs.empty != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ocr-review
+          path: ${{ runner.temp }}/ocr_comment.md
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Report the review
         if: steps.range.outputs.base != '' && steps.diff.outputs.empty != 'true'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         env:
@@ -227,7 +237,7 @@ jobs:
             const { owner, repo } = context.repo;
             const review = fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'ocr_comment.md'), 'utf8');
             if (!review.includes('<!-- ocr-review -->')) {
-              core.setFailed('the rendered review lacks its marker; refusing to open an issue from it');
+              core.setFailed('the rendered review lacks its marker; refusing to report it');
               return;
             }
             const { KIND, BASE, HEAD, COMMITS, FILES, LINES, OCR_MODEL, OCR_EFFORT } = process.env;
@@ -240,7 +250,11 @@ jobs:
               `**Run:** ${runUrl}`,
               '',
             ].join('\n');
-            // An issue body is limited to 65,536 characters; the full text is also kept as a run artifact.
+
+            // The run summary always gets the review: it needs no repository setting.
+            await core.summary.addRaw(header + '\n' + review).write();
+
+            // An issue body is limited to 65,536 characters; the full text is also the run artifact.
             const limit = 60000;
             let text = review;
             if (header.length + text.length > limit) {
@@ -248,23 +262,23 @@ jobs:
                 `\n\n> The review was cut to fit an issue. The full text is the \`ocr-review\` artifact of [this run](${runUrl}).\n`;
             }
             try {
-              await github.rest.issues.createLabel({ owner, repo, name: 'ocr-review', color: '5319e7', description: 'Batch AI review result' });
+              try {
+                await github.rest.issues.createLabel({ owner, repo, name: 'ocr-review', color: '5319e7', description: 'Batch AI review result' });
+              } catch (error) {
+                if (error.status !== 422) throw error; // 422: the label already exists
+              }
+              const { data: issue } = await github.rest.issues.create({
+                owner, repo,
+                title: `OCR review: ${range} (${KIND})`,
+                body: header + '\n' + text,
+                labels: ['ocr-review'],
+              });
+              core.info(`opened issue #${issue.number}: ${issue.html_url}`);
             } catch (error) {
-              if (error.status !== 422) throw error; // 422: the label already exists
+              if (error.status === 410) {
+                // 410 Gone: "Issues has been disabled in this repository". The review is not lost, only less visible.
+                core.warning('Issues are disabled in this repository, so this review is only in the run summary and the ocr-review artifact. Enable Issues to get one issue per review.');
+                return;
+              }
+              throw error;
             }
-            const { data: issue } = await github.rest.issues.create({
-              owner, repo,
-              title: `OCR review: ${range} (${KIND})`,
-              body: header + '\n' + text,
-              labels: ['ocr-review'],
-            });
-            core.info(`opened issue #${issue.number}: ${issue.html_url}`);
-
-      - name: Keep the full review
-        if: steps.range.outputs.base != '' && steps.diff.outputs.empty != 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ocr-review
-          path: ${{ runner.temp }}/ocr_comment.md
-          if-no-files-found: ignore
-          retention-days: 30
