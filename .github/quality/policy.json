@@ -24,7 +24,7 @@
     "advisory": [
       "ai-review"
     ],
-    "selfHostedShards": 3
+    "selfHostedShards": 6
   },
   "criticalPaths": [
     "packages/ai/src/api/**",
