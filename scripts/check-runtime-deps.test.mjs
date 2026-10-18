@@ -54,6 +54,16 @@ export { type OtherType } from "export-inline-type-only";
 	assert.equal(result.status, 0, result.stderr);
 });
 
+test("accepts the built-in modules of Bun and of Workers, but not a package that only looks like one", async (t) => {
+	const builtins = await check(t, {}, 'const { Database } = await import("bun:sqlite");\nimport "cloudflare:workers";\nexport { Database };');
+	assert.equal(builtins.status, 0, builtins.stderr);
+
+	const lookalike = await check(t, {}, 'import "bun-sqlite";\nimport "bunx:thing";');
+	assert.equal(lookalike.status, 1);
+	assert.match(lookalike.stderr, /bun-sqlite is not declared/);
+	assert.match(lookalike.stderr, /bunx:thing is not declared/);
+});
+
 test("rejects dev-only dependencies, side-effect imports, mixed exports, and literal runtime loads", async (t) => {
 	const result = await check(t, { devDependencies: { dev: "1.0.0" } }, `
 import "dev";

@@ -30,6 +30,8 @@ const allowedExternalPackages = new Set([
 	"kerberos",
 	// Optional debug output coloring.
 	"supports-color",
+	// Bun's built-in SQLite, imported lazily by @ny4n/durable and only when running under Bun. Node never loads it.
+	"bun:sqlite",
 ]);
 
 const lazyJitiPlugin = {
@@ -86,7 +88,7 @@ function commonBuildOptions() {
 		banner,
 		bundle: true,
 		define: { NYAN_BUNDLED_NODE: "true" },
-		external: ["@ny4n/chord", "@silvia-odwyer/photon-node"],
+		external: ["@ny4n/chord", "@silvia-odwyer/photon-node", "bun:sqlite"],
 		format: "esm",
 		legalComments: "none",
 		logLevel: "warning",

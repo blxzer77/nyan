@@ -35,11 +35,13 @@ function checkSource(source, manifest) {
 	function checkSpecifier(node) {
 		if (!node || !(isStringLiteral(node) || isNoSubstitutionTemplateLiteral(node))) return;
 		const specifier = node.text;
-		// `cloudflare:` modules are built into the Workers runtime, like `node:` modules are into Node.
+		// `cloudflare:` modules are built into the Workers runtime and `bun:` modules into Bun, like `node:` modules are
+		// into Node. None of them is an npm package, so there is nothing to declare.
 		if (
 			specifier.startsWith(".") ||
 			specifier.startsWith("/") ||
 			specifier.startsWith("cloudflare:") ||
+			specifier.startsWith("bun:") ||
 			isBuiltin(specifier)
 		) {
 			return;
