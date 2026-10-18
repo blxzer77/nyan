@@ -108,9 +108,9 @@ describe("the SQLite adapter for this runtime", () => {
 			await table(database);
 			await database.run("INSERT INTO t (id, n) VALUES (?, ?)", 1, INT64_MIN);
 
-			const outcome = await database.get<{ n: number }>("SELECT n FROM t").then(
-				(row) => row,
-				(error: unknown) => error,
+			const outcome: { n: number } | Error = await database.get<{ n: number }>("SELECT n FROM t").then(
+				(row) => row ?? new Error("expected one row"),
+				(error: unknown) => (error instanceof Error ? error : new Error(String(error))),
 			);
 			if (outcome instanceof Error) {
 				expect(outcome).toMatchObject({
