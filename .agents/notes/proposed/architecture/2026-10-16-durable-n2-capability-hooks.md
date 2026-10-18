@@ -347,3 +347,52 @@ during a run is in that run's next request. All pass, so the bridge relies on th
 - MCP's default exposure is `codemode`: on this path an MCP tool with the default is reachable only through codemode (2b).
   The MCP test sets `exposure: "direct"` in `mcp.json`.
 
+
+## Batch 2b: codemode and tool search on the durable path
+
+Both are native tools, not runner tools: `core/durable/native-tools.ts` builds the durable extensions (`codemode`, `tool-search`), and the host installs them. While a native tool is active its extension is installed; while it is not, an empty extension of the same name replaces it, so the registry holds nothing of it. The active set is the same one the bridged tools use (`setActiveTools`, `getActiveTools`), so one model decides visibility for every tool:
+
+- `codemode` and `tool_search` are `model-only` and inactive by default, as the legacy definitions are.
+- `getAllTools()` reports both, whether active or not, with the metadata MCP reads (`exposure`, `reachesTools`). MCP's
+  auto-activation (unchanged) therefore sees them: its `setActiveTools([..., "codemode"])` installs the durable codemode.
+- A codemode-exposed tool is `callers: ["tools"]` while codemode is inactive, and callable by scripts once it is active.
+
+### Sandbox and worker slots
+
+- `createCodemodeSandbox()` is the legacy construction: wasm from `getQuickJSWasmPath()`, worker from `getCodemodeWorkerSpecifier()`
+  (both in `src/config.ts`), the memory limit, and `acquireWorker`. The slot counter and the limit are in
+  `core/codemode-workers.ts`, shared with the legacy extension, so one process holds at most two workers on either path.
+- The limit refuses a third script; it does not queue it. That is the current behaviour, kept (the owner's decision).
+- The sandbox is created on the first activation and closed with the session.
+
+### Namespaces
+
+Durable groups tools by name prefix. A tool's `namespace.name` is its prefix, so an MCP tool (`mcp__<server>__…`) is
+grouped under its server. Aliases are not used on this path. The namespaces are recomputed on every sync, so a server
+that connects later is listed.
+
+### Lifecycle boundary: `before_agent_start` (decision 4)
+
+- **Before a submitted prompt** (`submit`, `submitAndWait`): `before_agent_start` runs, and only its wait is applied. MCP's
+  wait for its direct servers belongs to the preparation of the first model request, so it runs before the prompt is
+  submitted. This is the only effect of the hook on this path.
+- **Not applied yet** (batch 3): the handlers' message and system-prompt changes (R13), and the prompt sections they add
+  (R14). The event fires for every submitted prompt, including ones that queue behind a running turn; A9 (once per
+  prompt, not per tool round) is batch 3's.
+- Nothing else in the request path waits on a handler before the first request.
+
+### Reduction list: status after 2b
+
+| # | Status |
+| --- | --- |
+| R5 `namespace` | done for codemode (name prefix; aliases not used) |
+| R7 `prepareLoadout` | not used by any extension that reaches this path yet; batch 3 |
+| R8 `reachesTools` | done for the native tools: `"all"` (see R19) |
+| R10 `ctx.tools`, `ctx.executeTool` | codemode scripts call the tools through the durable nested calls; `ctx.executeTool` for an extension tool stays unavailable |
+| R13, R14 | batch 3 (above) |
+| R15 MCP codemode and tool-search activation | done: MCP's logic is unchanged and sees both tools through `getAllTools` |
+| R16 `models` namespace, classifiers, and image generation in scripts | not connected: the durable codemode takes no model globals yet |
+| R17 `codemode.mode: "only"` | not connected: direct tools are always declared |
+| R18 tool search loads deferred tools only | legacy also loads `codemode`-exposed tools; durable does not, so they are reached through codemode only |
+| R19 `reachesTools` of codemode is `"all"` | legacy narrows it to the servers a script names; `"all"` makes MCP wait for every server before a codemode call (slower, not wrong) |
+| R20 `inlineBudget` | read from the settings at each sync; the legacy setting mode is not used |

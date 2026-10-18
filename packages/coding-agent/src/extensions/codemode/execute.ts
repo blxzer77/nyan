@@ -25,6 +25,11 @@ import {
 	toCodemodeIdentifier,
 } from "@ny4n/codemode";
 import { getCodemodeWorkerSpecifier, getQuickJSWasmPath } from "../../config.ts";
+import {
+	acquireCodemodeWorker,
+	CODEMODE_MEMORY_LIMIT_BYTES,
+	codemodeWorkersInFlight,
+} from "../../core/codemode-workers.ts";
 import type { ExtensionToolContext, ToolNamespace } from "../../core/extensions/types.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { formatSize } from "../../core/tools/truncate.ts";
@@ -48,24 +53,7 @@ const ARGS_PREVIEW_CHARS = 200;
 const ERROR_PREVIEW_CHARS = 500;
 /** `models.classify()` and `models.generateImages()` calls one script may have in flight; `Promise.all` over many items queues the rest. */
 const MAX_CONCURRENT_MODEL_CALLS = 4;
-/**
- * Heap limit for the QuickJS VM. The worker shares nyan's process, so without a limit a runaway
- * script can grow to wasm32's 4 GiB and take the session down. Overruns throw
- * `InternalError: out of memory` inside the script.
- */
-const CODEMODE_MEMORY_LIMIT_BYTES = 256 * 1024 * 1024;
-// Shared across calls and sessions. Allow one replacement while a cancelled worker is still exiting.
-const MAX_CONCURRENT_CODEMODE_WORKERS = 2;
-
-/**
- * Workers that are running or still shutting down. A slot is held until the worker's `exit` event, not until
- * `terminate()` is called, so this count can stay above zero after a script has already returned. Tests wait for it to
- * reach zero before the next test starts.
- */
-export function codemodeWorkersInFlight(): number {
-	return activeCodemodeWorkers;
-}
-let activeCodemodeWorkers = 0;
+export { codemodeWorkersInFlight };
 const MODEL_TYPES: ReadonlySet<string> = new Set<ModelType>(["chat", "image", "classifier"]);
 
 function truncateText(text: string, maxChars: number): string {
@@ -515,17 +503,7 @@ export async function executeCodemode(
 		memoryLimitBytes: CODEMODE_MEMORY_LIMIT_BYTES,
 		wasm: loadQuickJSWasm(getQuickJSWasmPath()),
 		workerUrl: getCodemodeWorkerSpecifier(),
-		acquireWorker: () => {
-			if (activeCodemodeWorkers >= MAX_CONCURRENT_CODEMODE_WORKERS) {
-				throw new Error(
-					`Codemode worker limit reached (${MAX_CONCURRENT_CODEMODE_WORKERS} workers are still running or shutting down). Retry after they exit.`,
-				);
-			}
-			activeCodemodeWorkers++;
-			return () => {
-				activeCodemodeWorkers--;
-			};
-		},
+		acquireWorker: acquireCodemodeWorker,
 	});
 
 	let result: CodemodeResult;
