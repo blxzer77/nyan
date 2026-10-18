@@ -1,5 +1,6 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Api, Model } from "@ny4n/ai";
-import type { Extension } from "@ny4n/durable";
+import type { Extension, GenerationHooks } from "@ny4n/durable";
 import { ExtensionRunner } from "../extensions/runner.ts";
 import type {
 	ExtensionActions,
@@ -10,7 +11,12 @@ import type {
 } from "../extensions/types.ts";
 import { ModelRegistry } from "../model-registry.ts";
 import type { ReadonlySessionManager } from "../session-manager.ts";
-import { createHookAdapter, type ProviderCallScope } from "./extension-adapter.ts";
+import {
+	createHookAdapter,
+	createProviderHooks,
+	type ProviderCall,
+	type ProviderCallScope,
+} from "./extension-adapter.ts";
 import type { DurableServices } from "./services.ts";
 
 /** Thrown by a Nyan API the durable path does not connect yet. Handlers that call it fail visibly, not silently. */
@@ -33,6 +39,8 @@ export interface ExtensionHostOptions {
 /** One open's view of the loaded extensions: a runner bound to this open, and the hook adapter it feeds. */
 export interface ExtensionHost {
 	readonly runner: ExtensionRunner;
+	/** The provider-call members, bound to this open's runner. Tests call them directly; the adapter carries them. */
+	readonly providerHooks: Partial<GenerationHooks>;
 	/** Install in the registry; carries no members when no loaded extension handles a provider event. */
 	readonly adapter: Extension;
 	start(reason: SessionStartEvent["reason"]): Promise<void>;
@@ -49,7 +57,8 @@ export interface ExtensionHost {
  * `isIdle` and `isProjectTrusted` are not tracked yet: `isIdle` answers true, `isProjectTrusted` answers false.
  */
 export function createExtensionHost(options: ExtensionHostOptions): ExtensionHost {
-	const scope: ProviderCallScope = { model: undefined, signal: undefined };
+	// Per provider call, not per host: see ProviderCallScope.
+	const calls: ProviderCallScope = new AsyncLocalStorage<ProviderCall>();
 	const loaded = options.services.resourceLoader.getExtensions();
 
 	const sessionManager: ReadonlySessionManager = {
@@ -98,11 +107,11 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 	};
 
 	const contextActions: ExtensionContextActions = {
-		getModel: () => scope.model ?? options.agentModel(),
+		getModel: () => calls.getStore()?.model ?? options.agentModel(),
 		getScopedModels: () => [],
 		isIdle: () => true,
 		isProjectTrusted: () => false,
-		getSignal: () => scope.signal,
+		getSignal: () => calls.getStore()?.signal,
 		abort: () => options.abort(),
 		hasPendingMessages: () => false,
 		shutdown: () => unavailable("ctx.shutdown"),
@@ -112,11 +121,13 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 	};
 
 	runner.bindCore(actions, contextActions);
+	const providerHooks = createProviderHooks(runner, calls);
 	runner.onError(options.onExtensionError);
 
 	return {
 		runner,
-		adapter: createHookAdapter(runner, scope),
+		providerHooks,
+		adapter: createHookAdapter(providerHooks),
 		start: (reason) => runner.emit({ type: "session_start", reason }).then(() => undefined),
 		shutdown: (reason) => runner.emit({ type: "session_shutdown", reason }).then(() => undefined),
 	};
