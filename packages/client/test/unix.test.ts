@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { Server as RuntimeServer } from "../../server/src/server.ts";
 import { createTestServerServices } from "../../server/src/testing/host.ts";
 import { createUnixListener } from "../../server/src/transports/unix/listener.ts";
@@ -146,6 +146,40 @@ describe.skipIf(process.platform === "win32")("discoverUnixServers", () => {
 
 		await expect(discoverUnixServers({ directory, timeoutMs: 20 })).resolves.toEqual([]);
 		expect((await lstat(path)).isSocket()).toBe(true);
+	});
+
+	test("keeps a reachable server when this process stalls past the probe timeout", async () => {
+		// A starved process reads its sockets late. The probe timer is then overdue by the whole stall while the server's
+		// reply already waits in the socket buffer. Dropping the server would present a partial list as a complete one.
+		const directory = await makeDirectory();
+		const id = serverId(1);
+		await startServer(directory, id);
+
+		// The probe arms its timer right after it starts connecting. Block the event loop from the next timer phase on, so
+		// the stall always lands between "connecting" and "reply read" instead of depending on scheduling luck.
+		const timeoutMs = 250;
+		const realSetTimeout = globalThis.setTimeout;
+		const spy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((handler: () => void, delay?: number) => {
+			const timer = realSetTimeout(handler, delay);
+			if (delay === timeoutMs) {
+				spy.mockRestore();
+				realSetTimeout(() => {
+					const end = performance.now() + timeoutMs * 3;
+					while (performance.now() < end) {
+						// The whole process is unresponsive, as under CPU starvation.
+					}
+				}, 0);
+			}
+			return timer;
+		}) as unknown as typeof setTimeout);
+
+		try {
+			await expect(discoverUnixServers({ directory, timeoutMs })).resolves.toEqual([
+				{ serverId: id, path: join(directory, `${id}.sock`) },
+			]);
+		} finally {
+			spy.mockRestore();
+		}
 	});
 
 	test("limits concurrent probes to 16", async () => {

@@ -57,8 +57,10 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 	bindEvents();
 
 	const replaceSession = async (continueSession: boolean): Promise<void> => {
-		await durable.close();
-		durable = await openDurable({ ...options, continueSession, eventStream: true });
+		// The services outlive the replaced session: extensions load once per process, not once per session.
+		const services = durable.services;
+		await durable.close(continueSession ? "resume" : "new");
+		durable = await openDurable({ ...options, continueSession, services, eventStream: true });
 		bindEvents();
 	};
 
