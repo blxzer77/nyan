@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { formatSize, truncateHead } from "../src/truncate.ts";
 
@@ -22,11 +22,14 @@ describe("truncate utilities", () => {
 
 	it("counts UTF-8 bytes and truncates correctly in a runtime without Buffer", () => {
 		const inputs = ["", "ascii", "é", "中", "🙂", "\ud83d", "\ude42", "a\ud83d\ude42b", "\u07ff\u0800\uffff"];
+		// Node preloads a module with `--import <url>`. Bun's `--import` is another option; it preloads with `--preload <path>`
+		// and rejects a file URL.
+		const preload = fileURLToPath(new URL("./fixtures/delete-buffer.ts", import.meta.url));
+		const preloadArgs = process.versions.bun ? ["--preload", preload] : ["--import", pathToFileURL(preload).href];
 		const output = execFileSync(
 			process.execPath,
 			[
-				"--import",
-				new URL("./fixtures/delete-buffer.ts", import.meta.url).href,
+				...preloadArgs,
 				fileURLToPath(new URL("./fixtures/utf8-byte-length-without-buffer.ts", import.meta.url)),
 				JSON.stringify(inputs),
 			],

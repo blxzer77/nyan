@@ -10,7 +10,7 @@ import {
 	SQLITE_MIGRATIONS,
 	type SqliteMigration,
 } from "../src/storage/sqlite/index.ts";
-import { openNodeSqliteDatabase, openNodeSqliteStorage } from "../src/storage/sqlite/node.ts";
+import { openNodeSqliteStorage, openRuntimeSqliteDatabase } from "../src/storage/sqlite/node.ts";
 import { type EntryId, ROOT_CONVERSATION_ID } from "../src/types.ts";
 
 const directories = new Set<string>();
@@ -28,7 +28,7 @@ afterEach(async () => {
 
 describe("durable SQLite migrations", () => {
 	it("creates the current schema and can be applied repeatedly", async () => {
-		const database = await openNodeSqliteDatabase(await databasePath());
+		const database = await openRuntimeSqliteDatabase(await databasePath());
 		try {
 			await applySqliteMigrations(database);
 			await applySqliteMigrations(database);
@@ -46,7 +46,7 @@ describe("durable SQLite migrations", () => {
 
 	it("rejects a database newer than the portable core", async () => {
 		const path = await databasePath();
-		const database = await openNodeSqliteDatabase(path);
+		const database = await openRuntimeSqliteDatabase(path);
 		await applySqliteMigrations(database);
 		await database.run(
 			"UPDATE durable_schema SET version = ? WHERE singleton = 1",
@@ -58,7 +58,7 @@ describe("durable SQLite migrations", () => {
 	});
 
 	it("rolls initial bootstrap and every pending migration back together", async () => {
-		const database = await openNodeSqliteDatabase(await databasePath());
+		const database = await openRuntimeSqliteDatabase(await databasePath());
 		try {
 			const failed: readonly SqliteMigration[] = [
 				{
@@ -115,7 +115,7 @@ describe("durable SQLite migrations", () => {
 		);
 		await storage.close(BACKGROUND_CONTEXT);
 
-		const database = await openNodeSqliteDatabase(path);
+		const database = await openRuntimeSqliteDatabase(path);
 		const nextVersion = CURRENT_SQLITE_SCHEMA_VERSION + 1;
 		const failedMigrations: readonly SqliteMigration[] = [
 			...SQLITE_MIGRATIONS,
