@@ -77,6 +77,18 @@ async function sendLater(command: Record_): Promise<string> {
 	return id;
 }
 
+async function waitForResponse(id: string): Promise<Record_> {
+	let response: Record_ | undefined;
+	await vi.waitFor(
+		() => {
+			response = records().find((record) => record.type === "response" && record.id === id);
+			expect(response).toBeDefined();
+		},
+		{ timeout: 20_000 },
+	);
+	return response as Record_;
+}
+
 /** An answer the test holds back, so the conversation stays busy while the test queues input. */
 function gate(): { step: FauxResponseStep; release: () => void } {
 	let release: () => void = () => {};
@@ -346,6 +358,40 @@ describe("durable RPC session operations", () => {
 		expect(after.messageCount).toBe(before.messageCount);
 		const messages = ((await send({ type: "get_messages" })).data as { messages: Record_[] }).messages;
 		expect(JSON.stringify(messages)).toContain("clone answer");
+	});
+
+	test("bash records included output, excludes requested output from context, and streams updates", async () => {
+		await start([]);
+		const included = await send({ type: "bash", command: "printf 'included durable bash\\n'" });
+		expect(included).toMatchObject({
+			success: true,
+			command: "bash",
+			data: { output: "included durable bash\n", exitCode: 0, cancelled: false, truncated: false },
+		});
+		expect(
+			records().some(
+				(record) => record.type === "bash_execution_update" && record.delta === "included durable bash\n",
+			),
+		).toBe(true);
+
+		const excluded = await send({
+			type: "bash",
+			command: "printf 'excluded durable bash\\n'",
+			excludeFromContext: true,
+		});
+		expect(excluded).toMatchObject({ success: true, data: { output: "excluded durable bash\n" } });
+		const messages = ((await send({ type: "get_messages" })).data as { messages: Record_[] }).messages;
+		expect(JSON.stringify(messages)).toContain("included durable bash");
+		expect(JSON.stringify(messages)).not.toContain("excluded durable bash");
+	});
+
+	test("abort_bash cancels the durable execution and returns its partial result", async () => {
+		await start([]);
+		const command = `${JSON.stringify(process.execPath)} -e ${JSON.stringify("setTimeout(() => {}, 30000)")}`;
+		const bashId = await sendLater({ type: "bash", command });
+		await send({ type: "abort_bash" });
+		const aborted = await waitForResponse(bashId);
+		expect(aborted).toMatchObject({ success: true, command: "bash", data: { cancelled: true } });
 	});
 
 	test("get_tree returns the active chain, matching the entries and the leaf", async () => {
