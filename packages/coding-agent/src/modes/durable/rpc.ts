@@ -286,17 +286,19 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 		const id = command.id;
 		switch (command.type) {
 			case "prompt": {
-				const expandedMessage = durable.controller.expandPrompt(command.message);
 				const content =
 					command.images === undefined
-						? expandedMessage
-						: [{ type: "text" as const, text: expandedMessage }, ...command.images];
+						? command.message
+						: [{ type: "text" as const, text: command.message }, ...command.images];
 				void dispatchDurableExtensionCommand(durable.extensionHost.runner, command.message).then((handled) => {
 					if (handled) return output(success(id, "prompt", { disposition: "handled" }));
-					return durable.controller.submitAndWait(content, command.streamingBehavior ?? "steer").then(
-						() => output(success(id, "prompt", { disposition: "started" })),
-						(error) => output(failure(id, "prompt", error instanceof Error ? error.message : String(error))),
-					);
+					return durable.controller
+						.submitAndWait(content, command.streamingBehavior ?? "steer", { source: "rpc" })
+						.then(
+							(outcome) =>
+								output(success(id, "prompt", { disposition: outcome.handled ? "handled" : "started" })),
+							(error) => output(failure(id, "prompt", error instanceof Error ? error.message : String(error))),
+						);
 				});
 				return undefined;
 			}
@@ -304,27 +306,27 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				if (await dispatchDurableExtensionCommand(durable.extensionHost.runner, command.message)) {
 					return success(id, "steer", { disposition: "handled" });
 				}
-				const expandedSteerMessage = durable.controller.expandPrompt(command.message);
-				await durable.controller.submitAndWait(
+				const outcome = await durable.controller.submitAndWait(
 					command.images === undefined
-						? expandedSteerMessage
-						: [{ type: "text" as const, text: expandedSteerMessage }, ...command.images],
+						? command.message
+						: [{ type: "text" as const, text: command.message }, ...command.images],
 					"steer",
+					{ source: "rpc" },
 				);
-				return success(id, "steer", { disposition: "queued" });
+				return success(id, "steer", { disposition: outcome.handled ? "handled" : "queued" });
 			}
 			case "follow_up": {
 				if (await dispatchDurableExtensionCommand(durable.extensionHost.runner, command.message)) {
 					return success(id, "follow_up", { disposition: "handled" });
 				}
-				const expandedFollowUpMessage = durable.controller.expandPrompt(command.message);
-				await durable.controller.submitAndWait(
+				const outcome = await durable.controller.submitAndWait(
 					command.images === undefined
-						? expandedFollowUpMessage
-						: [{ type: "text" as const, text: expandedFollowUpMessage }, ...command.images],
+						? command.message
+						: [{ type: "text" as const, text: command.message }, ...command.images],
 					"followUp",
+					{ source: "rpc" },
 				);
-				return success(id, "follow_up", { disposition: "queued" });
+				return success(id, "follow_up", { disposition: outcome.handled ? "handled" : "queued" });
 			}
 			case "abort":
 				await durable.controller.abort();
@@ -490,11 +492,13 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 			}
 			case "fork": {
 				const forked = await durable.sessionOps.fork(command.entryId);
+				if (forked.cancelled) return success(id, "fork", { cancelled: true });
 				await moveTo(forked.conversationId);
 				return success(id, "fork", { text: forked.text, cancelled: false });
 			}
 			case "clone": {
 				const cloned = await durable.sessionOps.clone();
+				if (cloned.cancelled) return success(id, "clone", { cancelled: true });
 				await moveTo(cloned.conversationId);
 				return success(id, "clone", { cancelled: false });
 			}

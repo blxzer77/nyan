@@ -1299,7 +1299,16 @@ export class ExtensionRunner {
 	 */
 	async emitContext(messages: AgentMessage[]): Promise<AgentMessage[]> {
 		const ctx = this.createContext();
-		let currentMessages = structuredClone(messages);
+		return this.emitContextWithSystem(await this.emitConversationContext(structuredClone(messages), ctx), ctx);
+	}
+
+	/**
+	 * Phase one of the request transform: `context` handlers see the conversation only, and Nyan restores the prompt and
+	 * tool state after each. The durable path runs this phase as its own request hook and phase two from the hook that
+	 * follows it, so nothing runs twice.
+	 */
+	async emitConversationContext(messages: AgentMessage[], ctx = this.createContext()): Promise<AgentMessage[]> {
+		let currentMessages = messages;
 
 		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, "context")) {
 			for (const handler of handlers) {
@@ -1327,6 +1336,17 @@ export class ExtensionRunner {
 				}
 			}
 		}
+
+		return currentMessages;
+	}
+
+	/**
+	 * Phase two of the request transform: `context_with_system` handlers see the full transcript, system messages and
+	 * tool declarations included, and their output is used as returned. The durable path runs phase one as its own
+	 * request hook and calls this phase from the hook that follows it, in the same order as `emitContext`.
+	 */
+	async emitContextWithSystem(messages: AgentMessage[], ctx = this.createContext()): Promise<AgentMessage[]> {
+		let currentMessages = messages;
 
 		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, "context_with_system")) {
 			for (const handler of handlers) {

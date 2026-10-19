@@ -270,30 +270,41 @@ export function createProviderHooks(
 ): Partial<GenerationHooks> {
 	const members: Partial<GenerationHooks> = {};
 
-	if (runner.hasHandlers("before_agent_start") || getBeforeRequestEffects !== undefined) {
-		members.beforeRequest = async ({ messages }) => {
-			const effects = getBeforeRequestEffects?.();
-			if (effects === undefined) return undefined;
-			const next = [...messages];
-			if (effects.systemPrompt !== undefined) {
-				const index = next.findIndex((message) => message.role === "system");
-				const system = index >= 0 ? next[index] : undefined;
-				if (system?.role === "system") next[index] = { ...system, content: effects.systemPrompt };
-			}
-			if (!effects.messagesApplied && effects.messages.length > 0) {
-				const index = next.findIndex((message) => message.role === "system");
-				next.splice(index < 0 ? 0 : index + 1, 0, ...effects.messages);
-				effects.messagesApplied = true;
-			}
-			return JSON.stringify(next) === JSON.stringify(messages) ? undefined : { messages: next };
-		};
+	if (
+		runner.hasHandlers("before_agent_start") ||
+		runner.hasHandlers("context_with_system") ||
+		getBeforeRequestEffects !== undefined
+	) {
+		members.beforeRequest = async ({ messages }, _api, context) =>
+			inProviderCall(scope, undefined, context.abortSignal, async () => {
+				const effects = getBeforeRequestEffects?.();
+				let next = [...messages];
+				if (effects !== undefined) {
+					if (effects.systemPrompt !== undefined) {
+						const index = next.findIndex((message) => message.role === "system");
+						const system = index >= 0 ? next[index] : undefined;
+						if (system?.role === "system") next[index] = { ...system, content: effects.systemPrompt };
+					}
+					if (!effects.messagesApplied && effects.messages.length > 0) {
+						const index = next.findIndex((message) => message.role === "system");
+						next.splice(index < 0 ? 0 : index + 1, 0, ...effects.messages);
+						effects.messagesApplied = true;
+					}
+				}
+				// Phase two of the request transform: `context` ran as `transformConversation`, which never sees system
+				// messages; these handlers see the full request and their output is the request, as legacy `emitContext` does.
+				if (runner.hasHandlers("context_with_system")) {
+					next = (await runner.emitContextWithSystem(next)).filter(isPlainMessage);
+				}
+				return JSON.stringify(next) === JSON.stringify(messages) ? undefined : { messages: next };
+			});
 	}
 
 	if (runner.hasHandlers("context")) {
 		members.transformConversation = async ({ messages }, _api, context) =>
 			inProviderCall(scope, undefined, context.abortSignal, async () => {
 				const before = JSON.stringify(messages);
-				const next = (await runner.emitContext([...messages])).filter(isPlainMessage);
+				const next = (await runner.emitConversationContext([...messages])).filter(isPlainMessage);
 				// Returning an unchanged list would still replace the request, which collapses the system entries into one
 				// leading message and changes the prompt-cache prefix; an unchanged result therefore stays undefined.
 				return JSON.stringify(next) === before ? undefined : { messages: next };

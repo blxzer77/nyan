@@ -50,10 +50,18 @@ export interface SessionTree {
 
 /** A conversation the fork created; the caller moves the controller to it. */
 export interface ForkedConversation {
+	readonly cancelled: false;
 	readonly conversationId: ConversationId;
 	/** The text of the message the fork starts at, empty when it carries none. */
 	readonly text: string;
 }
+
+/** A fork an extension refused before it started; nothing was forked and the current conversation stays. */
+export interface CancelledFork {
+	readonly cancelled: true;
+}
+
+export type ForkOutcome = ForkedConversation | CancelledFork;
 
 /**
  * The product operations that RPC exposes over a durable session. Durable keeps a flat entry list with head markers, so
@@ -74,9 +82,9 @@ export interface DurableSessionOps {
 	/** Write the session's HTML export and return its path. */
 	exportHtml(outputPath: string | undefined): Promise<string>;
 	/** Fork the current conversation at a user message; the caller moves the controller to the new conversation. */
-	fork(at: string): Promise<ForkedConversation>;
+	fork(at: string): Promise<ForkOutcome>;
 	/** Fork the current conversation at its newest entry. */
-	clone(): Promise<ForkedConversation>;
+	clone(): Promise<ForkOutcome>;
 	/** The user messages a client can fork from, in append order. */
 	forkMessages(): Promise<readonly ForkMessage[]>;
 	/** The active entry chain of the current conversation as a linear tree. */
@@ -91,6 +99,16 @@ export interface DurableSessionOpsHost {
 	/** The open session: its directory holds the database and the display-name metadata. */
 	readonly session: () => { readonly id: string; readonly directory: string; readonly cwd: string };
 	readonly context: Context;
+	/**
+	 * The extension lifecycle around a fork. Legacy replaces the session file, so it tears the old session down and starts
+	 * a new one. A durable fork makes a new conversation inside this session, so the file a `session_start` reports as
+	 * `previousSessionFile` is the same one; the extension still sees the shutdown and the start, which is what rebuilds
+	 * its per-session state. `session_before_fork` runs before anything is read or written, as legacy emits it.
+	 */
+	readonly forkLifecycle?: {
+		beforeFork(entryId: string, position: "before" | "at"): Promise<{ readonly cancelled: boolean }>;
+		shutdown(reason: "fork"): Promise<void>;
+	};
 }
 
 /** A forked conversation belongs to the host, like the root conversation: no task owns it. */
@@ -355,6 +373,9 @@ export function createDurableSessionOps(host: DurableSessionOpsHost): DurableSes
 		},
 		async fork(at) {
 			const conversation = host.conversation();
+			// Legacy asks before it validates the entry: an extension can cancel a fork it would have rejected anyway.
+			const guard = await host.forkLifecycle?.beforeFork(at, "before");
+			if (guard?.cancelled === true) return { cancelled: true };
 			const id = parseEntryId(at);
 			const entry = id === undefined ? undefined : await visibleEntry(conversation, host.context, id);
 			const message = entry?.model?.[0];
@@ -364,14 +385,19 @@ export function createDurableSessionOps(host: DurableSessionOpsHost): DurableSes
 				throw new Error(`Cannot fork from an entry that is not a user message: ${at}`);
 			}
 			const forked = await conversation.fork(id, { ownership: OWNERLESS }, host.context);
-			return { conversationId: forked.id, text: textOf(message) };
+			await host.forkLifecycle?.shutdown("fork");
+			return { cancelled: false, conversationId: forked.id, text: textOf(message) };
 		},
 		async clone() {
 			const conversation = host.conversation();
 			const newest = (await conversation.entries({}, 1, undefined, host.context)).items[0];
 			if (newest === undefined) throw new Error("Cannot clone session: no current entry selected");
+			// Legacy clones by forking at the leaf, which asks about that entry with position `at`.
+			const guard = await host.forkLifecycle?.beforeFork(entryId(newest.id), "at");
+			if (guard?.cancelled === true) return { cancelled: true };
 			const forked = await conversation.fork(newest.id, { ownership: OWNERLESS }, host.context);
-			return { conversationId: forked.id, text: "" };
+			await host.forkLifecycle?.shutdown("fork");
+			return { cancelled: false, conversationId: forked.id, text: "" };
 		},
 		async forkMessages() {
 			const conversation = host.conversation();

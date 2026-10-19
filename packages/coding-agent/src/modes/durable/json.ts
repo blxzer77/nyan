@@ -44,13 +44,10 @@ export async function runDurableJson(options: DurableJsonOptions): Promise<numbe
 			) {
 				return undefined;
 			}
-			const expanded =
-				typeof content === "string"
-					? durable.controller.expandPrompt(content)
-					: content.map((part) =>
-							part.type === "text" ? { ...part, text: durable.controller.expandPrompt(part.text) } : part,
-						);
-			const settled = await durable.controller.submitAndWait(expanded, "followUp");
+			const outcome = await durable.controller.submitAndWait(content, "followUp");
+			// An `input` handler took the prompt: nothing was submitted, so there is no answer.
+			if (outcome.handled) return undefined;
+			const { settled } = outcome;
 			if (settled.status !== "done") {
 				throw new Error(
 					settled.status === "unanswered" ? `Input was not answered: ${settled.reason}` : "Input did not settle",
