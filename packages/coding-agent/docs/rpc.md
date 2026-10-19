@@ -29,12 +29,13 @@ These commands need capabilities the durable path does not connect yet, and answ
 
 | Command | Current answer on the durable path |
 |---|---|
-| `fork`, `clone`, `get_fork_messages`, `get_tree` | Not available yet; the durable conversation is a flat entry list with head markers |
-| `switch_session` | Not available yet |
+| `switch_session` | Not available yet; it needs a way to open a given session directory |
 | `bash`, `abort_bash` | Not available yet |
 | `abort_retry` | Not available yet; a durable retry wait cannot be cancelled on its own |
 
-A client that needs one of these commands can choose a session-selection flag such as `--resume` or `--session` for that invocation; those still use the legacy JSONL path.
+The fork commands answer, in the durable shape: `fork` and `clone` create a new conversation inside the same session and move the session to it, so `sessionId` and `sessionFile` do not change, `get_fork_messages` lists the session's user messages, and `get_tree` returns the active entry chain, which is linear.
+
+A client that needs one of the unavailable commands can choose a session-selection flag such as `--resume` or `--session` for that invocation; those still use the legacy JSONL path.
 
 ## Protocol records
 

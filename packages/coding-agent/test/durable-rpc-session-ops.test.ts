@@ -10,8 +10,8 @@ import { runDurableRpc } from "../src/modes/durable/rpc.ts";
 
 /**
  * The durable RPC session operations through `--mode rpc`'s module, with a faux provider and a temporary home: queue
- * clearing, entries, the display name, and the HTML export. The RPC adapter opens its own session, so the fake stdout
- * and stdin are captured here and `stdin` end runs its shutdown.
+ * clearing, entries, the display name, the HTML export, and the fork commands. The RPC adapter opens its own session,
+ * so the fake stdout and stdin are captured here and `stdin` end runs its shutdown.
  */
 
 const rpcIo = vi.hoisted(() => ({
@@ -281,5 +281,83 @@ describe("durable RPC session operations", () => {
 		const retry = await send({ type: "abort_retry" });
 		expect(retry).toMatchObject({ success: false, command: "abort_retry" });
 		expect(String(retry.error)).toContain("retry-only cancellation");
+	});
+
+	test("fork starts a second conversation at a user message and moves the session to it", async () => {
+		await start([answer("first answer"), answer("second answer")]);
+		await send({ type: "prompt", message: "hello" });
+		const before = await state();
+		const entries = ((await send({ type: "get_entries" })).data as { entries: Record_[] }).entries;
+		const userId = String(entries[0]?.id);
+
+		expect(await send({ type: "get_fork_messages" })).toMatchObject({
+			data: { messages: [{ entryId: userId, text: "hello" }] },
+		});
+
+		const forked = await send({ type: "fork", entryId: userId });
+		expect(forked).toMatchObject({ success: true, data: { text: "hello", cancelled: false } });
+		const after = await state();
+		// A fork is a conversation in the same session, so the session id and file do not change.
+		expect(after.sessionId).toBe(before.sessionId);
+		expect(after.sessionFile).toBe(before.sessionFile);
+		expect(after.messageCount).toBe(1);
+
+		// The forked conversation is the one prompts now reach, and its events arrive on a new stream.
+		const written = records().length;
+		await send({ type: "prompt", message: "again" });
+		const emitted = records().slice(written);
+		expect(emitted.some((record) => record.type === "message_end")).toBe(true);
+		const messages = ((await send({ type: "get_messages" })).data as { messages: Record_[] }).messages;
+		// Positional prompt entries reach the model too, so only the conversation roles are compared.
+		expect(messages.map((message) => message.role).filter((role) => role !== "system")).toEqual([
+			"user",
+			"user",
+			"assistant",
+		]);
+		expect(JSON.stringify(messages)).toContain("second answer");
+
+		// Only a user message can be forked from, and only an entry the session has.
+		const assistantId = String(entries[1]?.id);
+		expect(await send({ type: "fork", entryId: assistantId })).toMatchObject({
+			success: false,
+			command: "fork",
+		});
+		expect(await send({ type: "fork", entryId: "not-an-entry" })).toMatchObject({
+			success: false,
+			command: "fork",
+		});
+	});
+
+	test("clone forks at the newest entry and keeps the whole conversation", async () => {
+		await start([answer("clone answer")]);
+		await send({ type: "prompt", message: "hello clone" });
+		const before = await state();
+
+		const cloned = await send({ type: "clone" });
+		expect(cloned).toMatchObject({ success: true, data: { cancelled: false } });
+		const after = await state();
+		expect(after.sessionId).toBe(before.sessionId);
+		expect(after.messageCount).toBe(before.messageCount);
+		const messages = ((await send({ type: "get_messages" })).data as { messages: Record_[] }).messages;
+		expect(JSON.stringify(messages)).toContain("clone answer");
+	});
+
+	test("get_tree returns the active chain, matching the entries and the leaf", async () => {
+		await start([answer("tree answer")]);
+		await send({ type: "prompt", message: "hello tree" });
+		const entries = (await send({ type: "get_entries" })).data as { entries: Record_[]; leafId: string };
+		const tree = (await send({ type: "get_tree" })).data as { tree: Record_[]; leafId: string };
+
+		expect(tree.leafId).toBe(entries.leafId);
+		// One linear chain of nodes, in append order.
+		const chainIds: string[] = [];
+		let nodes = tree.tree;
+		while (nodes.length > 0) {
+			expect(nodes).toHaveLength(1);
+			const node = nodes[0] as { entry: Record_; children: Record_[] };
+			chainIds.push(String(node.entry.id));
+			nodes = node.children;
+		}
+		expect(chainIds).toEqual(entries.entries.map((entry) => entry.id));
 	});
 });

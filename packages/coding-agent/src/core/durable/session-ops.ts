@@ -7,16 +7,20 @@ import type { Context } from "@ny4n/chord";
 import {
 	CompactionEntry,
 	type Conversation,
+	type ConversationId,
+	type ConversationOwnership,
 	type Cursor,
 	type EntryId,
 	type EntryRecord,
 	type Harness,
 	InboxDoc,
 	type InboxState,
+	UserEntry,
 	type UserInput,
 } from "@ny4n/durable";
 import { APP_NAME } from "../../config.ts";
 import { exportFromFile } from "../export-html/index.ts";
+import type { SessionTreeNode } from "../session-manager.ts";
 import { CURRENT_SESSION_VERSION, type FileEntry, type SessionEntry, type SessionHeader } from "../session-manager.ts";
 
 /** The texts that were waiting for a boundary, as legacy `clear_queue` returns them. */
@@ -29,6 +33,25 @@ export interface ClearedQueue {
 export interface SessionEntries {
 	readonly entries: SessionEntry[];
 	readonly leafId: string | null;
+}
+
+/** A user message a client can fork from, as legacy `get_fork_messages` lists them. */
+export interface ForkMessage {
+	readonly entryId: string;
+	readonly text: string;
+}
+
+/** The active entry chain of a session, as a linear tree with the newest entry's id. */
+export interface SessionTree {
+	readonly tree: SessionTreeNode[];
+	readonly leafId: string | null;
+}
+
+/** A conversation the fork created; the caller moves the controller to it. */
+export interface ForkedConversation {
+	readonly conversationId: ConversationId;
+	/** The text of the message the fork starts at, empty when it carries none. */
+	readonly text: string;
 }
 
 /**
@@ -47,6 +70,14 @@ export interface DurableSessionOps {
 	setSessionName(name: string): Promise<string | undefined>;
 	/** Write the session's HTML export and return its path. */
 	exportHtml(outputPath: string | undefined): Promise<string>;
+	/** Fork the current conversation at a user message; the caller moves the controller to the new conversation. */
+	fork(at: string): Promise<ForkedConversation>;
+	/** Fork the current conversation at its newest entry. */
+	clone(): Promise<ForkedConversation>;
+	/** The user messages a client can fork from, in append order. */
+	forkMessages(): Promise<readonly ForkMessage[]>;
+	/** The active entry chain of the current conversation as a linear tree. */
+	tree(): Promise<SessionTree>;
 }
 
 /** What the operations need from an open durable session. */
@@ -61,6 +92,9 @@ export interface DurableSessionOpsHost {
 
 /** The display name of a session, stored beside its database rather than inside the conversation. */
 const METADATA_FILE = "session.json";
+
+/** A forked conversation belongs to the host, like the root conversation: no task owns it. */
+const OWNERLESS: ConversationOwnership = { kind: "ownerless" };
 
 const PAGE_SIZE = 256;
 
@@ -185,6 +219,16 @@ async function allEntries(
 	return records;
 }
 
+/** The one entry with `id`, when it is visible from the conversation's history. */
+async function visibleEntry(
+	conversation: Conversation,
+	context: Context,
+	id: EntryId,
+): Promise<EntryRecord | undefined> {
+	const page = await conversation.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, context);
+	return page.items[0];
+}
+
 /** The id of the newest entry a client sees, which is the leaf position of the session as `get_entries` reports it. */
 async function leafId(conversation: Conversation, context: Context): Promise<string | null> {
 	let cursor: Cursor | undefined;
@@ -293,6 +337,56 @@ export function createDurableSessionOps(host: DurableSessionOpsHost): DurableSes
 			} finally {
 				await rm(directory, { recursive: true, force: true });
 			}
+		},
+		async fork(at) {
+			const conversation = host.conversation();
+			const id = parseEntryId(at);
+			const entry = id === undefined ? undefined : await visibleEntry(conversation, host.context, id);
+			const message = entry?.model?.[0];
+			if (id === undefined || entry === undefined) throw new Error(`Entry not found: ${at}`);
+			// Legacy forks from a user message only, which is what `get_fork_messages` offers.
+			if (!UserEntry.is(entry) || message === undefined) {
+				throw new Error(`Cannot fork from an entry that is not a user message: ${at}`);
+			}
+			const forked = await conversation.fork(id, { ownership: OWNERLESS }, host.context);
+			return { conversationId: forked.id, text: textOf(message) };
+		},
+		async clone() {
+			const conversation = host.conversation();
+			const newest = (await conversation.entries({}, 1, undefined, host.context)).items[0];
+			if (newest === undefined) throw new Error("Cannot clone session: no current entry selected");
+			const forked = await conversation.fork(newest.id, { ownership: OWNERLESS }, host.context);
+			return { conversationId: forked.id, text: "" };
+		},
+		async forkMessages() {
+			const conversation = host.conversation();
+			const messages: ForkMessage[] = [];
+			for (const record of await allEntries(conversation, host.context, undefined)) {
+				const message = record.model?.[0];
+				if (!UserEntry.is(record) || message === undefined) continue;
+				const text = textOf(message);
+				if (text.length > 0) messages.push({ entryId: entryId(record.id), text });
+			}
+			return messages;
+		},
+		async tree() {
+			const conversation = host.conversation();
+			// The active range only: durable has no parent tree, so the tree is this chain (Decision #24).
+			const active = await conversation.context(host.context);
+			const entries = await toSessionEntries(
+				conversation,
+				host.context,
+				active.entries,
+				createdAt(host.session().directory),
+			);
+			const tree: SessionTreeNode[] = [];
+			let nodes = tree;
+			for (const entry of entries) {
+				const node: SessionTreeNode = { entry, children: [] };
+				nodes.push(node);
+				nodes = node.children;
+			}
+			return { tree, leafId: entries.length === 0 ? null : entries[entries.length - 1]!.id };
 		},
 	};
 }
