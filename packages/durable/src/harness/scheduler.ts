@@ -25,6 +25,7 @@ import type {
 } from "../types.ts";
 import { agentHooks } from "./agent.ts";
 import { type ContextRange, readContextFrom } from "./context.ts";
+import { generationTaskReference } from "./run.ts";
 import type {
 	Agent,
 	AnyTask,
@@ -244,6 +245,13 @@ export class TaskScheduler {
 	readonly #unloaded = new Set<TaskId>();
 	/** Live tasks with cancellation intent, the sources of abort cascades (spec §5.4). */
 	readonly #intent = new Set<TaskId>();
+	/**
+	 * Stop-retry requests `Conversation.stopRetry()` took, per task in its `retry` phase, until the phase's wait starts.
+	 * In memory only: a crash before the phase commits leaves the wait to resume after restart (Decision #30).
+	 */
+	readonly #retryStops = new Set<TaskId>();
+	/** Retry waits a phase has started, per task; a stop-retry request cancels one alone. */
+	readonly #retryWaits = new Map<TaskId, AbortController>();
 	/** Live tasks that are not `completing`, the candidates of a reservation pass; ones found waiting leave it. */
 	readonly #runnable = new Set<TaskId>();
 	/** `completing` tasks the next finalize pass checks: those that started holding, and holders of ended work. */
@@ -386,6 +394,26 @@ export class TaskScheduler {
 		if (this.#idle(conversationId)) return Promise.resolve();
 		this.#scheduleReconcile();
 		return this.#idleWaiters.add(conversationId, context);
+	}
+
+	/**
+	 * `Conversation.stopRetry()`: take a stop-retry request for every generation of `conversationId` that is waiting to
+	 * retry a model request, and cancel those waits alone. Nothing is written, no task is aborted, and a request taken
+	 * before the phase starts its wait is consumed when it does. Resolves `true` when a retry was waiting for the request.
+	 */
+	stopRetry(conversationId: ConversationId): boolean {
+		let stopped = false;
+		for (const record of this.#live.values()) {
+			if (record.conversationId !== conversationId) continue;
+			if (record.kind !== generationTaskReference.definition.name) continue;
+			const state = record.state;
+			if (state.status !== "pending" && state.status !== "running") continue;
+			if (phaseOf(state.checkpoint) !== "retry") continue;
+			stopped = true;
+			this.#retryStops.add(record.id);
+			this.#retryWaits.get(record.id)?.abort();
+		}
+		return stopped;
 	}
 
 	/**
@@ -804,6 +832,7 @@ export class TaskScheduler {
 			this.#intent.delete(id);
 			this.#runnable.delete(id);
 			this.#finalizeChecks.delete(id);
+			this.#retryStops.delete(id);
 			this.#settled.set(id, node);
 			// Before anything is forgotten: the walk up to the task it held passes the ended tasks between them. Its chain is
 			// loaded, as every commit that ends a task loads the chains of `#unloaded` first.
@@ -814,6 +843,9 @@ export class TaskScheduler {
 			return;
 		}
 		this.#live.set(id, record);
+		// A request taken in the `retry` phase is consumed when its wait starts, so leaving the phase drops it.
+		if (record.state.status === "completing" || phaseOf(record.state.checkpoint) !== "retry")
+			this.#retryStops.delete(id);
 		if (previous === undefined) {
 			if (!this.#known(parentNode(record))) this.#unloaded.add(id);
 			this.#relist(id);
@@ -1658,6 +1690,7 @@ export class TaskScheduler {
 				);
 			}) as ErasedRuntime["memo"],
 			sleep: (until, context) => this.#sleep(invocation, until, context),
+			retrySleep: (until, context) => this.#retrySleep(invocation, until, context),
 			watchDoc: ((...args: readonly unknown[]) => this.#watchDoc(invocation, args)) as ErasedRuntime["watchDoc"],
 			snapshot: ((...args: readonly unknown[]) =>
 				this.#read(invocation, () =>
@@ -1826,6 +1859,28 @@ export class TaskScheduler {
 		}
 	}
 
+	/**
+	 * `#sleep` with a stop-retry request able to end the wait on its own: the request cancels a controller of its own, so
+	 * the phase can tell a stopped retry from an abort of the invocation or of `context`. A request taken before the wait
+	 * starts is consumed here, which closes the window between the commit that parked the generation and this phase.
+	 */
+	async #retrySleep(invocation: Invocation, until: number, context: Context): Promise<"elapsed" | "stopped"> {
+		if (this.#retryStops.delete(invocation.taskId)) return "stopped";
+		const stop = new AbortController();
+		this.#retryWaits.set(invocation.taskId, stop);
+		try {
+			const signals = [stop.signal];
+			if (context.abortSignal !== undefined) signals.push(context.abortSignal);
+			await this.#sleep(invocation, until, { ...context, abortSignal: AbortSignal.any(signals) });
+		} catch (error) {
+			if (stop.signal.aborted && !invocation.controller.signal.aborted) return "stopped";
+			throw error;
+		} finally {
+			this.#retryWaits.delete(invocation.taskId);
+		}
+		return "elapsed";
+	}
+
 	async #watchDoc(invocation: Invocation, args: readonly unknown[]): Promise<DocumentWatch<JsonObject> | undefined> {
 		if (invocation.ended) throw endedError(invocation);
 		const watch = (await sessionMethod(this.#session, "watchDoc")(...args)) as DocumentWatch<JsonObject> | undefined;
@@ -1838,6 +1893,13 @@ export class TaskScheduler {
 		void watch.closed.then(() => invocation.watches.delete(watch));
 		return watch;
 	}
+}
+
+/** The phase a live checkpoint names, or `undefined` when it names none. */
+function phaseOf(checkpoint: JsonValue): string | undefined {
+	if (checkpoint === null || typeof checkpoint !== "object" || Array.isArray(checkpoint)) return undefined;
+	const phase = checkpoint.phase;
+	return typeof phase === "string" ? phase : undefined;
 }
 
 /** The record with an abort mark: `restart` for an abandonment; without a reason, a request, which replaces `restart`. */
