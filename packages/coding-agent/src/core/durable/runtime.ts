@@ -10,6 +10,7 @@ import {
 	type ConversationId,
 	type ConversationView,
 	type Cursor,
+	type EntryId,
 	type EntryRecord,
 	Harness,
 	type ModelRef,
@@ -17,6 +18,7 @@ import {
 	type SettledSubmissionRecord,
 	type Submission,
 	type TaskGraph,
+	UsageDoc,
 	type UserInput,
 	watchEvents,
 } from "@ny4n/durable";
@@ -41,6 +43,7 @@ import type { ReadonlySessionManager, SessionEntry, SessionTreeNode } from "../s
 import type { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
 import type { BashOperations } from "../tools/bash.ts";
+import { addWarmUsage, DurableCacheWarmer } from "./cache-warmer.ts";
 import { createExtensionHost, type ExtensionHost } from "./extension-host.ts";
 import {
 	configureHarnessHttp,
@@ -299,7 +302,17 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		}
 		if (options.settingsOverrides !== undefined) services.settingsManager.applyOverrides(options.settingsOverrides);
 		const { modelRuntime, settingsManager } = services;
-		const durableModelRuntime = createDurableModelRuntime(modelRuntime);
+		// Cache warming starts from the request durable's generation task actually sends, so the refresh reuses that
+		// request's model, messages, thinking level, provider session, and request transforms.
+		let cacheWarmer: DurableCacheWarmer | undefined;
+		/** The transcript and model the warm run stands on, recorded when its request was sent. */
+		let warmBasis: { conversationId: ConversationId; entryIds: EntryId[] } | undefined;
+		const durableModelRuntime = createDurableModelRuntime(modelRuntime, {
+			onSessionRequest: (model, context, options) => {
+				warmBasis = { conversationId: current.id, entryIds: currentView?.entries.map((entry) => entry.id) ?? [] };
+				cacheWarmer?.start({ model, context, options: options ?? {} });
+			},
+		});
 		configureHarnessHttp(settingsManager);
 		const queueModes: {
 			steeringMode?: "all" | "one-at-a-time";
@@ -408,6 +421,51 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			isIdle: () => activeRuns === 0,
 		});
 		registry.install(host.adapter);
+
+		cacheWarmer = new DurableCacheWarmer({
+			models: modelRuntime,
+			getMode: () => settingsManager.getCacheWarmingMode(),
+			decide: (event) => host.runner.emitCacheWarmingDecision(event),
+			promptTokens: () => {
+				const messages = (currentView?.entries ?? []).flatMap((entry) => entry.model ?? []);
+				for (let index = messages.length - 1; index >= 0; index--) {
+					const message = messages[index]!;
+					if (message.role !== "assistant") continue;
+					return message.usage.input + message.usage.cacheRead + message.usage.cacheWrite;
+				}
+				return 0;
+			},
+			isCurrent: (request) => {
+				const basis = warmBasis;
+				if (basis === undefined || basis.conversationId !== current.id) return false;
+				const ref = agentOf(state.conversation).model;
+				if (ref === undefined || ref.provider !== request.model.provider || ref.modelId !== request.model.id) {
+					return false;
+				}
+				// Entry ids are durable's stable identity: an appended entry keeps the request's prefix, a compaction or a
+				// branch change does not.
+				const entries = currentView?.entries ?? [];
+				return basis.entryIds.every((id, index) => entries[index]?.id === id);
+			},
+			recordUsage: async (model, usage) => {
+				const conversationId = current.id;
+				try {
+					await opened.commit(async (tx) => {
+						const problem = addWarmUsage(
+							(await tx.doc(UsageDoc, conversationId)).models,
+							`${model.provider}/${model.id}`,
+							usage,
+						);
+						if (problem !== undefined) {
+							report(new Error(`A cache refresh's usage was not recorded: ${problem}`));
+						}
+					}, context);
+				} catch (error) {
+					report(new Error("A cache refresh completed but its usage could not be recorded", { cause: error }));
+				}
+			},
+			report: (message) => notice("warning", message),
+		});
 
 		const pendingReports: unknown[] = [];
 		let report: (error: unknown) => void = (error) => pendingReports.push(error);
@@ -559,6 +617,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					const messages = state.conversation.entries
 						.flatMap((entry) => (entry.model ?? []) as AgentMessage[])
 						.slice(startingMessageCount);
+					// `streaming` warming ends with the run it belongs to; `idle` warming continues under its own horizon.
+					cacheWarmer?.onAgentSettled();
 					await host.settled(isAborted(settled), messages);
 					return settled;
 				})
@@ -821,6 +881,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 							? undefined
 							: modelRuntime.getModel(previousRef.provider, previousRef.modelId);
 					const thinking: ModelThinkingLevel = agentOf(state.conversation).thinkingLevel ?? "off";
+					cacheWarmer?.cancel("model changed");
 					await current.configure({ model: ref, thinkingLevel: clampThinkingLevel(model, thinking) }, context);
 					await host.modelSelected(model, previousModel, "set");
 				}),
@@ -837,6 +898,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 				}),
 			switchConversation: (id) =>
 				command(async () => {
+					// The forked conversation's transcript is not the warmed request's prefix.
+					cacheWarmer?.cancel("conversation switched");
 					const next = await opened.conversation(id, context);
 					if (next === undefined) throw new Error(`Conversation ${id} does not exist`);
 					const nextState = await next.viewState(context);
@@ -925,6 +988,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			},
 			close(reason = "quit") {
 				closing ??= (async () => {
+					// No timer and no request survive a closed session.
+					cacheWarmer?.cancel("session closed");
 					unsubscribe();
 					unsubscribeCommits();
 					conversation.dispose();
