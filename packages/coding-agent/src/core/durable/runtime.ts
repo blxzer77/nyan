@@ -24,7 +24,13 @@ import { openNodeSqliteStorage } from "@ny4n/durable/storage/sqlite/node";
 import { getAgentDir } from "../../config.ts";
 import type { Theme } from "../../ui/theme/theme.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../agent-session-services.ts";
-import type { ExtensionMode, InlineExtension, ProjectTrustContext, SessionShutdownEvent } from "../extensions/types.ts";
+import type {
+	ExtensionMode,
+	InlineExtension,
+	ProjectTrustContext,
+	SessionShutdownEvent,
+	SessionStartEvent,
+} from "../extensions/types.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import { expandPromptTemplate, type PromptTemplate } from "../prompt-templates.ts";
 import type { ReadonlySessionManager, SessionEntry, SessionTreeNode } from "../session-manager.ts";
@@ -41,7 +47,7 @@ import {
 import { createDurableModelRuntime } from "./model-runtime-adapter.ts";
 import { createDurableServices, type DurableResourceOptions, type DurableServices } from "./services.ts";
 import { createDurableSessionOps, type DurableSessionOps } from "./session-ops.ts";
-import { selectSession } from "./sessions.ts";
+import { openSessionDirectory, selectSession } from "./sessions.ts";
 import { Subagent } from "./subagent.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -125,6 +131,10 @@ export class DurableStartupError extends Error {
 export interface OpenDurableOptions {
 	readonly cwd?: string;
 	readonly continueSession?: boolean;
+	/** Open this exact existing durable session directory instead of selecting by cwd. */
+	readonly sessionDirectory?: string;
+	/** Override the lifecycle event emitted after opening a session. */
+	readonly sessionStartEvent?: SessionStartEvent;
 	/** Attach the durable event stream for a headless adapter. */
 	readonly eventStream?: boolean;
 	readonly model?: DurableModelSelection;
@@ -223,7 +233,10 @@ function titleOf(entry: EntryRecord | undefined): { title?: string } {
 }
 
 export async function openDurable(options: OpenDurableOptions = {}): Promise<OpenDurableResult> {
-	const location = await selectSession(options.cwd ?? process.cwd(), options.continueSession ?? false);
+	const location =
+		options.sessionDirectory === undefined
+			? await selectSession(options.cwd ?? process.cwd(), options.continueSession ?? false)
+			: await openSessionDirectory(options.sessionDirectory);
 	const envs = new ExecutionEnvs(location.cwd);
 	let harness: Harness | undefined;
 	try {
@@ -646,7 +659,9 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		if (initial?.fallbackMessage !== undefined) notice("info", initial.fallbackMessage);
 		// The task panel starts open; /tasks hides it.
 		await controller.toggleTasks();
-		await host.start(location.created ? "startup" : "resume");
+		await host.start(
+			options.sessionStartEvent ?? { type: "session_start", reason: location.created ? "startup" : "resume" },
+		);
 		// Recovered work from an interrupted turn continues now.
 		harness.resume();
 

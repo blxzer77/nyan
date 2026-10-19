@@ -22,6 +22,7 @@ import { APP_NAME } from "../../config.ts";
 import { exportFromFile } from "../export-html/index.ts";
 import type { SessionTreeNode } from "../session-manager.ts";
 import { CURRENT_SESSION_VERSION, type FileEntry, type SessionEntry, type SessionHeader } from "../session-manager.ts";
+import { DURABLE_SESSION_METADATA_FILE, readSessionMetadata, writeSessionMetadata } from "./sessions.ts";
 
 /** The texts that were waiting for a boundary, as legacy `clear_queue` returns them. */
 export interface ClearedQueue {
@@ -89,9 +90,6 @@ export interface DurableSessionOpsHost {
 	readonly session: () => { readonly id: string; readonly directory: string; readonly cwd: string };
 	readonly context: Context;
 }
-
-/** The display name of a session, stored beside its database rather than inside the conversation. */
-const METADATA_FILE = "session.json";
 
 /** A forked conversation belongs to the host, like the root conversation: no task owns it. */
 const OWNERLESS: ConversationOwnership = { kind: "ownerless" };
@@ -244,7 +242,7 @@ async function leafId(conversation: Conversation, context: Context): Promise<str
 /** Read the display name, tolerating a missing or unreadable metadata file. */
 async function readName(directory: string): Promise<string | undefined> {
 	try {
-		const parsed: unknown = JSON.parse(await readFile(join(directory, METADATA_FILE), "utf8"));
+		const parsed: unknown = JSON.parse(await readFile(join(directory, DURABLE_SESSION_METADATA_FILE), "utf8"));
 		if (typeof parsed !== "object" || parsed === null || !("name" in parsed)) return undefined;
 		const name = (parsed as { name?: unknown }).name;
 		return typeof name === "string" ? name.trim() || undefined : undefined;
@@ -272,7 +270,6 @@ function headerOf(session: { readonly id: string; readonly directory: string; re
  * conversation the host reports, so a conversation switch is visible without rebuilding them.
  */
 export function createDurableSessionOps(host: DurableSessionOpsHost): DurableSessionOps {
-	const nameFile = (): string => join(host.session().directory, METADATA_FILE);
 	return {
 		async clearQueue() {
 			const conversation = host.conversation();
@@ -316,7 +313,11 @@ export function createDurableSessionOps(host: DurableSessionOpsHost): DurableSes
 		async setSessionName(name) {
 			// The same name rule as legacy: line breaks become spaces, and an empty name clears the title.
 			const cleaned = name.replace(/[\r\n]+/gu, " ").trim();
-			await writeFile(nameFile(), `${JSON.stringify(cleaned.length === 0 ? {} : { name: cleaned })}\n`, "utf8");
+			const metadata = await readSessionMetadata(host.session().directory);
+			await writeSessionMetadata(host.session().directory, {
+				...(metadata.cwd === undefined ? {} : { cwd: metadata.cwd }),
+				...(cleaned.length === 0 ? {} : { name: cleaned }),
+			});
 			return cleaned.length === 0 ? undefined : cleaned;
 		},
 		async exportHtml(outputPath) {
