@@ -1,17 +1,32 @@
+import * as crypto from "node:crypto";
 import { join } from "node:path";
 import type { AgentMessage } from "@ny4n/agent-core";
 import { getSupportedThinkingLevels } from "@ny4n/ai";
 import type { AgentState, LiveState, UsageState } from "@ny4n/durable";
+import { dispatchDurableExtensionCommand, getDurableExtensionCommands } from "../../core/durable/extension-commands.ts";
 import { type OpenDurableOptions, type OpenDurableResult, openDurable } from "../../core/durable/runtime.ts";
+import type {
+	ExtensionUIContext,
+	ExtensionUIDialogOptions,
+	ExtensionWidgetOptions,
+	WorkingIndicatorOptions,
+} from "../../core/extensions/index.ts";
 import {
 	flushRawStdout,
 	takeOverStdout,
 	waitForRawStdoutBackpressure,
 	writeRawStdout,
 } from "../../core/output-guard.ts";
+import { type Theme, theme } from "../../ui/theme/theme.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "../rpc/jsonl.ts";
-import type { RpcCommand, RpcResponse, RpcSessionState } from "../rpc/rpc-types.ts";
+import type {
+	RpcCommand,
+	RpcExtensionUIRequest,
+	RpcExtensionUIResponse,
+	RpcResponse,
+	RpcSessionState,
+} from "../rpc/rpc-types.ts";
 import { DurableJsonEventAdapter } from "./json-events.ts";
 
 export type DurableRpcOptions = OpenDurableOptions;
@@ -26,6 +41,137 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 	let detachInput = (): void => {};
 
 	const output = (value: unknown): void => writeRawStdout(serializeJsonLine(value));
+	const pendingExtensionRequests = new Map<
+		string,
+		{
+			resolve: (response: RpcExtensionUIResponse) => void;
+			reject: (error: Error) => void;
+		}
+	>();
+
+	function createDialogPromise<T>(
+		opts: ExtensionUIDialogOptions | undefined,
+		defaultValue: T,
+		request: RpcExtensionUIRequest,
+		parseResponse: (response: RpcExtensionUIResponse) => T,
+	): Promise<T> {
+		if (opts?.signal?.aborted) return Promise.resolve(defaultValue);
+		return new Promise((resolve, reject) => {
+			let timeout: ReturnType<typeof setTimeout> | undefined;
+			const cleanup = (): void => {
+				if (timeout !== undefined) clearTimeout(timeout);
+				opts?.signal?.removeEventListener("abort", onAbort);
+				pendingExtensionRequests.delete(request.id);
+			};
+			const onAbort = (): void => {
+				cleanup();
+				resolve(defaultValue);
+			};
+			opts?.signal?.addEventListener("abort", onAbort, { once: true });
+			if (opts?.timeout !== undefined)
+				timeout = setTimeout(() => {
+					cleanup();
+					resolve(defaultValue);
+				}, opts.timeout);
+			pendingExtensionRequests.set(request.id, {
+				resolve: (response) => {
+					cleanup();
+					resolve(parseResponse(response));
+				},
+				reject,
+			});
+			output(request);
+		});
+	}
+
+	const createExtensionUIContext = (): ExtensionUIContext => ({
+		select: (title, options, opts) =>
+			createDialogPromise(
+				opts,
+				undefined,
+				{
+					type: "extension_ui_request",
+					id: crypto.randomUUID(),
+					method: "select",
+					title,
+					options,
+					timeout: opts?.timeout,
+				},
+				(response) =>
+					("cancelled" in response && response.cancelled) || !("value" in response) ? undefined : response.value,
+			),
+		confirm: (title, message, opts) =>
+			createDialogPromise(
+				opts,
+				false,
+				{
+					type: "extension_ui_request",
+					id: crypto.randomUUID(),
+					method: "confirm",
+					title,
+					message,
+					timeout: opts?.timeout,
+				},
+				(response) =>
+					("cancelled" in response && response.cancelled) || !("confirmed" in response)
+						? false
+						: response.confirmed,
+			),
+		input: (title, placeholder, opts) =>
+			createDialogPromise(
+				opts,
+				undefined,
+				{
+					type: "extension_ui_request",
+					id: crypto.randomUUID(),
+					method: "input",
+					title,
+					placeholder,
+					timeout: opts?.timeout,
+				},
+				(response) =>
+					("cancelled" in response && response.cancelled) || !("value" in response) ? undefined : response.value,
+			),
+		notify: (message, type) =>
+			output({ type: "extension_ui_request", id: crypto.randomUUID(), method: "notify", message, notifyType: type }),
+		onTerminalInput: () => () => {},
+		setStatus: (key, text) =>
+			output({
+				type: "extension_ui_request",
+				id: crypto.randomUUID(),
+				method: "setStatus",
+				statusKey: key,
+				statusText: text,
+			}),
+		setWorkingMessage: (_message?: string) => {},
+		setWorkingVisible: (_visible: boolean) => {},
+		setWorkingIndicator: (_options?: WorkingIndicatorOptions) => {},
+		setHiddenThinkingLabel: (_label?: string) => {},
+		setWidget: (_key: string, _content: unknown, _options?: ExtensionWidgetOptions) => {},
+		setFooter: () => {},
+		setHeader: () => {},
+		setTitle: (title) => output({ type: "extension_ui_request", id: crypto.randomUUID(), method: "setTitle", title }),
+		custom: async () => {
+			throw new Error("Extension custom UI components are not available on the durable RPC path yet");
+		},
+		pasteToEditor: () => {},
+		setEditorText: () => {},
+		getEditorText: () => "",
+		editor: async () => undefined,
+		addAutocompleteProvider: () => {},
+		setEditorComponent: () => {},
+		getEditorComponent: () => undefined,
+		get theme(): Theme {
+			return theme;
+		},
+		getAllThemes: () => [],
+		getTheme: () => undefined,
+		setTheme: () => ({ success: false, error: "Theme switching is not available on the durable RPC path yet" }),
+		getToolsExpanded: () => false,
+		setToolsExpanded: () => {},
+	});
+
+	durable.extensionHost.runner.setUIContext(createExtensionUIContext(), "rpc");
 	const success = (id: string | undefined, command: string, data?: object | null): RpcResponse =>
 		({
 			...(id === undefined ? {} : { id }),
@@ -99,20 +245,24 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 	const handleCommand = async (command: RpcCommand): Promise<RpcResponse | undefined> => {
 		const id = command.id;
 		switch (command.type) {
-			case "prompt":
-				void durable.controller
-					.submitAndWait(
-						command.images === undefined
-							? command.message
-							: [{ type: "text", text: command.message }, ...command.images],
-						command.streamingBehavior ?? "steer",
-					)
-					.then(
+			case "prompt": {
+				const content =
+					command.images === undefined
+						? command.message
+						: [{ type: "text" as const, text: command.message }, ...command.images];
+				void dispatchDurableExtensionCommand(durable.extensionHost.runner, command.message).then((handled) => {
+					if (handled) return output(success(id, "prompt", { disposition: "handled" }));
+					return durable.controller.submitAndWait(content, command.streamingBehavior ?? "steer").then(
 						() => output(success(id, "prompt", { disposition: "started" })),
 						(error) => output(failure(id, "prompt", error instanceof Error ? error.message : String(error))),
 					);
+				});
 				return undefined;
+			}
 			case "steer":
+				if (await dispatchDurableExtensionCommand(durable.extensionHost.runner, command.message)) {
+					return success(id, "steer", { disposition: "handled" });
+				}
 				await durable.controller.submitAndWait(
 					command.images === undefined
 						? command.message
@@ -121,6 +271,9 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				);
 				return success(id, "steer", { disposition: "queued" });
 			case "follow_up":
+				if (await dispatchDurableExtensionCommand(durable.extensionHost.runner, command.message)) {
+					return success(id, "follow_up", { disposition: "handled" });
+				}
 				await durable.controller.submitAndWait(
 					command.images === undefined
 						? command.message
@@ -201,7 +354,14 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 			case "get_messages":
 				return success(id, "get_messages", { messages: messagesOf(durable) });
 			case "get_commands":
-				return success(id, "get_commands", { commands: [] });
+				return success(id, "get_commands", {
+					commands: getDurableExtensionCommands(durable.extensionHost.runner).map((command) => ({
+						name: command.invocationName,
+						description: command.description,
+						source: "extension" as const,
+						sourceInfo: command.sourceInfo,
+					})),
+				});
 			case "get_session_stats": {
 				const messages = messagesOf(durable);
 				const usage = ((durable.view.current().conversation.docs["nyan.usage"] ?? {}) as UsageState).models ?? {};
@@ -277,6 +437,16 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 			return;
 		}
 		try {
+			if (
+				typeof parsed === "object" &&
+				parsed !== null &&
+				"type" in parsed &&
+				parsed.type === "extension_ui_response"
+			) {
+				const response = parsed as RpcExtensionUIResponse;
+				pendingExtensionRequests.get(response.id)?.resolve(response);
+				return;
+			}
 			const response = await handleCommand(parsed as RpcCommand);
 			if (response !== undefined) output(response);
 			await waitForRawStdoutBackpressure();

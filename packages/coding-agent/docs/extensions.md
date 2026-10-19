@@ -249,8 +249,8 @@ Use `ctx.ui.custom()` only when the interaction needs its own rendering and inpu
 See [Terminal UI](tui.md) for component, focus, overlay, theme, and performance guidance.
 
 Extensions load in interactive, RPC, JSON, and print modes.
-Interactive mode provides the complete terminal UI.
-RPC can forward supported dialogs and notifications through the [RPC Extension UI protocol](rpc-extension-ui.md), but not custom terminal components; JSON and print modes have no UI.
+The legacy interactive mode provides the complete terminal UI. The durable TUI currently provides the command path and the `notify`, `setStatus`, `select`, `confirm`, and `input` subset; widgets, custom components, header/footer replacement, editor replacement, and autocomplete remain deferred to the N9 TUI rewrite.
+RPC forwards the same supported dialogs, notifications, and status updates through the [RPC Extension UI protocol](rpc-extension-ui.md), but not custom terminal components; JSON and print modes have no UI.
 Guard terminal-only behavior with `ctx.mode === "tui"` and use `ctx.hasUI` for interactions supported by interactive and RPC clients.
 
 Keep tool and event behavior independent from rendering so non-interactive modes remain functional.

@@ -168,6 +168,8 @@ export interface OpenDurableResult {
 	readonly events?: AgentEventStream;
 	/** nyan's settings, for the TUI's theme and terminal capabilities. */
 	readonly settings: SettingsManager;
+	/** The extension host for this open; modes bind their UI context before accepting input. */
+	readonly extensionHost: ExtensionHost;
 	/** The services this open used; pass them to a later open in the same process. */
 	readonly services: DurableServices;
 	/** Ends the session: `session_shutdown` with `reason` (default "quit"), then the storage is closed. */
@@ -547,6 +549,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			modelRuntime,
 			...(events === undefined ? {} : { events }),
 			settings: settingsManager,
+			extensionHost: host,
 			services,
 			close(reason = "quit") {
 				closing ??= (async () => {

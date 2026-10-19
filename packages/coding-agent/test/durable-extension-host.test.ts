@@ -5,12 +5,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
+import {
+	dispatchDurableExtensionCommand,
+	getDurableExtensionCommands,
+} from "../src/core/durable/extension-commands.ts";
 import { createExtensionHost } from "../src/core/durable/extension-host.ts";
 import { openDurable } from "../src/core/durable/runtime.ts";
 import { createDurableServices } from "../src/core/durable/services.ts";
 import type { ExtensionAPI, InlineExtension, ProjectTrustContext } from "../src/core/extensions/types.ts";
 import { persistPausePreference } from "../src/extensions/cliproxyapi/pause.ts";
 import { builtInExtensions } from "../src/extensions/index.ts";
+import { createTestUiContext } from "./suite/harness.ts";
 
 /**
  * The durable path's extension host against a loopback stand-in for CLIProxyAPI. The stand-in records each request body
@@ -292,6 +297,45 @@ describe("durable extension host", () => {
 		} finally {
 			await second.close();
 		}
+	});
+
+	test("dispatches durable extension commands with the bound UI context", async () => {
+		const calls: string[] = [];
+		const services = await createDurableServices({
+			cwd,
+			agentDir,
+			resources: {},
+			extensionFactories: [
+				(pi) => {
+					pi.registerCommand("probe", {
+						description: "Probe command",
+						handler: async (args, ctx) => {
+							calls.push(`${args}:${ctx.hasUI}`);
+							ctx.ui.notify("command ran");
+						},
+					});
+				},
+			],
+			projectTrustContext: { ...headless, cwd },
+		});
+		const host = createExtensionHost({
+			services,
+			cwd,
+			agentModel: () => undefined,
+			abort: () => {},
+			compact: () => {},
+			onExtensionError: (error) => calls.push(`error:${error.error}`),
+			installTools: () => {},
+			isIdle: () => true,
+		});
+		const notices: string[] = [];
+		host.runner.setUIContext(createTestUiContext({ notify: (message) => notices.push(message) }), "tui");
+
+		expect(getDurableExtensionCommands(host.runner).map((command) => command.invocationName)).toEqual(["probe"]);
+		expect(await dispatchDurableExtensionCommand(host.runner, "/probe one two")).toBe(true);
+		expect(await dispatchDurableExtensionCommand(host.runner, "/missing")).toBe(false);
+		expect(calls).toEqual(["one two:true"]);
+		expect(notices).toEqual(["command ran"]);
 	});
 
 	test("with no handler for a provider event, the host installs no hook members", async () => {
