@@ -235,7 +235,9 @@ jobs:
         run: npm run test:fuzz:protocol
 
       - name: Run protocol mutation testing
-        run: npm run test:mutation
+        # Forced: the nightly is what detects drift over time, so it must not reuse the incremental file that the
+        # pull-request gate keeps warm. A stale file is exactly what would hide a slow regression.
+        run: npm run test:mutation -- --force
 
       - name: Upload deep-testing reports
         if: always()

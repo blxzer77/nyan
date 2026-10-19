@@ -449,8 +449,32 @@ jobs:
           FUZZ_SEED: '20261017'
         run: npm run test:fuzz:protocol
 
+      - name: Restore the mutation incremental file
+        # Stryker re-runs only the mutants affected by what changed, but it stores that in
+        # .artifacts/stryker/protocol-incremental.json, which a fresh runner never has: without this the job
+        # mutated the whole of cbor/** on every run. Measured locally: 2 m 44 s cold against 6.7 s warm.
+        #
+        # The file cannot hide a regression: changing a test file re-runs everything (2 m 31 s measured), and
+        # deleting a test raised the survivor count from 88 to 89. That is why a pull request restores but never
+        # saves, and why only main writes it.
+        uses: actions/cache/restore@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
+        with:
+          path: .artifacts/stryker/protocol-incremental.json
+          key: stryker-incremental-${{ hashFiles('packages/protocol/src/cbor/**/*.ts', 'packages/protocol/test/cbor/**/*.ts') }}
+          restore-keys: |
+            stryker-incremental-
+
       - name: Run protocol mutation testing
         run: npm run test:mutation
+
+      - name: Save the mutation incremental file
+        # Only a push to main writes it: a per-pull-request key would be scoped to a ref nobody reuses, which is
+        # what filled the cache quota before.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
+        with:
+          path: .artifacts/stryker/protocol-incremental.json
+          key: stryker-incremental-${{ hashFiles('packages/protocol/src/cbor/**/*.ts', 'packages/protocol/test/cbor/**/*.ts') }}
 
       - name: Upload deep-testing reports
         if: always()
