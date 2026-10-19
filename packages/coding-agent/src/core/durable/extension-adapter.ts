@@ -164,10 +164,16 @@ export function durableBoundaryEntriesToLegacy(
 	return result;
 }
 
+/**
+ * `timestamp` stamps the user messages the drafts create. The caller passes a value taken from the boundary (its
+ * assistant message), so the mapping is a pure function of its input: a handler that runs again after a crash before the
+ * boundary commit, on the same input, proposes the same entries.
+ */
 export function legacyBoundaryEntriesToDurable(
 	entries: readonly SessionBoundaryDraft[],
 	manager: BoundarySessionReader | undefined,
 	report: (message: string) => void,
+	timestamp: number,
 ): BoundaryEntry[] | undefined {
 	const result: BoundaryEntry[] = [];
 	for (const entry of entries) {
@@ -196,7 +202,7 @@ export function legacyBoundaryEntriesToDurable(
 				}
 				result.push({
 					kind: "custom_message",
-					model: [{ role: "user", content: entry.content, timestamp: Date.now() }],
+					model: [{ role: "user", content: entry.content, timestamp }],
 					data,
 				});
 				break;
@@ -228,7 +234,7 @@ export function legacyBoundaryEntriesToDurable(
 										{
 											role: "user",
 											content: entry.replacement.content as UserMessage["content"],
-											timestamp: Date.now(),
+											timestamp,
 										},
 									],
 								},
@@ -327,8 +333,11 @@ export function createProviderHooks(
 					canContinue: true,
 				};
 			});
-			const durableEntries = legacyBoundaryEntriesToDurable(result.entries, sessionManager, (message) =>
-				reportBoundaryError?.(`${eventType}: ${message}`),
+			const durableEntries = legacyBoundaryEntriesToDurable(
+				result.entries,
+				sessionManager,
+				(message) => reportBoundaryError?.(`${eventType}: ${message}`),
+				boundary.assistant.timestamp,
 			);
 			if (durableEntries === undefined) return boundary.continue ? { continue: true } : undefined;
 			return {

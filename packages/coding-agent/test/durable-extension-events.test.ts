@@ -1,11 +1,19 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxText } from "@ny4n/ai";
+import { type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall, Type } from "@ny4n/ai";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
+import { legacyBoundaryEntriesToDurable } from "../src/core/durable/extension-adapter.ts";
 import { type OpenDurableResult, openDurable } from "../src/core/durable/runtime.ts";
-import type { ExtensionAPI, InlineExtension, ProjectTrustContext } from "../src/core/extensions/types.ts";
+import type {
+	ExtensionAPI,
+	InlineExtension,
+	ProjectTrustContext,
+	SessionBoundaryDraft,
+	ToolDefinition,
+	TurnEndEvent,
+} from "../src/core/extensions/types.ts";
 import { ProjectTrustStore } from "../src/core/trust-manager.ts";
 
 /**
@@ -163,6 +171,443 @@ describe("durable host events and context", () => {
 				}),
 			]),
 		);
+	});
+
+	test.each(["omit", "replace"] as const)(
+		"accepts a context edit with action %s for a custom message and changes the next request",
+		async (action) => {
+			const requests: string[] = [];
+			const current = await open(
+				[
+					(pi) => {
+						pi.on("turn_end", (event) => {
+							if (event.turnIndex === 0) {
+								return {
+									entries: [
+										{
+											type: "custom_message",
+											customType: "probe.context",
+											content: "ORIGINAL-CONTEXT-MARKER",
+											display: false,
+										},
+									],
+									continue: true,
+								};
+							}
+							if (event.turnIndex !== 1) return;
+							const custom = event.context.contextEntries.find(
+								(entry) =>
+									entry.sourceEntry.type === "message" &&
+									entry.sourceEntry.message.role === "user" &&
+									JSON.stringify(entry.sourceEntry.message.content).includes("ORIGINAL-CONTEXT-MARKER"),
+							);
+							if (custom === undefined) throw new Error("custom context entry was not projected");
+							const replacement = action === "omit" ? null : { content: "REPLACED-CONTEXT-MARKER" };
+							// `continue` needs a user message in the same draft list, or durable drops it with a report.
+							return {
+								entries: [
+									{ type: "context_edit", targetId: String(custom.sourceEntry.id), replacement },
+									{
+										type: "custom_message",
+										customType: "probe.next",
+										content: "NEXT-REQUEST",
+										display: false,
+									},
+								],
+								continue: true,
+							};
+						});
+					},
+				],
+				[
+					(context) => {
+						requests.push(JSON.stringify(context.messages));
+						return fauxAssistantMessage([fauxText("first")]);
+					},
+					(context) => {
+						requests.push(JSON.stringify(context.messages));
+						return fauxAssistantMessage([fauxText("second")]);
+					},
+					(context) => {
+						requests.push(JSON.stringify(context.messages));
+						return fauxAssistantMessage([fauxText("third")]);
+					},
+				],
+			);
+			await expect(current.controller.submitAndWait("go", "followUp")).resolves.toMatchObject({ status: "done" });
+			expect(requests).toHaveLength(3);
+			// The second request still carries the original; the edit is committed with the boundary after it.
+			expect(requests[1]).toContain("ORIGINAL-CONTEXT-MARKER");
+			expect(requests[2]).toContain("NEXT-REQUEST");
+			expect(requests[2]).not.toContain("ORIGINAL-CONTEXT-MARKER");
+			if (action === "replace") expect(requests[2]).toContain("REPLACED-CONTEXT-MARKER");
+			else expect(requests[2]).not.toContain("REPLACED-CONTEXT-MARKER");
+			expect(current.view.current().notices).toEqual([]);
+		},
+	);
+
+	test("tool-round boundary events contain the real tool result and entry ids", async () => {
+		const rounds: TurnEndEvent[] = [];
+		const current = await open(
+			[
+				(pi) => {
+					const tool: ToolDefinition = {
+						name: "probe_tool",
+						label: "probe_tool",
+						description: "A probe tool",
+						parameters: Type.Object({}),
+						execute: async () => ({
+							content: [{ type: "text", text: "TOOL-RESULT-MARKER" }],
+							details: undefined,
+						}),
+					};
+					pi.registerTool(tool);
+					pi.on("turn_end", (event) => {
+						rounds.push(event);
+					});
+				},
+			],
+			[
+				() =>
+					fauxAssistantMessage([fauxToolCall("probe_tool", {}, { id: "probe-call" })], { stopReason: "toolUse" }),
+				() => fauxAssistantMessage([fauxText("done")]),
+			],
+		);
+		await expect(current.controller.submitAndWait("go", "followUp")).resolves.toMatchObject({ status: "done" });
+		const entries = current.view.current().conversation.entries;
+		const assistant = entries.find((entry) => entry.kind === "nyan.assistant");
+		const toolResult = entries.find((entry) => entry.kind === "nyan.tool-result");
+		expect(rounds.map((round) => round.turnIndex)).toEqual([0, 1]);
+		const [round, answer] = rounds;
+		// The tool round carries the committed result message and the durable ids of the assistant and result entries.
+		expect(round?.toolResults).toHaveLength(1);
+		expect(round?.toolResults[0]).toMatchObject({
+			toolCallId: "probe-call",
+			toolName: "probe_tool",
+			content: [{ type: "text", text: "TOOL-RESULT-MARKER" }],
+		});
+		expect(round?.toolResultEntryIds).toEqual([String(toolResult?.id)]);
+		expect(round?.messageEntryId).toBe(String(assistant?.id));
+		// The final answer is committed together with its boundary, so it has no result ids and no entry id yet.
+		expect(answer?.toolResults).toEqual([]);
+		expect(answer?.toolResultEntryIds).toEqual([]);
+	});
+
+	async function runBoundaryRejection(
+		entries: (event: TurnEndEvent) => SessionBoundaryDraft[],
+		responses: FauxResponseStep[] = [() => fauxAssistantMessage([fauxText("done")])],
+	): Promise<string[]> {
+		const current = await open(
+			[
+				(pi) => {
+					pi.registerTool({
+						name: "probe_tool",
+						label: "probe_tool",
+						description: "A probe tool",
+						parameters: Type.Object({}),
+						execute: async () => ({
+							content: [{ type: "text", text: "TOOL-RESULT-MARKER" }],
+							details: undefined,
+						}),
+					});
+					pi.on("turn_end", (event) => ({ entries: entries(event) }));
+				},
+			],
+			responses,
+		);
+		await expect(current.controller.submitAndWait("go", "followUp")).resolves.toMatchObject({ status: "done" });
+		return current.view.current().notices.map((notice) => notice.message);
+	}
+
+	const refused = (reason: string) => `Extension durable:boundary failed on turn_end: turn_end: ${reason}`;
+
+	test("reports the reserved boundary kind independently", async () => {
+		const notices = await runBoundaryRejection(() => [{ type: "custom", customType: "nyan.invalid" }]);
+		expect(notices).toEqual([
+			refused("custom boundary kind must be non-empty and not start with nyan.: nyan.invalid"),
+		]);
+	});
+
+	test("reports non-strict boundary data independently", async () => {
+		const notices = await runBoundaryRejection(() => [
+			{ type: "custom", customType: "probe.invalid", data: { value: Number.NaN } },
+		]);
+		expect(notices).toEqual([refused("custom boundary probe.invalid has non-JSON data")]);
+	});
+
+	test("reports a context edit targeting an entry outside the active context", async () => {
+		const notices = await runBoundaryRejection(() => [
+			{ type: "context_edit", targetId: "999999", replacement: null },
+		]);
+		expect(notices).toEqual([refused("context_edit target 999999 is not a user or custom-message entry")]);
+	});
+
+	test("reports an assistant context edit without accepting it", async () => {
+		let assistantId = "";
+		const notices = await runBoundaryRejection(
+			(event) => {
+				// Only the tool round names the assistant entry; the final answer has none yet.
+				if (event.messageEntryId === "") return [];
+				assistantId = event.messageEntryId;
+				return [{ type: "context_edit", targetId: assistantId, replacement: null }];
+			},
+			[
+				() =>
+					fauxAssistantMessage([fauxToolCall("probe_tool", {}, { id: "assistant-edit-call" })], {
+						stopReason: "toolUse",
+					}),
+				() => fauxAssistantMessage([fauxText("done")]),
+			],
+		);
+		expect(assistantId).toBeTruthy();
+		expect(notices).toEqual([refused(`context_edit target ${assistantId} is not a user or custom-message entry`)]);
+	});
+
+	test("reports a tool-result context edit without accepting it", async () => {
+		let toolResultId = "";
+		const notices = await runBoundaryRejection(
+			(event) => {
+				const [first] = event.toolResultEntryIds;
+				if (first === undefined) return [];
+				toolResultId = first;
+				return [{ type: "context_edit", targetId: toolResultId, replacement: null }];
+			},
+			[
+				() =>
+					fauxAssistantMessage([fauxToolCall("probe_tool", {}, { id: "result-edit-call" })], {
+						stopReason: "toolUse",
+					}),
+				() => fauxAssistantMessage([fauxText("done")]),
+			],
+		);
+		expect(toolResultId).toBeTruthy();
+		expect(notices).toEqual([refused(`context_edit target ${toolResultId} is not a user or custom-message entry`)]);
+	});
+
+	test("refuses a compaction boundary draft through the real boundary handler", async () => {
+		const notices = await runBoundaryRejection(() => [
+			{ type: "compaction", summary: "not allowed", firstKeptEntryId: null },
+		]);
+		expect(notices).toEqual([refused("compaction boundary drafts are refused; durable compaction owns the commit")]);
+	});
+
+	test("session_before_compact adopts a valid summary and details at the durable cut", async () => {
+		await writeFile(join(agentDir, "settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
+		let preparation: string | undefined;
+		const current = await open(
+			[
+				(pi) => {
+					pi.on("session_before_compact", (event) => {
+						preparation = event.preparation.firstKeptEntryId;
+						return {
+							compaction: {
+								summary: "EXTENSION-SUMMARY-MARKER",
+								firstKeptEntryId: event.preparation.firstKeptEntryId,
+								tokensBefore: 0,
+								details: { source: "extension" },
+							},
+						};
+					});
+				},
+			],
+			[() => fauxAssistantMessage([fauxText("one")]), () => fauxAssistantMessage([fauxText("two")])],
+		);
+		await current.controller.submitAndWait("first", "followUp");
+		await current.controller.submitAndWait("second", "followUp");
+		await current.controller.compact(undefined);
+		await vi.waitFor(() => expect(preparation).toBeDefined(), { timeout: 10_000 });
+		await vi.waitFor(
+			() =>
+				expect(
+					current.view.current().conversation.entries.filter((entry) => entry.kind === "nyan.compaction"),
+				).toHaveLength(1),
+			{ timeout: 10_000 },
+		);
+		const compaction = current.view.current().conversation.entries.find((entry) => entry.kind === "nyan.compaction");
+		expect(compaction).toMatchObject({
+			head: Number(preparation),
+			model: [{ content: [{ type: "text", text: expect.stringContaining("EXTENSION-SUMMARY-MARKER") }] }],
+			data: { details: { source: "extension" } },
+		});
+	});
+
+	test("session_before_compact keeps durable cut and diagnoses a mismatched firstKeptEntryId", async () => {
+		await writeFile(join(agentDir, "settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
+		let durableCut = "";
+		const current = await open(
+			[
+				(pi) => {
+					pi.on("session_before_compact", (event) => {
+						durableCut = event.preparation.firstKeptEntryId;
+						return { compaction: { summary: "MISMATCH-SUMMARY", firstKeptEntryId: "999999", tokensBefore: 0 } };
+					});
+				},
+			],
+			[() => fauxAssistantMessage([fauxText("one")]), () => fauxAssistantMessage([fauxText("two")])],
+		);
+		await current.controller.submitAndWait("first", "followUp");
+		await current.controller.submitAndWait("second", "followUp");
+		await current.controller.compact(undefined);
+		await vi.waitFor(
+			() =>
+				expect(
+					current.view.current().conversation.entries.filter((entry) => entry.kind === "nyan.compaction"),
+				).toHaveLength(1),
+			{ timeout: 10_000 },
+		);
+		const compaction = current.view.current().conversation.entries.find((entry) => entry.kind === "nyan.compaction");
+		expect(durableCut).not.toBe("999999");
+		expect(compaction?.head).toBe(Number(durableCut));
+		expect(current.view.current().notices.map((notice) => notice.message)).toEqual([
+			`Extension durable:compaction failed on session_before_compact: session_before_compact proposed firstKeptEntryId 999999; durable cut ${durableCut} remains`,
+			"Compacted.",
+		]);
+		expect(compaction?.model?.[0]).toMatchObject({
+			content: [{ type: "text", text: expect.stringContaining("MISMATCH-SUMMARY") }],
+		});
+	});
+
+	test("session_before_compact diagnoses non-JSON details and usage", async () => {
+		await writeFile(join(agentDir, "settings.json"), JSON.stringify({ compaction: { keepRecentTokens: 0 } }));
+		const current = await open(
+			[
+				(pi) => {
+					pi.on("session_before_compact", (event) => ({
+						compaction: {
+							summary: "INVALID-METADATA-SUMMARY",
+							firstKeptEntryId: event.preparation.firstKeptEntryId,
+							tokensBefore: 0,
+							// Deliberately not strict JSON and not a Usage: the adapter must refuse both.
+							details: new Date(0),
+							usage: { input: Number.NaN } as never,
+						},
+					}));
+				},
+			],
+			[() => fauxAssistantMessage([fauxText("one")]), () => fauxAssistantMessage([fauxText("two")])],
+		);
+		await current.controller.submitAndWait("first", "followUp");
+		await current.controller.submitAndWait("second", "followUp");
+		await current.controller.compact(undefined);
+		await vi.waitFor(
+			() =>
+				expect(
+					current.view.current().conversation.entries.filter((entry) => entry.kind === "nyan.compaction"),
+				).toHaveLength(1),
+			{ timeout: 10_000 },
+		);
+		const notices = current.view.current().notices.map((notice) => notice.message);
+		const failed = (reason: string) =>
+			`Extension durable:compaction failed on session_before_compact: session_before_compact ${reason}`;
+		expect(notices).toEqual([
+			failed("returned non-JSON details; details were refused"),
+			failed("returned usage that cannot be attributed to a durable model"),
+			"Compacted.",
+		]);
+		// The summary itself stands, without the refused metadata.
+		const compaction = current.view.current().conversation.entries.find((entry) => entry.kind === "nyan.compaction");
+		expect(compaction?.model?.[0]).toMatchObject({
+			content: [{ type: "text", text: expect.stringContaining("INVALID-METADATA-SUMMARY") }],
+		});
+		expect(compaction?.data).not.toHaveProperty("details");
+	});
+
+	// A boundary handler runs before the commit that would keep its entries, so a crash in between reruns it. The entries
+	// are written by the commit, not by the handler: the interrupted first call leaves nothing, the rerun's result is kept.
+	test("a boundary handler interrupted before its commit runs again and its entries are written once", async () => {
+		const faux = fauxProvider();
+		faux.setResponses([
+			() => fauxAssistantMessage([fauxText("answer-1")]),
+			() => fauxAssistantMessage([fauxText("answer-2")]),
+		]);
+		const model = faux.getModel();
+		let calls = 0;
+		let reach!: () => void;
+		const reached = new Promise<void>((resolve) => {
+			reach = resolve;
+		});
+		let release!: () => void;
+		const released = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const factories: InlineExtension[] = [
+			(pi) => {
+				pi.registerProvider(faux.provider);
+			},
+			(pi) => {
+				pi.on("turn_end", async () => {
+					calls += 1;
+					const call = calls;
+					if (call === 1) {
+						reach();
+						// The proposal is computed, but the Harness is closed before this handler returns it, so the boundary
+						// commit never happens: the same state a process death before the commit leaves.
+						await released;
+					}
+					return { entries: [{ type: "custom", customType: "probe.once", data: { call } }] };
+				});
+			},
+		];
+		const options = {
+			cwd,
+			extensionFactories: factories,
+			model: { provider: model.provider, modelId: model.id },
+			projectTrustContext: { ...headless, cwd },
+		};
+		const first = await openDurable(options);
+		const interrupted = first.controller.submitAndWait("go", "followUp").catch((error: unknown) => error);
+		await reached;
+		// Measured with a throwaway probe: with the handler parked, `close()` was still pending after 20 s and returned
+		// only once the handler was released, and `ctx.signal` is undefined inside a `turn_end` handler. So the handler is
+		// released while the close is in progress. This is reported, not asserted here; see the C3g report.
+		// (Provider hooks such as the pause gate are released by the close; this one is not.)
+		const closing = first.close("quit");
+		release();
+		await closing;
+		await expect(interrupted).resolves.toMatchObject({ message: "Harness is closed" });
+		const kindsOf = (open: OpenDurableResult) => open.view.current().conversation.entries.map((entry) => entry.kind);
+		expect(kindsOf(first)).not.toContain("probe.once");
+
+		session = await openDurable({ ...options, continueSession: true, services: first.services });
+		const reopened = session;
+		await vi.waitFor(() => expect(kindsOf(reopened).filter((kind) => kind === "probe.once")).toHaveLength(1), {
+			timeout: 10_000,
+		});
+		// Let the run settle, then check nothing is written a second time.
+		await vi.waitFor(() => expect(kindsOf(reopened).filter((kind) => kind === "nyan.assistant")).toHaveLength(1), {
+			timeout: 10_000,
+		});
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(calls).toBe(2);
+		expect(kindsOf(reopened).filter((kind) => kind === "probe.once")).toHaveLength(1);
+		expect(kindsOf(reopened).filter((kind) => kind === "nyan.assistant")).toHaveLength(1);
+		expect(reopened.view.current().conversation.entries.find((entry) => entry.kind === "probe.once")?.data).toEqual({
+			call: 2,
+		});
+	});
+
+	test("replaying a boundary proposal produces the same durable draft", () => {
+		const input: SessionBoundaryDraft[] = [
+			{ type: "custom_message", customType: "probe.replay", content: "stable", display: false },
+			{ type: "context_edit", targetId: "1", replacement: { content: "replacement" } },
+		];
+		const manager = { getEntry: () => ({ type: "message", message: { role: "user", content: "old" } }) } as never;
+		const first = legacyBoundaryEntriesToDurable(input, manager, () => {}, 1234);
+		const second = legacyBoundaryEntriesToDurable(input, manager, () => {}, 1234);
+		expect(second).toEqual(first);
+		expect(first).toEqual([
+			{
+				kind: "custom_message",
+				model: [{ role: "user", content: "stable", timestamp: 1234 }],
+				data: { customType: "probe.replay", display: false },
+			},
+			{
+				kind: "context_edit",
+				edits: [
+					{ target: 1, action: "replace", messages: [{ role: "user", content: "replacement", timestamp: 1234 }] },
+				],
+			},
+		]);
 	});
 
 	test("refuses invalid kinds and assistant context edits with diagnostics", async () => {
