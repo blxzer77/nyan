@@ -14,6 +14,8 @@ import { sanitizeBinaryOutput } from "../utils/shell.ts";
 import type { BashOperations } from "./tools/bash.ts";
 import { DEFAULT_MAX_BYTES, truncateTail } from "./tools/truncate.ts";
 
+const TEMP_FILE_CLOSE_TIMEOUT_MS = 10_000;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -84,9 +86,21 @@ export async function executeBashWithOperations(
 		if (stream !== undefined) {
 			await new Promise<void>((resolve) => {
 				if (stream.closed) return resolve();
+				let settled = false;
+				const finish = (): void => {
+					if (settled) return;
+					settled = true;
+					clearTimeout(timeout);
+					resolve();
+				};
+				const timeout = setTimeout(() => {
+					tempFileError ??= new Error(`Timed out closing full output file after ${TEMP_FILE_CLOSE_TIMEOUT_MS}ms`);
+					stream.destroy();
+					finish();
+				}, TEMP_FILE_CLOSE_TIMEOUT_MS);
 				// A failed write destroys the stream; settle on either event, so the captured error is reported rather than awaited.
-				stream.once("error", () => resolve());
-				stream.once("close", () => resolve());
+				stream.once("error", finish);
+				stream.once("close", finish);
 				stream.end();
 			});
 		}
@@ -151,8 +165,12 @@ export async function executeBashWithOperations(
 	} catch (err) {
 		// An aborted command still returns the output it produced so far
 		if (!options?.signal?.aborted) {
-			// The command's error is the one to report; a file that cannot be closed adds nothing to it.
-			await closeTempFile();
+			// The command's error is the one to report; a full-output file is useful only for a returned result.
+			try {
+				await closeTempFile();
+			} finally {
+				if (tempFilePath !== undefined) await rm(tempFilePath, { force: true }).catch(() => {});
+			}
 			throw err;
 		}
 	}
@@ -164,15 +182,24 @@ export async function executeBashWithOperations(
 		ensureTempFile();
 	}
 	const saveError = await closeTempFile();
+	if (!truncationResult.truncated && tempFilePath !== undefined) {
+		// Raw input can cross the spill threshold while sanitization leaves a result below the truncation limit. In that
+		// case the temporary file is an implementation detail, not a user-facing full-output artifact.
+		await rm(tempFilePath, { force: true }).catch(() => {});
+	}
 	const cancelled = options?.signal?.aborted ?? false;
 	const shown = truncationResult.truncated ? truncationResult.content : fullOutput;
+	const reportedSaveError = truncationResult.truncated ? saveError : undefined;
 
 	// The command ran and its output is shown; a full-output file that could not be written is said so, and has no path.
 	return {
-		output: saveError === undefined ? shown : `${shown}\n\n[Full output was not saved: ${saveError.message}]`,
+		output:
+			reportedSaveError === undefined
+				? shown
+				: `${shown}\n\n[Full output was not saved: ${reportedSaveError.message}]`,
 		exitCode: cancelled ? undefined : (exitCode ?? undefined),
 		cancelled,
 		truncated: truncationResult.truncated,
-		fullOutputPath: saveError === undefined ? tempFilePath : undefined,
+		fullOutputPath: reportedSaveError === undefined && truncationResult.truncated ? tempFilePath : undefined,
 	};
 }

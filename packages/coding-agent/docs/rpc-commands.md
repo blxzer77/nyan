@@ -496,7 +496,7 @@ If output was truncated, includes `fullOutputPath`:
 
 The `bash` command executes immediately and returns a `BashResult`. Internally, a `BashExecutionMessage` is created and stored in the agent's message state.
 
-When the next `prompt` command is sent, Nyan transforms context messages before sending them to the model. Unless `excludeFromContext` is true, the `BashExecutionMessage` becomes a `UserMessage` with this format:
+When the next `prompt` command is sent, Nyan transforms context messages before sending them to the model. On the durable path, the corresponding `bashExecution` entry carries the same result data. Unless `excludeFromContext` is true, the `BashExecutionMessage` becomes a `UserMessage` with this format:
 
 ````
 Ran `ls -la`
@@ -522,6 +522,8 @@ Response:
 ```json
 {"type": "response", "command": "abort_bash", "success": true}
 ```
+
+On the durable path, `bash` uses the session's execution environment and records a `bashExecution` entry after the command settles. `excludeFromContext: true` keeps the entry out of model context while retaining its result data. `abort_bash` cancels all currently running durable bash executions.
 
 ## Session
 
