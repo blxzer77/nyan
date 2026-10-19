@@ -444,6 +444,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 			}
 			case "set_session_name":
 				sessionName = await durable.sessionOps.setSessionName(command.name);
+				output({ type: "session_info_changed", name: sessionName });
 				return success(id, "set_session_name");
 			case "export_html": {
 				const path = await durable.sessionOps.exportHtml(command.outputPath);
