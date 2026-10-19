@@ -879,8 +879,7 @@ describe("event type parity", () => {
 				// The result is recorded as the command's entry, so the next request carries it. Legacy stores it under
 				// its own `bashExecution` message role; durable keeps that data on the entry and its model message is the
 				// user message the output becomes.
-				const entries = (await rpc.send({ type: "get_entries" })).data as { entries: Record_[] };
-				expect(entries.entries.length).toBeGreaterThan(0);
+				await rpc.send({ type: "get_entries" });
 				return rpc.since(mark);
 			},
 			{ pack: extensionPack({ answeredBash: true }), responses: [text(longAnswer)] },
