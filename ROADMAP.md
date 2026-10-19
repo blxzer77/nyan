@@ -339,7 +339,7 @@ The lines resumed on 2026-10-19. N2 is the only active line; its tasks C and B r
 | Line | Item | Owner | Branch / PR | Next step |
 | --- | --- | --- | --- | --- |
 | Migration | N2 task C, extension adapter | Blxze | merged #63 (C3b), #66 (C3c); C3d on `n2-c3d-routing` | C3d implements prompt templates and routes `--extension`, `--theme`, `--prompt-template` through durable; open C3d PR now. C3e will verify CPA A4, A5, A7, A8, and A11. Boundary and compaction fidelity waits on Decision #29. |
-| Migration | N2 task B, JSON/RPC product APIs | Blxze | B1 on `n2-b1-session-ops` | B2 fork, clone, and tree (Decision #24, option A); B3 user bash. `switch_session`, `get_fork_messages`, `get_tree`, `bash`, `abort_bash`, and `abort_retry` still answer unavailable. |
+| Migration | N2 task B, JSON/RPC product APIs | Blxze | B1 in #70 | B2 fork, clone, and tree (Decision #24, option A); B3 user bash. `switch_session`, `get_fork_messages`, `get_tree`, `bash`, `abort_bash`, and `abort_retry` still answer unavailable. |
 
 The release-ready stop condition is recorded in [`docs/handoff/2026-10-18-reinstall.md`](docs/handoff/2026-10-18-reinstall.md): finish the N2 and Bun gates, run the latest-main checks and release dry run, then stop without versioning, tagging, publishing, or creating a release.
 
