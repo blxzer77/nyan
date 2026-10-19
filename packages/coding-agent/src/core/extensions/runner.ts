@@ -167,6 +167,7 @@ export type BeforeAgentStartTrigger =
 /** Combined result from all before_agent_start handlers. */
 interface BeforeAgentStartCombinedResult {
 	messages: NonNullable<BeforeAgentStartEventResult["message"]>[];
+	systemPrompt?: string;
 	systemPromptOptions: NormalizedBuildSystemPromptOptions;
 }
 
@@ -1423,6 +1424,7 @@ export class ExtensionRunner {
 		systemPromptOptions: BuildSystemPromptOptions,
 	): Promise<BeforeAgentStartCombinedResult> {
 		const currentOptions = normalizeBuildSystemPromptOptions(systemPromptOptions);
+		const initialSystemPrompt = buildSystemPrompt(currentOptions);
 		const renderCurrentSystemPrompt = (): string => buildSystemPrompt(currentOptions);
 		const ctx = Object.defineProperties(
 			{},
@@ -1467,7 +1469,12 @@ export class ExtensionRunner {
 			}
 		}
 
-		return { messages, systemPromptOptions: currentOptions };
+		const systemPrompt = renderCurrentSystemPrompt();
+		return {
+			messages,
+			...(systemPrompt === initialSystemPrompt ? {} : { systemPrompt }),
+			systemPromptOptions: currentOptions,
+		};
 	}
 
 	async emitResourcesDiscover(

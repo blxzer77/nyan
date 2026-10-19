@@ -236,6 +236,46 @@ describe("durable extension host", () => {
 		expect(record).toEqual(["session_start:startup", "session_shutdown:quit"]);
 	});
 
+	test("before_agent_start injects a message and changes the system prompt once", async () => {
+		await seedCatalog();
+		let starts = 0;
+		let entryCount = 0;
+		const durable = await openDurable({
+			cwd,
+			extensionFactories: [
+				...builtInExtensions,
+				probe(
+					[],
+					() => {},
+					(pi) => {
+						pi.on("before_agent_start", () => {
+							starts += 1;
+							return {
+								systemPrompt: "MARKER-BEFORE-AGENT-START",
+								message: { customType: "probe", content: "MARKER-INJECTED", display: false },
+							};
+						});
+						pi.on("agent_end", (_event, ctx) => {
+							entryCount = ctx.sessionManager.getEntries().length;
+						});
+					},
+				),
+			],
+			model: { provider: "cliproxyapi", modelId: "deepseek-flash" },
+			projectTrustContext: { ...headless, cwd },
+		});
+		try {
+			const settled = await durable.controller.submitAndWait("hi", "followUp");
+			expect(settled).toMatchObject({ status: "done" });
+			expect(starts).toBe(1);
+			expect(entryCount).toBeGreaterThan(0);
+			expect(stub.bodies.at(-1)).toContain("MARKER-BEFORE-AGENT-START");
+			expect(stub.bodies.at(-1)).toContain("MARKER-INJECTED");
+		} finally {
+			await durable.close();
+		}
+	});
+
 	test("an error thrown by an extension handler is shown as a notice, not dropped", async () => {
 		await seedCatalog();
 		const durable = await openDurable({
