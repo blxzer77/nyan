@@ -1,0 +1,19 @@
+name: CI tools
+
+description: >-
+  Install the static `rg` and `fd` binaries the suites need. `packages/coding-agent/src/utils/tools-manager.ts`
+  resolves both on `PATH`, and under `NYAN_OFFLINE` a missing binary is not downloaded, so the `find` and `grep`
+  tools would report themselves unavailable. The hosted Ubuntu image ships neither, and installing them with apt
+  cost 8 to 46 s in each job that needed them.
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch rg and fd
+      shell: bash
+      run: |
+        set -euo pipefail
+        node scripts/fetch-ci-tools.mjs --out "$GITHUB_WORKSPACE/.ci/bin"
+        echo "$GITHUB_WORKSPACE/.ci/bin" >> "$GITHUB_PATH"
+        "$GITHUB_WORKSPACE/.ci/bin/rg" --version
+        "$GITHUB_WORKSPACE/.ci/bin/fd" --version

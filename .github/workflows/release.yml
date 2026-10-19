@@ -47,6 +47,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Fetch the static fd and ripgrep
+        # These go into the workspace archive so no test job installs them with apt (see
+        # scripts/fetch-ci-tools.mjs). The archive must contain them: restore-workspace puts .ci/bin on PATH.
+        uses: ./.github/actions/ci-tools
+
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
         with:
@@ -72,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
+          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/bin .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
           ls -lh nyan-workspace.tar.gz
 
       - name: Upload the workspace
@@ -143,12 +148,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Ensure fd and ripgrep
-        run: |
-          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            sudo apt-get update
-            sudo apt-get install -y ripgrep fd-find
-          fi
 
       - name: Restore workspace
         id: restore

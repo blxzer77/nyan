@@ -125,6 +125,15 @@ Open point: whether `npm publish --dry-run` needs a credential. If it does, the 
 path; test it before relying on "no token".
 Rollback: revert the workflow commit; restore the secret and the environment policy.
 
+**Status 2026-10-19: repository part done in [PR #79](https://github.com/blxzer77/nyan/pull/79).** The `dry_run`
+input is gone, `publish` is tag-only and re-checks the tag, and `publish-dry-run` runs a dispatch with no
+environment and no token. Verified: `npm run check` and `check:workflows` pass; run `39234910118` (a branch
+dispatch) is green, skipped the tag-only `publish` job, and printed `Dry run complete.` after integrity-checking all
+12 tarballs with no token in the step environment. The credential open point is resolved: `npm publish --dry-run`
+exits 0 with `HOME` empty and `NODE_AUTH_TOKEN`/`NPM_TOKEN` unset, warning only that a login would be required.
+Still owner-gated: the `npm` environment must be restricted to `nyan-v*` tags and `NPM_TOKEN` moved into it; until
+then the workflow-level tag check is the only guard. A tag push remains unverified.
+
 ### 3. P5: runner labels and schedules
 
 Change (host steps need the owner):
