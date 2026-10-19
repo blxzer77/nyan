@@ -45,7 +45,9 @@ import {
 } from "./core/agent-session-services.ts";
 import { formatNoModelsAvailableMessage } from "./core/auth-guidance.ts";
 import { AuthStorage, ReadOnlyAuthStorage } from "./core/auth-storage.ts";
-import { DurableStartupError, type OpenDurableOptions } from "./core/durable/runtime.ts";
+import type { OpenDurableOptions } from "./core/durable/runtime.ts";
+import { DurableSessionError, hasDurableSession } from "./core/durable/sessions.ts";
+import { DurableStartupError } from "./core/durable/startup-error.ts";
 import { exportFromFile } from "./core/export-html/index.ts";
 import type { InlineExtension } from "./core/extensions/types.ts";
 import { applyHttpProxySettings, configureHttpDispatcher } from "./core/http-dispatcher.ts";
@@ -163,6 +165,34 @@ export function canRunDurableProductPath(parsed: Args, allowMultipleMessages = f
 	);
 }
 
+/**
+ * Whether the directory has a legacy JSONL session, which `--continue` reopens when it has no durable one. A read-only
+ * probe: the manager writes no session file. The legacy store's own directory may be created by its lookup, never a
+ * session, and the durable store is left untouched.
+ */
+function legacySessionExists(cwd: string, sessionDir: string | undefined): boolean {
+	return SessionManager.continueRecent(cwd, sessionDir, { readOnly: true }).getSessionFile() !== undefined;
+}
+
+/** What `--continue` continues: the directory's durable session, its legacy JSONL session, or nothing (a new session). */
+export type ContinueRoute = "durable" | "legacy" | "new";
+
+/**
+ * Decision #32: `--continue` continues the directory's newest durable session; a directory that has only a legacy
+ * JSONL session reopens that one read-only on the compatibility route, with the notice the legacy route already prints
+ * for `--resume`; a directory with neither starts a new durable session, as 1.3.0 started a new session.
+ */
+export async function resolveContinueRoute(
+	parsed: Args,
+	cwd: string,
+	sessionDir: string | undefined,
+): Promise<ContinueRoute> {
+	if (parsed.continue !== true) return "new";
+	// A durable session wins: the durable store is this release's store, and legacy is only the fallback.
+	if (await hasDurableSession(cwd)) return "durable";
+	return legacySessionExists(cwd, sessionDir) ? "legacy" : "new";
+}
+
 /** Prints a warning or an error from the durable path's startup, as the legacy path prints its startup diagnostics. */
 function printDurableDiagnostic(diagnostic: AgentSessionRuntimeDiagnostic): void {
 	const color = diagnostic.type === "error" ? chalk.red : chalk.yellow;
@@ -174,23 +204,35 @@ async function runDurableCommand<T>(run: () => Promise<T>): Promise<T> {
 	try {
 		return await run();
 	} catch (error) {
-		if (!(error instanceof DurableStartupError)) throw error;
-		for (const diagnostic of error.diagnostics) printDurableDiagnostic(diagnostic);
-		process.exit(1);
+		if (error instanceof DurableStartupError) {
+			for (const diagnostic of error.diagnostics) printDurableDiagnostic(diagnostic);
+			process.exit(1);
+		}
+		// A session that cannot be opened is a user-facing condition, not a defect: report it without a stack trace.
+		if (error instanceof DurableSessionError) {
+			console.error(chalk.red(`Error: ${error.message}`));
+			process.exit(1);
+		}
+		throw error;
 	}
 }
 
-/** The durable path's options from the command line: model, resource flags, project trust, and extension flags. */
+/**
+ * The durable path's options from the command line: model, resource flags, project trust, and extension flags.
+ * `continueSession` is the resolved `--continue` decision rather than the raw flag: only the caller knows whether the
+ * directory has a durable session to continue (Decision #32).
+ */
 export function durableOptions(
 	parsed: Args,
 	cwd: string,
 	mode: AppMode,
 	settingsManager: SettingsManager,
 	extensionFactories: readonly InlineExtension[],
+	continueSession: boolean,
 ): OpenDurableOptions {
 	return {
 		cwd,
-		continueSession: parsed.continue === true,
+		continueSession,
 		...(parsed.provider === undefined && parsed.model === undefined
 			? {}
 			: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
@@ -778,16 +820,27 @@ export async function main(args: string[], options?: MainOptions) {
 		startupSettingsManager.applyOverrides({ theme: parsed.useTheme });
 	}
 
+	// The `--continue` route is decided before either runtime starts: it names the session store to open, and probing
+	// the durable store leaves no directory behind.
+	const envSessionDir = process.env[ENV_SESSION_DIR];
+	const sessionDir =
+		(parsed.sessionDir ? normalizePath(parsed.sessionDir) : undefined) ??
+		(envSessionDir ? expandTildePath(envSessionDir) : undefined) ??
+		startupSettingsManager.getSessionDir();
+	const continueRoute = await resolveContinueRoute(parsed, cwd, sessionDir);
+	const continueSession = continueRoute === "durable";
+	const continueUsesLegacy = continueRoute === "legacy";
 	if (
 		appMode === "interactive" &&
 		!parsed.help &&
 		parsed.listModels === undefined &&
+		!continueUsesLegacy &&
 		canRunDurableProductPath(parsed)
 	) {
 		const initial = await prepareInitialMessage(parsed);
 		await runDurableCommand(() =>
 			runDurableInteractive({
-				...durableOptions(parsed, cwd, "interactive", startupSettingsManager, extensionFactories),
+				...durableOptions(parsed, cwd, "interactive", startupSettingsManager, extensionFactories, continueSession),
 				...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
 			}),
 		);
@@ -795,19 +848,19 @@ export async function main(args: string[], options?: MainOptions) {
 		return;
 	}
 
-	if (appMode === "rpc" && canRunDurableProductPath(parsed, true)) {
+	if (appMode === "rpc" && !continueUsesLegacy && canRunDurableProductPath(parsed, true)) {
 		await runDurableCommand(() =>
-			runDurableRpc(durableOptions(parsed, cwd, "rpc", startupSettingsManager, extensionFactories)),
+			runDurableRpc(durableOptions(parsed, cwd, "rpc", startupSettingsManager, extensionFactories, continueSession)),
 		);
 		return;
 	}
 
-	if (appMode === "json" && canRunDurableProductPath(parsed, true)) {
+	if (appMode === "json" && !continueUsesLegacy && canRunDurableProductPath(parsed, true)) {
 		const stdinContent = await readPipedStdin();
 		const initial = await prepareInitialMessage(parsed, stdinContent);
 		const exitCode = await runDurableCommand(() =>
 			runDurableJson({
-				...durableOptions(parsed, cwd, "json", startupSettingsManager, extensionFactories),
+				...durableOptions(parsed, cwd, "json", startupSettingsManager, extensionFactories, continueSession),
 				...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
 				...(initial.initialImages === undefined ? {} : { initialImages: initial.initialImages }),
 				messages: parsed.messages,
@@ -818,12 +871,12 @@ export async function main(args: string[], options?: MainOptions) {
 		return;
 	}
 
-	if (appMode === "print" && parsed.mode !== "json" && canRunDurableProductPath(parsed, true)) {
+	if (appMode === "print" && parsed.mode !== "json" && !continueUsesLegacy && canRunDurableProductPath(parsed, true)) {
 		const stdinContent = await readPipedStdin();
 		const initial = await prepareInitialMessage(parsed, stdinContent);
 		const exitCode = await runDurableCommand(() =>
 			runDurablePrint({
-				...durableOptions(parsed, cwd, "print", startupSettingsManager, extensionFactories),
+				...durableOptions(parsed, cwd, "print", startupSettingsManager, extensionFactories, continueSession),
 				...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
 				...(initial.initialImages === undefined ? {} : { initialImages: initial.initialImages }),
 				messages: parsed.messages,
@@ -837,13 +890,8 @@ export async function main(args: string[], options?: MainOptions) {
 	// Decide the final runtime cwd before creating cwd-bound runtime services.
 	// --session and --resume may select a session from another project, so project-local
 	// settings, resources, provider registrations, and models must be resolved only after
-	// the target session cwd is known. The startup-cwd settings manager is used only for
-	// sessionDir lookup during session selection.
-	const envSessionDir = process.env[ENV_SESSION_DIR];
-	const sessionDir =
-		(parsed.sessionDir ? normalizePath(parsed.sessionDir) : undefined) ??
-		(envSessionDir ? expandTildePath(envSessionDir) : undefined) ??
-		startupSettingsManager.getSessionDir();
+	// the target session cwd is known. The startup-cwd settings manager supplied the session
+	// directory above, before the `--continue` route was chosen.
 	let sessionManager = await createSessionManager(parsed, cwd, sessionDir, startupSettingsManager);
 	const missingSessionCwdIssue = getMissingSessionCwdIssue(sessionManager, cwd);
 	if (missingSessionCwdIssue) {
