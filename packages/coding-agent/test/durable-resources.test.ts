@@ -306,6 +306,7 @@ describe("durable path resources", () => {
 		});
 		await durable.close();
 		expect(seen.some((message) => message.includes("Invalid settings file"))).toBe(true);
+		expect(new Set(seen)).toHaveLength(seen.length);
 	});
 
 	test("settingsOverrides apply to the session's settings, which the TUI reads for the theme", async () => {

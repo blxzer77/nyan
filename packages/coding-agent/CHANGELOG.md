@@ -27,6 +27,7 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ### Fixed
 
+- Durable startup no longer reports the same invalid settings diagnostic more than once when the error is discovered through multiple settings sources.
 - In the standalone executable on Windows, the process that closed a session no longer keeps the session database's `-shm` and `-wal` files locked, so the session directory can be deleted without leaving Nyan. Under Bun the durable session store now uses Bun's built-in SQLite (`bun:sqlite`) in place of `node:sqlite`; the file format is the same, and Node keeps `node:sqlite`.
 - In the standalone executable, changing the HTTP idle timeout (`httpIdleTimeoutMs`, or the setting in `/settings`) while Nyan runs now also applies to provider clients that were created before the change. Before, such a client kept the timeout it was created with until Nyan restarted.
 - A user ! bash command whose output is truncated returned the path of its full-output file before the file was completely written, so reading it at once could show a partial file. The path is now returned after the file is closed; if the file cannot be written, the output says so and the result has no path.

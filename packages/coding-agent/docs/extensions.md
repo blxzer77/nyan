@@ -70,6 +70,8 @@ Close session-scoped resources from an idempotent `session_shutdown` handler.
 A run proceeds from input and `before_agent_start`, through model, message, and tool events, to `agent_end`.
 Nyan counts as busy while a run starts, including the compaction check and `before_agent_start`, so messages sent meanwhile go into the starting run.
 Automatic retries, recovery, compaction, or queued work can continue afterward.
+
+On the durable path, closing a session while a submission is waiting aborts that caller's wait but does not commit an abort outcome for the run. The durable submission remains placed and is resumed after reopening the session; the recovered request is sent once. Callers that await a submission must handle the close rejection, just as they handle cancellation.
 <a id="agent_start--agent_end--agent_before_settle--agent_settled"></a>
 
 `agent_before_settle` is the final actionable boundary: it can append entries and request one continuation.
