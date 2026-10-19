@@ -179,6 +179,29 @@ describe("durable path resources", () => {
 		expect(withSystemPrompt).not.toContain("expert coding assistant");
 	});
 
+	test("loads and expands prompt templates on the durable path", async () => {
+		const templateDir = join(cwd, "templates");
+		await mkdir(templateDir, { recursive: true });
+		await writeFile(
+			join(templateDir, "probe.md"),
+			"---\nname: probe\ndescription: Probe template\n---\nMARKER-TEMPLATE-$1\n",
+		);
+		const durable = await openDurable({
+			cwd,
+			model: { provider: "cliproxyapi", modelId: "deepseek-flash" },
+			projectTrustContext: { ...headless, cwd },
+			extensionFactories: builtInExtensions,
+			resources: { promptTemplatePaths: [templateDir] },
+		});
+		try {
+			expect(durable.promptTemplates.map((template) => template.name)).toContain("probe");
+			expect(durable.controller.expandPrompt("/probe value")).toContain("MARKER-TEMPLATE-value");
+			expect(durable.controller.expandPrompt("ordinary prompt")).toBe("ordinary prompt");
+		} finally {
+			await durable.close();
+		}
+	});
+
 	test("loads the built-in extensions without errors, and --no-mcp leaves out MCP", async () => {
 		const services = await createDurableServices({
 			cwd,

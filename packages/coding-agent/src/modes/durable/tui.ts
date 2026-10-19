@@ -57,7 +57,14 @@ import { UserMessageComponent } from "../../modes/interactive/components/user-me
 import { InteractiveThemeController } from "../../modes/interactive/theme/theme-controller.ts";
 import { DynamicBorder } from "../../ui/components/dynamic-border.ts";
 import { keyText } from "../../ui/components/keybinding-hints.ts";
-import { getEditorTheme, getMarkdownTheme, initTheme, theme } from "../../ui/theme/theme.ts";
+import {
+	getEditorTheme,
+	getMarkdownTheme,
+	initTheme,
+	setRegisteredThemes,
+	type Theme,
+	theme,
+} from "../../ui/theme/theme.ts";
 
 const SELECT_THEME: SelectListTheme = {
 	selectedPrefix: (text) => theme.fg("accent", text),
@@ -739,6 +746,7 @@ export async function runDurableTui(
 	controller: DurableController,
 	settings: SettingsManager,
 	host?: ExtensionHost,
+	availableThemes: readonly Theme[] = [],
 ): Promise<void> {
 	setCapabilityOverrides(settings.getTerminalCapabilityOverrides());
 	// The system theme until the controller resolves the user's theme against the terminal's colors.
@@ -809,7 +817,7 @@ export async function runDurableTui(
 				return;
 			}
 			void dispatchDurableExtensionCommand(host.runner, trimmed).then((handled) => {
-				if (!handled) void controller.submit(trimmed, "steer");
+				if (!handled) void controller.submit(controller.expandPrompt(trimmed), "steer");
 			});
 		},
 		followUp: (text) => {
@@ -818,7 +826,7 @@ export async function runDurableTui(
 				return;
 			}
 			void dispatchDurableExtensionCommand(host.runner, text.trim()).then((handled) => {
-				if (!handled) void controller.submit(text, "followUp");
+				if (!handled) void controller.submit(controller.expandPrompt(text), "followUp");
 			});
 		},
 		abort: () => void controller.abort(),
@@ -834,6 +842,7 @@ export async function runDurableTui(
 		onChanged: () => view.ui.requestRender(),
 	});
 	host?.runner.setUIContext(view.createExtensionUIContext(), "tui");
+	setRegisteredThemes([...availableThemes]);
 	const unsubscribe = source.subscribe(() => view.apply(source.current()));
 	view.start();
 	themes.applyFromSettings();

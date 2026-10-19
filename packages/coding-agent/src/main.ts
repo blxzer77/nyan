@@ -156,13 +156,7 @@ export function canRunDurableProductPath(parsed: Args, allowMultipleMessages = f
 		parsed.excludeTools === undefined &&
 		parsed.noTools !== true &&
 		parsed.noBuiltinTools !== true &&
-		// Legacy until task C connects extension tools and the durable resource bridge. `--extension` loads tools, and
-		// `--theme` and `--prompt-template` load resources the durable TUI and prompt do not read yet. They return to the
-		// durable path when C lands. `--no-mcp`, `--no-extensions`, `--no-themes`, and `--no-prompt-templates` only disable
-		// what the durable path has no part in, so they stay here.
-		parsed.extensions === undefined &&
-		parsed.themes === undefined &&
-		parsed.promptTemplates === undefined &&
+		// Resource and extension flags are handled by the durable ResourceLoader and prompt/template bridge.
 		parsed.tuiMode === undefined &&
 		parsed.fileArgs.length === 0 &&
 		(allowMultipleMessages || parsed.messages.length <= 1)

@@ -2,6 +2,12 @@
 
 Extensions are TypeScript modules that add executable behavior to Nyan. Use one when a workflow needs tools, commands, event handlers, model providers, session state, or terminal UI rather than instructions alone.
 
+## Durable product path resources
+
+The default new-session path loads the same resource flags as the legacy path. `--extension <path>` loads extension code, `--theme <path>` registers custom themes for the durable TUI, and `--prompt-template <path>` loads slash prompt templates. `--no-extensions`, `--no-mcp`, `--no-themes`, and `--no-prompt-templates` disable the corresponding resources.
+
+Prompt templates expand before a durable prompt is submitted in interactive, print, JSON, and RPC modes. Extension commands are checked first, so an extension command keeps precedence over a prompt template with the same name. RPC `get_commands` reports loaded extension commands and prompt templates. The durable TUI still exposes only the N2 command/UI subset; the remaining component surface is part of the N9 TUI rewrite.
+
 An extension runs inside the Nyan process with the same operating-system permissions. It can inspect prompts, tool calls, files, credentials, and session history, so load extensions only from sources you trust.
 
 Typical extensions add an agent tool, protect paths, confirm dangerous commands, react to session events, modify context, expose a command, or display persistent status.

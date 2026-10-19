@@ -23,7 +23,13 @@ export async function runDurablePrint(options: DurablePrintOptions): Promise<num
 			) {
 				return;
 			}
-			const settled = await durable.controller.submitAndWait(content, "followUp");
+			const expanded =
+				typeof content === "string"
+					? durable.controller.expandPrompt(content)
+					: content.map((part) =>
+							part.type === "text" ? { ...part, text: durable.controller.expandPrompt(part.text) } : part,
+						);
+			const settled = await durable.controller.submitAndWait(expanded, "followUp");
 			if (settled.status !== "done") {
 				throw new Error(
 					settled.status === "unanswered" ? `Input was not answered: ${settled.reason}` : "Input did not settle",
