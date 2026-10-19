@@ -31,12 +31,20 @@ import {
 	VStack,
 } from "@ny4n/tui";
 import { getAgentDir } from "../../config.ts";
+import { dispatchDurableExtensionCommand } from "../../core/durable/extension-commands.ts";
+import type { ExtensionHost } from "../../core/durable/extension-host.ts";
 import {
 	agentOf,
 	type DurableController,
 	type DurableView,
 	type DurableViewSource,
 } from "../../core/durable/runtime.ts";
+import type {
+	ExtensionUIContext,
+	ExtensionUIDialogOptions,
+	ExtensionWidgetOptions,
+	WorkingIndicatorOptions,
+} from "../../core/extensions/index.ts";
 import { KeybindingsManager } from "../../core/keybindings.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { createAllToolRenderers } from "../../core/tools/renderers/index.ts";
@@ -116,6 +124,54 @@ class ListSelector extends Container implements Focusable {
 	}
 }
 
+class TextInputPrompt extends Container implements Focusable {
+	readonly #input = new Input();
+	readonly #onSubmit: (value: string) => void;
+	readonly #onCancel: () => void;
+	#focused = false;
+
+	constructor(
+		title: string,
+		placeholder: string | undefined,
+		onSubmit: (value: string) => void,
+		onCancel: () => void,
+	) {
+		super();
+		this.#onSubmit = onSubmit;
+		this.#onCancel = onCancel;
+		this.addChild(new DynamicBorder());
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
+		if (placeholder !== undefined && placeholder.length > 0) {
+			this.addChild(new Text(theme.fg("dim", placeholder), 1, 0));
+		}
+		this.addChild(this.#input);
+		this.addChild(new Text(theme.fg("dim", "Enter to submit · Escape to cancel"), 1, 0));
+		this.addChild(new DynamicBorder());
+	}
+
+	get focused(): boolean {
+		return this.#focused;
+	}
+	set focused(value: boolean) {
+		this.#focused = value;
+		this.#input.focused = value;
+	}
+
+	handleInput(data: string): void {
+		const keybindings = getKeybindings();
+		if (keybindings.matches(data, "tui.select.cancel")) {
+			this.#onCancel();
+			return;
+		}
+		if (keybindings.matches(data, "tui.select.confirm") || data === "\n") {
+			this.#onSubmit(this.#input.getValue());
+			return;
+		}
+		this.#input.handleInput(data);
+	}
+}
+
 /** The summary that replaced earlier context: collapsed to one line until expanded. */
 class CompactionComponent extends Box {
 	readonly #summary: string;
@@ -181,6 +237,9 @@ class DurableTui {
 	#streaming: AssistantMessageComponent | undefined;
 	#indicator: StatusIndicator | undefined;
 	#statusText = "";
+	readonly #extensionStatuses = new Map<string, string>();
+	readonly #extensionNotices: Array<{ message: string; type: "info" | "warning" | "error" }> = [];
+	#lastViewNotices: DurableView["notices"] = [];
 	/** Set when the transcript was rebuilt: the next render repaints the screen and shows the end. */
 	#rebuilt = false;
 	#transcript: ScrollView;
@@ -259,6 +318,104 @@ class DurableTui {
 		this.#discardTools();
 		this.#indicator?.dispose();
 		this.#ui.stop();
+	}
+
+	createExtensionUIContext(): ExtensionUIContext {
+		return {
+			select: (title, options, opts) => this.#select(title, options, opts),
+			confirm: (title, message, opts) =>
+				this.#select(`${title}\n${message}`, ["Yes", "No"], opts).then((value) => value === "Yes"),
+			input: (title, placeholder, opts) => this.#inputPrompt(title, placeholder, opts),
+			notify: (message, type = "info") => {
+				this.#extensionNotices.push({ message, type });
+				if (this.#extensionNotices.length > 8) this.#extensionNotices.shift();
+				this.#renderNotices();
+				this.#ui.requestRender();
+			},
+			onTerminalInput: () => () => {},
+			setStatus: (key, text) => {
+				if (text === undefined) this.#extensionStatuses.delete(key);
+				else this.#extensionStatuses.set(key, text);
+				this.#ui.requestRender();
+			},
+			setWorkingMessage: () => {},
+			setWorkingVisible: () => {},
+			setWorkingIndicator: (_options?: WorkingIndicatorOptions) => {},
+			setHiddenThinkingLabel: () => {},
+			setWidget: (_key: string, _content: unknown, _options?: ExtensionWidgetOptions) => {},
+			setFooter: () => {},
+			setHeader: () => {},
+			setTitle: (title) => this.#ui.terminal.setTitle(title),
+			custom: async () => {
+				throw new Error("Extension custom UI components are not available on the durable TUI yet");
+			},
+			pasteToEditor: () => {},
+			setEditorText: () => {},
+			getEditorText: () => "",
+			editor: async () => undefined,
+			addAutocompleteProvider: () => {},
+			setEditorComponent: () => {},
+			getEditorComponent: () => undefined,
+			get theme() {
+				return theme;
+			},
+			getAllThemes: () => [],
+			getTheme: () => undefined,
+			setTheme: () => ({ success: false, error: "Theme switching is not available on the durable TUI yet" }),
+			getToolsExpanded: () => this.#expanded,
+			setToolsExpanded: (expanded) => {
+				this.#expanded = expanded;
+				for (const component of [...this.#cards, ...this.#summaries]) component.setExpanded(expanded);
+				this.#ui.requestRender();
+			},
+		};
+	}
+
+	#select(title: string, options: string[], opts?: ExtensionUIDialogOptions): Promise<string | undefined> {
+		return new Promise((resolve) => {
+			let settled = false;
+			let timeout: ReturnType<typeof setTimeout> | undefined;
+			const finish = (value: string | undefined): void => {
+				if (settled) return;
+				settled = true;
+				if (timeout !== undefined) clearTimeout(timeout);
+				opts?.signal?.removeEventListener("abort", onAbort);
+				this.restoreEditor();
+				resolve(value);
+			};
+			const onAbort = () => finish(undefined);
+			if (opts?.signal?.aborted) return finish(undefined);
+			opts?.signal?.addEventListener("abort", onAbort, { once: true });
+			if (opts?.timeout !== undefined) timeout = setTimeout(() => finish(undefined), opts.timeout);
+			this.mount(
+				new ListSelector(
+					title,
+					options.map((value) => ({ value, label: value })),
+					finish,
+					() => finish(undefined),
+				),
+			);
+		});
+	}
+
+	#inputPrompt(title: string, placeholder?: string, opts?: ExtensionUIDialogOptions): Promise<string | undefined> {
+		return new Promise((resolve) => {
+			let settled = false;
+			let timeout: ReturnType<typeof setTimeout> | undefined;
+			const finish = (value: string | undefined): void => {
+				if (settled) return;
+				settled = true;
+				if (timeout !== undefined) clearTimeout(timeout);
+				opts?.signal?.removeEventListener("abort", onAbort);
+				this.restoreEditor();
+				resolve(value);
+			};
+			const onAbort = () => finish(undefined);
+			if (opts?.signal?.aborted) return finish(undefined);
+			opts?.signal?.addEventListener("abort", onAbort, { once: true });
+			if (opts?.timeout !== undefined) timeout = setTimeout(() => finish(undefined), opts.timeout);
+			this.mount(new TextInputPrompt(title, placeholder, finish, () => finish(undefined)));
+		});
 	}
 
 	/** Finish every card: a running bash card keeps a timer until it gets a final result. */
@@ -348,8 +505,16 @@ class DurableTui {
 	}
 
 	#syncNotices(view: DurableView): void {
+		this.#lastViewNotices = view.notices;
+		this.#renderNotices();
+	}
+
+	#renderNotices(): void {
 		this.#notices.clear();
-		for (const item of view.notices.slice(-4)) {
+		for (const item of [
+			...this.#lastViewNotices.slice(-4),
+			...this.#extensionNotices.slice(-4).map((item) => ({ level: item.type, message: item.message })),
+		].slice(-4)) {
 			const color = item.level === "error" ? "error" : item.level === "warning" ? "warning" : "muted";
 			this.#notices.addChild(new TruncatedText(theme.fg(color, item.message), 1, 0));
 		}
@@ -400,8 +565,9 @@ class DurableTui {
 		const model = agent.model === undefined ? "no model" : `${agent.model.provider}/${agent.model.modelId}`;
 		const shown = view.conversations.find((candidate) => candidate.id === view.conversation.conversation.id);
 		const label = shown?.label ?? `conversation ${view.conversation.conversation.id}`;
+		const statuses = [...this.#extensionStatuses.values()];
 		this.#footerHints.setText(
-			`${theme.fg(label === "main" ? "dim" : "accent", label)}${theme.fg(
+			`${statuses.length > 0 ? `${theme.fg("accent", statuses.join(" · "))} · ` : ""}${theme.fg(label === "main" ? "dim" : "accent", label)}${theme.fg(
 				"dim",
 				` · ${model} · thinking:${agent.thinkingLevel ?? "off"} (${keyText("app.thinking.cycle")}) · ${keyText("app.model.select")} or /model · /agents · /compact · /tasks · ${keyText("app.message.followUp")} follow-up · ${keyText("app.clear")} exit`,
 			)}`,
@@ -572,6 +738,7 @@ export async function runDurableTui(
 	source: DurableViewSource,
 	controller: DurableController,
 	settings: SettingsManager,
+	host?: ExtensionHost,
 ): Promise<void> {
 	setCapabilityOverrides(settings.getTerminalCapabilityOverrides());
 	// The system theme until the controller resolves the user's theme against the terminal's colors.
@@ -637,9 +804,23 @@ export async function runDurableTui(
 				const instructions = trimmed.slice("/compact".length).trim();
 				return void controller.compact(instructions || undefined);
 			}
-			void controller.submit(trimmed, "steer");
+			if (host === undefined) {
+				void controller.submit(trimmed, "steer");
+				return;
+			}
+			void dispatchDurableExtensionCommand(host.runner, trimmed).then((handled) => {
+				if (!handled) void controller.submit(trimmed, "steer");
+			});
 		},
-		followUp: (text) => void controller.submit(text, "followUp"),
+		followUp: (text) => {
+			if (host === undefined) {
+				void controller.submit(text, "followUp");
+				return;
+			}
+			void dispatchDurableExtensionCommand(host.runner, text.trim()).then((handled) => {
+				if (!handled) void controller.submit(text, "followUp");
+			});
+		},
 		abort: () => void controller.abort(),
 		exit,
 		selectModel,
@@ -652,6 +833,7 @@ export async function runDurableTui(
 		showError: (message) => console.error(message),
 		onChanged: () => view.ui.requestRender(),
 	});
+	host?.runner.setUIContext(view.createExtensionUIContext(), "tui");
 	const unsubscribe = source.subscribe(() => view.apply(source.current()));
 	view.start();
 	themes.applyFromSettings();
