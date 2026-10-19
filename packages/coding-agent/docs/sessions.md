@@ -13,6 +13,16 @@ nyan --resume
 
 `--continue` opens the most recent session for the current working directory: its newest durable session, or, when the directory has only legacy JSONL sessions, the newest of those read-only, with a warning that the file will not be written. A directory with neither starts a new session. `--resume` opens the session picker. In interactive mode, `/resume` opens the same picker and `/new` starts a new session.
 
+Nyan keeps two session stores. A session Nyan creates now is a **durable** session, a SQLite database in its own directory under `~/.nyan/agent/sessions-durable/`. A session created before 1.4.0 is a **legacy JSONL** file under `~/.nyan/agent/sessions/`; Nyan reads those files but never writes to them.
+
+The session flags follow the store they name:
+
+- `--continue` continues the current directory's newest durable session, as described above. It only reads the durable store to decide, so a run in a directory without sessions leaves nothing behind.
+- `--resume` lists the legacy JSONL sessions and opens the one you choose read-only. `--session` opens the path, exact ID, or partial ID it names read-only; a match in another project offers to fork it, and that fork is written as a new JSONL session.
+- `--session-id`, `--fork`, `--session-dir`, `--no-session`, and `--name` keep the compatibility route and its JSONL storage. `--session-id` opens an existing ID read-only or creates that ID, `--fork` writes the forked session as a new JSONL file, `--name` records the name in the JSONL session, `--session-dir` chooses where the JSONL store is, and `--no-session` keeps the session in memory.
+
+Durable session selection, so that these flags can address durable sessions, is not part of 1.4.0.
+
 Use `/name` or `--name` to assign a recognizable session name. Run `/session` to verify the current session file, ID, message count, token usage, and cost.
 
 The session picker lets you search, rename, and delete sessions. It can also show paths, change sorting, and limit results to named sessions. See [Keybindings](keybindings.md#sessions) for its shortcuts.
@@ -47,7 +57,9 @@ See [Compaction Reference](compaction.md) for thresholds, retained boundaries, b
 
 ## Control session storage
 
-By default, Nyan stores sessions under `~/.nyan/agent/sessions/`, grouped by working directory. Use `--session-dir`, `NYAN_CODING_AGENT_SESSION_DIR`, or the `sessionDir` setting to choose another location. The CLI option has highest precedence.
+A durable session lives in `~/.nyan/agent/sessions-durable/<working-directory-hash>/<timestamp>-<session-id>/`. The directory holds `session.sqlite` and a `session.json` that records the working directory and the display name, so both survive a restart. The hash names the working directory, so each project keeps its own store, and the store's location is not configurable.
+
+Legacy JSONL sessions stay where earlier releases wrote them, under `~/.nyan/agent/sessions/`, grouped by working directory. Use `--session-dir`, `NYAN_CODING_AGENT_SESSION_DIR`, or the `sessionDir` setting to point the JSONL store somewhere else; the CLI option has highest precedence. Nyan opens a JSONL session read-only and never migrates it, so its file is never changed by a newer Nyan.
 
 Use `--no-session` for an ephemeral run. An ephemeral session cannot be resumed after Nyan exits.
 

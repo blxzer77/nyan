@@ -29,6 +29,7 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ### Fixed
 
+- The built-in CLIProxyAPI extension no longer prints `[nyan-cliproxyapi] not configured` on every run. Users who do not use CLIProxyAPI saw it at startup of every mode, including a plain `nyan -p`. The extension is now silent until its provider is selected, where it reports the missing configuration once, and a `/cpa-*` command still says what to configure.
 - `nyan --continue` in a directory without a durable session no longer ends with an uncaught `No durable session exists` exception and a stack trace. It continues the directory's newest durable session; a directory that has only legacy JSONL sessions reopens the newest of those read-only, with the notice a resumed legacy session prints; a directory with neither starts a new session, as 1.3.0 did.
 - A durable session that cannot be started reports one `Error:` line instead of a stack trace: a session another process holds, a `--model` that names no available model, and `--api-key` without a model.
 - On the default session path, a fork now runs the extension lifecycle the legacy path runs: `session_before_fork` first, which a handler can cancel, then `session_shutdown` with reason `fork`, then `session_start` with reason `fork` and `previousSessionFile` once the session talks to the new conversation. A durable fork is a new conversation inside the same session, so that file is the current one and the session id and file do not change.

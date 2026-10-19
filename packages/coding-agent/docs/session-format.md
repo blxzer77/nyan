@@ -1,5 +1,7 @@
 # Session File Format
 
+> **Scope.** This page describes the legacy JSONL session file. Since 1.4.0 Nyan stores a new session as a SQLite database under `~/.nyan/agent/sessions-durable/`, and opens a JSONL file read-only when a session flag selects one; see [Sessions and Context](sessions.md#control-session-storage). The entry shapes below are still what Nyan's session APIs report, for a durable session too.
+
 Sessions are stored as JSONL (JSON Lines) files. Each line is a JSON object with a `type` field. Session entries form a tree structure via `id`/`parentId` fields, enabling in-place branching without creating new files.
 
 For programmatic creation, persistence, and tree navigation, see the [`SessionManager` API](sdk.md#sessionmanager-api).

@@ -29,6 +29,8 @@ nyan
 
 For a built-in AI provider, run `/login` inside Nyan to connect a subscription or API key. Then give Nyan a task.
 
+Sessions are stored in `~/.nyan/agent`: a new session as a SQLite database under `sessions-durable/`, and a session from an earlier release as a JSONL file under `sessions/`, which Nyan still opens read-only. [Sessions and Context](docs/sessions.md#control-session-storage) describes both stores and which session flags use them.
+
 See the [documentation](docs/index.md) for full setup and usage instructions.
 
 

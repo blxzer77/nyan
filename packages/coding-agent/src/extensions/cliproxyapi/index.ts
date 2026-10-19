@@ -84,6 +84,14 @@ export function buildStatusLabels(
 	return { ...(fast ? { fast } : {}), paused: pauseMode.isEnabled() };
 }
 
+/** What a user who selects CLIProxyAPI without a connection needs to do, naming every way to configure it. */
+function notConfiguredHint(agentDir: string, identity: { providerId: string; providerName: string }): string {
+	return (
+		`not configured. Run /login ${identity.providerName} or /login ${identity.providerId}, ` +
+		`or set ${configPath(agentDir)} / CLIPROXYAPI_API_KEY.`
+	);
+}
+
 export default async function cliproxyApiExtension(pi: ExtensionAPI): Promise<void> {
 	const agentDir = getAgentDir();
 	if (process.env.CLIPROXYAPI_QUIET === "1" || process.env.CLIPROXYAPI_QUIET === "true") {
@@ -235,7 +243,16 @@ export default async function cliproxyApiExtension(pi: ExtensionAPI): Promise<vo
 		refreshStatus,
 	});
 
-	pi.on("model_select", (_event, ctx) => refreshStatus(ctx));
+	// The extension loads for every user, including the many who never use CLIProxyAPI, so startup says nothing. The hint
+	// appears once the provider is actually selected, and the `/cpa-*` commands print it themselves.
+	let notConfiguredHintShown = false;
+	pi.on("model_select", (event, ctx) => {
+		refreshStatus(ctx);
+		if (event.model.provider !== identity.providerId) return;
+		if (notConfiguredHintShown || resolveConnection(agentDir, identity.providerId) !== null) return;
+		notConfiguredHintShown = true;
+		log.warn(notConfiguredHint(agentDir, identity));
+	});
 
 	// A finished run is the moment the proxy has just recorded a fresh quota observation for the credential
 	// that served it. The poller throttles itself, so a burst of short runs costs one request a minute.
@@ -336,11 +353,8 @@ export default async function cliproxyApiExtension(pi: ExtensionAPI): Promise<vo
 	const overrides = loadOverrides(agentDir);
 
 	if (!connection) {
-		log.info(
-			`not configured. Run /login ${identity.providerName} or /login ${identity.providerId}, ` +
-				`or set ${configPath(agentDir)} / CLIPROXYAPI_API_KEY.`,
-		);
-		// Register anyway so the provider appears in /login and can be configured.
+		// Register anyway so the provider appears in /login, `nyan login <provider>` resolves it, and the `/cpa-*`
+		// commands can report what is missing. Nothing is printed here: see the `model_select` hint.
 		registerProvider({
 			pi,
 			agentDir,
