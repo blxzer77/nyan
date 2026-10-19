@@ -207,6 +207,26 @@ Done when: local `npm run test:mutation` is timed cold and warm first; **[GH]** 
 incremental restore behave as assumed before wiring them.
 Rollback: revert.
 
+**Status 2026-10-19: implemented, [GH] verification pending.** `deep-gate` restores the incremental file through
+`actions/cache/restore` (`d4323d4d`, v4.2.2) keyed on the `cbor` sources and tests, saves it only on a push to
+`main`, and the nightly runs `npm run test:mutation -- --force`.
+
+Measured locally on this repository:
+
+| run | time | score |
+| --- | --- | --- |
+| cold, no incremental file | 2 m 44 s | 74.60 |
+| warm, unchanged tree | 6.7 s | 74.60 |
+| a test file edited (assertion weakened) | 2 m 31 s | 74.60 |
+| a whole test deleted | 2 m 38 s | 74.36, survivors 88 -> 89 |
+| warm file, `-- --force` | 2 m 58 s | 74.60 |
+
+So the incremental file does not hide drift: editing or deleting a test re-runs the mutants it covers, and the
+survivor count moves. `--force` reaches Stryker through the npm script (unlike `--shard`, which npm swallows), so
+the nightly really does run everything. `Deep verification` was 202 s of the pull-request critical path, of which
+the mutation step was 175 s; the expected effect is a job well under a minute on a pull request that does not touch
+`cbor`. The CI number is not yet measured.
+
 ### 8. R4: gateway above CPA
 
 Where it lives (U5). Recommendation: a separate repository, not a package here. It is owner infrastructure,
