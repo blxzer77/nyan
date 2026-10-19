@@ -25,13 +25,13 @@ New interactive, print, JSON, and RPC sessions are stored durably in SQLite unde
 
 A durable session directory holds `session.sqlite` and `session.json`. The JSON file records the session's working directory and the display name from `set_session_name`; the database holds the conversation. A session created by the durable path always records its cwd so `switch_session` never guesses it.
 
-The durable path now supports `bash` and `abort_bash`. Bash output is recorded as a `bashExecution` entry; unless `excludeFromContext` is true, its legacy-formatted output is included in the next model context. `bash_execution_update` events stream while it runs. `abort_retry` remains unavailable: a durable retry wait cannot yet be cancelled on its own.
+The durable path now supports `bash` and `abort_bash`. Bash output is recorded as a `bashExecution` entry; unless `excludeFromContext` is true, its legacy-formatted output is included in the next model context. `bash_execution_update` events stream while it runs. `abort_retry` ends a retry that is waiting to be sent: the backoff stops at once and the turn ends with the error the last attempt failed on, exactly as it does when the retries run out. The request is held in memory, so a disturbance in that window (a crash, or a session reopened before the turn ended) resumes the wait and the client can send `abort_retry` again. With no retry waiting, the command succeeds and changes nothing.
 
 `switch_session` accepts an existing durable session directory and opens it with its recorded cwd. The target is locked before the current session is closed; a missing directory, missing or nonexistent recorded cwd, legacy JSONL file, or target lock returns a named error with a stable `DURABLE_SESSION_*` code and leaves the current session open. Legacy JSONL files are read-only and must be opened through a legacy `--resume` or `--session` invocation.
 
 The fork commands answer, in the durable shape: `fork` and `clone` create a new conversation inside the same session and move the session to it, so `sessionId` and `sessionFile` do not change, `get_fork_messages` lists the session's user messages, and `get_tree` returns the active entry chain, which is linear.
 
-A client that needs one of the unavailable commands can choose a session-selection flag such as `--resume` or `--session` for that invocation; those still use the legacy JSONL path.
+A client that needs a command this path does not implement can choose a session-selection flag such as `--resume` or `--session` for that invocation; those still use the legacy JSONL path.
 
 ## Protocol records
 

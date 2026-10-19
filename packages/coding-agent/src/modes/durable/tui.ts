@@ -31,6 +31,7 @@ import {
 	VStack,
 } from "@ny4n/tui";
 import { getAgentDir } from "../../config.ts";
+import { customMessageView } from "../../core/durable/custom-message.ts";
 import { dispatchDurableExtensionCommand } from "../../core/durable/extension-commands.ts";
 import type { ExtensionHost } from "../../core/durable/extension-host.ts";
 import {
@@ -640,6 +641,11 @@ class DurableTui {
 			this.#chat.addChild(new Spacer(1));
 			this.#chat.addChild(summary);
 		} else if (entry.kind === "nyan.reset") this.#addText("[new context]");
+		else if (entry.kind === "custom_message") {
+			const view = customMessageView(entry);
+			if (view !== undefined)
+				this.#addText(view.text === "" ? `[${view.customType}]` : `[${view.customType}] ${view.text}`);
+		}
 	}
 
 	#syncStreaming(message: AssistantMessage): void {
@@ -817,7 +823,7 @@ export async function runDurableTui(
 				return;
 			}
 			void dispatchDurableExtensionCommand(host.runner, trimmed).then((handled) => {
-				if (!handled) void controller.submit(controller.expandPrompt(trimmed), "steer");
+				if (!handled) void controller.submit(trimmed, "steer");
 			});
 		},
 		followUp: (text) => {
@@ -826,7 +832,7 @@ export async function runDurableTui(
 				return;
 			}
 			void dispatchDurableExtensionCommand(host.runner, text.trim()).then((handled) => {
-				if (!handled) void controller.submit(controller.expandPrompt(text), "followUp");
+				if (!handled) void controller.submit(text, "followUp");
 			});
 		},
 		abort: () => void controller.abort(),

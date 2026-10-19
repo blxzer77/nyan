@@ -1,10 +1,10 @@
 # Agent Note: durable hooks for the N2 capabilities
 
-Status: proposed
+Status: implemented
 
 ## Problem
 
-The N0 inventory ([extension-surface.json](extension-surface.json), [inventory note](2026-10-15-durable-migration-inventory.md)) classifies eight behaviors that Nyan's extension API has and durable's seven hooks cannot express. Owner decisions #18 to #21 fixed the policy: keep every streamed event, add the phased request transform, widen the settlement hook so entry writes stay recoverable, and remove no event. This note fixes the hook signatures so the durable work and the coding-agent adapter can proceed in parallel against one contract.
+The N0 inventory ([extension-surface.json](../../proposed/architecture/extension-surface.json), [inventory note](../../proposed/architecture/2026-10-15-durable-migration-inventory.md)) classifies eight behaviors that Nyan's extension API has and durable's seven hooks cannot express. Owner decisions #18 to #21 fixed the policy: keep every streamed event, add the phased request transform, widen the settlement hook so entry writes stay recoverable, and remove no event. This note fixes the hook signatures so the durable work and the coding-agent adapter can proceed in parallel against one contract.
 
 Durable's invariants constrain the shape. A hook runs off the Session line, so a crash before the consuming commit may rerun it; it therefore cannot write. A hook does not write model context to a busy conversation; the Harness's tasks do. So a hook that wants an entry returns a draft and the generation task appends it in its own commit. A commit may not read a table after its first table write (`ReadAfterWrite`, spec "Table rules"), so anything a commit needs from the tables is read before it. `docs/spec.md` §7.2 states that there is no public semantic event channel.
 
@@ -227,7 +227,7 @@ Durable gains nine hook members, one `HookRunner` method, one contract type, one
 
 ## Verification
 
-Implemented in `packages/durable` and `packages/ai`, not yet reviewed by the owner or wired to the coding-agent adapter. An independent review (claude-haiku-5-5) found five blocking problems, all confirmed against the source and fixed:
+Implemented in `packages/durable` and `packages/ai`, and wired to the coding-agent adapter by the N2 batches below (1, 2a, 2b, 3-slice-1, C3b–C3h, G0b, G1a, G1b, W1). An independent review (claude-haiku-5-5) found five blocking problems, all confirmed against the source and fixed:
 - A `replace` edit in a boundary draft was not checked, so one without `messages` would make every later context derivation throw (`undefined.filter`). It now needs a list of user messages with finite timestamps.
 - `awaitWithContext` in `@ny4n/chord` returned early on an already-aborted context without observing the work, so a hook that failed afterwards produced an unhandled rejection, which ends a Node process that has no handler. Fixed there (the cause), with a test for the early and the late abort.
 - `usageProblem` did not check `cacheWrite1h` and `reasoning`, nor strict JSON, so a bad compaction usage faulted the task instead of failing with `invalid_usage`, and a string counter would have been concatenated. It checks both now. `rewriteMessage` also checks `timestamp` and tool call `id` and `name`.
@@ -417,3 +417,211 @@ that connects later is listed.
 The durable RPC `bash` command owns an in-memory abort controller for each execution and invokes the session's `ExecutionEnv.exec`; `abort_bash` aborts those controllers without aborting the Harness conversation or its generation task. Output is forwarded as `bash_execution_update` records while the command runs. Once the command settles, the result is appended as an application entry with kind `bashExecution`. The entry carries the command and result data; it contributes the legacy `bashExecutionToText` user message to model context unless `excludeFromContext` is true. The command is executed before the entry commit, so a crash between those effects can leave an unknown external command outcome and must not be replayed automatically; a later session inspection is the recovery path.
 
 The shared legacy bash executor remains the output/cancellation boundary for RPC formatting and full-output files. Its full-output close has a deadline, failed command paths remove temporary files, and a spill failure is reported only when the returned result is actually truncated.
+
+## Batch C3h: the run's abort signal in every handler
+
+Legacy reports `ctx.signal` as `agent.signal` (`agent-session.ts`), which is set for the whole run, so a `turn_end`,
+`context`, or tool handler can cooperate with an abort. The durable adapter set a provider-call scope only around the
+provider and tool *executions*, so every hook member that ran an extension handler outside that scope read
+`undefined`: the boundary, context, `message_end`, `message_update`, `tool_call`, `tool_result`, `tool_execution_update`,
+and `session_before_compact` handlers could not respond to an abort even if the extension wanted to.
+
+Each durable hook member that calls an extension handler now runs it in `inProviderCall(scope, undefined,
+context.abortSignal, ...)`: the handler reads the task context's `abortSignal` as `ctx.signal`, and `ctx.model` stays
+unset so it falls back to the agent's model. The scope is unchanged for the provider callbacks and the tool execution,
+and `beforeRequest` runs no handler (it applies the staged `before_agent_start` effects).
+
+Who aborts that signal, and what it buys: `Harness.close()` (`scheduler.join`) and `Conversation.abort()` both abort the
+run invocation's controller, and every hook context is that invocation's context (`withAbortSignal(invocation.signal,
+context)`). A handler that waits for `ctx.signal` is therefore released by `close()`, by RPC `abort`, and by
+`new_session` (which closes the session first). A handler that ignores the signal still holds the close up: durable
+waits for every call, including code that never returns, and that is what makes a reopen safe (spec §close). The
+orchestrator's ruling was to keep that guarantee and fix the adapter instead, which is what this batch does.
+
+Not covered, deliberately: `agent_end` and `agent_settled` are emitted from the controller's settle path, after the
+durable run has settled, so those handlers have no signal (legacy's `agent_end` still runs inside the run and has one);
+`before_agent_start` has no signal in either path, because the run does not exist yet when it runs.
+
+`custom_message` in the durable TUI: `customMessageView` decides, from the entry's `data`, whether a boundary
+`custom_message` is shown. `display: false` shows nothing, as legacy does, and a visible one shows as plain text with its
+custom type. The durable TUI has no `ExtensionRunner`, so an extension's message renderer is not used (recorded
+reduction; the durable TUI renders no other custom entry either).
+
+## Batch G0b: the extension surface audit
+
+Every `durable-capability` in [extension-surface.json](../../proposed/architecture/extension-surface.json) and every event mapping is labelled below
+as satisfied (with the pull request or test that proves it on the durable path) or as a recorded reduction (with the
+owner decision). PR numbers are the task C batches: batch 1 #47, 2a #50, 2b #54, 3-slice-1 #56, C3b #63, C3c #66,
+C3d #68, C3e #72, C3f #73, C3g #76, C3h #80, G0b this batch.
+
+### The eight capabilities
+
+| Capability | Status | Evidence |
+| --- | --- | --- |
+| `phased-request-transform` | Satisfied | `context` runs as `transformConversation` (#56; `durable-extension-events.test.ts` "a context handler rewrites the request"), and `context_with_system` runs in `beforeRequest` after it, with its output used as returned (G1b; `durable-context-with-system.test.ts`) |
+| `provider-payload-hook` | Satisfied | `beforeProviderRequest` (#66); `durable-extension-host.test.ts` "a before_provider_request change reaches the provider" |
+| `provider-header-hook` | Satisfied | `beforeProviderHeaders` (#66, #80); `durable-handler-signal.test.ts` direct member test |
+| `provider-response-observe` | Satisfied | `afterProviderResponse` (#66); `durable-extension-host.test.ts` "… and the after_provider_response status is seen" |
+| `streaming-channel` | Satisfied | `onStreamEvent`, `onToolUpdate`, `onProviderStreamEvent` (#66, #80); `durable-handler-signal.test.ts` real-run test, `durable-extension-host.test.ts` frame test. All events are retained, Decisions #18 and #21 |
+| `message-rewrite` | Satisfied for the assistant role | `rewriteMessage` (#73). Reduction #23(a): tool results rewrite through `afterTool`, user input is the product `input` event, and durable has no `custom` role |
+| `settlement-entry-write` | Satisfied | `onBoundary` (#73, #76); `durable-extension-events.test.ts` boundary tests. Reductions #23(b) (no boundary for a failed or aborted turn), #23(c) (no `messageEntryId` for a final answer), #29 (what a draft may contain) |
+| `compaction-result-fidelity` | Satisfied except a foreign cut | `beforeCompact` summary, details, and usage (#73, #76). Reduction #29: a `firstKeptEntryId` other than durable's selected cut is reported and durable's cut stands |
+
+### The event mappings
+
+| Event | Destination | Status | Evidence |
+| --- | --- | --- | --- |
+| `project_trust` | product-api | Satisfied | resolved by `createDurableServices` (#68); `durable-resources.test.ts` |
+| `resources_discover` | product-api | Satisfied | resource loader (#68); `durable-resources.test.ts` |
+| `session_start` | product-api | Satisfied | `host.start` (#66); `durable-extension-host.test.ts` |
+| `session_info_changed` | internal-view | Satisfied as a view | no extension consumer; the durable TUI renders the view |
+| `session_before_switch` | product-api | Satisfied | `host.beforeSwitch` (#66); RPC `switch_session` (#75) |
+| `session_before_fork` | product-api | Satisfied | `host.beforeFork` from `sessionOps.fork` and `clone`, before the entry is read, with `session_shutdown`/`session_start` reason `fork` around the move (G1b; `durable-fork-lifecycle.test.ts`) |
+| `session_before_compact` | hook:beforeCompact | Satisfied | #73, #76; reduction #29 for a foreign cut |
+| `session_compact` | internal-view | Satisfied as a view | the durable compaction task state and TUI notices (#72) |
+| `session_compact_failed` | internal-view | Satisfied as a view | same |
+| `session_shutdown` | product-api | Satisfied | `host.shutdown` (#66); `durable-extension-host.test.ts` |
+| `mcp_servers_change` | product-api | Satisfied | the runner binds the registry listener in `bindCore`, so MCP sees later changes (#63, #50) |
+| `context` | durable-capability | Satisfied | #56, #76 |
+| `context_with_system` | durable-capability | Satisfied | `ExtensionRunner.emitContextWithSystem` from `beforeRequest`, after the `context` phase (G1b; `durable-context-with-system.test.ts`) |
+| `before_provider_request` | durable-capability | Satisfied | #66; stub test |
+| `before_provider_headers` | durable-capability | Satisfied | #66, #80 |
+| `after_provider_response` | durable-capability | Satisfied | #66; stub test |
+| `provider_stream_event` | durable-capability | Satisfied | #66; stub frame test |
+| `before_agent_start` | hook:beforeRequest | Satisfied | #66; injection test; G0b staging fix |
+| `agent_start` | product-api | Satisfied | `host.agentEvents` forwards the committed `run_start`; built-in `herdr` reports the pane state from it (G1b; `durable-run-events.test.ts`, `durable-builtin-run-events.test.ts`) |
+| `agent_end` | internal-view | Satisfied | `host.settled` (#66); G0b tests |
+| `agent_before_settle` | durable-capability | Satisfied | #73, #76 |
+| `agent_settled` | product-api | Satisfied | #66; G0b tests |
+| `ui_prompt_start` | product-api | Satisfied | `ExtensionRunner.setUIContext` wraps every dialog; the durable TUI and RPC bind it (#63, #72) |
+| `ui_prompt_end` | product-api | Satisfied | same |
+| `turn_start` | product-api | Satisfied | `host.agentEvents` forwards the committed `turn_start` with the run's completed-turn index; built-in `mcp` reconnects servers signed in mid-session from it (G1b; same files) |
+| `turn_end` | durable-capability | Satisfied | #73, #76 |
+| `message_start` | internal-view | Satisfied through `--mode json` and the view | `durable-json-events.test.ts` (#56) |
+| `message_update` | durable-capability | Satisfied | #80; real-run test |
+| `message_end` | durable-capability | Satisfied for the assistant role | #73; reduction #23(a) |
+| `tool_execution_start` | internal-view | Satisfied through `--mode json` | `durable-json-events.test.ts` |
+| `tool_execution_update` | durable-capability | Satisfied | #80; real-run test |
+| `tool_execution_end` | internal-view | Satisfied through `--mode json` | `durable-json-events.test.ts` |
+| `model_select` | internal-view | Satisfied | `host.modelSelected` (#66) |
+| `thinking_level_select` | product-api | Satisfied | `host.thinkingSelected` (#66) |
+| `tool_call` | hook:beforeTool | Satisfied | #50; `durable-extension-tools.test.ts` |
+| `tool_result` | hook:afterTool | Satisfied | #50; same file |
+| `user_bash` | product-api | Not bridged (Decision #31) | no built-in or core consumer; durable RPC `bash` records an entry instead (#77) |
+| `input` | product-api | Satisfied | `host.input` runs the handlers at the controller's submit entries, before skill and template expansion (G1b; `durable-input-event.test.ts`) |
+| `cache_warming_decision` | product-api | Not bridged (Decision #31) | no built-in consumer; the cache warmer is not on the durable path |
+
+All 31 non-event `ExtensionAPI` members are classified `product-api`. The durable host connects a subset and throws
+`<api> is not connected on the durable path yet` for the rest, so a handler that calls one fails visibly; the list is in
+`docs/extensions.md`. Only `codemode` calls one of them (`appendEntry`), and the durable path replaces that built-in with
+the durable codemode (#54).
+
+### The settled-handler difference
+
+`agent_end` and `agent_settled` are emitted by the controller's settle path after the durable run has settled, so their
+handlers see no `ctx.signal`; legacy's `agent_end` runs inside the run and has one. The orchestrator asked whether a
+parked `agent_end` handler can hold `close()`, `new_session`, or the next prompt.
+
+What the code does: `settle()` awaits `host.settled()`, so the host does await these handlers. That await belongs to the
+submission's settle promise, not to the durable Session line: `Harness.close()` joins the scheduler, which knows nothing
+of it, and `close()`, RPC `new_session`, and the next `submit`/`submitAndWait` never join that promise. Measured
+(`durable-settled-handlers.test.ts`, with an `agent_end` handler parked on a promise that never resolves): `close()`
+returns, RPC `new_session` answers `success: true`, and the next prompt finishes, each while the handler is still parked.
+Only the prompt response that was already waiting for that run waits for the handler, which is legacy's behavior too.
+
+The one piece of state that wait owns is the staged `before_agent_start` effects. They used to be cleared after the two
+emits, so a prompt submitted while an `agent_end` handler was parked queued its effects behind the settled run's applied
+ones, and that prompt's injected message never reached its request. G0b clears the staging before the emits; the test
+above asserts that the second prompt's injected message is in its own request body while the first run's handler is still
+parked. The difference itself stays documented rather than fixed: a signal for these handlers would have to be aborted by
+`close()` and `new_session`, and those do not join the handlers in the first place.
+
+## Batch G1b: the run events, phase two, input, and the fork lifecycle
+
+Decision #31 fixed ten events. This batch bridges the five that belong to the extension host; `user_bash`,
+`extension_error`, `queue_update`, and `message_update`-before-`message_end` belong to G1a, and cache warming to W1.
+
+**`agent_start` and `turn_start`.** Durable publishes them only as committed events (`run_start` and `turn_start`, the
+same stream `--mode json` reads), so the host watches the conversation the controller talks to and forwards them in order.
+The watch exists only when a loaded extension handles one of them (S5, the registration cost switch), and it is moved by
+`switchConversation`, which is how a fork, a clone, and a subagent switch reach a new conversation. `turn_start` reports
+the number of turns the run has completed, from zero: `run_start` resets it and every committed `turn_end` advances it.
+That index is the stream's, not the boundary hook's counter, because the boundary member only exists when a boundary
+handler does; a turn that ends in an error never reaches a boundary but does publish `turn_end`. The watch delivery
+context carries no abort signal (the harness strips it), so these handlers see `ctx.signal === undefined`, as `agent_end`
+and `agent_settled` do; a handler that waits delays that stream only, because `CommittedWatch.stop()` settles without
+joining a running delivery.
+
+Herdr needed one more thing: `ctx.mode` was `print` during `session_start`, because a mode binds its UI context after
+`openDurable` returns, and `herdr` reports only in a TUI session. The host now sets the runner's mode from the open's
+`projectTrustContext.mode` when it creates the runner; the UI context is still bound later.
+
+**`context_with_system`.** Durable's `transformConversation` is phase one and never sees system messages. The second phase
+runs in `beforeRequest`, which durable calls on every request attempt after `transformConversation`, so the order matches
+legacy `emitContext`. `ExtensionRunner` gained `emitContextWithSystem`, and phase one moved into
+`emitConversationContext` so the durable hook can run phase one alone: calling `emitContext` there would have run phase
+two twice, once with a system-less list. The member returns nothing when the request is unchanged, because a replacement
+collapses the positional system entries and changes the prompt-cache prefix.
+
+**`input`.** The controller's `submit` and `submitAndWait` run the handlers and then expand skill commands and prompt
+templates, which is legacy's order; the modes used to expand before submitting, so expansion moved into the controller and
+`DurableController.expandPrompt` is gone. `submitAndWait` answers a `SubmitOutcome`: `handled` means nothing was
+submitted, so RPC answers `disposition: "handled"` and print and JSON exit without a request. `source` is `interactive`
+by default and `rpc` for the RPC modes; `streamingBehavior` is passed only while a run is in flight, as legacy does.
+
+**Fork lifecycle.** `sessionOps.fork` and `clone` ask `session_before_fork` before they read the entry, as legacy emits it
+before validating. A successful fork emits `session_shutdown` with reason `fork`, and the controller emits `session_start`
+with reason `fork` and `previousSessionFile` after it has moved to the new conversation, so an extension that rebuilds
+state sees the forked entries. A durable fork keeps the session directory and file (Decision #24), so that file is the
+same as the current one; `docs/extensions.md` says so.
+
+Two defects were found while testing this. The read-only session facade read the *first* conversation's view after a
+`switchConversation`, because only the initial subscription updated the runtime's `currentView`; it now follows every
+switch. And phase two would have run twice in `beforeRequest`, as described above.
+
+Evidence: `durable-run-events.test.ts` (2 cases: the turn numbering and the watch following a fork),
+`durable-builtin-run-events.test.ts` (2: herdr's `working` report through a fake Herdr binary, and mcp reconnecting a
+server after an outside sign-in against a loopback endpoint), `durable-context-with-system.test.ts` (4),
+`durable-input-event.test.ts` (5), and `durable-fork-lifecycle.test.ts` (4). Every new behaviour was mutation-checked:
+removing the `agent_start` emit, the `turn_start` emit, the mode binding, the run-event watch, the phase-two call, the
+unchanged-request guard, the `handled` branch, the expansion after the handlers, the fork guard, the fork shutdown, the
+fork `session_start`, and the facade follow each fails a named test.
+
+Not verified: Windows (no Windows host; the owner tracks Windows coverage separately); a real Herdr process and a real
+browser OAuth sign-in, which are replaced by a fake binary and a loopback endpoint; and the durable TUI's own binding of
+the runner mode, which the tests drive through `openDurable` rather than a terminal.
+
+## N2 gate verification (2026-10-19)
+
+The N2 gate ran after the three Decision #31 batches (`G1a` #90, `G1b` #91, `W1` #92) merged. On the gate branch,
+`npm run check` exits 0, including `check:extension-surface`, which classifies all 41 events and 31 API members with one
+recorded destination each.
+
+**The durable capability set.** Every one of the eight capabilities above is satisfied on the durable path or has an
+owner decision reducing it; the G0b audit table and the G1b/G1a/W1 sections above carry the test or PR for each row, and
+the two tree events are the only events recorded as reductions (`extension-surface.json`, Decision #31).
+
+**Event-type parity.** `test/event-type-parity.test.ts` runs each scenario through both paths and compares the event
+types and, for RPC, the response commands. Nineteen cases pass under Node and Bun. The only type set the test
+asserts as different is the legacy retry `context_edit` `entry_appended`, which is one of Decision #31's three recorded
+reductions; `session_before_tree` and `session_tree` are the other two, and the durable path emits neither event because
+it has no tree navigation (Decision #24). No other difference remains.
+
+**Built-in extensions.** `test/durable-gate-builtins.test.ts` pins what every built-in offers through the durable modes:
+`cliproxyapi`, `herdr`, `llama.cpp`, and `mcp` load as `builtin:` paths, the `codemode` and `tool-search` built-ins give
+way to durable's native tools of the same names, the llama.cpp and cliproxyapi providers resolve in the durable model
+runtime, and RPC `get_commands` and the durable TUI offer exactly the commands they register: the ten `cpa-*` commands plus
+`fast`, `pause`, `continue`, `llama`, and `mcp`. Their behaviour runs on the durable path in
+`durable-extension-host.test.ts` (cliproxyapi: quota headers, one request record per terminal assistant, pause and fast),
+`durable-builtin-run-events.test.ts` (herdr reports the pane state; mcp reconnects a server signed in to from outside the
+session), `durable-mcp.test.ts` (an MCP tool runs in a local child that exits with the session), and
+`durable-codemode.test.ts` / `durable-tool-search.test.ts` (codemode and tool search, including the worker limit).
+
+**Durable TUI extension UI** stays the five-method subset with widgets, header/footer, editor, autocomplete, and custom
+components deferred to N9 by owner Decision #28 (accepted 2026-10-19), and **durable session selection** is outside N2 by
+Decision #25.
+
+Not verified at the gate: Windows (no Windows host; the owner tracks Windows coverage separately), a crash by kill
+between a boundary hook and its commit (the nearest test closes the harness instead), a real Herdr process, a real
+browser OAuth sign-in, and a real subprocess `--mode rpc` with a provider that cannot be injected in-process. Each batch
+section above lists its own remaining items.

@@ -411,8 +411,8 @@
       "nyanSemantics": "Cancel branch summarization or supply its summary and label",
       "destination": "product-api",
       "rerunnable": "n/a",
-      "decision": "adapt",
-      "openQuestion": null,
+      "decision": "reduce",
+      "openQuestion": "Decision #31 (2026-10-19): recorded reduction. Durable keeps a flat conversation with no parent tree and no tree navigation (Decision #24), so the durable path neither emits this event nor offers the navigation it guards.",
       "evidence": [
         "packages/coding-agent/src/core/extensions/types.ts:1621"
       ],
@@ -437,8 +437,8 @@
       "nyanSemantics": "Conversation tree changed",
       "destination": "product-api",
       "rerunnable": "n/a",
-      "decision": "adapt",
-      "openQuestion": null,
+      "decision": "reduce",
+      "openQuestion": "Decision #31 (2026-10-19): recorded reduction. Durable keeps a flat conversation with no parent tree and no tree navigation (Decision #24), so the durable path neither emits this event nor offers the navigation it guards.",
       "evidence": [
         "packages/coding-agent/src/core/extensions/types.ts:1624"
       ],

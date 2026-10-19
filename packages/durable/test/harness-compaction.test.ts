@@ -1596,6 +1596,23 @@ describe("compaction events and live status", () => {
 		await chat.harness.close(context);
 	});
 
+	it("a stop-retry request does not stop a compaction waiting to retry its summary", async () => {
+		const chat = await open();
+		await history(chat);
+		chat.setup.settings.retry = { enabled: true, maxRetries: 2, baseDelayMs: 60_000 };
+		chat.faux.summaries.push(failure("overloaded"));
+		const id = await chat.root.compact(undefined, context);
+		await waitFor(async () => (await live(chat)).compactions?.[0]?.retry !== undefined);
+
+		// Only a generation's retry is a stop-retry target, so the request reports that nothing was waiting.
+		expect(await chat.root.stopRetry()).toBe(false);
+		expect((await live(chat)).compactions?.[0]?.retry).toEqual({ at: expect.any(Number), error: "overloaded" });
+		expect((await chat.harness.getTask(id, context))?.state).toMatchObject({ checkpoint: { phase: "retry" } });
+
+		await chat.harness.abortTask(id, context);
+		await chat.harness.close(context);
+	});
+
 	it("lists concurrent compactions in task ID order", async () => {
 		const chat = await open();
 		await history(chat);

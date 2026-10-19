@@ -2,13 +2,15 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { AgentMessage, ThinkingLevel } from "@ny4n/agent-core";
 import type { Api, ImageContent, Model, UserMessage } from "@ny4n/ai";
 import type { CodemodeSandbox } from "@ny4n/codemode";
-import type { Extension, GenerationHooks, ToolHooks, UserInput } from "@ny4n/durable";
+import type { AgentEvent, Extension, GenerationHooks, ToolHooks, UserInput } from "@ny4n/durable";
 import { ExtensionRunner } from "../extensions/runner.ts";
 import type {
 	ExtensionActions,
 	ExtensionContextActions,
 	ExtensionError,
+	ExtensionMode,
 	ExtensionToolContext,
+	InputSource,
 	SessionShutdownEvent,
 	SessionStartEvent,
 	ToolInfo,
@@ -56,6 +58,8 @@ export interface ExtensionHostOptions {
 	/** Created once per process and shared by every open: extension instances and their state live here. */
 	readonly services: DurableServices;
 	readonly cwd: string;
+	/** The invocation mode extensions read as `ctx.mode`; the TUI binds its own context later. Defaults to `print`. */
+	readonly mode?: ExtensionMode;
 	readonly sessionManager?: ReadonlySessionManager;
 	/** The agent's model, used when no provider call is in flight. */
 	readonly agentModel: () => Model<Api> | undefined;
@@ -89,8 +93,25 @@ export interface ExtensionHost {
 	thinkingSelected(level: ThinkingLevel, previousLevel: ThinkingLevel): Promise<void>;
 	/** Install in the registry; carries no members when no loaded extension handles a provider event. */
 	readonly adapter: Extension;
+	/** Whether a loaded extension handles `agent_start` or `turn_start`, which only the committed stream publishes. */
+	readonly runEvents: boolean;
+	/**
+	 * Emits `agent_start` and `turn_start` for one batch of committed events, in order. The batch comes from a watch on
+	 * the active conversation, so a fork or a conversation switch moves it with the controller.
+	 */
+	agentEvents(events: readonly AgentEvent[]): Promise<void>;
+	/**
+	 * The `input` handlers for one submitted input, before skill and prompt-template expansion. Undefined when a handler
+	 * took the input and nothing is submitted; otherwise the input to submit, transformed when a handler asked for it.
+	 */
+	input(
+		content: UserInput,
+		options: { readonly source?: InputSource; readonly streamingBehavior?: "steer" | "followUp" },
+	): Promise<UserInput | undefined>;
 	/** Runs `before_agent_start` once for the submitted prompt and stages its message/system-prompt effects. */
 	beforePrompt(content: UserInput): Promise<void>;
+	/** Asks the extension whether a fork may start; a cancelled answer means it does not. */
+	beforeFork(entryId: string, position: "before" | "at"): Promise<{ readonly cancelled: boolean }>;
 	beforeSwitch(targetSessionFile: string): Promise<{ readonly cancelled: boolean }>;
 	start(event: SessionStartEvent): Promise<void>;
 	shutdown(reason: SessionShutdownEvent["reason"]): Promise<void>;
@@ -134,6 +155,9 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 	};
 
 	const turnCounter = { value: 0 };
+	// `turn_start` is numbered from the committed stream: `run_start` resets it and every committed `turn_end`
+	// advances it, so the index counts the turns this run has completed, as legacy's `_turnIndex` does.
+	let streamedTurns = 0;
 	const runner = new ExtensionRunner(
 		loaded.extensions,
 		loaded.runtime,
@@ -141,6 +165,9 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		options.sessionManager ?? sessionManager,
 		new ModelRegistry(options.services.modelRuntime),
 	);
+	// The mode is known when the session opens, its UI context only when the mode binds it. Extensions read `ctx.mode` from
+	// `session_start` on, and the built-in `herdr` integration reports only in a TUI session.
+	runner.setUIContext(undefined, options.mode ?? "print");
 
 	const actions: ExtensionActions = {
 		sendMessage: () => unavailable("pi.sendMessage"),
@@ -193,9 +220,10 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		(message) => options.onExtensionError({ extensionPath: "durable:boundary", event: "turn_end", error: message }),
 		turnCounter,
 	);
-	const toolHooks = createToolHooks(runner);
+	const toolHooks = createToolHooks(runner, calls);
 	const compactionHooks = createCompactionHooks(
 		runner,
+		calls,
 		(message) =>
 			options.onExtensionError({
 				extensionPath: "durable:compaction",
@@ -287,6 +315,46 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		providerHooks,
 		toolHooks,
 		adapter: createHookAdapter(providerHooks, toolHooks, compactionHooks),
+		get runEvents() {
+			return runner.hasHandlers("agent_start") || runner.hasHandlers("turn_start");
+		},
+		agentEvents: async (events) => {
+			for (const event of events) {
+				if (event.type === "run_start") {
+					streamedTurns = 0;
+					if (runner.hasHandlers("agent_start")) await runner.emit({ type: "agent_start" });
+				} else if (event.type === "turn_end") {
+					streamedTurns += 1;
+				} else if (event.type === "turn_start") {
+					if (!runner.hasHandlers("turn_start")) continue;
+					await runner.emit({ type: "turn_start", turnIndex: streamedTurns, timestamp: Date.now() });
+				}
+			}
+		},
+		input: async (content, options) => {
+			if (!runner.hasHandlers("input")) return content;
+			const images = Array.isArray(content)
+				? content.filter((part): part is ImageContent => part.type === "image")
+				: undefined;
+			const text =
+				typeof content === "string"
+					? content
+					: content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
+			const result = await runner.emitInput(
+				text,
+				images,
+				options.source ?? "interactive",
+				options.streamingBehavior,
+			);
+			if (result.action === "handled") return undefined;
+			if (result.action !== "transform") return content;
+			const nextImages = result.images === undefined || result.images.length === 0 ? undefined : result.images;
+			return nextImages === undefined ? result.text : [{ type: "text", text: result.text }, ...nextImages];
+		},
+		beforeFork: async (entryId, position) => {
+			const result = await runner.emit({ type: "session_before_fork", entryId, position });
+			return { cancelled: result?.cancel === true };
+		},
 		beforeSwitch: async (targetSessionFile) => {
 			const result = await runner.emit({ type: "session_before_switch", reason: "resume", targetSessionFile });
 			return { cancelled: result?.cancel === true };
@@ -296,9 +364,11 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 				syncTools();
 			}),
 		settled: async (aborted, messages) => {
+			// Cleared before the handlers, because they may wait: a new prompt can start while a settled handler is parked,
+			// and its `before_agent_start` effects must not queue behind this run's already applied ones.
+			activeBeforeRequestEffects = undefined;
 			await runner.emit({ type: "agent_end", messages: [...messages] });
 			await runner.emit({ type: "agent_settled", aborted });
-			activeBeforeRequestEffects = undefined;
 		},
 		shutdown: (reason) =>
 			runner.emit({ type: "session_shutdown", reason }).then(async () => {

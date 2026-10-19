@@ -119,7 +119,7 @@ Use `toolCallId` to correlate the lifecycle. `partialResult` is the latest parti
 | Event | Fields | Meaning |
 |---|---|---|
 | `queue_update` | `steering`, `followUp` | The pending steering or follow-up queue changed. Both fields contain the complete current queue. |
-| `entry_appended` | `entry` | An extension appended a custom session entry through `nyan.appendEntry()`. |
+| `entry_appended` | `entry` | An extension appended a custom session entry through `nyan.appendEntry()`, a boundary handler proposed a `custom` entry, or a boundary `custom_message` was committed. |
 | `session_info_changed` | `name` | The session display name changed. An absent `name` means it was cleared. |
 | `thinking_level_changed` | `level` | The active thinking level changed. |
 
@@ -194,6 +194,28 @@ RPC also adds `extension_error` when an extension handler throws:
 ```
 
 Extension UI records are a separate RPC subprotocol, not `AgentSessionEvent` values. See [RPC Extension UI](rpc-extension-ui.md).
+
+## Durable path
+
+The durable path publishes the same event types as the legacy path. `test/event-type-parity.test.ts` runs each scenario
+through both and compares the types, and these details differ:
+
+- Streamed partials commit at most every 100 ms (`progress.partialIntervalMs`), so durable publishes fewer
+  `message_update` events than legacy. An answer that finishes within one interval publishes none while it streams, so
+  the completed message is published as one `message_update` (with a terminal `assistantMessageEvent`) immediately
+  before its `message_end`.
+- `queue_update` is published. Durable keeps its queued inputs in the `nyan.inbox` document, and its `inbox_update`
+  event carries the items' ids and modes rather than their texts, so the adapter reads the queue back for each change
+  and publishes the texts as `queue_update`, the way legacy reports its own queues. A queue that did not change the
+  texts publishes nothing, and the queue read happens when the event is delivered, so a client may see a queue that
+  moved on in the same commit.
+- A retried turn publishes no `entry_appended` for a `context_edit`. Legacy appends an entry that omits the failed
+  attempt from the next request; durable leaves the attempt in the transcript and out of the request without an entry.
+- `extension_error` is published on the RPC path with the same `extensionPath`, `event`, and `error` as legacy, and the
+  session view shows its notice as well. The JSON path reports an extension failure on stderr, as legacy print mode
+  does.
+- Durable publishes `message_start` and `message_end` for the entries that carry its positional prompt and tool
+  loadout (a system message), which legacy does not put in its session.
 
 ## TypeScript types
 

@@ -11,8 +11,7 @@ export async function runDurableInteractive(options: DurableInteractiveOptions):
 	try {
 		if (options.initialMessage !== undefined) {
 			const handled = await dispatchDurableExtensionCommand(durable.extensionHost.runner, options.initialMessage);
-			if (!handled)
-				await durable.controller.submit(durable.controller.expandPrompt(options.initialMessage), "steer");
+			if (!handled) await durable.controller.submit(options.initialMessage, "steer");
 		}
 		await runDurableTui(durable.view, durable.controller, durable.settings, durable.extensionHost, durable.themes);
 	} finally {

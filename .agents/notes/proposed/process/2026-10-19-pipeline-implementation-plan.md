@@ -224,8 +224,7 @@ Measured locally on this repository:
 So the incremental file does not hide drift: editing or deleting a test re-runs the mutants it covers, and the
 survivor count moves. `--force` reaches Stryker through the npm script (unlike `--shard`, which npm swallows), so
 the nightly really does run everything. `Deep verification` was 202 s of the pull-request critical path, of which
-the mutation step was 175 s; the expected effect is a job well under a minute on a pull request that does not touch
-`cbor`. The CI number is not yet measured.
+the mutation step was 175 s.
 
 ### 8. R4: gateway above CPA
 
@@ -275,6 +274,22 @@ decides.
 Done when: **[GH]** a documentation-only pull request skips both jobs and `Merge gate` is green; a change to
 `packages/tui` runs Windows; a skipped required job turns the gate red.
 Rollback: revert.
+
+**Status 2026-10-19: implemented and merged in [PR #86](https://github.com/blxzer77/nyan/pull/86).** The required
+list moved into `policy.json` as `required` plus `conditionalRequired` (job -> impact flag); `ci-gate.mjs` builds the
+set per run, so a skipped job fails only when the classifier asked for it. `windows-smoke` and `mcp-conformance`
+carry `if:` on their flags. `scripts/ci-gate.test.mjs` covers the fail-closed half; it was added despite the deferral
+because this change alters fail-closed logic.
+
+Evidence: the gate log of the PR's own run printed `Conditional checks required by the impact analysis:
+windows-smoke, mcp-conformance, deep-gate` and `All 9 required CI checks passed.` — the job count came from the
+impact outputs, not a literal. Three cases were also run against the committed policy directly: all flags false with
+the three jobs skipped exits 0 with 6 required; `windows_required: true` with the job skipped exits 1 naming it; all
+flags true with everything passing exits 0 with 9 required. `ci-impact.mjs` on a real docs-only commit reports
+`risk: normal, fullSuite: false, windowsRequired: false, mcpRequired: false, deepRequired: false`.
+
+Not observed yet: the skip on a real docs-only pull request, because this PR necessarily changes `.github/**`, which
+the classifier treats as the full suite. That becomes visible on the first docs-only pull request after it merged.
 
 ### 12. P4: release preflight
 
