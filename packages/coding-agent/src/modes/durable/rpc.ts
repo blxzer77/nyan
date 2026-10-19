@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 import { join } from "node:path";
 import type { AgentMessage } from "@ny4n/agent-core";
 import { getSupportedThinkingLevels } from "@ny4n/ai";
-import type { AgentState, LiveState, UsageState } from "@ny4n/durable";
+import type { AgentEventStream, AgentState, ConversationId, LiveState, UsageState } from "@ny4n/durable";
 import { dispatchDurableExtensionCommand, getDurableExtensionCommands } from "../../core/durable/extension-commands.ts";
 import { type OpenDurableOptions, type OpenDurableResult, openDurable } from "../../core/durable/runtime.ts";
 import type {
@@ -192,23 +192,40 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 	const messagesOf = (source: OpenDurableResult): AgentMessage[] =>
 		source.view.current().conversation.entries.flatMap((entry) => (entry.model ?? []) as AgentMessage[]);
 
-	const bindEvents = (): void => {
-		const events = durable.events;
-		if (events === undefined) throw new Error("Durable RPC mode did not acquire an event stream");
+	// The display name lives beside the session database, so a reopen reads the name of the session it opened.
+	let sessionName = await durable.sessionOps.getSessionName();
+
+	let stream: AgentEventStream | undefined;
+	/** Listen to the events of `conversationId`, or of the conversation this open started with. */
+	const bindEvents = async (conversationId?: ConversationId): Promise<void> => {
+		const previous = stream;
+		stream = conversationId === undefined ? durable.events : await durable.eventsOf(conversationId);
+		if (stream === undefined) throw new Error("Durable RPC mode did not acquire an event stream");
+		// A fork moves the adapter to another conversation: the stream it leaves is this adapter's to stop. The stream an
+		// open hands back is the runtime's, and closing the open stops it.
+		if (previous !== undefined && previous !== stream) await previous.stop();
 		eventAdapter = new DurableJsonEventAdapter(() => messagesOf(durable));
+		const events = stream;
 		events.start(async (batch) => {
 			for (const event of eventAdapter.translate(batch)) output(event);
 			await waitForRawStdoutBackpressure();
 		});
 	};
-	bindEvents();
+	await bindEvents();
+
+	/** Show and talk to the conversation a fork or a clone created, and follow its events. */
+	const moveTo = async (conversationId: ConversationId): Promise<void> => {
+		await durable.controller.switchConversation(conversationId);
+		await bindEvents(conversationId);
+	};
 
 	const replaceSession = async (continueSession: boolean): Promise<void> => {
 		// The services outlive the replaced session: extensions load once per process, not once per session.
 		const services = durable.services;
 		await durable.close(continueSession ? "resume" : "new");
 		durable = await openDurable({ ...options, continueSession, services, eventStream: true });
-		bindEvents();
+		sessionName = await durable.sessionOps.getSessionName();
+		await bindEvents();
 	};
 
 	const state = (): RpcSessionState => {
@@ -235,6 +252,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 			autoCompactionEnabled: durable.controller.getAutoCompaction(),
 			messageCount: view.conversation.entries.reduce((count, entry) => count + (entry.model?.length ?? 0), 0),
 			pendingMessageCount: inbox.items.length,
+			...(sessionName === undefined ? {} : { sessionName }),
 		};
 	};
 
@@ -290,8 +308,10 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 			case "abort":
 				await durable.controller.abort();
 				return success(id, "abort");
-			case "clear_queue":
-				return failure(id, "clear_queue", "Durable RPC does not expose queue clearing yet");
+			case "clear_queue": {
+				const cleared = await durable.sessionOps.clearQueue();
+				return success(id, "clear_queue", { steering: cleared.steering, followUp: cleared.followUp });
+			}
 			case "new_session":
 				await replaceSession(false);
 				return success(id, "new_session", { cancelled: false });
@@ -406,14 +426,36 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 					cost: totals.cost,
 				});
 			}
-			case "switch_session":
-			case "fork":
-			case "clone":
-			case "get_fork_messages":
-			case "get_entries":
-			case "get_tree":
-			case "export_html":
+			case "get_entries": {
+				const entries = await durable.sessionOps.entries(command.since);
+				return success(id, "get_entries", { entries: entries.entries, leafId: entries.leafId });
+			}
 			case "set_session_name":
+				sessionName = await durable.sessionOps.setSessionName(command.name);
+				return success(id, "set_session_name");
+			case "export_html": {
+				const path = await durable.sessionOps.exportHtml(command.outputPath);
+				return success(id, "export_html", { path });
+			}
+			case "fork": {
+				const forked = await durable.sessionOps.fork(command.entryId);
+				await moveTo(forked.conversationId);
+				return success(id, "fork", { text: forked.text, cancelled: false });
+			}
+			case "clone": {
+				const cloned = await durable.sessionOps.clone();
+				await moveTo(cloned.conversationId);
+				return success(id, "clone", { cancelled: false });
+			}
+			case "get_fork_messages":
+				return success(id, "get_fork_messages", {
+					messages: (await durable.sessionOps.forkMessages()).map((message) => ({ ...message })),
+				});
+			case "get_tree": {
+				const tree = await durable.sessionOps.tree();
+				return success(id, "get_tree", { tree: tree.tree, leafId: tree.leafId });
+			}
+			case "switch_session":
 			case "bash":
 			case "abort_bash":
 				return failure(id, command.type, `Command ${command.type} is not available on the durable RPC path yet`);
@@ -427,6 +469,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 		detachInput();
 		process.stdin.pause();
 		killTrackedDetachedChildren();
+		await stream?.stop();
 		await durable.close();
 		if (signal !== "SIGTERM") await waitForRawStdoutBackpressure();
 		await flushRawStdout();
