@@ -71,6 +71,8 @@ A run proceeds from input and `before_agent_start`, through model, message, and 
 Nyan counts as busy while a run starts, including the compaction check and `before_agent_start`, so messages sent meanwhile go into the starting run.
 Automatic retries, recovery, compaction, or queued work can continue afterward.
 
+On the durable path, boundary drafts are proposals: durable validates their entry kinds, user-message shape, active edit targets, and JSON data before committing them. Assistant/tool-result edits, compaction drafts, and a requested compaction cut different from durable's selected cut are refused with a diagnostic rather than silently dropped. A crash before the boundary commit can run the handler again, so boundary handlers must be idempotent.
+
 On the durable path, closing a session while a submission is waiting aborts that caller's wait but does not commit an abort outcome for the run. The durable submission remains placed and is resumed after reopening the session; the recovered request is sent once. Callers that await a submission must handle the close rejection, just as they handle cancellation.
 <a id="agent_start--agent_end--agent_before_settle--agent_settled"></a>
 

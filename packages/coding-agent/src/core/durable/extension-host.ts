@@ -132,6 +132,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		return activeBeforeRequestEffects;
 	};
 
+	const turnCounter = { value: 0 };
 	const runner = new ExtensionRunner(
 		loaded.extensions,
 		loaded.runtime,
@@ -187,9 +188,21 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		runner,
 		calls,
 		runner.hasHandlers("before_agent_start") ? takeBeforeRequestEffects : undefined,
+		sessionManager,
+		(message) => options.onExtensionError({ extensionPath: "durable:boundary", event: "turn_end", error: message }),
+		turnCounter,
 	);
 	const toolHooks = createToolHooks(runner);
-	const compactionHooks = createCompactionHooks(runner);
+	const compactionHooks = createCompactionHooks(
+		runner,
+		(message) =>
+			options.onExtensionError({
+				extensionPath: "durable:compaction",
+				event: "session_before_compact",
+				error: message,
+			}),
+		options.agentModel,
+	);
 	// A tool call runs in its own call scope, so `ctx.signal` and `ctx.model` inside a tool belong to that call.
 	const bridge: ToolBridge = {
 		run: <T>(signal: AbortSignal | undefined, execute: (context: ExtensionToolContext) => Promise<T>) =>
@@ -287,6 +300,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 				await codemodeSandbox?.close();
 			}),
 		beforePrompt: async (content) => {
+			turnCounter.value = 0;
 			const images = Array.isArray(content)
 				? content.filter((block): block is ImageContent => block.type === "image")
 				: [];

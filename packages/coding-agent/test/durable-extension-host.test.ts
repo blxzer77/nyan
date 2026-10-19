@@ -6,6 +6,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
 import {
+	durableBoundaryEntriesToLegacy,
+	legacyBoundaryEntriesToDurable,
+} from "../src/core/durable/extension-adapter.ts";
+import {
 	dispatchDurableExtensionCommand,
 	getDurableExtensionCommands,
 } from "../src/core/durable/extension-commands.ts";
@@ -211,6 +215,25 @@ describe("durable extension host", () => {
 			await first.close();
 		}
 	}
+
+	test("round-trips custom boundary proposals and refuses compaction drafts", () => {
+		const errors: string[] = [];
+		const legacy = durableBoundaryEntriesToLegacy(
+			[{ kind: "custom", data: { marker: true } }],
+			undefined,
+			(message) => errors.push(message),
+		);
+		expect(legacy).toEqual([{ type: "custom", customType: "custom", data: { marker: true } }]);
+		expect(legacyBoundaryEntriesToDurable(legacy ?? [], undefined, (message) => errors.push(message))).toEqual([
+			{ kind: "custom", data: { marker: true } },
+		]);
+		expect(
+			durableBoundaryEntriesToLegacy([{ kind: "compaction", data: {} }], undefined, (message) =>
+				errors.push(message),
+			),
+		).toBeUndefined();
+		expect(errors).toEqual(["compaction boundary drafts are owned by the durable compaction task"]);
+	});
 
 	test("a before_provider_request change reaches the provider, and the after_provider_response status is seen", async () => {
 		await seedCatalog();

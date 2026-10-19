@@ -281,7 +281,9 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					continue;
 				}
 				for (const message of messages) {
-					const id = `${entry.id}:${result.length}`;
+					// Durable entry ids are exposed to extension boundary events so proposals can be validated and mapped back
+					// without inventing a second identity. Durable model entries are one message each in the active view.
+					const id = String(entry.id);
 					result.push({
 						type: "message",
 						id,
