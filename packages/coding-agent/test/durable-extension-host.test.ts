@@ -87,24 +87,53 @@ const answerStream = [
 interface Stub {
 	readonly baseUrl: string;
 	readonly bodies: string[];
+	readonly managementRequests: number;
+	failNextResponse(): void;
 	close(): Promise<void>;
 }
 
 async function startStub(): Promise<Stub> {
 	const bodies: string[] = [];
+	let managementRequests = 0;
+	let failNextResponse = false;
 	const server: Server = createServer((request, response) => {
 		let body = "";
 		request.on("data", (chunk: Buffer) => {
 			body += chunk.toString();
 		});
 		request.on("end", () => {
+			if (request.url?.startsWith("/v0/management/auth-files")) {
+				managementRequests += 1;
+				response.writeHead(401, { "content-type": "application/json" });
+				response.end(JSON.stringify({ error: "rejected" }));
+				return;
+			}
 			if (request.url?.startsWith("/v1/models")) {
 				response.writeHead(200, { "content-type": "application/json" });
 				response.end(JSON.stringify({ data: [{ id: "deepseek-flash", slug: "deepseek-flash" }] }));
 				return;
 			}
 			bodies.push(body);
-			response.writeHead(200, { "content-type": "text/event-stream" });
+			if (failNextResponse) {
+				failNextResponse = false;
+				response.writeHead(200, { "content-type": "text/event-stream" });
+				response.end(
+					`data: ${JSON.stringify({
+						type: "response.failed",
+						response: {
+							status: "failed",
+							error: { code: "stream_error", message: "closed network connection" },
+						},
+					})}\n\n`,
+				);
+				return;
+			}
+			response.writeHead(200, {
+				"content-type": "text/event-stream",
+				"x-codex-primary-used-percent": "42",
+				"x-codex-primary-window-minutes": "300",
+				"x-codex-primary-reset-after-seconds": "3600",
+			});
 			response.end(answerStream);
 		});
 	});
@@ -113,6 +142,12 @@ async function startStub(): Promise<Stub> {
 	return {
 		baseUrl: `http://127.0.0.1:${port}`,
 		bodies,
+		get managementRequests() {
+			return managementRequests;
+		},
+		failNextResponse() {
+			failNextResponse = true;
+		},
 		close: () => new Promise<void>((resolve) => server.close(() => resolve())),
 	};
 }
@@ -214,6 +249,52 @@ describe("durable extension host", () => {
 			// Every stream frame reaches the handler, tagged with the provider it came from.
 			expect(frameProviders.length).toBeGreaterThan(0);
 			expect(new Set(frameProviders)).toEqual(new Set(["cliproxyapi"]));
+		} finally {
+			await durable.close();
+		}
+	});
+
+	// A5: CPA sees response status and parses forwarded quota headers through its telemetry hub.
+	test("response quota headers reach the CPA quota command", async () => {
+		await seedCatalog();
+		const notices: string[] = [];
+		const durable = await openDurable({
+			cwd,
+			extensionFactories: builtInExtensions,
+			model: { provider: "cliproxyapi", modelId: "deepseek-flash" },
+			projectTrustContext: { ...headless, cwd },
+		});
+		durable.extensionHost.runner.setUIContext(
+			createTestUiContext({ notify: (message) => notices.push(message) }),
+			"tui",
+		);
+		try {
+			expect(await durable.controller.submitAndWait("hi", "followUp")).toMatchObject({ status: "done" });
+			expect(await dispatchDurableExtensionCommand(durable.extensionHost.runner, "/cpa-quota")).toBe(true);
+			expect(notices.some((message) => message.includes("42% used"))).toBe(true);
+		} finally {
+			await durable.close();
+		}
+	});
+
+	// A8: one terminal provider assistant message produces one CPA request record.
+	test("CPA publishes one request record for one terminal assistant", async () => {
+		await seedCatalog();
+		const requests: unknown[] = [];
+		const durable = await openDurable({
+			cwd,
+			extensionFactories: [
+				...builtInExtensions,
+				(pi) => {
+					pi.events.on("cliproxyapi:request", (record) => requests.push(record));
+				},
+			],
+			model: { provider: "cliproxyapi", modelId: "deepseek-flash" },
+			projectTrustContext: { ...headless, cwd },
+		});
+		try {
+			expect(await durable.controller.submitAndWait("hi", "followUp")).toMatchObject({ status: "done" });
+			expect(requests).toHaveLength(1);
 		} finally {
 			await durable.close();
 		}
@@ -399,6 +480,37 @@ describe("durable extension host", () => {
 		expect(host.adapter.hooks ?? []).toHaveLength(0);
 	});
 
+	// A7: one transient stream error is normalized at message_end and the durable run retries once.
+	test("normalizes a transient CPA stream error and retries once", async () => {
+		await seedCatalog();
+		await writeFile(
+			join(agentDir, "settings.json"),
+			JSON.stringify({ retry: { enabled: true, maxRetries: 1, baseDelayMs: 0 } }),
+		);
+		stub.failNextResponse();
+		const durable = await openDurable({
+			cwd,
+			extensionFactories: builtInExtensions,
+			model: { provider: "cliproxyapi", modelId: "deepseek-flash" },
+			projectTrustContext: { ...headless, cwd },
+		});
+		try {
+			expect(await durable.controller.submitAndWait("hi", "followUp")).toMatchObject({ status: "done" });
+			expect(stub.bodies).toHaveLength(2);
+			const assistants = durable.view
+				.current()
+				.conversation.entries.filter((entry) => entry.kind === "nyan.assistant");
+			expect(assistants).toHaveLength(2);
+			expect(assistants[0]?.model?.[0]).toMatchObject({
+				stopReason: "error",
+				errorMessage: expect.stringContaining("network error: stream_error: closed network connection"),
+			});
+			expect(assistants[1]?.model?.[0]).toMatchObject({ stopReason: "stop" });
+		} finally {
+			await durable.close();
+		}
+	});
+
 	// A2: the pause gate of CLIProxyAPI runs in `before_provider_request` and blocks before the provider is called.
 	test("while paused no provider request is sent, and continuing sends exactly one", async () => {
 		await seedCatalog();
@@ -444,6 +556,70 @@ describe("durable extension host", () => {
 		} finally {
 			persistPausePreference(agentDir, false);
 			await durable.close();
+		}
+	});
+
+	// A11: reopening with the same services is the core of RPC new_session's extension-lifetime guarantee.
+	test("a rejected quota key is not polled again after reopening with the same services", async () => {
+		await seedCatalog();
+		vi.stubEnv("CLIPROXYAPI_MANAGEMENT_KEY", "rejected-management-key");
+		const first = await openDurable({
+			cwd,
+			extensionFactories: builtInExtensions,
+			model: { provider: "cliproxyapi", modelId: "deepseek-flash" },
+			projectTrustContext: { ...headless, cwd },
+		});
+		await vi.waitFor(() => expect(stub.managementRequests).toBe(1), { timeout: 5_000 });
+		await first.close();
+
+		const second = await openDurable({
+			cwd,
+			services: first.services,
+			extensionFactories: builtInExtensions,
+			model: { provider: "cliproxyapi", modelId: "deepseek-flash" },
+			projectTrustContext: { ...headless, cwd },
+		});
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 300));
+			expect(stub.managementRequests).toBe(1);
+		} finally {
+			await second.close();
+		}
+	});
+
+	// A4: the pending submission belongs to its caller; close rejects its waiter, and reopen recovers the durable run.
+	test("a paused request closes with an owned rejection and resumes once after reopen", async () => {
+		await seedCatalog();
+		persistPausePreference(agentDir, true);
+		const first = await openDurable({
+			cwd,
+			extensionFactories: builtInExtensions,
+			model: { provider: "cliproxyapi", modelId: "deepseek-flash" },
+			projectTrustContext: { ...headless, cwd },
+		});
+		const submission = first.controller.submitAndWait("hi", "followUp").catch((error: unknown) => error);
+		await new Promise((resolve) => setTimeout(resolve, 600));
+		expect(stub.bodies).toHaveLength(0);
+		await first.close("quit");
+		await expect(submission).resolves.toMatchObject({ message: "Harness is closed" });
+
+		const second = await openDurable({
+			cwd,
+			continueSession: true,
+			services: first.services,
+			extensionFactories: builtInExtensions,
+			model: { provider: "cliproxyapi", modelId: "deepseek-flash" },
+			projectTrustContext: { ...headless, cwd },
+		});
+		try {
+			persistPausePreference(agentDir, false);
+			await vi.waitFor(() => expect(stub.bodies).toHaveLength(1), { timeout: 5_000 });
+			expect(
+				second.view.current().conversation.entries.filter((entry) => entry.kind === "nyan.assistant"),
+			).toHaveLength(1);
+		} finally {
+			persistPausePreference(agentDir, false);
+			await second.close();
 		}
 	});
 });

@@ -10,7 +10,7 @@ import type {
 	ProjectTrustContext,
 } from "../extensions/types.ts";
 import { resolveProjectTrusted } from "../project-trust.ts";
-import { collectSettingsDiagnostics } from "../settings-diagnostics.ts";
+import { collectSettingsDiagnostics, deduplicateDiagnostics } from "../settings-diagnostics.ts";
 import { SettingsManager } from "../settings-manager.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../trust-manager.ts";
 
@@ -113,7 +113,7 @@ export async function createDurableServices(options: DurableServicesOptions): Pr
 
 	const extensions = services.resourceLoader.getExtensions();
 	bindProviderActions(services, extensions.runtime);
-	const diagnostics: AgentSessionRuntimeDiagnostic[] = [
+	const diagnostics = deduplicateDiagnostics([
 		...trustDiagnostics,
 		// Invalid settings files are recorded by the manager and read only by drain, as the legacy runtime does.
 		...collectSettingsDiagnostics(settingsManager),
@@ -126,7 +126,7 @@ export async function createDurableServices(options: DurableServicesOptions): Pr
 			type: "warning" as const,
 			message: `Extension package "${path}": ${warning}`,
 		})),
-	];
+	]);
 	return { ...services, diagnostics, projectTrusted: resolveTrust ? (decidedTrust ?? false) : initiallyTrusted };
 }
 
