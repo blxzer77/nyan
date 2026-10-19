@@ -127,6 +127,8 @@ Response:
 
 To implement interactive Esc behavior, send `clear_queue` before `abort`, then restore the returned text in the client editor. `abort` continues queued messages when they remain in the session.
 
+On the durable path the queue is the conversation's inbox, so every queued input is withdrawn and its text returned in the order it was queued. A queued entry write carries no text and is left for its next boundary.
+
 ### new_session
 
 Start a fresh session. Can be canceled by a `session_before_switch` extension event handler.
@@ -183,7 +185,7 @@ Response:
 }
 ```
 
-The `model` field is a full [Model](#model-object) object, or omitted when no model is selected. The `sessionName` field is the display name set via `set_session_name`, or omitted if not set.
+The `model` field is a full [Model](#model-object) object, or omitted when no model is selected. The `sessionName` field is the display name set via `set_session_name`, or omitted if not set. A durable session stores that name in `session.json` beside its database.
 
 ### get_messages
 
@@ -589,6 +591,8 @@ Response:
 }
 ```
 
+Without `outputPath` the file is named `nyan-session-<session id>.html` in the working directory of the process. On the durable path the page is built from the session database through a temporary session file, which is removed afterwards.
+
 ### switch_session
 
 Load a different session file. Can be canceled by a `session_before_switch` extension event handler.
@@ -716,6 +720,14 @@ Response:
 
 `leafId` is the id of the current leaf entry (`null` for an empty session), so a client can tell in one round trip whether the active branch moved. If `since` does not match any entry id, the response is `success: false`.
 
+On the durable path the entries come from the session database instead of a session file:
+
+- An entry id is the durable entry id as a decimal string, and `since` accepts the same form.
+- `parentId` chains the entries linearly in append order; the durable entry list has no tree.
+- A conversation forked from another one lists the entries it inherited, up to the fork point.
+- Positional prompt entries are not listed, since they have no session entry shape.
+- A compaction entry's `tokensBefore` is an estimate of the context before that summary; durable records the summary, not the provider's token count.
+
 ### get_tree
 
 Get the session as a tree of entries. Each node is `{entry, children, label?, labelTimestamp?}`. The result is an array because navigation APIs can create multiple roots; orphaned entries with broken parent chains also appear as roots.
@@ -781,7 +793,7 @@ Response:
 }
 ```
 
-The current session name is available via `get_state` in the `sessionName` field. To set the initial name when starting RPC mode, pass `--name <name>` or `-n <name>` to the `nyan --mode rpc` process.
+The current session name is available via `get_state` in the `sessionName` field. To set the initial name when starting RPC mode, pass `--name <name>` or `-n <name>` to the `nyan --mode rpc` process. An empty name clears the title. On the durable path the name is stored in `session.json` beside the session database, so it survives a restart; `--name` still selects the legacy path.
 
 ## Discoverable commands
 

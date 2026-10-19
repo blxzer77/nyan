@@ -19,6 +19,23 @@ Normal CLI options still select the working folder, model, tools, resources, and
 
 RPC mode rejects `@file` prompt arguments. Send prompts through the [`prompt`](rpc-commands.md#prompt) command instead.
 
+## Session storage
+
+New interactive, print, JSON, and RPC sessions are stored durably in SQLite under the agent directory. RPC commands that describe a session answer in the same shapes as a JSONL session file, but from the durable entry list: `get_entries` walks the session in append order, `parentId` chains its entries linearly, and an entry id is the durable entry id as a decimal string. See [RPC Commands](rpc-commands.md#get_entries).
+
+A durable session directory holds `session.sqlite` and `session.json`. The JSON file is where `set_session_name` stores the display name that `get_state` reports; the database holds the conversation.
+
+These commands need capabilities the durable path does not connect yet, and answer `success: false` with a message that names the command:
+
+| Command | Current answer on the durable path |
+|---|---|
+| `fork`, `clone`, `get_fork_messages`, `get_tree` | Not available yet; the durable conversation is a flat entry list with head markers |
+| `switch_session` | Not available yet |
+| `bash`, `abort_bash` | Not available yet |
+| `abort_retry` | Not available yet; a durable retry wait cannot be cancelled on its own |
+
+A client that needs one of these commands can choose a session-selection flag such as `--resume` or `--session` for that invocation; those still use the legacy JSONL path.
+
 ## Protocol records
 
 The protocol has four record families:
