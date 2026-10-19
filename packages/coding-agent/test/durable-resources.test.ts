@@ -10,6 +10,7 @@ import { createDurableServices } from "../src/core/durable/services.ts";
 import type { ProjectTrustContext } from "../src/core/extensions/types.ts";
 import { ProjectTrustStore } from "../src/core/trust-manager.ts";
 import { builtInExtensions } from "../src/extensions/index.ts";
+import { settlement } from "./durable-submission.ts";
 
 /**
  * The durable path with the resource flags, against a loopback stand-in for CLIProxyAPI. The stand-in lists one model
@@ -130,7 +131,7 @@ describe("durable path resources", () => {
 			expect(durable.view.current().conversation.docs["nyan.agent"]).toMatchObject({
 				model: { provider: "cliproxyapi", modelId: "deepseek-flash" },
 			});
-			const settled = await durable.controller.submitAndWait("hi", "followUp");
+			const settled = await settlement(durable.controller.submitAndWait("hi", "followUp"));
 			expect(settled).toMatchObject({ status: "unanswered" });
 			expect(stub.bodies.length).toBeGreaterThan(0);
 			expect(stub.bodies[0]).toContain("deepseek-flash");
@@ -180,6 +181,7 @@ describe("durable path resources", () => {
 	});
 
 	test("loads and expands prompt templates on the durable path", async () => {
+		await seedCatalog();
 		const templateDir = join(cwd, "templates");
 		await mkdir(templateDir, { recursive: true });
 		await writeFile(
@@ -195,8 +197,9 @@ describe("durable path resources", () => {
 		});
 		try {
 			expect(durable.promptTemplates.map((template) => template.name)).toContain("probe");
-			expect(durable.controller.expandPrompt("/probe value")).toContain("MARKER-TEMPLATE-value");
-			expect(durable.controller.expandPrompt("ordinary prompt")).toBe("ordinary prompt");
+			// Expansion belongs to the submit path, so the template's text is what reaches the provider.
+			await durable.controller.submitAndWait("/probe value", "followUp");
+			expect(stub.bodies.at(-1)).toContain("MARKER-TEMPLATE-value");
 		} finally {
 			await durable.close();
 		}

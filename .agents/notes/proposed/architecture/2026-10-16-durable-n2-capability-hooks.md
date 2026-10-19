@@ -458,7 +458,7 @@ C3d #68, C3e #72, C3f #73, C3g #76, C3h #80, G0b this batch.
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| `phased-request-transform` | Satisfied for phase one; phase two not bridged | `context` runs as `transformConversation` (#56; `durable-extension-events.test.ts` "a context handler rewrites the request"). `context_with_system` is the phase that owns the full transcript; `transformConversation` never sees system messages, so the adapter cannot express it. Owner Decision #31 |
+| `phased-request-transform` | Satisfied | `context` runs as `transformConversation` (#56; `durable-extension-events.test.ts` "a context handler rewrites the request"), and `context_with_system` runs in `beforeRequest` after it, with its output used as returned (G1b; `durable-context-with-system.test.ts`) |
 | `provider-payload-hook` | Satisfied | `beforeProviderRequest` (#66); `durable-extension-host.test.ts` "a before_provider_request change reaches the provider" |
 | `provider-header-hook` | Satisfied | `beforeProviderHeaders` (#66, #80); `durable-handler-signal.test.ts` direct member test |
 | `provider-response-observe` | Satisfied | `afterProviderResponse` (#66); `durable-extension-host.test.ts` "… and the after_provider_response status is seen" |
@@ -476,26 +476,26 @@ C3d #68, C3e #72, C3f #73, C3g #76, C3h #80, G0b this batch.
 | `session_start` | product-api | Satisfied | `host.start` (#66); `durable-extension-host.test.ts` |
 | `session_info_changed` | internal-view | Satisfied as a view | no extension consumer; the durable TUI renders the view |
 | `session_before_switch` | product-api | Satisfied | `host.beforeSwitch` (#66); RPC `switch_session` (#75) |
-| `session_before_fork` | product-api | Not bridged (Decision #31) | no built-in or core consumer; examples only; fork follows Decision #24 |
+| `session_before_fork` | product-api | Satisfied | `host.beforeFork` from `sessionOps.fork` and `clone`, before the entry is read, with `session_shutdown`/`session_start` reason `fork` around the move (G1b; `durable-fork-lifecycle.test.ts`) |
 | `session_before_compact` | hook:beforeCompact | Satisfied | #73, #76; reduction #29 for a foreign cut |
 | `session_compact` | internal-view | Satisfied as a view | the durable compaction task state and TUI notices (#72) |
 | `session_compact_failed` | internal-view | Satisfied as a view | same |
 | `session_shutdown` | product-api | Satisfied | `host.shutdown` (#66); `durable-extension-host.test.ts` |
 | `mcp_servers_change` | product-api | Satisfied | the runner binds the registry listener in `bindCore`, so MCP sees later changes (#63, #50) |
 | `context` | durable-capability | Satisfied | #56, #76 |
-| `context_with_system` | durable-capability | Not bridged (Decision #31) | the phase needs the full transcript, which no durable hook receives |
+| `context_with_system` | durable-capability | Satisfied | `ExtensionRunner.emitContextWithSystem` from `beforeRequest`, after the `context` phase (G1b; `durable-context-with-system.test.ts`) |
 | `before_provider_request` | durable-capability | Satisfied | #66; stub test |
 | `before_provider_headers` | durable-capability | Satisfied | #66, #80 |
 | `after_provider_response` | durable-capability | Satisfied | #66; stub test |
 | `provider_stream_event` | durable-capability | Satisfied | #66; stub frame test |
 | `before_agent_start` | hook:beforeRequest | Satisfied | #66; injection test; G0b staging fix |
-| `agent_start` | product-api | Not bridged (Decision #31) | built-in `herdr` consumes it; durable emits no run-start event to extensions (`run_start` exists in the committed stream, which `--mode json` already uses) |
+| `agent_start` | product-api | Satisfied | `host.agentEvents` forwards the committed `run_start`; built-in `herdr` reports the pane state from it (G1b; `durable-run-events.test.ts`, `durable-builtin-run-events.test.ts`) |
 | `agent_end` | internal-view | Satisfied | `host.settled` (#66); G0b tests |
 | `agent_before_settle` | durable-capability | Satisfied | #73, #76 |
 | `agent_settled` | product-api | Satisfied | #66; G0b tests |
 | `ui_prompt_start` | product-api | Satisfied | `ExtensionRunner.setUIContext` wraps every dialog; the durable TUI and RPC bind it (#63, #72) |
 | `ui_prompt_end` | product-api | Satisfied | same |
-| `turn_start` | product-api | Not bridged (Decision #31) | built-in `mcp` consumes it to reconnect servers signed in mid-session |
+| `turn_start` | product-api | Satisfied | `host.agentEvents` forwards the committed `turn_start` with the run's completed-turn index; built-in `mcp` reconnects servers signed in mid-session from it (G1b; same files) |
 | `turn_end` | durable-capability | Satisfied | #73, #76 |
 | `message_start` | internal-view | Satisfied through `--mode json` and the view | `durable-json-events.test.ts` (#56) |
 | `message_update` | durable-capability | Satisfied | #80; real-run test |
@@ -508,7 +508,7 @@ C3d #68, C3e #72, C3f #73, C3g #76, C3h #80, G0b this batch.
 | `tool_call` | hook:beforeTool | Satisfied | #50; `durable-extension-tools.test.ts` |
 | `tool_result` | hook:afterTool | Satisfied | #50; same file |
 | `user_bash` | product-api | Not bridged (Decision #31) | no built-in or core consumer; durable RPC `bash` records an entry instead (#77) |
-| `input` | product-api | Not bridged (Decision #31) | no built-in or core consumer; durable has no legacy input pipeline |
+| `input` | product-api | Satisfied | `host.input` runs the handlers at the controller's submit entries, before skill and template expansion (G1b; `durable-input-event.test.ts`) |
 | `cache_warming_decision` | product-api | Not bridged (Decision #31) | no built-in consumer; the cache warmer is not on the durable path |
 
 All 31 non-event `ExtensionAPI` members are classified `product-api`. The durable host connects a subset and throws
@@ -535,3 +535,58 @@ ones, and that prompt's injected message never reached its request. G0b clears t
 above asserts that the second prompt's injected message is in its own request body while the first run's handler is still
 parked. The difference itself stays documented rather than fixed: a signal for these handlers would have to be aborted by
 `close()` and `new_session`, and those do not join the handlers in the first place.
+
+## Batch G1b: the run events, phase two, input, and the fork lifecycle
+
+Decision #31 fixed ten events. This batch bridges the five that belong to the extension host; `user_bash`,
+`extension_error`, `queue_update`, and `message_update`-before-`message_end` belong to G1a, and cache warming to W1.
+
+**`agent_start` and `turn_start`.** Durable publishes them only as committed events (`run_start` and `turn_start`, the
+same stream `--mode json` reads), so the host watches the conversation the controller talks to and forwards them in order.
+The watch exists only when a loaded extension handles one of them (S5, the registration cost switch), and it is moved by
+`switchConversation`, which is how a fork, a clone, and a subagent switch reach a new conversation. `turn_start` reports
+the number of turns the run has completed, from zero: `run_start` resets it and every committed `turn_end` advances it.
+That index is the stream's, not the boundary hook's counter, because the boundary member only exists when a boundary
+handler does; a turn that ends in an error never reaches a boundary but does publish `turn_end`. The watch delivery
+context carries no abort signal (the harness strips it), so these handlers see `ctx.signal === undefined`, as `agent_end`
+and `agent_settled` do; a handler that waits delays that stream only, because `CommittedWatch.stop()` settles without
+joining a running delivery.
+
+Herdr needed one more thing: `ctx.mode` was `print` during `session_start`, because a mode binds its UI context after
+`openDurable` returns, and `herdr` reports only in a TUI session. The host now sets the runner's mode from the open's
+`projectTrustContext.mode` when it creates the runner; the UI context is still bound later.
+
+**`context_with_system`.** Durable's `transformConversation` is phase one and never sees system messages. The second phase
+runs in `beforeRequest`, which durable calls on every request attempt after `transformConversation`, so the order matches
+legacy `emitContext`. `ExtensionRunner` gained `emitContextWithSystem`, and phase one moved into
+`emitConversationContext` so the durable hook can run phase one alone: calling `emitContext` there would have run phase
+two twice, once with a system-less list. The member returns nothing when the request is unchanged, because a replacement
+collapses the positional system entries and changes the prompt-cache prefix.
+
+**`input`.** The controller's `submit` and `submitAndWait` run the handlers and then expand skill commands and prompt
+templates, which is legacy's order; the modes used to expand before submitting, so expansion moved into the controller and
+`DurableController.expandPrompt` is gone. `submitAndWait` answers a `SubmitOutcome`: `handled` means nothing was
+submitted, so RPC answers `disposition: "handled"` and print and JSON exit without a request. `source` is `interactive`
+by default and `rpc` for the RPC modes; `streamingBehavior` is passed only while a run is in flight, as legacy does.
+
+**Fork lifecycle.** `sessionOps.fork` and `clone` ask `session_before_fork` before they read the entry, as legacy emits it
+before validating. A successful fork emits `session_shutdown` with reason `fork`, and the controller emits `session_start`
+with reason `fork` and `previousSessionFile` after it has moved to the new conversation, so an extension that rebuilds
+state sees the forked entries. A durable fork keeps the session directory and file (Decision #24), so that file is the
+same as the current one; `docs/extensions.md` says so.
+
+Two defects were found while testing this. The read-only session facade read the *first* conversation's view after a
+`switchConversation`, because only the initial subscription updated the runtime's `currentView`; it now follows every
+switch. And phase two would have run twice in `beforeRequest`, as described above.
+
+Evidence: `durable-run-events.test.ts` (2 cases: the turn numbering and the watch following a fork),
+`durable-builtin-run-events.test.ts` (2: herdr's `working` report through a fake Herdr binary, and mcp reconnecting a
+server after an outside sign-in against a loopback endpoint), `durable-context-with-system.test.ts` (4),
+`durable-input-event.test.ts` (5), and `durable-fork-lifecycle.test.ts` (4). Every new behaviour was mutation-checked:
+removing the `agent_start` emit, the `turn_start` emit, the mode binding, the run-event watch, the phase-two call, the
+unchanged-request guard, the `handled` branch, the expansion after the handlers, the fork guard, the fork shutdown, the
+fork `session_start`, and the facade follow each fails a named test.
+
+Not verified: Windows (no Windows host; the owner tracks Windows coverage separately); a real Herdr process and a real
+browser OAuth sign-in, which are replaced by a fake binary and a loopback endpoint; and the durable TUI's own binding of
+the runner mode, which the tests drive through `openDurable` rather than a terminal.

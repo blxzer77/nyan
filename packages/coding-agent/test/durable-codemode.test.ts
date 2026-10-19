@@ -20,6 +20,7 @@ import type {
 	ProjectTrustContext,
 	ToolDefinition,
 } from "../src/core/extensions/types.ts";
+import { settlement } from "./durable-submission.ts";
 
 /**
  * The durable codemode, tested on its own: the tool is off until it is activated, a script calls a tool whose exposure
@@ -142,7 +143,7 @@ describe("durable codemode", () => {
 				},
 			],
 		);
-		expect(await current.controller.submitAndWait("go", "followUp")).toMatchObject({ status: "done" });
+		expect(await settlement(current.controller.submitAndWait("go", "followUp"))).toMatchObject({ status: "done" });
 		expect(seen[0]?.offered).not.toContain("codemode");
 		expect(seen[1]?.offered).toContain("codemode");
 		// The scripted tool is reached only through codemode: the model was never offered it.
@@ -175,7 +176,7 @@ describe("durable codemode", () => {
 				},
 			],
 		);
-		expect(await current.controller.submitAndWait("go", "followUp")).toMatchObject({ status: "done" });
+		expect(await settlement(current.controller.submitAndWait("go", "followUp"))).toMatchObject({ status: "done" });
 		expect(seen[1]?.text).toContain("DOCS-NAMESPACE-MARK");
 	});
 
@@ -195,7 +196,7 @@ describe("durable codemode", () => {
 				},
 			],
 		);
-		expect(await current.controller.submitAndWait("go", "followUp")).toMatchObject({ status: "done" });
+		expect(await settlement(current.controller.submitAndWait("go", "followUp"))).toMatchObject({ status: "done" });
 		const codemode = entries.find((entry) => entry.name === "codemode");
 		expect(codemode?.exposure).toBe("model-only");
 		expect(typeof codemode?.reachesTools).toBe("function");
