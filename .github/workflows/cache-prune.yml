@@ -1,0 +1,62 @@
+name: Prune caches
+
+# GitHub deletes a cache after 7 days without access and evicts oldest-first above 10 GB, but the entries that matter
+# are `main`'s: a new branch restores from them. A run of pull requests writes its own entries scoped to refs nobody
+# restores from again, and pushes `main`'s out first. This keeps the quota predictable without disabling caching,
+# which is worth about 11 s per install (9 s warm against 20 s cold).
+#
+# Weekly, and it only reports when there is nothing to do. The limits live in the workflow so a change to them is a
+# reviewable line rather than a number inside a script argument.
+
+on:
+  schedule:
+    # 04:20 UTC Sunday. Scheduled runs on this repository start hours after their cron time; the job does not need a
+    # particular hour, only not to land in the middle of a working day.
+    - cron: '20 4 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List what would be deleted without deleting it
+        type: boolean
+        default: false
+
+concurrency:
+  group: prune-caches
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  prune:
+    name: Prune stale caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Prune
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: |
+          set -euo pipefail
+          node scripts/prune-caches.mjs --max-age-days 14 --max-bytes 7500000000 $DRY_RUN | tee prune.log
+
+      - name: Report
+        if: always()
+        run: |
+          {
+            echo "## Cache prune"
+            echo '```'
+            cat prune.log 2>/dev/null || echo "the prune step produced no output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
