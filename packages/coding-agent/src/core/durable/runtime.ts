@@ -109,6 +109,8 @@ export interface DurableController {
 	getAutoRetry(): boolean;
 	getQueueModes(): { readonly steeringMode: "all" | "one-at-a-time"; readonly followUpMode: "all" | "one-at-a-time" };
 	abort(): Promise<void>;
+	/** Stop waiting to retry the model request, as legacy `abort_retry`: the run ends with the error it failed on. */
+	abortRetry(): Promise<void>;
 	cycleThinking(): Promise<void>;
 	setModel(model: ModelRef): Promise<void>;
 	toggleTasks(): Promise<void>;
@@ -690,6 +692,10 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			}),
 			// Not queued: it waits until the conversation is idle.
 			abort: () => current.abort(context).catch(fail),
+			// Not queued either: it ends the wait of a retry that is already running.
+			abortRetry: async () => {
+				await current.stopRetry().catch(fail);
+			},
 			cycleThinking: () =>
 				command(async () => {
 					const model = agentModel();
