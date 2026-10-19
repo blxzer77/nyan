@@ -338,7 +338,7 @@ The lines resumed on 2026-10-19. N2 is the only active line; its tasks C and B r
 
 | Line | Item | Owner | Branch / PR | Next step |
 | --- | --- | --- | --- | --- |
-| Migration | N2 task C, extension adapter | Blxze | merged #63, #66, #68, #72, #73, #76, #80 (C3b–C3h), #83 (G0b) | G1b bridges `agent_start`, `turn_start`, `context_with_system`, `input`, and the fork lifecycle (`session_before_fork`, then `session_shutdown`/`session_start` with reason `fork`) per Decision #31. The N2 gate runs after G1a, G1b, and W1 merge. Do not start Durable session selection. |
+| Migration | N2 task C, extension adapter | Blxze | merged #63, #66, #68, #72, #73, #76, #80 (C3b–C3h), #83 (G0b), #91 (G1b) | Every Decision #31 item that belongs to the extension host is bridged: `agent_start`, `turn_start`, `context_with_system`, `input`, and the fork lifecycle. The N2 gate runs after G1a and W1 merge. Do not start Durable session selection. |
 | Migration | N2 task B, JSON/RPC product APIs, and G0a/G1a/W1 | Blxze | merged #70, #71, #75, #77, #81 (B1–B4; task B complete), #85 (G0a event parity) | G1a: RPC `bash` emits `user_bash` and honors its operations or result, RPC `extension_error` and `queue_update`, and one `message_update` before `message_end` (Decision #31). Then W1: a design note and an implementation of cache warming on the durable path, with `cache_warming_decision`. |
 
 The release-ready stop condition is recorded in [`docs/handoff/2026-10-18-reinstall.md`](docs/handoff/2026-10-18-reinstall.md): finish the N2 and Bun gates, run the latest-main checks and release dry run, then stop without versioning, tagging, publishing, or creating a release.
