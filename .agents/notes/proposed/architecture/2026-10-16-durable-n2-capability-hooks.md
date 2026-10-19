@@ -256,7 +256,7 @@ The whole `packages/durable` suite passes except `test/tools-images.test.ts` "pr
 
 Not verified:
 - That the ledger rejects `Infinity` the same way on a real SQLite storage: the overflow tests use `MemoryStorage`. The code no longer writes a non-finite value, so the question only matters if a path bypasses `recordUsage`.
-- A crash between the boundary hook and its commit (the hook rerun and the entries appended exactly once) is argued from the commit structure, not tested.
+- A crash between the boundary hook and its commit (the hook rerun and the entries appended exactly once) is argued from the commit structure in `packages/durable`, which has no test for it. The coding-agent test `durable-extension-events.test.ts` ("a boundary handler interrupted before its commit runs again and its entries are written once", C3g) covers the nearest thing it can drive: the Harness is closed while a `turn_end` handler is parked, the session is reopened with `continueSession`, and the handler runs again and its entry is written once. A close is not a process kill, so a kill between the hook and the commit is still not run.
 - A header set to `null` is dropped by the Anthropic and OpenAI SDKs according to their `buildHeaders` sources, which the reviewer read and nobody ran against a provider; whether Bedrock's `onResponse` runs once under SDK retries is not checked.
 - That the coding-agent adapter can express Nyan's `context`, `message_end`, `turn_end`, and `agent_before_settle` handlers over these hooks; that is task C.
 

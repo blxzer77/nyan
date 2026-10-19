@@ -181,7 +181,10 @@ describe("durable extension host", () => {
 	afterEach(async () => {
 		vi.unstubAllEnvs();
 		await stub.close();
-		await Promise.all([rm(home, { recursive: true, force: true }), rm(cwd, { recursive: true, force: true })]);
+		// The CPA catalog refresh can still be writing under $HOME, so `rm` may see a directory repopulated between its
+		// unlink and rmdir steps (ENOTEMPTY). Retrying is the remedy durable-resources.test.ts already applies.
+		const removeOptions = { recursive: true, force: true, maxRetries: 10, retryDelay: 100 } as const;
+		await Promise.all([rm(home, removeOptions), rm(cwd, removeOptions)]);
 	});
 
 	/** Built-ins first, so `cliproxyapi` is registered; then the probe. Each factory run is counted. */
@@ -224,7 +227,7 @@ describe("durable extension host", () => {
 			(message) => errors.push(message),
 		);
 		expect(legacy).toEqual([{ type: "custom", customType: "custom", data: { marker: true } }]);
-		expect(legacyBoundaryEntriesToDurable(legacy ?? [], undefined, (message) => errors.push(message))).toEqual([
+		expect(legacyBoundaryEntriesToDurable(legacy ?? [], undefined, (message) => errors.push(message), 0)).toEqual([
 			{ kind: "custom", data: { marker: true } },
 		]);
 		expect(

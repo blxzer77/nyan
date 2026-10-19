@@ -188,7 +188,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		runner,
 		calls,
 		runner.hasHandlers("before_agent_start") ? takeBeforeRequestEffects : undefined,
-		sessionManager,
+		options.sessionManager ?? sessionManager,
 		(message) => options.onExtensionError({ extensionPath: "durable:boundary", event: "turn_end", error: message }),
 		turnCounter,
 	);
