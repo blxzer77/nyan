@@ -640,10 +640,16 @@ describe("durable extension host", () => {
 		});
 		try {
 			persistPausePreference(agentDir, false);
-			await vi.waitFor(() => expect(stub.bodies).toHaveLength(1), { timeout: 5_000 });
-			expect(
-				second.view.current().conversation.entries.filter((entry) => entry.kind === "nyan.assistant"),
-			).toHaveLength(1);
+			// The stand-in records a body when a request starts; the entry exists once its answer commits. Wait for the
+			// entry, not the body, or a loaded machine sees the request before its answer is in the conversation.
+			await vi.waitFor(
+				() =>
+					expect(
+						second.view.current().conversation.entries.filter((entry) => entry.kind === "nyan.assistant"),
+					).toHaveLength(1),
+				{ timeout: 5_000 },
+			);
+			expect(stub.bodies).toHaveLength(1);
 		} finally {
 			persistPausePreference(agentDir, false);
 			await second.close();
