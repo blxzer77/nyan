@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { Api, ImageContent, Model } from "@ny4n/ai";
+import type { AgentMessage, ThinkingLevel } from "@ny4n/agent-core";
+import type { Api, ImageContent, Model, UserMessage } from "@ny4n/ai";
 import type { CodemodeSandbox } from "@ny4n/codemode";
 import type { Extension, GenerationHooks, ToolHooks, UserInput } from "@ny4n/durable";
 import { ExtensionRunner } from "../extensions/runner.ts";
@@ -16,6 +17,8 @@ import type {
 import { ModelRegistry } from "../model-registry.ts";
 import type { ReadonlySessionManager } from "../session-manager.ts";
 import {
+	type BeforeRequestEffects,
+	createCompactionHooks,
 	createHookAdapter,
 	createProviderHooks,
 	createToolHooks,
@@ -53,6 +56,7 @@ export interface ExtensionHostOptions {
 	/** Created once per process and shared by every open: extension instances and their state live here. */
 	readonly services: DurableServices;
 	readonly cwd: string;
+	readonly sessionManager?: ReadonlySessionManager;
 	/** The agent's model, used when no provider call is in flight. */
 	readonly agentModel: () => Model<Api> | undefined;
 	readonly abort: () => void;
@@ -75,17 +79,19 @@ export interface ExtensionHost {
 	readonly providerHooks: Partial<GenerationHooks>;
 	/** The tool-event members: `tool_call` (beforeTool) and `tool_result` (afterTool). */
 	readonly toolHooks: Partial<ToolHooks>;
+	/** Emits the terminal run event before `agent_settled`. */
+	settled(aborted: boolean, messages: readonly AgentMessage[]): Promise<void>;
+	modelSelected(
+		model: Model<Api>,
+		previousModel: Model<Api> | undefined,
+		source: "set" | "cycle" | "restore",
+	): Promise<void>;
+	thinkingSelected(level: ThinkingLevel, previousLevel: ThinkingLevel): Promise<void>;
 	/** Install in the registry; carries no members when no loaded extension handles a provider event. */
 	readonly adapter: Extension;
-	/**
-	 * Runs `before_agent_start` for a prompt before it is submitted, so the servers a run lists are connected. MCP waits for
-	 * its direct servers here, as legacy does, so the first request declares their tools. Only the wait is applied: the
-	 * handlers' message and system-prompt changes are not, until the batch that connects `before_agent_start` fully.
-	 */
+	/** Runs `before_agent_start` once for the submitted prompt and stages its message/system-prompt effects. */
 	beforePrompt(content: UserInput): Promise<void>;
 	start(reason: SessionStartEvent["reason"]): Promise<void>;
-	/** `agent_settled` for a run that ended, whatever its outcome: the quota poll and usage summary wait for it. */
-	settled(aborted: boolean): Promise<void>;
 	shutdown(reason: SessionShutdownEvent["reason"]): Promise<void>;
 }
 
@@ -93,10 +99,8 @@ export interface ExtensionHost {
  * The durable path's ExtensionRunner. It is built per open, because it is bound to that open's controller, but the
  * extensions it runs are the ones `services` loaded, so a second open does not load them again.
  *
- * Connected: `session_start`, `session_shutdown`, `after_provider_response`, `provider_stream_event`,
- * `before_provider_request`, `before_provider_headers`, `message_end` (assistant), and the provider registrations.
- * Not connected: the session API, tools, commands, prompt-state actions, and UI. Each one throws when a handler calls it.
- * `isIdle` and `isProjectTrusted` are not tracked yet: `isIdle` answers true, `isProjectTrusted` answers false.
+ * Connected: session lifecycle, before-agent-start effects, provider hooks, stream/tool/boundary/compaction hooks,
+ * agent settlement, model/thinking selection, tools, commands, UI binding, and the read-only session facade.
  */
 export function createExtensionHost(options: ExtensionHostOptions): ExtensionHost {
 	// Per provider call, not per host: see ProviderCallScope.
@@ -121,11 +125,18 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		getSessionName: () => unavailable("ctx.sessionManager.getSessionName"),
 	};
 
+	let activeBeforeRequestEffects: BeforeRequestEffects | undefined;
+	const queuedBeforeRequestEffects: BeforeRequestEffects[] = [];
+	const takeBeforeRequestEffects = (): BeforeRequestEffects | undefined => {
+		activeBeforeRequestEffects ??= queuedBeforeRequestEffects.shift();
+		return activeBeforeRequestEffects;
+	};
+
 	const runner = new ExtensionRunner(
 		loaded.extensions,
 		loaded.runtime,
 		options.cwd,
-		sessionManager,
+		options.sessionManager ?? sessionManager,
 		new ModelRegistry(options.services.modelRuntime),
 	);
 
@@ -145,8 +156,13 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 			syncTools();
 		},
 		refreshTools: () => syncTools(),
-		// Slash commands have no entry point on the durable path yet; RPC `get_commands` also answers none.
-		getCommands: () => [],
+		getCommands: () =>
+			runner.getRegisteredCommands().map((command) => ({
+				name: command.invocationName,
+				description: command.description,
+				source: "extension" as const,
+				sourceInfo: command.sourceInfo,
+			})),
 		setModel: () => unavailable("pi.setModel"),
 		getThinkingLevel: () => unavailable("pi.getThinkingLevel"),
 		setThinkingLevel: () => unavailable("pi.setThinkingLevel"),
@@ -167,8 +183,13 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 	};
 
 	runner.bindCore(actions, contextActions);
-	const providerHooks = createProviderHooks(runner, calls);
+	const providerHooks = createProviderHooks(
+		runner,
+		calls,
+		runner.hasHandlers("before_agent_start") ? takeBeforeRequestEffects : undefined,
+	);
 	const toolHooks = createToolHooks(runner);
+	const compactionHooks = createCompactionHooks(runner);
 	// A tool call runs in its own call scope, so `ctx.signal` and `ctx.model` inside a tool belong to that call.
 	const bridge: ToolBridge = {
 		run: <T>(signal: AbortSignal | undefined, execute: (context: ExtensionToolContext) => Promise<T>) =>
@@ -251,12 +272,16 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		runner,
 		providerHooks,
 		toolHooks,
-		adapter: createHookAdapter(providerHooks, toolHooks),
+		adapter: createHookAdapter(providerHooks, toolHooks, compactionHooks),
 		start: (reason) =>
 			runner.emit({ type: "session_start", reason }).then(() => {
 				syncTools();
 			}),
-		settled: (aborted) => runner.emit({ type: "agent_settled", aborted }).then(() => undefined),
+		settled: async (aborted, messages) => {
+			await runner.emit({ type: "agent_end", messages: [...messages] });
+			await runner.emit({ type: "agent_settled", aborted });
+			activeBeforeRequestEffects = undefined;
+		},
 		shutdown: (reason) =>
 			runner.emit({ type: "session_shutdown", reason }).then(async () => {
 				await codemodeSandbox?.close();
@@ -269,10 +294,26 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 				typeof content === "string"
 					? content
 					: content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
-			await runner.emitBeforeAgentStart(
+			const result = await runner.emitBeforeAgentStart(
 				{ messageType: "user", prompt, ...(images.length === 0 ? {} : { images }) },
 				{ cwd: options.cwd },
 			);
+			const messages: UserMessage[] = result.messages.map((message) => ({
+				role: "user",
+				content: message.content,
+				timestamp: Date.now(),
+			}));
+			const effects: BeforeRequestEffects = {
+				systemPrompt: result.systemPrompt,
+				messages,
+				messagesApplied: false,
+			};
+			if (activeBeforeRequestEffects === undefined) activeBeforeRequestEffects = effects;
+			else queuedBeforeRequestEffects.push(effects);
 		},
+		modelSelected: (model, previousModel, source) =>
+			runner.emit({ type: "model_select", model, previousModel, source }).then(() => undefined),
+		thinkingSelected: (level, previousLevel) =>
+			runner.emit({ type: "thinking_level_select", level, previousLevel }).then(() => undefined),
 	};
 }

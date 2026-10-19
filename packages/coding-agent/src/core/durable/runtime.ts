@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import type { AgentMessage } from "@ny4n/agent-core";
 import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel } from "@ny4n/ai";
 import type { AttachedReplicatedState } from "@ny4n/chord";
 import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
@@ -23,6 +25,7 @@ import { getAgentDir } from "../../config.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../agent-session-services.ts";
 import type { ExtensionMode, InlineExtension, ProjectTrustContext, SessionShutdownEvent } from "../extensions/types.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
+import type { ReadonlySessionManager, SessionEntry, SessionTreeNode } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
 import { createExtensionHost, type ExtensionHost } from "./extension-host.ts";
@@ -243,7 +246,78 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		// Installed before the Harness opens: its members are read when the Harness starts a request.
 		// Runs in flight: `ctx.isIdle()` answers false while one is.
 		let activeRuns = 0;
+		let currentView: ConversationView | undefined;
+		let currentState: DurableView | undefined;
+		let state!: DurableView;
+		const legacyEntries = (): SessionEntry[] => {
+			const result: SessionEntry[] = [];
+			let parentId: string | null = null;
+			for (const entry of currentView?.entries ?? []) {
+				const messages = entry.model ?? [];
+				if (messages.length === 0) {
+					const id = String(entry.id);
+					result.push({
+						type: "custom",
+						id,
+						parentId,
+						timestamp: new Date(0).toISOString(),
+						customType: entry.kind,
+						...(entry.data === undefined ? {} : { data: entry.data }),
+					});
+					parentId = id;
+					continue;
+				}
+				for (const message of messages) {
+					const id = `${entry.id}:${result.length}`;
+					result.push({
+						type: "message",
+						id,
+						parentId,
+						timestamp: new Date(0).toISOString(),
+						message,
+					});
+					parentId = id;
+				}
+			}
+			return result;
+		};
+		const sessionManager: ReadonlySessionManager = {
+			getCwd: () => location.cwd,
+			getSessionDir: () => location.directory,
+			getSessionId: () => location.id,
+			getSessionFile: () => join(location.directory, "session.sqlite"),
+			getLeafId: () => legacyEntries().at(-1)?.id ?? null,
+			getLeafEntry: () => legacyEntries().at(-1),
+			getEntry: (id) => legacyEntries().find((entry) => entry.id === id),
+			getLabel: () => undefined,
+			getBranch: () => legacyEntries(),
+			buildContextEntries: () => legacyEntries(),
+			buildSessionProjection: () => {
+				const entries = legacyEntries();
+				return {
+					entries: entries.map((entry) => ({
+						sourceEntry: entry,
+						messages: entry.type === "message" ? [entry.message] : [],
+					})),
+					messages: entries.flatMap((entry) => (entry.type === "message" ? [entry.message] : [])),
+					thinkingLevel:
+						currentState === undefined ? "off" : (agentOf(currentState.conversation).thinkingLevel ?? "off"),
+					model: currentState === undefined ? null : (agentOf(currentState.conversation).model ?? null),
+				};
+			},
+			getHeader: () => null,
+			getEntries: () => legacyEntries(),
+			getTree: () => {
+				const entries = legacyEntries();
+				const nodes: SessionTreeNode[] = [];
+				for (const entry of entries) nodes.push({ entry, children: [] });
+				for (let index = 1; index < nodes.length; index++) nodes[index - 1]!.children.push(nodes[index]!);
+				return nodes.length === 0 ? [] : [nodes[0]!];
+			},
+			getSessionName: () => undefined,
+		};
 		const host: ExtensionHost = createExtensionHost({
+			sessionManager,
 			services,
 			cwd: location.cwd,
 			agentModel: () => {
@@ -324,7 +398,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 				contextWindow: model.contextWindow,
 			}));
 
-		let state: DurableView = {
+		state = {
 			session: { id: location.id, directory: location.directory, cwd: location.cwd },
 			conversation: conversation.value,
 			conversations: summaries,
@@ -336,6 +410,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		// Commit listeners and Chord frames call this on the Session line; rendering runs afterwards, once per burst.
 		const update = (patch: Partial<DurableView>): void => {
 			state = { ...state, ...patch };
+			currentState = state;
 			if (notifying) return;
 			notifying = true;
 			setImmediate(() => {
@@ -355,7 +430,11 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			if (options.onDiagnostic !== undefined) options.onDiagnostic(diagnostic);
 			else notice(diagnostic.type === "info" ? "info" : "warning", diagnostic.message);
 		}
-		let unsubscribe = conversation.subscribe((value) => update({ conversation: value }));
+		currentView = conversation.value;
+		let unsubscribe = conversation.subscribe((value) => {
+			currentView = value;
+			update({ conversation: value });
+		});
 		// Subagents appear as their conversations are created. A commit listener only records; it calls no Session API.
 		const unsubscribeCommits = harness.subscribeCommits((publication) => {
 			let conversations = state.conversations;
@@ -390,12 +469,19 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			settled.status === "unanswered" && settled.reason === "aborted";
 		// `agent_settled` follows every run that ends, whatever its outcome: the quota poll and usage summary wait for it.
 		const settle = (submission: Submission): Promise<SettledSubmissionRecord> => {
+			const startingMessageCount = state.conversation.entries.reduce(
+				(count, entry) => count + (entry.model?.length ?? 0),
+				0,
+			);
 			activeRuns += 1;
 			return submission
 				.wait(context)
 				.then(async (settled) => {
 					activeRuns -= 1;
-					await host.settled(isAborted(settled));
+					const messages = state.conversation.entries
+						.flatMap((entry) => (entry.model ?? []) as AgentMessage[])
+						.slice(startingMessageCount);
+					await host.settled(isAborted(settled), messages);
 					return settled;
 				})
 				.catch((error: unknown) => {
@@ -459,7 +545,12 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 							notice("error", `Compaction ${outcome.status}: ${outcome.error?.message ?? outcome.reason ?? ""}`);
 					}, fail);
 				}),
-			setThinking: (level) => command(async () => current.configure({ thinkingLevel: level }, context)),
+			setThinking: (level) =>
+				command(async () => {
+					const previousLevel = agentOf(state.conversation).thinkingLevel ?? "off";
+					await current.configure({ thinkingLevel: level }, context);
+					await host.thinkingSelected(level, previousLevel);
+				}),
 			setSteeringMode: (mode) =>
 				command(async () => {
 					queueModes.steeringMode = mode;
@@ -492,13 +583,20 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					const level = agentOf(state.conversation).thinkingLevel ?? "off";
 					const next = levels[(levels.indexOf(level) + 1) % levels.length] ?? "off";
 					await current.configure({ thinkingLevel: next }, context);
+					await host.thinkingSelected(next, level);
 				}),
 			setModel: (ref) =>
 				command(async () => {
 					const model = modelRuntime.getModel(ref.provider, ref.modelId);
 					if (model === undefined) throw new Error(`Unknown model: ${ref.provider}/${ref.modelId}`);
+					const previousRef = agentOf(state.conversation).model;
+					const previousModel =
+						previousRef === undefined
+							? undefined
+							: modelRuntime.getModel(previousRef.provider, previousRef.modelId);
 					const thinking: ModelThinkingLevel = agentOf(state.conversation).thinkingLevel ?? "off";
 					await current.configure({ model: ref, thinkingLevel: clampThinkingLevel(model, thinking) }, context);
+					await host.modelSelected(model, previousModel, "set");
 				}),
 			toggleTasks: () =>
 				command(async () => {

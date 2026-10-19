@@ -219,6 +219,8 @@ These operations are command-only because calling them from lifecycle handlers c
 
 Session replacement invalidates the old context. Capture only plain data before switching, then use the fresh context supplied to `withSession` for session-bound work.
 
+On the durable path, `ctx.sessionManager` is a read-only facade over the active durable conversation. It exposes session identity and a linear projection of durable entries; legacy parent/tree metadata, labels, and session-info metadata that durable does not store are empty or unavailable by design. `before_agent_start` runs once for each submitted prompt, and its injected message and system-prompt changes affect that run's first request.
+
 <a id="state-management"></a>
 <a id="persist-state"></a>
 
