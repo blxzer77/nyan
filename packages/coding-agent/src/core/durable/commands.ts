@@ -9,6 +9,13 @@ export const DURABLE_TUI_COMMANDS = [
 	// Built-ins the durable TUI runs today.
 	"model",
 	"compact",
+	"new",
+	"resume",
+	"name",
+	"session",
+	"fork",
+	"clone",
+	"quit",
 	// Built-ins the parity work adds, one batch at a time.
 	"settings",
 	"tree",
@@ -52,19 +59,12 @@ const PENDING = {
 	share: pending("share"),
 	bug: pending("bug"),
 	copy: pending("copy"),
-	name: pending("name"),
-	session: pending("session"),
 	changelog: pending("changelog"),
 	hotkeys: pending("hotkeys"),
-	fork: pending("fork"),
-	clone: pending("clone"),
 	trust: pending("trust"),
 	login: pending("login"),
 	logout: pending("logout"),
-	new: pending("new"),
-	resume: pending("resume"),
 	reload: pending("reload"),
-	quit: pending("quit"),
 	// Durable conversations are linear, so there is no parent tree to navigate (Decision #24).
 	tree: "durable sessions are linear, so /tree has no branch navigation (Decision #24).",
 } satisfies Partial<Record<DurableTuiCommand, string>>;

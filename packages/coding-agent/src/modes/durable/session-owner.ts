@@ -1,0 +1,87 @@
+import { join } from "node:path";
+import { type OpenDurableOptions, type OpenDurableResult, openDurable } from "../../core/durable/runtime.ts";
+import type { SessionStartEvent } from "../../core/extensions/types.ts";
+import type { DurableReopenRequest } from "./commands.ts";
+import type { DurableTuiOpen } from "./tui.ts";
+
+/** The members of an open that a TUI renders and operates on. */
+export function tuiof(open: OpenDurableResult): DurableTuiOpen {
+	return {
+		view: open.view,
+		controller: open.controller,
+		extensionHost: open.extensionHost,
+		sessionOps: open.sessionOps,
+	};
+}
+
+/** The session file a reopen reports as the one it came from. */
+function sessionFileOf(open: OpenDurableResult): string {
+	return join(open.view.current().session.directory, "session.sqlite");
+}
+
+/**
+ * The durable session an interactive run shows, and the one that replaces it.
+ *
+ * Opening another session keeps the process services: extensions load once per process, so `/new` and `/resume` reuse
+ * them and only the session changes (S2). The extension lifecycle is the RPC path's — the session being left shuts
+ * down and the next one starts with its reason and the previous file — and the same reopen the RPC adapter runs is the
+ * one used here.
+ */
+export class DurableSessionOwner {
+	readonly #options: OpenDurableOptions;
+	#open: OpenDurableResult;
+
+	private constructor(options: OpenDurableOptions, open: OpenDurableResult) {
+		this.#options = options;
+		this.#open = open;
+	}
+
+	static async open(options: OpenDurableOptions): Promise<DurableSessionOwner> {
+		return new DurableSessionOwner(options, await openDurable(options));
+	}
+
+	/** The session shown now. A reopen replaces it. */
+	get current(): OpenDurableResult {
+		return this.#open;
+	}
+
+	get tui(): DurableTuiOpen {
+		return tuiof(this.#open);
+	}
+
+	/** Close this session and open the requested one with the same services. */
+	async reopen(request: DurableReopenRequest): Promise<DurableTuiOpen> {
+		const previous = this.#open;
+		const previousSessionFile = sessionFileOf(previous);
+		const nextOptions: OpenDurableOptions = { ...this.#options, services: previous.services };
+		if (request.kind === "resume") {
+			// Open and lock the target before closing this one, so a bad path or a lock leaves this session intact. Its
+			// `session_start` waits until this one has shut down: an extension that tears its state down on shutdown must
+			// not receive that after the new session's start.
+			const sessionStartEvent: SessionStartEvent = { type: "session_start", reason: "resume", previousSessionFile };
+			const next = await openDurable({
+				...nextOptions,
+				sessionDirectory: request.directory,
+				sessionStartEvent,
+				deferSessionStart: true,
+			});
+			try {
+				await previous.close("resume");
+			} catch (error) {
+				await next.close().catch(() => {});
+				throw error;
+			}
+			await next.startSession?.();
+			this.#open = next;
+			return this.tui;
+		}
+		// A new session gets its own directory, so nothing conflicts with the one being closed.
+		await previous.close("new");
+		this.#open = await openDurable({ ...nextOptions, continueSession: false });
+		return this.tui;
+	}
+
+	async close(): Promise<void> {
+		await this.#open.close();
+	}
+}
