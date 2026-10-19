@@ -193,9 +193,10 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		(message) => options.onExtensionError({ extensionPath: "durable:boundary", event: "turn_end", error: message }),
 		turnCounter,
 	);
-	const toolHooks = createToolHooks(runner);
+	const toolHooks = createToolHooks(runner, calls);
 	const compactionHooks = createCompactionHooks(
 		runner,
+		calls,
 		(message) =>
 			options.onExtensionError({
 				extensionPath: "durable:compaction",
@@ -296,9 +297,11 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 				syncTools();
 			}),
 		settled: async (aborted, messages) => {
+			// Cleared before the handlers, because they may wait: a new prompt can start while a settled handler is parked,
+			// and its `before_agent_start` effects must not queue behind this run's already applied ones.
+			activeBeforeRequestEffects = undefined;
 			await runner.emit({ type: "agent_end", messages: [...messages] });
 			await runner.emit({ type: "agent_settled", aborted });
-			activeBeforeRequestEffects = undefined;
 		},
 		shutdown: (reason) =>
 			runner.emit({ type: "session_shutdown", reason }).then(async () => {

@@ -151,6 +151,11 @@ class ConversationImpl<Tool extends ToolRegistration> implements Conversation {
 		return this.#host.tasks.abortConversation(this.id, options?.background === true, context);
 	}
 
+	stopRetry(): Promise<boolean> {
+		this.#host.tasks.resume();
+		return Promise.resolve(this.#host.tasks.stopRetry(this.id));
+	}
+
 	waitForIdle(context: Context): Promise<void> {
 		this.#host.tasks.resume();
 		return this.#host.tasks.waitForIdle(this.id, context);
