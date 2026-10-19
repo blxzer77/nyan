@@ -527,6 +527,8 @@ Response:
 
 On the durable path, `bash` uses the session's execution environment and records a `bashExecution` entry after the command settles. `excludeFromContext: true` keeps the entry out of model context while retaining its result data. `abort_bash` cancels all currently running durable bash executions.
 
+On both paths, `bash` first emits the `user_bash` extension event. A handler that returns `operations` runs the command through them instead of the local shell, and a handler that returns `result` replaces the execution entirely: the command does not run, and the result is recorded and returned as the response. A handler's failure fails the command. A sandbox extension that answers `user_bash` therefore cannot be bypassed by a client's `bash` command.
+
 ## Session
 
 ### get_session_stats
