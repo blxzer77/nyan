@@ -300,3 +300,26 @@ only records "it called the controller" is not covered.
   shell. Every command produced zero provider requests.
 - Not fixed, recorded: a forked or cloned conversation is labelled `subagent N` in the footer and in
   `/agents`, which is the label N2 task B2 recorded for a fork.
+
+## R2 verification
+
+- `!` and `!!` take the RPC `bash` path: `user_bash` first (a handler's `operations` run the
+  command, a handler's `result` is recorded without running anything, and a handler that throws
+  stops the command so this process's shell is never a fallback), then the durable executor
+  streaming into a `BashExecutionComponent`. `test/durable-tui-bash.test.ts` (7 cases, Node and Bun)
+  drives that flow against a real session: the entry's data, the model message `!` adds and `!!`
+  omits, the exit code of a failing command, both handler answers, the throwing handler, and a next
+  prompt that carries the command.
+- `/export` writes HTML or legacy JSONL (`exportJsonl` on the session operations, over the same entry
+  mapping the HTML export uses); `/copy` hands the newest assistant text to the clipboard port;
+  `/changelog` renders the released sections oldest first, as legacy does.
+  `test/durable-tui-session-commands.test.ts` grew to 16 cases for these.
+- `/import` is a recorded prompt, not a port: a durable session is not a JSONL file (decision #34,
+  recommendation applied until the owner answers).
+- Mutations, each failing a named test: ignoring a `user_bash` result, dropping its `operations`, and
+  falling back to the local shell after a throwing handler, and always exporting HTML.
+- tmux: `!echo bash-ok` and `!!echo hidden` drew one card each with their output, `/export` wrote both
+  files, `/copy` reported there is nothing to copy yet, `/changelog` rendered the changelog, and
+  `/import` printed the pointer. No command sent a provider request.
+- Found and fixed while verifying: a finished command was drawn twice (the live card and its
+  `bashExecution` entry). The live card now stands for its entry instead of being drawn beside it.

@@ -24,7 +24,7 @@ export class BashExecutionComponent extends Container {
 	private status: "running" | "complete" | "cancelled" | "error" = "running";
 	private exitCode: number | undefined = undefined;
 	private loader: Loader;
-	private truncationResult?: TruncationResult;
+	private truncationResult?: Pick<TruncationResult, "truncated">;
 	private fullOutputPath?: string;
 	private expanded = false;
 	private contentContainer: Container;
@@ -101,7 +101,7 @@ export class BashExecutionComponent extends Container {
 	setComplete(
 		exitCode: number | undefined,
 		cancelled: boolean,
-		truncationResult?: TruncationResult,
+		truncationResult?: Pick<TruncationResult, "truncated">,
 		fullOutputPath?: string,
 	): void {
 		this.exitCode = exitCode;
