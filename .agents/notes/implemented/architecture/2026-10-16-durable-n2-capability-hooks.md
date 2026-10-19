@@ -1,10 +1,10 @@
 # Agent Note: durable hooks for the N2 capabilities
 
-Status: proposed
+Status: implemented
 
 ## Problem
 
-The N0 inventory ([extension-surface.json](extension-surface.json), [inventory note](2026-10-15-durable-migration-inventory.md)) classifies eight behaviors that Nyan's extension API has and durable's seven hooks cannot express. Owner decisions #18 to #21 fixed the policy: keep every streamed event, add the phased request transform, widen the settlement hook so entry writes stay recoverable, and remove no event. This note fixes the hook signatures so the durable work and the coding-agent adapter can proceed in parallel against one contract.
+The N0 inventory ([extension-surface.json](../../proposed/architecture/extension-surface.json), [inventory note](../../proposed/architecture/2026-10-15-durable-migration-inventory.md)) classifies eight behaviors that Nyan's extension API has and durable's seven hooks cannot express. Owner decisions #18 to #21 fixed the policy: keep every streamed event, add the phased request transform, widen the settlement hook so entry writes stay recoverable, and remove no event. This note fixes the hook signatures so the durable work and the coding-agent adapter can proceed in parallel against one contract.
 
 Durable's invariants constrain the shape. A hook runs off the Session line, so a crash before the consuming commit may rerun it; it therefore cannot write. A hook does not write model context to a busy conversation; the Harness's tasks do. So a hook that wants an entry returns a draft and the generation task appends it in its own commit. A commit may not read a table after its first table write (`ReadAfterWrite`, spec "Table rules"), so anything a commit needs from the tables is read before it. `docs/spec.md` §7.2 states that there is no public semantic event channel.
 
@@ -227,7 +227,7 @@ Durable gains nine hook members, one `HookRunner` method, one contract type, one
 
 ## Verification
 
-Implemented in `packages/durable` and `packages/ai`, not yet reviewed by the owner or wired to the coding-agent adapter. An independent review (claude-haiku-5-5) found five blocking problems, all confirmed against the source and fixed:
+Implemented in `packages/durable` and `packages/ai`, and wired to the coding-agent adapter by the N2 batches below (1, 2a, 2b, 3-slice-1, C3b–C3h, G0b, G1a, G1b, W1). An independent review (claude-haiku-5-5) found five blocking problems, all confirmed against the source and fixed:
 - A `replace` edit in a boundary draft was not checked, so one without `messages` would make every later context derivation throw (`undefined.filter`). It now needs a list of user messages with finite timestamps.
 - `awaitWithContext` in `@ny4n/chord` returned early on an already-aborted context without observing the work, so a hook that failed afterwards produced an unhandled rejection, which ends a Node process that has no handler. Fixed there (the cause), with a test for the early and the late abort.
 - `usageProblem` did not check `cacheWrite1h` and `reasoning`, nor strict JSON, so a bad compaction usage faulted the task instead of failing with `invalid_usage`, and a string counter would have been concatenated. It checks both now. `rewriteMessage` also checks `timestamp` and tool call `id` and `name`.
@@ -449,7 +449,7 @@ reduction; the durable TUI renders no other custom entry either).
 
 ## Batch G0b: the extension surface audit
 
-Every `durable-capability` in [extension-surface.json](extension-surface.json) and every event mapping is labelled below
+Every `durable-capability` in [extension-surface.json](../../proposed/architecture/extension-surface.json) and every event mapping is labelled below
 as satisfied (with the pull request or test that proves it on the durable path) or as a recorded reduction (with the
 owner decision). PR numbers are the task C batches: batch 1 #47, 2a #50, 2b #54, 3-slice-1 #56, C3b #63, C3c #66,
 C3d #68, C3e #72, C3f #73, C3g #76, C3h #80, G0b this batch.
@@ -590,3 +590,38 @@ fork `session_start`, and the facade follow each fails a named test.
 Not verified: Windows (no Windows host; the owner tracks Windows coverage separately); a real Herdr process and a real
 browser OAuth sign-in, which are replaced by a fake binary and a loopback endpoint; and the durable TUI's own binding of
 the runner mode, which the tests drive through `openDurable` rather than a terminal.
+
+## N2 gate verification (2026-10-19)
+
+The N2 gate ran after the three Decision #31 batches (`G1a` #90, `G1b` #91, `W1` #92) merged. On the gate branch,
+`npm run check` exits 0, including `check:extension-surface`, which classifies all 41 events and 31 API members with one
+recorded destination each.
+
+**The durable capability set.** Every one of the eight capabilities above is satisfied on the durable path or has an
+owner decision reducing it; the G0b audit table and the G1b/G1a/W1 sections above carry the test or PR for each row, and
+the two tree events are the only events recorded as reductions (`extension-surface.json`, Decision #31).
+
+**Event-type parity.** `test/event-type-parity.test.ts` runs each scenario through both paths and compares the event
+types and, for RPC, the response commands. Nineteen cases pass under Node and Bun. The only type set the test
+asserts as different is the legacy retry `context_edit` `entry_appended`, which is one of Decision #31's three recorded
+reductions; `session_before_tree` and `session_tree` are the other two, and the durable path emits neither event because
+it has no tree navigation (Decision #24). No other difference remains.
+
+**Built-in extensions.** `test/durable-gate-builtins.test.ts` pins what every built-in offers through the durable modes:
+`cliproxyapi`, `herdr`, `llama.cpp`, and `mcp` load as `builtin:` paths, the `codemode` and `tool-search` built-ins give
+way to durable's native tools of the same names, the llama.cpp and cliproxyapi providers resolve in the durable model
+runtime, and RPC `get_commands` and the durable TUI offer exactly the commands they register: the ten `cpa-*` commands plus
+`fast`, `pause`, `continue`, `llama`, and `mcp`. Their behaviour runs on the durable path in
+`durable-extension-host.test.ts` (cliproxyapi: quota headers, one request record per terminal assistant, pause and fast),
+`durable-builtin-run-events.test.ts` (herdr reports the pane state; mcp reconnects a server signed in to from outside the
+session), `durable-mcp.test.ts` (an MCP tool runs in a local child that exits with the session), and
+`durable-codemode.test.ts` / `durable-tool-search.test.ts` (codemode and tool search, including the worker limit).
+
+**Durable TUI extension UI** stays the five-method subset with widgets, header/footer, editor, autocomplete, and custom
+components deferred to N9 by owner Decision #28 (accepted 2026-10-19), and **durable session selection** is outside N2 by
+Decision #25.
+
+Not verified at the gate: Windows (no Windows host; the owner tracks Windows coverage separately), a crash by kill
+between a boundary hook and its commit (the nearest test closes the harness instead), a real Herdr process, a real
+browser OAuth sign-in, and a real subprocess `--mode rpc` with a provider that cannot be injected in-process. Each batch
+section above lists its own remaining items.
