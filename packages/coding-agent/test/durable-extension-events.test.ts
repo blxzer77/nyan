@@ -557,10 +557,9 @@ describe("durable host events and context", () => {
 		const first = await openDurable(options);
 		const interrupted = first.controller.submitAndWait("go", "followUp").catch((error: unknown) => error);
 		await reached;
-		// Measured with a throwaway probe: with the handler parked, `close()` was still pending after 20 s and returned
-		// only once the handler was released, and `ctx.signal` is undefined inside a `turn_end` handler. So the handler is
-		// released while the close is in progress. This is reported, not asserted here; see the C3g report.
-		// (Provider hooks such as the pause gate are released by the close; this one is not.)
+		// The parked handler ignores `ctx.signal`, so the close waits for it (durable's close guarantee), which is why the
+		// test releases it here. A handler that responds to `ctx.signal` is released by the close itself; see
+		// `durable-handler-signal.test.ts`.
 		const closing = first.close("quit");
 		release();
 		await closing;
