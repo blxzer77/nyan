@@ -126,6 +126,66 @@ describe("durable host events and context", () => {
 		expect(seen[0]).not.toContain('"content":"go"');
 	});
 
+	test("accepted boundary proposals commit custom entries and a hidden reminder, then continue once", async () => {
+		const turns: number[] = [];
+		const current = await open(
+			[
+				(pi) => {
+					pi.on("turn_end", (event) => {
+						turns.push(event.turnIndex);
+						if (turns.length !== 1) return;
+						return {
+							entries: [
+								{ type: "custom", customType: "probe.boundary", data: { accepted: true } },
+								{
+									type: "custom_message",
+									customType: "probe.reminder",
+									content: "remember",
+									display: false,
+								},
+							],
+							continue: true,
+						};
+					});
+				},
+			],
+			[() => fauxAssistantMessage([fauxText("first")]), () => fauxAssistantMessage([fauxText("second")])],
+		);
+		const outcome = await current.controller.submitAndWait("go", "followUp");
+		expect(outcome.status).toBe("done");
+		expect(turns).toEqual([0, 1]);
+		expect(current.view.current().conversation.entries).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ kind: "probe.boundary", data: { accepted: true } }),
+				expect.objectContaining({
+					kind: "custom_message",
+					data: { customType: "probe.reminder", display: false },
+				}),
+			]),
+		);
+	});
+
+	test("refuses invalid kinds and assistant context edits with diagnostics", async () => {
+		let mode: "kind" | "edit" = "kind";
+		const current = await open(
+			[
+				(pi) => {
+					pi.on("turn_end", (event) => {
+						if (mode === "kind") {
+							mode = "edit";
+							return { entries: [{ type: "custom", customType: "nyan.invalid" }] };
+						}
+						return { entries: [{ type: "context_edit", targetId: event.messageEntryId, replacement: null }] };
+					});
+				},
+			],
+			[() => fauxAssistantMessage([fauxText("first")]), () => fauxAssistantMessage([fauxText("second")])],
+		);
+		await expect(current.controller.submitAndWait("go", "followUp")).resolves.toMatchObject({ status: "done" });
+		expect(current.view.current().conversation.entries.some((entry) => entry.kind === "nyan.invalid")).toBe(false);
+		expect(current.view.current().notices.some((notice) => notice.message.includes("boundary"))).toBe(true);
+	});
+
 	test("the services report whether project-local resources are trusted, which ctx.isProjectTrusted answers", async () => {
 		// A project-local extension needs trust, so an undecided directory is not trusted (legacy rules).
 		await mkdir(join(cwd, ".nyan", "extensions"), { recursive: true });

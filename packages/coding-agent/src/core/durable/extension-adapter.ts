@@ -1,10 +1,12 @@
 import type { AsyncLocalStorage } from "node:async_hooks";
 import type { AgentMessage } from "@ny4n/agent-core";
-import type { Api, Message, Model, ToolResultMessage, UserMessage } from "@ny4n/ai";
+import type { Api, Message, Model, UserMessage } from "@ny4n/ai";
 import {
+	type BoundaryEntry,
 	type CompactionHooks,
 	CompactionTask,
 	defineExtension,
+	type EntryId,
 	type Extension,
 	type GenerationHooks,
 	GenerationTask,
@@ -12,9 +14,11 @@ import {
 	type ToolHooks,
 	ToolTask,
 } from "@ny4n/durable";
-import { type CompactionPreparation, DEFAULT_COMPACTION_SETTINGS } from "../compaction/compaction.ts";
+import { type CompactionPreparation, DEFAULT_COMPACTION_SETTINGS, estimateTokens } from "../compaction/compaction.ts";
 import { createFileOps } from "../compaction/utils.ts";
 import type { ExtensionRunner } from "../extensions/runner.ts";
+import type { ContextEditEntryDraft, SessionBoundaryDraft } from "../extensions/types.ts";
+import type { ReadonlySessionManager, SessionEntry } from "../session-manager.ts";
 import { isJsonObject, isJsonValue } from "./extension-tools.ts";
 
 /**
@@ -62,6 +66,184 @@ function isPlainMessage(message: AgentMessage): message is Message {
 	);
 }
 
+type BoundarySessionReader = Pick<ReadonlySessionManager, "getEntry">;
+
+function getSessionEntry(manager: BoundarySessionReader | undefined, id: string): SessionEntry | undefined {
+	try {
+		return manager?.getEntry(id);
+	} catch {
+		return undefined;
+	}
+}
+
+function getSessionProjection(
+	manager: ReadonlySessionManager | undefined,
+): ReturnType<ReadonlySessionManager["buildSessionProjection"]> | undefined {
+	try {
+		return manager?.buildSessionProjection();
+	} catch {
+		return undefined;
+	}
+}
+
+function durableEntryId(value: string): EntryId | undefined {
+	const number = Number(value);
+	return Number.isSafeInteger(number) && number > 0 ? (number as EntryId) : undefined;
+}
+
+export function durableBoundaryEntriesToLegacy(
+	entries: readonly BoundaryEntry[],
+	manager: BoundarySessionReader | undefined,
+	report: (message: string) => void,
+): SessionBoundaryDraft[] | undefined {
+	const result: SessionBoundaryDraft[] = [];
+	for (const entry of entries) {
+		if (entry.edits !== undefined) {
+			for (const edit of entry.edits) {
+				const target = getSessionEntry(manager, String(edit.target));
+				if (
+					target === undefined ||
+					(target.type !== "message" && target.type !== "custom_message") ||
+					(target.type === "message" && target.message.role !== "user")
+				) {
+					report(`context_edit target ${String(edit.target)} is not a user or custom-message entry`);
+					return undefined;
+				}
+				let replacement: ContextEditEntryDraft["replacement"] = null;
+				if (edit.action === "replace") {
+					const message = edit.messages?.[0];
+					if (edit.messages === undefined || edit.messages.length !== 1 || message?.role !== "user") {
+						report(`context_edit target ${String(edit.target)} has a replacement that is not one user message`);
+						return undefined;
+					}
+					const content = message.content;
+					const validContent =
+						typeof content === "string" ||
+						(Array.isArray(content) && content.every((part) => part.type === "text" || part.type === "image"));
+					if (!validContent) {
+						report(`context_edit target ${String(edit.target)} has non-user replacement content`);
+						return undefined;
+					}
+					replacement = { content };
+				}
+				result.push({ type: "context_edit", targetId: String(edit.target), replacement });
+			}
+		}
+		if (entry.model !== undefined) {
+			const message = entry.model[0];
+			if (entry.model.length !== 1 || message?.role !== "user") {
+				report(`boundary kind ${entry.kind} has a model that is not one user message`);
+				return undefined;
+			}
+			if (entry.kind === "custom_message") {
+				const data = isJsonObject(entry.data) ? entry.data : {};
+				const customType = typeof data.customType === "string" ? data.customType : "durable.custom_message";
+				const display = typeof data.display === "boolean" ? data.display : true;
+				result.push({
+					type: "custom_message",
+					customType,
+					content: message.content,
+					display,
+					...(data.details === undefined ? {} : { details: data.details }),
+				});
+			} else {
+				result.push({ type: "custom_message", customType: entry.kind, content: message.content, display: true });
+			}
+		} else if (entry.edits !== undefined) {
+		} else if (entry.kind === "compaction") {
+			report("compaction boundary drafts are owned by the durable compaction task");
+			return undefined;
+		} else {
+			result.push({
+				type: "custom",
+				customType: entry.kind,
+				...(entry.data === undefined ? {} : { data: entry.data }),
+			});
+		}
+	}
+	return result;
+}
+
+export function legacyBoundaryEntriesToDurable(
+	entries: readonly SessionBoundaryDraft[],
+	manager: BoundarySessionReader | undefined,
+	report: (message: string) => void,
+): BoundaryEntry[] | undefined {
+	const result: BoundaryEntry[] = [];
+	for (const entry of entries) {
+		switch (entry.type) {
+			case "custom":
+				if (entry.customType.length === 0 || entry.customType.startsWith("nyan.")) {
+					report(`custom boundary kind must be non-empty and not start with nyan.: ${entry.customType}`);
+					return undefined;
+				}
+				if (entry.data !== undefined && !isJsonValue(entry.data)) {
+					report(`custom boundary ${entry.customType} has non-JSON data`);
+					return undefined;
+				}
+				result.push({ kind: entry.customType, ...(entry.data === undefined ? {} : { data: entry.data }) });
+				break;
+			case "custom_message": {
+				if (entry.customType.length === 0 || entry.customType.startsWith("nyan.")) {
+					report(`custom message kind must be non-empty and not start with nyan.: ${entry.customType}`);
+					return undefined;
+				}
+				const data: Record<string, unknown> = { customType: entry.customType, display: entry.display };
+				if (entry.details !== undefined) data.details = entry.details;
+				if (!isJsonValue(data)) {
+					report(`custom message ${entry.customType} has non-JSON details`);
+					return undefined;
+				}
+				result.push({
+					kind: "custom_message",
+					model: [{ role: "user", content: entry.content, timestamp: Date.now() }],
+					data,
+				});
+				break;
+			}
+			case "context_edit": {
+				const target = durableEntryId(entry.targetId);
+				if (target === undefined) {
+					report(`context_edit target ${entry.targetId} is not a durable entry id`);
+					return undefined;
+				}
+				const source = getSessionEntry(manager, entry.targetId);
+				if (
+					source === undefined ||
+					(source.type !== "message" && source.type !== "custom_message") ||
+					(source.type === "message" && source.message.role !== "user")
+				) {
+					report(`context_edit target ${entry.targetId} is not a user or custom-message entry`);
+					return undefined;
+				}
+				result.push({
+					kind: "context_edit",
+					edits: [
+						entry.replacement === null
+							? { target, action: "omit" }
+							: {
+									target,
+									action: "replace",
+									messages: [
+										{
+											role: "user",
+											content: entry.replacement.content as UserMessage["content"],
+											timestamp: Date.now(),
+										},
+									],
+								},
+					],
+				});
+				break;
+			}
+			case "compaction":
+				report("compaction boundary drafts are refused; durable compaction owns the commit");
+				return undefined;
+		}
+	}
+	return result;
+}
+
 /**
  * The generation-hook members that carry the Nyan handlers. A member exists only when a loaded extension handles its
  * event, so an installation without such handlers costs nothing on the request path: the hook members switch provider
@@ -74,6 +256,9 @@ export function createProviderHooks(
 	runner: ExtensionRunner,
 	scope: ProviderCallScope,
 	getBeforeRequestEffects?: () => BeforeRequestEffects | undefined,
+	sessionManager?: ReadonlySessionManager,
+	reportBoundaryError?: (message: string) => void,
+	turnCounter: { value: number } = { value: 0 },
 ): Partial<GenerationHooks> {
 	const members: Partial<GenerationHooks> = {};
 
@@ -108,27 +293,48 @@ export function createProviderHooks(
 
 	if (runner.hasHandlers("turn_end") || runner.hasHandlers("agent_before_settle")) {
 		members.onBoundary = async (boundary) => {
+			const eventType = boundary.kind === "settle" ? "agent_before_settle" : "turn_end";
+			const entries = durableBoundaryEntriesToLegacy(boundary.entries, sessionManager, (message) =>
+				reportBoundaryError?.(`${eventType}: ${message}`),
+			);
+			if (entries === undefined) return boundary.continue ? { continue: true } : undefined;
+			const toolResults = boundary.toolResults.flatMap((id) => {
+				const entry = getSessionEntry(sessionManager, String(id));
+				return entry?.type === "message" && entry.message.role === "toolResult" ? [entry.message] : [];
+			});
 			const baseEvent =
 				boundary.kind === "settle"
-					? ({ type: "agent_before_settle", outcome: "completed" } as const)
+					? ({ type: "agent_before_settle", outcome: "completed", entries, continue: boundary.continue } as const)
 					: {
 							type: "turn_end" as const,
 							outcome: "completed" as const,
 							message: boundary.assistant,
-							toolResults: [] as ToolResultMessage[],
-							turnIndex: 0,
+							toolResults,
+							turnIndex: turnCounter.value++,
 							timestamp: Date.now(),
 							messageEntryId: String(boundary.assistantEntry ?? ""),
-							toolResultEntryIds: [],
+							toolResultEntryIds: boundary.toolResults.map(String),
+							entries,
+							continue: boundary.continue,
 						};
-			const result = await runner.emitBoundary(baseEvent, async (_entries) => ({
-				contextEntries: [],
-				contextMessages: [boundary.assistant],
-				llmMessages: [boundary.assistant],
-				pendingMessages: [],
-				canContinue: true,
-			}));
-			return result.continue ? { continue: true } : undefined;
+			const result = await runner.emitBoundary(baseEvent, async (_drafts) => {
+				const projection = getSessionProjection(sessionManager);
+				return {
+					contextEntries: projection?.entries ?? [],
+					contextMessages: projection?.messages ?? [boundary.assistant],
+					llmMessages: (projection?.messages ?? [boundary.assistant]).filter(isPlainMessage),
+					pendingMessages: [],
+					canContinue: true,
+				};
+			});
+			const durableEntries = legacyBoundaryEntriesToDurable(result.entries, sessionManager, (message) =>
+				reportBoundaryError?.(`${eventType}: ${message}`),
+			);
+			if (durableEntries === undefined) return boundary.continue ? { continue: true } : undefined;
+			return {
+				...(durableEntries.length === 0 ? {} : { entries: durableEntries }),
+				...(result.continue ? { continue: true } : {}),
+			};
 		};
 	}
 
@@ -262,7 +468,11 @@ export function createToolHooks(runner: ExtensionRunner): Partial<ToolHooks> {
 }
 
 /** Bridges the legacy compaction veto/custom-summary event to durable's first-decision hook. */
-export function createCompactionHooks(runner: ExtensionRunner): Partial<CompactionHooks> {
+export function createCompactionHooks(
+	runner: ExtensionRunner,
+	reportBoundaryError?: (message: string) => void,
+	getModel?: () => Model<Api> | undefined,
+): Partial<CompactionHooks> {
 	if (!runner.hasHandlers("session_before_compact")) return {};
 	return {
 		beforeCompact: async (compaction, _api, context) => {
@@ -271,7 +481,7 @@ export function createCompactionHooks(runner: ExtensionRunner): Partial<Compacti
 				messagesToSummarize: [...compaction.messages],
 				turnPrefixMessages: [],
 				isSplitTurn: false,
-				tokensBefore: 0,
+				tokensBefore: compaction.messages.reduce((total, message) => total + estimateTokens(message), 0),
 				fileOps: createFileOps(),
 				settings: DEFAULT_COMPACTION_SETTINGS,
 			};
@@ -287,9 +497,29 @@ export function createCompactionHooks(runner: ExtensionRunner): Partial<Compacti
 			if (result.cancel) return { decline: true };
 			if (!("compaction" in result) || result.compaction === undefined) return undefined;
 			const summary = result.compaction;
+			const proposedFirstKept =
+				typeof summary.firstKeptEntryId === "string" ? durableEntryId(summary.firstKeptEntryId) : undefined;
+			const acceptsFirstKept =
+				summary.firstKeptEntryId === String(compaction.firstKept) && proposedFirstKept !== undefined;
+			if (!acceptsFirstKept) {
+				reportBoundaryError?.(
+					`session_before_compact proposed firstKeptEntryId ${summary.firstKeptEntryId}; durable cut ${String(compaction.firstKept)} remains`,
+				);
+			}
+			if (summary.details !== undefined && !isJsonValue(summary.details)) {
+				reportBoundaryError?.("session_before_compact returned non-JSON details; details were refused");
+			}
+			const model = getModel?.();
+			if (summary.usage !== undefined && (model === undefined || !isJsonValue(summary.usage))) {
+				reportBoundaryError?.("session_before_compact returned usage that cannot be attributed to a durable model");
+			}
 			return {
 				summary: summary.summary,
+				...(acceptsFirstKept ? { firstKept: proposedFirstKept } : {}),
 				...(summary.details !== undefined && isJsonValue(summary.details) ? { details: summary.details } : {}),
+				...(summary.usage !== undefined && model !== undefined && isJsonValue(summary.usage)
+					? { usage: { model: { provider: model.provider, modelId: model.id }, usage: summary.usage } }
+					: {}),
 			};
 		},
 	};
