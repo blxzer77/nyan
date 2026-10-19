@@ -224,8 +224,7 @@ Measured locally on this repository:
 So the incremental file does not hide drift: editing or deleting a test re-runs the mutants it covers, and the
 survivor count moves. `--force` reaches Stryker through the npm script (unlike `--shard`, which npm swallows), so
 the nightly really does run everything. `Deep verification` was 202 s of the pull-request critical path, of which
-the mutation step was 175 s; the expected effect is a job well under a minute on a pull request that does not touch
-`cbor`. The CI number is not yet measured.
+the mutation step was 175 s.
 
 ### 8. R4: gateway above CPA
 
