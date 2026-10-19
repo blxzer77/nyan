@@ -374,7 +374,8 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				await durable.controller.setAutoRetry(command.enabled);
 				return success(id, "set_auto_retry");
 			case "abort_retry":
-				return failure(id, "abort_retry", "Durable RPC does not expose retry-only cancellation yet");
+				await durable.controller.abortRetry();
+				return success(id, "abort_retry");
 			case "bash": {
 				const result = await durable.controller.executeBash(
 					command.command,
@@ -443,6 +444,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 			}
 			case "set_session_name":
 				sessionName = await durable.sessionOps.setSessionName(command.name);
+				output({ type: "session_info_changed", name: sessionName });
 				return success(id, "set_session_name");
 			case "export_html": {
 				const path = await durable.sessionOps.exportHtml(command.outputPath);
