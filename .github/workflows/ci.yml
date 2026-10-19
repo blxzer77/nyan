@@ -299,6 +299,10 @@ jobs:
   windows-smoke:
     name: Windows build and check
     needs: [policy, prepare]
+    # There is no local Windows machine any more, so this job is the only Windows coverage. It runs when the impact
+    # classifier selects a path that can behave differently there; the gate treats a skip as the intended outcome,
+    # and a skip when the classifier did ask for it is a failure.
+    if: needs.policy.outputs.windows_required == 'true'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -335,6 +339,7 @@ jobs:
   mcp-conformance:
     name: MCP conformance
     needs: [policy, prepare]
+    if: needs.policy.outputs.mcp_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -503,8 +508,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Evaluate required results
+        # The required list is `.github/quality/policy.json` plus the impact flags, not a second copy here: this file
+        # used to repeat the names, and a renamed job then either stopped being required or blocked a merge forever.
         env:
           CI_GATE_RESULTS: >-
             {"policy":"${{ needs.policy.result }}","prepare":"${{ needs.prepare.result }}","static":"${{ needs.static.result }}","node-tests":"${{ needs.node-tests.result }}","bun-tests":"${{ needs.bun-tests.result }}","windows-smoke":"${{ needs.windows-smoke.result }}","mcp-conformance":"${{ needs.mcp-conformance.result }}","supply-chain":"${{ needs.supply-chain.result }}","deep-gate":"${{ needs.deep-gate.result }}"}
-          CI_GATE_REQUIRED: ${{ needs.policy.outputs.deep_required == 'true' && '["policy","prepare","static","node-tests","bun-tests","windows-smoke","mcp-conformance","supply-chain","deep-gate"]' || '["policy","prepare","static","node-tests","bun-tests","windows-smoke","mcp-conformance","supply-chain"]' }}
+          CI_GATE_IMPACT: >-
+            {"windows_required":"${{ needs.policy.outputs.windows_required }}","mcp_required":"${{ needs.policy.outputs.mcp_required }}","deep_required":"${{ needs.policy.outputs.deep_required }}"}
         run: node scripts/ci-gate.mjs
