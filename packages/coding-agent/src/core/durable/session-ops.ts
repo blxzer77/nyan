@@ -1,6 +1,7 @@
+import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { Message } from "@ny4n/ai";
 import { estimateMessageTokens } from "@ny4n/ai/utils/estimate";
 import type { Context } from "@ny4n/chord";
@@ -81,6 +82,8 @@ export interface DurableSessionOps {
 	setSessionName(name: string): Promise<string | undefined>;
 	/** Write the session's HTML export and return its path. */
 	exportHtml(outputPath: string | undefined): Promise<string>;
+	/** Write the session as legacy JSONL, one entry per line, and return its path. */
+	exportJsonl(outputPath: string | undefined): Promise<string>;
 	/** Fork the current conversation at a user message; the caller moves the controller to the new conversation. */
 	fork(at: string): Promise<ForkOutcome>;
 	/** Fork the current conversation at its newest entry. */
@@ -259,6 +262,15 @@ async function leafId(conversation: Conversation, context: Context): Promise<str
 	return null;
 }
 
+/** Write legacy session entries as JSONL, as the legacy exporter does, and return the file's path. */
+function writeJsonl(entries: readonly FileEntry[], outputPath: string | undefined): string {
+	const fallback = `session-${new Date().toISOString().replace(/[:.]/gu, "-")}.jsonl`;
+	const file = resolve(outputPath ?? fallback);
+	mkdirSync(dirname(file), { recursive: true });
+	writeFileSync(file, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf8");
+	return file;
+}
+
 /** Read the display name, tolerating a missing or unreadable metadata file. */
 async function readName(directory: string): Promise<string | undefined> {
 	try {
@@ -351,6 +363,16 @@ export function createDurableSessionOps(host: DurableSessionOpsHost): DurableSes
 				...(cleaned.length === 0 ? {} : { name: cleaned }),
 			});
 			return cleaned.length === 0 ? undefined : cleaned;
+		},
+		async exportJsonl(outputPath) {
+			const conversation = host.conversation();
+			const session = host.session();
+			const records = await allEntries(conversation, host.context, undefined);
+			const entries: FileEntry[] = [
+				headerOf(session),
+				...(await toSessionEntries(conversation, host.context, records, createdAt(session.directory))),
+			];
+			return writeJsonl(entries, outputPath);
 		},
 		async exportHtml(outputPath) {
 			const conversation = host.conversation();
