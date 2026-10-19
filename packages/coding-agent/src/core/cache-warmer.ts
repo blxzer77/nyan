@@ -13,17 +13,17 @@ import type { SessionEntry, SessionManager, UsageEntry } from "./session-manager
 import type { CacheWarmingMode } from "./settings-manager.ts";
 
 /** Streaming warming never continues past this long after the real request that started it. */
-const MAX_WARMING_AGE_MS = 60 * 60_000;
+export const MAX_WARMING_AGE_MS = 60 * 60_000;
 /** Idle warming uses a shorter horizon because continuation estimates become less reliable with age. */
-const MAX_IDLE_WARMING_AGE_MS = 30 * 60_000;
+export const MAX_IDLE_WARMING_AGE_MS = 30 * 60_000;
 /** A refresh is sent only when it is expected to save at least this many dollars. */
-const CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS = 0.05;
+export const CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS = 0.05;
 /**
  * Chance that a real request arrives before the cache entry expires while the
  * agent sits idle. Measured from our own usage; per-session estimates were not
  * better than this constant.
  */
-const IDLE_CONTINUATION_PROBABILITY = 0.15;
+export const IDLE_CONTINUATION_PROBABILITY = 0.15;
 
 /** Refresh at 90% of the TTL while preserving at least ten seconds of margin. */
 export function getCacheWarmingDelayMs(ttlMs: number): number | undefined {
@@ -376,28 +376,44 @@ export class CacheWarmer {
 	}
 
 	private evaluate(run: ActiveRun): CacheWarmingDecision {
-		const model = run.model;
-		const promptTokens = lastPromptTokens(this.sessionManager.getBranch());
-		const cacheHitCost = price(model, { cacheRead: promptTokens });
-		const cacheMissCost = price(
-			model,
-			model.cost.cacheWrite > 0 ? { cacheWrite: promptTokens } : { input: promptTokens },
-		);
-		const warmCost = price(model, { cacheRead: promptTokens, output: 1 });
-		const missCost = Math.max(0, cacheMissCost - cacheHitCost);
-		const continuationProbability = run.phase === "idle" ? IDLE_CONTINUATION_PROBABILITY : 1;
-		const economicsAvailable = promptTokens > 0 && (cacheHitCost > 0 || cacheMissCost > 0);
-		const expectedSavings = continuationProbability * missCost - warmCost;
-		return {
+		return evaluateCacheWarming({
+			model: run.model,
+			promptTokens: lastPromptTokens(this.sessionManager.getBranch()),
 			phase: run.phase,
-			warmCost,
-			missCost,
-			continuationProbability,
-			expectedSavings,
-			economicsAvailable,
-			action: expectedSavings >= CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS ? "warm" : "stop",
-		};
+		});
 	}
+}
+
+/**
+ * The economics of one warm-or-stop decision: what the refresh costs, what losing the entry costs, and whether the
+ * expected saving reaches the threshold. Shared by the legacy session and the durable host, so both warm on one policy.
+ */
+export function evaluateCacheWarming(input: {
+	readonly model: Model<Api>;
+	/** Prompt size of the last real request on the branch, as reported by the provider. */
+	readonly promptTokens: number;
+	readonly phase: "streaming" | "idle";
+}): CacheWarmingDecision {
+	const { model, promptTokens, phase } = input;
+	const cacheHitCost = price(model, { cacheRead: promptTokens });
+	const cacheMissCost = price(
+		model,
+		model.cost.cacheWrite > 0 ? { cacheWrite: promptTokens } : { input: promptTokens },
+	);
+	const warmCost = price(model, { cacheRead: promptTokens, output: 1 });
+	const missCost = Math.max(0, cacheMissCost - cacheHitCost);
+	const continuationProbability = phase === "idle" ? IDLE_CONTINUATION_PROBABILITY : 1;
+	const economicsAvailable = promptTokens > 0 && (cacheHitCost > 0 || cacheMissCost > 0);
+	const expectedSavings = continuationProbability * missCost - warmCost;
+	return {
+		phase,
+		warmCost,
+		missCost,
+		continuationProbability,
+		expectedSavings,
+		economicsAvailable,
+		action: expectedSavings >= CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS ? "warm" : "stop",
+	};
 }
 
 function formatDollars(value: number): string {
