@@ -11,28 +11,40 @@ import type { AgentEvent, EntryRecord, MessageChange } from "@ny4n/durable";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { type JsonAgentSessionEvent, toJsonEvent } from "../json-event.ts";
 
+/** The texts waiting in a conversation's queue, as the published `queue_update` reports them. */
+export interface QueuedTexts {
+	readonly steering: readonly string[];
+	readonly followUp: readonly string[];
+}
+
 /**
  * Translate durable's event stream to the published JSON event vocabulary.
  *
  * The published vocabulary is the legacy path's (`docs/json.md`): a client written for `--mode json` or `--mode rpc`
  * must see the same event types from either path (N2 gate, Decisions #18 and #21). Where durable's own events carry less
  * than a published event needs, this adapter keeps the little state the difference requires: the in-flight assistant
- * partial, the arguments and accumulated output of a running tool call, the turn's tool results, and the active
- * thinking level.
+ * partial, the arguments and accumulated output of a running tool call, the turn's tool results, the active thinking
+ * level, and the queue it last published.
  */
 export class DurableJsonEventAdapter {
 	#partial: AssistantMessage | undefined;
+	/** Whether the in-flight assistant message has published a `message_update` yet. */
+	#partialUpdated = false;
 	#thinkingLevel: ModelThinkingLevel | undefined;
+	/** The queue this adapter last published; a session starts with no queued input, as legacy's queue does. */
+	#queue: QueuedTexts = { steering: [], followUp: [] };
 	readonly #readMessages: () => readonly AgentMessage[];
+	readonly #readQueue: () => Promise<QueuedTexts>;
 	readonly #toolArgs = new Map<string, JsonObject>();
 	readonly #toolText = new Map<string, string>();
 	#turnToolResults: ToolResultMessage[] = [];
 
-	constructor(readMessages: () => readonly AgentMessage[]) {
+	constructor(readMessages: () => readonly AgentMessage[], readQueue: () => Promise<QueuedTexts>) {
 		this.#readMessages = readMessages;
+		this.#readQueue = readQueue;
 	}
 
-	translate(events: readonly AgentEvent[]): JsonAgentSessionEvent[] {
+	async translate(events: readonly AgentEvent[]): Promise<JsonAgentSessionEvent[]> {
 		const translated: JsonAgentSessionEvent[] = [];
 		for (let index = 0; index < events.length; index++) {
 			const event = events[index]!;
@@ -40,6 +52,15 @@ export class DurableJsonEventAdapter {
 			// output and streams `bash_execution_update`, and publishes no message events for the entry it records.
 			if (event.type === "message_start" && isBashExecutionEntry(modelEntryAfter(events, index))) continue;
 			if (event.type === "message_end" && isBashExecutionEntry(event.entry)) continue;
+			// Durable's `inbox_update` names the queued items by id and mode; `queue_update` carries their texts, which
+			// only the `nyan.inbox` document holds, so each change is read back (Decision #31).
+			if (event.type === "inbox_update") {
+				const queue = await this.#readQueue();
+				if (sameQueue(this.#queue, queue)) continue;
+				this.#queue = queue;
+				translated.push({ type: "queue_update", steering: [...queue.steering], followUp: [...queue.followUp] });
+				continue;
+			}
 			translated.push(...this.#translate(event));
 		}
 		return translated;
@@ -73,14 +94,35 @@ export class DurableJsonEventAdapter {
 				return [{ type: "turn_end", message, toolResults }];
 			}
 			case "message_start":
-				if (event.message.role === "assistant") this.#partial = event.message;
+				if (event.message.role === "assistant") {
+					this.#partial = event.message;
+					this.#partialUpdated = false;
+				}
 				return [{ type: "message_start", message: event.message }];
-			case "message_update":
-				return this.#messageUpdates(event.usage, event.changes);
+			case "message_update": {
+				const updates = this.#messageUpdates(event.usage, event.changes);
+				if (updates.length > 0) this.#partialUpdated = true;
+				return updates;
+			}
 			case "message_end": {
 				const message = event.entry.model?.[0];
-				if (message?.role === "assistant") this.#partial = undefined;
 				const events: JsonAgentSessionEvent[] = [];
+				if (message?.role === "assistant") {
+					// A partial commits at most every 100 ms, so a provider that answers within one interval publishes none.
+					// Legacy publishes one `message_update` per provider event, so the completed message is published as one
+					// update before `message_end` (Decision #31).
+					if (!this.#partialUpdated) {
+						events.push(
+							toJsonEvent({
+								type: "message_update",
+								message,
+								assistantMessageEvent: terminalMessageEvent(message),
+							}),
+						);
+					}
+					this.#partial = undefined;
+					this.#partialUpdated = false;
+				}
 				if (message !== undefined) events.push({ type: "message_end", message });
 				// A boundary `custom_message` is a user message for the model and an appended custom entry for a client. The
 				// legacy path publishes only the entry; the message events stay, because Decisions #18 and #21 keep every
@@ -230,6 +272,13 @@ export class DurableJsonEventAdapter {
 		this.#partial = { ...current, content };
 		return this.#partial;
 	}
+}
+
+/** Whether two published queues hold the same texts, in the same order: a queue with no change in it publishes none. */
+function sameQueue(previous: QueuedTexts, next: QueuedTexts): boolean {
+	const same = (a: readonly string[], b: readonly string[]): boolean =>
+		a.length === b.length && a.every((text, index) => text === b[index]);
+	return same(previous.steering, next.steering) && same(previous.followUp, next.followUp);
 }
 
 /** The entry a `message_end` right after `index` carries, when the two were emitted for the same entry. */

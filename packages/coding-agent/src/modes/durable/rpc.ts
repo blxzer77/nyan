@@ -42,6 +42,23 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 	let detachInput = (): void => {};
 
 	const output = (value: unknown): void => writeRawStdout(serializeJsonLine(value));
+	let detachExtensionErrors = (): void => {};
+	/**
+	 * Publish a failed extension handler as `extension_error`, as the legacy RPC mode does; a notice stays as well. A
+	 * reopened session binds its own listener, so the one it replaces is dropped first.
+	 */
+	const bindExtensionErrors = (source: OpenDurableResult): void => {
+		detachExtensionErrors();
+		detachExtensionErrors = source.onExtensionError((error) =>
+			output({
+				type: "extension_error",
+				extensionPath: error.extensionPath,
+				event: error.event,
+				error: error.error,
+			}),
+		);
+	};
+	bindExtensionErrors(durable);
 	const pendingExtensionRequests = new Map<
 		string,
 		{
@@ -204,10 +221,13 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 		// A fork moves the adapter to another conversation: the stream it leaves is this adapter's to stop. The stream an
 		// open hands back is the runtime's, and closing the open stops it.
 		if (previous !== undefined && previous !== stream) await previous.stop();
-		eventAdapter = new DurableJsonEventAdapter(() => messagesOf(durable));
+		eventAdapter = new DurableJsonEventAdapter(
+			() => messagesOf(durable),
+			() => durable.sessionOps.queueTexts(),
+		);
 		const events = stream;
 		events.start(async (batch) => {
-			for (const event of eventAdapter.translate(batch)) output(event);
+			for (const event of await eventAdapter.translate(batch)) output(event);
 			await waitForRawStdoutBackpressure();
 		});
 	};
@@ -225,6 +245,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 		await durable.close(continueSession ? "resume" : "new");
 		durable = await openDurable({ ...options, continueSession, services, eventStream: true });
 		sessionName = await durable.sessionOps.getSessionName();
+		bindExtensionErrors(durable);
 		await bindEvents();
 	};
 
@@ -265,17 +286,19 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 		const id = command.id;
 		switch (command.type) {
 			case "prompt": {
-				const expandedMessage = durable.controller.expandPrompt(command.message);
 				const content =
 					command.images === undefined
-						? expandedMessage
-						: [{ type: "text" as const, text: expandedMessage }, ...command.images];
+						? command.message
+						: [{ type: "text" as const, text: command.message }, ...command.images];
 				void dispatchDurableExtensionCommand(durable.extensionHost.runner, command.message).then((handled) => {
 					if (handled) return output(success(id, "prompt", { disposition: "handled" }));
-					return durable.controller.submitAndWait(content, command.streamingBehavior ?? "steer").then(
-						() => output(success(id, "prompt", { disposition: "started" })),
-						(error) => output(failure(id, "prompt", error instanceof Error ? error.message : String(error))),
-					);
+					return durable.controller
+						.submitAndWait(content, command.streamingBehavior ?? "steer", { source: "rpc" })
+						.then(
+							(outcome) =>
+								output(success(id, "prompt", { disposition: outcome.handled ? "handled" : "started" })),
+							(error) => output(failure(id, "prompt", error instanceof Error ? error.message : String(error))),
+						);
 				});
 				return undefined;
 			}
@@ -283,27 +306,27 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				if (await dispatchDurableExtensionCommand(durable.extensionHost.runner, command.message)) {
 					return success(id, "steer", { disposition: "handled" });
 				}
-				const expandedSteerMessage = durable.controller.expandPrompt(command.message);
-				await durable.controller.submitAndWait(
+				const outcome = await durable.controller.submitAndWait(
 					command.images === undefined
-						? expandedSteerMessage
-						: [{ type: "text" as const, text: expandedSteerMessage }, ...command.images],
+						? command.message
+						: [{ type: "text" as const, text: command.message }, ...command.images],
 					"steer",
+					{ source: "rpc" },
 				);
-				return success(id, "steer", { disposition: "queued" });
+				return success(id, "steer", { disposition: outcome.handled ? "handled" : "queued" });
 			}
 			case "follow_up": {
 				if (await dispatchDurableExtensionCommand(durable.extensionHost.runner, command.message)) {
 					return success(id, "follow_up", { disposition: "handled" });
 				}
-				const expandedFollowUpMessage = durable.controller.expandPrompt(command.message);
-				await durable.controller.submitAndWait(
+				const outcome = await durable.controller.submitAndWait(
 					command.images === undefined
-						? expandedFollowUpMessage
-						: [{ type: "text" as const, text: expandedFollowUpMessage }, ...command.images],
+						? command.message
+						: [{ type: "text" as const, text: command.message }, ...command.images],
 					"followUp",
+					{ source: "rpc" },
 				);
-				return success(id, "follow_up", { disposition: "queued" });
+				return success(id, "follow_up", { disposition: outcome.handled ? "handled" : "queued" });
 			}
 			case "abort":
 				await durable.controller.abort();
@@ -377,10 +400,27 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				await durable.controller.abortRetry();
 				return success(id, "abort_retry");
 			case "bash": {
+				// A `user_bash` handler answers with operations to run the command through, or with a finished result; a
+				// sandbox extension that answers must not fall through to this process's shell (legacy RPC mode).
+				const handled = await durable.extensionHost.runner.emitUserBash({
+					type: "user_bash",
+					command: command.command,
+					excludeFromContext: command.excludeFromContext ?? false,
+					cwd: durable.view.current().session.cwd,
+				});
+				if (handled?.result !== undefined) {
+					await durable.controller.recordBashResult(
+						command.command,
+						handled.result,
+						command.excludeFromContext ?? false,
+					);
+					return success(id, "bash", handled.result);
+				}
 				const result = await durable.controller.executeBash(
 					command.command,
 					command.excludeFromContext ?? false,
 					(delta) => output({ type: "bash_execution_update", ...(id === undefined ? {} : { id }), delta }),
+					handled?.operations,
 				);
 				return success(id, "bash", result);
 			}
@@ -452,11 +492,13 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 			}
 			case "fork": {
 				const forked = await durable.sessionOps.fork(command.entryId);
+				if (forked.cancelled) return success(id, "fork", { cancelled: true });
 				await moveTo(forked.conversationId);
 				return success(id, "fork", { text: forked.text, cancelled: false });
 			}
 			case "clone": {
 				const cloned = await durable.sessionOps.clone();
+				if (cloned.cancelled) return success(id, "clone", { cancelled: true });
 				await moveTo(cloned.conversationId);
 				return success(id, "clone", { cancelled: false });
 			}
@@ -510,6 +552,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				}
 				durable = next;
 				sessionName = await durable.sessionOps.getSessionName();
+				bindExtensionErrors(durable);
 				await bindEvents();
 				return success(id, "switch_session", { cancelled: false });
 			}

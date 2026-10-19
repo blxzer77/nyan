@@ -10,6 +10,7 @@ import {
 	type ConversationId,
 	type ConversationView,
 	type Cursor,
+	type EntryId,
 	type EntryRecord,
 	Harness,
 	type ModelRef,
@@ -17,6 +18,7 @@ import {
 	type SettledSubmissionRecord,
 	type Submission,
 	type TaskGraph,
+	UsageDoc,
 	type UserInput,
 	watchEvents,
 } from "@ny4n/durable";
@@ -26,8 +28,10 @@ import type { Theme } from "../../ui/theme/theme.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../agent-session-services.ts";
 import { type BashResult, executeBashWithOperations } from "../bash-executor.ts";
 import type {
+	ExtensionError,
 	ExtensionMode,
 	InlineExtension,
+	InputSource,
 	ProjectTrustContext,
 	SessionShutdownEvent,
 	SessionStartEvent,
@@ -39,6 +43,7 @@ import type { ReadonlySessionManager, SessionEntry, SessionTreeNode } from "../s
 import type { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
 import type { BashOperations } from "../tools/bash.ts";
+import { addWarmUsage, DurableCacheWarmer } from "./cache-warmer.ts";
 import { createExtensionHost, type ExtensionHost } from "./extension-host.ts";
 import {
 	configureHarnessHttp,
@@ -49,7 +54,7 @@ import {
 } from "./harness-setup.ts";
 import { createDurableModelRuntime } from "./model-runtime-adapter.ts";
 import { createDurableServices, type DurableResourceOptions, type DurableServices } from "./services.ts";
-import { createDurableSessionOps, type DurableSessionOps } from "./session-ops.ts";
+import { createDurableSessionOps, type DurableSessionOps, type ForkOutcome } from "./session-ops.ts";
 import { openSessionDirectory, selectSession } from "./sessions.ts";
 import { Subagent } from "./subagent.ts";
 
@@ -94,16 +99,31 @@ export interface DurableViewSource {
 /** What the TUI may ask for. */
 export interface DurableController {
 	/** Prompt when idle; otherwise steer or queue a follow-up. */
-	submit(text: string, whenBusy: "steer" | "followUp"): Promise<void>;
+	submit(text: string, whenBusy: "steer" | "followUp", options?: SubmitInputOptions): Promise<void>;
 	/** Admit one headless input and wait for its durable terminal settlement. */
-	submitAndWait(content: UserInput, whenBusy: "steer" | "followUp"): Promise<SettledSubmissionRecord>;
+	submitAndWait(
+		content: UserInput,
+		whenBusy: "steer" | "followUp",
+		options?: SubmitInputOptions,
+	): Promise<SubmitOutcome>;
 	compact(instructions: string | undefined): Promise<void>;
 	setThinking(level: ModelThinkingLevel): Promise<void>;
 	setSteeringMode(mode: "all" | "one-at-a-time"): Promise<void>;
 	setFollowUpMode(mode: "all" | "one-at-a-time"): Promise<void>;
 	setAutoCompaction(enabled: boolean): Promise<void>;
 	setAutoRetry(enabled: boolean): Promise<void>;
-	executeBash(command: string, excludeFromContext: boolean, onChunk?: (chunk: string) => void): Promise<BashResult>;
+	/**
+	 * Runs a bash command and records its result. `operations` replaces the local execution, as an extension's
+	 * `user_bash` operations do.
+	 */
+	executeBash(
+		command: string,
+		excludeFromContext: boolean,
+		onChunk?: (chunk: string) => void,
+		operations?: BashOperations,
+	): Promise<BashResult>;
+	/** Records a bash result an extension ran itself, as legacy `recordBashResult` does. */
+	recordBashResult(command: string, result: BashResult, excludeFromContext: boolean): Promise<void>;
 	abortBash(): void;
 	getAutoCompaction(): boolean;
 	getAutoRetry(): boolean;
@@ -116,8 +136,20 @@ export interface DurableController {
 	toggleTasks(): Promise<void>;
 	/** Show and talk to another conversation. */
 	switchConversation(id: ConversationId): Promise<void>;
-	expandPrompt(text: string): string;
 }
+
+/** Where a submitted input came from, as the `input` handlers see it. */
+export interface SubmitInputOptions {
+	readonly source?: InputSource;
+}
+
+/**
+ * What became of one submitted input. `handled` means an `input` handler took it, so nothing was submitted and there is
+ * no settlement to wait for.
+ */
+export type SubmitOutcome =
+	| { readonly handled: true }
+	| { readonly handled: false; readonly settled: SettledSubmissionRecord };
 
 export interface DurableModelSelection {
 	readonly provider?: string;
@@ -205,6 +237,11 @@ export interface OpenDurableResult {
 	 * stops the stream it replaces, and the returned one when it is done. Requires `eventStream`.
 	 */
 	readonly eventsOf: (conversationId: ConversationId) => Promise<AgentEventStream>;
+	/**
+	 * Calls `listener` with every extension handler failure, which the RPC adapter publishes as `extension_error`. The
+	 * notice is shown as well. Returns the unsubscribe.
+	 */
+	onExtensionError(listener: (error: ExtensionError) => void): () => void;
 	/** Ends the session: `session_shutdown` with `reason` (default "quit"), then the storage is closed. */
 	close(reason?: SessionShutdownEvent["reason"]): Promise<void>;
 }
@@ -265,7 +302,17 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		}
 		if (options.settingsOverrides !== undefined) services.settingsManager.applyOverrides(options.settingsOverrides);
 		const { modelRuntime, settingsManager } = services;
-		const durableModelRuntime = createDurableModelRuntime(modelRuntime);
+		// Cache warming starts from the request durable's generation task actually sends, so the refresh reuses that
+		// request's model, messages, thinking level, provider session, and request transforms.
+		let cacheWarmer: DurableCacheWarmer | undefined;
+		/** The transcript and model the warm run stands on, recorded when its request was sent. */
+		let warmBasis: { conversationId: ConversationId; entryIds: EntryId[] } | undefined;
+		const durableModelRuntime = createDurableModelRuntime(modelRuntime, {
+			onSessionRequest: (model, context, options) => {
+				warmBasis = { conversationId: current.id, entryIds: currentView?.entries.map((entry) => entry.id) ?? [] };
+				cacheWarmer?.start({ model, context, options: options ?? {} });
+			},
+		});
 		configureHarnessHttp(settingsManager);
 		const queueModes: {
 			steeringMode?: "all" | "one-at-a-time";
@@ -279,6 +326,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		// Installed before the Harness opens: its members are read when the Harness starts a request.
 		// Runs in flight: `ctx.isIdle()` answers false while one is.
 		let activeRuns = 0;
+		// The conversation a fork created, until the controller moves to it and its `session_start` is emitted.
+		let forkConversation: ConversationId | undefined;
 		let currentView: ConversationView | undefined;
 		let currentState: DurableView | undefined;
 		let state!: DurableView;
@@ -351,22 +400,72 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			},
 			getSessionName: () => undefined,
 		};
+		// Extension failures reach the RPC adapter as `extension_error` as well as the view's notices.
+		const extensionErrorListeners = new Set<(error: ExtensionError) => void>();
 		const host: ExtensionHost = createExtensionHost({
 			sessionManager,
 			services,
 			cwd: location.cwd,
+			mode: options.projectTrustContext?.mode ?? "print",
 			agentModel: () => {
 				const ref = agentOf(state.conversation).model;
 				return ref === undefined ? undefined : modelRuntime.getModel(ref.provider, ref.modelId);
 			},
 			abort: () => void controller.abort(),
 			compact: () => void controller.compact(undefined).catch(fail),
-			onExtensionError: (error) =>
-				notice("error", `Extension ${error.extensionPath} failed on ${error.event}: ${error.error}`),
+			onExtensionError: (error) => {
+				notice("error", `Extension ${error.extensionPath} failed on ${error.event}: ${error.error}`);
+				for (const listener of extensionErrorListeners) listener(error);
+			},
 			installTools: (extension) => registry.install(extension),
 			isIdle: () => activeRuns === 0,
 		});
 		registry.install(host.adapter);
+
+		cacheWarmer = new DurableCacheWarmer({
+			models: modelRuntime,
+			getMode: () => settingsManager.getCacheWarmingMode(),
+			decide: (event) => host.runner.emitCacheWarmingDecision(event),
+			promptTokens: () => {
+				const messages = (currentView?.entries ?? []).flatMap((entry) => entry.model ?? []);
+				for (let index = messages.length - 1; index >= 0; index--) {
+					const message = messages[index]!;
+					if (message.role !== "assistant") continue;
+					return message.usage.input + message.usage.cacheRead + message.usage.cacheWrite;
+				}
+				return 0;
+			},
+			isCurrent: (request) => {
+				const basis = warmBasis;
+				if (basis === undefined || basis.conversationId !== current.id) return false;
+				const ref = agentOf(state.conversation).model;
+				if (ref === undefined || ref.provider !== request.model.provider || ref.modelId !== request.model.id) {
+					return false;
+				}
+				// Entry ids are durable's stable identity: an appended entry keeps the request's prefix, a compaction or a
+				// branch change does not.
+				const entries = currentView?.entries ?? [];
+				return basis.entryIds.every((id, index) => entries[index]?.id === id);
+			},
+			recordUsage: async (model, usage) => {
+				const conversationId = current.id;
+				try {
+					await opened.commit(async (tx) => {
+						const problem = addWarmUsage(
+							(await tx.doc(UsageDoc, conversationId)).models,
+							`${model.provider}/${model.id}`,
+							usage,
+						);
+						if (problem !== undefined) {
+							report(new Error(`A cache refresh's usage was not recorded: ${problem}`));
+						}
+					}, context);
+				} catch (error) {
+					report(new Error("A cache refresh completed but its usage could not be recorded", { cause: error }));
+				}
+			},
+			report: (message) => notice("warning", message),
+		});
 
 		const pendingReports: unknown[] = [];
 		let report: (error: unknown) => void = (error) => pendingReports.push(error);
@@ -466,10 +565,12 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			else notice(diagnostic.type === "info" ? "info" : "warning", diagnostic.message);
 		}
 		currentView = conversation.value;
-		let unsubscribe = conversation.subscribe((value) => {
+		// The read-only session facade reads the conversation the controller talks to, so every view of one follows the move.
+		const followConversation = (value: ConversationView): void => {
 			currentView = value;
 			update({ conversation: value });
-		});
+		};
+		let unsubscribe = conversation.subscribe(followConversation);
 		// Subagents appear as their conversations are created. A commit listener only records; it calls no Session API.
 		const unsubscribeCommits = harness.subscribeCommits((publication) => {
 			let conversations = state.conversations;
@@ -516,6 +617,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					const messages = state.conversation.entries
 						.flatMap((entry) => (entry.model ?? []) as AgentMessage[])
 						.slice(startingMessageCount);
+					// `streaming` warming ends with the run it belongs to; `idle` warming continues under its own horizon.
+					cacheWarmer?.onAgentSettled();
 					await host.settled(isAborted(settled), messages);
 					return settled;
 				})
@@ -541,11 +644,108 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 				throw new Error(ref === undefined ? "No model selected" : "Current model is unavailable");
 			return model;
 		};
+		/** Legacy's skill and prompt-template expansion, applied to the text of an input. */
+		const expandInput = (content: UserInput): UserInput => {
+			const prompts = services.resourceLoader.getPrompts().prompts;
+			return typeof content === "string"
+				? expandPromptTemplate(content, prompts)
+				: content.map((part) =>
+						part.type === "text" ? { ...part, text: expandPromptTemplate(part.text, prompts) } : part,
+					);
+		};
+		const isStreaming = (): boolean => {
+			const live = state.conversation.docs["nyan.live"] as
+				| { readonly run?: unknown; readonly generation?: unknown }
+				| undefined;
+			return live?.run !== undefined || live?.generation !== undefined;
+		};
+		/**
+		 * Legacy's input pipeline, in its order: the `input` handlers first, then skill and prompt-template expansion.
+		 * Undefined when a handler took the input, so the submission does not happen.
+		 */
+		const prepareInput = async (
+			content: UserInput,
+			whenBusy: "steer" | "followUp",
+			options: SubmitInputOptions | undefined,
+		): Promise<UserInput | undefined> => {
+			const transformed = await host.input(content, {
+				...(options?.source === undefined ? {} : { source: options.source }),
+				...(isStreaming() ? { streamingBehavior: whenBusy } : {}),
+			});
+			return transformed === undefined ? undefined : expandInput(transformed);
+		};
+		// `agent_start` and `turn_start` reach extensions only through the committed stream, which the built-in `herdr` and
+		// `mcp` integrations read. One watch follows the conversation the controller talks to, so a fork or a switch moves it.
+		let runEvents: AgentEventStream | undefined;
+		const watchRunEvents = async (conversationId: ConversationId): Promise<void> => {
+			const previous = runEvents;
+			runEvents = undefined;
+			if (previous !== undefined) await previous.stop();
+			if (!host.runEvents) return;
+			const stream = await watchEvents(opened, conversationId, context);
+			runEvents = stream;
+			stream.start((events) => host.agentEvents(events));
+		};
 		const bashAbortControllers = new Set<AbortController>();
+		/**
+		 * Write a finished bash run as a `bashExecution` entry: its data always, its output for the model unless it is
+		 * excluded. `conversationId` is the one the command started in, so a switch meanwhile cannot take the record.
+		 */
+		const recordBashResult = async (
+			conversationId: ConversationId,
+			command: string,
+			result: BashResult,
+			excludeFromContext: boolean,
+		): Promise<void> => {
+			const timestamp = Date.now();
+			const message: BashExecutionMessage = {
+				role: "bashExecution",
+				command,
+				output: result.output,
+				exitCode: result.exitCode,
+				cancelled: result.cancelled,
+				truncated: result.truncated,
+				...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
+				timestamp,
+				excludeFromContext,
+			};
+			try {
+				await opened.commit(
+					(tx) =>
+						tx.appendEntry(conversationId, {
+							kind: "bashExecution",
+							data: {
+								command,
+								output: result.output,
+								exitCode: result.exitCode ?? null,
+								cancelled: result.cancelled,
+								truncated: result.truncated,
+								excludeFromContext,
+								...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
+							},
+							...(excludeFromContext
+								? {}
+								: {
+										model: [
+											{
+												role: "user" as const,
+												content: bashExecutionToText(message),
+												timestamp,
+											},
+										],
+									}),
+						}),
+					context,
+				);
+			} catch (error) {
+				throw new Error("Bash completed but its result could not be recorded", { cause: error });
+			}
+		};
 		const executeBash = async (
 			command: string,
 			excludeFromContext: boolean,
 			onChunk?: (chunk: string) => void,
+			customOperations?: BashOperations,
 		): Promise<BashResult> => {
 			const abortController = new AbortController();
 			bashAbortControllers.add(abortController);
@@ -567,68 +767,31 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 						return { exitCode: result.value.exitCode };
 					},
 				};
-				const result = await executeBashWithOperations(command, cwd, operations, {
+				const result = await executeBashWithOperations(command, cwd, customOperations ?? operations, {
 					signal: abortController.signal,
 					onChunk,
 				});
-				const timestamp = Date.now();
-				const message: BashExecutionMessage = {
-					role: "bashExecution",
-					command,
-					output: result.output,
-					exitCode: result.exitCode,
-					cancelled: result.cancelled,
-					truncated: result.truncated,
-					...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
-					timestamp,
-					excludeFromContext,
-				};
-				try {
-					await opened.commit(
-						(tx) =>
-							tx.appendEntry(conversationId, {
-								kind: "bashExecution",
-								data: {
-									command,
-									output: result.output,
-									exitCode: result.exitCode ?? null,
-									cancelled: result.cancelled,
-									truncated: result.truncated,
-									excludeFromContext,
-									...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
-								},
-								...(excludeFromContext
-									? {}
-									: {
-											model: [
-												{
-													role: "user" as const,
-													content: bashExecutionToText(message),
-													timestamp,
-												},
-											],
-										}),
-							}),
-						context,
-					);
-				} catch (error) {
-					throw new Error("Bash completed but its result could not be recorded", { cause: error });
-				}
+				await recordBashResult(conversationId, command, result, excludeFromContext);
 				return result;
 			} finally {
 				bashAbortControllers.delete(abortController);
 			}
 		};
 		const controller: DurableController = {
-			submit: (text, whenBusy) =>
-				command(async () => {
-					await host.beforePrompt(text);
-					watchAnswer(await current.submit({ type: "input", content: text, whenBusy }, context));
-				}),
-			submitAndWait: async (content, whenBusy) => {
-				await host.beforePrompt(content);
-				const submission = await current.submit({ type: "input", content, whenBusy }, context);
-				return settle(submission);
+			submit: async (text, whenBusy, options) => {
+				await command(async () => {
+					const prepared = await prepareInput(text, whenBusy, options);
+					if (prepared === undefined) return;
+					await host.beforePrompt(prepared);
+					watchAnswer(await current.submit({ type: "input", content: prepared, whenBusy }, context));
+				});
+			},
+			submitAndWait: async (content, whenBusy, options) => {
+				const prepared = await prepareInput(content, whenBusy, options);
+				if (prepared === undefined) return { handled: true };
+				await host.beforePrompt(prepared);
+				const submission = await current.submit({ type: "input", content: prepared, whenBusy }, context);
+				return { handled: false, settled: await settle(submission) };
 			},
 			compact: (instructions) =>
 				command(async () => {
@@ -681,6 +844,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					queueModes.retryEnabled = enabled;
 				}),
 			executeBash,
+			recordBashResult: (command, result, excludeFromContext) =>
+				recordBashResult(current.id, command, result, excludeFromContext),
 			abortBash: () => {
 				for (const abortController of bashAbortControllers) abortController.abort();
 			},
@@ -706,7 +871,6 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					await current.configure({ thinkingLevel: next }, context);
 					await host.thinkingSelected(next, level);
 				}),
-			expandPrompt: (text) => expandPromptTemplate(text, services.resourceLoader.getPrompts().prompts),
 			setModel: (ref) =>
 				command(async () => {
 					const model = modelRuntime.getModel(ref.provider, ref.modelId);
@@ -717,6 +881,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 							? undefined
 							: modelRuntime.getModel(previousRef.provider, previousRef.modelId);
 					const thinking: ModelThinkingLevel = agentOf(state.conversation).thinkingLevel ?? "off";
+					cacheWarmer?.cancel("model changed");
 					await current.configure({ model: ref, thinkingLevel: clampThinkingLevel(model, thinking) }, context);
 					await host.modelSelected(model, previousModel, "set");
 				}),
@@ -733,6 +898,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 				}),
 			switchConversation: (id) =>
 				command(async () => {
+					// The forked conversation's transcript is not the warmed request's prefix.
+					cacheWarmer?.cancel("conversation switched");
 					const next = await opened.conversation(id, context);
 					if (next === undefined) throw new Error(`Conversation ${id} does not exist`);
 					const nextState = await next.viewState(context);
@@ -740,7 +907,19 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					conversation.dispose();
 					current = next;
 					conversation = nextState;
-					unsubscribe = nextState.subscribe((value) => update({ conversation: value }));
+					unsubscribe = nextState.subscribe(followConversation);
+					await watchRunEvents(next.id);
+					// The fork's `session_start` follows the move, so an extension that rebuilds state sees the new conversation.
+					const forked = forkConversation === id;
+					forkConversation = undefined;
+					if (forked) {
+						// A durable fork keeps this session's file; only the conversation it makes changes.
+						await host.start({
+							type: "session_start",
+							reason: "fork",
+							previousSessionFile: join(state.session.directory, "session.sqlite"),
+						});
+					}
 				}),
 		};
 
@@ -755,8 +934,31 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		await host.start(
 			options.sessionStartEvent ?? { type: "session_start", reason: location.created ? "startup" : "resume" },
 		);
+		await watchRunEvents(root.id);
 		// Recovered work from an interrupted turn continues now.
 		harness.resume();
+
+		// A fork keeps this session's file, so its `session_start` reports the same file as the session it came from; the
+		// conversation the controller moves to is what differs (Decision #24, Decision #31).
+		const recordFork = (outcome: ForkOutcome): ForkOutcome => {
+			forkConversation = outcome.cancelled ? undefined : outcome.conversationId;
+			return outcome;
+		};
+		const productOps = createDurableSessionOps({
+			harness: opened,
+			conversation: () => current,
+			session: () => state.session,
+			context,
+			forkLifecycle: {
+				beforeFork: (entryId, position) => host.beforeFork(entryId, position),
+				shutdown: (reason) => host.shutdown(reason),
+			},
+		});
+		const sessionOps: DurableSessionOps = {
+			...productOps,
+			fork: async (at) => recordFork(await productOps.fork(at)),
+			clone: async () => recordFork(await productOps.clone()),
+		};
 
 		let closing: Promise<void> | undefined;
 		return {
@@ -775,24 +977,26 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			promptTemplates: services.resourceLoader.getPrompts().prompts,
 			extensionHost: host,
 			services,
-			sessionOps: createDurableSessionOps({
-				harness: opened,
-				conversation: () => current,
-				session: () => state.session,
-				context,
-			}),
+			sessionOps,
 			eventsOf: async (conversationId) => {
 				if (options.eventStream !== true) throw new Error("This open has no event stream");
 				return watchEvents(opened, conversationId, context);
 			},
+			onExtensionError: (listener) => {
+				extensionErrorListeners.add(listener);
+				return () => extensionErrorListeners.delete(listener);
+			},
 			close(reason = "quit") {
 				closing ??= (async () => {
+					// No timer and no request survive a closed session.
+					cacheWarmer?.cancel("session closed");
 					unsubscribe();
 					unsubscribeCommits();
 					conversation.dispose();
 					closeTasks();
 					try {
 						await host.shutdown(reason);
+						await runEvents?.stop();
 						await events?.stop();
 						// Close writes no outcome: a running turn resumes with --continue.
 						await opened.close(context);

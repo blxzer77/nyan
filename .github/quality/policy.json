@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "pullRequest": {
     "targetP95Minutes": 10,
-    "deepGateTimeoutMinutes": 30,
+    "deepGateTimeoutMinutes": 20,
     "impactAnalysisFailClosed": true,
     "aiBlockingRequiresValidation": true,
     "concurrencyBudget": {
@@ -17,14 +17,15 @@
       "static",
       "node-tests",
       "bun-tests",
-      "windows-smoke",
-      "mcp-conformance",
       "supply-chain"
     ],
-    "advisory": [
-      "ai-review"
-    ],
-    "selfHostedShards": 3
+    "advisory": [],
+    "selfHostedShards": 3,
+    "conditionalRequired": {
+      "windows-smoke": "windows_required",
+      "mcp-conformance": "mcp_required",
+      "deep-gate": "deep_required"
+    }
   },
   "criticalPaths": [
     "packages/ai/src/api/**",

@@ -20,6 +20,7 @@ import type {
 	ProjectTrustContext,
 	ToolDefinition,
 } from "../src/core/extensions/types.ts";
+import { settlement } from "./durable-submission.ts";
 
 /**
  * The durable tool search, tested on its own: it is off until activated, it loads a deferred tool that matches its query
@@ -138,7 +139,7 @@ describe("durable tool search", () => {
 				},
 			],
 		);
-		expect(await current.controller.submitAndWait("go", "followUp")).toMatchObject({ status: "done" });
+		expect(await settlement(current.controller.submitAndWait("go", "followUp"))).toMatchObject({ status: "done" });
 		expect(seen[0]?.offered).not.toContain("tool_search");
 		expect(seen[0]?.offered).not.toContain("late_tool");
 		expect(seen[1]?.offered).toContain("tool_search");
@@ -164,7 +165,7 @@ describe("durable tool search", () => {
 				},
 			],
 		);
-		expect(await current.controller.submitAndWait("go", "followUp")).toMatchObject({ status: "done" });
+		expect(await settlement(current.controller.submitAndWait("go", "followUp"))).toMatchObject({ status: "done" });
 		const search = entries.find((entry) => entry.name === "tool_search");
 		expect(search?.exposure).toBe("model-only");
 		expect(typeof search?.reachesTools).toBe("function");

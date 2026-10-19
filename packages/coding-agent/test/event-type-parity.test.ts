@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -109,11 +109,30 @@ interface ExtensionPackOptions {
 	readonly boundaryCustomEntry?: boolean;
 	readonly command?: boolean;
 	readonly throwsOnTurnEnd?: boolean;
+	/** Answers `user_bash` with operations that record the sandbox's own output. */
+	readonly sandboxBash?: boolean;
+	/** Answers `user_bash` with a finished result, so the command never runs. */
+	readonly answeredBash?: boolean;
 }
 
 function extensionPack(options: ExtensionPackOptions): InlineExtension {
 	return (pi) => {
 		if (options.tool === true) pi.registerTool(probeTool());
+		if (options.sandboxBash === true) {
+			pi.on("user_bash", () => ({
+				operations: {
+					exec: async (command: string, _cwd: string, exec: { onData: (data: Buffer) => void }) => {
+						exec.onData(Buffer.from(`sandboxed: ${command}\n`));
+						return { exitCode: 0 };
+					},
+				},
+			}));
+		}
+		if (options.answeredBash === true) {
+			pi.on("user_bash", () => ({
+				result: { output: "answered by the extension\n", exitCode: 0, cancelled: false, truncated: false },
+			}));
+		}
 		if (options.command === true) {
 			pi.registerCommand("probe", {
 				description: "Probe command",
@@ -509,6 +528,29 @@ describe("event type parity", () => {
 		});
 	});
 
+	test("json: an answer that finishes within one partial interval", async () => {
+		// The provider answers between two partial commits, so durable streams nothing; Decision #31 keeps one
+		// `message_update` before `message_end` anyway, because legacy publishes one per provider event.
+		const options: OpenOptions = { pack: extensionPack({}), responses: [text("hi")], tokensPerSecond: 0 };
+		await compare({
+			name: "json fast answer",
+			legacy: () => legacyJson(options, ["say hi"]),
+			durable: () => durableJson(options, ["say hi"]),
+			check: (legacy, durable) => {
+				const assistantEnd = durable.findIndex(
+					(record) =>
+						record.type === "message_end" && (record.message as Record_ | undefined)?.role === "assistant",
+				);
+				expect(durable[assistantEnd - 1]).toMatchObject({
+					type: "message_update",
+					assistantMessageEvent: { type: "done", reason: "stop" },
+				});
+				expect(ofType(durable, "message_update")).toHaveLength(1);
+				expect(ofType(legacy, "message_update").length).toBeGreaterThan(0);
+			},
+		});
+	});
+
 	test("json: one tool round with partial results", async () => {
 		const options: OpenOptions = {
 			pack: extensionPack({ tool: true }),
@@ -712,9 +754,14 @@ describe("event type parity", () => {
 			},
 			{ pack: extensionPack({ throwsOnTurnEnd: true }), responses: [text(longAnswer)] },
 			{
-				// Legacy RPC publishes a failed handler as `extension_error`. Durable reports it as a notice on the view
-				// (`Extension <path> failed on <event>`) and has no host member that reaches the RPC stream.
-				onlyLegacy: ["extension_error"],
+				check: (legacy, durable) => {
+					// The failed handler is published with its own extension path, event, and message, as legacy does; the
+					// view's notice stays.
+					expect(ofType(durable, "extension_error")).toEqual(ofType(legacy, "extension_error"));
+					expect(
+						ofType(durable, "extension_error").map((record) => ({ event: record.event, error: record.error })),
+					).toEqual([{ event: "turn_end", error: "probe handler failure" }]);
+				},
 			},
 		);
 	});
@@ -759,6 +806,106 @@ describe("event type parity", () => {
 			},
 			{ pack: extensionPack({}), responses: [] },
 		);
+	});
+
+	test("rpc: a queued steer that is cleared", async () => {
+		await compareRpc(
+			"rpc queue update",
+			async (rpc) => {
+				const mark = rpc.mark();
+				const prompt = await rpc.sendLater({ type: "prompt", message: "hello" });
+				await rpc.waitFor(mark, "message_update");
+				const steer = await rpc.sendLater({ type: "steer", message: "queued text" });
+				await rpc.waitFor(mark, "queue_update");
+				const cleared = await rpc.send({ type: "clear_queue" });
+				expect(cleared.data).toEqual({ steering: ["queued text"], followUp: [] });
+				await rpc.waitForResponse(steer);
+				await rpc.waitForResponse(prompt);
+				await rpc.waitIdle();
+				return rpc.since(mark);
+			},
+			{
+				pack: extensionPack({}),
+				responses: [text(`${longAnswer} and then even more words than that`)],
+				tokensPerSecond: 4,
+			},
+			{
+				check: (legacy, durable) => {
+					const queues = (records_: Record_[]): unknown[] =>
+						ofType(records_, "queue_update").map((record) => ({
+							steering: record.steering,
+							followUp: record.followUp,
+						}));
+					// The queued text, then the queue the clearing leaves, read from `nyan.inbox`.
+					expect(queues(durable)).toEqual([
+						{ steering: ["queued text"], followUp: [] },
+						{ steering: [], followUp: [] },
+					]);
+					expect(queues(durable)).toEqual(queues(legacy));
+				},
+			},
+		);
+	});
+
+	test("rpc: bash runs through the operations a user_bash handler answers", async () => {
+		const marker = join(cwd, "local-shell-ran.txt");
+		await compareRpc(
+			"rpc user_bash operations",
+			async (rpc) => {
+				const mark = rpc.mark();
+				const response = await rpc.send({ type: "bash", command: `touch ${marker}` });
+				expect(response.data).toMatchObject({ output: `sandboxed: touch ${marker}\n`, exitCode: 0 });
+				return rpc.since(mark);
+			},
+			{ pack: extensionPack({ sandboxBash: true }), responses: [] },
+		);
+		// The handler's operations replaced the local shell, on both paths.
+		await expect(access(marker)).rejects.toThrow();
+	});
+
+	test("rpc: bash answers with a result a user_bash handler ran itself", async () => {
+		const marker = join(cwd, "answered-bash.txt");
+		await compareRpc(
+			"rpc user_bash result",
+			async (rpc) => {
+				const mark = rpc.mark();
+				const response = await rpc.send({ type: "bash", command: `touch ${marker}` });
+				expect(response.data).toEqual({
+					output: "answered by the extension\n",
+					exitCode: 0,
+					cancelled: false,
+					truncated: false,
+				});
+				// The result is recorded as the command's entry, so the next request carries it. Legacy stores it under
+				// its own `bashExecution` message role; durable keeps that data on the entry and its model message is the
+				// user message the output becomes.
+				await rpc.send({ type: "get_entries" });
+				return rpc.since(mark);
+			},
+			{ pack: extensionPack({ answeredBash: true }), responses: [text(longAnswer)] },
+			{
+				check: (legacy, durable) => {
+					const recorded = (records_: Record_[]): (Record_ | undefined)[] => {
+						const response = records_.find(
+							(record) => record.type === "response" && record.command === "get_entries",
+						)?.data as { entries: Record_[] };
+						return response.entries.flatMap((entry) =>
+							entry.message === undefined ? [] : [entry.message as Record_],
+						);
+					};
+					expect(recorded(legacy)).toEqual([
+						expect.objectContaining({ role: "bashExecution", output: "answered by the extension\n" }),
+					]);
+					expect(recorded(durable)).toEqual([
+						expect.objectContaining({
+							role: "user",
+							content: expect.stringContaining("answered by the extension"),
+						}),
+					]);
+				},
+			},
+		);
+		await expect(access(marker)).rejects.toThrow();
 	});
 
 	test("rpc: set_session_name", async () => {

@@ -17,6 +17,7 @@ import { ENV_AGENT_DIR } from "../src/config.ts";
 import { type OpenDurableResult, openDurable } from "../src/core/durable/runtime.ts";
 import type { ExtensionAPI, InlineExtension, ProjectTrustContext } from "../src/core/extensions/types.ts";
 import { builtInExtensions } from "../src/extensions/index.ts";
+import { settlement } from "./durable-submission.ts";
 
 /**
  * MCP acceptance for the durable path. The server is the shared stdio fixture from packages/mcp, started as a local child
@@ -112,7 +113,7 @@ test("an MCP tool is offered, runs in a local stdio child, and the child exits w
 	});
 	let pid: number | undefined;
 	try {
-		const settled = await durable.controller.submitAndWait("go", "followUp");
+		const settled = await settlement(durable.controller.submitAndWait("go", "followUp"));
 		expect(settled.status).toBe("done");
 		expect(toolName, JSON.stringify({ offered, notices: durable.view.current().notices })).toBeDefined();
 		expect(offered[0]).toContain(toolName);
@@ -195,7 +196,7 @@ test("an MCP tool with the default exposure is reached through codemode: MCP act
 	});
 	let pid: number | undefined;
 	try {
-		expect((await durable.controller.submitAndWait("go", "followUp")).status).toBe("done");
+		expect((await settlement(durable.controller.submitAndWait("go", "followUp"))).status).toBe("done");
 		expect(offered[1]).toContain("codemode");
 		expect(offered[1]).not.toContain("mcp__probe__echo");
 		const last = (JSON.parse(messages[2] ?? "[]") as { role: string; isError?: boolean; content?: unknown }[])

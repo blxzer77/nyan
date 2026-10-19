@@ -1,0 +1,46 @@
+{
+	"include": ["packages/*/test/**/*.ts", "scripts/*.test.mjs", "scripts/*.test.ts"],
+	"exclude": [
+		"packages/ai/src/providers/data/**",
+		"packages/*/dist/**",
+		".ci/model-data/**",
+		"packages/coding-agent/install-lock/**"
+	],
+	"rules": [
+		{
+			"path": "packages/*/test/**/*.ts",
+			"merge_system_rule": true,
+			"rule": "You are reviewing test code. For each test, decide whether it would fail if the implementation it covers were wrong, and report the ones that would not.\n\n- Tautological test: the assertion restates the implementation (the same arithmetic, branch, or string copied out of the code) instead of the contract. Say which contract fact it should have asserted.\n- Weak assertion: `toBeDefined`, `toBeTruthy`, `typeof x === \"function\"`, `expect.any(...)`, or a length check where an exact value is knowable. State the exact value.\n- Over-mocking: a mock, spy, or stub of an internal module, a private function, or a class method. Only a real boundary may be faked (provider HTTP, filesystem, clock, network, subprocess). A test whose only assertion is on a recorded call tests the mock.\n- Missing boundary: for numeric, string, collection, or time logic, the cases the contract names (empty, one, maximum, zero, negative, unicode, timezone) are absent.\n- Missing failure path: cancellation, restart after a crash, a duplicate request whose effect must not run twice, and an unknown outcome that must be surfaced rather than reported as success.\n- A test that asserts on the current wrong behavior rather than the documented behavior.\n- A skip without the platform that cannot run the test."
+		},
+		{
+			"path": "scripts/*.test.{mjs,ts}",
+			"merge_system_rule": true,
+			"rule": "You are reviewing tests of repository scripts. Each test must observe the script's external effect (the file it wrote, the process it ran, its exit code or its output), not an internal helper. A test that only exercises a fixture does not prove the script works. Report a script with no test that observes its real effect, and a test that asserts on the fixture instead of the script."
+		},
+		{
+			"path": "packages/durable/src/**",
+			"merge_system_rule": true,
+			"rule": "This package owns durable state. For every change, identify who owns each fact and what happens after a crash, a cancellation, and a restart.\n\n- Report a second source of truth for a conversation entry, a task phase, a receipt, or a stored artifact.\n- Report a path where a partial or unknown side effect can be reported as success.\n- Report an effect that can run twice without idempotency, and an operation that resumes without proof that continuing is safe.\n- A caught exception is not recovery. Only the owner of the state can prove that continuing is safe; report a `catch` that continues without that proof.\n- Report a committed write whose failure leaves earlier writes inconsistent, and an uncommitted intent with no recovery path."
+		},
+		{
+			"path": "packages/coding-agent/src/**",
+			"merge_system_rule": true,
+			"rule": "Follow these rules for the CLI and its product shell.\n\n- Report registrations, listeners, subprocesses, temporary files, and workers that are not released on every path, including the error and cancellation paths.\n- Report a user-visible message, error, or model-visible text that does not match what the code does.\n- Report an experimental, example, or candidate module described as a product feature.\n- Report a hardcoded product name, directory, or environment variable that `src/identity.ts` or `src/config.ts` already owns, and any `pi`, `PI_`, or `.pi` name.\n- Report a default URL for a service this repository does not operate."
+		},
+		{
+			"path": "packages/{ai,agent,protocol,client,server,mcp,codemode,chord,telemetry,tui}/src/**",
+			"merge_system_rule": true,
+			"rule": "Check the contract this change makes public.\n\n- Report a cross-package identifier, session event, tool result, or error without a stable discriminant, and a `switch` whose default branch does not report the unhandled variant.\n- Report a new export that another package must depend on without a documented reason.\n- Report a `type` narrowing assertion, an `any`, or a non-erasable TypeScript construct (parameter property, `enum`, `namespace`, `import =`).\n- Report a static import cycle across packages, and an `import()` outside deliberate lazy loading.\n- Report a test that assumes Node where the code must also run on Bun, or the reverse."
+		},
+		{
+			"path": ".github/workflows/**",
+			"merge_system_rule": true,
+			"rule": "Review this workflow as a claim about what has been verified.\n\n- Report a step that can pass without proving what its name claims, and a required status check that a renamed job would silently break.\n- Report a job whose result cannot be used by the job that depends on it, and a `needs`/`if` combination that skips a required job.\n- Report a secret, token, or internal address written in the clear, and an external action not pinned to a 40-character commit SHA.\n- Report a self-hosted runner scheduled from a fork-triggered event, and a pull-request job that checks out untrusted code on it.\n- Report a timeout, a retry, or a cache policy that assumes a behaviour of the runner that nothing verifies."
+		},
+		{
+			"path": "**/*",
+			"merge_system_rule": true,
+			"rule": "Report a violation of a rule stated in `AGENTS.md` or in the `AGENTS.md` of the package being changed.\n\n- A module that imports across a layer boundary that `docs/architecture/layers.json` forbids, or a change to `layers.json` that loosens a rule to make a check pass.\n- A change that breaks something a released version depends on (session files, settings, `auth.json`, durable storage, CLI flags, `NYAN_*` variables, package exports) without saying so.\n- A new dependency, or a lockfile change, that was not reviewed as code.\n- A behaviour added outside an extension point, or product logic placed in the agent loop without a note recording the ownership change.\n- A documented claim that the change does not support: a comment, a changelog entry, a doc page, or a test name that describes behaviour the code does not have."
+		}
+	]
+}
