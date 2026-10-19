@@ -88,7 +88,7 @@ Destination values: **parity** (already there), **port** (batch named), **reduce
 | `/compact [instructions]` | Compacts | parity | — |
 | `/resume` | Session picker for the cwd, then switch | none | port R1 through the RPC `switch_session` reopen path; blocked on request #2 |
 | `/reload` | Reloads keybindings, extensions, skills, prompts, themes, and context files | none | port R3 by reopening the same session directory without the cached services, which is what reloads extensions |
-| `/quit` | Shuts down and prints the resume command | `ctrl+c` and `ctrl+d` exit; no `/quit`, no resume hint | port R1 |
+| `/quit` | Shuts down and prints the resume command | `ctrl+c` and `ctrl+d` exit; no `/quit`, and the resume hint is dropped (durable sessions cannot be named on the command line, Decision #25) | port R1 |
 | `/tasks`, `/agents` (durable only) | — | parity | — |
 | `/debug`, `/arminsayshi` (not in `BUILTIN_SLASH_COMMANDS`) | Writes a render dump; plays an easter egg | none | n/a: undocumented and tied to the main-screen renderer; no user-facing contract to keep |
 
@@ -199,7 +199,11 @@ behaviour tests.
 ### R1 — session commands (`r-tui-r1-session`)
 
 `/new`, `/resume`, `/name`, `/session`, `/fork`, `/clone`, `/quit`, plus the session name in the
-footer and the resume hint on exit.
+footer.
+
+The resume hint legacy prints on exit is not ported: a durable session cannot be named on the command
+line yet (Decision #25), and `--continue` opens the newest session of the directory, which is not
+necessarily the one that just ended.
 
 - A reopen seam in `modes/durable/main.ts`: it owns `openDurable`, so it exposes a host that can
   close the current open and open the next one with the previous `services`, exactly as RPC's
@@ -210,9 +214,13 @@ footer and the resume hint on exit.
   already emitted by G1b. `/clone` is `sessionOps.clone`.
 - `/session` is a read-only panel from `view` and `sessionOps.entries()`; it must not claim a cache
   warming status the durable path does not render (that surface is N9's).
-- `/resume` needs a lister for the current cwd's durable sessions. `core/durable/sessions.ts` is
-  r-fix's file, so this batch asks for one exported function rather than duplicating the directory
-  policy (request #2).
+- `/resume` lists the siblings of the open session's directory, which are exactly the sessions of
+  the same working directory, so no cwd hash is recomputed and `core/durable/sessions.ts` needs no
+  change.
+- A `/resume` reopens the target before the current session shuts down, so a bad path or a lock
+  leaves the current session intact. `openDurable` gained `deferSessionStart` for that order: without
+  it the new session's `session_start` reaches extensions before the old session's
+  `session_shutdown`, which would undo the new session's extension state.
 
 ### R2 — user bash and output commands (`r-tui-r2-bash-io`)
 
@@ -258,10 +266,6 @@ only records "it called the controller" is not covered.
    extension UI context once, before the first prompt; `new_session` and `switch_session` open a new
    `ExtensionRunner` and never re-bind it, so extension dialogs after a reopen run with
    `ctx.hasUI === false`. Filed as a finding, not fixed here.
-2. **A durable session lister for `/resume`.** `core/durable/sessions.ts` (r-fix's file) owns the
-   `sessions-durable/<sha256(cwd)[0..24]>` layout. R1 needs one exported function that lists the
-   sessions of a cwd with their metadata; duplicating the hash and the name pattern in the TUI would
-   give the layout two owners.
 3. **`/share` and `/bug` file allowance** — see decision #35.
 
 ## Verification of this batch
@@ -273,3 +277,26 @@ only records "it called the controller" is not covered.
 - tmux, loopback `openai-completions` provider, temporary HOME: `/settings`, `/export out.html`, and
   `/tree` print their messages with no provider request recorded, while a plain prompt is sent.
   `!echo bash-ok` still reaches the provider — that is R2's work, recorded as it is.
+
+## R1 verification
+
+- `test/durable-tui-session-commands.test.ts` (11 cases, Node and Bun) drives the real command layer
+  against real durable sessions opened through `DurableSessionOwner`, with a recorded `DurableCommandUi`
+  port: the display name is stored in `session.json` and reflected back, `/session` reports the session
+  and its counts, `/fork` moves the conversation to the branch and stays put when the picker is
+  cancelled, `/clone` copies the conversation, `/quit` asks the TUI to exit, `/new` opens a new
+  directory and releases the previous session's lock, and `/resume` reopens the chosen directory after
+  the previous session's shutdown. `test/durable-tui-commands.test.ts` (47 cases) also pins the exact
+  route of the seven commands added here.
+- Mutations, each failing a named test: deleting `deferSessionStart` and `startSession` from the
+  resume path (the event-order case), not storing the name (the `/name` case), not switching to the
+  forked conversation (the `/fork` case), and opening the new session without closing the previous
+  one (the `/new` case).
+- tmux, same loopback provider and temporary HOME: `/name release line` printed
+  `Session name set: release line` and the footer showed the name, `/session` listed the session,
+  its counts, tokens, and cost, `/clone` switched to the copy, `/new` cleared the transcript and the
+  name, `/resume` listed only the other session of the directory and reopened it with its transcript
+  and name, `/fork` listed the user messages and switched to the branch, and `/quit` returned to the
+  shell. Every command produced zero provider requests.
+- Not fixed, recorded: a forked or cloned conversation is labelled `subagent N` in the footer and in
+  `/agents`, which is the label N2 task B2 recorded for a fork.

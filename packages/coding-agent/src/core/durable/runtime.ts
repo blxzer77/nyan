@@ -164,6 +164,12 @@ export interface OpenDurableOptions {
 	readonly sessionDirectory?: string;
 	/** Override the lifecycle event emitted after opening a session. */
 	readonly sessionStartEvent?: SessionStartEvent;
+	/**
+	 * Leave the session's `session_start` to the caller: it must call `startSession()` on the result. A caller that
+	 * replaces another session defers the start until the one being left has shut down, so an extension never sees a new
+	 * session's start followed by the old session's shutdown.
+	 */
+	readonly deferSessionStart?: boolean;
 	/** Attach the durable event stream for a headless adapter. */
 	readonly eventStream?: boolean;
 	readonly model?: DurableModelSelection;
@@ -220,6 +226,8 @@ export interface OpenDurableResult {
 	readonly extensionHost: ExtensionHost;
 	/** The services this open used; pass them to a later open in the same process. */
 	readonly services: DurableServices;
+	/** Present when `deferSessionStart` was set: emit this session's `session_start`, once, now. */
+	readonly startSession?: () => Promise<void>;
 	/** Session-wide product operations: queue clearing, entries, export, and the display name. */
 	readonly sessionOps: DurableSessionOps;
 	/**
@@ -923,9 +931,11 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		if (initial?.fallbackMessage !== undefined) notice("info", initial.fallbackMessage);
 		// The task panel starts open; /tasks hides it.
 		await controller.toggleTasks();
-		await host.start(
-			options.sessionStartEvent ?? { type: "session_start", reason: location.created ? "startup" : "resume" },
-		);
+		const sessionStartEvent = options.sessionStartEvent ?? {
+			type: "session_start" as const,
+			reason: location.created ? "startup" : "resume",
+		};
+		if (options.deferSessionStart !== true) await host.start(sessionStartEvent);
 		await watchRunEvents(root.id);
 		// Recovered work from an interrupted turn continues now.
 		harness.resume();
@@ -970,6 +980,13 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			extensionHost: host,
 			services,
 			sessionOps,
+			...(options.deferSessionStart === true
+				? {
+						startSession: async () => {
+							await host.start(sessionStartEvent);
+						},
+					}
+				: {}),
 			eventsOf: async (conversationId) => {
 				if (options.eventStream !== true) throw new Error("This open has no event stream");
 				return watchEvents(opened, conversationId, context);
