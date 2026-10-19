@@ -1,8 +1,10 @@
 import type { UsageState } from "@ny4n/durable";
 import type { SelectItem } from "@ny4n/tui";
+import { getChangelogPath } from "../../config.ts";
 import type { DurableRunnableCommand } from "../../core/durable/commands.ts";
 import type { DurableController, DurableView, Notice } from "../../core/durable/runtime.ts";
 import type { DurableSessionOps } from "../../core/durable/session-ops.ts";
+import { normalizeChangelogLinks, parseChangelog } from "../../utils/changelog.ts";
 import { formatTokens } from "../interactive/components/footer.ts";
 import { listSiblingSessions } from "./session-list.ts";
 
@@ -28,6 +30,10 @@ export interface DurableCommandUi {
 	showLines(lines: readonly string[]): void;
 	/** The display name changed: the footer shows the one stored beside the database. */
 	setSessionName(name: string | undefined): void;
+	/** Add rendered markdown to the transcript, as legacy's `/changelog` does. */
+	showMarkdown(markdown: string): void;
+	/** Copy text to the system clipboard. */
+	copy(text: string): Promise<void>;
 	notify(message: string, type?: Notice["level"]): void;
 	exit(): void;
 }
@@ -91,6 +97,12 @@ export class DurableCommands {
 			case "quit":
 				this.#ui.exit();
 				return;
+			case "export":
+				return this.#export(args);
+			case "copy":
+				return this.#copy();
+			case "changelog":
+				return this.#changelog();
 			case "model":
 			case "compact":
 			case "tasks":
@@ -102,6 +114,46 @@ export class DurableCommands {
 				throw new Error(`Unhandled durable command: ${JSON.stringify(unhandled)}`);
 			}
 		}
+	}
+
+	async #export(args: string): Promise<void> {
+		const { sessionOps } = this.#host.current();
+		const path = args.length === 0 ? undefined : args;
+		try {
+			const file =
+				path?.endsWith(".jsonl") === true ? await sessionOps.exportJsonl(path) : await sessionOps.exportHtml(path);
+			this.#ui.notify(`Session exported to: ${file}`);
+		} catch (error) {
+			this.#ui.notify(`Failed to export session: ${messageOf(error)}`, "error");
+		}
+	}
+
+	async #copy(): Promise<void> {
+		const text = lastAssistantText(this.#host.current().view);
+		if (text === undefined) {
+			this.#ui.notify("No agent messages to copy yet.", "error");
+			return;
+		}
+		try {
+			await this.#ui.copy(text);
+			this.#ui.notify("Copied last agent message to clipboard");
+		} catch (error) {
+			this.#ui.notify(messageOf(error), "error");
+		}
+	}
+
+	#changelog(): void {
+		const entries = parseChangelog(getChangelogPath());
+		if (entries.length === 0) {
+			this.#ui.notify("No changelog entries found.");
+			return;
+		}
+		this.#ui.showMarkdown(
+			entries
+				.toReversed()
+				.map((entry) => normalizeChangelogLinks(entry.content, entry))
+				.join("\n\n"),
+		);
 	}
 
 	async #newSession(): Promise<void> {
@@ -252,6 +304,20 @@ export class DurableCommands {
 	#unavailable(name: string): void {
 		this.#ui.notify(`/${name} is not available in this mode.`, "warning");
 	}
+}
+
+/** The newest assistant text of the shown conversation, as `/copy` takes it. */
+function lastAssistantText(view: DurableView): string | undefined {
+	for (const entry of [...view.conversation.entries].reverse()) {
+		const message = entry.model?.[0];
+		if (message?.role !== "assistant") continue;
+		const text = message.content
+			.flatMap((block) => (block.type === "text" ? [block.text] : []))
+			.join("")
+			.trim();
+		if (text.length > 0) return text;
+	}
+	return undefined;
 }
 
 function messageOf(error: unknown): string {

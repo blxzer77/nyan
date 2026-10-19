@@ -31,6 +31,7 @@ import {
 	VStack,
 } from "@ny4n/tui";
 import { getAgentDir } from "../../config.ts";
+import type { BashResult } from "../../core/bash-executor.ts";
 import { type DurableRunnableCommand, routeDurableInput } from "../../core/durable/commands.ts";
 import { customMessageView } from "../../core/durable/custom-message.ts";
 import { dispatchDurableExtensionCommand } from "../../core/durable/extension-commands.ts";
@@ -52,6 +53,7 @@ import { KeybindingsManager } from "../../core/keybindings.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { createAllToolRenderers } from "../../core/tools/renderers/index.ts";
 import { AssistantMessageComponent } from "../../modes/interactive/components/assistant-message.ts";
+import { BashExecutionComponent } from "../../modes/interactive/components/bash-execution.ts";
 import { CustomEditor } from "../../modes/interactive/components/custom-editor.ts";
 import { formatTokens } from "../../modes/interactive/components/footer.ts";
 import { type StatusIndicator, WorkingStatusIndicator } from "../../modes/interactive/components/status-indicator.ts";
@@ -68,6 +70,8 @@ import {
 	type Theme,
 	theme,
 } from "../../ui/theme/theme.ts";
+import { copyToClipboard } from "../../utils/clipboard.ts";
+import { runUserBash } from "./bash.ts";
 import { DurableCommands, type DurableReopenRequest } from "./commands.ts";
 
 const SELECT_THEME: SelectListTheme = {
@@ -246,6 +250,8 @@ class DurableTui {
 	readonly #editorContainer = new Container();
 	readonly #editor: CustomEditor;
 	readonly #cwd: string;
+	/** Padding inside output blocks, from the `outputPad` setting. */
+	readonly #outputPad: number;
 	/** The newest card per call ID; provider call IDs may repeat across turns. */
 	readonly #tools = new Map<string, ToolExecutionComponent>();
 	/** Every card shown, also older ones whose call ID a later turn reused. */
@@ -264,14 +270,19 @@ class DurableTui {
 	#lastViewNotices: DurableView["notices"] = [];
 	/** The newest view applied, so a footer change that arrives outside an update can redraw it. */
 	#lastView: DurableView | undefined = undefined;
+	/** The card of the bash command running now, if any. */
+	#bash: BashExecutionComponent | undefined = undefined;
+	/** The command that card runs: its `bashExecution` entry is that card, not a second one. */
+	#bashCommand: string | undefined = undefined;
 	/** The stored display name, shown in the footer; read from the session beside the database. */
 	#sessionName: string | undefined = undefined;
 	/** Set when the transcript was rebuilt: the next render repaints the screen and shows the end. */
 	#rebuilt = false;
 	#transcript: ScrollView;
 
-	constructor(cwd: string, handlers: Handlers) {
+	constructor(cwd: string, handlers: Handlers, outputPad = 1) {
 		this.#cwd = cwd;
+		this.#outputPad = outputPad;
 		this.#ui = new TuiAltScreen(new ProcessTerminal(), false, getAgentDir());
 		const keybindings = KeybindingsManager.create();
 		setKeybindings(keybindings);
@@ -468,6 +479,49 @@ class DurableTui {
 		this.#ui.requestRender(true);
 	}
 
+	/** Start a bash card for a command that is about to run. */
+	startBash(command: string, excludeFromContext: boolean): void {
+		this.#bash?.setComplete(undefined, true);
+		const component = new BashExecutionComponent(command, this.#ui, excludeFromContext, this.#outputPad);
+		this.#bash = component;
+		this.#bashCommand = command;
+		this.#chat.addChild(component);
+		this.#ui.requestRender();
+	}
+
+	/** Finish the running card with the command's result, as legacy's card does. */
+	finishBash(result: BashResult): void {
+		this.#bash?.setComplete(
+			result.exitCode,
+			result.cancelled,
+			result.truncated ? { truncated: true } : undefined,
+			result.fullOutputPath,
+		);
+		// The card stays until its `bashExecution` entry arrives: the entry is drawn as this card, not beside it.
+		this.#ui.requestRender();
+	}
+
+	/** Append streamed output to the running card and redraw. */
+	appendBash(chunk: string): void {
+		this.#bash?.appendOutput(chunk);
+		this.#ui.requestRender();
+	}
+
+	/** Drop the running card without a result: the command never ran. */
+	abandonBash(): void {
+		this.#bash = undefined;
+		this.#bashCommand = undefined;
+		this.#ui.requestRender();
+	}
+
+	/** Add rendered markdown to the transcript, as `/changelog` does. */
+	showMarkdown(markdown: string): void {
+		this.#chat.addChild(new Spacer(1));
+		this.#chat.addChild(new Markdown(markdown, 1, 1, getMarkdownTheme()));
+		this.#rebuilt = true;
+		this.#ui.requestRender(true);
+	}
+
 	/** Start again in another session: its entries, names, and notices are not the ones shown before. */
 	resetSessionView(): void {
 		this.#extensionNotices.length = 0;
@@ -655,6 +709,9 @@ class DurableTui {
 
 	#rebuild(entries: readonly EntryRecord[]): void {
 		this.#chat.clear();
+		// The transcript is rebuilt from entries, so the live bash card is no longer part of it.
+		this.#bash = undefined;
+		this.#bashCommand = undefined;
 		this.#discardTools();
 		this.#summaries.length = 0;
 		this.#rebuilt = true;
@@ -702,6 +759,38 @@ class DurableTui {
 			this.#summaries.push(summary);
 			this.#chat.addChild(new Spacer(1));
 			this.#chat.addChild(summary);
+		} else if (entry.kind === "bashExecution") {
+			// The card of the command that just ran is already in the transcript; its entry is not a second card.
+			if (this.#bash !== undefined && this.#bashCommand === bashCommandOf(entry)) {
+				// This card already shows the command and its result: clear the marker so the entry is not drawn again.
+				this.#bash = undefined;
+				this.#bashCommand = undefined;
+				return;
+			}
+			const data = (entry.data ?? {}) as {
+				readonly command?: string;
+				readonly output?: string;
+				readonly exitCode?: number | null;
+				readonly cancelled?: boolean;
+				readonly truncated?: boolean;
+				readonly excludeFromContext?: boolean;
+				readonly fullOutputPath?: string;
+			};
+			const card = new BashExecutionComponent(
+				data.command ?? "",
+				this.#ui,
+				data.excludeFromContext === true,
+				this.#outputPad,
+			);
+			card.setExpanded(this.#expanded);
+			if (data.output !== undefined) card.appendOutput(data.output);
+			card.setComplete(
+				data.exitCode ?? undefined,
+				data.cancelled === true,
+				data.truncated === true ? { truncated: true } : undefined,
+				data.fullOutputPath,
+			);
+			this.#chat.addChild(card);
 		} else if (entry.kind === "nyan.reset") this.#addText("[new context]");
 		else if (entry.kind === "custom_message") {
 			const view = customMessageView(entry);
@@ -750,6 +839,12 @@ class DurableTui {
 		this.#tools.set(callId, component);
 		return component;
 	}
+}
+
+/** The command a `bashExecution` entry recorded. */
+function bashCommandOf(entry: EntryRecord): string | undefined {
+	const data = entry.data as { readonly command?: unknown } | undefined;
+	return typeof data?.command === "string" ? data.command : undefined;
 }
 
 function describeTask(node: TaskGraphNode): string {
@@ -923,6 +1018,10 @@ export async function runDurableTui(
 			view.notify(route.message, "warning");
 			return true;
 		}
+		if (route.kind === "bash") {
+			void runBash(route.command, route.excludeFromContext);
+			return true;
+		}
 		switch (route.name) {
 			case "model":
 				selectModel(route.args.length === 0 ? undefined : route.args);
@@ -943,36 +1042,81 @@ export async function runDurableTui(
 		}
 	};
 
-	view = new DurableTui(source.current().session.cwd, {
-		submit: (text) => {
-			const trimmed = text.trim();
-			if (!trimmed) return;
-			if (runCommand(trimmed)) return;
-			const extensionHost = shown.extensionHost;
-			if (extensionHost === undefined) {
-				void shown.controller.submit(trimmed, "steer");
-				return;
-			}
-			void dispatchDurableExtensionCommand(extensionHost.runner, trimmed).then((handled) => {
-				if (!handled) void shown.controller.submit(trimmed, "steer");
+	/** Whether a bash command is running now: legacy refuses a second one. */
+	let bashRunning = false;
+
+	/**
+	 * Run a user bash command: the shared `!` flow, with the card this TUI draws and the durable executor.
+	 */
+	const runBash = async (command: string, excludeFromContext: boolean): Promise<void> => {
+		if (bashRunning) {
+			view.notify("A bash command is already running. Press Escape to cancel it first.", "warning");
+			return;
+		}
+		bashRunning = true;
+		try {
+			// The card exists before the first chunk: the `user_bash` handlers may answer synchronously.
+			view.startBash(command, excludeFromContext);
+			const outcome = await runUserBash({
+				command,
+				excludeFromContext,
+				cwd: shown.view.current().session.cwd,
+				...(shown.extensionHost === undefined ? {} : { extensionHost: shown.extensionHost }),
+				execute: (text, excluded, onChunk, operations) =>
+					shown.controller.executeBash(text, excluded, onChunk, operations),
+				record: (text, result, excluded) => shown.controller.recordBashResult(text, result, excluded),
+				view: {
+					append: (chunk) => view.appendBash(chunk),
+					finish: (result) => view.finishBash(result),
+				},
 			});
+			if (outcome.status === "extension-failed") view.abandonBash();
+		} catch (error) {
+			view.notify(`Bash command failed: ${error instanceof Error ? error.message : "Unknown error"}`, "error");
+			view.abandonBash();
+		} finally {
+			bashRunning = false;
+		}
+	};
+
+	view = new DurableTui(
+		shown.view.current().session.cwd,
+		{
+			submit: (text) => {
+				const trimmed = text.trim();
+				if (!trimmed) return;
+				if (runCommand(trimmed)) return;
+				const extensionHost = shown.extensionHost;
+				if (extensionHost === undefined) {
+					void shown.controller.submit(trimmed, "steer");
+					return;
+				}
+				void dispatchDurableExtensionCommand(extensionHost.runner, trimmed).then((handled) => {
+					if (!handled) void shown.controller.submit(trimmed, "steer");
+				});
+			},
+			followUp: (text) => {
+				if (runCommand(text.trim())) return;
+				const extensionHost = shown.extensionHost;
+				if (extensionHost === undefined) {
+					void shown.controller.submit(text, "followUp");
+					return;
+				}
+				void dispatchDurableExtensionCommand(extensionHost.runner, text.trim()).then((handled) => {
+					if (!handled) void shown.controller.submit(text, "followUp");
+				});
+			},
+			// Escape cancels the running bash command first, as it does in legacy.
+			abort: () => {
+				if (bashRunning) shown.controller.abortBash();
+				else void shown.controller.abort();
+			},
+			exit,
+			selectModel: () => selectModel(),
+			cycleThinking: () => void shown.controller.cycleThinking(),
 		},
-		followUp: (text) => {
-			if (runCommand(text.trim())) return;
-			const extensionHost = shown.extensionHost;
-			if (extensionHost === undefined) {
-				void shown.controller.submit(text, "followUp");
-				return;
-			}
-			void dispatchDurableExtensionCommand(extensionHost.runner, text.trim()).then((handled) => {
-				if (!handled) void shown.controller.submit(text, "followUp");
-			});
-		},
-		abort: () => void shown.controller.abort(),
-		exit,
-		selectModel: () => selectModel(),
-		cycleThinking: () => void shown.controller.cycleThinking(),
-	});
+		settings.getOutputPad(),
+	);
 
 	/** Render the open session the TUI holds now, and follow it. */
 	const follow = (): void => view.apply(shown.view.current());
@@ -1008,6 +1152,8 @@ export async function runDurableTui(
 			{
 				select: (title, items) => view.choose(title, items),
 				showLines: (lines) => view.showLines(lines),
+				showMarkdown: (markdown) => view.showMarkdown(markdown),
+				copy: (text) => copyToClipboard(text),
 				setSessionName: (name) => view.setSessionName(name),
 				notify: (message, type) => view.notify(message, type),
 				exit,

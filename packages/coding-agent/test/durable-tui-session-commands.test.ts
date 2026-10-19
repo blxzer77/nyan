@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, fauxText } from "@ny4n/ai";
@@ -28,6 +28,8 @@ const headless: Omit<ProjectTrustContext, "cwd"> = {
 	},
 };
 
+type Record_ = Record<string, unknown>;
+
 /** The TUI side of a command, as far as a command can observe it. */
 interface Screen extends DurableCommandUi {
 	readonly notices: string[];
@@ -35,6 +37,10 @@ interface Screen extends DurableCommandUi {
 	readonly choices: string[][];
 	/** The display name the footer was given, last. */
 	sessionName?: string;
+	/** The markdown a command rendered, if any. */
+	markdown?: string;
+	/** The text a command asked to copy, if any. */
+	copied?: string;
 	exited: boolean;
 	/** What the next `select` answers; a choice not offered makes the command fail, as a missing entry would. */
 	answer?: string;
@@ -56,6 +62,12 @@ function screen(): Screen {
 		},
 		setSessionName: (name) => {
 			state.sessionName = name;
+		},
+		showMarkdown: (markdown) => {
+			state.markdown = markdown;
+		},
+		copy: async (text) => {
+			state.copied = text;
 		},
 		notify: (message) => {
 			state.notices.push(message);
@@ -319,6 +331,80 @@ describe("durable TUI session commands", () => {
 		await commands.run("resume", "");
 		expect(ui.choices[0]).toEqual(listed.filter((session) => !session.current).map((session) => session.directory));
 		expect(ui.notices).toEqual(["Resume cancelled"]);
+	});
+
+	test("/export writes the session as HTML and as JSONL where asked", async () => {
+		const current = await open();
+		await say(current, "export me");
+		const ui = screen();
+		const commands = await commandsOf(current, ui);
+		// The exporter writes into an existing directory, as legacy's does.
+		const html = join(cwd, "session.html");
+		const jsonl = join(cwd, "session.jsonl");
+
+		await commands.run("export", html);
+		await commands.run("export", jsonl);
+
+		expect(ui.notices).toEqual([`Session exported to: ${html}`, `Session exported to: ${jsonl}`]);
+		expect((await stat(html)).size).toBeGreaterThan(0);
+		const lines = (await readFile(jsonl, "utf8"))
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line) as Record_);
+		expect(lines[0]).toMatchObject({ type: "session", cwd });
+		expect(lines.filter((line) => line.type === "message").map((line) => (line.message as Record_).role)).toEqual([
+			"user",
+			"assistant",
+		]);
+	});
+
+	test("/export reports a path it cannot write", async () => {
+		const current = await open();
+		const ui = screen();
+		const commands = await commandsOf(current, ui);
+
+		// A directory where the file should go: the write itself fails, and the command reports it.
+		await commands.run("export", cwd);
+
+		expect(ui.notices.length).toBe(1);
+		expect(ui.notices[0]).toMatch(/^Failed to export session: /u);
+	});
+
+	test("/copy hands the newest assistant text to the clipboard port", async () => {
+		const current = await open();
+		await say(current, "copy this");
+		const ui = screen();
+		const commands = await commandsOf(current, ui);
+
+		await commands.run("copy", "");
+
+		expect(ui.copied).toBe("first");
+		expect(ui.notices).toEqual(["Copied last agent message to clipboard"]);
+	});
+
+	test("/copy without an answer reports that there is nothing to copy", async () => {
+		const current = await open();
+		const ui = screen();
+		const commands = await commandsOf(current, ui);
+
+		await commands.run("copy", "");
+
+		expect(ui.copied).toBeUndefined();
+		expect(ui.notices).toEqual(["No agent messages to copy yet."]);
+	});
+
+	test("/changelog renders the package changelog as markdown", async () => {
+		const current = await open();
+		const ui = screen();
+		const commands = await commandsOf(current, ui);
+
+		await commands.run("changelog", "");
+
+		// `parseChangelog` keeps the released sections only, and `/changelog` lists them oldest first, as legacy does.
+		expect(ui.markdown).toContain("## [1.0.0]");
+		expect(ui.markdown).toContain("## [1.3.0]");
+		expect(ui.markdown?.startsWith("## [1.0.0]")).toBe(true);
+		expect(ui.notices).toEqual([]);
 	});
 
 	test("a caller without session operations reports the commands it cannot run", async () => {

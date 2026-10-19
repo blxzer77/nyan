@@ -16,6 +16,9 @@ export const DURABLE_TUI_COMMANDS = [
 	"fork",
 	"clone",
 	"quit",
+	"export",
+	"copy",
+	"changelog",
 	// Built-ins the parity work adds, one batch at a time.
 	"settings",
 	"tree",
@@ -54,12 +57,10 @@ const PENDING = {
 	settings: pending("settings"),
 	"scoped-models": pending("scoped-models"),
 	thinking: pending("thinking"),
-	export: pending("export"),
-	import: pending("import"),
+	import:
+		"durable sessions are not JSONL files, so /import cannot open one. Open it with `nyan --session <file>`, which reads legacy sessions read-only, or with `nyan --resume`.",
 	share: pending("share"),
 	bug: pending("bug"),
-	copy: pending("copy"),
-	changelog: pending("changelog"),
 	hotkeys: pending("hotkeys"),
 	trust: pending("trust"),
 	login: pending("login"),
@@ -86,6 +87,8 @@ export type DurableRunnableCommand = Exclude<DurableTuiCommand, keyof typeof PEN
 export type DurableInputRoute =
 	/** A command the TUI runs; `args` is the text after the command name, trimmed. */
 	| { readonly kind: "command"; readonly name: DurableRunnableCommand; readonly args: string }
+	/** A user bash command: `!` keeps its result in the model context, `!!` keeps it out. */
+	| { readonly kind: "bash"; readonly command: string; readonly excludeFromContext: boolean }
 	/** A recognized command this build does not run: show `message` and send nothing. */
 	| { readonly kind: "unsupported"; readonly name: DurableTuiCommand; readonly message: string }
 	/** Not a command of this TUI: an extension command, a prompt template, or text for the model. */
@@ -97,6 +100,12 @@ export type DurableInputRoute =
  */
 export function routeDurableInput(text: string): DurableInputRoute {
 	const trimmed = text.trim();
+	// A bare `!` is text, as legacy treats it: only a `!` with a command runs one.
+	if (trimmed.startsWith("!")) {
+		const excludeFromContext = trimmed.startsWith("!!");
+		const command = (excludeFromContext ? trimmed.slice(2) : trimmed.slice(1)).trim();
+		return command.length === 0 ? { kind: "prompt" } : { kind: "bash", command, excludeFromContext };
+	}
 	if (!trimmed.startsWith("/")) return { kind: "prompt" };
 	const end = trimmed.search(/\s/u);
 	const candidate = end < 0 ? trimmed.slice(1) : trimmed.slice(1, end);

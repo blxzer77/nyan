@@ -32,6 +32,14 @@ describe("durable TUI command routing", () => {
 		["/fork", { kind: "command", name: "fork", args: "" }],
 		["/clone", { kind: "command", name: "clone", args: "" }],
 		["/quit", { kind: "command", name: "quit", args: "" }],
+		["/export", { kind: "command", name: "export", args: "" }],
+		["/export out.html", { kind: "command", name: "export", args: "out.html" }],
+		["/copy", { kind: "command", name: "copy", args: "" }],
+		["/changelog", { kind: "command", name: "changelog", args: "" }],
+		["!echo bash-ok", { kind: "bash", command: "echo bash-ok", excludeFromContext: false }],
+		["!!echo hidden", { kind: "bash", command: "echo hidden", excludeFromContext: true }],
+		["  !  ls -la  ", { kind: "bash", command: "ls -la", excludeFromContext: false }],
+		["!! ls", { kind: "bash", command: "ls", excludeFromContext: true }],
 	])("%s runs as a command", (text, expected) => {
 		expect(routeDurableInput(text)).toEqual(expected);
 	});
@@ -41,6 +49,15 @@ describe("durable TUI command routing", () => {
 			kind: "unsupported",
 			name: "settings",
 			message: "/settings is not available on the durable session yet.",
+		});
+	});
+
+	test("/import points at the legacy read-only route, since a durable session is not a JSONL file", () => {
+		expect(routeDurableInput("/import session.jsonl")).toEqual({
+			kind: "unsupported",
+			name: "import",
+			message:
+				"durable sessions are not JSONL files, so /import cannot open one. Open it with `nyan --session <file>`, which reads legacy sessions read-only, or with `nyan --resume`.",
 		});
 	});
 
@@ -59,6 +76,9 @@ describe("durable TUI command routing", () => {
 		["prompt text", "explain the failure"],
 		["prompt that mentions a command later", "why did /model change"],
 		["command name in a different case", "/SETTINGS"],
+		["a bare !", "!"],
+		["a bare !!", "!!"],
+		["bang in the middle of a prompt", "why does ! fail"],
 	])("%s stays on the prompt path", (_label, text) => {
 		expect(routeDurableInput(text)).toEqual({ kind: "prompt" });
 	});
