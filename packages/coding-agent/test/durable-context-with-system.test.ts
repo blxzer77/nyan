@@ -109,8 +109,8 @@ describe("durable context_with_system", () => {
 		);
 		expect((await settlement(current.controller.submitAndWait("go", "followUp"))).status).toBe("done");
 		const sent = requests[0] ?? [];
-		expect(sent.at(-1)).toMatchObject({ role: "user", content: "CW-ADDED" });
-		expect(JSON.stringify(sent)).not.toContain("CW-RESTORED");
+		expect(sent.at(-1)).toEqual({ role: "user", content: "CW-ADDED", timestamp: 1 });
+		expect(sent.filter((message) => message.role === "system")).toHaveLength(1);
 	});
 
 	test("an unchanged result does not replace the request, a changed one does", async () => {

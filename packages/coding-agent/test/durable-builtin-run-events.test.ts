@@ -166,8 +166,10 @@ describe("built-in extensions and the durable run events", () => {
 			);
 			// The startup connection is refused, so MCP reports the server as one that needs a sign-in; that state is the
 			// snapshot `turn_start` compares the stored credentials with.
-			await vi.waitFor(() => expect(notices.join("\n")).toContain("need attention"), { timeout: 20_000 });
-			expect(notices.join("\n")).toContain("remote");
+			await vi.waitFor(
+				() => expect(notices).toContain("MCP servers need attention:\n  remote: needs sign-in\nRun /mcp to fix."),
+				{ timeout: 20_000 },
+			);
 
 			const store = new McpOAuthCredentialStore(new FileAuthStorageBackend(join(agentDir, "mcp-auth.json")));
 			await store.forServer("remote", endpoint.url).save({

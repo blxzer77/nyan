@@ -99,10 +99,14 @@ describe("durable run events", () => {
 			[() => toolCall(), () => answer("first"), () => answer("second")],
 		);
 		expect((await settlement(current.controller.submitAndWait("go", "followUp"))).status).toBe("done");
-		await vi.waitFor(() => expect(seen).toHaveLength(3), { timeout: 10_000 });
+		await vi.waitFor(() => expect(seen).toEqual(["agent_start", "turn_start:0", "turn_start:1"]), {
+			timeout: 10_000,
+		});
 		expect((await settlement(current.controller.submitAndWait("again", "followUp"))).status).toBe("done");
-		await vi.waitFor(() => expect(seen).toHaveLength(5), { timeout: 10_000 });
-		expect(seen).toEqual(["agent_start", "turn_start:0", "turn_start:1", "agent_start", "turn_start:0"]);
+		await vi.waitFor(
+			() => expect(seen).toEqual(["agent_start", "turn_start:0", "turn_start:1", "agent_start", "turn_start:0"]),
+			{ timeout: 10_000 },
+		);
 	});
 
 	test("the run events follow the conversation a fork moved the controller to", async () => {
@@ -125,13 +129,14 @@ describe("durable run events", () => {
 
 		const entries = await current.sessionOps.entries(undefined);
 		const user = entries.entries.find((entry) => entry.type === "message" && entry.message.role === "user");
-		expect(user).toBeDefined();
-		const forked = await current.sessionOps.fork(user?.id ?? "");
+		if (user === undefined) throw new Error("the session has no user entry to fork from");
+		const forked = await current.sessionOps.fork(user.id);
 		if (forked.cancelled) throw new Error("the fork was cancelled");
 		await current.controller.switchConversation(forked.conversationId);
 		expect((await settlement(current.controller.submitAndWait("in the fork", "followUp"))).status).toBe("done");
 		// Without the watch moving to the fork, the new conversation's run would publish nothing here.
-		await vi.waitFor(() => expect(seen).toHaveLength(4), { timeout: 10_000 });
-		expect(seen.slice(2)).toEqual(["agent_start", "turn_start:0"]);
+		await vi.waitFor(() => expect(seen).toEqual(["agent_start", "turn_start:0", "agent_start", "turn_start:0"]), {
+			timeout: 10_000,
+		});
 	});
 });

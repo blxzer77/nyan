@@ -49,6 +49,7 @@ describe("durable fork lifecycle", () => {
 		await Promise.all([rm(home, { recursive: true, force: true }), rm(cwd, { recursive: true, force: true })]);
 	});
 
+	/** Opens a session whose probe records every lifecycle event as `event:fields`. */
 	async function open(records: string[], cancel: () => boolean): Promise<OpenDurableResult> {
 		const faux = fauxProvider();
 		faux.setResponses([
@@ -69,7 +70,7 @@ describe("durable fork lifecycle", () => {
 			});
 			pi.on("session_start", (event, ctx) => {
 				records.push(
-					`session_start:${event.reason}:${event.previousSessionFile === undefined ? "" : "pre"}:${String(ctx.sessionManager.getLeafId())}`,
+					`session_start:${event.reason}:${event.previousSessionFile ?? ""}:${String(ctx.sessionManager.getLeafId())}`,
 				);
 			});
 		};
@@ -93,21 +94,27 @@ describe("durable fork lifecycle", () => {
 		const records: string[] = [];
 		const current = await open(records, () => false);
 		expect((await settlement(current.controller.submitAndWait("go", "followUp"))).status).toBe("done");
+		expect(records).toEqual(["session_start:startup::null"]);
 		const entryId = await firstUserEntryId(current);
 		const sessionFile = join(current.view.current().session.directory, "session.sqlite");
 
 		const forked = await current.sessionOps.fork(entryId);
 		if (forked.cancelled) throw new Error("the fork was cancelled");
-		expect(records).toContain(`session_before_fork:${entryId}:before`);
-		expect(records).toContain("session_shutdown:fork");
-		// The start follows the move, so an extension that rebuilds state sees the forked conversation.
-		expect(records.some((record) => record.startsWith("session_start:fork:"))).toBe(false);
+		// The question comes before the fork, and the shutdown after it; the start waits for the move.
+		expect(records).toEqual([
+			"session_start:startup::null",
+			`session_before_fork:${entryId}:before`,
+			"session_shutdown:fork",
+		]);
 		await current.controller.switchConversation(forked.conversationId);
-		const started = records.find((record) => record.startsWith("session_start:fork:"));
-		expect(started).toBeDefined();
-		expect(started?.endsWith(`:pre:${String(current.view.current().conversation.entries.at(-1)?.id)}`)).toBe(true);
-		// A durable fork keeps the session file, which is the documented difference from legacy.
-		expect(sessionFile).toBe(join(current.view.current().session.directory, "session.sqlite"));
+		const forkedLeaf = String(current.view.current().conversation.entries.at(-1)?.id);
+		// A durable fork keeps the session file, so the start names the file it came from (Decision #24).
+		expect(records).toEqual([
+			"session_start:startup::null",
+			`session_before_fork:${entryId}:before`,
+			"session_shutdown:fork",
+			`session_start:fork:${sessionFile}:${forkedLeaf}`,
+		]);
 		expect((await settlement(current.controller.submitAndWait("again", "followUp"))).status).toBe("done");
 	});
 
@@ -116,15 +123,14 @@ describe("durable fork lifecycle", () => {
 		const current = await open(records, () => true);
 		expect((await settlement(current.controller.submitAndWait("go", "followUp"))).status).toBe("done");
 		const entryId = await firstUserEntryId(current);
-		const conversations = current.view.current().conversations.length;
+		const conversations = current.view.current().conversations;
 
 		expect(await current.sessionOps.fork(entryId)).toEqual({ cancelled: true });
-		expect(records).toContain(`session_before_fork:${entryId}:before`);
-		expect(records.some((record) => record === "session_shutdown:fork")).toBe(false);
-		expect(records.some((record) => record.startsWith("session_start:fork:"))).toBe(false);
-		expect(current.view.current().conversations).toHaveLength(conversations);
+		expect(records).toEqual(["session_start:startup::null", `session_before_fork:${entryId}:before`]);
+		expect(current.view.current().conversations).toEqual(conversations);
 		// The conversation the user talks to is still the original one, and it still answers.
 		expect((await settlement(current.controller.submitAndWait("after", "followUp"))).status).toBe("done");
+		expect(records).toEqual(["session_start:startup::null", `session_before_fork:${entryId}:before`]);
 	});
 
 	test("a clone asks about the newest entry with position at, and can be cancelled", async () => {
@@ -132,11 +138,9 @@ describe("durable fork lifecycle", () => {
 		const current = await open(records, () => true);
 		expect((await settlement(current.controller.submitAndWait("go", "followUp"))).status).toBe("done");
 		const entries = await current.sessionOps.entries(undefined);
-		const leaf = entries.leafId;
 
 		expect(await current.sessionOps.clone()).toEqual({ cancelled: true });
-		expect(records).toContain(`session_before_fork:${leaf}:at`);
-		expect(records.some((record) => record.startsWith("session_start:fork:"))).toBe(false);
+		expect(records).toEqual(["session_start:startup::null", `session_before_fork:${String(entries.leafId)}:at`]);
 	});
 
 	test("the fork is asked about before the entry is validated, as legacy does", async () => {
@@ -145,15 +149,14 @@ describe("durable fork lifecycle", () => {
 		expect((await settlement(current.controller.submitAndWait("go", "followUp"))).status).toBe("done");
 
 		expect(await current.sessionOps.fork("no-such-entry")).toEqual({ cancelled: true });
-		expect(records).toContain("session_before_fork:no-such-entry:before");
+		expect(records).toEqual(["session_start:startup::null", "session_before_fork:no-such-entry:before"]);
 
 		// Without a handler that cancels, the invalid entry is refused after the question and nothing is forked.
-		records.length = 0;
 		await current.close();
 		session = undefined;
+		records.length = 0;
 		const unfiltered = await open(records, () => false);
-		await expect(unfiltered.sessionOps.fork("no-such-entry")).rejects.toThrow("Entry not found");
-		expect(records).toContain("session_before_fork:no-such-entry:before");
-		expect(records.some((record) => record === "session_shutdown:fork")).toBe(false);
+		await expect(unfiltered.sessionOps.fork("no-such-entry")).rejects.toThrow("Entry not found: no-such-entry");
+		expect(records).toEqual(["session_start:startup::null", "session_before_fork:no-such-entry:before"]);
 	});
 });
