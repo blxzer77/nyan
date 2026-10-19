@@ -411,3 +411,9 @@ that connects later is listed.
 - Still open in batch 3: the slash commands and UI subset (decision 4), the `before_agent_start` message and system-prompt
   changes (R13/R14), prompt templates, `agent_end`, `model_select`, and the real `ctx.sessionManager`. `agent_end` would
   need the run's messages; it is not emitted yet (R21).
+
+## Durable RPC bash design (N2 task B, B3)
+
+The durable RPC `bash` command owns an in-memory abort controller for each execution and invokes the session's `ExecutionEnv.exec`; `abort_bash` aborts those controllers without aborting the Harness conversation or its generation task. Output is forwarded as `bash_execution_update` records while the command runs. Once the command settles, the result is appended as an application entry with kind `bashExecution`. The entry carries the command and result data; it contributes the legacy `bashExecutionToText` user message to model context unless `excludeFromContext` is true. The command is executed before the entry commit, so a crash between those effects can leave an unknown external command outcome and must not be replayed automatically; a later session inspection is the recovery path.
+
+The shared legacy bash executor remains the output/cancellation boundary for RPC formatting and full-output files. Its full-output close has a deadline, failed command paths remove temporary files, and a spill failure is reported only when the returned result is actually truncated.

@@ -375,6 +375,17 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				return success(id, "set_auto_retry");
 			case "abort_retry":
 				return failure(id, "abort_retry", "Durable RPC does not expose retry-only cancellation yet");
+			case "bash": {
+				const result = await durable.controller.executeBash(
+					command.command,
+					command.excludeFromContext ?? false,
+					(delta) => output({ type: "bash_execution_update", ...(id === undefined ? {} : { id }), delta }),
+				);
+				return success(id, "bash", result);
+			}
+			case "abort_bash":
+				durable.controller.abortBash();
+				return success(id, "abort_bash");
 			case "get_last_assistant_text":
 				return success(id, "get_last_assistant_text", { text: getAssistantText() });
 			case "get_messages":
@@ -500,9 +511,6 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				await bindEvents();
 				return success(id, "switch_session", { cancelled: false });
 			}
-			case "bash":
-			case "abort_bash":
-				return failure(id, command.type, `Command ${command.type} is not available on the durable RPC path yet`);
 		}
 	};
 

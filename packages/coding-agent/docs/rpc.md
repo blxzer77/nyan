@@ -25,12 +25,7 @@ New interactive, print, JSON, and RPC sessions are stored durably in SQLite unde
 
 A durable session directory holds `session.sqlite` and `session.json`. The JSON file records the session's working directory and the display name from `set_session_name`; the database holds the conversation. A session created by the durable path always records its cwd so `switch_session` never guesses it.
 
-These commands need capabilities the durable path does not connect yet, and answer `success: false` with a message that names the command:
-
-| Command | Current answer on the durable path |
-|---|---|
-| `bash`, `abort_bash` | Not available yet |
-| `abort_retry` | Not available yet; a durable retry wait cannot be cancelled on its own |
+The durable path now supports `bash` and `abort_bash`. Bash output is recorded as a `bashExecution` entry; unless `excludeFromContext` is true, its legacy-formatted output is included in the next model context. `bash_execution_update` events stream while it runs. `abort_retry` remains unavailable: a durable retry wait cannot yet be cancelled on its own.
 
 `switch_session` accepts an existing durable session directory and opens it with its recorded cwd. The target is locked before the current session is closed; a missing directory, missing or nonexistent recorded cwd, legacy JSONL file, or target lock returns a named error with a stable `DURABLE_SESSION_*` code and leaves the current session open. Legacy JSONL files are read-only and must be opened through a legacy `--resume` or `--session` invocation.
 

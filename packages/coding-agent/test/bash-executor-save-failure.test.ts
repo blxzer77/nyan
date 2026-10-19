@@ -36,4 +36,20 @@ describe("bash executor when the full-output file cannot be written", () => {
 			"[Full output was not saved: Could not write the full output to nyan-bash-unwritable.log: disk is full]",
 		);
 	});
+
+	it("does not report a spill failure when sanitized output is not truncated", async () => {
+		const operations: BashOperations = {
+			exec: async (_command, _cwd, { onData }) => {
+				for (let i = 0; i < 10_000; i++) onData(Buffer.from("\u001b[31mx\u001b[0m"));
+				return { exitCode: 0 };
+			},
+		};
+
+		const result = await executeBashWithOperations("ignored", process.cwd(), operations);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.truncated).toBe(false);
+		expect(result.fullOutputPath).toBeUndefined();
+		expect(result.output).not.toContain("Full output was not saved");
+	});
 });

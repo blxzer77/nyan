@@ -2,7 +2,7 @@ import { join } from "node:path";
 import type { AgentMessage } from "@ny4n/agent-core";
 import { clampThinkingLevel, getSupportedThinkingLevels, type ModelThinkingLevel } from "@ny4n/ai";
 import type { AttachedReplicatedState } from "@ny4n/chord";
-import { BACKGROUND_CONTEXT } from "@ny4n/chord/context";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@ny4n/chord/context";
 import {
 	type AgentEventStream,
 	type AgentState,
@@ -24,6 +24,7 @@ import { openNodeSqliteStorage } from "@ny4n/durable/storage/sqlite/node";
 import { getAgentDir } from "../../config.ts";
 import type { Theme } from "../../ui/theme/theme.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../agent-session-services.ts";
+import { type BashResult, executeBashWithOperations } from "../bash-executor.ts";
 import type {
 	ExtensionMode,
 	InlineExtension,
@@ -31,11 +32,13 @@ import type {
 	SessionShutdownEvent,
 	SessionStartEvent,
 } from "../extensions/types.ts";
+import { type BashExecutionMessage, bashExecutionToText } from "../messages.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import { expandPromptTemplate, type PromptTemplate } from "../prompt-templates.ts";
 import type { ReadonlySessionManager, SessionEntry, SessionTreeNode } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
+import type { BashOperations } from "../tools/bash.ts";
 import { createExtensionHost, type ExtensionHost } from "./extension-host.ts";
 import {
 	configureHarnessHttp,
@@ -100,6 +103,8 @@ export interface DurableController {
 	setFollowUpMode(mode: "all" | "one-at-a-time"): Promise<void>;
 	setAutoCompaction(enabled: boolean): Promise<void>;
 	setAutoRetry(enabled: boolean): Promise<void>;
+	executeBash(command: string, excludeFromContext: boolean, onChunk?: (chunk: string) => void): Promise<BashResult>;
+	abortBash(): void;
 	getAutoCompaction(): boolean;
 	getAutoRetry(): boolean;
 	getQueueModes(): { readonly steeringMode: "all" | "one-at-a-time"; readonly followUpMode: "all" | "one-at-a-time" };
@@ -534,6 +539,84 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 				throw new Error(ref === undefined ? "No model selected" : "Current model is unavailable");
 			return model;
 		};
+		const bashAbortControllers = new Set<AbortController>();
+		const executeBash = async (
+			command: string,
+			excludeFromContext: boolean,
+			onChunk?: (chunk: string) => void,
+		): Promise<BashResult> => {
+			const abortController = new AbortController();
+			bashAbortControllers.add(abortController);
+			const conversationId = current.id;
+			const cwd = state.session.cwd;
+			try {
+				const environment = envs.env({ conversationId, cwd, read: opened });
+				const operations: BashOperations = {
+					exec: async (shellCommand, shellCwd, options) => {
+						const result = await environment.exec(
+							shellCommand,
+							{
+								cwd: shellCwd,
+								onOutput: (text) => options.onData(Buffer.from(text)),
+							},
+							withAbortSignal(options.signal ?? abortController.signal, context),
+						);
+						if (!result.ok) throw result.error;
+						return { exitCode: result.value.exitCode };
+					},
+				};
+				const result = await executeBashWithOperations(command, cwd, operations, {
+					signal: abortController.signal,
+					onChunk,
+				});
+				const timestamp = Date.now();
+				const message: BashExecutionMessage = {
+					role: "bashExecution",
+					command,
+					output: result.output,
+					exitCode: result.exitCode,
+					cancelled: result.cancelled,
+					truncated: result.truncated,
+					...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
+					timestamp,
+					excludeFromContext,
+				};
+				try {
+					await opened.commit(
+						(tx) =>
+							tx.appendEntry(conversationId, {
+								kind: "bashExecution",
+								data: {
+									command,
+									output: result.output,
+									exitCode: result.exitCode ?? null,
+									cancelled: result.cancelled,
+									truncated: result.truncated,
+									excludeFromContext,
+									...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
+								},
+								...(excludeFromContext
+									? {}
+									: {
+											model: [
+												{
+													role: "user" as const,
+													content: bashExecutionToText(message),
+													timestamp,
+												},
+											],
+										}),
+							}),
+						context,
+					);
+				} catch (error) {
+					throw new Error("Bash completed but its result could not be recorded", { cause: error });
+				}
+				return result;
+			} finally {
+				bashAbortControllers.delete(abortController);
+			}
+		};
 		const controller: DurableController = {
 			submit: (text, whenBusy) =>
 				command(async () => {
@@ -595,6 +678,10 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 				command(async () => {
 					queueModes.retryEnabled = enabled;
 				}),
+			executeBash,
+			abortBash: () => {
+				for (const abortController of bashAbortControllers) abortController.abort();
+			},
 			getAutoCompaction: () => queueModes.compactionEnabled ?? settingsManager.getCompactionSettings().enabled,
 			getAutoRetry: () => queueModes.retryEnabled ?? settingsManager.getRetrySettings().enabled,
 			getQueueModes: () => ({
