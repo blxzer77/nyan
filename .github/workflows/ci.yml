@@ -111,6 +111,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Fetch the static fd and ripgrep
+        # These go into the workspace archive so no test job installs them with apt (see
+        # scripts/fetch-ci-tools.mjs). The archive must contain them: restore-workspace puts .ci/bin on PATH.
+        uses: ./.github/actions/ci-tools
+
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
         with:
@@ -128,7 +133,7 @@ jobs:
           # packages/ai/node_modules, not in the root. Pack every nested node_modules, or a restored job cannot resolve it.
           # nullglob drops a pattern with no match instead of failing, since not every package nests anything.
           shopt -s nullglob
-          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
+          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/bin .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
           ls -lh nyan-workspace.tar.gz
 
       - name: Upload the workspace
@@ -154,15 +159,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Ensure fd and ripgrep
-        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, a missing binary is
-        # not downloaded: the tool reports itself unavailable. The image does not provide them (measured), so install
-        # only what is missing and print what the image had.
-        run: |
-          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
-          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            bash .github/scripts/apt-install.sh ripgrep fd-find
-          fi
-          echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
+        # This job installs its own dependencies instead of restoring the workspace archive, so it fetches the tools
+        # itself. Every other job gets them from the archive (see .github/actions/restore-workspace).
+        uses: ./.github/actions/ci-tools
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -190,13 +189,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Ensure fd and ripgrep
-        run: |
-          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
-          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            bash .github/scripts/apt-install.sh ripgrep fd-find
-          fi
 
       - name: Restore workspace
         id: restore
@@ -255,13 +247,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Ensure fd and ripgrep
-        run: |
-          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
-          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            bash .github/scripts/apt-install.sh ripgrep fd-find
-          fi
 
       - name: Restore workspace
         id: restore
