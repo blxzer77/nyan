@@ -56,6 +56,7 @@ import { createDurableModelRuntime } from "./model-runtime-adapter.ts";
 import { createDurableServices, type DurableResourceOptions, type DurableServices } from "./services.ts";
 import { createDurableSessionOps, type DurableSessionOps, type ForkOutcome } from "./session-ops.ts";
 import { openSessionDirectory, selectSession } from "./sessions.ts";
+import { DurableStartupError } from "./startup-error.ts";
 import { Subagent } from "./subagent.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -154,17 +155,6 @@ export type SubmitOutcome =
 export interface DurableModelSelection {
 	readonly provider?: string;
 	readonly modelId: string;
-}
-
-/** Thrown when the durable path cannot start because an extension or a resource is broken; it lists each error. */
-export class DurableStartupError extends Error {
-	readonly diagnostics: readonly AgentSessionRuntimeDiagnostic[];
-
-	constructor(diagnostics: readonly AgentSessionRuntimeDiagnostic[]) {
-		super(diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
-		this.name = "DurableStartupError";
-		this.diagnostics = diagnostics;
-	}
 }
 
 export interface OpenDurableOptions {
@@ -517,7 +507,9 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		const configuredAgent = await root.agent(context);
 		const apiKeyModel = initial?.model ?? configuredAgent.model;
 		if (options.apiKey !== undefined) {
-			if (apiKeyModel === undefined) throw new Error("--api-key requires a selected model");
+			if (apiKeyModel === undefined) {
+				throw new DurableStartupError([{ type: "error", message: "--api-key requires a selected model" }]);
+			}
 			await modelRuntime.setRuntimeApiKey(apiKeyModel.provider, options.apiKey);
 		}
 		const label = (id: ConversationId): string => (id === root.id ? "main" : `subagent ${id}`);

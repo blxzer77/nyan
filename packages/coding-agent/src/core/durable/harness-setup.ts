@@ -9,6 +9,7 @@ import type { ModelRuntime } from "../../core/model-runtime.ts";
 import type { ResourceLoader } from "../../core/resource-loader.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { createNyanPrompt } from "./prompt.ts";
+import { DurableStartupError } from "./startup-error.ts";
 
 /** nyan's HTTP setup: proxy, idle timeouts, and one undici for fetch. Without it, some provider streams break off. */
 export function configureHarnessHttp(settingsManager: SettingsManager): void {
@@ -109,7 +110,9 @@ export async function findInitialAgentModel(
 	if (cli !== undefined) {
 		const resolved = resolveCliModel({ cliProvider: cli.provider, cliModel: cli.model, modelRuntime });
 		if (resolved.error !== undefined || resolved.model === undefined) {
-			throw new Error(`Could not resolve model: ${resolved.error ?? cli.model}`);
+			throw new DurableStartupError([
+				{ type: "error", message: resolved.error ?? `Could not resolve model: ${cli.model}` },
+			]);
 		}
 		return {
 			model: { provider: resolved.model.provider, modelId: resolved.model.id },

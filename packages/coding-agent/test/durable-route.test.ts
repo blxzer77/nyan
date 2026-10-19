@@ -32,9 +32,16 @@ describe("durable product path routing", () => {
 	test("--use-theme reaches the durable settings only in the interactive mode", () => {
 		const settings = SettingsManager.inMemory();
 		const cwd = tmpdir();
-		const interactive = durableOptions(parseArgs(["--use-theme", "dark", "hi"]), cwd, "interactive", settings, []);
+		const interactive = durableOptions(
+			parseArgs(["--use-theme", "dark", "hi"]),
+			cwd,
+			"interactive",
+			settings,
+			[],
+			false,
+		);
 		expect(interactive.settingsOverrides).toEqual({ theme: "dark" });
-		const print = durableOptions(parseArgs(["--use-theme", "dark", "hi"]), cwd, "print", settings, []);
+		const print = durableOptions(parseArgs(["--use-theme", "dark", "hi"]), cwd, "print", settings, [], false);
 		expect(print.settingsOverrides).toBeUndefined();
 	});
 });

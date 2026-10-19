@@ -57,34 +57,62 @@ export async function writeSessionMetadata(directory: string, metadata: DurableS
 	await writeFile(join(directory, DURABLE_SESSION_METADATA_FILE), `${JSON.stringify(metadata)}\n`, "utf8");
 }
 
+/**
+ * The directory holding a working directory's durable sessions. Only a hash of the canonical cwd, so a moved or
+ * symlinked checkout keeps its own store instead of reading another one's.
+ */
+async function sessionRoot(cwdInput: string): Promise<{ cwd: string; root: string }> {
+	const cwd = await realpath(resolve(cwdInput));
+	return {
+		cwd,
+		root: join(getAgentDir(), "sessions-durable", createHash("sha256").update(cwd).digest("hex").slice(0, 24)),
+	};
+}
+
+/** The newest resumable session directory under `root`, or undefined. */
+async function newestSessionIn(root: string): Promise<string | undefined> {
+	const candidates: string[] = [];
+	try {
+		for (const entry of await readdir(root, { withFileTypes: true })) {
+			if (entry.isDirectory() && /^\d{13}-[0-9a-f-]{36}$/u.test(entry.name)) candidates.push(entry.name);
+		}
+	} catch {
+		// No store for this directory yet is the ordinary case for a first run, not a failure.
+		return undefined;
+	}
+	candidates.sort().reverse();
+	for (const candidate of candidates) {
+		try {
+			if ((await stat(join(root, candidate, "session.sqlite"))).isFile()) return join(root, candidate);
+		} catch {
+			// A directory left before SQLite was created is not a resumable session.
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Whether `cwd` has a resumable durable session, without creating, locking, or writing anything. The `--continue`
+ * routing asks this before it decides which runtime to start, so a missing store must not leave a directory behind.
+ */
+export async function hasDurableSession(cwdInput: string): Promise<boolean> {
+	const { root } = await sessionRoot(cwdInput);
+	return (await newestSessionIn(root)) !== undefined;
+}
+
 /** A new session for `cwd`, or its newest one with `continueSession`. */
 export async function selectSession(cwdInput: string, continueSession: boolean): Promise<SessionLocation> {
-	const cwd = await realpath(resolve(cwdInput));
-	const root = join(getAgentDir(), "sessions-durable", createHash("sha256").update(cwd).digest("hex").slice(0, 24));
+	const { cwd, root } = await sessionRoot(cwdInput);
 	await mkdir(root, { recursive: true });
 
 	let directory: string;
 	let created = false;
 	if (continueSession) {
-		const entries = await readdir(root, { withFileTypes: true });
-		const candidates = entries
-			.filter((entry) => entry.isDirectory() && /^\d{13}-[0-9a-f-]{36}$/u.test(entry.name))
-			.map((entry) => entry.name)
-			.sort()
-			.reverse();
-		let newest: string | undefined;
-		for (const candidate of candidates) {
-			try {
-				if ((await stat(join(root, candidate, "session.sqlite"))).isFile()) {
-					newest = candidate;
-					break;
-				}
-			} catch {
-				// A directory left before SQLite was created is not a resumable session.
-			}
+		const newest = await newestSessionIn(root);
+		if (newest === undefined) {
+			throw new DurableSessionError("DURABLE_SESSION_NOT_FOUND", `No durable session exists for ${cwd}`);
 		}
-		if (!newest) throw new Error(`No durable session exists for ${cwd}`);
-		directory = join(root, newest);
+		directory = newest;
 	} else {
 		directory = join(root, `${String(Date.now()).padStart(13, "0")}-${randomUUID()}`);
 		await mkdir(directory);
@@ -100,7 +128,11 @@ export async function selectSession(cwdInput: string, continueSession: boolean):
 			retries: { retries: 12, minTimeout: 1000, maxTimeout: 1000 },
 		});
 	} catch (error) {
-		throw new Error(`Session is already open in another process: ${directory}`, { cause: error });
+		throw new DurableSessionError(
+			"DURABLE_SESSION_LOCKED",
+			`Session is already open in another process: ${directory}`,
+			error,
+		);
 	}
 	if (created) {
 		try {

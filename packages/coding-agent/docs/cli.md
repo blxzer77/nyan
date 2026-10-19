@@ -85,7 +85,7 @@ nyan --continue
 See [Sessions and Context](sessions.md) for resuming, forking, naming, and storing sessions.
 
 - `-c`, `--continue`<br>
-  Continues the most recent session for the current project.
+  Continues the most recent session for the current project: its newest durable session, or, in a directory that has only legacy JSONL sessions, the newest of those read-only. A directory with neither starts a new session. See [Sessions](sessions.md#continue-or-switch-sessions).
 - `-r`, `--resume`<br>
   Opens the session selector.
 - `--session <path|id>`<br>
