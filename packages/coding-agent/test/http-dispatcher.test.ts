@@ -222,6 +222,15 @@ describe.runIf(isBun)("native fetch on Bun", () => {
 		expect(globalThis.fetch).toBe(originalFetch);
 	});
 
+	it("reset restores the original global fetch", () => {
+		configureHttpDispatcher(1_000);
+		expect(globalThis.fetch).not.toBe(originalFetch);
+
+		resetNativeFetchForTests();
+
+		expect(globalThis.fetch).toBe(originalFetch);
+	});
+
 	it("applies the idle timeout to requests", async () => {
 		const stalled = http.createServer(() => {});
 		const port = await listen(stalled);

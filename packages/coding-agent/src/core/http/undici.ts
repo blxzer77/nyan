@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import * as undici from "undici";
+import { isOurGlobalFetch } from "./fetch-state.ts";
 
 // Node's 250ms default can terminate valid connection attempts on high-latency routes.
 const DEFAULT_AUTO_SELECT_FAMILY_ATTEMPT_TIMEOUT_MS = 2_000;
@@ -63,10 +64,7 @@ export function configureUndiciDispatcher(timeoutMs: number): void {
 	// bundled fetch can otherwise consume compressed responses through npm undici's
 	// dispatcher without decompressing them, causing response.json() failures.
 	// If a caller replaced fetch after module load, preserve that deliberate override.
-	const shouldInstallGlobals =
-		installedGlobalFetch === undefined
-			? globalThis.fetch === originalGlobalFetch
-			: globalThis.fetch === installedGlobalFetch;
+	const shouldInstallGlobals = isOurGlobalFetch(globalThis.fetch, originalGlobalFetch, installedGlobalFetch);
 	if (shouldInstallGlobals) {
 		undici.install?.();
 		installedGlobalFetch = globalThis.fetch;
