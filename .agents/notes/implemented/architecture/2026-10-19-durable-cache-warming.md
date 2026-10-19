@@ -1,6 +1,6 @@
 # Agent Note: Cache warming on the durable path
 
-Status: proposed
+Status: implemented
 
 ## Problem
 
@@ -11,7 +11,7 @@ status, and a long tool turn or a paused session pays a full cache write for its
 `cache_warming_decision` and cache warming on the durable path as one of the ten N2 items that are fixed rather than
 reduced.
 
-## Proposal
+## Decision
 
 ### Who owns warming
 
@@ -83,8 +83,8 @@ usage entry, because durable's ledger has no per-request usage entries at all.
 
 `@ny4n/durable` exports `UsageDoc` and `UsageState` but not its `recordUsage`/`addUsage` helpers. Writing the doc
 through `tx.doc` is the public path available to the coding-agent; the summation is repeated here rather than reaching
-into the durable package, and [the report](../../../../nyan-orchestration/reports/n2-w1-cache-warming.md) asks whether
-`recordUsage` should be exported so a later change can delete the copy.
+into the durable package. Exporting `recordUsage` would delete the copy and is asked for in the batch report
+(`reports/n2-w1-cache-warming.md` in the orchestration worktree, outside this repository).
 
 ### Cancellation and shutdown
 
@@ -179,4 +179,4 @@ opens a real durable session whose tool sleeps long enough for a refresh to fire
 grew by exactly that refresh — its whole prompt read from the cache (`input` 0, `cacheWrite` 0), which only holds when
 the refresh sent the same request. Thirteen mutations were applied one at a time: twelve fail a named test, and removing
 the early `off` branch in `start()` survives because every refresh re-reads the setting, so the branch only avoids
-arming a timer. `npm run check` exits 0. This note moves to `implemented/` once the batch merges.
+arming a timer. `npm run check` exits 0. 
