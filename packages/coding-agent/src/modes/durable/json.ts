@@ -17,8 +17,9 @@ export async function runDurableJson(options: DurableJsonOptions): Promise<numbe
 	try {
 		const events = durable.events;
 		if (events === undefined) throw new Error("Durable JSON mode did not acquire an event stream");
-		const adapter = new DurableJsonEventAdapter(() =>
-			durable.view.current().conversation.entries.flatMap((entry) => entry.model ?? []),
+		const adapter = new DurableJsonEventAdapter(
+			() => durable.view.current().conversation.entries.flatMap((entry) => entry.model ?? []),
+			() => durable.sessionOps.queueTexts(),
 		);
 		const session = durable.view.current().session;
 		writeRawStdout(
@@ -31,7 +32,7 @@ export async function runDurableJson(options: DurableJsonOptions): Promise<numbe
 			})}\n`,
 		);
 		events.start(async (batch) => {
-			for (const event of adapter.translate(batch)) writeRawStdout(`${JSON.stringify(event)}\n`);
+			for (const event of await adapter.translate(batch)) writeRawStdout(`${JSON.stringify(event)}\n`);
 			await waitForRawStdoutBackpressure();
 		});
 

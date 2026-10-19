@@ -26,6 +26,7 @@ import type { Theme } from "../../ui/theme/theme.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../agent-session-services.ts";
 import { type BashResult, executeBashWithOperations } from "../bash-executor.ts";
 import type {
+	ExtensionError,
 	ExtensionMode,
 	InlineExtension,
 	InputSource,
@@ -108,7 +109,18 @@ export interface DurableController {
 	setFollowUpMode(mode: "all" | "one-at-a-time"): Promise<void>;
 	setAutoCompaction(enabled: boolean): Promise<void>;
 	setAutoRetry(enabled: boolean): Promise<void>;
-	executeBash(command: string, excludeFromContext: boolean, onChunk?: (chunk: string) => void): Promise<BashResult>;
+	/**
+	 * Runs a bash command and records its result. `operations` replaces the local execution, as an extension's
+	 * `user_bash` operations do.
+	 */
+	executeBash(
+		command: string,
+		excludeFromContext: boolean,
+		onChunk?: (chunk: string) => void,
+		operations?: BashOperations,
+	): Promise<BashResult>;
+	/** Records a bash result an extension ran itself, as legacy `recordBashResult` does. */
+	recordBashResult(command: string, result: BashResult, excludeFromContext: boolean): Promise<void>;
 	abortBash(): void;
 	getAutoCompaction(): boolean;
 	getAutoRetry(): boolean;
@@ -222,6 +234,11 @@ export interface OpenDurableResult {
 	 * stops the stream it replaces, and the returned one when it is done. Requires `eventStream`.
 	 */
 	readonly eventsOf: (conversationId: ConversationId) => Promise<AgentEventStream>;
+	/**
+	 * Calls `listener` with every extension handler failure, which the RPC adapter publishes as `extension_error`. The
+	 * notice is shown as well. Returns the unsubscribe.
+	 */
+	onExtensionError(listener: (error: ExtensionError) => void): () => void;
 	/** Ends the session: `session_shutdown` with `reason` (default "quit"), then the storage is closed. */
 	close(reason?: SessionShutdownEvent["reason"]): Promise<void>;
 }
@@ -370,6 +387,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			},
 			getSessionName: () => undefined,
 		};
+		// Extension failures reach the RPC adapter as `extension_error` as well as the view's notices.
+		const extensionErrorListeners = new Set<(error: ExtensionError) => void>();
 		const host: ExtensionHost = createExtensionHost({
 			sessionManager,
 			services,
@@ -381,8 +400,10 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			},
 			abort: () => void controller.abort(),
 			compact: () => void controller.compact(undefined).catch(fail),
-			onExtensionError: (error) =>
-				notice("error", `Extension ${error.extensionPath} failed on ${error.event}: ${error.error}`),
+			onExtensionError: (error) => {
+				notice("error", `Extension ${error.extensionPath} failed on ${error.event}: ${error.error}`);
+				for (const listener of extensionErrorListeners) listener(error);
+			},
 			installTools: (extension) => registry.install(extension),
 			isIdle: () => activeRuns === 0,
 		});
@@ -606,10 +627,65 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			stream.start((events) => host.agentEvents(events));
 		};
 		const bashAbortControllers = new Set<AbortController>();
+		/**
+		 * Write a finished bash run as a `bashExecution` entry: its data always, its output for the model unless it is
+		 * excluded. `conversationId` is the one the command started in, so a switch meanwhile cannot take the record.
+		 */
+		const recordBashResult = async (
+			conversationId: ConversationId,
+			command: string,
+			result: BashResult,
+			excludeFromContext: boolean,
+		): Promise<void> => {
+			const timestamp = Date.now();
+			const message: BashExecutionMessage = {
+				role: "bashExecution",
+				command,
+				output: result.output,
+				exitCode: result.exitCode,
+				cancelled: result.cancelled,
+				truncated: result.truncated,
+				...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
+				timestamp,
+				excludeFromContext,
+			};
+			try {
+				await opened.commit(
+					(tx) =>
+						tx.appendEntry(conversationId, {
+							kind: "bashExecution",
+							data: {
+								command,
+								output: result.output,
+								exitCode: result.exitCode ?? null,
+								cancelled: result.cancelled,
+								truncated: result.truncated,
+								excludeFromContext,
+								...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
+							},
+							...(excludeFromContext
+								? {}
+								: {
+										model: [
+											{
+												role: "user" as const,
+												content: bashExecutionToText(message),
+												timestamp,
+											},
+										],
+									}),
+						}),
+					context,
+				);
+			} catch (error) {
+				throw new Error("Bash completed but its result could not be recorded", { cause: error });
+			}
+		};
 		const executeBash = async (
 			command: string,
 			excludeFromContext: boolean,
 			onChunk?: (chunk: string) => void,
+			customOperations?: BashOperations,
 		): Promise<BashResult> => {
 			const abortController = new AbortController();
 			bashAbortControllers.add(abortController);
@@ -631,53 +707,11 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 						return { exitCode: result.value.exitCode };
 					},
 				};
-				const result = await executeBashWithOperations(command, cwd, operations, {
+				const result = await executeBashWithOperations(command, cwd, customOperations ?? operations, {
 					signal: abortController.signal,
 					onChunk,
 				});
-				const timestamp = Date.now();
-				const message: BashExecutionMessage = {
-					role: "bashExecution",
-					command,
-					output: result.output,
-					exitCode: result.exitCode,
-					cancelled: result.cancelled,
-					truncated: result.truncated,
-					...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
-					timestamp,
-					excludeFromContext,
-				};
-				try {
-					await opened.commit(
-						(tx) =>
-							tx.appendEntry(conversationId, {
-								kind: "bashExecution",
-								data: {
-									command,
-									output: result.output,
-									exitCode: result.exitCode ?? null,
-									cancelled: result.cancelled,
-									truncated: result.truncated,
-									excludeFromContext,
-									...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
-								},
-								...(excludeFromContext
-									? {}
-									: {
-											model: [
-												{
-													role: "user" as const,
-													content: bashExecutionToText(message),
-													timestamp,
-												},
-											],
-										}),
-							}),
-						context,
-					);
-				} catch (error) {
-					throw new Error("Bash completed but its result could not be recorded", { cause: error });
-				}
+				await recordBashResult(conversationId, command, result, excludeFromContext);
 				return result;
 			} finally {
 				bashAbortControllers.delete(abortController);
@@ -750,6 +784,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					queueModes.retryEnabled = enabled;
 				}),
 			executeBash,
+			recordBashResult: (command, result, excludeFromContext) =>
+				recordBashResult(current.id, command, result, excludeFromContext),
 			abortBash: () => {
 				for (const abortController of bashAbortControllers) abortController.abort();
 			},
@@ -882,6 +918,10 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			eventsOf: async (conversationId) => {
 				if (options.eventStream !== true) throw new Error("This open has no event stream");
 				return watchEvents(opened, conversationId, context);
+			},
+			onExtensionError: (listener) => {
+				extensionErrorListeners.add(listener);
+				return () => extensionErrorListeners.delete(listener);
 			},
 			close(reason = "quit") {
 				closing ??= (async () => {

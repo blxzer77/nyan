@@ -71,6 +71,8 @@ export type ForkOutcome = ForkedConversation | CancelledFork;
 export interface DurableSessionOps {
 	/** Withdraw every queued input of the current conversation and return the texts that were waiting. */
 	clearQueue(): Promise<ClearedQueue>;
+	/** The texts waiting in the current conversation's queue, as the published `queue_update` reports them. */
+	queueTexts(): Promise<ClearedQueue>;
 	/** Entries in append order, or only those after `since` (a decimal durable entry id). */
 	entries(since: string | undefined): Promise<SessionEntries>;
 	/** The display name written with `setSessionName`, if any. */
@@ -300,6 +302,18 @@ export function createDurableSessionOps(host: DurableSessionOpsHost): DurableSes
 				// Only an input this call withdrew is reported: one a boundary placed meanwhile is already in the session.
 				const withdrawn = await host.harness.abortSubmission(item.id, host.context, conversation.id);
 				if (withdrawn !== "aborted") continue;
+				(item.mode === "steer" ? steering : followUp).push(inputText(item.content));
+			}
+			return { steering, followUp };
+		},
+		async queueTexts() {
+			const conversation = host.conversation();
+			const inbox = (await host.harness.snapshot(InboxDoc, conversation.id, host.context)) as InboxState | undefined;
+			const steering: string[] = [];
+			const followUp: string[] = [];
+			for (const item of inbox?.items ?? []) {
+				// Legacy's queue holds inputs only, so a passive entry write is not part of it.
+				if (item.mode === "write") continue;
 				(item.mode === "steer" ? steering : followUp).push(inputText(item.content));
 			}
 			return { steering, followUp };
