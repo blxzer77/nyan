@@ -35,7 +35,7 @@ import { appendAssistant, convertPartial } from "./assistant.ts";
 import { createCompaction, estimateContext, selectCut } from "./compaction.ts";
 import { applyBoundary, prepareBoundary } from "./inbox.ts";
 import { assignJson } from "./json.ts";
-import { endRun, LiveDoc, type ToolSlot } from "./live.ts";
+import { endRun, LiveDoc, type LiveState, type ToolSlot } from "./live.ts";
 import { planSystemEntries, renderSections, replaySections } from "./prompt.ts";
 import { ensureProviderSessionId } from "./provider.ts";
 import { createGeneration, generationTaskReference, handOver, startRun } from "./run.ts";
@@ -237,7 +237,11 @@ export const GenerationTask = defineTask<GenerationInput, GenerationCheckpoint, 
 		},
 		retry: async (task, runtime, context) => {
 			const { attempt, compacted, until } = task.state.checkpoint;
-			await runtime.sleep(until, context);
+			// A stop-retry request ends the wait at once and ends the run as exhausted retries do; an abort still throws here.
+			if ((await runtime.retrySleep(until, context)) === "stopped") {
+				await stopRetried(runtime, context);
+				return;
+			}
 			await runtime.commit(async (tx) => {
 				(await tx.doc(LiveDoc, runtime.conversationId)).generation = { attempt: attempt + 1 };
 				const checkpoint: GenerationCheckpoint = {
@@ -370,11 +374,33 @@ function compactionFailure(outcome: Exclude<TaskOutcome<CompactionResult>, { sta
 async function failModelError(runtime: Runtime, text: string, context: Context): Promise<void> {
 	await runtime.commit(async (tx) => {
 		const live = await tx.doc(LiveDoc, runtime.conversationId);
-		endRun(tx, live, runtime.taskId, { status: "unanswered", reason: "model_error", detail: text });
-		return {
-			status: "terminal",
-			outcome: { status: "failed", error: { message: text, detail: { reason: "model_error" } } },
-		};
+		return modelErrorRun(tx, live, runtime.taskId, text);
+	}, context);
+}
+
+/**
+ * The commit that ends a run because its request failed for good: the run's inputs settle `unanswered` with
+ * `model_error`, the generation is terminal `failed`, and the same `text` is the recording and the error. Retries that ran
+ * out and a retry wait stopped by `Conversation.stopRetry()` end this way, so a client cannot tell them apart.
+ */
+function modelErrorRun(tx: Tx, live: Draft<LiveState>, taskId: TaskId, text: string): Next {
+	endRun(tx, live, taskId, { status: "unanswered", reason: "model_error", detail: text });
+	return {
+		status: "terminal",
+		outcome: { status: "failed", error: { message: text, detail: { reason: "model_error" } } },
+	};
+}
+
+/**
+ * A retry wait cancelled by a stop-retry request: the error the last attempt failed on is the one the run ends with, read
+ * from `nyan.live.generation` where the retry that was stopped recorded it. The record is a fallback for a checkpoint no
+ * retry wrote, which only a hand-written state produces.
+ */
+async function stopRetried(runtime: Runtime, context: Context): Promise<void> {
+	await runtime.commit(async (tx) => {
+		const live = await tx.doc(LiveDoc, runtime.conversationId);
+		const text = live.generation?.retry?.error ?? "Retry stopped";
+		return modelErrorRun(tx, live, runtime.taskId, text);
 	}, context);
 }
 
@@ -665,11 +691,7 @@ async function classify(
 			return { status: "running", checkpoint };
 		}
 		const text = message.errorMessage ?? `Model response ended with stop reason ${message.stopReason}`;
-		endRun(tx, live, runtime.taskId, { status: "unanswered", reason: "model_error", detail: text });
-		return {
-			status: "terminal",
-			outcome: { status: "failed", error: { message: text, detail: { reason: "model_error" } } },
-		};
+		return modelErrorRun(tx, live, runtime.taskId, text);
 	}, context);
 }
 

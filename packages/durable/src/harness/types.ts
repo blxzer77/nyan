@@ -690,6 +690,13 @@ export interface Conversation {
 	 */
 	abort(context: Context, options?: ConversationAbortOptions): Promise<void>;
 	/**
+	 * Stop waiting to retry the run's model request, as legacy `abort_retry` does: the generation ends the run as it does
+	 * when retries run out (`unanswered`, `model_error`, the error the last attempt failed on), and nothing is aborted. The
+	 * request is in memory only, so a crash before that commit leaves the wait to resume after restart. Resolves `true`
+	 * when a retry was waiting for it; with none waiting the request has no effect.
+	 */
+	stopRetry(): Promise<boolean>;
+	/**
 	 * Resolve when the ordinary ownership scope has no live non-background task: this conversation and the conversations
 	 * owned, transitively, by its non-background tasks.
 	 */

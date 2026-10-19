@@ -242,6 +242,12 @@ export interface TaskRuntime<I, S, R, H extends object> extends DocumentObserver
 	report(error: unknown): void;
 	/** Resolve once the Harness clock reaches `until`; rejects when the invocation or `context` is cancelled. */
 	sleep(until: number, context: Context): Promise<void>;
+	/**
+	 * `sleep()` for a generation's `retry` phase, which a stop-retry request (`Conversation.stopRetry()`) ends on its own:
+	 * `"stopped"` means the request cancelled the wait before `until`, so the phase ends the run as it does when retries run
+	 * out. An abort of the invocation or of `context` still rejects, so a stopped retry stays distinguishable from them.
+	 */
+	retrySleep(until: number, context: Context): Promise<"elapsed" | "stopped">;
 }
 
 /** Executable durable state machine definition, registered in the registry by `name`. */

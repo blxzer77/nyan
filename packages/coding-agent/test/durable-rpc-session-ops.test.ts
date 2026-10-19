@@ -294,11 +294,37 @@ describe("durable RPC session operations", () => {
 		rmSync(path, { force: true });
 	});
 
-	test("abort_retry stays unavailable until durable can cancel a retry wait alone", async () => {
-		await start([answer("hi")]);
-		const retry = await send({ type: "abort_retry" });
-		expect(retry).toMatchObject({ success: false, command: "abort_retry" });
-		expect(String(retry.error)).toContain("retry-only cancellation");
+	test("abort_retry ends the retry wait with the error the last attempt failed on", async () => {
+		// A backoff far longer than the test, so only the stop request can end the wait.
+		await writeFile(
+			join(agentDir, "settings.json"),
+			JSON.stringify({ retry: { baseDelayMs: 30_000, maxAgentDelayMs: 30_000 } }),
+		);
+		await start([
+			fauxAssistantMessage([], { stopReason: "error", errorMessage: "503 Service Unavailable" }),
+			answer("never"),
+		]);
+		// The prompt's response waits for the run, which the retry holds open.
+		const prompt = await sendLater({ type: "prompt", message: "hello" });
+		await vi.waitFor(() => expect(records().some((record) => record.type === "auto_retry_start")).toBe(true), {
+			timeout: 20_000,
+		});
+
+		expect(await send({ type: "abort_retry" })).toMatchObject({ success: true, command: "abort_retry" });
+		expect(await waitForResponse(prompt)).toMatchObject({ success: true, data: { disposition: "started" } });
+
+		const emitted = records();
+		// The turn ends as it does when retries run out: the backoff ends, then the run ends without a retried request.
+		expect(emitted.some((record) => record.type === "auto_retry_end")).toBe(true);
+		expect(emitted.some((record) => record.type === "agent_end" && record.willRetry === false)).toBe(true);
+		expect((await state()).isStreaming).toBe(false);
+		const entries = ((await send({ type: "get_entries" })).data as { entries: Record_[] }).entries;
+		// The failed attempt is the last entry, and the answer the model would have given was never requested.
+		expect((entries.at(-1)?.message as Record_).stopReason).toBe("error");
+		expect(JSON.stringify(emitted)).not.toContain("never");
+
+		// With no retry waiting the command still succeeds, as legacy's does.
+		expect(await send({ type: "abort_retry" })).toMatchObject({ success: true, command: "abort_retry" });
 	});
 
 	test("fork starts a second conversation at a user message and moves the session to it", async () => {
