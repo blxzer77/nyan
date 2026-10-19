@@ -583,6 +583,8 @@ interface Conversation {
   reset(handoff: string | undefined, context: Context): Promise<void>;
   /** `{ background: true }` also aborts background work under the conversation (section 5.4). */
   abort(context: Context, options?: { readonly background?: boolean }): Promise<void>;
+  /** Stop the run's retry wait alone, as legacy `abort_retry` (section 5.4). */
+  stopRetry(): Promise<boolean>;
   waitForIdle(context: Context): Promise<void>;
   viewState(context: Context): Promise<AttachedReplicatedState<ConversationView>>;
   watch(context: Context): Promise<ConversationWatch>;
@@ -1999,6 +2001,16 @@ that continues into another phase. Invocation mode is volatile and derived from
 the durable mark on reopen. Cancelling one caller's `Context` only cancels
 that call or wait; it does not durably abort shared work unless the invoked API
 commits an abort mark.
+
+Stop retry is the one in-memory control request. `Conversation.stopRetry()` takes
+it for every `nyan.generation` of the conversation that is in its `retry` phase
+(pending or running), cancels the `TaskRuntime.retrySleep()` wait that phase holds
+if it already started, and otherwise leaves a mark the phase consumes when its wait
+starts. It writes nothing, aborts nothing, and resolves `true` when a retry was
+waiting; with none waiting it is a no-op. A stopped wait ends the phase through the
+same commit as exhausted retries (section 8.3), so the run and its submissions
+settle as they do then. Because the request is not durable, a crash or a close
+before that commit resumes the wait on reopen, and the client may ask again.
 
 A task may create owned conversations and owned tasks (section 5.5).
 Conversations are durable scopes; tasks are the units of live work counted by
@@ -4246,8 +4258,14 @@ The run's inputs live in `nyan.live.run`, not in the task input.
     entry, settle the inputs `unanswered` with `model_error`, remove `run` and
     `generation`, and fail.
   - `deferred`: move to `poll` with `pollAt = now + (handle.pollAfterMs ?? 5000)`.
-- `retry` sleeps until `until`, then returns to `prepare` with the next attempt,
-  so agent and settings changes made during the backoff apply.
+- `retry` waits until `until` with `TaskRuntime.retrySleep()`, then returns to `prepare` with the next attempt,
+  so agent and settings changes made during the backoff apply. A stop-retry request
+  (`Conversation.stopRetry()`, section 5.4) ends that wait at once instead: the phase then
+  commits what exhausted retries commit — the inputs settle `unanswered` with `model_error`, the
+  detail is `nyan.live.generation.retry.error` as the stopped retry recorded it, and the task fails; `run` and
+  `generation` are removed. The failed attempt stays the last entry and no further request is
+  sent, so a client cannot tell a stopped retry from exhausted ones. An abort of the task or
+  of the caller's context still throws there, and the abort handler ends the run `aborted`.
 - `poll` sleeps until `pollAt` and calls `models.fetchDeferred()`. A still
   deferred result moves `pollAt` strictly later; any other result is classified
   as above.
