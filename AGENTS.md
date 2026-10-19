@@ -96,6 +96,18 @@ CI runs the full suite on Ubuntu and builds and checks on Windows; the full suit
 - Comments explain ownership, timing, failure guarantees, or safety that the code does not show. Do not restate the code.
 - Record a lasting design decision in `.agents/notes/` when code, tests, and docs cannot explain why. See the [notes README](.agents/notes/README.md).
 
+## Tests
+
+A test derives from the contract, not the implementation: the signature, the inputs and outputs, the pre and post conditions, and the documented errors. If the assertion still holds after the implementation is rewritten, it tests the contract; if it restates the implementation, it tests the implementation.
+
+- Assert exact values and exact errors. `toBeDefined`, `toBeTruthy`, `expect.any(...)`, or a length check where the value is knowable is not an assertion.
+- Use table-driven cases for pure logic: one row per contract case, including the edges the contract names.
+- Fake only a real boundary: provider HTTP, filesystem, clock, network, subprocess. Do not mock an internal module, a private function, or a class method. A test whose only assertion is on a recorded call tests the mock.
+- Cover each error and recovery path the contract names separately: cancellation, restart after a crash, a duplicate request whose effect must not run twice, and an unknown outcome that is surfaced rather than reported as success.
+- A test that cannot fail when the code is wrong is a defect, not coverage. Do not add it, and report one you find.
+- Every bug fix lands with the test that fails before the fix. If no such test is practical, the change says why.
+- A skip carries the platform that cannot run the test. No other reason skips a test.
+
 ## Runtime and recovery
 
 For a change that touches sessions, providers, tools, subprocesses, concurrency, or persistence, state who owns the state, what admission, cancellation, idempotency, and restart recovery look like, and how an unknown outcome is surfaced. Catching an exception is not recovery: only the owner of the state can prove that continuing is safe. Everything a model request sees must be rebuildable from the session or another named persisted fact. See [nyan-error-handling](.agents/skills/nyan-error-handling/SKILL.md).
