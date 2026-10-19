@@ -10,19 +10,18 @@ name: Release
 # v1.1.0 already point at Pi releases. The tag version must equal the package version. A version with a pre-release suffix publishes under the `next` dist-tag.
 # A re-run skips versions that are already on the registry.
 #
+# Only a tag publishes. A manual dispatch runs `publish-dry-run`: it verifies, tests, packs and calls
+# `npm publish --dry-run`, with no environment and no token, so it cannot put a version on the registry. The tag
+# itself is checked twice: the `publish` job refuses any other ref, and the `npm` environment is restricted to
+# `nyan-v*` tags in the repository settings.
+#
 # The prepare job packs one workspace and the tests run from it; the pack job packs the verified packages from that
-# same workspace, and the publish job never rebuilds,
-# so what npm receives is what the smoke tests ran against.
+# same workspace, and neither publish job rebuilds, so what npm receives is what the smoke tests ran against.
 
 on:
   push:
     tags: ["nyan-v*.*.*"]
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: Pack every package without publishing
-        type: boolean
-        default: true
 
 concurrency:
   group: nyan-release
@@ -47,6 +46,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Fetch the static fd and ripgrep
+        # These go into the workspace archive so no test job installs them with apt (see
+        # scripts/fetch-ci-tools.mjs). The archive must contain them: restore-workspace puts .ci/bin on PATH.
+        uses: ./.github/actions/ci-tools
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -73,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
+          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/bin .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
           ls -lh nyan-workspace.tar.gz
 
       - name: Upload the workspace
@@ -143,13 +147,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Ensure fd and ripgrep
-        run: |
-          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            sudo apt-get update
-            sudo apt-get install -y ripgrep fd-find
-          fi
 
       - name: Restore workspace
         id: restore
@@ -378,11 +375,13 @@ jobs:
   publish:
     name: Publish verified artifacts
     needs: [pack, native, binary-smoke]
-    # npm verifies the runner environment when it accepts a provenance bundle and rejects a
-    # `self-hosted` runner: "Only 'github-hosted' runners are supported when publishing with
-    # provenance". Every job of this workflow runs on a GitHub-hosted runner, so the verified bytes are built, tested
-    # and published on the same kind of machine. `actions/attest-build-provenance` in the binaries job is a GitHub
-    # service and is not affected.
+    # Tag pushes only. npm verifies the runner environment when it accepts a provenance bundle and rejects a
+    # `self-hosted` runner: "Only 'github-hosted' runners are supported when publishing with provenance".
+    #
+    # A published version cannot be replaced, so exactly one job in this repository may reach the registry. The
+    # `npm` environment is restricted to `nyan-v*` tags in the repository settings, which is what stops a branch
+    # dispatch even if this file were edited; the tag check below is the visible half of the same rule.
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm
@@ -390,6 +389,16 @@ jobs:
       contents: write
       id-token: write
     steps:
+      - name: Require a release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^nyan-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::${GITHUB_REF_NAME} is not a release tag (nyan-vX.Y.Z); nothing is published from it"
+            exit 1
+          fi
+          echo "release tag: ${GITHUB_REF_NAME}"
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -438,25 +447,18 @@ jobs:
         shell: bash
         run: |
           args=(--manifest release-packages/manifest.json)
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            version="${GITHUB_REF_NAME#nyan-v}"
-            args+=(--expect-version "$version")
-            [[ "$version" == *-* ]] && args+=(--tag next)
-          fi
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${{ inputs.dry_run }}" == "true" ]]; then
-            args+=(--dry-run)
-          fi
+          version="${GITHUB_REF_NAME#nyan-v}"
+          args+=(--expect-version "$version")
+          [[ "$version" == *-* ]] && args+=(--tag next)
           node scripts/publish-packages.mjs "${args[@]}"
 
       - name: Download binaries
-        if: github.ref_type == 'tag'
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: nyan-binaries
           path: release-assets
 
       - name: Create GitHub release
-        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -467,3 +469,59 @@ jobs:
           # A re-run finds the release already created and replaces its binaries.
           gh release create "${GITHUB_REF_NAME}" --generate-notes "${prerelease[@]}" release-assets/* \
             || gh release upload "${GITHUB_REF_NAME}" release-assets/* --clobber
+
+  publish-dry-run:
+    name: Publish dry run
+    needs: [pack, native, binary-smoke]
+    # Everything a manual run may do. It verifies, tests and packs, then runs `npm publish --dry-run` on the packed
+    # tarballs. It has no environment and no token, so a manual dispatch cannot put a version on the registry.
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Pin npm
+        run: |
+          if [ "$(npm --version)" != "${{ env.NPM_VERSION }}" ]; then
+            npm install --global "npm@${{ env.NPM_VERSION }}"
+          fi
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Download verified packages
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: nyan-packages
+          path: release-packages
+
+      - name: Verify the artifact set was packed from this commit
+        run: |
+          node --input-type=module -e '
+          import { readFileSync } from "node:fs";
+          const { source } = JSON.parse(readFileSync("release-packages/manifest.json", "utf8"));
+          if (source?.dirty) {
+            console.error("Refusing to pack an artifact set that was packed from a dirty tree");
+            process.exit(1);
+          }
+          if (source?.commit !== process.env.GITHUB_SHA) {
+            console.error(`Artifact set is from ${source?.commit}, expected ${process.env.GITHUB_SHA}`);
+            process.exit(1);
+          }
+          console.log(`Artifact set was packed from ${source.commit}`);
+          '
+
+      - name: Publish exact verified package artifacts (dry run)
+        shell: bash
+        run: node scripts/publish-packages.mjs --manifest release-packages/manifest.json --dry-run

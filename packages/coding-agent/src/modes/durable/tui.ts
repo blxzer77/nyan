@@ -823,7 +823,7 @@ export async function runDurableTui(
 				return;
 			}
 			void dispatchDurableExtensionCommand(host.runner, trimmed).then((handled) => {
-				if (!handled) void controller.submit(controller.expandPrompt(trimmed), "steer");
+				if (!handled) void controller.submit(trimmed, "steer");
 			});
 		},
 		followUp: (text) => {
@@ -832,7 +832,7 @@ export async function runDurableTui(
 				return;
 			}
 			void dispatchDurableExtensionCommand(host.runner, text.trim()).then((handled) => {
-				if (!handled) void controller.submit(controller.expandPrompt(text), "followUp");
+				if (!handled) void controller.submit(text, "followUp");
 			});
 		},
 		abort: () => void controller.abort(),

@@ -111,6 +111,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Fetch the static fd and ripgrep
+        # These go into the workspace archive so no test job installs them with apt (see
+        # scripts/fetch-ci-tools.mjs). The archive must contain them: restore-workspace puts .ci/bin on PATH.
+        uses: ./.github/actions/ci-tools
+
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
         with:
@@ -128,7 +133,7 @@ jobs:
           # packages/ai/node_modules, not in the root. Pack every nested node_modules, or a restored job cannot resolve it.
           # nullglob drops a pattern with no match instead of failing, since not every package nests anything.
           shopt -s nullglob
-          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
+          tar -cf - node_modules packages/*/node_modules packages/*/dist .ci/bin .ci/model-data.lock.json | gzip -1 > nyan-workspace.tar.gz
           ls -lh nyan-workspace.tar.gz
 
       - name: Upload the workspace
@@ -154,15 +159,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Ensure fd and ripgrep
-        # The coding-agent `find` and `grep` tools resolve these on PATH. With NYAN_OFFLINE set, a missing binary is
-        # not downloaded: the tool reports itself unavailable. The image does not provide them (measured), so install
-        # only what is missing and print what the image had.
-        run: |
-          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
-          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            bash .github/scripts/apt-install.sh ripgrep fd-find
-          fi
-          echo "after: rg=$(command -v rg || echo missing) fd=$(command -v fd || command -v fdfind || echo missing)"
+        # This job installs its own dependencies instead of restoring the workspace archive, so it fetches the tools
+        # itself. Every other job gets them from the archive (see .github/actions/restore-workspace).
+        uses: ./.github/actions/ci-tools
 
       - name: Setup Nyan
         uses: ./.github/actions/setup-nyan
@@ -190,13 +189,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Ensure fd and ripgrep
-        run: |
-          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
-          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            bash .github/scripts/apt-install.sh ripgrep fd-find
-          fi
 
       - name: Restore workspace
         id: restore
@@ -256,13 +248,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Ensure fd and ripgrep
-        run: |
-          echo "image before: rg=$(command -v rg || echo missing) fd=$(command -v fd || echo missing) fdfind=$(command -v fdfind || echo missing)"
-          if ! command -v rg >/dev/null || { ! command -v fd >/dev/null && ! command -v fdfind >/dev/null; }; then
-            bash .github/scripts/apt-install.sh ripgrep fd-find
-          fi
-
       - name: Restore workspace
         id: restore
         # The download takes about 15 s. One of sixty stalled for over fifteen minutes with the process idle, and a stalled
@@ -314,6 +299,10 @@ jobs:
   windows-smoke:
     name: Windows build and check
     needs: [policy, prepare]
+    # There is no local Windows machine any more, so this job is the only Windows coverage. It runs when the impact
+    # classifier selects a path that can behave differently there; the gate treats a skip as the intended outcome,
+    # and a skip when the classifier did ask for it is a failure.
+    if: needs.policy.outputs.windows_required == 'true'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -350,6 +339,7 @@ jobs:
   mcp-conformance:
     name: MCP conformance
     needs: [policy, prepare]
+    if: needs.policy.outputs.mcp_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -464,8 +454,32 @@ jobs:
           FUZZ_SEED: '20261017'
         run: npm run test:fuzz:protocol
 
+      - name: Restore the mutation incremental file
+        # Stryker re-runs only the mutants affected by what changed, but it stores that in
+        # .artifacts/stryker/protocol-incremental.json, which a fresh runner never has: without this the job
+        # mutated the whole of cbor/** on every run. Measured locally: 2 m 44 s cold against 6.7 s warm.
+        #
+        # The file cannot hide a regression: changing a test file re-runs everything (2 m 31 s measured), and
+        # deleting a test raised the survivor count from 88 to 89. That is why a pull request restores but never
+        # saves, and why only main writes it.
+        uses: actions/cache/restore@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
+        with:
+          path: .artifacts/stryker/protocol-incremental.json
+          key: stryker-incremental-${{ hashFiles('packages/protocol/src/cbor/**/*.ts', 'packages/protocol/test/cbor/**/*.ts') }}
+          restore-keys: |
+            stryker-incremental-
+
       - name: Run protocol mutation testing
         run: npm run test:mutation
+
+      - name: Save the mutation incremental file
+        # Only a push to main writes it: a per-pull-request key would be scoped to a ref nobody reuses, which is
+        # what filled the cache quota before.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
+        with:
+          path: .artifacts/stryker/protocol-incremental.json
+          key: stryker-incremental-${{ hashFiles('packages/protocol/src/cbor/**/*.ts', 'packages/protocol/test/cbor/**/*.ts') }}
 
       - name: Upload deep-testing reports
         if: always()
@@ -494,8 +508,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Evaluate required results
+        # The required list is `.github/quality/policy.json` plus the impact flags, not a second copy here: this file
+        # used to repeat the names, and a renamed job then either stopped being required or blocked a merge forever.
         env:
           CI_GATE_RESULTS: >-
             {"policy":"${{ needs.policy.result }}","prepare":"${{ needs.prepare.result }}","static":"${{ needs.static.result }}","node-tests":"${{ needs.node-tests.result }}","bun-tests":"${{ needs.bun-tests.result }}","windows-smoke":"${{ needs.windows-smoke.result }}","mcp-conformance":"${{ needs.mcp-conformance.result }}","supply-chain":"${{ needs.supply-chain.result }}","deep-gate":"${{ needs.deep-gate.result }}"}
-          CI_GATE_REQUIRED: ${{ needs.policy.outputs.deep_required == 'true' && '["policy","prepare","static","node-tests","bun-tests","windows-smoke","mcp-conformance","supply-chain","deep-gate"]' || '["policy","prepare","static","node-tests","bun-tests","windows-smoke","mcp-conformance","supply-chain"]' }}
+          CI_GATE_IMPACT: >-
+            {"windows_required":"${{ needs.policy.outputs.windows_required }}","mcp_required":"${{ needs.policy.outputs.mcp_required }}","deep_required":"${{ needs.policy.outputs.deep_required }}"}
         run: node scripts/ci-gate.mjs

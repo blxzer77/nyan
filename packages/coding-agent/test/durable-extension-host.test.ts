@@ -19,6 +19,7 @@ import { createDurableServices } from "../src/core/durable/services.ts";
 import type { ExtensionAPI, InlineExtension, ProjectTrustContext } from "../src/core/extensions/types.ts";
 import { persistPausePreference } from "../src/extensions/cliproxyapi/pause.ts";
 import { builtInExtensions } from "../src/extensions/index.ts";
+import { settlement } from "./durable-submission.ts";
 import { createTestUiContext } from "./suite/harness.ts";
 
 /**
@@ -266,7 +267,7 @@ describe("durable extension host", () => {
 			projectTrustContext: { ...headless, cwd },
 		});
 		try {
-			const settled = await durable.controller.submitAndWait("hi", "followUp");
+			const settled = await settlement(durable.controller.submitAndWait("hi", "followUp"));
 			expect(settled).toMatchObject({ status: "done" });
 			expect(stub.bodies.length).toBeGreaterThan(0);
 			expect(stub.bodies[0]).toContain("PAYLOAD-MARK");
@@ -295,7 +296,7 @@ describe("durable extension host", () => {
 			"tui",
 		);
 		try {
-			expect(await durable.controller.submitAndWait("hi", "followUp")).toMatchObject({ status: "done" });
+			expect(await settlement(durable.controller.submitAndWait("hi", "followUp"))).toMatchObject({ status: "done" });
 			expect(await dispatchDurableExtensionCommand(durable.extensionHost.runner, "/cpa-quota")).toBe(true);
 			expect(notices.some((message) => message.includes("42% used"))).toBe(true);
 		} finally {
@@ -319,7 +320,7 @@ describe("durable extension host", () => {
 			projectTrustContext: { ...headless, cwd },
 		});
 		try {
-			expect(await durable.controller.submitAndWait("hi", "followUp")).toMatchObject({ status: "done" });
+			expect(await settlement(durable.controller.submitAndWait("hi", "followUp"))).toMatchObject({ status: "done" });
 			expect(requests).toHaveLength(1);
 		} finally {
 			await durable.close();
@@ -372,7 +373,7 @@ describe("durable extension host", () => {
 			projectTrustContext: { ...headless, cwd },
 		});
 		try {
-			const settled = await durable.controller.submitAndWait("hi", "followUp");
+			const settled = await settlement(durable.controller.submitAndWait("hi", "followUp"));
 			expect(settled).toMatchObject({ status: "done" });
 			expect(starts).toBe(1);
 			expect(entryCount).toBeGreaterThan(0);
@@ -521,7 +522,7 @@ describe("durable extension host", () => {
 			projectTrustContext: { ...headless, cwd },
 		});
 		try {
-			expect(await durable.controller.submitAndWait("hi", "followUp")).toMatchObject({ status: "done" });
+			expect(await settlement(durable.controller.submitAndWait("hi", "followUp"))).toMatchObject({ status: "done" });
 			expect(stub.bodies).toHaveLength(2);
 			const assistants = durable.view
 				.current()
@@ -571,7 +572,7 @@ describe("durable extension host", () => {
 		});
 		try {
 			const timersBefore = countTimers();
-			const submission = durable.controller.submitAndWait("hi", "followUp");
+			const submission = settlement(durable.controller.submitAndWait("hi", "followUp"));
 			await new Promise((resolve) => setTimeout(resolve, 600));
 			await durable.controller.abort();
 			const settled = await submission;
@@ -639,10 +640,16 @@ describe("durable extension host", () => {
 		});
 		try {
 			persistPausePreference(agentDir, false);
-			await vi.waitFor(() => expect(stub.bodies).toHaveLength(1), { timeout: 5_000 });
-			expect(
-				second.view.current().conversation.entries.filter((entry) => entry.kind === "nyan.assistant"),
-			).toHaveLength(1);
+			// The stand-in records a body when a request starts; the entry exists once its answer commits. Wait for the
+			// entry, not the body, or a loaded machine sees the request before its answer is in the conversation.
+			await vi.waitFor(
+				() =>
+					expect(
+						second.view.current().conversation.entries.filter((entry) => entry.kind === "nyan.assistant"),
+					).toHaveLength(1),
+				{ timeout: 5_000 },
+			);
+			expect(stub.bodies).toHaveLength(1);
 		} finally {
 			persistPausePreference(agentDir, false);
 			await second.close();

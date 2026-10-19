@@ -146,8 +146,8 @@ it was missing from the first draft.
 | `session_compact_failed` | `internal-view` | keep | test 1 | Compaction failed; no extension consumer |  |
 | `session_shutdown` | `product-api` | keep | built-in 2, example 7, test 4 | Session closing; extensions flush and release |  |
 | `mcp_servers_change` | `product-api` | keep | built-in 1 | MCP server set changed |  |
-| `session_before_tree` | `product-api` | adapt | test 3 | Cancel branch summarization or supply its summary and label |  |
-| `session_tree` | `product-api` | adapt | example 3 | Conversation tree changed |  |
+| `session_before_tree` | `product-api` | reduce | test 3 | Cancel branch summarization or supply its summary and label | Decision #31 (2026-10-19): recorded reduction. Durable keeps a flat conversation with no parent tree and no tree navigation (Decision #24), so the durable path neither emits this event nor offers the navigation it guards. |
+| `session_tree` | `product-api` | reduce | example 3 | Conversation tree changed | Decision #31 (2026-10-19): recorded reduction. Durable keeps a flat conversation with no parent tree and no tree navigation (Decision #24), so the durable path neither emits this event nor offers the navigation it guards. |
 | `context` | capability: `phased-request-transform` | adapt | example 1, test 3 | Phase one of two: sees the conversation only, and nyan restores prompt and tool state after each handler |  |
 | `context_with_system` | capability: `phased-request-transform` | adapt | test 1 | Phase two: sees the full transcript including system and tool declarations, output used as returned |  |
 | `cache_warming_decision` | `product-api` | keep | test 1 | The prompt-cache warmer decides whether to warm |  |
