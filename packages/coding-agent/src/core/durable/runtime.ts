@@ -183,6 +183,11 @@ export interface OpenDurableResult {
 	readonly services: DurableServices;
 	/** Session-wide product operations: queue clearing, entries, export, and the display name. */
 	readonly sessionOps: DurableSessionOps;
+	/**
+	 * Events of another conversation, for an adapter whose controller moved to one (RPC `fork` and `clone`). The caller
+	 * stops the stream it replaces, and the returned one when it is done. Requires `eventStream`.
+	 */
+	readonly eventsOf: (conversationId: ConversationId) => Promise<AgentEventStream>;
 	/** Ends the session: `session_shutdown` with `reason` (default "quit"), then the storage is closed. */
 	close(reason?: SessionShutdownEvent["reason"]): Promise<void>;
 }
@@ -666,6 +671,10 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 				session: () => state.session,
 				context,
 			}),
+			eventsOf: async (conversationId) => {
+				if (options.eventStream !== true) throw new Error("This open has no event stream");
+				return watchEvents(opened, conversationId, context);
+			},
 			close(reason = "quit") {
 				closing ??= (async () => {
 					unsubscribe();

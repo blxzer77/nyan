@@ -611,6 +611,8 @@ If an extension canceled the switch:
 {"type": "response", "command": "switch_session", "success": true, "data": {"cancelled": true}}
 ```
 
+This command is not available on the durable path yet: it would open a given session directory, which the durable path cannot do. It answers `success: false` there.
+
 ### fork
 
 Create a new fork from a previous user message on the active branch. Can be canceled by a `session_before_fork` extension event handler. Returns the text of the message being forked from.
@@ -638,6 +640,8 @@ If an extension canceled the fork:
   "data": {"cancelled": true}
 }
 ```
+
+On the durable path a fork is a new conversation in the same session, with the entries up to `entryId`: `sessionId` and `sessionFile` do not change, and subsequent prompts and events belong to the forked conversation. Only a user message entry can be forked from; any other id is an error response.
 
 ### clone
 
@@ -667,9 +671,11 @@ If an extension canceled the clone:
 }
 ```
 
+On the durable path the clone forks at the newest entry, so the new conversation keeps the whole conversation and the session continues in it, again without changing `sessionId` or `sessionFile`.
+
 ### get_fork_messages
 
-Get user messages available for forking.
+Get user messages available for forking. On the durable path this lists the user entries of the session in append order, including the ones before a compaction.
 
 ```json
 {"type": "get_fork_messages"}
@@ -731,6 +737,8 @@ On the durable path the entries come from the session database instead of a sess
 ### get_tree
 
 Get the session as a tree of entries. Each node is `{entry, children, label?, labelTimestamp?}`. The result is an array because navigation APIs can create multiple roots; orphaned entries with broken parent chains also appear as roots.
+
+On the durable path the tree is the active entry chain, one node deep at each level: durable keeps a flat entry list with head markers rather than a parent tree, so a compaction or reset that starts a new context also starts the chain. `leafId` is the newest entry of the chain.
 
 ```json
 {"type": "get_tree"}
