@@ -42,3 +42,6 @@ plans/
 collect.sh
 packages/agent/docs/extensions/nyan-server-artifact/index.md
 packages/*/.bun-cache/
+
+# CI-only tool binaries (scripts/fetch-ci-tools.mjs)
+.ci/bin/
