@@ -1,5 +1,6 @@
 import type { AssistantMessage, ImageContent } from "@ny4n/ai";
 import type { UserInput } from "@ny4n/durable";
+import { dispatchDurableExtensionCommand } from "../../core/durable/extension-commands.ts";
 import { type OpenDurableOptions, openDurable } from "../../core/durable/runtime.ts";
 import { flushRawStdout, waitForRawStdoutBackpressure, writeRawStdout } from "../../core/output-guard.ts";
 import { DurableJsonEventAdapter } from "./json-events.ts";
@@ -34,7 +35,14 @@ export async function runDurableJson(options: DurableJsonOptions): Promise<numbe
 			await waitForRawStdoutBackpressure();
 		});
 
-		const submit = async (content: UserInput): Promise<AssistantMessage> => {
+		const submit = async (content: UserInput): Promise<AssistantMessage | undefined> => {
+			const commandText = typeof content === "string" ? content : content.find((part) => part.type === "text")?.text;
+			if (
+				commandText !== undefined &&
+				(await dispatchDurableExtensionCommand(durable.extensionHost.runner, commandText))
+			) {
+				return undefined;
+			}
 			const settled = await durable.controller.submitAndWait(content, "followUp");
 			if (settled.status !== "done") {
 				throw new Error(
