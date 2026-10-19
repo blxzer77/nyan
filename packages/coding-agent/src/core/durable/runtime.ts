@@ -22,9 +22,11 @@ import {
 } from "@ny4n/durable";
 import { openNodeSqliteStorage } from "@ny4n/durable/storage/sqlite/node";
 import { getAgentDir } from "../../config.ts";
+import type { Theme } from "../../ui/theme/theme.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../agent-session-services.ts";
 import type { ExtensionMode, InlineExtension, ProjectTrustContext, SessionShutdownEvent } from "../extensions/types.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
+import { expandPromptTemplate, type PromptTemplate } from "../prompt-templates.ts";
 import type { ReadonlySessionManager, SessionEntry, SessionTreeNode } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
@@ -100,6 +102,7 @@ export interface DurableController {
 	toggleTasks(): Promise<void>;
 	/** Show and talk to another conversation. */
 	switchConversation(id: ConversationId): Promise<void>;
+	expandPrompt(text: string): string;
 }
 
 export interface DurableModelSelection {
@@ -171,6 +174,8 @@ export interface OpenDurableResult {
 	readonly events?: AgentEventStream;
 	/** nyan's settings, for the TUI's theme and terminal capabilities. */
 	readonly settings: SettingsManager;
+	readonly themes: readonly Theme[];
+	readonly promptTemplates: readonly PromptTemplate[];
 	/** The extension host for this open; modes bind their UI context before accepting input. */
 	readonly extensionHost: ExtensionHost;
 	/** The services this open used; pass them to a later open in the same process. */
@@ -585,6 +590,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					await current.configure({ thinkingLevel: next }, context);
 					await host.thinkingSelected(next, level);
 				}),
+			expandPrompt: (text) => expandPromptTemplate(text, services.resourceLoader.getPrompts().prompts),
 			setModel: (ref) =>
 				command(async () => {
 					const model = modelRuntime.getModel(ref.provider, ref.modelId);
@@ -647,6 +653,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			modelRuntime,
 			...(events === undefined ? {} : { events }),
 			settings: settingsManager,
+			themes: services.resourceLoader.getThemes().themes,
+			promptTemplates: services.resourceLoader.getPrompts().prompts,
 			extensionHost: host,
 			services,
 			close(reason = "quit") {

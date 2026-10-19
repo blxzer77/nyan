@@ -5,16 +5,16 @@ import { SettingsManager } from "../src/core/settings-manager.ts";
 import { canRunDurableProductPath, durableOptions } from "../src/main.ts";
 
 /**
- * Which flags the durable path takes. A flag whose feature the durable path does not connect yet stays on the legacy
- * path, so it is never silently ignored; a flag that only disables something the durable path does not load stays here.
+ * Resource flags and their disabling variants are handled by the durable ResourceLoader; session-selection and tool
+ * compatibility flags remain on the legacy path until their queued N2 work lands.
  */
 describe("durable product path routing", () => {
 	test.each([
 		["--extension", "ext.ts"],
 		["--theme", "dark.json"],
 		["--prompt-template", "templates"],
-	])("%s stays on the legacy path until task C", (flag, value) => {
-		expect(canRunDurableProductPath(parseArgs([flag, value, "hi"]))).toBe(false);
+	])("%s runs on the durable path", (flag, value) => {
+		expect(canRunDurableProductPath(parseArgs([flag, value, "hi"]))).toBe(true);
 	});
 
 	test.each([

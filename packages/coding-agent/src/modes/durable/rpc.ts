@@ -26,6 +26,7 @@ import type {
 	RpcExtensionUIResponse,
 	RpcResponse,
 	RpcSessionState,
+	RpcSlashCommand,
 } from "../rpc/rpc-types.ts";
 import { DurableJsonEventAdapter } from "./json-events.ts";
 
@@ -246,10 +247,11 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 		const id = command.id;
 		switch (command.type) {
 			case "prompt": {
+				const expandedMessage = durable.controller.expandPrompt(command.message);
 				const content =
 					command.images === undefined
-						? command.message
-						: [{ type: "text" as const, text: command.message }, ...command.images];
+						? expandedMessage
+						: [{ type: "text" as const, text: expandedMessage }, ...command.images];
 				void dispatchDurableExtensionCommand(durable.extensionHost.runner, command.message).then((handled) => {
 					if (handled) return output(success(id, "prompt", { disposition: "handled" }));
 					return durable.controller.submitAndWait(content, command.streamingBehavior ?? "steer").then(
@@ -259,28 +261,32 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				});
 				return undefined;
 			}
-			case "steer":
+			case "steer": {
 				if (await dispatchDurableExtensionCommand(durable.extensionHost.runner, command.message)) {
 					return success(id, "steer", { disposition: "handled" });
 				}
+				const expandedSteerMessage = durable.controller.expandPrompt(command.message);
 				await durable.controller.submitAndWait(
 					command.images === undefined
-						? command.message
-						: [{ type: "text", text: command.message }, ...command.images],
+						? expandedSteerMessage
+						: [{ type: "text" as const, text: expandedSteerMessage }, ...command.images],
 					"steer",
 				);
 				return success(id, "steer", { disposition: "queued" });
-			case "follow_up":
+			}
+			case "follow_up": {
 				if (await dispatchDurableExtensionCommand(durable.extensionHost.runner, command.message)) {
 					return success(id, "follow_up", { disposition: "handled" });
 				}
+				const expandedFollowUpMessage = durable.controller.expandPrompt(command.message);
 				await durable.controller.submitAndWait(
 					command.images === undefined
-						? command.message
-						: [{ type: "text", text: command.message }, ...command.images],
+						? expandedFollowUpMessage
+						: [{ type: "text" as const, text: expandedFollowUpMessage }, ...command.images],
 					"followUp",
 				);
 				return success(id, "follow_up", { disposition: "queued" });
+			}
 			case "abort":
 				await durable.controller.abort();
 				return success(id, "abort");
@@ -353,15 +359,25 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				return success(id, "get_last_assistant_text", { text: getAssistantText() });
 			case "get_messages":
 				return success(id, "get_messages", { messages: messagesOf(durable) });
-			case "get_commands":
-				return success(id, "get_commands", {
-					commands: getDurableExtensionCommands(durable.extensionHost.runner).map((command) => ({
+			case "get_commands": {
+				const commands: RpcSlashCommand[] = getDurableExtensionCommands(durable.extensionHost.runner).map(
+					(command) => ({
 						name: command.invocationName,
 						description: command.description,
 						source: "extension" as const,
 						sourceInfo: command.sourceInfo,
+					}),
+				);
+				commands.push(
+					...durable.promptTemplates.map((template) => ({
+						name: template.name,
+						description: template.description,
+						source: "prompt" as const,
+						sourceInfo: template.sourceInfo,
 					})),
-				});
+				);
+				return success(id, "get_commands", { commands });
+			}
 			case "get_session_stats": {
 				const messages = messagesOf(durable);
 				const usage = ((durable.view.current().conversation.docs["nyan.usage"] ?? {}) as UsageState).models ?? {};
