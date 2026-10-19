@@ -31,6 +31,7 @@ import {
 	VStack,
 } from "@ny4n/tui";
 import { getAgentDir } from "../../config.ts";
+import { routeDurableInput } from "../../core/durable/commands.ts";
 import { customMessageView } from "../../core/durable/custom-message.ts";
 import { dispatchDurableExtensionCommand } from "../../core/durable/extension-commands.ts";
 import type { ExtensionHost } from "../../core/durable/extension-host.ts";
@@ -85,11 +86,21 @@ class ListSelector extends Container implements Focusable {
 	#list: SelectList;
 	#focused = false;
 
-	constructor(title: string, items: SelectItem[], onSelect: (value: string) => void, onCancel: () => void) {
+	constructor(
+		title: string,
+		items: SelectItem[],
+		onSelect: (value: string) => void,
+		onCancel: () => void,
+		initialQuery?: string,
+	) {
 		super();
 		this.#items = items;
 		this.#onSelect = onSelect;
 		this.#onCancel = onCancel;
+		if (initialQuery !== undefined && initialQuery.length > 0) {
+			this.#input.setValue(initialQuery);
+			items = ListSelector.#filter(items, initialQuery);
+		}
 		this.#list = this.#build(items);
 		this.addChild(new DynamicBorder());
 		this.addChild(new Spacer(1));
@@ -116,10 +127,11 @@ class ListSelector extends Container implements Focusable {
 			return;
 		}
 		this.#input.handleInput(data);
-		const query = this.#input.getValue();
-		const filtered =
-			query.length === 0 ? this.#items : fuzzyFilter(this.#items, query, (item) => `${item.label} ${item.value}`);
-		this.#list = this.#build(filtered);
+		this.#list = this.#build(ListSelector.#filter(this.#items, this.#input.getValue()));
+	}
+
+	static #filter(items: readonly SelectItem[], query: string): SelectItem[] {
+		return query.length === 0 ? [...items] : fuzzyFilter([...items], query, (item) => `${item.label} ${item.value}`);
 	}
 
 	#build(items: SelectItem[]): SelectList {
@@ -334,12 +346,7 @@ class DurableTui {
 			confirm: (title, message, opts) =>
 				this.#select(`${title}\n${message}`, ["Yes", "No"], opts).then((value) => value === "Yes"),
 			input: (title, placeholder, opts) => this.#inputPrompt(title, placeholder, opts),
-			notify: (message, type = "info") => {
-				this.#extensionNotices.push({ message, type });
-				if (this.#extensionNotices.length > 8) this.#extensionNotices.shift();
-				this.#renderNotices();
-				this.#ui.requestRender();
-			},
+			notify: (message, type = "info") => this.notify(message, type),
 			onTerminalInput: () => () => {},
 			setStatus: (key, text) => {
 				if (text === undefined) this.#extensionStatuses.delete(key);
@@ -424,6 +431,14 @@ class DurableTui {
 			if (opts?.timeout !== undefined) timeout = setTimeout(() => finish(undefined), opts.timeout);
 			this.mount(new TextInputPrompt(title, placeholder, finish, () => finish(undefined)));
 		});
+	}
+
+	/** Show a line in the notice area: an answer the TUI gives itself, such as a command it cannot run. */
+	notify(message: string, type: "info" | "warning" | "error" = "info"): void {
+		this.#extensionNotices.push({ message, type });
+		if (this.#extensionNotices.length > 8) this.#extensionNotices.shift();
+		this.#renderNotices();
+		this.#ui.requestRender();
 	}
 
 	/** Finish every card: a running bash card keeps a timer until it gets a final result. */
@@ -763,7 +778,7 @@ export async function runDurableTui(
 	});
 	let view!: DurableTui;
 
-	const selectModel = (): void => {
+	const selectModel = (search?: string): void => {
 		const snapshot = source.current();
 		const current = agentOf(snapshot.conversation).model;
 		const isCurrent = (model: { provider: string; modelId: string }) =>
@@ -784,6 +799,7 @@ export async function runDurableTui(
 				void controller.setModel({ provider: value.slice(0, separator), modelId: value.slice(separator + 1) });
 			},
 			() => view.restoreEditor(),
+			search,
 		);
 		view.mount(selector);
 	};
@@ -807,17 +823,44 @@ export async function runDurableTui(
 		view.mount(selector);
 	};
 
+	/**
+	 * Run a command this TUI answers itself. False when the line is not one of its commands, so the caller offers it to
+	 * an extension command and then to the model.
+	 */
+	const runCommand = (text: string): boolean => {
+		const route = routeDurableInput(text);
+		if (route.kind === "prompt") return false;
+		if (route.kind === "unsupported") {
+			// Never submit it: the text of a command is not a prompt, and a request for it is paid for.
+			view.notify(route.message, "warning");
+			return true;
+		}
+		switch (route.name) {
+			case "model":
+				selectModel(route.args.length === 0 ? undefined : route.args);
+				return true;
+			case "tasks":
+				void controller.toggleTasks();
+				return true;
+			case "agents":
+				selectConversation();
+				return true;
+			case "compact":
+				void controller.compact(route.args.length === 0 ? undefined : route.args);
+				return true;
+			default: {
+				// A command the router runs but this switch does not: the parity work adds both together.
+				const unhandled: never = route;
+				throw new Error(`Unhandled durable command: ${JSON.stringify(unhandled)}`);
+			}
+		}
+	};
+
 	view = new DurableTui(source.current().session.cwd, {
 		submit: (text) => {
 			const trimmed = text.trim();
 			if (!trimmed) return;
-			if (trimmed === "/model") return selectModel();
-			if (trimmed === "/tasks") return void controller.toggleTasks();
-			if (trimmed === "/agents") return selectConversation();
-			if (trimmed === "/compact" || trimmed.startsWith("/compact ")) {
-				const instructions = trimmed.slice("/compact".length).trim();
-				return void controller.compact(instructions || undefined);
-			}
+			if (runCommand(trimmed)) return;
 			if (host === undefined) {
 				void controller.submit(trimmed, "steer");
 				return;
@@ -827,6 +870,7 @@ export async function runDurableTui(
 			});
 		},
 		followUp: (text) => {
+			if (runCommand(text.trim())) return;
 			if (host === undefined) {
 				void controller.submit(text, "followUp");
 				return;
@@ -837,7 +881,7 @@ export async function runDurableTui(
 		},
 		abort: () => void controller.abort(),
 		exit,
-		selectModel,
+		selectModel: () => selectModel(),
 		cycleThinking: () => void controller.cycleThinking(),
 	});
 
