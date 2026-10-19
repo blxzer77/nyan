@@ -1,14 +1,33 @@
 name: Native prebuilds
 
 # Builds the terminal helper modules on the platform each one targets. The release workflow calls this and ships the
-# fresh binaries; run it by hand to check that the committed prebuilds still match the sources.
+# fresh binaries; run it by hand to check that the committed prebuilds still match the sources (dispatch with
+# `verify: true` for that: it compares the build against what is committed instead of just producing artifacts).
+#
+# The toolchain comes from `.github/actions/setup-nyan` like every other workflow, so Node and npm cannot drift from
+# the versions the suites run on. Byte-identical output is not required — a different toolchain legitimately produces
+# different bytes — so the check is structural: every expected file exists, and its magic bytes match the platform it
+# is filed under (scripts/check-native-prebuilds.mjs).
 
 on:
   workflow_call:
+    inputs:
+      verify:
+        description: Compare the built prebuilds against the committed ones and fail on a mismatch
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      verify:
+        description: Compare the built prebuilds against the committed ones and fail on a mismatch
+        type: boolean
+        default: true
 
 permissions:
   contents: read
+
+env:
+  NODE_VERSION: '24'
 
 jobs:
   build:
@@ -29,21 +48,59 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install Linux build dependencies on hosted runners
-        if: matrix.platform == 'linux' && runner.environment == 'github-hosted'
+      - name: Install Linux build dependencies
+        # The compiler needs the X11 headers; this is a build dependency, not a tool the suites run.
+        if: matrix.platform == 'linux'
         run: bash .github/scripts/apt-install.sh libxcb1-dev
 
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+      - name: Setup Nyan
+        uses: ./.github/actions/setup-nyan
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          bun: 'false'
+          model-data: 'false'
+
+      - name: Record the committed prebuilds
+        if: inputs.verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/committed"
+          cp -R "packages/tui/native/${{ matrix.platform }}/prebuilds" "$RUNNER_TEMP/committed/" 2>/dev/null || true
 
       - name: Build
         run: npm --prefix packages/tui run ${{ matrix.script }}
+
+      - name: Check the prebuilds
+        # Structural, and only the host's own binary is loaded: a cross-compiled Mach-O cannot be dlopen'd on Linux.
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.platform }}" == "$(node -p 'process.platform')" && "${{ matrix.arch }}" == "universal" ]]; then
+            node scripts/check-native-prebuilds.mjs --platform "${{ matrix.platform }}"
+          elif [[ "${{ matrix.platform }}" == "$(node -p 'process.platform')" ]]; then
+            node scripts/check-native-prebuilds.mjs --platform "${{ matrix.platform }}" --load
+          else
+            node scripts/check-native-prebuilds.mjs --platform "${{ matrix.platform }}"
+          fi
+
+      - name: Compare with what is committed
+        if: inputs.verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          committed="$RUNNER_TEMP/committed/prebuilds"
+          built="packages/tui/native/${{ matrix.platform }}/prebuilds"
+          if [[ ! -d "$committed" ]]; then
+            echo "::error::nothing was committed for ${{ matrix.platform }} to compare against"
+            exit 1
+          fi
+          # Names and platforms only: the bytes differ between toolchains by design.
+          if ! diff <(cd "$committed" && find . -name '*.node' | sort) <(cd "$built" && find . -name '*.node' | sort); then
+            echo "::error::the built prebuilds do not cover the same files as the committed ones"
+            exit 1
+          fi
+          echo "the built prebuilds cover the same files as the committed ones"
 
       - name: Upload prebuilds
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
