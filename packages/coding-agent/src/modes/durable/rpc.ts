@@ -192,6 +192,9 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 	const messagesOf = (source: OpenDurableResult): AgentMessage[] =>
 		source.view.current().conversation.entries.flatMap((entry) => (entry.model ?? []) as AgentMessage[]);
 
+	// The display name lives beside the session database, so a reopen reads the name of the session it opened.
+	let sessionName = await durable.sessionOps.getSessionName();
+
 	const bindEvents = (): void => {
 		const events = durable.events;
 		if (events === undefined) throw new Error("Durable RPC mode did not acquire an event stream");
@@ -208,6 +211,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 		const services = durable.services;
 		await durable.close(continueSession ? "resume" : "new");
 		durable = await openDurable({ ...options, continueSession, services, eventStream: true });
+		sessionName = await durable.sessionOps.getSessionName();
 		bindEvents();
 	};
 
@@ -235,6 +239,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 			autoCompactionEnabled: durable.controller.getAutoCompaction(),
 			messageCount: view.conversation.entries.reduce((count, entry) => count + (entry.model?.length ?? 0), 0),
 			pendingMessageCount: inbox.items.length,
+			...(sessionName === undefined ? {} : { sessionName }),
 		};
 	};
 
@@ -290,8 +295,10 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 			case "abort":
 				await durable.controller.abort();
 				return success(id, "abort");
-			case "clear_queue":
-				return failure(id, "clear_queue", "Durable RPC does not expose queue clearing yet");
+			case "clear_queue": {
+				const cleared = await durable.sessionOps.clearQueue();
+				return success(id, "clear_queue", { steering: cleared.steering, followUp: cleared.followUp });
+			}
 			case "new_session":
 				await replaceSession(false);
 				return success(id, "new_session", { cancelled: false });
@@ -406,14 +413,22 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 					cost: totals.cost,
 				});
 			}
+			case "get_entries": {
+				const entries = await durable.sessionOps.entries(command.since);
+				return success(id, "get_entries", { entries: entries.entries, leafId: entries.leafId });
+			}
+			case "set_session_name":
+				sessionName = await durable.sessionOps.setSessionName(command.name);
+				return success(id, "set_session_name");
+			case "export_html": {
+				const path = await durable.sessionOps.exportHtml(command.outputPath);
+				return success(id, "export_html", { path });
+			}
 			case "switch_session":
 			case "fork":
 			case "clone":
 			case "get_fork_messages":
-			case "get_entries":
 			case "get_tree":
-			case "export_html":
-			case "set_session_name":
 			case "bash":
 			case "abort_bash":
 				return failure(id, command.type, `Command ${command.type} is not available on the durable RPC path yet`);

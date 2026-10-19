@@ -40,6 +40,7 @@ import {
 } from "./harness-setup.ts";
 import { createDurableModelRuntime } from "./model-runtime-adapter.ts";
 import { createDurableServices, type DurableResourceOptions, type DurableServices } from "./services.ts";
+import { createDurableSessionOps, type DurableSessionOps } from "./session-ops.ts";
 import { selectSession } from "./sessions.ts";
 import { Subagent } from "./subagent.ts";
 
@@ -180,6 +181,8 @@ export interface OpenDurableResult {
 	readonly extensionHost: ExtensionHost;
 	/** The services this open used; pass them to a later open in the same process. */
 	readonly services: DurableServices;
+	/** Session-wide product operations: queue clearing, entries, export, and the display name. */
+	readonly sessionOps: DurableSessionOps;
 	/** Ends the session: `session_shutdown` with `reason` (default "quit"), then the storage is closed. */
 	close(reason?: SessionShutdownEvent["reason"]): Promise<void>;
 }
@@ -657,6 +660,12 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			promptTemplates: services.resourceLoader.getPrompts().prompts,
 			extensionHost: host,
 			services,
+			sessionOps: createDurableSessionOps({
+				harness: opened,
+				conversation: () => current,
+				session: () => state.session,
+				context,
+			}),
 			close(reason = "quit") {
 				closing ??= (async () => {
 					unsubscribe();
