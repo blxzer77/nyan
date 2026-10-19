@@ -28,6 +28,8 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ### Fixed
 
+- On the default session path, every extension handler that runs inside a run now reads `ctx.signal`. The `context`, `message_end`, `message_update`, `tool_call`, `tool_result`, `tool_execution_update`, `turn_end`, `agent_before_settle`, and `session_before_compact` handlers received `undefined` and so could not cooperate with an abort; `close()`, an abort, and a session switch now finish when such a handler waits for that signal. A handler that ignores it still holds those operations up, as it does on the legacy path.
+- The durable TUI now shows a boundary `custom_message` entry as plain text with its custom type and keeps a `display: false` one hidden, instead of showing neither.
 - On the default session path, `turn_end` and `agent_before_settle` handlers now receive the real session: `toolResults`, `toolResultEntryIds`, and the `context` preview were empty, and a `context_edit` that targeted a user or custom message was refused every time. Edits to those messages now take effect on the next request, and a handler that runs again after a crash before the boundary commit proposes the same entries, which are written once.
 - Durable startup no longer reports the same invalid settings diagnostic more than once when the error is discovered through multiple settings sources.
 - In the standalone executable on Windows, the process that closed a session no longer keeps the session database's `-shm` and `-wal` files locked, so the session directory can be deleted without leaving Nyan. Under Bun the durable session store now uses Bun's built-in SQLite (`bun:sqlite`) in place of `node:sqlite`; the file format is the same, and Node keeps `node:sqlite`.

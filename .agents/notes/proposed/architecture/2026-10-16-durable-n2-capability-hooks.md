@@ -417,3 +417,32 @@ that connects later is listed.
 The durable RPC `bash` command owns an in-memory abort controller for each execution and invokes the session's `ExecutionEnv.exec`; `abort_bash` aborts those controllers without aborting the Harness conversation or its generation task. Output is forwarded as `bash_execution_update` records while the command runs. Once the command settles, the result is appended as an application entry with kind `bashExecution`. The entry carries the command and result data; it contributes the legacy `bashExecutionToText` user message to model context unless `excludeFromContext` is true. The command is executed before the entry commit, so a crash between those effects can leave an unknown external command outcome and must not be replayed automatically; a later session inspection is the recovery path.
 
 The shared legacy bash executor remains the output/cancellation boundary for RPC formatting and full-output files. Its full-output close has a deadline, failed command paths remove temporary files, and a spill failure is reported only when the returned result is actually truncated.
+
+## Batch C3h: the run's abort signal in every handler
+
+Legacy reports `ctx.signal` as `agent.signal` (`agent-session.ts`), which is set for the whole run, so a `turn_end`,
+`context`, or tool handler can cooperate with an abort. The durable adapter set a provider-call scope only around the
+provider and tool *executions*, so every hook member that ran an extension handler outside that scope read
+`undefined`: the boundary, context, `message_end`, `message_update`, `tool_call`, `tool_result`, `tool_execution_update`,
+and `session_before_compact` handlers could not respond to an abort even if the extension wanted to.
+
+Each durable hook member that calls an extension handler now runs it in `inProviderCall(scope, undefined,
+context.abortSignal, ...)`: the handler reads the task context's `abortSignal` as `ctx.signal`, and `ctx.model` stays
+unset so it falls back to the agent's model. The scope is unchanged for the provider callbacks and the tool execution,
+and `beforeRequest` runs no handler (it applies the staged `before_agent_start` effects).
+
+Who aborts that signal, and what it buys: `Harness.close()` (`scheduler.join`) and `Conversation.abort()` both abort the
+run invocation's controller, and every hook context is that invocation's context (`withAbortSignal(invocation.signal,
+context)`). A handler that waits for `ctx.signal` is therefore released by `close()`, by RPC `abort`, and by
+`new_session` (which closes the session first). A handler that ignores the signal still holds the close up: durable
+waits for every call, including code that never returns, and that is what makes a reopen safe (spec §close). The
+orchestrator's ruling was to keep that guarantee and fix the adapter instead, which is what this batch does.
+
+Not covered, deliberately: `agent_end` and `agent_settled` are emitted from the controller's settle path, after the
+durable run has settled, so those handlers have no signal (legacy's `agent_end` still runs inside the run and has one);
+`before_agent_start` has no signal in either path, because the run does not exist yet when it runs.
+
+`custom_message` in the durable TUI: `customMessageView` decides, from the entry's `data`, whether a boundary
+`custom_message` is shown. `display: false` shows nothing, as legacy does, and a visible one shows as plain text with its
+custom type. The durable TUI has no `ExtensionRunner`, so an extension's message renderer is not used (recorded
+reduction; the durable TUI renders no other custom entry either).

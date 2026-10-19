@@ -23,7 +23,9 @@ import { isJsonObject, isJsonValue } from "./extension-tools.ts";
 
 /**
  * The provider call that some async work belongs to: the model and abort signal the extension context reports as
- * `ctx.model` and `ctx.signal`.
+ * `ctx.model` and `ctx.signal`. A hook handler that calls an extension runs in this scope with the hook context's
+ * `abortSignal`, so `ctx.signal` is the signal of the run the handler belongs to (legacy passes `agent.signal` there);
+ * the model stays unset so `ctx.model` falls back to the agent's model.
  */
 export interface ProviderCall {
 	readonly model: Model<Api> | undefined;
@@ -288,63 +290,70 @@ export function createProviderHooks(
 	}
 
 	if (runner.hasHandlers("context")) {
-		members.transformConversation = async ({ messages }) => {
-			const before = JSON.stringify(messages);
-			const next = (await runner.emitContext([...messages])).filter(isPlainMessage);
-			// Returning an unchanged list would still replace the request, which collapses the system entries into one
-			// leading message and changes the prompt-cache prefix; an unchanged result therefore stays undefined.
-			return JSON.stringify(next) === before ? undefined : { messages: next };
-		};
+		members.transformConversation = async ({ messages }, _api, context) =>
+			inProviderCall(scope, undefined, context.abortSignal, async () => {
+				const before = JSON.stringify(messages);
+				const next = (await runner.emitContext([...messages])).filter(isPlainMessage);
+				// Returning an unchanged list would still replace the request, which collapses the system entries into one
+				// leading message and changes the prompt-cache prefix; an unchanged result therefore stays undefined.
+				return JSON.stringify(next) === before ? undefined : { messages: next };
+			});
 	}
 
 	if (runner.hasHandlers("turn_end") || runner.hasHandlers("agent_before_settle")) {
-		members.onBoundary = async (boundary) => {
-			const eventType = boundary.kind === "settle" ? "agent_before_settle" : "turn_end";
-			const entries = durableBoundaryEntriesToLegacy(boundary.entries, sessionManager, (message) =>
-				reportBoundaryError?.(`${eventType}: ${message}`),
-			);
-			if (entries === undefined) return boundary.continue ? { continue: true } : undefined;
-			const toolResults = boundary.toolResults.flatMap((id) => {
-				const entry = getSessionEntry(sessionManager, String(id));
-				return entry?.type === "message" && entry.message.role === "toolResult" ? [entry.message] : [];
-			});
-			const baseEvent =
-				boundary.kind === "settle"
-					? ({ type: "agent_before_settle", outcome: "completed", entries, continue: boundary.continue } as const)
-					: {
-							type: "turn_end" as const,
-							outcome: "completed" as const,
-							message: boundary.assistant,
-							toolResults,
-							turnIndex: turnCounter.value++,
-							timestamp: Date.now(),
-							messageEntryId: String(boundary.assistantEntry ?? ""),
-							toolResultEntryIds: boundary.toolResults.map(String),
-							entries,
-							continue: boundary.continue,
-						};
-			const result = await runner.emitBoundary(baseEvent, async (_drafts) => {
-				const projection = getSessionProjection(sessionManager);
+		members.onBoundary = async (boundary, _api, context) =>
+			inProviderCall(scope, undefined, context.abortSignal, async () => {
+				const eventType = boundary.kind === "settle" ? "agent_before_settle" : "turn_end";
+				const entries = durableBoundaryEntriesToLegacy(boundary.entries, sessionManager, (message) =>
+					reportBoundaryError?.(`${eventType}: ${message}`),
+				);
+				if (entries === undefined) return boundary.continue ? { continue: true } : undefined;
+				const toolResults = boundary.toolResults.flatMap((id) => {
+					const entry = getSessionEntry(sessionManager, String(id));
+					return entry?.type === "message" && entry.message.role === "toolResult" ? [entry.message] : [];
+				});
+				const baseEvent =
+					boundary.kind === "settle"
+						? ({
+								type: "agent_before_settle",
+								outcome: "completed",
+								entries,
+								continue: boundary.continue,
+							} as const)
+						: {
+								type: "turn_end" as const,
+								outcome: "completed" as const,
+								message: boundary.assistant,
+								toolResults,
+								turnIndex: turnCounter.value++,
+								timestamp: Date.now(),
+								messageEntryId: String(boundary.assistantEntry ?? ""),
+								toolResultEntryIds: boundary.toolResults.map(String),
+								entries,
+								continue: boundary.continue,
+							};
+				const result = await runner.emitBoundary(baseEvent, async (_drafts) => {
+					const projection = getSessionProjection(sessionManager);
+					return {
+						contextEntries: projection?.entries ?? [],
+						contextMessages: projection?.messages ?? [boundary.assistant],
+						llmMessages: (projection?.messages ?? [boundary.assistant]).filter(isPlainMessage),
+						pendingMessages: [],
+						canContinue: true,
+					};
+				});
+				const durableEntries = legacyBoundaryEntriesToDurable(
+					result.entries,
+					sessionManager,
+					(message) => reportBoundaryError?.(`${eventType}: ${message}`),
+					boundary.assistant.timestamp,
+				);
+				if (durableEntries === undefined) return boundary.continue ? { continue: true } : undefined;
 				return {
-					contextEntries: projection?.entries ?? [],
-					contextMessages: projection?.messages ?? [boundary.assistant],
-					llmMessages: (projection?.messages ?? [boundary.assistant]).filter(isPlainMessage),
-					pendingMessages: [],
-					canContinue: true,
+					...(durableEntries.length === 0 ? {} : { entries: durableEntries }),
+					...(result.continue ? { continue: true } : {}),
 				};
 			});
-			const durableEntries = legacyBoundaryEntriesToDurable(
-				result.entries,
-				sessionManager,
-				(message) => reportBoundaryError?.(`${eventType}: ${message}`),
-				boundary.assistant.timestamp,
-			);
-			if (durableEntries === undefined) return boundary.continue ? { continue: true } : undefined;
-			return {
-				...(durableEntries.length === 0 ? {} : { entries: durableEntries }),
-				...(result.continue ? { continue: true } : {}),
-			};
-		};
 	}
 
 	if (runner.hasHandlers("before_provider_request")) {
@@ -384,10 +393,11 @@ export function createProviderHooks(
 	}
 
 	if (runner.hasHandlers("message_update")) {
-		members.onStreamEvent = async ({ event, attempt }) => {
-			const message = "partial" in event ? event.partial : "message" in event ? event.message : event.error;
-			await runner.emit({ type: "message_update", message, assistantMessageEvent: event, attempt });
-		};
+		members.onStreamEvent = async ({ event, attempt }, _api, context) =>
+			inProviderCall(scope, undefined, context.abortSignal, async () => {
+				const message = "partial" in event ? event.partial : "message" in event ? event.message : event.error;
+				await runner.emit({ type: "message_update", message, assistantMessageEvent: event, attempt });
+			});
 	}
 
 	if (runner.hasHandlers("message_end")) {
@@ -413,64 +423,67 @@ export function createProviderHooks(
  * The tool-event members: `tool_call` runs before a call's intent is recorded (`beforeTool`), and `tool_result` before
  * its result is committed (`afterTool`). Each exists only when a loaded extension handles its event.
  */
-export function createToolHooks(runner: ExtensionRunner): Partial<ToolHooks> {
+export function createToolHooks(runner: ExtensionRunner, scope: ProviderCallScope): Partial<ToolHooks> {
 	const members: Partial<ToolHooks> = {};
 
 	if (runner.hasHandlers("tool_call")) {
-		members.beforeTool = async (call) => {
-			const input: Record<string, unknown> = { ...call.arguments };
-			const result = await runner.emitToolCall({
-				type: "tool_call",
-				toolCallId: call.id,
-				toolName: call.name,
-				input,
+		members.beforeTool = async (call, _api, context) =>
+			inProviderCall(scope, undefined, context.abortSignal, async () => {
+				const input: Record<string, unknown> = { ...call.arguments };
+				const result = await runner.emitToolCall({
+					type: "tool_call",
+					toolCallId: call.id,
+					toolName: call.name,
+					input,
+				});
+				if (result?.block === true) return { block: result.reason ?? `Blocked by an extension: ${call.name}` };
+				// Handlers change the call by mutating `input`, as legacy does; the change replaces the arguments when it is JSON.
+				if (JSON.stringify(input) === JSON.stringify(call.arguments) || !isJsonObject(input)) return undefined;
+				return { arguments: input };
 			});
-			if (result?.block === true) return { block: result.reason ?? `Blocked by an extension: ${call.name}` };
-			// Handlers change the call by mutating `input`, as legacy does; the change replaces the arguments when it is JSON.
-			if (JSON.stringify(input) === JSON.stringify(call.arguments) || !isJsonObject(input)) return undefined;
-			return { arguments: input };
-		};
 	}
 
 	if (runner.hasHandlers("tool_execution_update")) {
-		members.onToolUpdate = async (update) => {
-			await runner.emit({
-				type: "tool_execution_update",
-				toolCallId: update.call.id,
-				toolName: update.call.name,
-				args: update.call.arguments,
-				partialResult: {
-					...(update.output === undefined ? {} : { content: [{ type: "text", text: update.output }] }),
-					...(update.details === undefined ? {} : { details: update.details }),
-					...(update.diagnostics === undefined ? {} : { diagnostics: update.diagnostics }),
-				},
-				...(update.call.parent?.callId === undefined ? {} : { parentToolCallId: update.call.parent.callId }),
+		members.onToolUpdate = async (update, _api, context) =>
+			inProviderCall(scope, undefined, context.abortSignal, async () => {
+				await runner.emit({
+					type: "tool_execution_update",
+					toolCallId: update.call.id,
+					toolName: update.call.name,
+					args: update.call.arguments,
+					partialResult: {
+						...(update.output === undefined ? {} : { content: [{ type: "text", text: update.output }] }),
+						...(update.details === undefined ? {} : { details: update.details }),
+						...(update.diagnostics === undefined ? {} : { diagnostics: update.diagnostics }),
+					},
+					...(update.call.parent?.callId === undefined ? {} : { parentToolCallId: update.call.parent.callId }),
+				});
 			});
-		};
 	}
 
 	if (runner.hasHandlers("tool_result")) {
-		members.afterTool = async (call, result) => {
-			const changed = await runner.emitToolResult({
-				type: "tool_result",
-				toolCallId: call.id,
-				toolName: call.name,
-				input: { ...call.arguments },
-				content: result.output ?? [],
-				details: result.details,
-				isError: result.isError === true,
+		members.afterTool = async (call, result, _api, context) =>
+			inProviderCall(scope, undefined, context.abortSignal, async () => {
+				const changed = await runner.emitToolResult({
+					type: "tool_result",
+					toolCallId: call.id,
+					toolName: call.name,
+					input: { ...call.arguments },
+					content: result.output ?? [],
+					details: result.details,
+					isError: result.isError === true,
+				});
+				if (changed === undefined) return undefined;
+				return {
+					...result,
+					...(changed.content === undefined ? {} : { output: changed.content }),
+					...(changed.details === undefined || !isJsonValue(changed.details) ? {} : { details: changed.details }),
+					...(changed.isError === undefined ? {} : { isError: changed.isError }),
+					...(changed.structuredContent === undefined || !isJsonValue(changed.structuredContent)
+						? {}
+						: { structuredOutput: changed.structuredContent }),
+				};
 			});
-			if (changed === undefined) return undefined;
-			return {
-				...result,
-				...(changed.content === undefined ? {} : { output: changed.content }),
-				...(changed.details === undefined || !isJsonValue(changed.details) ? {} : { details: changed.details }),
-				...(changed.isError === undefined ? {} : { isError: changed.isError }),
-				...(changed.structuredContent === undefined || !isJsonValue(changed.structuredContent)
-					? {}
-					: { structuredOutput: changed.structuredContent }),
-			};
-		};
 	}
 
 	return members;
@@ -479,58 +492,62 @@ export function createToolHooks(runner: ExtensionRunner): Partial<ToolHooks> {
 /** Bridges the legacy compaction veto/custom-summary event to durable's first-decision hook. */
 export function createCompactionHooks(
 	runner: ExtensionRunner,
+	scope: ProviderCallScope,
 	reportBoundaryError?: (message: string) => void,
 	getModel?: () => Model<Api> | undefined,
 ): Partial<CompactionHooks> {
 	if (!runner.hasHandlers("session_before_compact")) return {};
 	return {
-		beforeCompact: async (compaction, _api, context) => {
-			const preparation: CompactionPreparation = {
-				firstKeptEntryId: String(compaction.firstKept),
-				messagesToSummarize: [...compaction.messages],
-				turnPrefixMessages: [],
-				isSplitTurn: false,
-				tokensBefore: compaction.messages.reduce((total, message) => total + estimateTokens(message), 0),
-				fileOps: createFileOps(),
-				settings: DEFAULT_COMPACTION_SETTINGS,
-			};
-			const result = await runner.emit({
-				type: "session_before_compact",
-				preparation,
-				branchEntries: [],
-				reason: compaction.reason,
-				willRetry: false,
-				signal: context.abortSignal ?? new AbortController().signal,
-			});
-			if (result === undefined) return undefined;
-			if (result.cancel) return { decline: true };
-			if (!("compaction" in result) || result.compaction === undefined) return undefined;
-			const summary = result.compaction;
-			const proposedFirstKept =
-				typeof summary.firstKeptEntryId === "string" ? durableEntryId(summary.firstKeptEntryId) : undefined;
-			const acceptsFirstKept =
-				summary.firstKeptEntryId === String(compaction.firstKept) && proposedFirstKept !== undefined;
-			if (!acceptsFirstKept) {
-				reportBoundaryError?.(
-					`session_before_compact proposed firstKeptEntryId ${summary.firstKeptEntryId}; durable cut ${String(compaction.firstKept)} remains`,
-				);
-			}
-			if (summary.details !== undefined && !isJsonValue(summary.details)) {
-				reportBoundaryError?.("session_before_compact returned non-JSON details; details were refused");
-			}
-			const model = getModel?.();
-			if (summary.usage !== undefined && (model === undefined || !isJsonValue(summary.usage))) {
-				reportBoundaryError?.("session_before_compact returned usage that cannot be attributed to a durable model");
-			}
-			return {
-				summary: summary.summary,
-				...(acceptsFirstKept ? { firstKept: proposedFirstKept } : {}),
-				...(summary.details !== undefined && isJsonValue(summary.details) ? { details: summary.details } : {}),
-				...(summary.usage !== undefined && model !== undefined && isJsonValue(summary.usage)
-					? { usage: { model: { provider: model.provider, modelId: model.id }, usage: summary.usage } }
-					: {}),
-			};
-		},
+		beforeCompact: async (compaction, _api, context) =>
+			inProviderCall(scope, undefined, context.abortSignal, async () => {
+				const preparation: CompactionPreparation = {
+					firstKeptEntryId: String(compaction.firstKept),
+					messagesToSummarize: [...compaction.messages],
+					turnPrefixMessages: [],
+					isSplitTurn: false,
+					tokensBefore: compaction.messages.reduce((total, message) => total + estimateTokens(message), 0),
+					fileOps: createFileOps(),
+					settings: DEFAULT_COMPACTION_SETTINGS,
+				};
+				const result = await runner.emit({
+					type: "session_before_compact",
+					preparation,
+					branchEntries: [],
+					reason: compaction.reason,
+					willRetry: false,
+					signal: context.abortSignal ?? new AbortController().signal,
+				});
+				if (result === undefined) return undefined;
+				if (result.cancel) return { decline: true };
+				if (!("compaction" in result) || result.compaction === undefined) return undefined;
+				const summary = result.compaction;
+				const proposedFirstKept =
+					typeof summary.firstKeptEntryId === "string" ? durableEntryId(summary.firstKeptEntryId) : undefined;
+				const acceptsFirstKept =
+					summary.firstKeptEntryId === String(compaction.firstKept) && proposedFirstKept !== undefined;
+				if (!acceptsFirstKept) {
+					reportBoundaryError?.(
+						`session_before_compact proposed firstKeptEntryId ${summary.firstKeptEntryId}; durable cut ${String(compaction.firstKept)} remains`,
+					);
+				}
+				if (summary.details !== undefined && !isJsonValue(summary.details)) {
+					reportBoundaryError?.("session_before_compact returned non-JSON details; details were refused");
+				}
+				const model = getModel?.();
+				if (summary.usage !== undefined && (model === undefined || !isJsonValue(summary.usage))) {
+					reportBoundaryError?.(
+						"session_before_compact returned usage that cannot be attributed to a durable model",
+					);
+				}
+				return {
+					summary: summary.summary,
+					...(acceptsFirstKept ? { firstKept: proposedFirstKept } : {}),
+					...(summary.details !== undefined && isJsonValue(summary.details) ? { details: summary.details } : {}),
+					...(summary.usage !== undefined && model !== undefined && isJsonValue(summary.usage)
+						? { usage: { model: { provider: model.provider, modelId: model.id }, usage: summary.usage } }
+						: {}),
+				};
+			}),
 	};
 }
 
