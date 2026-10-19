@@ -1,12 +1,32 @@
 import type { AgentMessage } from "@ny4n/agent-core";
-import type { AssistantMessage, AssistantMessageEvent, JsonObject, JsonValue } from "@ny4n/ai";
+import type {
+	AssistantMessage,
+	AssistantMessageEvent,
+	JsonObject,
+	JsonValue,
+	ModelThinkingLevel,
+	ToolResultMessage,
+} from "@ny4n/ai";
 import type { AgentEvent, EntryRecord, MessageChange } from "@ny4n/durable";
+import type { SessionEntry } from "../../core/session-manager.ts";
 import { type JsonAgentSessionEvent, toJsonEvent } from "../json-event.ts";
 
-/** Translate durable's event stream to the published JSON event vocabulary. */
+/**
+ * Translate durable's event stream to the published JSON event vocabulary.
+ *
+ * The published vocabulary is the legacy path's (`docs/json.md`): a client written for `--mode json` or `--mode rpc`
+ * must see the same event types from either path (N2 gate, Decisions #18 and #21). Where durable's own events carry less
+ * than a published event needs, this adapter keeps the little state the difference requires: the in-flight assistant
+ * partial, the arguments and accumulated output of a running tool call, the turn's tool results, and the active
+ * thinking level.
+ */
 export class DurableJsonEventAdapter {
 	#partial: AssistantMessage | undefined;
+	#thinkingLevel: ModelThinkingLevel | undefined;
 	readonly #readMessages: () => readonly AgentMessage[];
+	readonly #toolArgs = new Map<string, JsonObject>();
+	readonly #toolText = new Map<string, string>();
+	#turnToolResults: ToolResultMessage[] = [];
 
 	constructor(readMessages: () => readonly AgentMessage[]) {
 		this.#readMessages = readMessages;
@@ -14,13 +34,22 @@ export class DurableJsonEventAdapter {
 
 	translate(events: readonly AgentEvent[]): JsonAgentSessionEvent[] {
 		const translated: JsonAgentSessionEvent[] = [];
-		for (const event of events) translated.push(...this.#translate(event));
+		for (let index = 0; index < events.length; index++) {
+			const event = events[index]!;
+			// A bash execution entry is not a conversation message on the legacy path: its RPC command answers with the
+			// output and streams `bash_execution_update`, and publishes no message events for the entry it records.
+			if (event.type === "message_start" && isBashExecutionEntry(modelEntryAfter(events, index))) continue;
+			if (event.type === "message_end" && isBashExecutionEntry(event.entry)) continue;
+			translated.push(...this.#translate(event));
+		}
 		return translated;
 	}
 
 	#translate(event: AgentEvent): JsonAgentSessionEvent[] {
 		switch (event.type) {
 			case "snapshot":
+				// The snapshot seeds the thinking level, so the first `agent_changed` reports a real change.
+				this.#thinkingLevel = event.agent.thinkingLevel;
 				return [];
 			case "run_start":
 				return [{ type: "agent_start" }];
@@ -34,10 +63,14 @@ export class DurableJsonEventAdapter {
 					{ type: "agent_settled", aborted: false },
 				];
 			case "turn_start":
+				this.#turnToolResults = [];
 				return [{ type: "turn_start" }];
 			case "turn_end": {
 				const message = this.#readMessages().findLast((candidate) => candidate.role === "assistant");
-				return message === undefined ? [] : [{ type: "turn_end", message, toolResults: [] }];
+				if (message === undefined) return [];
+				const toolResults = this.#turnToolResults;
+				this.#turnToolResults = [];
+				return [{ type: "turn_end", message, toolResults }];
 			}
 			case "message_start":
 				if (event.message.role === "assistant") this.#partial = event.message;
@@ -47,9 +80,18 @@ export class DurableJsonEventAdapter {
 			case "message_end": {
 				const message = event.entry.model?.[0];
 				if (message?.role === "assistant") this.#partial = undefined;
-				return message === undefined ? [] : [{ type: "message_end", message }];
+				const events: JsonAgentSessionEvent[] = [];
+				if (message !== undefined) events.push({ type: "message_end", message });
+				// A boundary `custom_message` is a user message for the model and an appended custom entry for a client. The
+				// legacy path publishes only the entry; the message events stay, because Decisions #18 and #21 keep every
+				// streamed event.
+				const appended = appendedEntry(event.entry);
+				if (appended !== undefined) events.push({ type: "entry_appended", entry: appended });
+				return events;
 			}
 			case "tool_execution_start":
+				this.#toolArgs.set(event.toolCallId, event.args);
+				this.#toolText.delete(event.toolCallId);
 				return [
 					{
 						type: "tool_execution_start",
@@ -59,28 +101,39 @@ export class DurableJsonEventAdapter {
 						...(event.parentToolCallId === undefined ? {} : { parentToolCallId: event.parentToolCallId }),
 					},
 				];
-			case "tool_execution_update":
+			case "tool_execution_update": {
+				const text = accumulateOutput(this.#toolText.get(event.toolCallId) ?? "", event.output);
+				this.#toolText.set(event.toolCallId, text);
 				return [
 					{
 						type: "tool_execution_update",
 						toolCallId: event.toolCallId,
 						toolName: event.toolName,
-						args: {},
-						partialResult: partialToolResult(event.output, event.details, event.diagnostics),
+						args: this.#toolArgs.get(event.toolCallId) ?? {},
+						partialResult: partialToolResult(text, event.details, event.diagnostics),
 						...(event.parentToolCallId === undefined ? {} : { parentToolCallId: event.parentToolCallId }),
 					},
 				];
-			case "tool_execution_end":
+			}
+			case "tool_execution_end": {
+				const result = toolResult(event.entry);
+				this.#toolArgs.delete(event.toolCallId);
+				this.#toolText.delete(event.toolCallId);
+				const message = event.entry?.model?.[0];
+				if (message?.role === "toolResult") this.#turnToolResults.push(message);
+				const durationMs = message?.role === "toolResult" ? message.durationMs : undefined;
 				return [
 					{
 						type: "tool_execution_end",
 						toolCallId: event.toolCallId,
 						toolName: event.toolName,
-						result: toolResult(event.entry),
+						result,
 						isError: toolResultIsError(event.entry),
+						...(durationMs === undefined ? {} : { durationMs }),
 						...(event.parentToolCallId === undefined ? {} : { parentToolCallId: event.parentToolCallId }),
 					},
 				];
+			}
 			case "compaction_start":
 				return [{ type: "compaction_start", reason: event.reason }];
 			case "compaction_end":
@@ -106,13 +159,23 @@ export class DurableJsonEventAdapter {
 				];
 			case "auto_retry_end":
 				return [{ type: "auto_retry_end", success: true, attempt: event.attempt }];
+			case "agent_changed": {
+				const level = event.agent.thinkingLevel;
+				const previous = this.#thinkingLevel;
+				this.#thinkingLevel = level;
+				// Legacy publishes a level it can select, never "off": a change to "off" is reported as a clamped level.
+				if (level === undefined || level === "off" || level === previous) return [];
+				return [{ type: "thinking_level_changed", level }];
+			}
+			case "entry_appended": {
+				const entry = appendedEntry(event.entry);
+				return entry === undefined ? [] : [{ type: "entry_appended", entry }];
+			}
 			case "task_failed":
 				return [{ type: "agent_end", messages: [...this.#readMessages()], willRetry: false }];
 			case "deferred_poll":
 			case "inbox_update":
 			case "submission":
-			case "entry_appended":
-			case "agent_changed":
 			case "usage_changed":
 				return [];
 		}
@@ -169,6 +232,52 @@ export class DurableJsonEventAdapter {
 	}
 }
 
+/** The entry a `message_end` right after `index` carries, when the two were emitted for the same entry. */
+function modelEntryAfter(events: readonly AgentEvent[], index: number): EntryRecord | undefined {
+	const next = events[index + 1];
+	return next?.type === "message_end" ? next.entry : undefined;
+}
+
+/** A bash execution entry: durable records the command's output as a user message, legacy publishes no message. */
+function isBashExecutionEntry(entry: EntryRecord | undefined): boolean {
+	return entry?.kind === "bashExecution";
+}
+
+/**
+ * The legacy session entry an appended durable entry stands for, or undefined when legacy has none.
+ *
+ * A durable entry carries no timestamp or parent: the legacy shape needs both, so a message-backed entry dates itself
+ * from its message and a data-only entry is dated when it is published.
+ */
+function appendedEntry(record: EntryRecord): SessionEntry | undefined {
+	const message = record.model?.[0];
+	const data = record.data !== undefined && isJsonObject(record.data) ? record.data : {};
+	const timestamp = new Date(message?.timestamp ?? Date.now()).toISOString();
+	const base = { id: String(record.id), parentId: null, timestamp };
+	if (record.kind === "custom_message") {
+		if (message?.role !== "user") return undefined;
+		const customType = typeof data.customType === "string" ? data.customType : "durable.custom_message";
+		return {
+			type: "custom_message",
+			...base,
+			customType,
+			content: message.content,
+			display: typeof data.display === "boolean" ? data.display : true,
+			...(data.details === undefined ? {} : { details: data.details }),
+		};
+	}
+	// `nyan.` kinds are durable bookkeeping: durable's own user, system, reset, and assistant entries.
+	if (record.kind.length === 0 || record.kind.startsWith("nyan.")) return undefined;
+	// A kind with a model message other than a custom message is a conversation entry, not a custom one.
+	if (record.model !== undefined) return undefined;
+	return {
+		type: "custom",
+		...base,
+		customType: record.kind,
+		...(record.data === undefined ? {} : { data: record.data }),
+	};
+}
+
 function messageEvent(change: MessageChange, partial: AssistantMessage): AssistantMessageEvent | undefined {
 	switch (change.type) {
 		case "text_start":
@@ -223,8 +332,21 @@ function isJsonObject(value: JsonValue): value is JsonObject {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/**
+ * The output a tool has reported so far. Durable sends a window: the text it dropped from the front and the text it
+ * appended, or the replacement text. The published `partialResult` is the accumulated result, as on the legacy path.
+ */
+function accumulateOutput(
+	previous: string,
+	output: { trimStart?: number; append?: string } | { set: string } | undefined,
+): string {
+	if (output === undefined) return previous;
+	if ("set" in output) return output.set;
+	return `${previous.slice(output.trimStart ?? 0)}${output.append ?? ""}`;
+}
+
 function partialToolResult(
-	output: { readonly trimStart?: number; readonly append?: string } | { readonly set: string } | undefined,
+	text: string,
 	details: unknown,
 	diagnostics: readonly unknown[] | undefined,
 ): {
@@ -233,7 +355,6 @@ function partialToolResult(
 	details?: unknown;
 	diagnostics?: readonly unknown[];
 } {
-	const text = output === undefined ? "" : "set" in output ? output.set : (output.append ?? "");
 	return {
 		content: [{ type: "text", text }],
 		isError: false,

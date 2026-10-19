@@ -77,6 +77,8 @@ What a boundary event carries on the durable path: `turn_end` after a tool round
 
 On the durable path, `ctx.signal` is the abort signal of the run a handler belongs to, as it is in legacy. The `context`, `message_end`, `message_update`, `before_provider_request`, `before_provider_headers`, `after_provider_response`, `provider_stream_event`, `tool_call`, `tool_result`, `tool_execution_update`, `turn_end`, `agent_before_settle`, and `session_before_compact` handlers all receive it. A handler that waits must respond to that signal: `close()`, an abort, and a session switch abort the run and then wait for the handlers of that run to return, and a handler that ignores the signal holds them up, because the durable harness waits for every call, including one that ignores its signal. `before_agent_start` handlers, and the host events emitted after the run has settled (`agent_end`, `agent_settled`, `model_select`, `thinking_level_select`, `session_start`, `session_shutdown`), see no signal; legacy's `agent_end` still has one.
 
+The handlers of the settled events run after the run, so `close()`, a session switch, and the next prompt do not wait for them: a slow `agent_end` handler delays only the prompt response that was already waiting for that run. Do not rely on an `agent_end` handler having returned before the next run starts, and keep one short. Its `before_agent_start` effects belong to the run that is starting, so they are not affected.
+
 On the durable path, closing a session while a submission is waiting aborts that caller's wait but does not commit an abort outcome for the run. The durable submission remains placed and is resumed after reopening the session; the recovered request is sent once. Callers that await a submission must handle the close rejection, just as they handle cancellation.
 <a id="agent_start--agent_end--agent_before_settle--agent_settled"></a>
 
@@ -234,6 +236,8 @@ These operations are command-only because calling them from lifecycle handlers c
 Session replacement invalidates the old context. Capture only plain data before switching, then use the fresh context supplied to `withSession` for session-bound work.
 
 On the durable path, `ctx.sessionManager` is a read-only facade over the active durable conversation. It exposes session identity and a linear projection of durable entries; legacy parent/tree metadata, labels, and session-info metadata that durable does not store are empty or unavailable by design. `before_agent_start` runs once for each submitted prompt, and its injected message and system-prompt changes affect that run's first request.
+
+Some `ExtensionAPI` members are product operations of the legacy shell and are not connected on the durable path: `sendMessage`, `sendUserMessage`, `appendEntry`, `setSessionName`, `getSessionName`, `setLabel`, `setModel`, `getThinkingLevel`, `setThinkingLevel`, `shutdown`, `getSystemPrompt`, and the session-manager identity and tree methods. Calling one throws an error naming the member instead of pretending it worked. `getAllTools`, `getActiveTools`, `setActiveTools`, `refreshTools`, `getCommands`, `getSettings`, `getModel`, `isIdle`, `isProjectTrusted`, `abort`, `compact`, and `hasUI` work; `getScopedModels` returns an empty list.
 
 <a id="state-management"></a>
 <a id="persist-state"></a>
