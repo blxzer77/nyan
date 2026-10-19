@@ -24,6 +24,14 @@ describe("durable TUI command routing", () => {
 		["/compact keep the decision log", { kind: "command", name: "compact", args: "keep the decision log" }],
 		["/tasks", { kind: "command", name: "tasks", args: "" }],
 		["/agents", { kind: "command", name: "agents", args: "" }],
+		["/new", { kind: "command", name: "new", args: "" }],
+		["/resume", { kind: "command", name: "resume", args: "" }],
+		["/name", { kind: "command", name: "name", args: "" }],
+		["/name release line", { kind: "command", name: "name", args: "release line" }],
+		["/session", { kind: "command", name: "session", args: "" }],
+		["/fork", { kind: "command", name: "fork", args: "" }],
+		["/clone", { kind: "command", name: "clone", args: "" }],
+		["/quit", { kind: "command", name: "quit", args: "" }],
 	])("%s runs as a command", (text, expected) => {
 		expect(routeDurableInput(text)).toEqual(expected);
 	});

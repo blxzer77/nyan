@@ -31,7 +31,7 @@ import {
 	VStack,
 } from "@ny4n/tui";
 import { getAgentDir } from "../../config.ts";
-import { routeDurableInput } from "../../core/durable/commands.ts";
+import { type DurableRunnableCommand, routeDurableInput } from "../../core/durable/commands.ts";
 import { customMessageView } from "../../core/durable/custom-message.ts";
 import { dispatchDurableExtensionCommand } from "../../core/durable/extension-commands.ts";
 import type { ExtensionHost } from "../../core/durable/extension-host.ts";
@@ -41,6 +41,7 @@ import {
 	type DurableView,
 	type DurableViewSource,
 } from "../../core/durable/runtime.ts";
+import type { DurableSessionOps } from "../../core/durable/session-ops.ts";
 import type {
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
@@ -67,6 +68,7 @@ import {
 	type Theme,
 	theme,
 } from "../../ui/theme/theme.ts";
+import { DurableCommands, type DurableReopenRequest } from "./commands.ts";
 
 const SELECT_THEME: SelectListTheme = {
 	selectedPrefix: (text) => theme.fg("accent", text),
@@ -260,6 +262,10 @@ class DurableTui {
 	readonly #extensionStatuses = new Map<string, string>();
 	readonly #extensionNotices: Array<{ message: string; type: "info" | "warning" | "error" }> = [];
 	#lastViewNotices: DurableView["notices"] = [];
+	/** The newest view applied, so a footer change that arrives outside an update can redraw it. */
+	#lastView: DurableView | undefined = undefined;
+	/** The stored display name, shown in the footer; read from the session beside the database. */
+	#sessionName: string | undefined = undefined;
 	/** Set when the transcript was rebuilt: the next render repaints the screen and shows the end. */
 	#rebuilt = false;
 	#transcript: ScrollView;
@@ -433,6 +439,45 @@ class DurableTui {
 		});
 	}
 
+	/** The display name the footer shows, from the session beside the database. */
+	setSessionName(name: string | undefined): void {
+		this.#sessionName = name;
+		if (this.#lastView !== undefined) this.#syncFooter(this.#lastView);
+		this.#ui.requestRender();
+	}
+
+	/** A filterable list in place of the editor; undefined when the user cancelled. */
+	choose(title: string, items: readonly SelectItem[]): Promise<string | undefined> {
+		return new Promise((resolve) => {
+			let settled = false;
+			const finish = (value: string | undefined): void => {
+				if (settled) return;
+				settled = true;
+				this.restoreEditor();
+				resolve(value);
+			};
+			this.mount(new ListSelector(title, [...items], finish, () => finish(undefined)));
+		});
+	}
+
+	/** Add lines to the transcript, after the messages a command answers with. */
+	showLines(lines: readonly string[]): void {
+		this.#chat.addChild(new Spacer(1));
+		for (const line of lines) this.#chat.addChild(new Text(theme.fg("muted", line), 1, 0));
+		this.#rebuilt = true;
+		this.#ui.requestRender(true);
+	}
+
+	/** Start again in another session: its entries, names, and notices are not the ones shown before. */
+	resetSessionView(): void {
+		this.#extensionNotices.length = 0;
+		this.#extensionStatuses.clear();
+		this.#sessionName = undefined;
+		this.#statusText = "";
+		this.#rebuild([]);
+		this.#renderNotices();
+	}
+
 	/** Show a line in the notice area: an answer the TUI gives itself, such as a command it cannot run. */
 	notify(message: string, type: "info" | "warning" | "error" = "info"): void {
 		this.#extensionNotices.push({ message, type });
@@ -461,6 +506,7 @@ class DurableTui {
 	}
 
 	apply(view: DurableView): void {
+		this.#lastView = view;
 		const live = (view.conversation.docs["nyan.live"] ?? {}) as LiveState;
 		this.#syncTranscript(view.conversation.entries);
 		const message = live.generation?.message as AssistantMessage | undefined;
@@ -584,7 +630,8 @@ class DurableTui {
 			const text = `${percent === undefined ? "?" : percent.toFixed(1)}%/${formatTokens(contextWindow)}`;
 			stats.push(percent !== undefined && percent > 90 ? theme.fg("error", text) : text);
 		}
-		this.#footerStats.setText(theme.fg("dim", `${stats.join(" ")}  ${view.session.cwd}`));
+		const name = this.#sessionName === undefined ? "" : `  ${theme.fg("accent", this.#sessionName)}`;
+		this.#footerStats.setText(theme.fg("dim", `${stats.join(" ")}  ${view.session.cwd}`) + name);
 		const model = agent.model === undefined ? "no model" : `${agent.model.provider}/${agent.model.modelId}`;
 		const shown = view.conversations.find((candidate) => candidate.id === view.conversation.conversation.id);
 		const label = shown?.label ?? `conversation ${view.conversation.conversation.id}`;
@@ -762,12 +809,33 @@ function contextTokens(entries: readonly EntryRecord[]): number | undefined {
 	return undefined;
 }
 
+/** One open durable session, as the TUI renders it. A reopen replaces every member. */
+export interface DurableTuiOpen {
+	readonly view: DurableViewSource;
+	readonly controller: DurableController;
+	readonly extensionHost?: ExtensionHost;
+	/** Session-wide product operations: the display name, the entry list, the picker, and forks. */
+	readonly sessionOps?: DurableSessionOps;
+}
+
+/** What the TUI needs from the caller that owns opening sessions. */
+export interface DurableTuiSessions {
+	readonly open: DurableTuiOpen;
+	/**
+	 * Close the open session and open the next one with the same services, as RPC `new_session` and `switch_session` do.
+	 * A caller that owns a single session (the experimental modes) leaves it out, and the session commands answer that
+	 * they are unavailable.
+	 */
+	reopen?(request: DurableReopenRequest): Promise<DurableTuiOpen>;
+}
+
 export async function runDurableTui(
 	source: DurableViewSource,
 	controller: DurableController,
 	settings: SettingsManager,
 	host?: ExtensionHost,
 	availableThemes: readonly Theme[] = [],
+	sessions?: DurableTuiSessions,
 ): Promise<void> {
 	setCapabilityOverrides(settings.getTerminalCapabilityOverrides());
 	// The system theme until the controller resolves the user's theme against the terminal's colors.
@@ -777,9 +845,12 @@ export async function runDurableTui(
 		exit = resolve;
 	});
 	let view!: DurableTui;
+	/** The open session the TUI shows; a reopen replaces it, so every reader goes through this. */
+	let shown: DurableTuiOpen = sessions?.open ?? { view: source, controller, extensionHost: host };
+	let commands: DurableCommands | undefined;
 
 	const selectModel = (search?: string): void => {
-		const snapshot = source.current();
+		const snapshot = shown.view.current();
 		const current = agentOf(snapshot.conversation).model;
 		const isCurrent = (model: { provider: string; modelId: string }) =>
 			model.provider === current?.provider && model.modelId === current.modelId;
@@ -796,7 +867,10 @@ export async function runDurableTui(
 			(value) => {
 				view.restoreEditor();
 				const separator = value.indexOf("/");
-				void controller.setModel({ provider: value.slice(0, separator), modelId: value.slice(separator + 1) });
+				void shown.controller.setModel({
+					provider: value.slice(0, separator),
+					modelId: value.slice(separator + 1),
+				});
 			},
 			() => view.restoreEditor(),
 			search,
@@ -805,7 +879,7 @@ export async function runDurableTui(
 	};
 
 	const selectConversation = (): void => {
-		const snapshot = source.current();
+		const snapshot = shown.view.current();
 		const items: SelectItem[] = [...snapshot.conversations].reverse().map((candidate) => ({
 			value: String(candidate.id),
 			label: candidate.label,
@@ -816,11 +890,25 @@ export async function runDurableTui(
 			items,
 			(value) => {
 				view.restoreEditor();
-				void controller.switchConversation(Number(value) as ConversationId);
+				void shown.controller.switchConversation(Number(value) as ConversationId);
 			},
 			() => view.restoreEditor(),
 		);
 		view.mount(selector);
+	};
+
+	/**
+	 * Run a session command. The layer is absent when the caller owns no session operations (the experimental modes),
+	 * where the command answers that it is unavailable rather than being submitted.
+	 */
+	const runSessionCommand = (name: DurableRunnableCommand, args: string): void => {
+		if (commands === undefined) {
+			view.notify(`/${name} is not available in this mode.`, "warning");
+			return;
+		}
+		void commands.run(name, args).catch((error: unknown) => {
+			view.notify(`/${name} failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+		});
 	};
 
 	/**
@@ -840,19 +928,18 @@ export async function runDurableTui(
 				selectModel(route.args.length === 0 ? undefined : route.args);
 				return true;
 			case "tasks":
-				void controller.toggleTasks();
+				void shown.controller.toggleTasks();
 				return true;
 			case "agents":
 				selectConversation();
 				return true;
 			case "compact":
-				void controller.compact(route.args.length === 0 ? undefined : route.args);
+				void shown.controller.compact(route.args.length === 0 ? undefined : route.args);
 				return true;
-			default: {
-				// A command the router runs but this switch does not: the parity work adds both together.
-				const unhandled: never = route;
-				throw new Error(`Unhandled durable command: ${JSON.stringify(unhandled)}`);
-			}
+			default:
+				// The session commands are the command layer's; it reports a name it does not handle at compile time.
+				runSessionCommand(route.name, route.args);
+				return true;
 		}
 	};
 
@@ -861,29 +948,73 @@ export async function runDurableTui(
 			const trimmed = text.trim();
 			if (!trimmed) return;
 			if (runCommand(trimmed)) return;
-			if (host === undefined) {
-				void controller.submit(trimmed, "steer");
+			const extensionHost = shown.extensionHost;
+			if (extensionHost === undefined) {
+				void shown.controller.submit(trimmed, "steer");
 				return;
 			}
-			void dispatchDurableExtensionCommand(host.runner, trimmed).then((handled) => {
-				if (!handled) void controller.submit(trimmed, "steer");
+			void dispatchDurableExtensionCommand(extensionHost.runner, trimmed).then((handled) => {
+				if (!handled) void shown.controller.submit(trimmed, "steer");
 			});
 		},
 		followUp: (text) => {
 			if (runCommand(text.trim())) return;
-			if (host === undefined) {
-				void controller.submit(text, "followUp");
+			const extensionHost = shown.extensionHost;
+			if (extensionHost === undefined) {
+				void shown.controller.submit(text, "followUp");
 				return;
 			}
-			void dispatchDurableExtensionCommand(host.runner, text.trim()).then((handled) => {
-				if (!handled) void controller.submit(text, "followUp");
+			void dispatchDurableExtensionCommand(extensionHost.runner, text.trim()).then((handled) => {
+				if (!handled) void shown.controller.submit(text, "followUp");
 			});
 		},
-		abort: () => void controller.abort(),
+		abort: () => void shown.controller.abort(),
 		exit,
 		selectModel: () => selectModel(),
-		cycleThinking: () => void controller.cycleThinking(),
+		cycleThinking: () => void shown.controller.cycleThinking(),
 	});
+
+	/** Render the open session the TUI holds now, and follow it. */
+	const follow = (): void => view.apply(shown.view.current());
+	let unsubscribe = (): void => {};
+
+	if (shown.sessionOps !== undefined) {
+		commands = await DurableCommands.create(
+			{
+				current: () => {
+					const sessionOps = shown.sessionOps;
+					if (sessionOps === undefined) throw new Error("This session has no session operations");
+					return { view: shown.view.current(), controller: shown.controller, sessionOps };
+				},
+				readSessionName: async () => await shown.sessionOps?.getSessionName(),
+				...(sessions?.reopen === undefined
+					? {}
+					: {
+							reopen: async (request: DurableReopenRequest): Promise<void> => {
+								const next = await sessions.reopen?.(request);
+								if (next === undefined) return;
+								// The session this TUI showed is closed by the caller; follow the one it opened.
+								unsubscribe();
+								shown = next;
+								unsubscribe = shown.view.subscribe(follow);
+								shown.extensionHost?.runner.setUIContext(view.createExtensionUIContext(), "tui");
+								await commands?.refreshSessionName();
+								view.setSessionName(commands?.sessionName);
+								view.resetSessionView();
+								follow();
+							},
+						}),
+			},
+			{
+				select: (title, items) => view.choose(title, items),
+				showLines: (lines) => view.showLines(lines),
+				setSessionName: (name) => view.setSessionName(name),
+				notify: (message, type) => view.notify(message, type),
+				exit,
+			},
+		);
+		view.setSessionName(commands.sessionName);
+	}
 
 	// nyan's theme handling: the theme setting (also light/dark pairs) resolved against the terminal's reported colors.
 	const themes = new InteractiveThemeController(view.ui, {
@@ -891,12 +1022,12 @@ export async function runDurableTui(
 		showError: (message) => console.error(message),
 		onChanged: () => view.ui.requestRender(),
 	});
-	host?.runner.setUIContext(view.createExtensionUIContext(), "tui");
+	shown.extensionHost?.runner.setUIContext(view.createExtensionUIContext(), "tui");
 	setRegisteredThemes([...availableThemes]);
-	const unsubscribe = source.subscribe(() => view.apply(source.current()));
+	unsubscribe = shown.view.subscribe(follow);
 	view.start();
 	themes.applyFromSettings();
-	view.apply(source.current());
+	follow();
 	await exited;
 	unsubscribe();
 	themes.dispose();
