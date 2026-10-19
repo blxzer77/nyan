@@ -252,4 +252,19 @@ describe("retry classification of transport failures", () => {
 		expect(retryable("500 msec elapsed: self signed certificate")).toBe(false);
 		expect(retryable("500 milliseconds elapsed: self signed certificate")).toBe(false);
 	});
+
+	it("does not retry certificate failures when their URL contains status-like text", () => {
+		for (const errorMessage of [
+			'self signed certificate fetching "https://code500.example.com/"',
+			'self signed certificate fetching "https://http500.example.com/"',
+			'self signed certificate fetching "https://example.com/?status=500"',
+			'self signed certificate fetching "https://example.com/?code=500"',
+		]) {
+			expect(retryable(errorMessage), errorMessage).toBe(false);
+		}
+	});
+
+	it("recognizes a Bedrock prefix before a retryable status", () => {
+		expect(retryable("ThrottlingException: 503: certificate expired")).toBe(true);
+	});
 });

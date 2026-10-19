@@ -1,3 +1,4 @@
+import { isOurGlobalFetch } from "./fetch-state.ts";
 import { createIdleTimeoutFetch } from "./idle-timeout.ts";
 import { warnIfSystemCaIgnoredByBun } from "./system-ca.ts";
 
@@ -30,7 +31,7 @@ export function configureNativeFetch(timeoutMs: number): void {
 	warnIfSystemCaIgnoredByBun();
 	idleTimeout.ms = timeoutMs;
 	const current = globalThis.fetch;
-	if (installedGlobalFetch === undefined ? current !== originalGlobalFetch : current !== installedGlobalFetch) return;
+	if (!isOurGlobalFetch(current, originalGlobalFetch, installedGlobalFetch)) return;
 	wrapper ??= createIdleTimeoutFetch(originalGlobalFetch, () => idleTimeout.ms);
 	const next = timeoutMs > 0 ? wrapper : originalGlobalFetch;
 	globalThis.fetch = next;
@@ -39,6 +40,9 @@ export function configureNativeFetch(timeoutMs: number): void {
 
 /** Exported for tests: forget the wrapper and the fetch that was installed, so the next call configures from scratch. */
 export function resetNativeFetchForTests(): void {
+	if (installedGlobalFetch !== undefined && globalThis.fetch === installedGlobalFetch) {
+		globalThis.fetch = originalGlobalFetch;
+	}
 	wrapper = undefined;
 	installedGlobalFetch = undefined;
 	idleTimeout.ms = 0;

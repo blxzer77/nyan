@@ -73,3 +73,9 @@ Result: Bun does support the Windows system store, but not through `NODE_OPTIONS
 Cleanup, after the runs: the test server stopped; `certutil -user -delstore Root 6D44E10AF7FCBAE159D06E5D0B2E57225DFCCE55` removed the certificate (`Remove-Item Cert:\CurrentUser\Root\<thumbprint>` refused with `UI is not allowed`); `CurrentUser\Root` held 286 certificates before, 287 with the test CA, 286 after, and no certificate matching `nyan-test-ca` remained in `CurrentUser\Root`, `LocalMachine\Root`, `CurrentUser\CA`, `My` or `TrustedPeople`; `D:\nyan-tmp\bun\ca\` was emptied, so the CA key and the server key are gone. Two earlier attempts with `Import-Certificate` failed with the same `UI is not allowed` and installed nothing.
 
 Not verified: Linux and macOS (the table is Windows only); `nyan.exe` itself; a system store holding the owner's real CA.
+
+### Bun Phase 3 batch 5d
+
+- `packages/ai/test/transport-error.test.ts` runs on Node and Bun with certificate-failure URLs containing `code500.example.com`, `http500.example.com`, `?status=500`, and `?code=500`; these are not classified as HTTP statuses. It also covers Bedrock's `ThrottlingException: 503: <body>` form.
+- `packages/coding-agent/test/http-dispatcher.test.ts` verifies that the Bun test reset restores the original global fetch. The native and undici backends share the `isOurGlobalFetch()` ownership predicate, without changing the foreign-fetch behavior.
+- Mistral error formatting was not merged: its current formatter only handles `statusCode`/string `body`, while the shared normalizer also handles parsed bodies, `$metadata`, and `$response`; `messageCarriesBody` also gives different output. Those are observable behavior differences, so consolidation needs a separate compatibility decision.

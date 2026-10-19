@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { isCertificateErrorCode } from "@ny4n/ai/utils/transport-error";
+import { isCertificateError } from "@ny4n/ai/utils/transport-error";
 import * as undici from "undici";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { configureHttpDispatcher } from "../src/core/http-dispatcher.ts";
@@ -218,7 +218,7 @@ describe("a private certificate authority", () => {
 		const result = await fetchInChild(await tlsServerUrl(), {});
 
 		expect(result.ok).toBe(false);
-		// The code the retry classifier reads is a certificate code on both runtimes.
-		expect(isCertificateErrorCode(String(result.code))).toBe(true);
+		// The code the retry classifier reads names a certificate failure on both runtimes.
+		expect(isCertificateError(Object.assign(new Error(), { code: String(result.code) }))).toBe(true);
 	}, 40_000);
 });

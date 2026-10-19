@@ -15,7 +15,7 @@ function escapeRegExp(text: string): string {
  * JSON key. A port, an IPv6 group, a millisecond value, or a number inside a host name does not match.
  */
 const RETRYABLE_HTTP_STATUS_TOKEN =
-	/^(?:408|409|429|5\d{2})(?:\s*:|\s+(?!\s*m(?:s|sec|illiseconds?)\b))|\((?:408|409|429|5\d{2})\)|\b(?:http|status(?:\s+code)?|code)"?\s*[:=]?\s*(?:408|409|429|5\d{2})\b/i;
+	/(?:^|:\s+)(?:408|409|429|5\d{2})(?:\s*:|\s+(?!\s*m(?:s|sec|illiseconds?)\b))|\((?:408|409|429|5\d{2})\)|(?<![?&])\b(?:http|status(?:\s+code)?|code)\b"?\s*[:=]?\s*(?:408|409|429|5\d{2})\b/i;
 
 /**
  * Certificate and host-name verification failures. These are the OpenSSL verification names Node and Bun both report,

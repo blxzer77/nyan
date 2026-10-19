@@ -1,5 +1,4 @@
-import { isCertificateErrorMessage } from "./retry.ts";
-import { certificateErrorCode, transportErrorMessages } from "./transport-error.ts";
+import { certificateErrorCode, isCertificateError } from "./transport-error.ts";
 
 const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
 
@@ -33,11 +32,9 @@ function isRetryableProviderError(error: ProviderError): boolean {
 	// A certificate failure has no HTTP status, and retrying it repeats the same request. By code wherever it is on the
 	// chain; by text only when there is no status, because an HTTP error's message is the response body, which can name a
 	// certificate (a 503 whose body says "certificate expired" is still a server error to retry).
-	if (certificateErrorCode(error) !== undefined) return false;
-	if (error.status === undefined) {
-		if (transportErrorMessages(error).some(isCertificateErrorMessage)) return false;
-		return true;
-	}
+	if (isCertificateError(error) && (error.status === undefined || certificateErrorCode(error) !== undefined))
+		return false;
+	if (error.status === undefined) return true;
 	return (
 		error.status === 408 ||
 		error.status === 409 ||

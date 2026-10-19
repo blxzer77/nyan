@@ -61,8 +61,13 @@ export function transportErrorCode(error: unknown): string | undefined {
 
 const CERTIFICATE_ERROR_CODES: ReadonlySet<string> = new Set(CERTIFICATE_ERROR_CODE_LIST);
 
-export function isCertificateErrorCode(code: string): boolean {
+function isCertificateErrorCode(code: string): boolean {
 	return CERTIFICATE_ERROR_CODES.has(code);
+}
+
+/** True when the error chain names a certificate or host-name verification failure. */
+export function isCertificateError(error: unknown): boolean {
+	return certificateErrorCode(error) !== undefined || transportErrorMessages(error).some(isCertificateErrorMessage);
 }
 
 /** The first certificate code on the error or below it, if any. */
