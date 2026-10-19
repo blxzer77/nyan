@@ -28,6 +28,7 @@ import { type BashResult, executeBashWithOperations } from "../bash-executor.ts"
 import type {
 	ExtensionMode,
 	InlineExtension,
+	InputSource,
 	ProjectTrustContext,
 	SessionShutdownEvent,
 	SessionStartEvent,
@@ -49,7 +50,7 @@ import {
 } from "./harness-setup.ts";
 import { createDurableModelRuntime } from "./model-runtime-adapter.ts";
 import { createDurableServices, type DurableResourceOptions, type DurableServices } from "./services.ts";
-import { createDurableSessionOps, type DurableSessionOps } from "./session-ops.ts";
+import { createDurableSessionOps, type DurableSessionOps, type ForkOutcome } from "./session-ops.ts";
 import { openSessionDirectory, selectSession } from "./sessions.ts";
 import { Subagent } from "./subagent.ts";
 
@@ -94,9 +95,13 @@ export interface DurableViewSource {
 /** What the TUI may ask for. */
 export interface DurableController {
 	/** Prompt when idle; otherwise steer or queue a follow-up. */
-	submit(text: string, whenBusy: "steer" | "followUp"): Promise<void>;
+	submit(text: string, whenBusy: "steer" | "followUp", options?: SubmitInputOptions): Promise<void>;
 	/** Admit one headless input and wait for its durable terminal settlement. */
-	submitAndWait(content: UserInput, whenBusy: "steer" | "followUp"): Promise<SettledSubmissionRecord>;
+	submitAndWait(
+		content: UserInput,
+		whenBusy: "steer" | "followUp",
+		options?: SubmitInputOptions,
+	): Promise<SubmitOutcome>;
 	compact(instructions: string | undefined): Promise<void>;
 	setThinking(level: ModelThinkingLevel): Promise<void>;
 	setSteeringMode(mode: "all" | "one-at-a-time"): Promise<void>;
@@ -116,8 +121,20 @@ export interface DurableController {
 	toggleTasks(): Promise<void>;
 	/** Show and talk to another conversation. */
 	switchConversation(id: ConversationId): Promise<void>;
-	expandPrompt(text: string): string;
 }
+
+/** Where a submitted input came from, as the `input` handlers see it. */
+export interface SubmitInputOptions {
+	readonly source?: InputSource;
+}
+
+/**
+ * What became of one submitted input. `handled` means an `input` handler took it, so nothing was submitted and there is
+ * no settlement to wait for.
+ */
+export type SubmitOutcome =
+	| { readonly handled: true }
+	| { readonly handled: false; readonly settled: SettledSubmissionRecord };
 
 export interface DurableModelSelection {
 	readonly provider?: string;
@@ -279,6 +296,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		// Installed before the Harness opens: its members are read when the Harness starts a request.
 		// Runs in flight: `ctx.isIdle()` answers false while one is.
 		let activeRuns = 0;
+		// The conversation a fork created, until the controller moves to it and its `session_start` is emitted.
+		let forkConversation: ConversationId | undefined;
 		let currentView: ConversationView | undefined;
 		let currentState: DurableView | undefined;
 		let state!: DurableView;
@@ -355,6 +374,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			sessionManager,
 			services,
 			cwd: location.cwd,
+			mode: options.projectTrustContext?.mode ?? "print",
 			agentModel: () => {
 				const ref = agentOf(state.conversation).model;
 				return ref === undefined ? undefined : modelRuntime.getModel(ref.provider, ref.modelId);
@@ -466,10 +486,12 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			else notice(diagnostic.type === "info" ? "info" : "warning", diagnostic.message);
 		}
 		currentView = conversation.value;
-		let unsubscribe = conversation.subscribe((value) => {
+		// The read-only session facade reads the conversation the controller talks to, so every view of one follows the move.
+		const followConversation = (value: ConversationView): void => {
 			currentView = value;
 			update({ conversation: value });
-		});
+		};
+		let unsubscribe = conversation.subscribe(followConversation);
 		// Subagents appear as their conversations are created. A commit listener only records; it calls no Session API.
 		const unsubscribeCommits = harness.subscribeCommits((publication) => {
 			let conversations = state.conversations;
@@ -540,6 +562,48 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			if (model === undefined)
 				throw new Error(ref === undefined ? "No model selected" : "Current model is unavailable");
 			return model;
+		};
+		/** Legacy's skill and prompt-template expansion, applied to the text of an input. */
+		const expandInput = (content: UserInput): UserInput => {
+			const prompts = services.resourceLoader.getPrompts().prompts;
+			return typeof content === "string"
+				? expandPromptTemplate(content, prompts)
+				: content.map((part) =>
+						part.type === "text" ? { ...part, text: expandPromptTemplate(part.text, prompts) } : part,
+					);
+		};
+		const isStreaming = (): boolean => {
+			const live = state.conversation.docs["nyan.live"] as
+				| { readonly run?: unknown; readonly generation?: unknown }
+				| undefined;
+			return live?.run !== undefined || live?.generation !== undefined;
+		};
+		/**
+		 * Legacy's input pipeline, in its order: the `input` handlers first, then skill and prompt-template expansion.
+		 * Undefined when a handler took the input, so the submission does not happen.
+		 */
+		const prepareInput = async (
+			content: UserInput,
+			whenBusy: "steer" | "followUp",
+			options: SubmitInputOptions | undefined,
+		): Promise<UserInput | undefined> => {
+			const transformed = await host.input(content, {
+				...(options?.source === undefined ? {} : { source: options.source }),
+				...(isStreaming() ? { streamingBehavior: whenBusy } : {}),
+			});
+			return transformed === undefined ? undefined : expandInput(transformed);
+		};
+		// `agent_start` and `turn_start` reach extensions only through the committed stream, which the built-in `herdr` and
+		// `mcp` integrations read. One watch follows the conversation the controller talks to, so a fork or a switch moves it.
+		let runEvents: AgentEventStream | undefined;
+		const watchRunEvents = async (conversationId: ConversationId): Promise<void> => {
+			const previous = runEvents;
+			runEvents = undefined;
+			if (previous !== undefined) await previous.stop();
+			if (!host.runEvents) return;
+			const stream = await watchEvents(opened, conversationId, context);
+			runEvents = stream;
+			stream.start((events) => host.agentEvents(events));
 		};
 		const bashAbortControllers = new Set<AbortController>();
 		const executeBash = async (
@@ -620,15 +684,20 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			}
 		};
 		const controller: DurableController = {
-			submit: (text, whenBusy) =>
-				command(async () => {
-					await host.beforePrompt(text);
-					watchAnswer(await current.submit({ type: "input", content: text, whenBusy }, context));
-				}),
-			submitAndWait: async (content, whenBusy) => {
-				await host.beforePrompt(content);
-				const submission = await current.submit({ type: "input", content, whenBusy }, context);
-				return settle(submission);
+			submit: async (text, whenBusy, options) => {
+				await command(async () => {
+					const prepared = await prepareInput(text, whenBusy, options);
+					if (prepared === undefined) return;
+					await host.beforePrompt(prepared);
+					watchAnswer(await current.submit({ type: "input", content: prepared, whenBusy }, context));
+				});
+			},
+			submitAndWait: async (content, whenBusy, options) => {
+				const prepared = await prepareInput(content, whenBusy, options);
+				if (prepared === undefined) return { handled: true };
+				await host.beforePrompt(prepared);
+				const submission = await current.submit({ type: "input", content: prepared, whenBusy }, context);
+				return { handled: false, settled: await settle(submission) };
 			},
 			compact: (instructions) =>
 				command(async () => {
@@ -706,7 +775,6 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					await current.configure({ thinkingLevel: next }, context);
 					await host.thinkingSelected(next, level);
 				}),
-			expandPrompt: (text) => expandPromptTemplate(text, services.resourceLoader.getPrompts().prompts),
 			setModel: (ref) =>
 				command(async () => {
 					const model = modelRuntime.getModel(ref.provider, ref.modelId);
@@ -740,7 +808,19 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					conversation.dispose();
 					current = next;
 					conversation = nextState;
-					unsubscribe = nextState.subscribe((value) => update({ conversation: value }));
+					unsubscribe = nextState.subscribe(followConversation);
+					await watchRunEvents(next.id);
+					// The fork's `session_start` follows the move, so an extension that rebuilds state sees the new conversation.
+					const forked = forkConversation === id;
+					forkConversation = undefined;
+					if (forked) {
+						// A durable fork keeps this session's file; only the conversation it makes changes.
+						await host.start({
+							type: "session_start",
+							reason: "fork",
+							previousSessionFile: join(state.session.directory, "session.sqlite"),
+						});
+					}
 				}),
 		};
 
@@ -755,8 +835,31 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 		await host.start(
 			options.sessionStartEvent ?? { type: "session_start", reason: location.created ? "startup" : "resume" },
 		);
+		await watchRunEvents(root.id);
 		// Recovered work from an interrupted turn continues now.
 		harness.resume();
+
+		// A fork keeps this session's file, so its `session_start` reports the same file as the session it came from; the
+		// conversation the controller moves to is what differs (Decision #24, Decision #31).
+		const recordFork = (outcome: ForkOutcome): ForkOutcome => {
+			forkConversation = outcome.cancelled ? undefined : outcome.conversationId;
+			return outcome;
+		};
+		const productOps = createDurableSessionOps({
+			harness: opened,
+			conversation: () => current,
+			session: () => state.session,
+			context,
+			forkLifecycle: {
+				beforeFork: (entryId, position) => host.beforeFork(entryId, position),
+				shutdown: (reason) => host.shutdown(reason),
+			},
+		});
+		const sessionOps: DurableSessionOps = {
+			...productOps,
+			fork: async (at) => recordFork(await productOps.fork(at)),
+			clone: async () => recordFork(await productOps.clone()),
+		};
 
 		let closing: Promise<void> | undefined;
 		return {
@@ -775,12 +878,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			promptTemplates: services.resourceLoader.getPrompts().prompts,
 			extensionHost: host,
 			services,
-			sessionOps: createDurableSessionOps({
-				harness: opened,
-				conversation: () => current,
-				session: () => state.session,
-				context,
-			}),
+			sessionOps,
 			eventsOf: async (conversationId) => {
 				if (options.eventStream !== true) throw new Error("This open has no event stream");
 				return watchEvents(opened, conversationId, context);
@@ -793,6 +891,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					closeTasks();
 					try {
 						await host.shutdown(reason);
+						await runEvents?.stop();
 						await events?.stop();
 						// Close writes no outcome: a running turn resumes with --continue.
 						await opened.close(context);

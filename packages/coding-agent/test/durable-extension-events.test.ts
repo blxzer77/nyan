@@ -15,6 +15,7 @@ import type {
 	TurnEndEvent,
 } from "../src/core/extensions/types.ts";
 import { ProjectTrustStore } from "../src/core/trust-manager.ts";
+import { settlement } from "./durable-submission.ts";
 
 /**
  * Host events and context on the durable path: `agent_settled` after every run that ends (the quota poll and usage
@@ -83,7 +84,7 @@ describe("durable host events and context", () => {
 			],
 			[() => fauxAssistantMessage([fauxText("done")])],
 		);
-		expect((await current.controller.submitAndWait("go", "followUp")).status).toBe("done");
+		expect((await settlement(current.controller.submitAndWait("go", "followUp"))).status).toBe("done");
 		expect(settled).toEqual([false]);
 	});
 
@@ -103,7 +104,7 @@ describe("durable host events and context", () => {
 				},
 			],
 		);
-		const outcome = await current.controller.submitAndWait("go", "followUp");
+		const outcome = await settlement(current.controller.submitAndWait("go", "followUp"));
 		expect(outcome.status).toBe("unanswered");
 		expect(settled).toEqual([false]);
 	});
@@ -129,7 +130,7 @@ describe("durable host events and context", () => {
 				},
 			],
 		);
-		expect((await current.controller.submitAndWait("go", "followUp")).status).toBe("done");
+		expect((await settlement(current.controller.submitAndWait("go", "followUp"))).status).toBe("done");
 		expect(seen[0]).toContain("REWRITTEN-BY-CONTEXT");
 		expect(seen[0]).not.toContain('"content":"go"');
 	});
@@ -159,7 +160,7 @@ describe("durable host events and context", () => {
 			],
 			[() => fauxAssistantMessage([fauxText("first")]), () => fauxAssistantMessage([fauxText("second")])],
 		);
-		const outcome = await current.controller.submitAndWait("go", "followUp");
+		const outcome = await settlement(current.controller.submitAndWait("go", "followUp"));
 		expect(outcome.status).toBe("done");
 		expect(turns).toEqual([0, 1]);
 		expect(current.view.current().conversation.entries).toEqual(
@@ -234,7 +235,9 @@ describe("durable host events and context", () => {
 					},
 				],
 			);
-			await expect(current.controller.submitAndWait("go", "followUp")).resolves.toMatchObject({ status: "done" });
+			await expect(settlement(current.controller.submitAndWait("go", "followUp"))).resolves.toMatchObject({
+				status: "done",
+			});
 			expect(requests).toHaveLength(3);
 			// The second request still carries the original; the edit is committed with the boundary after it.
 			expect(requests[1]).toContain("ORIGINAL-CONTEXT-MARKER");
@@ -273,7 +276,9 @@ describe("durable host events and context", () => {
 				() => fauxAssistantMessage([fauxText("done")]),
 			],
 		);
-		await expect(current.controller.submitAndWait("go", "followUp")).resolves.toMatchObject({ status: "done" });
+		await expect(settlement(current.controller.submitAndWait("go", "followUp"))).resolves.toMatchObject({
+			status: "done",
+		});
 		const entries = current.view.current().conversation.entries;
 		const assistant = entries.find((entry) => entry.kind === "nyan.assistant");
 		const toolResult = entries.find((entry) => entry.kind === "nyan.tool-result");
@@ -315,7 +320,9 @@ describe("durable host events and context", () => {
 			],
 			responses,
 		);
-		await expect(current.controller.submitAndWait("go", "followUp")).resolves.toMatchObject({ status: "done" });
+		await expect(settlement(current.controller.submitAndWait("go", "followUp"))).resolves.toMatchObject({
+			status: "done",
+		});
 		return current.view.current().notices.map((notice) => notice.message);
 	}
 
@@ -625,7 +632,9 @@ describe("durable host events and context", () => {
 			],
 			[() => fauxAssistantMessage([fauxText("first")]), () => fauxAssistantMessage([fauxText("second")])],
 		);
-		await expect(current.controller.submitAndWait("go", "followUp")).resolves.toMatchObject({ status: "done" });
+		await expect(settlement(current.controller.submitAndWait("go", "followUp"))).resolves.toMatchObject({
+			status: "done",
+		});
 		expect(current.view.current().conversation.entries.some((entry) => entry.kind === "nyan.invalid")).toBe(false);
 		expect(current.view.current().notices.some((notice) => notice.message.includes("boundary"))).toBe(true);
 	});

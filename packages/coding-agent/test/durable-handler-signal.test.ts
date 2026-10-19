@@ -16,6 +16,7 @@ import type {
 	ToolDefinition,
 } from "../src/core/extensions/types.ts";
 import { runDurableRpc } from "../src/modes/durable/rpc.ts";
+import { settlement } from "./durable-submission.ts";
 
 /**
  * `ctx.signal` on the durable path. Legacy passes `agent.signal`, which is set for the whole run, to every handler it
@@ -252,7 +253,9 @@ describe("durable handler signal", () => {
 				() => fauxAssistantMessage([fauxText("done")]),
 			],
 		);
-		await expect(current.controller.submitAndWait("go", "followUp")).resolves.toMatchObject({ status: "done" });
+		await expect(settlement(current.controller.submitAndWait("go", "followUp"))).resolves.toMatchObject({
+			status: "done",
+		});
 
 		const events = new Set(seen.map((entry) => entry.event));
 		// The faux provider calls no request-body callback, so `before_provider_request` is covered by the direct test.
@@ -335,7 +338,7 @@ describe("durable handler signal", () => {
 	test("abort releases a boundary handler that waits for the run's signal", async () => {
 		const observed = { released: false } as { signal?: AbortSignal; released: boolean };
 		const current = await open([waitingBoundary(observed)], [() => fauxAssistantMessage([fauxText("done")])]);
-		const running = current.controller.submitAndWait("go", "followUp");
+		const running = settlement(current.controller.submitAndWait("go", "followUp"));
 		await vi.waitFor(() => expect(observed.signal).toBeDefined(), { timeout: 20_000 });
 		current.controller.abort();
 		await expect(running).resolves.toMatchObject({ status: "unanswered", reason: "aborted" });
