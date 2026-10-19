@@ -20,6 +20,7 @@ import type {
 	ProjectTrustContext,
 	ToolDefinition,
 } from "../src/core/extensions/types.ts";
+import { settlement } from "./durable-submission.ts";
 
 /**
  * Nyan tools on the durable path, with a faux provider registered by an extension. Each request is recorded: the tool
@@ -113,7 +114,7 @@ describe("extension tools on the durable path", () => {
 	}
 
 	async function say(session: OpenDurableResult, content: string): Promise<string> {
-		return (await session.controller.submitAndWait(content, "followUp")).status;
+		return (await settlement(session.controller.submitAndWait(content, "followUp"))).status;
 	}
 
 	test("a registered tool is offered, runs, and its result and prompt snippet reach the next request", async () => {

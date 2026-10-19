@@ -15,6 +15,7 @@ import type {
 } from "../src/core/extensions/types.ts";
 import { builtInExtensions } from "../src/extensions/index.ts";
 import { runDurableRpc } from "../src/modes/durable/rpc.ts";
+import { settlement } from "./durable-submission.ts";
 
 /**
  * `agent_end` and `agent_settled` on the durable path. They run after the run has settled, off the durable Session line,
@@ -179,7 +180,11 @@ describe("durable settled handlers", () => {
 		);
 		void current.controller.submit("first", "followUp");
 		await vi.waitFor(() => expect(parked.entered).toBe(true), { timeout: 20_000 });
-		const second = await within(current.controller.submitAndWait("second", "followUp"), 20_000, "the next prompt");
+		const second = await within(
+			settlement(current.controller.submitAndWait("second", "followUp")),
+			20_000,
+			"the next prompt",
+		);
 		expect(second).toMatchObject({ status: "done" });
 		// The settled handlers have no signal, which `docs/extensions.md` records as a legacy difference.
 		expect(observed.agentEnd).toEqual([undefined, undefined]);
