@@ -1,5 +1,5 @@
 import * as crypto from "node:crypto";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { AgentMessage } from "@ny4n/agent-core";
 import { getSupportedThinkingLevels } from "@ny4n/ai";
 import type { AgentEventStream, AgentState, ConversationId, LiveState, UsageState } from "@ny4n/durable";
@@ -455,7 +455,51 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				const tree = await durable.sessionOps.tree();
 				return success(id, "get_tree", { tree: tree.tree, leafId: tree.leafId });
 			}
-			case "switch_session":
+			case "switch_session": {
+				const previous = durable;
+				const previousSessionFile = state().sessionFile;
+				const targetDirectory = command.sessionPath;
+				const targetSessionFile = join(resolve(targetDirectory), "session.sqlite");
+				const before = await durable.extensionHost.beforeSwitch(targetSessionFile);
+				if (before.cancelled) return success(id, "switch_session", { cancelled: true });
+
+				// Open and lock the target before closing the current session. The original remains intact when opening the
+				// target fails (bad path, missing cwd, or an existing lock).
+				const reopenOptions: OpenDurableOptions = {
+					...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
+					...(options.resources === undefined ? {} : { resources: options.resources }),
+					...(options.extensionFactories === undefined ? {} : { extensionFactories: options.extensionFactories }),
+					...(options.extensionFlagValues === undefined
+						? {}
+						: { extensionFlagValues: options.extensionFlagValues }),
+					...(options.projectTrustContext === undefined
+						? {}
+						: { projectTrustContext: options.projectTrustContext }),
+					...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
+					...(options.settingsOverrides === undefined ? {} : { settingsOverrides: options.settingsOverrides }),
+				};
+				const next: OpenDurableResult = await openDurable({
+					...reopenOptions,
+					sessionDirectory: targetDirectory,
+					sessionStartEvent: {
+						type: "session_start",
+						reason: "resume",
+						previousSessionFile,
+					},
+					services: previous.services,
+					eventStream: true,
+				});
+				try {
+					await previous.close("resume");
+				} catch (error) {
+					await next.close().catch(() => {});
+					throw error;
+				}
+				durable = next;
+				sessionName = await durable.sessionOps.getSessionName();
+				await bindEvents();
+				return success(id, "switch_session", { cancelled: false });
+			}
 			case "bash":
 			case "abort_bash":
 				return failure(id, command.type, `Command ${command.type} is not available on the durable RPC path yet`);

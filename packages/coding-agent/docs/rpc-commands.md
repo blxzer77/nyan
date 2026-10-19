@@ -595,10 +595,10 @@ Without `outputPath` the file is named `nyan-session-<session id>.html` in the w
 
 ### switch_session
 
-Load a different session file. Can be canceled by a `session_before_switch` extension event handler.
+Load a different session. Can be canceled by a `session_before_switch` extension event handler.
 
 ```json
-{"type": "switch_session", "sessionPath": "/path/to/session.jsonl"}
+{"type": "switch_session", "sessionPath": "/path/to/durable-session-directory"}
 ```
 
 Response:
@@ -611,7 +611,7 @@ If an extension canceled the switch:
 {"type": "response", "command": "switch_session", "success": true, "data": {"cancelled": true}}
 ```
 
-This command is not available on the durable path yet: it would open a given session directory, which the durable path cannot do. It answers `success: false` there.
+On the durable path, `sessionPath` must be an existing directory containing `session.sqlite` and `session.json`. The target's recorded `cwd` must still exist; Nyan opens and locks the target before closing the current session, and does not reload services or extensions. The `session_start` event uses `reason: "resume"` and includes the previous session's `sessionFile`. A legacy JSONL path is rejected as read-only with a stable `DURABLE_SESSION_DIRECTORY_REQUIRED` error; use legacy `--resume` or `--session` to open it. Other switch failures use named `DURABLE_SESSION_*` error codes, including `DURABLE_SESSION_LOCKED`, `DURABLE_SESSION_CWD_MISSING`, and `DURABLE_SESSION_CWD_NOT_FOUND`, and leave the current session active.
 
 ### fork
 

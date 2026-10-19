@@ -91,7 +91,8 @@ export interface ExtensionHost {
 	readonly adapter: Extension;
 	/** Runs `before_agent_start` once for the submitted prompt and stages its message/system-prompt effects. */
 	beforePrompt(content: UserInput): Promise<void>;
-	start(reason: SessionStartEvent["reason"]): Promise<void>;
+	beforeSwitch(targetSessionFile: string): Promise<{ readonly cancelled: boolean }>;
+	start(event: SessionStartEvent): Promise<void>;
 	shutdown(reason: SessionShutdownEvent["reason"]): Promise<void>;
 }
 
@@ -286,8 +287,12 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 		providerHooks,
 		toolHooks,
 		adapter: createHookAdapter(providerHooks, toolHooks, compactionHooks),
-		start: (reason) =>
-			runner.emit({ type: "session_start", reason }).then(() => {
+		beforeSwitch: async (targetSessionFile) => {
+			const result = await runner.emit({ type: "session_before_switch", reason: "resume", targetSessionFile });
+			return { cancelled: result?.cancel === true };
+		},
+		start: (event) =>
+			runner.emit(event).then(() => {
 				syncTools();
 			}),
 		settled: async (aborted, messages) => {
