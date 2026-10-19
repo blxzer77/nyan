@@ -1,11 +1,17 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { type AssistantMessage, type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxText } from "@ny4n/ai";
+import lockfile from "proper-lockfile";
 import { afterEach, beforeEach, describe, expect, type MockInstance, test, vi } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
-import type { ExtensionAPI, InlineExtension } from "../src/core/extensions/types.ts";
+import type {
+	ExtensionAPI,
+	ExtensionHandler,
+	InlineExtension,
+	SessionStartEvent,
+} from "../src/core/extensions/types.ts";
 import { runDurableRpc } from "../src/modes/durable/rpc.ts";
 
 /**
@@ -125,7 +131,7 @@ describe("durable RPC session operations", () => {
 	});
 
 	/** Start the adapter with scripted faux answers; the resolved promise never settles, as the real mode. */
-	async function start(responses: FauxResponseStep[]): Promise<void> {
+	async function start(responses: FauxResponseStep[], extra?: InlineExtension): Promise<void> {
 		const faux = fauxProvider();
 		faux.setResponses(responses);
 		const model = faux.getModel();
@@ -134,7 +140,7 @@ describe("durable RPC session operations", () => {
 		};
 		void runDurableRpc({
 			cwd,
-			extensionFactories: [provider],
+			extensionFactories: extra === undefined ? [provider] : [provider, extra],
 			model: { provider: model.provider, modelId: model.id },
 			projectTrustContext: {
 				cwd,
@@ -237,14 +243,14 @@ describe("durable RPC session operations", () => {
 		expect((await state()).sessionName).toBe("my-test-session");
 		const sessionFile = String((await state()).sessionFile);
 		const metadata = join(dirname(sessionFile), "session.json");
-		expect(JSON.parse(readFileSync(metadata, "utf8"))).toEqual({ name: "my-test-session" });
+		expect(JSON.parse(readFileSync(metadata, "utf8"))).toEqual({ cwd, name: "my-test-session" });
 
 		// Legacy trims the name and drops line breaks; an empty name clears the title.
 		await send({ type: "set_session_name", name: "  a\nb  " });
 		expect((await state()).sessionName).toBe("a b");
 		await send({ type: "set_session_name", name: "" });
 		expect((await state()).sessionName).toBeUndefined();
-		expect(JSON.parse(readFileSync(metadata, "utf8"))).toEqual({});
+		expect(JSON.parse(readFileSync(metadata, "utf8"))).toEqual({ cwd });
 
 		// A new session has its own directory, so it starts without a name.
 		await send({ type: "new_session" });
@@ -359,5 +365,116 @@ describe("durable RPC session operations", () => {
 			nodes = node.children;
 		}
 		expect(chainIds).toEqual(entries.entries.map((entry) => entry.id));
+	});
+
+	test("switch_session opens the target directory, uses its cwd, and moves the event stream", async () => {
+		const starts: Array<{ type: "session_start"; reason: string; previousSessionFile?: string; cwd: string }> = [];
+		const observer: InlineExtension = (pi) => {
+			const onStart: ExtensionHandler<SessionStartEvent> = (event, ctx) => {
+				starts.push({ ...event, cwd: ctx.cwd });
+			};
+			pi.on("session_start", onStart);
+		};
+		await start([answer("after switch")], observer);
+		const first = await state();
+		const firstDirectory = dirname(String(first.sessionFile));
+		await writeFile(join(firstDirectory, "session.json"), JSON.stringify({ cwd: tmpdir() }));
+		await send({ type: "new_session" });
+		const second = await state();
+		const secondDirectory = dirname(String(second.sessionFile));
+		expect(secondDirectory).not.toBe(firstDirectory);
+
+		const switched = await send({ type: "switch_session", sessionPath: firstDirectory });
+		expect(switched).toMatchObject({ success: true, command: "switch_session", data: { cancelled: false } });
+		const after = await state();
+		expect(after.sessionFile).toBe(first.sessionFile);
+		expect(after.sessionId).toBe(first.sessionId);
+		expect(starts).toContainEqual({
+			type: "session_start",
+			reason: "resume",
+			previousSessionFile: second.sessionFile,
+			cwd: tmpdir(),
+		});
+
+		const written = records().length;
+		await send({ type: "prompt", message: "prompt in switched session" });
+		expect(
+			records()
+				.slice(written)
+				.some((record) => record.type === "message_end"),
+		).toBe(true);
+	});
+
+	test("switch_session cancellation leaves the current session open", async () => {
+		const observer: InlineExtension = (pi) => {
+			pi.on("session_before_switch", () => ({ cancel: true }));
+		};
+		await start([], observer);
+		const first = await state();
+		const firstDirectory = dirname(String(first.sessionFile));
+		await send({ type: "new_session" });
+		const current = await state();
+		const switched = await send({ type: "switch_session", sessionPath: firstDirectory });
+		expect(switched).toMatchObject({ success: true, command: "switch_session", data: { cancelled: true } });
+		expect((await state()).sessionFile).toBe(current.sessionFile);
+	});
+
+	test("switch_session reports a named lock failure and preserves the current session", async () => {
+		await start([]);
+		const first = await state();
+		const firstDirectory = dirname(String(first.sessionFile));
+		await send({ type: "new_session" });
+		const current = await state();
+		const release = await lockfile.lock(firstDirectory, { realpath: false, stale: 60_000, retries: 0 });
+		try {
+			const switched = await send({ type: "switch_session", sessionPath: firstDirectory });
+			expect(switched).toMatchObject({ success: false, command: "switch_session" });
+			expect(String(switched.error)).toContain("[DURABLE_SESSION_LOCKED]");
+			expect(String(switched.error)).toContain(firstDirectory);
+		} finally {
+			await release();
+		}
+		expect((await state()).sessionFile).toBe(current.sessionFile);
+	});
+
+	test("switch_session refuses a missing recorded cwd without guessing the current cwd", async () => {
+		await start([]);
+		const first = await state();
+		const firstDirectory = dirname(String(first.sessionFile));
+		await send({ type: "new_session" });
+		const current = await state();
+		await writeFile(join(firstDirectory, "session.json"), JSON.stringify({ cwd: join(cwd, "missing-cwd") }));
+
+		const switched = await send({ type: "switch_session", sessionPath: firstDirectory });
+		expect(switched).toMatchObject({ success: false, command: "switch_session" });
+		expect(String(switched.error)).toContain("[DURABLE_SESSION_CWD_NOT_FOUND]");
+		expect((await state()).sessionFile).toBe(current.sessionFile);
+	});
+
+	test("switch_session refuses an old session without cwd metadata", async () => {
+		await start([]);
+		const first = await state();
+		const firstDirectory = dirname(String(first.sessionFile));
+		await send({ type: "new_session" });
+		const current = await state();
+		await writeFile(join(firstDirectory, "session.json"), JSON.stringify({ name: "old session" }));
+
+		const switched = await send({ type: "switch_session", sessionPath: firstDirectory });
+		expect(switched).toMatchObject({ success: false, command: "switch_session" });
+		expect(String(switched.error)).toContain("[DURABLE_SESSION_CWD_MISSING]");
+		expect((await state()).sessionFile).toBe(current.sessionFile);
+	});
+
+	test("switch_session rejects a legacy JSONL file with a named read-only error", async () => {
+		await start([]);
+		const current = await state();
+		const legacy = join(cwd, "legacy.jsonl");
+		await writeFile(legacy, "{}\n");
+
+		const switched = await send({ type: "switch_session", sessionPath: legacy });
+		expect(switched).toMatchObject({ success: false, command: "switch_session" });
+		expect(String(switched.error)).toContain("[DURABLE_SESSION_DIRECTORY_REQUIRED]");
+		expect(String(switched.error)).toContain("Legacy JSONL sessions are read-only");
+		expect((await state()).sessionFile).toBe(current.sessionFile);
 	});
 });

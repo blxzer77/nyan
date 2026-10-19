@@ -23,15 +23,16 @@ RPC mode rejects `@file` prompt arguments. Send prompts through the [`prompt`](r
 
 New interactive, print, JSON, and RPC sessions are stored durably in SQLite under the agent directory. RPC commands that describe a session answer in the same shapes as a JSONL session file, but from the durable entry list: `get_entries` walks the session in append order, `parentId` chains its entries linearly, and an entry id is the durable entry id as a decimal string. See [RPC Commands](rpc-commands.md#get_entries).
 
-A durable session directory holds `session.sqlite` and `session.json`. The JSON file is where `set_session_name` stores the display name that `get_state` reports; the database holds the conversation.
+A durable session directory holds `session.sqlite` and `session.json`. The JSON file records the session's working directory and the display name from `set_session_name`; the database holds the conversation. A session created by the durable path always records its cwd so `switch_session` never guesses it.
 
 These commands need capabilities the durable path does not connect yet, and answer `success: false` with a message that names the command:
 
 | Command | Current answer on the durable path |
 |---|---|
-| `switch_session` | Not available yet; it needs a way to open a given session directory |
 | `bash`, `abort_bash` | Not available yet |
 | `abort_retry` | Not available yet; a durable retry wait cannot be cancelled on its own |
+
+`switch_session` accepts an existing durable session directory and opens it with its recorded cwd. The target is locked before the current session is closed; a missing directory, missing or nonexistent recorded cwd, legacy JSONL file, or target lock returns a named error with a stable `DURABLE_SESSION_*` code and leaves the current session open. Legacy JSONL files are read-only and must be opened through a legacy `--resume` or `--session` invocation.
 
 The fork commands answer, in the durable shape: `fork` and `clone` create a new conversation inside the same session and move the session to it, so `sessionId` and `sessionFile` do not change, `get_fork_messages` lists the session's user messages, and `get_tree` returns the active entry chain, which is linear.
 
