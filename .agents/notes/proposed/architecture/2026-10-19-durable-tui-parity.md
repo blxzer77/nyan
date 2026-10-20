@@ -108,8 +108,8 @@ Destination values: **parity** (already there), **port** (batch named), **reduce
 | Item | Legacy | Durable today | Destination |
 | --- | --- | --- | --- |
 | Multiline | `shift+enter`, `ctrl+j`, `enter` submits | parity (the shared `Editor`) | — |
-| Slash-command and argument completion | `CombinedAutocompleteProvider`: built-ins, prompt templates, extension commands, skills, model and thinking arguments | none | reduce: Decision #28 defers autocomplete to N9 |
-| `@` file and path completion | same provider, `fd`-backed | none | reduce: Decision #28 |
+| Slash-command and argument completion | `CombinedAutocompleteProvider`: built-ins, prompt templates, extension commands, skills, model and thinking arguments | none | ported: `modes/durable/autocomplete.ts` over the router's own command list, prompt templates, extension commands, and the `/model` and `/thinking` arguments; skill commands wait for `/skill:<name>` expansion on this path (Decision #28 covered the extension UI surface, not this) |
+| `@` file and path completion | same provider, `fd`-backed | none | ported: the same provider with the `fd` the tool check resolves |
 | Prompt history | `tui.editor.cursorUp` browses submitted prompts; the TUI calls `editor.addToHistory` | the editor supports it, but nothing adds to the history | ported (R3b): every submitted line, commands included, enters the history before it is routed |
 | Image and clipboard paste (`ctrl+v`) | Files on macOS, images, or text into the editor, and images attached to a prompt | none; `submit` takes text only | ported (R3b): copied files become their paths, an image becomes a temporary file whose path the prompt reads, and text is inserted as itself |
 | External editor (`ctrl+g`) | `external-editor.ts`, 46 lines over the editor buffer | none | ported (R3b): the same shared helper, with the terminal handed over while it runs |
@@ -175,7 +175,9 @@ Actions the durable TUI binds today: `tui.input.submit`, `tui.input.newLine`, `t
 ## Reductions that need no new decision
 
 - `/tree` and `app.tree.*`: Decision #24 (durable conversations are linear).
-- Slash, argument, `@` file completion: Decision #28 (autocomplete moves to N9).
+- Skill commands (`/skill:<name>`) are not offered, because this path does not expand them yet: offering one
+  would send its text to the model unexpanded. Extension autocomplete wrappers (`addAutocompleteProvider`)
+  remain Decision #28's, since they are extension UI rather than the built-in completion.
 - Extension widgets, header/footer replacement, editor replacement, and custom components:
   Decision #28. The durable TUI's notice area and five-method UI subset are what N2 keeps.
 - Session-selection CLI flags: Decision #25. `/new` and `/resume` inside a session are this line's

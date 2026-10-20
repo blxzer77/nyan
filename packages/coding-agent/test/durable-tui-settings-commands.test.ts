@@ -59,6 +59,10 @@ class RecordingSettingsUi implements DurableSettingsUi {
 		this.calls.push(`editorPaddingX:${padding}`);
 	}
 
+	setAutocompleteMaxVisible(maxVisible: number): void {
+		this.calls.push(`autocompleteMaxVisible:${maxVisible}`);
+	}
+
 	setShowImages(show: boolean): void {
 		this.calls.push(`showImages:${show}`);
 	}
@@ -212,6 +216,7 @@ describe("durable TUI settings and account commands", () => {
 		callbacks.onFollowUpModeChange("one-at-a-time");
 		callbacks.onOutputPadChange(0);
 		callbacks.onEditorPaddingXChange(3);
+		callbacks.onAutocompleteMaxVisibleChange(7);
 		callbacks.onModelThinkingLevelChange("faux", "faux-1", "high");
 		callbacks.onThemeChange("light");
 		// The queue modes are committed through the durable controller, which settles them asynchronously.
@@ -224,9 +229,10 @@ describe("durable TUI settings and account commands", () => {
 		});
 		expect(owner.current.settings.getOutputPad()).toBe(0);
 		expect(owner.current.settings.getEditorPaddingX()).toBe(3);
+		expect(owner.current.settings.getAutocompleteMaxVisible()).toBe(7);
 		expect(owner.current.settings.getAllModelThinkingLevels()).toEqual({ "faux/faux-1": "high" });
 		expect(owner.current.settings.getThemeSetting()).toBe("light");
-		expect(ui.calls).toEqual(["outputPad:0", "editorPaddingX:3", "theme:light"]);
+		expect(ui.calls).toEqual(["outputPad:0", "editorPaddingX:3", "autocompleteMaxVisible:7", "theme:light"]);
 		// The dialog reads the same values back, so a reopened item shows what was stored.
 		expect(durableSettingsConfig(deps).outputPad).toBe(0);
 		expect(durableSettingsConfig(deps).editorPaddingX).toBe(3);
