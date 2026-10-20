@@ -6,9 +6,11 @@
  * the TUI owns the terminal corrupts the display.
  */
 
+import { ENV } from "./config.ts";
+
 const PREFIX = "[nyan-cliproxyapi]";
 
-let quiet = process.env.CLIPROXYAPI_QUIET === "1" || process.env.CLIPROXYAPI_QUIET === "true";
+let quiet = process.env[ENV.quiet] === "1" || process.env[ENV.quiet] === "true";
 
 export function setQuiet(value: boolean): void {
 	quiet = value;
@@ -36,7 +38,7 @@ function write(stream: "warn" | "info" | "debug", message: string, detail?: unkn
 }
 
 export function isDebugEnabled(): boolean {
-	const raw = process.env.CLIPROXYAPI_DEBUG;
+	const raw = process.env[ENV.debug];
 	return raw === "1" || raw === "true";
 }
 

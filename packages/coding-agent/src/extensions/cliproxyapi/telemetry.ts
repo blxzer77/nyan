@@ -12,6 +12,7 @@
  */
 
 import type { EventBus } from "../../core/event-bus.ts";
+import { ENV } from "./config.ts";
 import { type MetricsSummary, RequestLog, type RequestMetrics, summarizeRequests } from "./metrics.ts";
 import { type ManagementQuotaResult, parseQuotaSignals, type QuotaSnapshot } from "./quota.ts";
 
@@ -154,7 +155,7 @@ export function explainMissingQuota(view: QuotaView): string | undefined {
 	if (view.fromResponse || view.management.credentials.length > 0) return undefined;
 	switch (view.management.status) {
 		case "unauthorized":
-			return `The proxy rejected the management key (${view.management.detail ?? "unauthorized"}). Check CLIPROXYAPI_MANAGEMENT_KEY and the proxy's remote-management.secret-key.`;
+			return `The proxy rejected the management key (${view.management.detail ?? "unauthorized"}). Check ${ENV.managementKey} and the proxy's remote-management.secret-key.`;
 		case "banned":
 			return `The proxy banned this address from its management API after repeated failed attempts (${view.management.detail ?? "banned"}). Everyone behind the same address is banned together, and a ban lasts 30 minutes.`;
 		case "forbidden":
@@ -169,6 +170,6 @@ export function explainMissingQuota(view: QuotaView): string | undefined {
 		default:
 			return view.managementKeyConfigured
 				? "The management API has not been polled yet."
-				: "No quota source is configured. Set CLIPROXYAPI_MANAGEMENT_KEY (needs remote-management.secret-key on the proxy), or run the proxy with passthrough-headers: true so responses carry x-codex-* headers.";
+				: `No quota source is configured. Set ${ENV.managementKey} (needs remote-management.secret-key on the proxy), or run the proxy with passthrough-headers: true so responses carry x-codex-* headers.`;
 	}
 }
