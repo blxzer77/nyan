@@ -115,6 +115,11 @@ function reportDiagnostics(diagnostics: readonly AgentSessionRuntimeDiagnostic[]
 	}
 }
 
+/** The message both session paths print when `--provider` arrives without `--model`. */
+function providerRequiresModelMessage(provider: string): string {
+	return `--provider requires --model (for example: --provider ${provider} --model <pattern>)`;
+}
+
 function isTruthyEnvFlag(value: string | undefined): boolean {
 	if (!value) return false;
 	return value === "1" || value.toLowerCase() === "true" || value.toLowerCase() === "yes";
@@ -241,7 +246,7 @@ export function durableOptions(
 		throw new DurableStartupError([
 			{
 				type: "error",
-				message: `--provider requires --model (for example: --provider ${parsed.provider} --model <pattern>)`,
+				message: providerRequiresModelMessage(parsed.provider),
 			},
 		]);
 	}
@@ -623,7 +628,7 @@ function buildSessionOptions(
 	if (parsed.provider && !parsed.model) {
 		diagnostics.push({
 			type: "error",
-			message: `--provider requires --model (for example: --provider ${parsed.provider} --model <pattern>)`,
+			message: providerRequiresModelMessage(parsed.provider),
 		});
 	}
 	if (parsed.model) {
