@@ -38,20 +38,23 @@ describe("durable TUI command routing", () => {
 		["/changelog", { kind: "command", name: "changelog", args: "" }],
 		["/share", { kind: "command", name: "share", args: "" }],
 		["/bug", { kind: "command", name: "bug", args: "" }],
+		["/bug a hint", { kind: "command", name: "bug", args: "a hint" }],
+		["/settings", { kind: "command", name: "settings", args: "" }],
+		["/thinking", { kind: "command", name: "thinking", args: "" }],
+		["/thinking high", { kind: "command", name: "thinking", args: "high" }],
+		["/scoped-models", { kind: "command", name: "scoped-models", args: "" }],
+		["/trust", { kind: "command", name: "trust", args: "" }],
+		["/login", { kind: "command", name: "login", args: "" }],
+		["/login anthropic", { kind: "command", name: "login", args: "anthropic" }],
+		["/logout", { kind: "command", name: "logout", args: "" }],
+		["/reload", { kind: "command", name: "reload", args: "" }],
+		["/hotkeys", { kind: "command", name: "hotkeys", args: "" }],
 		["!echo bash-ok", { kind: "bash", command: "echo bash-ok", excludeFromContext: false }],
 		["!!echo hidden", { kind: "bash", command: "echo hidden", excludeFromContext: true }],
 		["  !  ls -la  ", { kind: "bash", command: "ls -la", excludeFromContext: false }],
 		["!! ls", { kind: "bash", command: "ls", excludeFromContext: true }],
 	])("%s runs as a command", (text, expected) => {
 		expect(routeDurableInput(text)).toEqual(expected);
-	});
-
-	test("a pending command reports that the durable session cannot run it", () => {
-		expect(routeDurableInput("/settings")).toEqual({
-			kind: "unsupported",
-			name: "settings",
-			message: "/settings is not available on the durable session yet.",
-		});
 	});
 
 	test("/import points at the legacy read-only route, since a durable session is not a JSONL file", () => {

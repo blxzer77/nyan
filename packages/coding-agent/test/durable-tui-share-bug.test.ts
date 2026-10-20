@@ -63,6 +63,9 @@ function screen(): Screen {
 		setSessionName: () => {},
 		showMarkdown: () => {},
 		copy: async () => {},
+		// `/share` and `/bug` show no dialogs of their own: their questions go through `select` and `input`.
+		present: () => {},
+		restore: () => {},
 		exit: () => {},
 	};
 	return state;

@@ -50,6 +50,7 @@ import type {
 	WorkingIndicatorOptions,
 } from "../../core/extensions/index.ts";
 import { KeybindingsManager } from "../../core/keybindings.ts";
+import type { ModelRuntime } from "../../core/model-runtime.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { createAllToolRenderers } from "../../core/tools/renderers/index.ts";
 import { AssistantMessageComponent } from "../../modes/interactive/components/assistant-message.ts";
@@ -66,14 +67,18 @@ import {
 	getEditorTheme,
 	getMarkdownTheme,
 	initTheme,
+	SYSTEM_THEME_NAME,
 	setRegisteredThemes,
+	type TerminalTheme,
 	type Theme,
 	theme,
 } from "../../ui/theme/theme.ts";
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { runUserBash } from "./bash.ts";
 import type { DurableBugReportEnvironment } from "./bug-report.ts";
-import { DurableCommands, type DurableReopenRequest } from "./commands.ts";
+import { type DurableCommandProduct, DurableCommands, type DurableReopenRequest } from "./commands.ts";
+import { enabledModelIds } from "./scoped-models.ts";
+import type { DurableSettingsUi } from "./settings.ts";
 
 const SELECT_THEME: SelectListTheme = {
 	selectedPrefix: (text) => theme.fg("accent", text),
@@ -250,9 +255,12 @@ class DurableTui {
 	readonly #footerHints = new Text("", 1, 0);
 	readonly #editorContainer = new Container();
 	readonly #editor: CustomEditor;
+	readonly #keybindings: KeybindingsManager;
 	readonly #cwd: string;
 	/** Padding inside output blocks, from the `outputPad` setting. */
-	readonly #outputPad: number;
+	#outputPad: number;
+	/** The models `/model` lists: the scoped set, or every model when it is null. */
+	#scopedModelIds: readonly string[] | null = null;
 	/** The newest card per call ID; provider call IDs may repeat across turns. */
 	readonly #tools = new Map<string, ToolExecutionComponent>();
 	/** Every card shown, also older ones whose call ID a later turn reused. */
@@ -287,6 +295,7 @@ class DurableTui {
 		this.#ui = new TuiAltScreen(new ProcessTerminal(), false, getAgentDir());
 		const keybindings = KeybindingsManager.create();
 		setKeybindings(keybindings);
+		this.#keybindings = keybindings;
 		this.#editor = new CustomEditor(this.#ui, getEditorTheme(), keybindings, {
 			paddingX: 1,
 			embedWorkingStatus: true,
@@ -529,6 +538,64 @@ class DurableTui {
 		this.#ui.requestRender(true);
 	}
 
+	/** The models `/model` lists and cycles through; null is every model the session can use. */
+	get scopedModelIds(): readonly string[] | null {
+		return this.#scopedModelIds;
+	}
+
+	setScopedModelIds(ids: readonly string[] | null): void {
+		this.#scopedModelIds = ids;
+	}
+
+	get keybindings(): KeybindingsManager {
+		return this.#keybindings;
+	}
+
+	/** The settings a running TUI can apply at once; the rest of a setting takes effect where it applies. */
+	createSettingsUi(hooks: {
+		readonly themeSelection: () => string;
+		readonly terminalTheme: () => TerminalTheme;
+		readonly setTheme: (setting: string) => void;
+		readonly previewTheme: (setting: string) => void;
+	}): DurableSettingsUi {
+		return {
+			themeSelection: hooks.themeSelection,
+			terminalTheme: hooks.terminalTheme,
+			setTheme: hooks.setTheme,
+			previewTheme: hooks.previewTheme,
+			setOutputPad: (padding) => {
+				this.#outputPad = padding;
+				for (const card of this.#cards) card.setOutputPad(padding);
+				this.#bash?.setOutputPad(padding);
+				this.#ui.requestRender();
+			},
+			setEditorPaddingX: (padding) => this.#editor.setPaddingX(padding),
+			setShowImages: (show) => {
+				for (const card of this.#cards) card.setShowImages(show);
+				this.#ui.requestRender();
+			},
+			setImageWidthCells: (width) => {
+				for (const card of this.#cards) card.setImageWidthCells(width);
+				this.#ui.requestRender();
+			},
+			setHardwareCursor: (enabled) => this.#ui.setShowHardwareCursor(enabled),
+			setClearOnShrink: (enabled) => this.#ui.setClearOnShrink(enabled),
+			setScrollbar: (mode) => {
+				this.#transcript.setScrollbar(mode);
+				this.#ui.requestRender();
+			},
+			setCopyOnSelect: (enabled) => this.#ui.setCopyOnSelect(enabled),
+			setWheelScrollLines: (lines) => this.#ui.setWheelScrollLines(lines),
+		};
+	}
+
+	/** Reload keybindings and repaint, after a `/reload` replaced the files they come from. */
+	reloadBindings(): void {
+		this.#keybindings.reload();
+		setKeybindings(this.#keybindings);
+		this.#ui.requestRender(true);
+	}
+
 	/** Start again in another session: its entries, names, and notices are not the ones shown before. */
 	resetSessionView(): void {
 		this.#extensionNotices.length = 0;
@@ -555,10 +622,10 @@ class DurableTui {
 		this.#streamingCalls.clear();
 	}
 
-	mount(component: Component): void {
+	mount(component: Component, focus: Component = component): void {
 		this.#editorContainer.clear();
 		this.#editorContainer.addChild(component);
-		this.#ui.setFocus(component);
+		this.#ui.setFocus(focus);
 		this.#ui.requestRender();
 	}
 
@@ -918,6 +985,10 @@ export interface DurableTuiOpen {
 	readonly extensionHost?: ExtensionHost;
 	/** Session-wide product operations: the display name, the entry list, the picker, and forks. */
 	readonly sessionOps?: DurableSessionOps;
+	/** The models and credentials `/settings`, `/model`, `/login`, and `/logout` work with. */
+	readonly modelRuntime?: ModelRuntime;
+	/** The themes this open loaded, which a `/reload` replaces. */
+	readonly themes?: readonly Theme[];
 	/** What `/bug` reads from the process: the model runtime, the settings, and the loaded extensions. */
 	readonly bugReport?: DurableBugReportEnvironment;
 }
@@ -958,13 +1029,26 @@ export async function runDurableTui(
 		const current = agentOf(snapshot.conversation).model;
 		const isCurrent = (model: { provider: string; modelId: string }) =>
 			model.provider === current?.provider && model.modelId === current.modelId;
-		const items: SelectItem[] = [...snapshot.models]
+		// The runtime holds the newest catalog, which a login or a catalog refresh replaces; the view's list is the one
+		// the session opened with.
+		const available =
+			shown.modelRuntime?.getAvailableSnapshot().map((model) => ({
+				provider: model.provider,
+				modelId: model.id,
+			})) ?? snapshot.models;
+		const scoped = view.scopedModelIds;
+		const items: SelectItem[] = available
+			.filter((model) => scoped === null || scoped.includes(`${model.provider}/${model.modelId}`))
 			.sort((left, right) => Number(isCurrent(right)) - Number(isCurrent(left)))
 			.map((model) => ({
 				value: `${model.provider}/${model.modelId}`,
 				label: model.modelId,
 				description: model.provider,
 			}));
+		if (items.length === 0) {
+			view.notify("No model is enabled. /scoped-models enables one.", "warning");
+			return;
+		}
 		const selector = new ListSelector(
 			"Select model:",
 			items,
@@ -1126,10 +1210,46 @@ export async function runDurableTui(
 		},
 		settings.getOutputPad(),
 	);
+	// The models a start shows in `/model`: the ones nyan's settings enable, which `/scoped-models` changes.
+	if (shown.modelRuntime !== undefined) {
+		view.setScopedModelIds(enabledModelIds(settings.getEnabledModels(), shown.modelRuntime.getAvailableSnapshot()));
+	}
 
 	/** Render the open session the TUI holds now, and follow it. */
 	const follow = (): void => view.apply(shown.view.current());
 	let unsubscribe = (): void => {};
+
+	// nyan's theme handling: the theme setting (also light/dark pairs) resolved against the terminal's reported colors.
+	// It exists before the commands, because `/settings` reads and applies the theme through it.
+	const themes = new InteractiveThemeController(view.ui, {
+		getSettingsManager: () => settings,
+		showError: (message) => console.error(message),
+		onChanged: () => view.ui.requestRender(),
+	});
+
+	/**
+	 * The settings and account surface. It is absent when the caller opened a session without a model runtime (the
+	 * experimental modes), where those commands answer that they are unavailable.
+	 */
+	const product = (): DurableCommandProduct | undefined => {
+		const modelRuntime = shown.modelRuntime;
+		if (modelRuntime === undefined) return undefined;
+		return {
+			settings,
+			modelRuntime,
+			tui: view.ui,
+			settingsUi: view.createSettingsUi({
+				themeSelection: () => themes.getThemeSelection() ?? SYSTEM_THEME_NAME,
+				terminalTheme: () => themes.getTerminalTheme(),
+				setTheme: (setting) => themes.setThemeSetting(setting),
+				previewTheme: (setting) => themes.preview(setting),
+			}),
+			keybindings: view.keybindings,
+			...(shown.extensionHost === undefined ? {} : { extensionRunner: shown.extensionHost.runner }),
+			getScopedModels: () => view.scopedModelIds,
+			setScopedModels: (ids) => view.setScopedModelIds(ids),
+		};
+	};
 
 	if (shown.sessionOps !== undefined) {
 		commands = await DurableCommands.create(
@@ -1145,6 +1265,9 @@ export async function runDurableTui(
 					};
 				},
 				readSessionName: async () => await shown.sessionOps?.getSessionName(),
+				get product() {
+					return product();
+				},
 				...(sessions?.reopen === undefined
 					? {}
 					: {
@@ -1156,6 +1279,12 @@ export async function runDurableTui(
 								shown = next;
 								unsubscribe = shown.view.subscribe(follow);
 								shown.extensionHost?.runner.setUIContext(view.createExtensionUIContext(), "tui");
+								if (shown.themes !== undefined) setRegisteredThemes([...shown.themes]);
+								if (request.kind === "reload") {
+									setCapabilityOverrides(settings.getTerminalCapabilityOverrides());
+									view.reloadBindings();
+									themes.applyFromSettings();
+								}
 								await commands?.refreshSessionName();
 								view.setSessionName(commands?.sessionName);
 								view.resetSessionView();
@@ -1170,6 +1299,8 @@ export async function runDurableTui(
 				showMarkdown: (markdown) => view.showMarkdown(markdown),
 				copy: (text) => copyToClipboard(text),
 				setSessionName: (name) => view.setSessionName(name),
+				present: (component, focus) => view.mount(component, focus),
+				restore: () => view.restoreEditor(),
 				notify: (message, type) => view.notify(message, type),
 				exit,
 			},
@@ -1177,12 +1308,6 @@ export async function runDurableTui(
 		view.setSessionName(commands.sessionName);
 	}
 
-	// nyan's theme handling: the theme setting (also light/dark pairs) resolved against the terminal's reported colors.
-	const themes = new InteractiveThemeController(view.ui, {
-		getSettingsManager: () => settings,
-		showError: (message) => console.error(message),
-		onChanged: () => view.ui.requestRender(),
-	});
 	shown.extensionHost?.runner.setUIContext(view.createExtensionUIContext(), "tui");
 	setRegisteredThemes([...availableThemes]);
 	unsubscribe = shown.view.subscribe(follow);

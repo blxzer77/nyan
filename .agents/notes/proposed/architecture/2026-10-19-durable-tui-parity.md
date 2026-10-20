@@ -1,6 +1,6 @@
 # Durable TUI parity for 1.4.0
 
-Status: proposed (R0 inventory of the release line opened by PR #95)
+Status: proposed (R0 inventory, R1 and R2 merged, R3a ported; R3b and R3c remain)
 Line: `prompts/r-tui.md`, worktree `nyan-n2`, branch `r-tui-r0-inventory`.
 Reference: `packages/coding-agent/src/modes/interactive/interactive-mode.ts` (legacy TUI) and
 `packages/coding-agent/src/modes/durable/tui.ts` (default interactive mode since N1).
@@ -65,11 +65,11 @@ Destination values: **parity** (already there), **port** (batch named), **reduce
 
 | Command | Legacy behaviour | Durable today | Destination |
 | --- | --- | --- | --- |
-| `/settings` | `SettingsSelectorComponent` over `SettingsManager`, applying each change live | pending message | port R3 (the component is reusable: its inputs come from `SettingsManager`, the model runtime, and controller getters/setters) |
-| `/model [provider/model]` | `ModelSelectorComponent`; argument seeds the search; saves a default model; groups by provider | `ListSelector` over `view.models`; R0 makes the argument seed the filter | port R3 for the picker's extra affordances; the picker itself is at parity (reduce #36) |
+| `/settings` | `SettingsSelectorComponent` over `SettingsManager`, applying each change live | ported (R3a) | ported (R3a): the shared dialog over `SettingsManager`, the model runtime, and controller getters/setters, plus a **Default model** item the durable TUI supplies |
+| `/model [provider/model]` | `ModelSelectorComponent`; argument seeds the search; saves a default model; groups by provider | `ListSelector` over the runtime's model catalog, filtered by the enabled set; R0 makes the argument seed the filter | reduce #36: the picker stays a list, and the default model is saved from `/settings` (R3a) |
 | `/tree` | `TreeSelectorComponent`: navigate branches, fork at a node, label nodes | none — durable conversations are linear | reduce: Decision #24. The TUI reports it |
-| `/thinking [level]` | `ThinkingSelectorComponent`, or set a level from the argument | none (only `shift+tab` cycling) | port R3 |
-| `/scoped-models` | `ScopedModelsSelectorComponent`: enable, order, save the cycle set | none | port R3 (component reusable; the cycle then feeds `ctrl+p`) |
+| `/thinking [level]` | `ThinkingSelectorComponent`, or set a level from the argument | ported (R3a) | ported (R3a): a level from the argument, or `ThinkingSelectorComponent`, with `ctrl+s` saving the default |
+| `/scoped-models` | `ScopedModelsSelectorComponent`: enable, order, save the cycle set | ported (R3a) | ported (R3a): `ScopedModelsSelectorComponent`; the set filters `/model` now and feeds the `ctrl+p` cycle in R3b |
 | `/export [path]` | HTML by default, `.jsonl` when the path ends with it | none | port R2: `sessionOps.exportHtml` exists; add a JSONL export over the mapped entries |
 | `/import <path.jsonl>` | Imports a JSONL session and resumes it | none — a durable session is SQLite, and legacy JSONL sessions are read-only (Decision #32) | reduce: new decision #34 (recommend refusing with a pointer to the legacy route) |
 | `/share` | Exports JSONL plus HTML to a temporary directory and creates a secret gist with `gh` | none | port R2, subject to request #2 (`session-share.ts` is outside this line's files) |
@@ -78,16 +78,16 @@ Destination values: **parity** (already there), **port** (batch named), **reduce
 | `/name [name]` | Sets or shows the session display name | none (`sessionOps.setSessionName` exists) | port R1, and show the name in the footer |
 | `/session` | Session file, id, message counts, token totals, cost breakdown, cache-warming state | none (the footer shows totals) | port R1 as a read-only panel over `view` and `sessionOps.entries()` |
 | `/changelog` | Renders the changelog markdown from the package | none | port R2 (pure: `parseChangelog`, `normalizeChangelogLinks`) |
-| `/hotkeys` | Renders the active bindings and extension shortcuts | none | port R3, after the bindings themselves (the content depends on them) |
+| `/hotkeys` | Renders the active bindings and extension shortcuts | ported (R3a) | ported (R3a): the keys this TUI binds plus extension shortcuts, leaving out keys only the legacy TUI binds |
 | `/fork` | User-message selector, then a fork and a switch | none (`sessionOps.forkMessages`/`fork`, `controller.switchConversation` exist) | port R1 |
 | `/clone` | Forks at the newest entry | none (`sessionOps.clone` exists) | port R1 |
-| `/trust` | `TrustSelectorComponent`, stores the decision in the trust store | none (the CLI asks once at startup through `ProjectTrustContext`) | port R3 |
-| `/login [provider]` | `LoginDialogComponent` / `OAuthSelectorComponent` over auth storage | none | port R3 |
-| `/logout` | OAuth selector in logout mode | none | port R3 |
+| `/trust` | `TrustSelectorComponent`, stores the decision in the trust store | ported (R3a) | ported (R3a): `TrustSelectorComponent` over the same trust store |
+| `/login [provider]` | `LoginDialogComponent` / `OAuthSelectorComponent` over auth storage | ported (R3a) | ported (R3a): the provider picker and `LoginDialogComponent`, as legacy shows them |
+| `/logout` | OAuth selector in logout mode | ported (R3a) | ported (R3a) |
 | `/new` | New session in the same process | none | port R1 through the RPC `new_session` reopen path |
 | `/compact [instructions]` | Compacts | parity | — |
 | `/resume` | Session picker for the cwd, then switch | none | port R1 through the RPC `switch_session` reopen path; blocked on request #2 |
-| `/reload` | Reloads keybindings, extensions, skills, prompts, themes, and context files | none | port R3 by reopening the same session directory without the cached services, which is what reloads extensions |
+| `/reload` | Reloads keybindings, extensions, skills, prompts, themes, and context files | ported (R3a) | ported (R3a): `DurableSessionOwner.reload()` closes the session and reopens its directory without the cached services, restoring the session with those services if that open fails |
 | `/quit` | Shuts down and prints the resume command | `ctrl+c` and `ctrl+d` exit; no `/quit`, and the resume hint is dropped (durable sessions cannot be named on the command line, Decision #25) | port R1 |
 | `/tasks`, `/agents` (durable only) | — | parity | — |
 | `/debug`, `/arminsayshi` (not in `BUILTIN_SLASH_COMMANDS`) | Writes a render dump; plays an easter egg | none | n/a: undocumented and tied to the main-screen renderer; no user-facing contract to keep |
@@ -109,11 +109,11 @@ Destination values: **parity** (already there), **port** (batch named), **reduce
 | Multiline | `shift+enter`, `ctrl+j`, `enter` submits | parity (the shared `Editor`) | — |
 | Slash-command and argument completion | `CombinedAutocompleteProvider`: built-ins, prompt templates, extension commands, skills, model and thinking arguments | none | reduce: Decision #28 defers autocomplete to N9 |
 | `@` file and path completion | same provider, `fd`-backed | none | reduce: Decision #28 |
-| Prompt history | `tui.editor.cursorUp` browses submitted prompts; the TUI calls `editor.addToHistory` | the editor supports it, but nothing adds to the history | port R3 |
-| Image and clipboard paste (`ctrl+v`) | Files on macOS, images, or text into the editor, and images attached to a prompt | none; `submit` takes text only | port R3 (`UserInput` already carries content parts) |
-| External editor (`ctrl+g`) | `external-editor.ts`, 46 lines over the editor buffer | none | port R3 |
-| Queue dequeue (`alt+up`) | Restores queued messages to the editor | none (`sessionOps.clearQueue` returns the texts) | port R3 |
-| Extension shortcuts | `setupExtensionShortcuts`: extension-declared keys | `CustomEditor.onExtensionShortcut` is unset | port R3 |
+| Prompt history | `tui.editor.cursorUp` browses submitted prompts; the TUI calls `editor.addToHistory` | the editor supports it, but nothing adds to the history | port R3b |
+| Image and clipboard paste (`ctrl+v`) | Files on macOS, images, or text into the editor, and images attached to a prompt | none; `submit` takes text only | port R3b |
+| External editor (`ctrl+g`) | `external-editor.ts`, 46 lines over the editor buffer | none | port R3b |
+| Queue dequeue (`alt+up`) | Restores queued messages to the editor | none (`sessionOps.clearQueue` returns the texts) | port R3b |
+| Extension shortcuts | `setupExtensionShortcuts`: extension-declared keys | `CustomEditor.onExtensionShortcut` is unset | port R3b |
 
 ### Keybindings
 
@@ -123,16 +123,16 @@ Actions the durable TUI binds today: `tui.input.submit`, `tui.input.newLine`, `t
 
 | Action | Legacy behaviour | Destination |
 | --- | --- | --- |
-| `app.clear` (ctrl+c) | Clears the editor; a second press within 500 ms exits | port R3 (the durable TUI exits on the first press) |
+| `app.clear` (ctrl+c) | Clears the editor; a second press within 500 ms exits | port R3b (the durable TUI exits on the first press) |
 | `app.message.copy` (ctrl+x) | Copies the selection in the tree, or the last assistant message | port R2 with `/copy` |
-| `app.message.dequeue` (alt+up) | Restores queued messages | port R3 |
-| `app.model.cycleForward` / `cycleBackward` (ctrl+p, shift+ctrl+p) | Cycles the scoped models | port R3 with `/scoped-models` |
-| `app.suspend` (ctrl+z) | Suspends the process | port R3 |
-| `app.editor.external` (ctrl+g) | Opens the external editor | port R3 |
-| `app.clipboard.pasteImage` (ctrl+v) | Pastes files, images, or text | port R3 |
-| `app.thinking.toggle` (ctrl+t) | Hides or shows thinking blocks | port R3 |
+| `app.message.dequeue` (alt+up) | Restores queued messages | port R3b |
+| `app.model.cycleForward` / `cycleBackward` (ctrl+p, shift+ctrl+p) | Cycles the scoped models | port R3b with the scoped set `/scoped-models` now keeps |
+| `app.suspend` (ctrl+z) | Suspends the process | port R3b |
+| `app.editor.external` (ctrl+g) | Opens the external editor | port R3b |
+| `app.clipboard.pasteImage` (ctrl+v) | Pastes files, images, or text | port R3b |
+| `app.thinking.toggle` (ctrl+t) | Hides or shows thinking blocks | port R3b |
 | `app.session.*` (new, tree, fork, resume, rename, delete, path/sort/filter) | Session picker and tree actions | port R1 for new/fork/resume; n/a for `tree`/`rename`/`delete` until the session picker supports them (the durable picker is R1's; see #36 and Decision #25) |
-| `app.tree.*`, `app.models.*` | Tree navigation and scoped-model selector actions | n/a for tree (Decision #24); port R3 for `app.models.*` inside `/scoped-models` |
+| `app.tree.*`, `app.models.*` | Tree navigation and scoped-model selector actions | n/a for tree (Decision #24); `app.models.*` work inside `/scoped-models` (R3a) |
 | `tui.altScreen.*`, `tui.select.*`, `tui.editor.*` | transcript navigation, list selection, editing | parity |
 
 ### Startup notices
@@ -142,34 +142,34 @@ Actions the durable TUI binds today: `tui.input.submit`, `tui.input.newLine`, `t
 | Startup diagnostics | Shown as info/warning/error lines | notices from `openDurable` | parity |
 | Model fallback and unavailable-model message | Shown at startup | notices | parity |
 | Project trust prompt | Asked through the extension UI before loading project resources | `ProjectTrustContext` from the CLI | parity (the prompt is the CLI's, not the TUI's) |
-| Project trust warning line | Printed when the project is untrusted and has resources | none | port R3 |
-| Changelog popup | Renders the new sections once after an update, collapsible via `collapseChangelog` | none | port R3 |
-| Version update check | `checkForNewNyanVersion`, notice with the new version | none | port R3 |
-| Package update check | `DefaultPackageManager` check, notice | none | port R3 |
-| Crash notice | `takeUnnotifiedCrash`: offers `/bug` with the recorded crash | none | port R3 |
-| tmux keyboard warning | `checkTmuxKeyboardSetup` | none | port R3 |
-| Loaded resources listing | Skills, prompts, themes, extensions with source tags and diagnostics | none (diagnostics only) | port R3 |
-| Terminal title | `APP_TITLE - session name - cwd`, updated on rename | only when an extension sets it | port R3 |
-| Theme file watcher | Re-renders on theme file change | `InteractiveThemeController` handles themes; no watcher | port R3 |
-| Git branch watcher | Footer branch display | none | port R3 with the footer |
-| Terminal progress (`showTerminalProgress`) | Progress indicator in the terminal during a turn | none | port R3 |
+| Project trust warning line | Printed when the project is untrusted and has resources | none | port R3c |
+| Changelog popup | Renders the new sections once after an update, collapsible via `collapseChangelog` | none | port R3c |
+| Version update check | `checkForNewNyanVersion`, notice with the new version | none | port R3c |
+| Package update check | `DefaultPackageManager` check, notice | none | port R3c |
+| Crash notice | `takeUnnotifiedCrash`: offers `/bug` with the recorded crash | none | port R3c |
+| tmux keyboard warning | `checkTmuxKeyboardSetup` | none | port R3c |
+| Loaded resources listing | Skills, prompts, themes, extensions with source tags and diagnostics | none (diagnostics only) | port R3c |
+| Terminal title | `APP_TITLE - session name - cwd`, updated on rename | only when an extension sets it | port R3c |
+| Theme file watcher | Re-renders on theme file change | `InteractiveThemeController` handles themes; no watcher | reduce: #37 (N9) |
+| Git branch watcher | Footer branch display | none | reduce: #37 (N9) |
+| Terminal progress (`showTerminalProgress`) | Progress indicator in the terminal during a turn | none | reduce: #37 (N9) |
 
 ### Footer and status
 
 | Item | Legacy footer | Durable footer | Destination |
 | --- | --- | --- | --- |
-| cwd | `~`-relative | absolute path | port R3 |
-| Git branch | ` (branch)` | none | port R3 |
+| cwd | `~`-relative | absolute path | port R3c |
+| Git branch | ` (branch)` | none | reduce: #37 (N9) |
 | Session name | `• name` | none | port R1 with `/name` |
 | Token and cost totals | `↑ ↓ R W $` | parity | — |
-| Cache hit rate | `CH 42.0%` | none | port R3 |
-| Context percentage | `45.2%/128k`, warning above 70%, error above 90% | parity (error above 90% only) | port R3 for the 70% tier |
-| Auto-compaction marker | `(auto)` | none | port R3 |
-| Subscription marker | `$0.123 (sub)` | none | port R3 |
-| Routed model | `model → routed model` | none | port R3 |
-| Provider prefix | `(provider)` when several providers are configured | none | port R3 |
+| Cache hit rate | `CH 42.0%` | none | reduce: #37 (N9) |
+| Context percentage | `45.2%/128k`, warning above 70%, error above 90% | parity (error above 90% only) | reduce: #37 (N9) for the 70% tier |
+| Auto-compaction marker | `(auto)` | none | port R3c |
+| Subscription marker | `$0.123 (sub)` | none | port R3c |
+| Routed model | `model → routed model` | none | port R3c |
+| Provider prefix | `(provider)` when several providers are configured | none | port R3c |
 | Extension statuses | One line, sorted | appended to the hint line | parity |
-| Hint line | `!`, `!!`, `/` hints | `/model`, `/agents`, `/compact`, `/tasks` hints | port R2/R3 as the commands land |
+| Hint line | `!`, `!!`, `/` hints | `/model`, `/agents`, `/compact`, `/tasks` hints | port R3c, once the command list is final |
 
 ## Reductions that need no new decision
 
@@ -235,18 +235,46 @@ necessarily the one that just ended.
 - `/copy` and `app.message.copy` share one implementation.
 - `/export` gains a JSONL variant over the same entry mapping `exportHtml` uses.
 
-### R3 — settings, account, keybindings, startup (`r-tui-r3-settings`)
+### R3 — split into three batches
 
-`/settings`, `/thinking`, `/scoped-models`, `/trust`, `/login`, `/logout`, `/reload`, `/hotkeys`,
-then the keybindings and startup surfaces marked "port R3" above.
+R3 was too large for one branch, so it runs as R3a, R3b, and R3c (notice #10). R3a has landed; R3b and
+R3c remain.
+
+#### R3a — settings, account, and toolkit commands (`r-tui-r3a-commands`, ported)
+
+`/settings`, `/thinking`, `/scoped-models`, `/trust`, `/login`, `/logout`, `/reload`, `/hotkeys`. The
+settings dialog is the legacy component; the durable TUI supplies a **Default model** item (Decision #36)
+and applies a change to the running session where this path has an equivalent. `/reload` reopens the
+session's directory with freshly loaded services and restores the session with the loaded ones if that
+fails. `/hotkeys` lists only the keys this TUI binds, so R3b adds its keys to the same table.
+
+#### R3b — input and keybindings (`r-tui-r3b-input`)
+
+Prompt history, image and clipboard paste (`ctrl+v`), the external editor (`ctrl+g`), queue dequeue
+(`alt+up`), the model cycle (`ctrl+p` / `shift+ctrl+p`) over the scoped set, suspend (`ctrl+z`), the
+thinking toggle (`ctrl+t`), extension shortcuts, and `ctrl+c` clearing the editor before the second press
+within 500 ms exits.
+
+#### R3c — startup and labels (`r-tui-r3c-startup`)
+
+The version and package update notices, the changelog popup (`collapseChangelog`), the crash notice that
+points at `/bug`, the project trust warning line, the loaded-resources listing, the tmux keyboard warning,
+the terminal title, the footer's `~`-relative cwd and its remaining labels, and the fork/clone label that
+R1 recorded: a forked or cloned conversation showed as `subagent N`.
+
+### What the pre-split R3 plan required
+
+Two requirements of the pre-split plan are met by R3a and carry over to R3b and R3c:
 
 - `/reload` reopens the same session directory without the cached services, which is the only way
   extensions reload on this path.
 - The settings selector, scoped-model selector, trust selector, OAuth selector, and login dialog are
   reused from `modes/interactive/components/`. Where a component asks for an `AgentSession` getter,
   the durable equivalent comes from `view`, `controller.get*()`, and `settings`.
-- When R3 merges, `PENDING` is empty and the R0 test's table covers every built-in command as
-  runnable.
+
+When R3c merges, `PENDING` holds only the recorded reductions (`/tree`, `/import`) plus `/share` and
+`/bug` if the release-fix line's F2b has not landed, so the R0 test covers every built-in command as
+either runnable or answered with its reason.
 
 ## Test contract
 
@@ -323,3 +351,32 @@ only records "it called the controller" is not covered.
   `/import` printed the pointer. No command sent a provider request.
 - Found and fixed while verifying: a finished command was drawn twice (the live card and its
   `bashExecution` entry). The live card now stands for its entry instead of being drawn beside it.
+
+## R3a verification
+
+- `test/durable-tui-settings-commands.test.ts` (15 cases, Node and Bun) drives the commands against real
+  durable sessions and the real settings manager: `/thinking` from an argument and from the picker, a
+  level the model does not have, the settings dialog and each effect that reaches the session, the
+  settings, or the terminal, the saved default model, the scoped set and its storage as patterns, the
+  trust decision in the trust store, a reload that reloads extensions and keeps the transcript, a failed
+  reload that leaves a live session which still takes a prompt, the hotkeys table, `/logout` with
+  nothing stored, `/login` naming an unknown provider and cancelling at the picker, and the unavailable
+  answer when the embedding passes no product surface. The routing test is 69 cases; the shared test
+  scaffolding moved to `test/durable-tui-harness.ts`, which the R1 tests use too.
+- Mutations, each failing a named case: no thinking-level validation, a steering-mode change that is not
+  applied, a reload that reuses the cached services, a failed reload that leaves no session, scoped ids
+  that ignore the settings, and a legacy-only key listed as working.
+- tmux with a temporary HOME and a loopback `openai-completions` provider: `/hotkeys` rendered three
+  tables; `/settings` opened the shared dialog with 33 items, the Default model submenu showed the
+  current default, and Output padding changed from 1 to 0 and was written to `settings.json`;
+  `/thinking high` set the level and the border and footer followed; the thinking picker marked the
+  current level and the saved default; `/scoped-models` and `/model` listed only the enabled model;
+  `/trust` wrote `{"/tmp/rtui-r3a": true}` to `trust.json`; `/logout` reported nothing stored; `/login`
+  listed 51 providers and cancelled; `/reload` reopened the session and kept the transcript; `/settings`
+  opened again after the reload; and a prompt was answered after it. The provider's request counter
+  stayed at 0 until that prompt.
+- Not verified: the `/reload` guards for a running response and a running compaction (no test drives a
+  live generation, and the tmux run had none); the OAuth and API-key entry inside the login dialogs
+  (they open a browser against a real provider — the picker, the cancel path, and the no-credentials
+  path are verified); the TUI's own wiring in `runDurableTui`, which the tmux run covers end to end and
+  no test drives; and Windows (no Windows host; the owner tracks Windows coverage separately).

@@ -1,13 +1,27 @@
-import type { UsageState } from "@ny4n/durable";
-import type { SelectItem } from "@ny4n/tui";
-import { getChangelogPath } from "../../config.ts";
+import type { ThinkingLevel } from "@ny4n/agent-core";
+import { getSupportedThinkingLevels } from "@ny4n/ai";
+import type { LiveState, UsageState } from "@ny4n/durable";
+import type { Component, SelectItem, TUI } from "@ny4n/tui";
+import { getAgentDir, getChangelogPath } from "../../config.ts";
+import { DEFAULT_THINKING_LEVEL } from "../../core/defaults.ts";
 import type { DurableRunnableCommand } from "../../core/durable/commands.ts";
-import type { DurableController, DurableView, Notice } from "../../core/durable/runtime.ts";
+import { agentOf, type DurableController, type DurableView, type Notice } from "../../core/durable/runtime.ts";
 import type { DurableSessionOps } from "../../core/durable/session-ops.ts";
+import type { ExtensionRunner } from "../../core/extensions/index.ts";
+import type { KeybindingsManager } from "../../core/keybindings.ts";
+import type { ModelRuntime } from "../../core/model-runtime.ts";
+import type { SettingsManager } from "../../core/settings-manager.ts";
+import { ProjectTrustStore } from "../../core/trust-manager.ts";
 import { normalizeChangelogLinks, parseChangelog } from "../../utils/changelog.ts";
 import { formatTokens } from "../interactive/components/footer.ts";
+import { ThinkingSelectorComponent } from "../interactive/components/thinking-selector.ts";
+import { TrustSelectorComponent } from "../interactive/components/trust-selector.ts";
 import { type DurableBugReportEnvironment, reportDurableBug, shareDurableSession } from "./bug-report.ts";
+import { durableHotkeysMarkdown } from "./hotkeys.ts";
+import { runLogin, runLogout } from "./login.ts";
+import { type ScopedModelIds, scopedModelsDialog } from "./scoped-models.ts";
 import { listSiblingSessions } from "./session-list.ts";
+import { type DurableSettingsUi, durableSettingsDialog } from "./settings.ts";
 
 /** The open session a command runs against. A reopen replaces every member. */
 export interface DurableCommandSession {
@@ -23,7 +37,27 @@ export type DurableReopenRequest =
 	/** Start a new session in the same working directory. */
 	| { readonly kind: "new" }
 	/** Open this existing session directory. */
-	| { readonly kind: "resume"; readonly directory: string };
+	| { readonly kind: "resume"; readonly directory: string }
+	/** Reopen this session's directory with freshly loaded services, which is how extensions reload. */
+	| { readonly kind: "reload" };
+
+/**
+ * What the settings and account commands need beyond the session: nyan's settings, the model runtime that holds the
+ * credentials, and the parts of the running TUI a settings change applies to. Absent in an embedding that has none of
+ * them, where those commands answer that they are unavailable.
+ */
+export interface DurableCommandProduct {
+	readonly settings: SettingsManager;
+	readonly modelRuntime: ModelRuntime;
+	/** The terminal the login dialogs draw on and open their URLs from. */
+	readonly tui: TUI;
+	readonly settingsUi: DurableSettingsUi;
+	readonly keybindings: KeybindingsManager;
+	readonly extensionRunner?: ExtensionRunner;
+	/** The models `/model` lists and cycles through; null is every model the session can use. */
+	getScopedModels(): ScopedModelIds;
+	setScopedModels(ids: ScopedModelIds): void;
+}
 
 /** Everything a command needs from the terminal: dialogs, the transcript, notices, and the exit. */
 export interface DurableCommandUi {
@@ -39,6 +73,10 @@ export interface DurableCommandUi {
 	showMarkdown(markdown: string): void;
 	/** Copy text to the system clipboard. */
 	copy(text: string): Promise<void>;
+	/** Show a component in place of the editor, as a settings or login dialog, until `restore` is called. */
+	present(component: Component, focus: Component): void;
+	/** Put the editor back after `present`. */
+	restore(): void;
 	notify(message: string, type?: Notice["level"]): void;
 	exit(): void;
 }
@@ -52,6 +90,8 @@ export interface DurableCommandsHost {
 	reopen?(request: DurableReopenRequest): Promise<void>;
 	/** The display name is stored beside the database, so it is read again after every reopen. */
 	readSessionName(): Promise<string | undefined>;
+	/** The settings and account surface; absent in an embedding that has no settings or model runtime. */
+	readonly product?: DurableCommandProduct;
 }
 
 /**
@@ -112,6 +152,22 @@ export class DurableCommands {
 				return this.#share();
 			case "bug":
 				return this.#bug();
+			case "settings":
+				return this.#settings();
+			case "thinking":
+				return this.#thinking(args);
+			case "scoped-models":
+				return this.#scopedModels();
+			case "trust":
+				return this.#trust();
+			case "login":
+				return this.#login(args);
+			case "logout":
+				return this.#logout();
+			case "reload":
+				return this.#reload();
+			case "hotkeys":
+				return this.#hotkeys();
 			case "model":
 			case "compact":
 			case "tasks":
@@ -323,6 +379,188 @@ export class DurableCommands {
 
 	#unavailable(name: string): void {
 		this.#ui.notify(`/${name} is not available in this mode.`, "warning");
+	}
+
+	/** The settings and account surface, or a message that this embedding has none. */
+	#product(name: string): DurableCommandProduct | undefined {
+		const product = this.#host.product;
+		if (product === undefined) this.#unavailable(name);
+		return product;
+	}
+
+	/** `/settings`: the same items the legacy TUI shows, over this session's state and nyan's settings. */
+	#settings(): void {
+		const product = this.#product("settings");
+		if (product === undefined) return;
+		const dialog = durableSettingsDialog(
+			{
+				settings: product.settings,
+				modelRuntime: product.modelRuntime,
+				view: () => this.#host.current().view,
+				controller: this.#host.current().controller,
+				ui: product.settingsUi,
+			},
+			() => this.#ui.restore(),
+		);
+		this.#ui.present(dialog.component, dialog.focus);
+	}
+
+	/** `/thinking [level]`: a level from the argument, or the selector when there is none. */
+	async #thinking(args: string): Promise<void> {
+		const product = this.#product("thinking");
+		if (product === undefined) return;
+		const ref = agentOf(this.#host.current().view.conversation).model;
+		const model = ref === undefined ? undefined : product.modelRuntime.getModel(ref.provider, ref.modelId);
+		if (model === undefined) {
+			this.#ui.notify("No model is selected, so there is no thinking level to set.", "error");
+			return;
+		}
+		const levels = model.reasoning ? getSupportedThinkingLevels(model) : (["off"] as ThinkingLevel[]);
+		const wanted = args.trim();
+		if (wanted.length > 0) {
+			const level = levels.find((candidate) => candidate.toLowerCase() === wanted.toLowerCase());
+			if (level === undefined) {
+				this.#ui.notify(`Unknown thinking level "${wanted}". Available levels: ${levels.join(", ")}.`, "error");
+				return;
+			}
+			await this.#setThinking(level, false);
+			return;
+		}
+		const current = agentOf(this.#host.current().view.conversation).thinkingLevel ?? DEFAULT_THINKING_LEVEL;
+		const selector = new ThinkingSelectorComponent(
+			current,
+			levels,
+			(level) => {
+				this.#ui.restore();
+				void this.#setThinking(level, false);
+			},
+			() => this.#ui.restore(),
+			(level) => {
+				this.#ui.restore();
+				void this.#setThinking(level, true);
+			},
+			product.settings.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL,
+		);
+		this.#ui.present(selector, selector);
+	}
+
+	/** Set the thinking level of this session, and store it as the default when asked to. */
+	async #setThinking(level: ThinkingLevel, asDefault: boolean): Promise<void> {
+		const product = this.#host.product;
+		try {
+			await this.#host.current().controller.setThinking(level);
+		} catch (error) {
+			this.#ui.notify(messageOf(error), "error");
+			return;
+		}
+		if (asDefault) product?.settings.setDefaultThinkingLevel(level);
+		this.#ui.notify(asDefault ? `Default thinking level: ${level}` : `Thinking level: ${level}`);
+	}
+
+	/** `/scoped-models`: which models `/model` lists and the model cycle walks. */
+	#scopedModels(): void {
+		const product = this.#product("scoped-models");
+		if (product === undefined) return;
+		const dialog = scopedModelsDialog(
+			{
+				settings: product.settings,
+				models: () => product.modelRuntime.getAvailableSnapshot(),
+				apply: (ids) => product.setScopedModels(ids),
+			},
+			() => this.#ui.restore(),
+		);
+		this.#ui.present(dialog.component, dialog.focus);
+	}
+
+	/** `/trust`: the project trust decision, stored in the trust store the next start reads. */
+	#trust(): void {
+		const product = this.#product("trust");
+		if (product === undefined) return;
+		const cwd = this.#host.current().view.session.cwd;
+		const store = new ProjectTrustStore(getAgentDir());
+		const selector = new TrustSelectorComponent({
+			cwd,
+			savedDecision: store.getEntry(cwd),
+			projectTrusted: product.settings.isProjectTrusted(),
+			onSelect: (selection) => {
+				store.setMany(selection.updates);
+				this.#ui.restore();
+				this.#ui.notify(
+					`Saved trust decision: ${selection.trusted ? "trusted" : "untrusted"}. Restart nyan for this to take effect.`,
+				);
+			},
+			onCancel: () => this.#ui.restore(),
+		});
+		this.#ui.present(selector, selector);
+	}
+
+	async #login(args: string): Promise<void> {
+		const product = this.#product("login");
+		if (product === undefined) return;
+		const ref = args.trim();
+		await runLogin(
+			{
+				settings: product.settings,
+				modelRuntime: product.modelRuntime,
+				tui: product.tui,
+				ui: {
+					present: (component, focus) => this.#ui.present(component, focus),
+					restore: () => this.#ui.restore(),
+					select: (title, items) => this.#ui.select(title, items),
+					notify: (message, type) => this.#ui.notify(message, type),
+				},
+			},
+			ref.length === 0 ? undefined : ref,
+		);
+	}
+
+	async #logout(): Promise<void> {
+		const product = this.#product("logout");
+		if (product === undefined) return;
+		await runLogout({
+			settings: product.settings,
+			modelRuntime: product.modelRuntime,
+			tui: product.tui,
+			ui: {
+				present: (component, focus) => this.#ui.present(component, focus),
+				restore: () => this.#ui.restore(),
+				select: (title, items) => this.#ui.select(title, items),
+				notify: (message, type) => this.#ui.notify(message, type),
+			},
+		});
+	}
+
+	/** `/reload`: reopen this session's directory with freshly loaded services, which is what reloads extensions. */
+	async #reload(): Promise<void> {
+		const reopen = this.#host.reopen;
+		if (reopen === undefined) return this.#unavailable("reload");
+		const live = (this.#host.current().view.conversation.docs["nyan.live"] ?? {}) as LiveState;
+		if (live.run !== undefined) {
+			this.#ui.notify("Wait for the current response to finish before reloading.", "warning");
+			return;
+		}
+		if ((live.compactions ?? []).length > 0) {
+			this.#ui.notify("Wait for compaction to finish before reloading.", "warning");
+			return;
+		}
+		try {
+			await reopen({ kind: "reload" });
+		} catch (error) {
+			this.#ui.notify(`Reload failed: ${messageOf(error)}`, "error");
+			return;
+		}
+		await this.refreshSessionName();
+		this.#ui.setSessionName(this.#sessionName);
+		this.#ui.notify("Reloaded keybindings, extensions, skills, prompts, themes, and context files");
+	}
+
+	/** `/hotkeys`: the keys this TUI binds, plus the shortcuts extensions registered. */
+	#hotkeys(): void {
+		const product = this.#product("hotkeys");
+		if (product === undefined) return;
+		this.#ui.showMarkdown(
+			`# Keyboard Shortcuts\n\n${durableHotkeysMarkdown(product.keybindings, product.extensionRunner)}`,
+		);
 	}
 }
 

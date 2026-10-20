@@ -1,15 +1,11 @@
-import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxProvider, fauxText } from "@ny4n/ai";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { ENV_AGENT_DIR } from "../src/config.ts";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { openSessionDirectory } from "../src/core/durable/sessions.ts";
-import type { ExtensionAPI, InlineExtension, ProjectTrustContext } from "../src/core/extensions/types.ts";
-import { DurableCommands, type DurableCommandUi } from "../src/modes/durable/commands.ts";
+import { DurableCommands } from "../src/modes/durable/commands.ts";
 import { listSiblingSessions } from "../src/modes/durable/session-list.ts";
-import { DurableSessionOwner } from "../src/modes/durable/session-owner.ts";
-import { settlement } from "./durable-submission.ts";
+import type { DurableSessionOwner } from "../src/modes/durable/session-owner.ts";
+import { commandsOf as commandsFor, type Screen, screen, TuiHarness } from "./durable-tui-harness.ts";
 
 /**
  * The session commands of the durable TUI, driven without a terminal: `DurableCommands` asks a `DurableCommandUi` port
@@ -17,147 +13,26 @@ import { settlement } from "./durable-submission.ts";
  * on what the session or the screen became, not on a recorded call into a stub.
  */
 
-const headless: Omit<ProjectTrustContext, "cwd"> = {
-	mode: "print",
-	hasUI: false,
-	ui: {
-		select: async () => undefined,
-		confirm: async () => false,
-		input: async () => undefined,
-		notify: () => {},
-	},
-};
-
 type Record_ = Record<string, unknown>;
 
-/** The TUI side of a command, as far as a command can observe it. */
-interface Screen extends DurableCommandUi {
-	readonly notices: string[];
-	readonly lines: string[];
-	readonly choices: string[][];
-	/** The display name the footer was given, last. */
-	sessionName?: string;
-	/** The markdown a command rendered, if any. */
-	markdown?: string;
-	/** The text a command asked to copy, if any. */
-	copied?: string;
-	exited: boolean;
-	/** What the next `select` answers; a choice not offered makes the command fail, as a missing entry would. */
-	answer?: string;
-	/** What the next `input` answers; undefined cancels, as Escape does. */
-	inputAnswer?: string;
-}
-
-function screen(): Screen {
-	const state: Screen = {
-		notices: [],
-		lines: [],
-		choices: [],
-		exited: false,
-		answer: undefined,
-		inputAnswer: undefined,
-		select: async (_title, items) => {
-			state.choices.push(items.map((item) => item.value));
-			return state.answer;
-		},
-		input: async (_title, _description) => state.inputAnswer,
-		showLines: (lines) => {
-			state.lines.push(...lines);
-		},
-		setSessionName: (name) => {
-			state.sessionName = name;
-		},
-		showMarkdown: (markdown) => {
-			state.markdown = markdown;
-		},
-		copy: async (text) => {
-			state.copied = text;
-		},
-		notify: (message) => {
-			state.notices.push(message);
-		},
-		exit: () => {
-			state.exited = true;
-		},
-	};
-	return state;
-}
-
 describe("durable TUI session commands", () => {
-	let home: string;
-	let agentDir: string;
+	const harness = new TuiHarness();
 	let cwd: string;
-	let owner: DurableSessionOwner | undefined;
-	let events: string[];
 
 	beforeEach(async () => {
-		home = await mkdtemp(join(tmpdir(), "nyan-tui-commands-home-"));
-		agentDir = join(home, ".nyan", "agent");
-		cwd = await mkdtemp(join(tmpdir(), "nyan-tui-commands-cwd-"));
-		await mkdir(agentDir, { recursive: true });
-		vi.stubEnv("HOME", home);
-		vi.stubEnv("USERPROFILE", home);
-		vi.stubEnv(ENV_AGENT_DIR, agentDir);
-		vi.stubEnv("NYAN_OFFLINE", "1");
-		events = [];
-		owner = undefined;
+		await harness.start();
+		cwd = harness.cwd;
 	});
 
 	afterEach(async () => {
-		await owner?.close().catch(() => {});
-		owner = undefined;
-		vi.unstubAllEnvs();
-		const options = { recursive: true, force: true, maxRetries: 10, retryDelay: 100 } as const;
-		await Promise.all([rm(home, options), rm(cwd, options)]);
+		await harness.stop();
 	});
 
-	/** Open a session with a faux provider; `probe` records the extension lifecycle of every reopen. */
-	async function open(responses: string[] = ["first", "second", "third"]): Promise<DurableSessionOwner> {
-		const faux = fauxProvider();
-		faux.setResponses(responses.map((text) => () => fauxAssistantMessage([fauxText(text)])));
-		const model = faux.getModel();
-		const provider: InlineExtension = (pi: ExtensionAPI) => {
-			pi.registerProvider(faux.provider);
-		};
-		const probe: InlineExtension = (pi) => {
-			pi.on("session_start", (event) => {
-				events.push(`start:${event.reason}`);
-			});
-			pi.on("session_shutdown", (event) => {
-				events.push(`shutdown:${event.reason}`);
-			});
-		};
-		owner = await DurableSessionOwner.open({
-			cwd,
-			extensionFactories: [provider, probe],
-			model: { provider: model.provider, modelId: model.id },
-			projectTrustContext: { ...headless, cwd },
-		});
-		return owner;
-	}
-
-	/** The commands of the open session, with the owner's real reopen behind them. */
-	async function commandsOf(current: DurableSessionOwner, ui: Screen): Promise<DurableCommands> {
-		return DurableCommands.create(
-			{
-				current: () => ({
-					view: current.current.view.current(),
-					controller: current.current.controller,
-					sessionOps: current.current.sessionOps,
-				}),
-				readSessionName: () => current.current.sessionOps.getSessionName(),
-				reopen: async (request) => {
-					const next = await current.reopen(request);
-					void next;
-				},
-			},
-			ui,
-		);
-	}
-
-	async function say(current: DurableSessionOwner, text: string): Promise<void> {
-		expect((await settlement(current.current.controller.submitAndWait(text, "followUp"))).status).toBe("done");
-	}
+	const open = async (responses?: string[]) => await harness.open(responses);
+	const commandsOf = async (current: DurableSessionOwner, ui: Screen): Promise<DurableCommands> =>
+		await commandsFor(current, ui);
+	const say = async (current: DurableSessionOwner, text: string): Promise<void> => await harness.say(current, text);
+	const events = harness.events;
 
 	test("/name stores the display name beside the database and shows it afterwards", async () => {
 		const current = await open();
@@ -300,7 +175,6 @@ describe("durable TUI session commands", () => {
 		await say(first, "session one");
 		const firstDirectory = first.current.view.current().session.directory;
 		await first.close();
-		owner = undefined;
 
 		// A second session of the same working directory, which is the one open when /resume runs.
 		const second = await open();
@@ -321,7 +195,6 @@ describe("durable TUI session commands", () => {
 		const first = await open();
 		await say(first, "session one");
 		await first.close();
-		owner = undefined;
 
 		const second = await open();
 		const currentDirectory = second.current.view.current().session.directory;
