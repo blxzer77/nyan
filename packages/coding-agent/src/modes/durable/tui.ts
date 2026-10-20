@@ -623,10 +623,16 @@ class DurableTui {
 		this.#ui.requestRender();
 	}
 
-	/** Drop the running card without a result: the command never ran. */
+	/** Drop the running card without a result: the command never ran, so nothing stays on screen claiming it does. */
 	abandonBash(): void {
+		const component = this.#bash;
 		this.#bash = undefined;
 		this.#bashCommand = undefined;
+		if (component !== undefined) {
+			// The loader ticks on its own timer until a result stops it, and a card left behind keeps spinning.
+			component.setComplete(undefined, true);
+			this.#chat.removeChild(component);
+		}
 		this.#ui.requestRender();
 	}
 
