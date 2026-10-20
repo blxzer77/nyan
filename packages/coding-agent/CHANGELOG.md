@@ -74,6 +74,7 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 - On the default session path, an extension reading `ctx.sessionManager` saw a boundary `custom_message` as a plain user message, without its custom type, `display` flag, or details, and its projection carried that message as a user message rather than as the custom message the legacy path reports. Both now follow the legacy session entries.
 - On the default session path, a batch of `agent_start` and `turn_start` events from the conversation a fork or a session switch moved away from could still reach extensions after the move. Only the conversation the session is on publishes, so the built-in Herdr and MCP integrations no longer see a start from a conversation that is no longer current.
 - A host that embeds `main` (the SDK, and the experimental CLI that reuses it) is no longer exited when a durable session cannot be started: `main` prints the reason, sets the exit code, and returns, so the caller's process keeps running; `nyan` itself still leaves with the same code. A start-up diagnostic of type `info` no longer prints with a `Warning:` prefix.
+- When a command's output could not be written to the full-output file in time, the file could be removed while it was still open, which on Windows left it in the temporary directory. The file is now removed only after the stream has released it, and the wait stays bounded.
 
 ## [1.3.0] - 2026-10-14
 
