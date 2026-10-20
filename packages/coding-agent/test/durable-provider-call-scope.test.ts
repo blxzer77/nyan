@@ -96,4 +96,61 @@ describe("provider call scope", () => {
 		expect(forSecond?.after).toBe("second-model");
 		expect(forSecond?.signal).toBe(secondCall.signal);
 	});
+
+	/**
+	 * A prompt submitted while the run is in flight stages its own `before_agent_start` effects behind the current ones,
+	 * and the request that carries that prompt is the next one. A slot that was already handed out therefore gives way to
+	 * the queue (Decision #39); before, that prompt's message was missing from its own request and reached the next run's
+	 * first request instead.
+	 */
+	test("a steer's before_agent_start effects reach the request that carries it", async () => {
+		const extension: InlineExtension = (pi) => {
+			pi.on("before_agent_start", (event) => ({
+				message: {
+					customType: "probe",
+					content: `REMINDER-FOR:${"prompt" in event ? event.prompt : ""}`,
+					display: false,
+				},
+			}));
+		};
+		const services = await createDurableServices({
+			cwd,
+			agentDir,
+			resources: {},
+			extensionFactories: [extension],
+			projectTrustContext: { ...headless, cwd },
+		});
+		const host = createExtensionHost({
+			services,
+			cwd,
+			agentModel: () => undefined,
+			abort: () => {},
+			compact: () => {},
+			onExtensionError: () => {},
+			installTools: () => {},
+			isIdle: () => true,
+		});
+		const beforeRequest = host.providerHooks.beforeRequest;
+		if (beforeRequest === undefined) throw new Error("no beforeRequest member was registered");
+		const api = {} as HookApi;
+		const context = withAbortSignal(new AbortController().signal, BACKGROUND_CONTEXT);
+		const request = async (messages: Parameters<typeof beforeRequest>[0]["messages"]) =>
+			JSON.stringify((await beforeRequest({ messages }, api, context))?.messages ?? messages);
+
+		await host.beforePrompt("first prompt");
+		const first = await request([
+			{ role: "system", content: "sys", timestamp: 0 },
+			{ role: "user", content: "first prompt", timestamp: 0 },
+		]);
+		expect(first).toContain("REMINDER-FOR:first prompt");
+
+		// The steer arrives while that request is in flight; the run's next request carries it.
+		await host.beforePrompt("steered prompt");
+		const second = await request([
+			{ role: "system", content: "sys", timestamp: 0 },
+			{ role: "user", content: "first prompt", timestamp: 0 },
+			{ role: "user", content: "steered prompt", timestamp: 0 },
+		]);
+		expect(second).toContain("REMINDER-FOR:steered prompt");
+	});
 });

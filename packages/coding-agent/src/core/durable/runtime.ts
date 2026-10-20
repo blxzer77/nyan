@@ -1006,6 +1006,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 				beforeFork: (entryId, position) => host.beforeFork(entryId, position),
 				shutdown: (reason) => host.shutdown(reason),
 			},
+			report,
 		});
 		const sessionOps: DurableSessionOps = {
 			...productOps,

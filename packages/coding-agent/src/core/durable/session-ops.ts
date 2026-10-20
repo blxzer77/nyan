@@ -112,6 +112,25 @@ export interface DurableSessionOpsHost {
 		beforeFork(entryId: string, position: "before" | "at"): Promise<{ readonly cancelled: boolean }>;
 		shutdown(reason: "fork"): Promise<void>;
 	};
+	/**
+	 * Report a failure the product cannot recover from but must not hide. Interactive sessions show it as a notice, and
+	 * the RPC adapter publishes the same notices.
+	 */
+	readonly report?: (error: Error) => void;
+}
+
+/**
+ * Tear down the extension lifecycle of the conversation a fork replaced. The fork is already committed, so a failed
+ * shutdown is reported and the caller still moves to the new conversation: returning to the previous one would leave the
+ * forked conversation unreachable, and a durable conversation cannot be deleted (Decision #40).
+ */
+export async function shutdownAfterFork(host: Pick<DurableSessionOpsHost, "forkLifecycle" | "report">): Promise<void> {
+	try {
+		await host.forkLifecycle?.shutdown("fork");
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		host.report?.(new Error(`Extension shutdown after a fork failed: ${message}`));
+	}
 }
 
 /** A forked conversation belongs to the host, like the root conversation: no task owns it. */
@@ -407,7 +426,7 @@ export function createDurableSessionOps(host: DurableSessionOpsHost): DurableSes
 				throw new Error(`Cannot fork from an entry that is not a user message: ${at}`);
 			}
 			const forked = await conversation.fork(id, { ownership: OWNERLESS }, host.context);
-			await host.forkLifecycle?.shutdown("fork");
+			await shutdownAfterFork(host);
 			return { cancelled: false, conversationId: forked.id, text: textOf(message) };
 		},
 		async clone() {
@@ -418,7 +437,7 @@ export function createDurableSessionOps(host: DurableSessionOpsHost): DurableSes
 			const guard = await host.forkLifecycle?.beforeFork(entryId(newest.id), "at");
 			if (guard?.cancelled === true) return { cancelled: true };
 			const forked = await conversation.fork(newest.id, { ownership: OWNERLESS }, host.context);
-			await host.forkLifecycle?.shutdown("fork");
+			await shutdownAfterFork(host);
 			return { cancelled: false, conversationId: forked.id, text: "" };
 		},
 		async forkMessages() {

@@ -148,9 +148,20 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 	};
 
 	let activeBeforeRequestEffects: BeforeRequestEffects | undefined;
+	let activeEffectsHandedOut = false;
 	const queuedBeforeRequestEffects: BeforeRequestEffects[] = [];
+	/**
+	 * The effects for one request. A prompt submitted while the run is in flight stages its own effects behind the
+	 * current ones, and the request that carries that prompt is the next one, so a slot that was already handed out
+	 * gives way to the queue. Without that, a steer's message and system prompt were missing from the request that
+	 * carried it and reached the next run's first request instead (Decision #39).
+	 */
 	const takeBeforeRequestEffects = (): BeforeRequestEffects | undefined => {
-		activeBeforeRequestEffects ??= queuedBeforeRequestEffects.shift();
+		if (activeEffectsHandedOut) {
+			const next = queuedBeforeRequestEffects.shift();
+			if (next !== undefined) activeBeforeRequestEffects = next;
+		}
+		activeEffectsHandedOut = activeBeforeRequestEffects !== undefined;
 		return activeBeforeRequestEffects;
 	};
 
@@ -367,6 +378,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 			// Cleared before the handlers, because they may wait: a new prompt can start while a settled handler is parked,
 			// and its `before_agent_start` effects must not queue behind this run's already applied ones.
 			activeBeforeRequestEffects = undefined;
+			activeEffectsHandedOut = false;
 			await runner.emit({ type: "agent_end", messages: [...messages] });
 			await runner.emit({ type: "agent_settled", aborted });
 		},
