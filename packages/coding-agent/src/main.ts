@@ -193,27 +193,32 @@ export async function resolveContinueRoute(
 	return legacySessionExists(cwd, sessionDir) ? "legacy" : "new";
 }
 
-/** Prints a warning or an error from the durable path's startup, as the legacy path prints its startup diagnostics. */
+/** Prints one warning or error from the durable path's startup, as the legacy path prints its startup diagnostics. */
 function printDurableDiagnostic(diagnostic: AgentSessionRuntimeDiagnostic): void {
-	const color = diagnostic.type === "error" ? chalk.red : chalk.yellow;
-	console.error(color(`${diagnostic.type === "error" ? "Error" : "Warning"}: ${diagnostic.message}`));
+	reportDiagnostics([diagnostic]);
 }
 
-/** Runs one durable command. A broken extension or resource stops it with each error printed, as the legacy path does. */
-async function runDurableCommand<T>(run: () => Promise<T>): Promise<T> {
+/**
+ * Runs one durable command. A broken extension or resource stops it with each error printed, as the legacy path does.
+ *
+ * A failed start sets the exit code and returns rather than exiting the process: `main` is exported to embedders and
+ * reused by the experimental CLI, so ending the process here would end theirs. Every caller returns after it, and the
+ * CLI exits with the same code it used to.
+ */
+async function runDurableCommand<T>(run: () => Promise<T>): Promise<T | undefined> {
 	try {
 		return await run();
 	} catch (error) {
 		if (error instanceof DurableStartupError) {
-			for (const diagnostic of error.diagnostics) printDurableDiagnostic(diagnostic);
-			process.exit(1);
-		}
-		// A session that cannot be opened is a user-facing condition, not a defect: report it without a stack trace.
-		if (error instanceof DurableSessionError) {
+			reportDiagnostics(error.diagnostics);
+		} else if (error instanceof DurableSessionError) {
+			// A session that cannot be opened is a user-facing condition, not a defect: report it without a stack trace.
 			console.error(chalk.red(`Error: ${error.message}`));
-			process.exit(1);
+		} else {
+			throw error;
 		}
-		throw error;
+		process.exitCode = 1;
+		return undefined;
 	}
 }
 
@@ -877,7 +882,8 @@ export async function main(args: string[], options?: MainOptions) {
 			}),
 		);
 		stopThemeWatcher();
-		if (exitCode !== 0) process.exitCode = exitCode;
+		// Undefined means the start failed and already set the exit code.
+		if (exitCode !== undefined && exitCode !== 0) process.exitCode = exitCode;
 		return;
 	}
 
@@ -893,7 +899,8 @@ export async function main(args: string[], options?: MainOptions) {
 			}),
 		);
 		stopThemeWatcher();
-		if (exitCode !== 0) process.exitCode = exitCode;
+		// Undefined means the start failed and already set the exit code.
+		if (exitCode !== undefined && exitCode !== 0) process.exitCode = exitCode;
 		return;
 	}
 
