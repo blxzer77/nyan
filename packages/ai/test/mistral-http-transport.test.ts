@@ -539,4 +539,39 @@ describe("Mistral HTTP transport", () => {
 		expect(message.stopReason).toBe("error");
 		expect(message.errorMessage).toBe('Mistral API error (403): {"message":"blocked by gateway"}');
 	});
+
+	it("formats an error without a body from its own text", async () => {
+		const model = getModel("mistral", "mistral-large-latest");
+		const context = normalizeContext({ messages: [{ role: "user", content: "hello", timestamp: 1 }] });
+		// A gateway can answer with a status and an empty body; the status still belongs in the message.
+		const fetch: FetchFunction = async () => new Response("", { status: 429, statusText: "Too Many Requests" });
+
+		const message = await streamMistral(model, context, { apiKey: "test", fetch }).result();
+
+		expect(message.errorMessage).toBe("Mistral API error (429): Too Many Requests");
+	});
+
+	it("formats a throw that carries no status as it is", async () => {
+		const model = getModel("mistral", "mistral-large-latest");
+		const context = normalizeContext({ messages: [{ role: "user", content: "hello", timestamp: 1 }] });
+		const fetch: FetchFunction = async () => new Response(null, { status: 200 });
+
+		const message = await streamMistral(model, context, { apiKey: "test", fetch }).result();
+
+		expect(message.errorMessage).toBe("Mistral response has no body");
+	});
+
+	it("keeps a certificate code a failed fetch reports in its cause", async () => {
+		const model = getModel("mistral", "mistral-large-latest");
+		const context = normalizeContext({ messages: [{ role: "user", content: "hello", timestamp: 1 }] });
+		const cause = Object.assign(new Error(""), { code: "DEPTH_ZERO_SELF_SIGNED_CERT" });
+		const fetch: FetchFunction = async () => {
+			throw new TypeError("fetch failed", { cause });
+		};
+
+		const message = await streamMistral(model, context, { apiKey: "test", fetch }).result();
+
+		// Node reports the reason on the cause; without the code the stored text would look retryable.
+		expect(message.errorMessage).toBe("fetch failed (DEPTH_ZERO_SELF_SIGNED_CERT)");
+	});
 });
