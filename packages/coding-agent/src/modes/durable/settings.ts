@@ -27,6 +27,8 @@ export interface DurableSettingsUi {
 	/** Show a theme without saving it. */
 	previewTheme(setting: string): void;
 	setOutputPad(padding: 0 | 1): void;
+	/** How many completion rows the editor shows at once. */
+	setAutocompleteMaxVisible(maxVisible: number): void;
 	setEditorPaddingX(padding: number): void;
 	setShowImages(show: boolean): void;
 	setImageWidthCells(width: number): void;
@@ -173,7 +175,10 @@ export function durableSettingsCallbacks(deps: DurableSettingsDeps): Omit<Settin
 			settings.setOutputPad(padding);
 			deps.ui.setOutputPad(padding);
 		},
-		onAutocompleteMaxVisibleChange: (maxVisible) => settings.setAutocompleteMaxVisible(maxVisible),
+		onAutocompleteMaxVisibleChange: (maxVisible) => {
+			settings.setAutocompleteMaxVisible(maxVisible);
+			deps.ui.setAutocompleteMaxVisible(maxVisible);
+		},
 		onQuietStartupChange: (quiet) => settings.setQuietStartup(quiet),
 		onDefaultProjectTrustChange: (trust) => settings.setDefaultProjectTrust(trust),
 		onClearOnShrinkChange: (enabled) => {
