@@ -133,7 +133,11 @@ export interface DurableController {
 	/** Stop waiting to retry the model request, as legacy `abort_retry`: the run ends with the error it failed on. */
 	abortRetry(): Promise<void>;
 	cycleThinking(): Promise<void>;
-	setModel(model: ModelRef): Promise<void>;
+	/**
+	 * Choose the model. `source` is what the `model_select` event reports: a picker or command sets it, and the model
+	 * cycle reports `cycle`, as legacy distinguishes the two.
+	 */
+	setModel(model: ModelRef, source?: "set" | "cycle"): Promise<void>;
 	toggleTasks(): Promise<void>;
 	/** Show and talk to another conversation. */
 	switchConversation(id: ConversationId): Promise<void>;
@@ -871,7 +875,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					await current.configure({ thinkingLevel: next }, context);
 					await host.thinkingSelected(next, level);
 				}),
-			setModel: (ref) =>
+			setModel: (ref, source) =>
 				command(async () => {
 					const model = modelRuntime.getModel(ref.provider, ref.modelId);
 					if (model === undefined) throw new Error(`Unknown model: ${ref.provider}/${ref.modelId}`);
@@ -883,7 +887,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					const thinking: ModelThinkingLevel = agentOf(state.conversation).thinkingLevel ?? "off";
 					cacheWarmer?.cancel("model changed");
 					await current.configure({ model: ref, thinkingLevel: clampThinkingLevel(model, thinking) }, context);
-					await host.modelSelected(model, previousModel, "set");
+					await host.modelSelected(model, previousModel, source ?? "set");
 				}),
 			toggleTasks: () =>
 				command(async () => {

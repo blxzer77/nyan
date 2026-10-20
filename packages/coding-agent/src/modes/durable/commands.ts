@@ -18,6 +18,7 @@ import { ThinkingSelectorComponent } from "../interactive/components/thinking-se
 import { TrustSelectorComponent } from "../interactive/components/trust-selector.ts";
 import { type DurableBugReportEnvironment, reportDurableBug, shareDurableSession } from "./bug-report.ts";
 import { durableHotkeysMarkdown } from "./hotkeys.ts";
+import { lastAssistantText } from "./input.ts";
 import { runLogin, runLogout } from "./login.ts";
 import { type ScopedModelIds, scopedModelsDialog } from "./scoped-models.ts";
 import { listSiblingSessions } from "./session-list.ts";
@@ -562,20 +563,6 @@ export class DurableCommands {
 			`# Keyboard Shortcuts\n\n${durableHotkeysMarkdown(product.keybindings, product.extensionRunner)}`,
 		);
 	}
-}
-
-/** The newest assistant text of the shown conversation, as `/copy` takes it. */
-function lastAssistantText(view: DurableView): string | undefined {
-	for (const entry of [...view.conversation.entries].reverse()) {
-		const message = entry.model?.[0];
-		if (message?.role !== "assistant") continue;
-		const text = message.content
-			.flatMap((block) => (block.type === "text" ? [block.text] : []))
-			.join("")
-			.trim();
-		if (text.length > 0) return text;
-	}
-	return undefined;
 }
 
 function messageOf(error: unknown): string {

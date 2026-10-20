@@ -192,3 +192,18 @@ Used inside the scoped models selector (opened via `/scoped-models`).
 | `app.models.toggleProvider` | `ctrl+p` | Toggle all models for the current provider |
 | `app.models.reorderUp` | `alt+up` | Move the selected model up in the cycle order |
 | `app.models.reorderDown` | `alt+down` | Move the selected model down in the cycle order |
+
+## Durable sessions
+
+The default interactive mode shows a durable session. It dispatches extension shortcuts first, then the actions in the tables above that it binds, and these behave like this:
+
+- `app.clear` clears the editor on the first press; a second press within 500 ms exits. A cleared editor is not the end of the session.
+- Submitted lines, including commands, enter the prompt history that `tui.editor.cursorUp` and `tui.editor.cursorDown` browse.
+- `app.clipboard.pasteImage` inserts the copied file paths, the path of a pasted image written to the temporary directory, or the copied text.
+- `app.editor.external` hands the editor's text to `externalEditor` and puts the edited text back.
+- `app.message.copy` copies the newest assistant message, as `/copy` does.
+- `app.message.dequeue` withdraws the queued messages and restores them above what the editor holds.
+- `app.model.cycleForward` and `app.model.cycleBackward` walk the models `/scoped-models` keeps, and report `model_select` with `cycle`; a picker or `/model` reports `set`.
+- `app.thinking.toggle` hides or shows thinking blocks and stores `hideThinkingBlock`.
+- `app.suspend` stops the process in the background; run `fg` in the shell to resume it. It is not available on Windows.
+- The session actions (`app.session.new`, `.fork`, `.resume`, `.tree`, and the tree filters) are not bound here: use `/new`, `/fork`, `/resume`, and the other [slash commands](slash-commands.md#durable-sessions).

@@ -342,9 +342,18 @@ describe("durable TUI settings and account commands", () => {
 		expect(markdown).toContain("**Editing**");
 		expect(markdown).toContain("| Send message |");
 		expect(markdown).toContain("| Abort the answer, or cancel a running bash command |");
+		// The keys R3b bound are listed with what they do here.
+		expect(markdown).toContain("| Clear the editor; a second press within 500 ms exits |");
+		expect(markdown).toContain("| Suspend to the background |");
+		expect(markdown).toContain("| Cycle through the scoped models |");
+		expect(markdown).toContain("| Show or hide thinking blocks |");
+		expect(markdown).toContain("| Restore the queued messages to the editor |");
+		expect(markdown).toContain("| Copy the last assistant message |");
+		expect(markdown).toContain("| Edit the prompt in an external editor |");
+		expect(markdown).toContain("| Paste files, an image, or text from the clipboard |");
 		expect(markdown).toContain("| Slash commands |");
 		// A key that only the legacy TUI binds is not listed here as working.
-		expect(markdown).not.toContain("Copy selection or last assistant message");
+		expect(markdown).not.toContain("Open session tree navigator");
 	});
 
 	test("/logout reports that there is nothing stored, without touching the auth file", async () => {

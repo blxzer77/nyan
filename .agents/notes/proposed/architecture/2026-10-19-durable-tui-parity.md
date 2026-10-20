@@ -1,6 +1,6 @@
 # Durable TUI parity for 1.4.0
 
-Status: proposed (R0 inventory, R1 and R2 merged, R3a ported; R3b and R3c remain)
+Status: proposed (R0 inventory, R1 and R2 merged, R3a and R3b ported; R3c remains)
 Line: `prompts/r-tui.md`, worktree `nyan-n2`, branch `r-tui-r0-inventory`.
 Reference: `packages/coding-agent/src/modes/interactive/interactive-mode.ts` (legacy TUI) and
 `packages/coding-agent/src/modes/durable/tui.ts` (default interactive mode since N1).
@@ -109,11 +109,11 @@ Destination values: **parity** (already there), **port** (batch named), **reduce
 | Multiline | `shift+enter`, `ctrl+j`, `enter` submits | parity (the shared `Editor`) | — |
 | Slash-command and argument completion | `CombinedAutocompleteProvider`: built-ins, prompt templates, extension commands, skills, model and thinking arguments | none | reduce: Decision #28 defers autocomplete to N9 |
 | `@` file and path completion | same provider, `fd`-backed | none | reduce: Decision #28 |
-| Prompt history | `tui.editor.cursorUp` browses submitted prompts; the TUI calls `editor.addToHistory` | the editor supports it, but nothing adds to the history | port R3b |
-| Image and clipboard paste (`ctrl+v`) | Files on macOS, images, or text into the editor, and images attached to a prompt | none; `submit` takes text only | port R3b |
-| External editor (`ctrl+g`) | `external-editor.ts`, 46 lines over the editor buffer | none | port R3b |
-| Queue dequeue (`alt+up`) | Restores queued messages to the editor | none (`sessionOps.clearQueue` returns the texts) | port R3b |
-| Extension shortcuts | `setupExtensionShortcuts`: extension-declared keys | `CustomEditor.onExtensionShortcut` is unset | port R3b |
+| Prompt history | `tui.editor.cursorUp` browses submitted prompts; the TUI calls `editor.addToHistory` | the editor supports it, but nothing adds to the history | ported (R3b): every submitted line, commands included, enters the history before it is routed |
+| Image and clipboard paste (`ctrl+v`) | Files on macOS, images, or text into the editor, and images attached to a prompt | none; `submit` takes text only | ported (R3b): copied files become their paths, an image becomes a temporary file whose path the prompt reads, and text is inserted as itself |
+| External editor (`ctrl+g`) | `external-editor.ts`, 46 lines over the editor buffer | none | ported (R3b): the same shared helper, with the terminal handed over while it runs |
+| Queue dequeue (`alt+up`) | Restores queued messages to the editor | none (`sessionOps.clearQueue` returns the texts) | ported (R3b): the queue is withdrawn from the session, then restored above the editor's draft |
+| Extension shortcuts | `setupExtensionShortcuts`: extension-declared keys | `CustomEditor.onExtensionShortcut` is unset | ported (R3b): the runner's shortcuts, dispatched before the editor and listed by `/hotkeys` |
 
 ### Keybindings
 
@@ -123,14 +123,14 @@ Actions the durable TUI binds today: `tui.input.submit`, `tui.input.newLine`, `t
 
 | Action | Legacy behaviour | Destination |
 | --- | --- | --- |
-| `app.clear` (ctrl+c) | Clears the editor; a second press within 500 ms exits | port R3b (the durable TUI exits on the first press) |
-| `app.message.copy` (ctrl+x) | Copies the selection in the tree, or the last assistant message | port R2 with `/copy` |
-| `app.message.dequeue` (alt+up) | Restores queued messages | port R3b |
-| `app.model.cycleForward` / `cycleBackward` (ctrl+p, shift+ctrl+p) | Cycles the scoped models | port R3b with the scoped set `/scoped-models` now keeps |
-| `app.suspend` (ctrl+z) | Suspends the process | port R3b |
-| `app.editor.external` (ctrl+g) | Opens the external editor | port R3b |
-| `app.clipboard.pasteImage` (ctrl+v) | Pastes files, images, or text | port R3b |
-| `app.thinking.toggle` (ctrl+t) | Hides or shows thinking blocks | port R3b |
+| `app.clear` (ctrl+c) | Clears the editor; a second press within 500 ms exits | ported (R3b): the durable TUI used to exit on the first press |
+| `app.message.copy` (ctrl+x) | Copies the selection in the tree, or the last assistant message | ported (R3b): the last assistant message, through the same function `/copy` uses. R2 left the key unbound |
+| `app.message.dequeue` (alt+up) | Restores queued messages | ported (R3b) |
+| `app.model.cycleForward` / `cycleBackward` (ctrl+p, shift+ctrl+p) | Cycles the scoped models | ported (R3b): the scoped set `/scoped-models` keeps, and `model_select` reports `cycle` |
+| `app.suspend` (ctrl+z) | Suspends the process | ported (R3b) |
+| `app.editor.external` (ctrl+g) | Opens the external editor | ported (R3b) |
+| `app.clipboard.pasteImage` (ctrl+v) | Pastes files, images, or text | ported (R3b) |
+| `app.thinking.toggle` (ctrl+t) | Hides or shows thinking blocks | ported (R3b): it also stores `hideThinkingBlock`, so the setting now reaches this path |
 | `app.session.*` (new, tree, fork, resume, rename, delete, path/sort/filter) | Session picker and tree actions | port R1 for new/fork/resume; n/a for `tree`/`rename`/`delete` until the session picker supports them (the durable picker is R1's; see #36 and Decision #25) |
 | `app.tree.*`, `app.models.*` | Tree navigation and scoped-model selector actions | n/a for tree (Decision #24); `app.models.*` work inside `/scoped-models` (R3a) |
 | `tui.altScreen.*`, `tui.select.*`, `tui.editor.*` | transcript navigation, list selection, editing | parity |
@@ -248,12 +248,18 @@ and applies a change to the running session where this path has an equivalent. `
 session's directory with freshly loaded services and restores the session with the loaded ones if that
 fails. `/hotkeys` lists only the keys this TUI binds, so R3b adds its keys to the same table.
 
-#### R3b — input and keybindings (`r-tui-r3b-input`)
+#### R3b — input and keybindings (`r-tui-r3b-input`, ported)
 
 Prompt history, image and clipboard paste (`ctrl+v`), the external editor (`ctrl+g`), queue dequeue
 (`alt+up`), the model cycle (`ctrl+p` / `shift+ctrl+p`) over the scoped set, suspend (`ctrl+z`), the
 thinking toggle (`ctrl+t`), extension shortcuts, and `ctrl+c` clearing the editor before the second press
-within 500 ms exits.
+within 500 ms exits. Also `app.message.copy` (`ctrl+x`), which R2's plan named and left unbound.
+
+The actions live in `modes/durable/input.ts` and touch the terminal only through the editor port: the
+buffer, the cursor, the history, and the transcript's thinking visibility. Everything else is the session:
+the queue is withdrawn with `sessionOps.clearQueue`, the cycle reads the model runtime's catalog and
+applies the level the next model starts at, and `/copy` and `ctrl+x` share one function. `model_select`
+gained the `cycle` source, so an extension can tell a cycle from a picker.
 
 #### R3c — startup and labels (`r-tui-r3c-startup`)
 
