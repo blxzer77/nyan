@@ -3,6 +3,7 @@ import type { OpenDurableOptions, OpenDurableResult } from "../../core/durable/r
 import { openDurable } from "../../core/durable/runtime.ts";
 import type { SessionStartEvent } from "../../core/extensions/types.ts";
 import type { DurableReopenRequest } from "./commands.ts";
+import { startupResources } from "./startup.ts";
 import type { DurableTuiOpen } from "./tui.ts";
 
 /** The members of an open that a TUI renders and operates on. */
@@ -15,6 +16,8 @@ export function tuiof(open: OpenDurableResult): DurableTuiOpen {
 		sessionOps: open.sessionOps,
 		modelRuntime: open.modelRuntime,
 		themes: open.themes,
+		// The listing a start shows: what loaded in this open, and what the loader could not read.
+		resources: startupResources(open.services.resourceLoader),
 		// `/bug` reports the model runtime, settings, and extensions of the process, which outlive every session.
 		bugReport: {
 			modelRuntime: open.modelRuntime,

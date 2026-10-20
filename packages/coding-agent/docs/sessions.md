@@ -29,6 +29,20 @@ Use `/name` or `--name` to assign a recognizable session name. Run `/session` to
 
 The session picker lets you search, rename, and delete sessions. It can also show paths, change sorting, and limit results to named sessions. See [Keybindings](keybindings.md#sessions) for its shortcuts.
 
+## What a start shows
+
+A durable session, which is what the default interactive mode opens, says the same things a legacy session says at start, in its transcript and its terminal title:
+
+- The terminal title is `Nyan - <session name> - <directory>`, and it follows `/name`; without a name it is `Nyan - <directory>`.
+- A new release and package updates are announced with the command that applies them.
+- After an upgrade, the changelog sections newer than the version you last ran are shown once, unless the session already has messages. `collapseChangelog` reduces that to one line.
+- A crash the previous run recorded is reported once, with a pointer to `/bug`, which attaches the details.
+- A project that is not trusted while it holds project resources is reported once, with a pointer to `/trust`.
+- The resources that loaded (context files, skills, prompts, extensions) are listed unless `quietStartup` hides them. A resource the loader could not read is always reported.
+- Inside tmux, a keyboard setup that cannot carry modified keys is reported with the setting to change.
+
+The footer shows the working directory relative to your home directory, the session name, the token and cost totals, the context usage with `(auto)` while automatic compaction is on, `(sub)` when the provider bills a subscription, and the model. With several providers configured the model carries its provider, and a virtual model shows the physical model that answered last as `→ model`. A fork or clone is named `fork <id>` there and in `/agents`, so it is not mistaken for a subagent's conversation.
+
 ## Choose how to branch
 
 Nyan stores entries as a tree, so returning to an earlier point does not erase the branch you leave.

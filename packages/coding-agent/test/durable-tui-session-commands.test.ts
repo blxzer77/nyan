@@ -105,6 +105,12 @@ describe("durable TUI session commands", () => {
 		expect(messages.map((message) => message.text)).toEqual(["first question", "second question"]);
 		expect(current.current.view.current().conversation.conversation.id).not.toBe(before);
 		expect(ui.notices).toEqual(["Forked: first question"]);
+		// A fork is not a subagent's task, so neither the footer nor the `/agents` picker calls it one.
+		const forked = current.current.view.current();
+		expect(
+			forked.conversations.find((candidate) => candidate.id === forked.conversation.conversation.id)?.label,
+		).toBe(`fork ${forked.conversation.conversation.id}`);
+		expect(forked.conversations.some((candidate) => candidate.label.startsWith("subagent "))).toBe(false);
 	});
 
 	test("/fork cancelled at the picker keeps the conversation", async () => {
@@ -139,6 +145,10 @@ describe("durable TUI session commands", () => {
 				.map((message) => message.content),
 		).toEqual(["copy me"]);
 		expect(ui.notices).toEqual(["Session cloned"]);
+		const view = current.current.view.current();
+		expect(view.conversations.find((candidate) => candidate.id === cloned.conversation.id)?.label).toBe(
+			`fork ${cloned.conversation.id}`,
+		);
 	});
 
 	test("/quit asks the TUI to exit", async () => {
