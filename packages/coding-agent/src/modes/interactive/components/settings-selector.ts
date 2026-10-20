@@ -117,6 +117,11 @@ export interface SettingsCallbacks {
 	onModelThinkingLevelRemove: (provider: string, modelId: string) => void;
 	onThemeChange: (theme: string) => void;
 	onThemePreview?: (theme: string) => void;
+	/**
+	 * Saves the model a new session starts with. Only the durable TUI passes it: its model picker is a plain list, so the
+	 * default is saved here instead (Decision #36). Legacy saves the default from its model picker and leaves this out.
+	 */
+	onDefaultModelChange?: (provider: string, modelId: string) => void;
 	onHideThinkingBlockChange: (hidden: boolean) => void;
 	onMermaidRenderingModeChange: (mode: MermaidRenderingMode) => void;
 	onShowCacheMissNoticesChange: (shown: boolean) => void;
@@ -476,7 +481,9 @@ export class SettingsSelectorComponent extends Container {
 		const defaultModelByValue = new Map(
 			config.availableDefaultModels.map((model) => [modelSettingKey(model), model]),
 		);
-		const currentDefaultModelKey = defaultModelByValue.has(config.defaultModel) ? config.defaultModel : undefined;
+		const configuredDefaultModelKey = defaultModelByValue.has(config.defaultModel) ? config.defaultModel : undefined;
+		// A value saved from this dialog shows in the item before the source config is rebuilt.
+		let currentDefaultModelKey = configuredDefaultModelKey;
 		const currentModelKey = config.currentModel ? modelSettingKey(config.currentModel) : undefined;
 
 		const items: SettingItem[] = [
@@ -603,6 +610,40 @@ export class SettingsSelectorComponent extends Container {
 						() => done(),
 					),
 			},
+			...(callbacks.onDefaultModelChange === undefined
+				? []
+				: [
+						{
+							id: "default-model",
+							label: "Default model",
+							description: "Model a new session starts with; /model changes the current session only",
+							currentValue: currentDefaultModelKey ?? config.defaultModel,
+							submenu: (_currentValue: string, done: (value?: string) => void) => {
+								const options: SelectItem[] = [...config.availableDefaultModels]
+									.sort((a, b) => a.provider.localeCompare(b.provider))
+									.map((model) => ({
+										value: modelSettingKey(model),
+										label: `${modelSettingKey(model) === currentDefaultModelKey ? "✓ " : "  "}${modelItemLabel(model)}`,
+									}));
+								return new SelectSubmenu(
+									"Default Model",
+									"The model a new session starts with",
+									options,
+									currentDefaultModelKey ?? "",
+									(value) => {
+										const model = defaultModelByValue.get(value);
+										if (model === undefined) return;
+										callbacks.onDefaultModelChange?.(model.provider, model.id);
+										currentDefaultModelKey = value;
+										done(value);
+									},
+									() => done(currentDefaultModelKey),
+									undefined,
+									{ searchable: true, layout: MODEL_PICKER_LAYOUT },
+								);
+							},
+						} satisfies SettingItem,
+					]),
 			{
 				id: "model-thinking",
 				label: "Default thinking level per model",

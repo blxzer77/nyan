@@ -69,3 +69,16 @@ Review a session before exporting or sharing it. Sessions can contain prompts, t
 - Skills are available as `/skill:name` when skill commands are enabled.
 
 Use `/reload` after adding or changing a discovered command resource. See [Extensions](extensions.md), [Prompt Templates](prompt-templates.md), and [Skills](skills.md) for their loading and naming rules.
+
+## Durable sessions
+
+The default session store is durable, and a few commands behave differently there.
+
+| Command | On a durable session |
+|---|---|
+| `/reload` | Closes and reopens the same session without the services already loaded, which is what reloads extensions and the resources they read. The transcript, name, and conversation are kept. The command waits while a response or a compaction is running. |
+| `/scoped-models` | The set also filters the `/model` list for this process. Saving it writes `enabledModels`, which the next start reads. |
+| `/settings` | The default model a new session starts with is saved here, since `/model` selects a model for the current session only. |
+| `/hotkeys` | Lists the keys this interface binds; a key only the legacy interface binds is left out instead of listed as working. |
+| `/tree` | Not available: a durable conversation is linear, so there are no branches to navigate (Decision #24). |
+| `/import <path>` | Not available: a durable session is not a JSONL file. Read a legacy session with `nyan --session <file>`, or start the newest one with `nyan --resume` (Decision #34). |

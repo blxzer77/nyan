@@ -8,6 +8,7 @@ import {
 	type AgentState,
 	type Conversation,
 	type ConversationId,
+	type ConversationRecord,
 	type ConversationView,
 	type Cursor,
 	type EntryId,
@@ -133,7 +134,11 @@ export interface DurableController {
 	/** Stop waiting to retry the model request, as legacy `abort_retry`: the run ends with the error it failed on. */
 	abortRetry(): Promise<void>;
 	cycleThinking(): Promise<void>;
-	setModel(model: ModelRef): Promise<void>;
+	/**
+	 * Choose the model. `source` is what the `model_select` event reports: a picker or command sets it, and the model
+	 * cycle reports `cycle`, as legacy distinguishes the two.
+	 */
+	setModel(model: ModelRef, source?: "set" | "cycle"): Promise<void>;
 	toggleTasks(): Promise<void>;
 	/** Show and talk to another conversation. */
 	switchConversation(id: ConversationId): Promise<void>;
@@ -512,13 +517,20 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			}
 			await modelRuntime.setRuntimeApiKey(apiKeyModel.provider, options.apiKey);
 		}
-		const label = (id: ConversationId): string => (id === root.id ? "main" : `subagent ${id}`);
+		// A conversation is named for what made it: a fork or clone (no owner, a parent entry) is not a subagent's task.
+		const label = (record: ConversationRecord): string => {
+			if (record.id === root.id) return "main";
+			if (record.owner !== undefined) return `subagent ${record.id}`;
+			return record.parent === undefined ? `conversation ${record.id}` : `fork ${record.id}`;
+		};
 		const opened = harness;
 		const summaries: ConversationSummary[] = [];
 		let cursor: Cursor | undefined;
 		do {
 			const page = await opened.commit((tx) => tx.scanConversations({}, 256, cursor), context);
-			for (const { id } of page.items) summaries.push({ id, label: label(id), ...(await firstInput(opened, id)) });
+			for (const record of page.items) {
+				summaries.push({ id: record.id, label: label(record), ...(await firstInput(opened, record.id)) });
+			}
 			cursor = page.next;
 		} while (cursor !== undefined);
 		const events = options.eventStream === true ? await watchEvents(opened, root.id, context) : undefined;
@@ -576,7 +588,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			let conversations = state.conversations;
 			for (const change of publication.changes) {
 				if (change.type === "conversation") {
-					conversations = [...conversations, { id: change.value.id, label: label(change.value.id) }];
+					conversations = [...conversations, { id: change.value.id, label: label(change.value) }];
 				} else if (change.type === "entry" && change.value.kind === "nyan.user") {
 					const id = change.value.conversationId;
 					conversations = conversations.map((summary) =>
@@ -871,7 +883,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					await current.configure({ thinkingLevel: next }, context);
 					await host.thinkingSelected(next, level);
 				}),
-			setModel: (ref) =>
+			setModel: (ref, source) =>
 				command(async () => {
 					const model = modelRuntime.getModel(ref.provider, ref.modelId);
 					if (model === undefined) throw new Error(`Unknown model: ${ref.provider}/${ref.modelId}`);
@@ -883,7 +895,7 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					const thinking: ModelThinkingLevel = agentOf(state.conversation).thinkingLevel ?? "off";
 					cacheWarmer?.cancel("model changed");
 					await current.configure({ model: ref, thinkingLevel: clampThinkingLevel(model, thinking) }, context);
-					await host.modelSelected(model, previousModel, "set");
+					await host.modelSelected(model, previousModel, source ?? "set");
 				}),
 			toggleTasks: () =>
 				command(async () => {
