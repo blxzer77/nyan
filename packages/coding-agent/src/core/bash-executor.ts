@@ -11,10 +11,9 @@ import { rm } from "node:fs/promises";
 import { splitIncompleteAnsiSuffix, stripAnsi } from "../utils/ansi.ts";
 import { createOutputFileStream } from "../utils/output-files.ts";
 import { sanitizeBinaryOutput } from "../utils/shell.ts";
+import { closeOutputStream } from "./output-spill.ts";
 import type { BashOperations } from "./tools/bash.ts";
 import { DEFAULT_MAX_BYTES, truncateTail } from "./tools/truncate.ts";
-
-const TEMP_FILE_CLOSE_TIMEOUT_MS = 10_000;
 
 // ============================================================================
 // Types
@@ -84,25 +83,8 @@ export async function executeBashWithOperations(
 	const closeTempFile = async (): Promise<Error | undefined> => {
 		const stream = tempFileStream;
 		if (stream !== undefined) {
-			await new Promise<void>((resolve) => {
-				if (stream.closed) return resolve();
-				let settled = false;
-				const finish = (): void => {
-					if (settled) return;
-					settled = true;
-					clearTimeout(timeout);
-					resolve();
-				};
-				const timeout = setTimeout(() => {
-					tempFileError ??= new Error(`Timed out closing full output file after ${TEMP_FILE_CLOSE_TIMEOUT_MS}ms`);
-					stream.destroy();
-					finish();
-				}, TEMP_FILE_CLOSE_TIMEOUT_MS);
-				// A failed write destroys the stream; settle on either event, so the captured error is reported rather than awaited.
-				stream.once("error", finish);
-				stream.once("close", finish);
-				stream.end();
-			});
+			const closeError = await closeOutputStream(stream);
+			if (closeError !== undefined) tempFileError ??= closeError;
 		}
 		if (tempFileError === undefined || tempFilePath === undefined) return undefined;
 		// Nothing will read the path, so the partial file is removed rather than left in the temp directory.
