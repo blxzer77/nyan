@@ -32,7 +32,7 @@ name.
 | 5 | R3 | OCR on `ready_for_review`, manual, and before a release, fed the summary | workflow, [GH] | steps 1 and 4, U1, U2 |
 | 6 | P2 | Ship `rg` and `fd` in the workspace archive | workflow, [GH] | none |
 | 7 | T1 | Persist the Stryker incremental file | workflow, [GH] | none |
-| 8 | R4 | Review gateway above CPA | new service | U5, steps 4 and 5 for data |
+| 8 | R4 | Gateway service in `blxzer77/nyan-gateway` (started) | new service | steps 4 and 5 for data |
 | 9 | R5 | Langfuse traces, golden review cases, evaluators | service + repo | step 8, U6 |
 | 10 | R6 | Reflector | service | steps 8 and 9 |
 | 11 | P3 | Windows and MCP run by impact; gate list generated from `policy.json` | workflow, [GH] | none |
@@ -55,7 +55,7 @@ move ahead of it if the models' instability bites less than expected.
 | U2 | Whether the dispatch accepts `background` and rules | **Partly resolved 2026-10-19**, see below |
 | U3 | Whether the `describe` output of the pinned PR-Agent version can be made to satisfy our summary schema | Run it on a sample diff; see R2 |
 | U4 | CPA endpoint and the credential name PR-Agent uses | Owner |
-| U5 | Where the gateway's code lives: this repository or a separate one | Owner; recommendation in R4 |
+| U5 | Where the gateway's code lives | **Resolved 2026-10-19:** `blxzer77/nyan-gateway`, its own repository |
 | U6 | Langfuse endpoint and key names | Owner |
 
 ## Resolved unknowns (2026-10-19)
@@ -243,6 +243,33 @@ load measurement taken from R2 and R3 traffic.
 Done when: unit tests per sub-step; a kill-and-restart test that resumes without a second model call; an
 outage test that returns `incomplete` and never "no findings".
 Rollback: point PR-Agent and OCR back at CPA.
+
+**Status 2026-10-19: started, in [blxzer77/nyan-gateway](https://github.com/blxzer77/nyan-gateway) (private).**
+Where it lives is settled: its own repository, for the reason above and one more that turned out to matter more — a
+separate process is a separate failure domain, so review traffic cannot spend nyan's own upstream key pool, cooldown or
+concurrency budget. Putting the profile names in CPA's config would have been cheaper and coupled.
+
+Implemented in its first commit (33 tests, `npm run check` green, CI green):
+
+- 8.1 OpenAI-compatible surface: `POST /v1/chat/completions` where `model` is a profile, `GET /v1/models`,
+  `GET /healthz`, bearer auth compared by digest. A caller changes a base URL and a model name, nothing else.
+- 8.2 profile registry loaded from a versioned JSON file; a model that appears in two tiers is refused at load time,
+  and the router only iterates the resolved profile's list, so same-tier-only fallback is structural.
+- 8.4 concurrency is a per-profile in-flight counter with **no queue**: an overloaded tier answers `queued_timeout`
+  immediately, per-attempt deadlines are enforced with an AbortController, and the lease is released on every path.
+- 8.5 outcome vocabulary: `complete`, `unknown_profile`, `queued_timeout`, `timeout`, `provider_unavailable`,
+  `invalid_output`, `stream_unsupported`, `upstream_rejected`. `complete` is the only success; an empty or unparsable
+  reply is a failed review, never an empty result. A streamed request is refused rather than forwarded unvalidated.
+
+Not done, and the reasons are decisions rather than gaps:
+
+- **8.3 cross-run resume** is dropped. A review is a workflow run and its state is the run; the service holds no state,
+  so a restart loses the in-flight request only.
+- **Capability probes** are dropped: a candidate that cannot do tool calls is discovered when a caller asks for them.
+- Only one candidate per profile today, so same-tier failover is proven by tests and not yet by configuration.
+
+Open: deploy on `nyan-dev-02` with its own `GATEWAY_TOKEN` and its own upstream credentials — until that exists the
+isolation is architectural, not real; and point steps 4 and 5 at the profiles, which is what makes them load-bearing.
 
 ### 9. R5: Langfuse and golden cases
 
