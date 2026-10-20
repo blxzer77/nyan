@@ -36,6 +36,9 @@ describe("durable TUI command routing", () => {
 		["/export out.html", { kind: "command", name: "export", args: "out.html" }],
 		["/copy", { kind: "command", name: "copy", args: "" }],
 		["/changelog", { kind: "command", name: "changelog", args: "" }],
+		["/share", { kind: "command", name: "share", args: "" }],
+		["/bug", { kind: "command", name: "bug", args: "" }],
+		["/bug a hint", { kind: "command", name: "bug", args: "a hint" }],
 		["/settings", { kind: "command", name: "settings", args: "" }],
 		["/thinking", { kind: "command", name: "thinking", args: "" }],
 		["/thinking high", { kind: "command", name: "thinking", args: "high" }],
@@ -52,19 +55,6 @@ describe("durable TUI command routing", () => {
 		["!! ls", { kind: "bash", command: "ls", excludeFromContext: true }],
 	])("%s runs as a command", (text, expected) => {
 		expect(routeDurableInput(text)).toEqual(expected);
-	});
-
-	test("a command the porting batch has not reached yet reports that the durable session cannot run it", () => {
-		expect(routeDurableInput("/share")).toEqual({
-			kind: "unsupported",
-			name: "share",
-			message: "/share is not available on the durable session yet.",
-		});
-		expect(routeDurableInput("/bug")).toEqual({
-			kind: "unsupported",
-			name: "bug",
-			message: "/bug is not available on the durable session yet.",
-		});
 	});
 
 	test("/import points at the legacy read-only route, since a durable session is not a JSONL file", () => {

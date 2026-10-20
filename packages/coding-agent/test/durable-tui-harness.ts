@@ -45,6 +45,8 @@ export interface Screen extends DurableCommandUi {
 	exited: boolean;
 	/** What the next `select` answers; a choice not offered makes the command fail, as a missing entry would. */
 	answer?: string;
+	/** What the next `input` answers; undefined cancels, as Escape does. */
+	inputAnswer?: string;
 }
 
 export function screen(): Screen {
@@ -55,10 +57,12 @@ export function screen(): Screen {
 		presented: [],
 		exited: false,
 		answer: undefined,
+		inputAnswer: undefined,
 		select: async (_title, items) => {
 			state.choices.push(items.map((item) => item.value));
 			return state.answer;
 		},
+		input: async (_title, _description) => state.inputAnswer,
 		showLines: (lines) => {
 			state.lines.push(...lines);
 		},

@@ -23,6 +23,8 @@ The session flags follow the store they name:
 
 Durable session selection, so that these flags can address durable sessions, is not part of 1.4.0.
 
+`/import <path>` has no durable form. A durable session is a SQLite directory rather than a JSONL file, and 1.4.0 does not import JSONL into a durable session, so the command answers with the route that does work: `nyan --session <path>` opens that legacy file read-only, and `nyan --resume` opens a legacy session from the current directory.
+
 Use `/name` or `--name` to assign a recognizable session name. Run `/session` to verify the current session file, ID, message count, token usage, and cost.
 
 The session picker lets you search, rename, and delete sessions. It can also show paths, change sorting, and limit results to named sessions. See [Keybindings](keybindings.md#sessions) for its shortcuts.

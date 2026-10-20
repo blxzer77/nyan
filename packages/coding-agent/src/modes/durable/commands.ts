@@ -16,6 +16,7 @@ import { normalizeChangelogLinks, parseChangelog } from "../../utils/changelog.t
 import { formatTokens } from "../interactive/components/footer.ts";
 import { ThinkingSelectorComponent } from "../interactive/components/thinking-selector.ts";
 import { TrustSelectorComponent } from "../interactive/components/trust-selector.ts";
+import { type DurableBugReportEnvironment, reportDurableBug, shareDurableSession } from "./bug-report.ts";
 import { durableHotkeysMarkdown } from "./hotkeys.ts";
 import { runLogin, runLogout } from "./login.ts";
 import { type ScopedModelIds, scopedModelsDialog } from "./scoped-models.ts";
@@ -27,6 +28,8 @@ export interface DurableCommandSession {
 	readonly view: DurableView;
 	readonly controller: DurableController;
 	readonly sessionOps: DurableSessionOps;
+	/** What `/bug` reads from the process; absent in an embedding that owns no model runtime. */
+	readonly bugReport?: DurableBugReportEnvironment;
 }
 
 /** A reopened session: the same members, for the next session directory. */
@@ -59,7 +62,9 @@ export interface DurableCommandProduct {
 /** Everything a command needs from the terminal: dialogs, the transcript, notices, and the exit. */
 export interface DurableCommandUi {
 	/** A filterable list; undefined when the user cancelled. */
-	select(title: string, items: readonly SelectItem[]): Promise<string | undefined>;
+	select(title: string, items: readonly SelectItem[], description?: string): Promise<string | undefined>;
+	/** One line of text, with `description` above it; undefined when the user cancelled. */
+	input(title: string, description: string): Promise<string | undefined>;
 	/** Add lines to the transcript, as legacy's `/session` and `/name` do. */
 	showLines(lines: readonly string[]): void;
 	/** The display name changed: the footer shows the one stored beside the database. */
@@ -143,6 +148,10 @@ export class DurableCommands {
 				return this.#copy();
 			case "changelog":
 				return this.#changelog();
+			case "share":
+				return this.#share();
+			case "bug":
+				return this.#bug();
 			case "settings":
 				return this.#settings();
 			case "thinking":
@@ -182,6 +191,17 @@ export class DurableCommands {
 		} catch (error) {
 			this.#ui.notify(`Failed to export session: ${messageOf(error)}`, "error");
 		}
+	}
+
+	async #share(): Promise<void> {
+		await shareDurableSession(this.#ui, this.#host.current().sessionOps);
+	}
+
+	async #bug(): Promise<void> {
+		const session = this.#host.current();
+		const environment = session.bugReport;
+		if (environment === undefined) return this.#unavailable("bug");
+		await reportDurableBug(this.#ui, session, environment);
 	}
 
 	async #copy(): Promise<void> {

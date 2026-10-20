@@ -12,11 +12,16 @@ import type { CrashRecord } from "./crash-log.ts";
 import type { Extension } from "./extensions/types.ts";
 import { convertToLlm } from "./messages.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
-import type { ReadonlySessionManager } from "./session-manager.ts";
+import type { SessionEntry } from "./session-manager.ts";
 import type { Settings } from "./settings-manager.ts";
 
 export const BUG_REPORT_CUSTOM_ENTRY_TYPE = "nyan.bug-report";
 const BUG_REPORT_SCHEMA_VERSION = 1;
+/** What `/bug` tells the user before it writes anything, unchanged in every TUI. */
+export const BUG_REPORT_DISCLAIMER =
+	"This report is written to a zip archive on your machine and is not sent anywhere. It includes your nyan version, operating system, the current model and provider configuration (without API keys), loaded extensions, settings, and provider error diagnostics from this session.";
+export const BUG_REPORT_TRANSCRIPT_NOTE =
+	"The transcript contains your messages, model output, tool calls and their results, including file contents and command output read during this session.";
 const REDACTED = "<redacted>";
 const SENSITIVE_KEY = /(?:^|[-_])(api[-_]?key|secret|token|password|passwd|credential|authorization|cookie)(?:$|[-_])/i;
 
@@ -180,12 +185,18 @@ export function collectBugReportMetadata(options: CollectBugReportMetadataOption
 	};
 }
 
+/**
+ * The two reads the diagnostics make of a session. A legacy session manager provides them, and a durable session does
+ * through the entries it maps to the legacy shapes, so the diagnostics do not depend on how a session is stored.
+ */
+export interface BugReportSessionSource {
+	getSessionId(): string;
+	getEntries(): readonly SessionEntry[];
+}
+
 /** Collect failed assistant turns without collecting conversation content. */
-export function collectBugReportDiagnostics(
-	sessionManager: ReadonlySessionManager,
-	crashes: readonly CrashRecord[] = [],
-) {
-	const entries = sessionManager.getEntries();
+export function collectBugReportDiagnostics(session: BugReportSessionSource, crashes: readonly CrashRecord[] = []) {
+	const entries = session.getEntries();
 	const assistant = [];
 	let assistantMessageCount = 0;
 	for (const entry of entries) {
@@ -215,7 +226,7 @@ export function collectBugReportDiagnostics(
 	}
 	return {
 		schemaVersion: BUG_REPORT_SCHEMA_VERSION,
-		sessionId: sessionManager.getSessionId(),
+		sessionId: session.getSessionId(),
 		entryCount: entries.length,
 		assistantMessageCount,
 		assistant,
@@ -231,6 +242,37 @@ export interface BugReportBundle {
 	diagnostics: BugReportDiagnostics;
 	sessionJsonl?: string;
 	summary?: string;
+}
+
+/** What both TUI flows know when they assemble a report, whichever store the session is in. */
+export interface AssembleBugReportOptions {
+	readonly hint?: string;
+	readonly session: BugReportSessionSource;
+	readonly cwd: string;
+	readonly includeSession: boolean;
+	readonly includeSummary: boolean;
+	readonly messageCount: number;
+	readonly model?: Model<Api>;
+	readonly modelRuntime: ModelRuntime;
+	readonly thinkingLevel: ThinkingLevel;
+	readonly extensions: readonly Extension[];
+	readonly extensionErrors: ReadonlyArray<{ path: string; error: string }>;
+	readonly globalSettings: Settings;
+	readonly projectSettings: Settings;
+	readonly crashes?: readonly CrashRecord[];
+	/** The transcript, when the user keeps it in the report. */
+	readonly sessionJsonl?: string;
+	readonly summary?: string;
+}
+
+/** The report `/bug` writes, assembled from what the mode knows about its session. */
+export function assembleBugReport(options: AssembleBugReportOptions): BugReportBundle {
+	return {
+		metadata: collectBugReportMetadata({ ...options, sessionId: options.session.getSessionId() }),
+		diagnostics: collectBugReportDiagnostics(options.session, options.crashes),
+		...(options.sessionJsonl === undefined ? {} : { sessionJsonl: options.sessionJsonl }),
+		...(options.summary === undefined ? {} : { summary: options.summary }),
+	};
 }
 
 export interface BugReportSessionEntryData {

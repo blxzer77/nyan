@@ -45,10 +45,6 @@ const COMMAND_NAMES: readonly string[] = DURABLE_TUI_COMMANDS;
  * JSONL file (Decision #34).
  */
 const PENDING = {
-	// Not ported by the parity line: `/share` and `/bug` share their session-independent code with legacy, which the
-	// release-fix line extracts (Decision #35).
-	share: notAvailable("share"),
-	bug: notAvailable("bug"),
 	import:
 		"durable sessions are not JSONL files, so /import cannot open one. Open it with `nyan --session <file>`, which reads legacy sessions read-only, or with `nyan --resume`.",
 	// Durable conversations are linear, so there is no parent tree to navigate (Decision #24).
@@ -57,10 +53,6 @@ const PENDING = {
 
 /** The same entries, indexed by a command name: `PENDING`'s own keys are only the ones it answers. */
 const PENDING_MESSAGES: Partial<Record<DurableTuiCommand, string>> = PENDING;
-
-function notAvailable(name: string): string {
-	return `/${name} is not available on the durable session yet.`;
-}
 
 /**
  * The commands this build runs. It is derived from `PENDING`, so adding an entry there makes the TUI's dispatch switch
