@@ -48,6 +48,8 @@ export async function runUserBash(run: UserBashRun): Promise<UserBashOutcome> {
 			cwd: run.cwd,
 		});
 	} catch {
+		// The runner reported the failed handler as an extension error before throwing, and the session turns that into
+		// the notice the user reads; legacy `handleBashCommand` relies on the same report instead of its own message.
 		return { status: "extension-failed" };
 	}
 	const answer = handled?.result;

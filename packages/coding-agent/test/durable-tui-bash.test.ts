@@ -211,6 +211,12 @@ describe("durable TUI user bash", () => {
 		expect(finished).toBeUndefined();
 		expect(chunks).toEqual([]);
 		expect(bashEntries(current)).toEqual([]);
+		// The user reads why nothing ran: the runner reports the handler it could not complete, and the session keeps
+		// that report among the notices the interface shows. Nothing else on this path reports it, so the notice is
+		// the only failure notice the TUI has; `inline:1` is the provider extension and `inline:2` this one.
+		expect(current.view.current().notices.map((notice) => [notice.level, notice.message])).toEqual([
+			["error", "Extension <inline:2> failed on user_bash: the sandbox is unavailable"],
+		]);
 	});
 
 	test("a recorded command is answered by the model on the next prompt", async () => {
