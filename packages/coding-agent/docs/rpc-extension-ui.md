@@ -171,7 +171,9 @@ Set the text in the input editor. Fire-and-forget.
 
 ## Responses to Nyan
 
-Responses are sent for dialog methods only (`select`, `confirm`, `input`, `editor`). The `id` must match the request.
+Responses are sent for dialog methods only (`select`, `confirm`, `input`, `editor`). The `id` must match the request, and the shape decides which dialog a response answers: a `value` answers `select`, `input`, and `editor`, and a `confirmed` answers `confirm`. A response shaped for a different dialog than the request its `id` names is refused with a failure response whose `command` is `extension_ui_response`, and the dialog stays open for the answer it does ask for.
+
+A dialog that is still open when the session behind it is replaced (`new_session`) or switched (`switch_session`), or when the connection closes, is answered with its default, which is what a timeout gives, as `cancelled` would answer it. That `id` answers nothing after that.
 
 ### Value response (select, input, editor)
 

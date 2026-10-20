@@ -31,6 +31,7 @@ import {
 	CREDENTIAL_TTL_MS,
 	DEFAULT_BASE_URL,
 	defaultBaseUrlInput,
+	ENV,
 	firstNonEmpty,
 	isConfiguredDefaultModel,
 	loadConfigSafe,
@@ -417,7 +418,7 @@ export class CatalogController {
 		} catch (error) {
 			// A base URL that does not parse leaves nothing to fetch from. It is recorded like a failed fetch, not thrown: the
 			// login's own sync would otherwise fail a login whose key was just verified at the URL it entered.
-			const message = `CLIProxyAPI base URL is not valid (${errorMessage(error)}). Check CLIPROXYAPI_BASE_URL, ${CONFIG_FILE_NAME}, and the stored login.`;
+			const message = `CLIProxyAPI base URL is not valid (${errorMessage(error)}). Check ${ENV.baseUrl}, ${CONFIG_FILE_NAME}, and the stored login.`;
 			// A verification's answer is about its own base URL, so it goes to the verification and not the session's status.
 			outcome.failure = { reason: "unavailable", message };
 			if (options.verification === undefined) {
@@ -581,7 +582,7 @@ function warnIfKeyOverridden(
 	if (!runtimeKey || runtimeKey === entered) return;
 	const source = apiKeySource(agentDir, providerId);
 	if (source.kind === "environment") {
-		log.warn(overriddenKeyMessage("CLIPROXYAPI_API_KEY", providerId, credentialType));
+		log.warn(overriddenKeyMessage(ENV.apiKey, providerId, credentialType));
 	} else if (source.kind === "config") {
 		log.warn(overriddenKeyMessage(`The apiKey field in ${source.path}`, providerId, credentialType));
 	}
@@ -602,14 +603,14 @@ function endpointOverrideNotice(entered: string, effective: string): string | un
 		// A malformed override variable is reported by the refresh that follows; it must not fail a correct login.
 		return undefined;
 	}
-	return `CLIPROXYAPI_BASE_URL is set to ${effective}, so the model list and requests go there, not to the URL you entered (${entered}). The key was checked at ${entered}.`;
+	return `${ENV.baseUrl} is set to ${effective}, so the model list and requests go there, not to the URL you entered (${entered}). The key was checked at ${entered}.`;
 }
 
 /** Says where the rejected key is set and how to correct it, since logging in does not always change it. */
 function rejectedKeyNotice(agentDir: string, providerId: string, providerName: string, status: number): string {
 	const source = apiKeySource(agentDir, providerId);
 	if (source.kind === "environment") {
-		return `CLIProxyAPI rejected the API key in the environment variable CLIPROXYAPI_API_KEY (HTTP ${status}). Logging in does not change it: correct or unset that variable, then run /cpa-refresh.`;
+		return `CLIProxyAPI rejected the API key in the environment variable ${ENV.apiKey} (HTTP ${status}). Logging in does not change it: correct or unset that variable, then run /cpa-refresh.`;
 	}
 	if (source.kind === "config") {
 		return `CLIProxyAPI rejected the apiKey in ${source.path} (HTTP ${status}). That field is read before the stored login: correct or remove it there, then run /cpa-refresh. If a login saved that key, log in again instead.`;
@@ -801,7 +802,7 @@ export function buildProviderRegistration(
 						const usable = isUsableBaseUrl(savedBaseUrl);
 						const override = usable
 							? endpointOverrideNotice(enteredBaseUrl, savedBaseUrl)
-							: `CLIPROXYAPI_BASE_URL is not a valid base URL. This session uses ${enteredBaseUrl}; correct the setting to change it.`;
+							: `${ENV.baseUrl} is not a valid base URL. This session uses ${enteredBaseUrl}; correct the setting to change it.`;
 						if (override) callbacks.onProgress?.(override);
 						// Validation only needs HTTP 200; the catalog itself is fetched by the
 						// refresh that `onConfigured` runs, and that path writes the cache.

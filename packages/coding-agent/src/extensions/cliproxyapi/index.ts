@@ -21,6 +21,7 @@ import { registerCommands } from "./commands.ts";
 import {
 	configPath,
 	defaultBaseUrlInput,
+	ENV,
 	loadConfigSafe,
 	overridesPath,
 	resolveConnection,
@@ -88,13 +89,13 @@ export function buildStatusLabels(
 function notConfiguredHint(agentDir: string, identity: { providerId: string; providerName: string }): string {
 	return (
 		`not configured. Run /login ${identity.providerName} or /login ${identity.providerId}, ` +
-		`or set ${configPath(agentDir)} / CLIPROXYAPI_API_KEY.`
+		`or set ${configPath(agentDir)} / ${ENV.apiKey}.`
 	);
 }
 
 export default async function cliproxyApiExtension(pi: ExtensionAPI): Promise<void> {
 	const agentDir = getAgentDir();
-	if (process.env.CLIPROXYAPI_QUIET === "1" || process.env.CLIPROXYAPI_QUIET === "true") {
+	if (process.env[ENV.quiet] === "1" || process.env[ENV.quiet] === "true") {
 		setQuiet(true);
 	}
 
