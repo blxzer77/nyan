@@ -79,10 +79,14 @@ is no evidence today that the suites of `agent`, `durable`, or `coding-agent` fa
     public API changes, risk areas, affected tests, unknowns). The gateway checks that it covers the changed
     files. A failed summary is retried or switched inside the fast tier; if it still fails the run is
     `review_incomplete`. OCR always re-reads the raw diff: the summary is navigation, not evidence.
-22. **One gateway above CPA.** The gateway owns task profiles (`review.fast`, `review.deep`,
-    `review.reflect`), routing, health and circuit-breaking, capability probes (context, tool calls,
-    structured output), timeout, cancellation, retry, fallback, and output validation. CPA stays the model
-    transport, authentication, and protocol layer. PR-Agent, OCR, and the reflector never name a model.
+22. **Task profiles live in CPA, not in a gateway service.** Revised on 2026-10-19 after reading the running
+    config on `nyan-proxy`: CPA already maps a client-chosen name to an upstream model (its `alias` field), rolls
+    across keys of the same alias with `weights`, and carries `round-robin`, `session-affinity`, `cooldown`, retry
+    knobs, request logging and usage counters. An alias is exactly what a profile was for, so `review.fast`,
+    `review.deep` and `review.reflect` become three aliases and no service sits in front of CPA. What CPA cannot do
+    is review-specific: validate the reviewer's output against our schema, and turn a provider failure into
+    `review_incomplete` rather than an empty result. Both are steps in the workflow, which is where the reviewer
+    already runs, so they cost a script rather than a deployment.
 23. **Fallback stays inside a tier.** A deep request never silently becomes a fast request. If every
     candidate fails the result is `incomplete` / `provider_unavailable`, which CI never reports as "no
     findings". The artifact records the profile, provider, model, and any degradation, never a credential.
@@ -101,9 +105,10 @@ is no evidence today that the suites of `agent`, `durable`, or `coding-agent` fa
     shown as a pass. Full results go to the run summary, an artifact, and Langfuse.
 29. **The reviewer's access is read-only** to the repository, plus restricted validation commands in a
     sandbox. No write, commit, push, or unrelated network.
-30. **Deployment:** the gateway is an independent long-running service on `nyan-dev-02` (the runner host
-    keeps its CPU for the tests), reachable only on the internal network, one instance restarted by Docker or
-    systemd, with a health endpoint and a local outbox. No high availability.
+30. **No service is deployed.** The original plan put a gateway on `nyan-dev-02`; decision 22's revision removes
+    it, and with it the health endpoint, outbox and restart story. The cost is accepted deliberately: a review run
+    is a workflow run, so its state is the run, and a crash loses a review rather than resuming one. Rebuild the
+    service only if cross-run resume or provider-capability probing becomes necessary.
 31. **Langfuse (owner's server) records traces and scores; the repository owns the dataset.** Golden review
     cases, expected findings, evaluator rules, and profile definitions are versioned in Git
     (`.ci/ai-review/`). Deterministic evaluators score a run (schema valid, changed-file coverage, finding

@@ -32,7 +32,7 @@ name.
 | 5 | R3 | OCR on `ready_for_review`, manual, and before a release, fed the summary | workflow, [GH] | steps 1 and 4, U1, U2 |
 | 6 | P2 | Ship `rg` and `fd` in the workspace archive | workflow, [GH] | none |
 | 7 | T1 | Persist the Stryker incremental file | workflow, [GH] | none |
-| 8 | R4 | Review gateway above CPA | new service | U5, steps 4 and 5 for data |
+| 8 | R4 | Task profiles in CPA plus the reviewer's guards (no service) | config + script | steps 4 and 5 for data |
 | 9 | R5 | Langfuse traces, golden review cases, evaluators | service + repo | step 8, U6 |
 | 10 | R6 | Reflector | service | steps 8 and 9 |
 | 11 | P3 | Windows and MCP run by impact; gate list generated from `policy.json` | workflow, [GH] | none |
@@ -55,7 +55,7 @@ move ahead of it if the models' instability bites less than expected.
 | U2 | Whether the dispatch accepts `background` and rules | **Partly resolved 2026-10-19**, see below |
 | U3 | Whether the `describe` output of the pinned PR-Agent version can be made to satisfy our summary schema | Run it on a sample diff; see R2 |
 | U4 | CPA endpoint and the credential name PR-Agent uses | Owner |
-| U5 | Where the gateway's code lives: this repository or a separate one | Owner; recommendation in R4 |
+| U5 | Where the gateway's code lives | **Resolved 2026-10-19: nowhere.** CPA aliases replace it; see step 8 |
 | U6 | Langfuse endpoint and key names | Owner |
 
 ## Resolved unknowns (2026-10-19)
@@ -226,23 +226,44 @@ survivor count moves. `--force` reaches Stryker through the npm script (unlike `
 the nightly really does run everything. `Deep verification` was 202 s of the pull-request critical path, of which
 the mutation step was 175 s.
 
-### 8. R4: gateway above CPA
+### 8. R4: task profiles in CPA, and the reviewer's own guards
 
-Where it lives (U5). Recommendation: a separate repository, not a package here. It is owner infrastructure,
-not a Nyan product, and a package would enter `layers.json`, the install lock, and the publish list.
-Sub-steps, each with its own tests, because this is new code:
-- 8.1 alias passthrough (`review.fast`, `review.deep`, `review.reflect`), authentication, health and readiness.
-- 8.2 profile registry, capability probes, same-tier fallback, explicit result states (`complete`, `degraded`,
-  `provider_unavailable`, `invalid_output`, `timeout`, `cancelled`, `queued_timeout`). A deep request never
-  falls to a fast model.
-- 8.3 a per-`review_run_id` ledger and outbox in SQLite; idempotent resume; completed stages not re-called.
-- 8.4 per-profile bounded queues, deadlines, and cancellation of stale commits.
-- 8.5 output validation against the schema from step 1, including the summary's coverage of changed files.
-Deployed on `nyan-dev-02`, one instance, Docker or systemd restart, internal network only. Limits are set after a
-load measurement taken from R2 and R3 traffic.
-Done when: unit tests per sub-step; a kill-and-restart test that resumes without a second model call; an
-outage test that returns `incomplete` and never "no findings".
-Rollback: point PR-Agent and OCR back at CPA.
+Revised on 2026-10-19. The gateway service this step described is cancelled: CPA on `nyan-proxy` already provides
+the routing half (see decision 22 in the decisions note). What remains is configuration plus two scripts.
+
+What CPA already does, read from `/opt/cli-proxy-api/config.yaml` on `nyan-proxy`:
+
+- a client-chosen `alias` mapped to a concrete upstream model, per credential group;
+- several keys and providers under one alias, selected by `weight` under `strategy: round-robin`, which is
+  de-facto fallback;
+- `session-affinity`, `cooldown`, `request-retry`, `max-retry-interval`, `cpa-cancel-bound`, `reclaim-grace`;
+- `observability.logs.request-log`, `logging-to-file`, and usage counters.
+
+What it cannot do, and where it goes instead:
+
+| Need | Home |
+| --- | --- |
+| name a profile without naming a model | CPA alias (`review.fast`, `review.deep`, `review.reflect`) |
+| never degrade a deep request to a fast model | one alias per tier; a deep alias lists only deep models |
+| validate the reviewer's output against our schema | a workflow step over the reviewer's JSON |
+| report `review_incomplete` instead of "no findings" | the same step: exit non-zero, print the reason |
+| bound concurrency per tier | one job at a time per pull request (concurrency group), so CPA sees no pile-up |
+| record what ran | the job log, the artifact, and later the Langfuse trace |
+
+Change:
+- Owner: define the three aliases in CPA, each with at least two keys or providers so the weights can fail over,
+  and `request-retry` above 0 on those aliases.
+- Repo: `scripts/check-review-output.mjs` validates a review result against
+  `.ci/ai-review/schemas/finding.schema.json` and maps an unreadable or empty result to
+  `review_incomplete`, never to a pass.
+
+Not verified: whether an alias may list several *models* rather than several *keys*, and whether `/v1/models`
+exposes aliases or only upstream names. One deliberate look at the config and one authenticated `/v1/models`
+call answer both; neither was done, to avoid hammering the host.
+
+Done when: the reviewer names `review.deep` and nothing else; a killed provider yields `review_incomplete` with a
+named reason; two keys of one alias are used in turn under rate limiting.
+Rollback: the aliases are config; the script is one file.
 
 ### 9. R5: Langfuse and golden cases
 
