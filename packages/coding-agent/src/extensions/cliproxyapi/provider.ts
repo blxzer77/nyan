@@ -676,9 +676,7 @@ export interface ProviderRegistrationOptions {
 }
 
 /** Build the `/login` handler set and the provider config. */
-export function buildProviderRegistration(
-	options: ProviderRegistrationOptions,
-): ProviderConfig & { apiKeyResolveOnly: true } {
+export function buildProviderRegistration(options: ProviderRegistrationOptions): ProviderConfig {
 	const { agentDir, providerId, providerName, baseUrlInput, apiKey, catalog } = options;
 	const endpoints = resolveEndpoints(baseUrlInput);
 	const defaultBaseUrl = firstNonEmpty(baseUrlInput, DEFAULT_BASE_URL)!;

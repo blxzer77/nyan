@@ -1935,6 +1935,11 @@ export interface ProviderConfig {
 	baseUrl?: string;
 	/** API key literal, env interpolation ($ENV_VAR or ${ENV_VAR}), or leading !command. Required when defining models (unless oauth provided). */
 	apiKey?: string;
+	/**
+	 * Whether `apiKey` only resolves requests, so it is not offered as an API-key login method. Set this when the key
+	 * authenticates a service that has its own login, such as a proxy key that fills in the base URL.
+	 */
+	apiKeyResolveOnly?: boolean;
 	/** API type. Required at provider or model level when defining models. */
 	api?: Api;
 	/**
