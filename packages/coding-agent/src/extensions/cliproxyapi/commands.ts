@@ -8,6 +8,8 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "../../core/extensions/types.ts";
 import { cachePath } from "./cache.ts";
 import {
+	CONFIG_FILE_NAME,
+	ENV,
 	hasStoredLogin,
 	loadConfigSafe,
 	overridesPath,
@@ -446,7 +448,7 @@ export function registerCommands(context: CommandContext): void {
 					);
 				} else if (quotaPoller.keyRejected()) {
 					lines.push(
-						"(not polled: the proxy rejected this management key; change it in cliproxyapi.json or CLIPROXYAPI_MANAGEMENT_KEY)",
+						`(not polled: the proxy rejected this management key; change it in ${CONFIG_FILE_NAME} or ${ENV.managementKey})`,
 					);
 				}
 			}

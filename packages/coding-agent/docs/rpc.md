@@ -59,7 +59,7 @@ Use unique IDs whenever more than one command can be outstanding. Command handli
 
 Session events generally have no command ID because they describe session activity. `bash_execution_update` is the exception: when the originating [`bash`](rpc-commands.md#bash) command has an ID, its output events repeat that ID.
 
-An `extension_ui_response` uses the ID supplied by its `extension_ui_request`. It does not produce a normal command response.
+An `extension_ui_response` uses the ID supplied by its `extension_ui_request`. It does not produce a normal command response, unless the response is shaped for a different dialog than the one its ID names: the durable path refuses that one with `{"type":"response","command":"extension_ui_response","success":false,"error":"..."}` and leaves the dialog open ([RPC extension UI](rpc-extension-ui.md#responses-to-nyan)).
 
 ## Framing
 

@@ -59,18 +59,28 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 		);
 	};
 	bindExtensionErrors(durable);
-	const pendingExtensionRequests = new Map<
-		string,
-		{
-			resolve: (response: RpcExtensionUIResponse) => void;
-			reject: (error: Error) => void;
-		}
-	>();
+	/**
+	 * The dialogs the client has been asked and has not answered. Each one names the method it asks for, so a response
+	 * shaped for another dialog cannot be mistaken for its answer, and carries the way to settle it with its default
+	 * when the session it belongs to goes away.
+	 */
+	const pendingExtensionRequests = new Map<string, PendingExtensionDialog>();
+
+	/**
+	 * Answer every dialog still waiting, with the default its dialog would give on a timeout, and forget its id. Called
+	 * before the session an extension command is running against is closed or replaced: the command continues instead of
+	 * waiting forever, and a response the client sends afterwards answers nothing.
+	 */
+	const settlePendingDialogs = (): void => {
+		const waiting = [...pendingExtensionRequests.values()];
+		pendingExtensionRequests.clear();
+		for (const dialog of waiting) dialog.settle();
+	};
 
 	function createDialogPromise<T>(
 		opts: ExtensionUIDialogOptions | undefined,
 		defaultValue: T,
-		request: RpcExtensionUIRequest,
+		request: ExtensionDialogRequest,
 		parseResponse: (response: RpcExtensionUIResponse) => T,
 	): Promise<T> {
 		if (opts?.signal?.aborted) return Promise.resolve(defaultValue);
@@ -92,11 +102,16 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 					resolve(defaultValue);
 				}, opts.timeout);
 			pendingExtensionRequests.set(request.id, {
+				method: request.method,
 				resolve: (response) => {
 					cleanup();
 					resolve(parseResponse(response));
 				},
 				reject,
+				settle: () => {
+					cleanup();
+					resolve(defaultValue);
+				},
 			});
 			output(request);
 		});
@@ -250,6 +265,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 	const replaceSession = async (continueSession: boolean): Promise<void> => {
 		// The services outlive the replaced session: extensions load once per process, not once per session.
 		const services = durable.services;
+		settlePendingDialogs();
 		await durable.close(continueSession ? "resume" : "new");
 		durable = await openDurable({ ...options, continueSession, services, eventStream: true });
 		sessionName = await durable.sessionOps.getSessionName();
@@ -554,6 +570,9 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 					eventStream: true,
 				});
 				try {
+					// The dialogs of the session being left are answered with their default: the client asked to move on, and the
+					// commands waiting on them would otherwise hold the close below.
+					settlePendingDialogs();
 					await previous.close("resume");
 				} catch (error) {
 					await next.close().catch(() => {});
@@ -576,6 +595,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 		detachInput();
 		process.stdin.pause();
 		killTrackedDetachedChildren();
+		settlePendingDialogs();
 		await stream?.stop();
 		await durable.close();
 		if (signal !== "SIGTERM") await waitForRawStdoutBackpressure();
@@ -609,8 +629,11 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				"type" in parsed &&
 				parsed.type === "extension_ui_response"
 			) {
-				const response = parsed as RpcExtensionUIResponse;
-				pendingExtensionRequests.get(response.id)?.resolve(response);
+				const refusal = answerDialog(parsed as RpcExtensionUIResponse, pendingExtensionRequests);
+				if (refusal !== undefined) {
+					output(refusal);
+					await waitForRawStdoutBackpressure();
+				}
 				return;
 			}
 			const response = await handleCommand(parsed as RpcCommand);
@@ -639,6 +662,49 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 	process.stdin.on("end", () => void shutdown());
 	detachInput = attachJsonlLineReader(process.stdin, (line) => void handleLine(line));
 	return new Promise(() => {});
+}
+
+/**
+ * One dialog the RPC mode is waiting to have answered. `method` is what the request asked for, and it decides which
+ * responses answer it: the protocol puts no method on a response, so its shape is what identifies its dialog.
+ */
+interface PendingExtensionDialog {
+	readonly method: "select" | "confirm" | "input";
+	readonly resolve: (response: RpcExtensionUIResponse) => void;
+	readonly reject: (error: Error) => void;
+	readonly settle: () => void;
+}
+
+/** The dialog methods the client answers; `notify`, `setStatus`, and the others are one-way. */
+type ExtensionDialogRequest = Extract<RpcExtensionUIRequest, { readonly method: "select" | "confirm" | "input" }>;
+
+/**
+ * Hand one `extension_ui_response` to the dialog it names. A response whose shape answers a different dialog (a
+ * `confirmed` where a `select` was asked) is refused with a failure line instead of being coerced into the dialog's
+ * default and read as an answer, and the dialog stays open for the answer it does ask for. Returns the failure to
+ * report, or `undefined` when the response was delivered or names nothing this mode is waiting for.
+ */
+function answerDialog(
+	response: RpcExtensionUIResponse,
+	pending: ReadonlyMap<string, PendingExtensionDialog>,
+): RpcResponse | undefined {
+	const dialog = pending.get(response.id);
+	if (dialog === undefined) return undefined;
+	if (!answersDialog(response, dialog.method)) {
+		return {
+			type: "response",
+			command: "extension_ui_response",
+			success: false,
+			error: `Response for ${response.id} does not answer a ${dialog.method} dialog`,
+		};
+	}
+	dialog.resolve(response);
+	return undefined;
+}
+
+function answersDialog(response: RpcExtensionUIResponse, method: PendingExtensionDialog["method"]): boolean {
+	if ("cancelled" in response && response.cancelled) return true;
+	return method === "confirm" ? "confirmed" in response : "value" in response;
 }
 
 function isTextPart(value: unknown): value is { readonly type: "text"; readonly text: string } {

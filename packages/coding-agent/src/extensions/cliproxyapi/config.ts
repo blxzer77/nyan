@@ -17,6 +17,25 @@ export const CONFIG_FILE_NAME = "cliproxyapi.json";
 export const OVERRIDES_FILE_NAME = "cliproxyapi-overrides.json";
 export const AUTH_FILE_NAME = "auth.json";
 
+/**
+ * The environment variables this extension reads. A hint, a warning, or a log line that names one takes the name from
+ * here, so the name it prints is the variable the code reads.
+ */
+export const ENV = {
+	apiKey: "CLIPROXYAPI_API_KEY",
+	baseUrl: "CLIPROXYAPI_BASE_URL",
+	quiet: "CLIPROXYAPI_QUIET",
+	debug: "CLIPROXYAPI_DEBUG",
+	fast: "CLIPROXYAPI_FAST",
+	pause: "CLIPROXYAPI_PAUSE",
+	managementKey: "CLIPROXYAPI_MANAGEMENT_KEY",
+	codexWsApiKey: "CLIPROXYAPI_CODEX_WS_API_KEY",
+	providerId: "CLIPROXYAPI_PROVIDER_ID",
+	providerName: "CLIPROXYAPI_PROVIDER_NAME",
+	catalogMinRefreshMs: "CLIPROXYAPI_CATALOG_MIN_REFRESH_MS",
+	overridesFile: "CLIPROXYAPI_OVERRIDES_FILE",
+} as const;
+
 /** The models catalog query that makes CLIProxyAPI return its extended metadata. */
 export const CLIENT_VERSION = "pi";
 
@@ -220,13 +239,7 @@ function resolveBoolean(
 
 /** Fast preference: env CLIPROXYAPI_FAST > config `fast` > false. */
 export function resolveFastDefault(agentDir: string): boolean {
-	return resolveBoolean(
-		"CLIPROXYAPI_FAST",
-		process.env.CLIPROXYAPI_FAST,
-		loadConfigSafe(agentDir).config.fast,
-		"fast",
-		false,
-	);
+	return resolveBoolean(ENV.fast, process.env[ENV.fast], loadConfigSafe(agentDir).config.fast, "fast", false);
 }
 
 /**
@@ -234,14 +247,14 @@ export function resolveFastDefault(agentDir: string): boolean {
  * default. An invalid value warns once and falls back rather than blocking refreshes.
  */
 export function resolveCatalogMinRefreshMs(): number {
-	const raw = process.env.CLIPROXYAPI_CATALOG_MIN_REFRESH_MS?.trim();
+	const raw = process.env[ENV.catalogMinRefreshMs]?.trim();
 	if (!raw) {
 		return CATALOG_MIN_REFRESH_MS;
 	}
 	const parsed = Number(raw);
 	if (!Number.isFinite(parsed) || parsed < 0) {
 		console.warn(
-			`[nyan-cliproxyapi] CLIPROXYAPI_CATALOG_MIN_REFRESH_MS must be a non-negative number of milliseconds; using ${CATALOG_MIN_REFRESH_MS}`,
+			`[nyan-cliproxyapi] ${ENV.catalogMinRefreshMs} must be a non-negative number of milliseconds; using ${CATALOG_MIN_REFRESH_MS}`,
 		);
 		return CATALOG_MIN_REFRESH_MS;
 	}
@@ -250,23 +263,17 @@ export function resolveCatalogMinRefreshMs(): number {
 
 /** Native Codex WebSocket bridge key: env > config. */
 export function resolveCodexWsApiKey(agentDir: string): string | undefined {
-	return firstNonEmpty(process.env.CLIPROXYAPI_CODEX_WS_API_KEY, loadConfigSafe(agentDir).config.codexWsApiKey);
+	return firstNonEmpty(process.env[ENV.codexWsApiKey], loadConfigSafe(agentDir).config.codexWsApiKey);
 }
 
 /** Management key for quota polling: env CLIPROXYAPI_MANAGEMENT_KEY > config `managementKey`. Undefined disables the poll. */
 export function resolveManagementKey(agentDir: string): string | undefined {
-	return firstNonEmpty(process.env.CLIPROXYAPI_MANAGEMENT_KEY, loadConfigSafe(agentDir).config.managementKey);
+	return firstNonEmpty(process.env[ENV.managementKey], loadConfigSafe(agentDir).config.managementKey);
 }
 
 /** Pause preference: env CLIPROXYAPI_PAUSE > config `pause` > false. */
 export function resolvePauseDefault(agentDir: string): boolean {
-	return resolveBoolean(
-		"CLIPROXYAPI_PAUSE",
-		process.env.CLIPROXYAPI_PAUSE,
-		loadConfigSafe(agentDir).config.pause,
-		"pause",
-		false,
-	);
+	return resolveBoolean(ENV.pause, process.env[ENV.pause], loadConfigSafe(agentDir).config.pause, "pause", false);
 }
 
 function loadAuthConnection(agentDir: string, providerId: string): { baseUrl?: string; apiKey?: string } | null {
@@ -299,8 +306,8 @@ function loadAuthConnection(agentDir: string, providerId: string): { baseUrl?: s
 export function resolveIdentity(agentDir: string): ResolvedIdentity {
 	const { config } = loadConfigSafe(agentDir);
 	return {
-		providerId: firstNonEmpty(process.env.CLIPROXYAPI_PROVIDER_ID, config.providerId, DEFAULT_PROVIDER_ID)!,
-		providerName: firstNonEmpty(process.env.CLIPROXYAPI_PROVIDER_NAME, config.providerName, DEFAULT_PROVIDER_NAME)!,
+		providerId: firstNonEmpty(process.env[ENV.providerId], config.providerId, DEFAULT_PROVIDER_ID)!,
+		providerName: firstNonEmpty(process.env[ENV.providerName], config.providerName, DEFAULT_PROVIDER_NAME)!,
 	};
 }
 
@@ -314,17 +321,12 @@ export function resolveConnection(agentDir: string, providerId: string): Resolve
 		auth = null;
 	}
 
-	const baseUrlInput = firstNonEmpty(
-		process.env.CLIPROXYAPI_BASE_URL,
-		config.baseUrl,
-		auth?.baseUrl,
-		DEFAULT_BASE_URL,
-	)!;
+	const baseUrlInput = firstNonEmpty(process.env[ENV.baseUrl], config.baseUrl, auth?.baseUrl, DEFAULT_BASE_URL)!;
 	const apiKey = pickApiKey(agentDir, config, auth)?.apiKey;
 	if (!apiKey) {
 		return null;
 	}
-	const codexWsApiKey = firstNonEmpty(process.env.CLIPROXYAPI_CODEX_WS_API_KEY, config.codexWsApiKey);
+	const codexWsApiKey = firstNonEmpty(process.env[ENV.codexWsApiKey], config.codexWsApiKey);
 
 	return { baseUrlInput, apiKey, ...(codexWsApiKey ? { codexWsApiKey } : {}), ...resolveEndpoints(baseUrlInput) };
 }
@@ -345,7 +347,7 @@ function pickApiKey(
 	config: ConfigFile,
 	stored: { apiKey?: string } | null,
 ): { apiKey: string; source: ApiKeySource } | undefined {
-	const environment = firstNonEmpty(process.env.CLIPROXYAPI_API_KEY);
+	const environment = firstNonEmpty(process.env[ENV.apiKey]);
 	if (environment) return { apiKey: environment, source: { kind: "environment" } };
 	const configured = firstNonEmpty(config.apiKey);
 	if (configured) return { apiKey: configured, source: { kind: "config", path: configPath(agentDir) } };
@@ -372,7 +374,7 @@ export function defaultBaseUrlInput(agentDir: string, providerId: string): strin
 	} catch {
 		authBaseUrl = undefined;
 	}
-	return firstNonEmpty(process.env.CLIPROXYAPI_BASE_URL, config.baseUrl, authBaseUrl, DEFAULT_BASE_URL)!;
+	return firstNonEmpty(process.env[ENV.baseUrl], config.baseUrl, authBaseUrl, DEFAULT_BASE_URL)!;
 }
 
 export function hasStoredLogin(agentDir: string, providerId: string): boolean {
@@ -384,7 +386,7 @@ export function hasStoredLogin(agentDir: string, providerId: string): boolean {
 }
 
 export function overridesPath(agentDir: string, config: ConfigFile): string {
-	const configured = firstNonEmpty(process.env.CLIPROXYAPI_OVERRIDES_FILE, config.overridesFile);
+	const configured = firstNonEmpty(process.env[ENV.overridesFile], config.overridesFile);
 	if (!configured) {
 		return join(agentDir, OVERRIDES_FILE_NAME);
 	}
