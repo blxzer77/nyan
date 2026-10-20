@@ -55,6 +55,14 @@ const PENDING = {
 const PENDING_MESSAGES: Partial<Record<DurableTuiCommand, string>> = PENDING;
 
 /**
+ * The message this build answers a recognized command with instead of running it; undefined when it runs. Completion
+ * reads this to describe the two commands it can only refuse.
+ */
+export function pendingCommandMessage(name: DurableTuiCommand): string | undefined {
+	return PENDING_MESSAGES[name];
+}
+
+/**
  * The commands this build runs. It is derived from `PENDING`, so adding an entry there makes the TUI's dispatch switch
  * require a branch for it, and a command that moves out of `PENDING` cannot be routed to a missing handler.
  */

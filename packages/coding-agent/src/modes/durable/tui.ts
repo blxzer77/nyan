@@ -77,7 +77,7 @@ import {
 } from "../../ui/theme/theme.ts";
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { ensureTool } from "../../utils/tools-manager.ts";
-import { createDurableAutocompleteProvider } from "./autocomplete.ts";
+import { createDurableAutocompleteProvider, type DurableAutocompleteSources } from "./autocomplete.ts";
 import { runUserBash } from "./bash.ts";
 import type { DurableBugReportEnvironment } from "./bug-report.ts";
 import { type DurableCommandProduct, DurableCommands, type DurableReopenRequest } from "./commands.ts";
@@ -1181,6 +1181,27 @@ export interface DurableTuiSessions {
 	reopen?(request: DurableReopenRequest): Promise<DurableTuiOpen>;
 }
 
+/**
+ * What the editor completes for one open. `open` is read through a function because a reopen replaces the session, and
+ * `scopedModelIds` because `/scoped-models` changes what `/model` offers without reopening anything.
+ */
+export function durableAutocompleteSourcesOf(
+	open: () => DurableTuiOpen,
+	scopedModelIds: () => readonly string[] | null,
+): DurableAutocompleteSources {
+	const current = open();
+	return {
+		cwd: current.view.current().session.cwd,
+		...(current.modelRuntime === undefined ? {} : { modelRuntime: current.modelRuntime }),
+		scopedModelIds,
+		currentModel: () => agentOf(open().view.current().conversation).model,
+		promptTemplates: current.promptTemplates ?? [],
+		...(current.extensionHost === undefined
+			? {}
+			: { extensionCommands: current.extensionHost.runner.getRegisteredCommands() }),
+	};
+}
+
 export async function runDurableTui(
 	source: DurableViewSource,
 	controller: DurableController,
@@ -1421,33 +1442,35 @@ export async function runDurableTui(
 	 * session that is open now rather than the one the start opened.
 	 */
 	let fdPath: string | null = null;
+	let stopped = false;
 	const refreshAutocomplete = (): void => {
 		view.setAutocompleteProvider(
 			createDurableAutocompleteProvider(
-				{
-					cwd: shown.view.current().session.cwd,
-					...(shown.modelRuntime === undefined ? {} : { modelRuntime: shown.modelRuntime }),
-					scopedModelIds: () => view.scopedModelIds,
-					currentModel: () => agentOf(shown.view.current().conversation).model,
-					promptTemplates: shown.promptTemplates ?? [],
-					...(shown.extensionHost === undefined
-						? {}
-						: { extensionCommands: shown.extensionHost.runner.getRegisteredCommands() }),
-				},
+				durableAutocompleteSourcesOf(
+					() => shown,
+					() => view.scopedModelIds,
+				),
 				fdPath,
 			),
 		);
 	};
 	refreshAutocomplete();
 	view.setAutocompleteMaxVisible(settings.getAutocompleteMaxVisible());
-	// `@` paths need `fd`, the same binary the find tool uses. A failed check costs file completion and nothing else.
+	// `@` paths need `fd`, the same binary the find tool uses. The check outlives the start, so it paints nothing once
+	// the TUI has stopped, and a failure costs file completion rather than the session.
 	void ensureTool("fd", (status) => {
-		if (status.type === "warning") view.notify(status.message, "warning");
-	}).then((path) => {
-		if (path === undefined || path === fdPath) return;
-		fdPath = path;
-		refreshAutocomplete();
-	});
+		if (!stopped && status.type === "warning") view.notify(status.message, "warning");
+	}).then(
+		(path) => {
+			if (stopped || path === undefined || path === fdPath) return;
+			fdPath = path;
+			refreshAutocomplete();
+		},
+		(error: unknown) => {
+			if (!stopped)
+				view.notify(`Could not check for fd: ${error instanceof Error ? error.message : String(error)}`, "error");
+		},
+	);
 	input = new DurableInput({
 		current: () => ({
 			view: shown.view.current(),
@@ -1600,6 +1623,7 @@ export async function runDurableTui(
 		...(startup.resources === undefined ? {} : { resources: startup.resources }),
 	});
 	await exited;
+	stopped = true;
 	unsubscribe();
 	themes.dispose();
 	view.stop();

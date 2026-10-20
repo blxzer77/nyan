@@ -2,16 +2,18 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AutocompleteItem, AutocompleteProvider } from "@ny4n/tui";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DURABLE_TUI_COMMANDS, routeDurableInput } from "../src/core/durable/commands.ts";
-import { agentOf } from "../src/core/durable/runtime.ts";
+import { APP_NAME } from "../src/config.ts";
+import { routeDurableInput } from "../src/core/durable/commands.ts";
 import type { InlineExtension } from "../src/core/extensions/types.ts";
 import type { PromptTemplate } from "../src/core/prompt-templates.ts";
 import {
 	createDurableAutocompleteProvider,
 	type DurableAutocompleteSources,
 	durableAutocompleteCommands,
+	UNAVAILABLE_DESCRIPTION,
 } from "../src/modes/durable/autocomplete.ts";
-import type { DurableSessionOwner } from "../src/modes/durable/session-owner.ts";
+import { type DurableSessionOwner, tuiof } from "../src/modes/durable/session-owner.ts";
+import { durableAutocompleteSourcesOf } from "../src/modes/durable/tui.ts";
 import { TuiHarness } from "./durable-tui-harness.ts";
 
 /** Sources for a session that has no model runtime: the command list alone. */
@@ -51,12 +53,48 @@ async function suggestions(
 }
 
 describe("durable autocomplete commands", () => {
-	it("offers every command the router answers, so no offered name becomes a prompt", () => {
+	it("offers exactly the router's commands, so no offered name becomes a prompt", () => {
 		const commands = durableAutocompleteCommands(sourcesWithoutModels());
-		expect(commands.map((command) => command.name)).toEqual([...DURABLE_TUI_COMMANDS]);
+		// The completion surface, written out: a command added to or dropped from the router fails this list.
+		expect(commands.map((command) => command.name)).toEqual([
+			"tasks",
+			"agents",
+			"model",
+			"compact",
+			"new",
+			"resume",
+			"name",
+			"session",
+			"fork",
+			"clone",
+			"quit",
+			"export",
+			"copy",
+			"changelog",
+			"settings",
+			"thinking",
+			"scoped-models",
+			"import",
+			"share",
+			"bug",
+			"hotkeys",
+			"trust",
+			"login",
+			"logout",
+			"reload",
+			"tree",
+		]);
 		for (const command of commands) {
-			expect(routeDurableInput(`/${command.name}`).kind).not.toBe("prompt");
+			const route = routeDurableInput(`/${command.name}`);
+			expect(route.kind === "command" || route.kind === "unsupported").toBe(true);
 		}
+	});
+
+	it("carries the legacy argument hint, and describes the two commands it can only refuse as unavailable", () => {
+		const byName = new Map(durableAutocompleteCommands(sourcesWithoutModels()).map((c) => [c.name, c]));
+		expect(byName.get("model")?.argumentHint).toBe("<provider/model>");
+		expect(byName.get("import")?.description).toBe(UNAVAILABLE_DESCRIPTION);
+		expect(byName.get("tree")?.description).toBe(UNAVAILABLE_DESCRIPTION);
 	});
 
 	it("describes the commands from the legacy table and the two only this path has", () => {
@@ -103,16 +141,67 @@ describe("durable autocomplete commands", () => {
 		);
 		const byName = new Map(commands.map((command) => [command.name, command]));
 		expect(byName.get("hello")?.description).toBe("Say hello");
-		expect(byName.has("quit")).toBe(true);
+		// The built-in `/quit` is the only one offered: the extension's `ext-quit` would lose the dispatch to it.
+		expect(commands.filter((command) => command.name === "quit")).toHaveLength(1);
+		expect(byName.get("quit")?.description).toBe(`Quit ${APP_NAME}`);
 		expect(byName.has("ext-quit")).toBe(false);
 	});
 
-	it("offers `off` alone for /thinking when no model is selected", async () => {
+	it("offers each of two extensions that register one name under its own invocation name", () => {
+		const handler = async (): Promise<void> => {};
+		const commands = durableAutocompleteCommands(
+			sourcesWithoutModels({
+				extensionCommands: [
+					{
+						name: "shared",
+						invocationName: "shared:1",
+						sourceInfo: { path: "/ext/one.ts", source: "local", scope: "user", origin: "top-level" },
+						handler,
+					},
+					{
+						name: "shared",
+						invocationName: "shared:2",
+						sourceInfo: { path: "/ext/two.ts", source: "local", scope: "user", origin: "top-level" },
+						handler,
+					},
+				],
+			}),
+		);
+		expect(commands.filter((command) => command.name.startsWith("shared")).map((command) => command.name)).toEqual([
+			"shared:1",
+			"shared:2",
+		]);
+	});
+
+	it("does not let a prompt template hide an extension command of the same name", () => {
+		const commands = durableAutocompleteCommands(
+			sourcesWithoutModels({
+				promptTemplates: [template("hello", "A template")],
+				extensionCommands: [
+					{
+						name: "hello",
+						invocationName: "hello",
+						description: "Say hello",
+						sourceInfo: { path: "/ext/hello.ts", source: "local", scope: "user", origin: "top-level" },
+						handler: async () => {},
+					},
+				],
+			}),
+		);
+		// The extension answers the name first, so its own entry is the one the completion may keep.
+		expect(commands.filter((command) => command.name === "hello").map((command) => command.description)).toEqual([
+			"Say hello",
+		]);
+	});
+
+	it("offers no /thinking level when no model is selected, which the command reports itself", async () => {
 		const provider = createDurableAutocompleteProvider(sourcesWithoutModels());
-		expect(await suggestions(provider, "/thinking ")).toEqual({
-			items: [{ value: "off", label: "off" }],
-			prefix: "",
-		});
+		expect(await suggestions(provider, "/thinking ")).toBeNull();
+	});
+
+	it("completes no `@` path without an fd to list them", async () => {
+		const provider = createDurableAutocompleteProvider(sourcesWithoutModels());
+		expect(await suggestions(provider, "look at @al")).toBeNull();
 	});
 
 	it("offers nothing for /model when the session has no models", async () => {
@@ -141,19 +230,15 @@ describe("durable autocomplete against a real session", () => {
 		await harness.stop();
 	});
 
-	/** The sources the TUI builds: the open session's models, conversation, templates, and extension commands. */
+	/** The sources `runDurableTui` installs, built from the open the session owner hands it. */
 	function sourcesOf(
 		current: DurableSessionOwner,
 		scoped: readonly string[] | null = null,
 	): DurableAutocompleteSources {
-		return {
-			cwd: current.current.view.current().session.cwd,
-			modelRuntime: current.current.modelRuntime,
-			scopedModelIds: () => scoped,
-			currentModel: () => agentOf(current.current.view.current().conversation).model,
-			promptTemplates: current.current.promptTemplates,
-			extensionCommands: current.current.extensionHost.runner.getRegisteredCommands(),
-		};
+		return durableAutocompleteSourcesOf(
+			() => tuiof(current.current),
+			() => scoped,
+		);
 	}
 
 	it("completes a built-in, the prompt template a session loaded, and a registered extension command", async () => {
