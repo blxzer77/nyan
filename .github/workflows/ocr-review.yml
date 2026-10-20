@@ -68,7 +68,11 @@ env:
   # (`--effort: invalid effort "xhigh": must be one of low, medium, high`, checked 2026-10-18). High is its maximum
   # for the OCR dispatcher itself; the model's reasoning strength is sent separately below.
   OCR_EFFORT: high
-  OCR_REASONING_EFFORT: xhigh
+  # A review budget, in minutes, passed to OCR as `--timeout`. 0 means no budget, which is what this used to send: one
+  # run then spent over an hour on a 767-line diff (28 files, 20 of them tests, every call at max thinking) and was
+  # still going. OCR reports what it covered when it stops, so a cut run is `partial` with the uncovered files named,
+  # never a clean-looking pass.
+  OCR_TIMEOUT_MINUTES: '60'
 
 jobs:
   review:
@@ -189,15 +193,12 @@ jobs:
               "base_sha": os.environ["BASE"],
               "diff": diff,
               "model": os.environ["OCR_MODEL"],
-              # `effort` is the dispatch service's accepted low/medium/high setting. This separate field is the
-              # model's OpenAI Responses reasoning effort; it is deliberately xhigh for gpt-6.1-sol.
+              # `effort` is the dispatch service's accepted low/medium/high setting for OCR's own planning. The model's
+              # thinking level is not set here any more: the gateway writes `reasoning_effort` from the tier, so a value
+              # sent from this workflow would be ignored and only look meaningful.
               "effort": os.environ["OCR_EFFORT"],
-              # 0 = no review time limit; the job's timeout-minutes decides how long it may run.
-              "timeout_minutes": 0,
+              "timeout_minutes": int(os.environ["OCR_TIMEOUT_MINUTES"]),
           }
-          reasoning = os.environ.get("OCR_REASONING_EFFORT", "")
-          if reasoning and reasoning != "none":
-              payload_data["reasoning_effort"] = reasoning
           payload = json.dumps(payload_data).encode()
           req = urllib.request.Request(
               os.environ["URL"].rstrip("/") + "/review",
@@ -258,12 +259,12 @@ jobs:
               core.setFailed('the rendered review lacks its marker; refusing to report it');
               return;
             }
-            const { KIND, BASE, HEAD, COMMITS, FILES, LINES, NOTE, OCR_MODEL, OCR_EFFORT, OCR_REASONING_EFFORT } = process.env;
+            const { KIND, BASE, HEAD, COMMITS, FILES, LINES, NOTE, OCR_MODEL, OCR_EFFORT } = process.env;
             const range = `${BASE.slice(0, 9)}..${HEAD.slice(0, 9)}`;
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             const header = [
               `**Range:** \`${range}\` (${KIND}), ${COMMITS} commits, ${FILES} files, ${LINES} diff lines`,
-              `**Review:** \`${OCR_MODEL}\`, model reasoning \`${OCR_REASONING_EFFORT}\`, dispatcher effort \`${OCR_EFFORT}\`. Advisory: nothing here blocks a merge or a release until a reproduction or a rule confirms it.`,
+              `**Review:** \`${OCR_MODEL}\` (the tier sets the model and its thinking level), OCR planning effort \`${OCR_EFFORT}\`. Advisory: nothing here blocks a merge or a release until a reproduction or a rule confirms it.`,
               `**Compare:** ${context.serverUrl}/${owner}/${repo}/compare/${BASE}...${HEAD}`,
               `**Run:** ${runUrl}`,
               ...(NOTE ? ['', `> **Note:** ${NOTE}`] : []),
