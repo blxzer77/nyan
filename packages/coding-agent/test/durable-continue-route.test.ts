@@ -224,6 +224,12 @@ describe("--continue in the CLI", () => {
 			'Error: Model "nope-xyz" not found. Use --list-models to see available models.',
 		],
 		["--api-key", ["--api-key", "sk-test", "-p", "hi"], "Error: --api-key requires a selected model"],
+		// The same wording the legacy path prints, instead of an empty model id after the colon.
+		[
+			"--provider",
+			["--provider", "anthropic", "-p", "hi"],
+			"Error: --provider requires --model (for example: --provider anthropic --model <pattern>)",
+		],
 	])("%s startup failures are reported without a stack trace", async (_flag, args, message) => {
 		const { agentDir, cwd } = createTempRoot();
 
@@ -232,6 +238,8 @@ describe("--continue in the CLI", () => {
 		expect(result.code).toBe(1);
 		expect(result.stderr).toContain(message);
 		expect(result.stderr).not.toMatch(/\n\s+at /u);
+		// One `Error:` line and nothing else on the model's account: no unresolved model id is left behind.
+		expect(result.stderr).not.toContain("Could not resolve model");
 	});
 
 	it("reports a durable session that another process holds without a stack trace", async () => {

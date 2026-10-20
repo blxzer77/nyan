@@ -11,8 +11,16 @@ describe("durable TUI command routing", () => {
 	test.each(BUILTIN_SLASH_COMMANDS.map((command) => [command.name]))(
 		"/%s is answered by the durable TUI, with and without an argument",
 		(name) => {
-			expect(routeDurableInput(`/${name}`).kind).not.toBe("prompt");
-			expect(routeDurableInput(`/${name} an argument`).kind).not.toBe("prompt");
+			// Either the TUI runs the command or it names the reason; the two reductions' exact messages have their own
+			// tests below. A command that falls through to the model is what this table exists to catch.
+			const bare = routeDurableInput(`/${name}`);
+			if (bare.kind === "command") expect(bare).toEqual({ kind: "command", name, args: "" });
+			else expect(bare).toMatchObject({ kind: "unsupported", name });
+
+			const withArgument = routeDurableInput(`/${name} an argument`);
+			if (withArgument.kind === "command") {
+				expect(withArgument).toEqual({ kind: "command", name, args: "an argument" });
+			} else expect(withArgument).toMatchObject({ kind: "unsupported", name });
 		},
 	);
 

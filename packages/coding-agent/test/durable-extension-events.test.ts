@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AgentMessage } from "@ny4n/agent-core";
 import { type FauxResponseStep, fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall, Type } from "@ny4n/ai";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
@@ -14,6 +15,7 @@ import type {
 	ToolDefinition,
 	TurnEndEvent,
 } from "../src/core/extensions/types.ts";
+import type { SessionEntry } from "../src/core/session-manager.ts";
 import { ProjectTrustStore } from "../src/core/trust-manager.ts";
 import { settlement } from "./durable-submission.ts";
 
@@ -198,9 +200,9 @@ describe("durable host events and context", () => {
 							if (event.turnIndex !== 1) return;
 							const custom = event.context.contextEntries.find(
 								(entry) =>
-									entry.sourceEntry.type === "message" &&
-									entry.sourceEntry.message.role === "user" &&
-									JSON.stringify(entry.sourceEntry.message.content).includes("ORIGINAL-CONTEXT-MARKER"),
+									entry.sourceEntry.type === "custom_message" &&
+									entry.sourceEntry.customType === "probe.context" &&
+									JSON.stringify(entry.sourceEntry.content).includes("ORIGINAL-CONTEXT-MARKER"),
 							);
 							if (custom === undefined) throw new Error("custom context entry was not projected");
 							const replacement = action === "omit" ? null : { content: "REPLACED-CONTEXT-MARKER" };
@@ -248,6 +250,58 @@ describe("durable host events and context", () => {
 			expect(current.view.current().notices).toEqual([]);
 		},
 	);
+
+	test("the facade reads a boundary custom_message back as legacy's own entry type, not a user message", async () => {
+		const facades: SessionEntry[][] = [];
+		const projections: { messages: AgentMessage[]; llmMessages: AgentMessage[] }[] = [];
+		const current = await open(
+			[
+				(pi) => {
+					pi.on("turn_end", (event, ctx) => {
+						if (event.turnIndex === 0) {
+							return {
+								entries: [
+									{
+										type: "custom_message",
+										customType: "probe.reminder",
+										content: "REMINDER-MARKER",
+										display: false,
+										details: { source: "probe" },
+									},
+								],
+								continue: true,
+							};
+						}
+						facades.push(ctx.sessionManager.getEntries());
+						projections.push({
+							messages: event.context.contextMessages,
+							llmMessages: event.context.llmMessages,
+						});
+						return undefined;
+					});
+				},
+			],
+			[() => fauxAssistantMessage([fauxText("first")]), () => fauxAssistantMessage([fauxText("second")])],
+		);
+		expect((await settlement(current.controller.submitAndWait("go", "followUp"))).status).toBe("done");
+
+		const entries = facades.at(-1) ?? [];
+		expect(entries.filter((entry) => entry.type === "custom_message")).toEqual([
+			expect.objectContaining({
+				type: "custom_message",
+				customType: "probe.reminder",
+				content: "REMINDER-MARKER",
+				display: false,
+				details: { source: "probe" },
+			}),
+		]);
+		// Legacy reads it as a custom-role message: `contextMessages` carries it and `llmMessages` leaves it out.
+		const projection = projections.at(-1);
+		expect(projection?.messages.filter((message) => message.role === "custom")).toEqual([
+			expect.objectContaining({ role: "custom", customType: "probe.reminder", content: "REMINDER-MARKER" }),
+		]);
+		expect(projection?.llmMessages.filter((message) => message.role === "custom")).toEqual([]);
+	});
 
 	test("tool-round boundary events contain the real tool result and entry ids", async () => {
 		const rounds: TurnEndEvent[] = [];

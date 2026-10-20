@@ -40,7 +40,12 @@ import type {
 import { type BashExecutionMessage, bashExecutionToText } from "../messages.ts";
 import type { ModelRuntime } from "../model-runtime.ts";
 import { expandPromptTemplate, type PromptTemplate } from "../prompt-templates.ts";
-import type { ReadonlySessionManager, SessionEntry, SessionTreeNode } from "../session-manager.ts";
+import {
+	type ReadonlySessionManager,
+	type SessionEntry,
+	type SessionTreeNode,
+	sessionEntryToContextMessages,
+} from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import type { Settings } from "../settings-schema.ts";
 import type { BashOperations } from "../tools/bash.ts";
@@ -352,6 +357,25 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					parentId = id;
 					continue;
 				}
+				if (entry.kind === "custom_message" && messages[0]?.role === "user") {
+					// A boundary `custom_message` is legacy's own entry type, not a plain user message: an extension reading the
+					// facade back must see the type it appended, its display flag, and its details.
+					const id = String(entry.id);
+					const data: Record<string, unknown> =
+						typeof entry.data === "object" && entry.data !== null && !Array.isArray(entry.data) ? entry.data : {};
+					result.push({
+						type: "custom_message",
+						id,
+						parentId,
+						timestamp: new Date(0).toISOString(),
+						customType: typeof data.customType === "string" ? data.customType : "durable.custom_message",
+						content: messages[0].content,
+						display: typeof data.display === "boolean" ? data.display : true,
+						...(data.details === undefined ? {} : { details: data.details }),
+					});
+					parentId = id;
+					continue;
+				}
 				for (const message of messages) {
 					// Durable entry ids are exposed to extension boundary events so proposals can be validated and mapped back
 					// without inventing a second identity. Durable model entries are one message each in the active view.
@@ -381,12 +405,15 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			buildContextEntries: () => legacyEntries(),
 			buildSessionProjection: () => {
 				const entries = legacyEntries();
+				// The messages an entry reads as are legacy's own: a `custom_message` is a custom-role message, not the user
+				// message the request carries, so `llmMessages` drops it exactly as the legacy path does.
+				const projected = entries.map((entry) => ({
+					sourceEntry: entry,
+					messages: sessionEntryToContextMessages(entry),
+				}));
 				return {
-					entries: entries.map((entry) => ({
-						sourceEntry: entry,
-						messages: entry.type === "message" ? [entry.message] : [],
-					})),
-					messages: entries.flatMap((entry) => (entry.type === "message" ? [entry.message] : [])),
+					entries: projected,
+					messages: projected.flatMap((entry) => entry.messages),
 					thinkingLevel:
 						currentState === undefined ? "off" : (agentOf(currentState.conversation).thinkingLevel ?? "off"),
 					model: currentState === undefined ? null : (agentOf(currentState.conversation).model ?? null),
@@ -622,10 +649,18 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 				0,
 			);
 			activeRuns += 1;
+			// Counted exactly once whatever ends the run: a settled handler that throws must not make `ctx.isIdle()`
+			// answer true while another run is in flight. The count drops before the handlers, as they expect.
+			let counted = true;
+			const finishRun = (): void => {
+				if (!counted) return;
+				counted = false;
+				activeRuns -= 1;
+			};
 			return submission
 				.wait(context)
 				.then(async (settled) => {
-					activeRuns -= 1;
+					finishRun();
 					const messages = state.conversation.entries
 						.flatMap((entry) => (entry.model ?? []) as AgentMessage[])
 						.slice(startingMessageCount);
@@ -635,7 +670,9 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					return settled;
 				})
 				.catch((error: unknown) => {
-					activeRuns -= 1;
+					finishRun();
+					// A run that never settled still ends `streaming` warming, so no refresh outlives the run it warmed.
+					cacheWarmer?.onAgentSettled();
 					throw error;
 				});
 		};
@@ -696,7 +733,9 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 			if (!host.runEvents) return;
 			const stream = await watchEvents(opened, conversationId, context);
 			runEvents = stream;
-			stream.start((events) => host.agentEvents(events));
+			// `stop()` drops pending frames but lets a running delivery finish, so a batch of the replaced conversation can
+			// still arrive after the move. Only the active stream publishes, and the old conversation is no longer current.
+			stream.start((events) => (stream === runEvents ? host.agentEvents(events) : Promise.resolve()));
 		};
 		const bashAbortControllers = new Set<AbortController>();
 		/**

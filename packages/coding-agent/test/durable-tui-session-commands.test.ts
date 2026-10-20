@@ -172,7 +172,8 @@ describe("durable TUI session commands", () => {
 
 		const opened = current.current.view.current().session;
 		expect(opened.directory).not.toBe(previous);
-		expect(opened.cwd).toBe(current.current.view.current().session.cwd);
+		// The new session keeps the working directory the TUI runs in, which is the harness's.
+		expect(opened.cwd).toBe(cwd);
 		expect(events).toEqual(["start:startup", "shutdown:new", "start:startup"]);
 		expect(ui.notices).toEqual(["New session started"]);
 		// The previous session is closed: its lock is released, so another process could open it.
@@ -239,9 +240,14 @@ describe("durable TUI session commands", () => {
 			.split("\n")
 			.map((line) => JSON.parse(line) as Record_);
 		expect(lines[0]).toMatchObject({ type: "session", cwd });
-		expect(lines.filter((line) => line.type === "message").map((line) => (line.message as Record_).role)).toEqual([
-			"user",
-			"assistant",
+		// The exported session carries each line's own text, not just the roles.
+		expect(
+			lines
+				.filter((line) => line.type === "message")
+				.map((line) => [(line.message as Record_).role, (line.message as Record_).content]),
+		).toEqual([
+			["user", "export me"],
+			["assistant", [{ type: "text", text: "first" }]],
 		]);
 	});
 
