@@ -4,6 +4,8 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-20
+
 ### Breaking Changes
 
 1.4.0 makes the durable Harness and its SQLite session store the default for interactive, print, JSON, and RPC sessions (Decision #17). These are the changes a 1.3.0 user meets. Each one says what to do about it.
