@@ -8,21 +8,34 @@ import { BUILTIN_SLASH_COMMANDS } from "../src/core/slash-commands.ts";
  * that a built-in command is either run by the TUI or answered with a message, and never offered to the model.
  */
 describe("durable TUI command routing", () => {
+	/** The built-ins this path answers with a recorded reduction instead of running them (Decisions #24 and #34). */
+	const reduced = new Set(["tree", "import"]);
+
 	test.each(BUILTIN_SLASH_COMMANDS.map((command) => [command.name]))(
 		"/%s is answered by the durable TUI, with and without an argument",
 		(name) => {
-			// Either the TUI runs the command or it names the reason; the two reductions' exact messages have their own
-			// tests below. A command that falls through to the model is what this table exists to catch.
+			// The destination is part of the contract, not something read back from the router: a command that loses its
+			// handler and starts answering with a reduction message fails here, and so does one that reaches the model.
 			const bare = routeDurableInput(`/${name}`);
-			if (bare.kind === "command") expect(bare).toEqual({ kind: "command", name, args: "" });
-			else expect(bare).toMatchObject({ kind: "unsupported", name });
-
 			const withArgument = routeDurableInput(`/${name} an argument`);
-			if (withArgument.kind === "command") {
-				expect(withArgument).toEqual({ kind: "command", name, args: "an argument" });
-			} else expect(withArgument).toMatchObject({ kind: "unsupported", name });
+			if (reduced.has(name)) {
+				// The message itself is pinned by the two reduction tests below.
+				expect(bare).toMatchObject({ kind: "unsupported", name });
+				expect(withArgument).toMatchObject({ kind: "unsupported", name });
+				return;
+			}
+			expect(bare).toEqual({ kind: "command", name, args: "" });
+			expect(withArgument).toEqual({ kind: "command", name, args: "an argument" });
 		},
 	);
+
+	test("the reductions name built-ins that still exist", () => {
+		// A renamed or removed built-in must not leave a stale reduction behind, which would hide a command that no
+		// longer has any destination on this path.
+		expect([...reduced].filter((name) => !BUILTIN_SLASH_COMMANDS.some((command) => command.name === name))).toEqual(
+			[],
+		);
+	});
 
 	test.each([
 		["/model", { kind: "command", name: "model", args: "" }],

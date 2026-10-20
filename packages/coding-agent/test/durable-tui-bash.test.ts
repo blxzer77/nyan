@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, fauxText } from "@ny4n/ai";
@@ -8,7 +8,7 @@ import type { BashResult } from "../src/core/bash-executor.ts";
 import type { OpenDurableResult } from "../src/core/durable/runtime.ts";
 import { openDurable } from "../src/core/durable/runtime.ts";
 import type { ExtensionAPI, InlineExtension, ProjectTrustContext } from "../src/core/extensions/types.ts";
-import { runUserBash } from "../src/modes/durable/bash.ts";
+import { runUserBash, type UserBashRun } from "../src/modes/durable/bash.ts";
 import { settlement } from "./durable-submission.ts";
 
 /**
@@ -79,14 +79,17 @@ describe("durable TUI user bash", () => {
 		current: OpenDurableResult,
 		command: string,
 		excludeFromContext = false,
+		overrides: { readonly execute?: UserBashRun["execute"] } = {},
 	): Promise<Awaited<ReturnType<typeof runUserBash>>> {
 		return runUserBash({
 			command,
 			excludeFromContext,
 			cwd,
 			extensionHost: current.extensionHost,
-			execute: (text, excluded, onChunk, operations) =>
-				current.controller.executeBash(text, excluded, onChunk, operations),
+			execute:
+				overrides.execute ??
+				((text, excluded, onChunk, operations) =>
+					current.controller.executeBash(text, excluded, onChunk, operations)),
 			record: (text, result, excluded) => current.controller.recordBashResult(text, result, excluded),
 			view: {
 				append: (chunk) => {
@@ -217,6 +220,73 @@ describe("durable TUI user bash", () => {
 		expect(current.view.current().notices.map((notice) => [notice.level, notice.message])).toEqual([
 			["error", "Extension <inline:2> failed on user_bash: the sandbox is unavailable"],
 		]);
+	});
+
+	test("a command with no output finishes with an empty result", async () => {
+		const current = await open();
+
+		expect(await run(current, "printf ''")).toEqual({ status: "ran" });
+
+		expect(finished).toEqual({ output: "", exitCode: 0, cancelled: false, truncated: false });
+		expect(chunks).toEqual([]);
+		const [entry] = bashEntries(current);
+		expect(entry?.data).toMatchObject({ command: "printf ''", output: "", exitCode: 0, cancelled: false });
+	});
+
+	test("output past the limit is truncated, and the full output is kept for reading", async () => {
+		const current = await open();
+		const command = "node -e \"process.stdout.write('x'.repeat(200000))\"";
+
+		expect(await run(current, command)).toEqual({ status: "ran" });
+
+		expect(finished?.truncated).toBe(true);
+		// A truncated result names the file holding everything, and the file holds everything.
+		const path = finished?.fullOutputPath;
+		expect(path).toBeDefined();
+		const full = await readFile(path ?? "", "utf8");
+		expect(full.length).toBe(200_000);
+		await rm(path ?? "", { force: true });
+		const [entry] = bashEntries(current);
+		expect(entry?.data).toMatchObject({ truncated: true, command });
+	});
+
+	test("a cancelled command keeps the output it produced and is recorded as cancelled", async () => {
+		const current = await open();
+
+		const running = run(current, "printf 'before\\n'; sleep 30; printf 'after\\n'");
+		// Abort once output arrives, as escape does in the TUI.
+		await new Promise<void>((resolve) => {
+			const poll = setInterval(() => {
+				if (chunks.length === 0) return;
+				clearInterval(poll);
+				current.controller.abortBash();
+				resolve();
+			}, 20);
+		});
+
+		expect(await running).toEqual({ status: "ran" });
+		expect(finished?.cancelled).toBe(true);
+		expect(finished?.output).toContain("before");
+		expect(finished?.output).not.toContain("after");
+		const [entry] = bashEntries(current);
+		expect(entry?.data).toMatchObject({ cancelled: true });
+	});
+
+	test("an executor that throws leaves the card for the caller to report", async () => {
+		const current = await open();
+
+		// runUserBash does not swallow a failed execution: the TUI's caller reports it and abandons the card, so the
+		// failure reaches the user instead of leaving a card spinning.
+		await expect(
+			run(current, "printf 'never\\n'", false, {
+				execute: async () => {
+					throw new Error("spawn /bin/bash ENOENT");
+				},
+			}),
+		).rejects.toThrow("spawn /bin/bash ENOENT");
+
+		expect(finished).toBeUndefined();
+		expect(bashEntries(current)).toEqual([]);
 	});
 
 	test("a recorded command is answered by the model on the next prompt", async () => {

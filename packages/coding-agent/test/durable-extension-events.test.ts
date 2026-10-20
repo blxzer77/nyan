@@ -286,15 +286,29 @@ describe("durable host events and context", () => {
 		expect((await settlement(current.controller.submitAndWait("go", "followUp"))).status).toBe("done");
 
 		const entries = facades.at(-1) ?? [];
-		expect(entries.filter((entry) => entry.type === "custom_message")).toEqual([
-			expect.objectContaining({
-				type: "custom_message",
-				customType: "probe.reminder",
-				content: "REMINDER-MARKER",
-				display: false,
-				details: { source: "probe" },
-			}),
-		]);
+		const customMessages = entries.filter((entry) => entry.type === "custom_message");
+		expect(customMessages).toHaveLength(1);
+		const durableCustom = current.view
+			.current()
+			.conversation.entries.find((entry) => entry.kind === "custom_message");
+		expect(durableCustom).toBeDefined();
+		// The facade's ids are the durable entry ids and its parent links chain the entries in append order. `getEntry`,
+		// `getLeafEntry`, and a `context_edit` target all resolve through them, so a wrong id or a broken chain breaks an
+		// extension while its own assertions still pass.
+		const customIndex = entries.findIndex((entry) => entry.type === "custom_message");
+		expect(customMessages[0]).toEqual({
+			type: "custom_message",
+			id: String(durableCustom?.id),
+			parentId: customIndex === 0 ? null : entries[customIndex - 1]?.id,
+			timestamp: expect.any(String),
+			customType: "probe.reminder",
+			content: "REMINDER-MARKER",
+			display: false,
+			details: { source: "probe" },
+		});
+		for (const [index, entry] of entries.entries()) {
+			expect(entry.parentId).toBe(index === 0 ? null : entries[index - 1]?.id);
+		}
 		// Legacy reads it as a custom-role message: `contextMessages` carries it and `llmMessages` leaves it out.
 		const projection = projections.at(-1);
 		expect(projection?.messages.filter((message) => message.role === "custom")).toEqual([
