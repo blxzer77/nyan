@@ -2,12 +2,13 @@ import * as path from "node:path";
 import type { Container, EditorComponent, TUI } from "@ny4n/tui";
 import type { AgentSession } from "../../core/agent-session.ts";
 import {
+	assembleBugReport,
 	BUG_REPORT_CUSTOM_ENTRY_TYPE,
+	BUG_REPORT_DISCLAIMER,
+	BUG_REPORT_TRANSCRIPT_NOTE,
 	type BugReportBundle,
 	type BugReportSessionEntryData,
 	bugReportArchiveFileName,
-	collectBugReportDiagnostics,
-	collectBugReportMetadata,
 	writeBugReportArchive,
 } from "../../core/bug-report.ts";
 import { clearCrashLog, readCrashLog } from "../../core/crash-log.ts";
@@ -36,11 +37,6 @@ interface BugReportOptions {
 }
 
 type Overlay = Container & { dispose?: () => void };
-
-const DISCLAIMER =
-	"This report is written to a zip archive on your machine and is not sent anywhere. It includes your nyan version, operating system, the current model and provider configuration (without API keys), loaded extensions, settings, and provider error diagnostics from this session.";
-const TRANSCRIPT_NOTE =
-	"The transcript contains your messages, model output, tool calls and their results, including file contents and command output read during this session.";
 
 /** Run the `/bug` flow: consent, optional summary, then export a zip archive. */
 export async function reportBug(context: BugReportContext, initialHint?: string): Promise<void> {
@@ -85,13 +81,18 @@ async function promptForOptions(
 	context: BugReportContext,
 	initialHint: string | undefined,
 ): Promise<BugReportOptions | undefined> {
-	const hint = await input(context, "Report a bug", `${DISCLAIMER}\n\nWhat went wrong? (optional)`, initialHint);
+	const hint = await input(
+		context,
+		"Report a bug",
+		`${BUG_REPORT_DISCLAIMER}\n\nWhat went wrong? (optional)`,
+		initialHint,
+	);
 	if (hint === null) return undefined;
 	const transcript = await choose(
 		context,
 		"Include the session transcript?",
 		["Yes, include the transcript", "No"],
-		TRANSCRIPT_NOTE,
+		BUG_REPORT_TRANSCRIPT_NOTE,
 	);
 	if (!transcript) return undefined;
 	const includeSession = transcript !== "No";
@@ -124,30 +125,28 @@ async function promptForOptions(
 
 function buildBundle(session: AgentSession, options: BugReportOptions, summary: string | undefined): BugReportBundle {
 	const extensions = session.resourceLoader.getExtensions();
-	return {
-		metadata: collectBugReportMetadata({
-			hint: options.hint,
-			sessionId: session.sessionId,
-			cwd: session.sessionManager.getCwd(),
-			includeSession: options.includeSession,
-			includeSummary: summary !== undefined,
-			messageCount: session.messages.length,
-			model: session.model,
-			modelRuntime: session.modelRuntime,
-			thinkingLevel: session.thinkingLevel,
-			extensions: extensions.extensions,
-			extensionErrors: extensions.errors,
-			globalSettings: session.settingsManager.getGlobalSettings(),
-			projectSettings: session.settingsManager.getProjectSettings(),
-		}),
-		diagnostics: collectBugReportDiagnostics(session.sessionManager, readCrashLog()),
-		summary,
+	return assembleBugReport({
+		hint: options.hint,
+		session: session.sessionManager,
+		cwd: session.sessionManager.getCwd(),
+		includeSession: options.includeSession,
+		includeSummary: summary !== undefined,
+		messageCount: session.messages.length,
+		model: session.model,
+		modelRuntime: session.modelRuntime,
+		thinkingLevel: session.thinkingLevel,
+		extensions: extensions.extensions,
+		extensionErrors: extensions.errors,
+		globalSettings: session.settingsManager.getGlobalSettings(),
+		projectSettings: session.settingsManager.getProjectSettings(),
+		crashes: readCrashLog(),
 		sessionJsonl: options.includeSession
 			? serializeSessionBranch(session.sessionManager, (parentId, timestamp) =>
 					createShareTrailingEntries(session, parentId, timestamp),
 				)
 			: undefined,
-	};
+		summary,
+	});
 }
 
 async function exportZip(context: BugReportContext, bundle: BugReportBundle): Promise<void> {

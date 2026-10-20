@@ -189,7 +189,15 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 		setToolsExpanded: () => {},
 	});
 
-	durable.extensionHost.runner.setUIContext(createExtensionUIContext(), "rpc");
+	/**
+	 * Bind this mode's dialogs to one open. The extension runner is built per open, so a session the RPC mode replaces or
+	 * switches to needs its own binding: an unbound runner reports `ctx.hasUI === false` and answers every dialog
+	 * unanswered, which is what a reopened session saw.
+	 */
+	const bindUIContext = (source: OpenDurableResult): void => {
+		source.extensionHost.runner.setUIContext(createExtensionUIContext(), "rpc");
+	};
+	bindUIContext(durable);
 	const success = (id: string | undefined, command: string, data?: object | null): RpcResponse =>
 		({
 			...(id === undefined ? {} : { id }),
@@ -246,6 +254,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 		durable = await openDurable({ ...options, continueSession, services, eventStream: true });
 		sessionName = await durable.sessionOps.getSessionName();
 		bindExtensionErrors(durable);
+		bindUIContext(durable);
 		await bindEvents();
 	};
 
@@ -553,6 +562,7 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 				durable = next;
 				sessionName = await durable.sessionOps.getSessionName();
 				bindExtensionErrors(durable);
+				bindUIContext(durable);
 				await bindEvents();
 				return success(id, "switch_session", { cancelled: false });
 			}

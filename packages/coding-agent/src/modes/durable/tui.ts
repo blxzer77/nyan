@@ -72,6 +72,7 @@ import {
 } from "../../ui/theme/theme.ts";
 import { copyToClipboard } from "../../utils/clipboard.ts";
 import { runUserBash } from "./bash.ts";
+import type { DurableBugReportEnvironment } from "./bug-report.ts";
 import { DurableCommands, type DurableReopenRequest } from "./commands.ts";
 
 const SELECT_THEME: SelectListTheme = {
@@ -458,7 +459,7 @@ class DurableTui {
 	}
 
 	/** A filterable list in place of the editor; undefined when the user cancelled. */
-	choose(title: string, items: readonly SelectItem[]): Promise<string | undefined> {
+	choose(title: string, items: readonly SelectItem[], description?: string): Promise<string | undefined> {
 		return new Promise((resolve) => {
 			let settled = false;
 			const finish = (value: string | undefined): void => {
@@ -467,8 +468,14 @@ class DurableTui {
 				this.restoreEditor();
 				resolve(value);
 			};
-			this.mount(new ListSelector(title, [...items], finish, () => finish(undefined)));
+			const heading = description === undefined ? title : `${title}\n${theme.fg("dim", description)}`;
+			this.mount(new ListSelector(heading, [...items], finish, () => finish(undefined)));
 		});
+	}
+
+	/** One line of text in place of the editor, with `description` above it; undefined when cancelled. */
+	askText(title: string, description: string): Promise<string | undefined> {
+		return this.#inputPrompt(title, description);
 	}
 
 	/** Add lines to the transcript, after the messages a command answers with. */
@@ -911,6 +918,8 @@ export interface DurableTuiOpen {
 	readonly extensionHost?: ExtensionHost;
 	/** Session-wide product operations: the display name, the entry list, the picker, and forks. */
 	readonly sessionOps?: DurableSessionOps;
+	/** What `/bug` reads from the process: the model runtime, the settings, and the loaded extensions. */
+	readonly bugReport?: DurableBugReportEnvironment;
 }
 
 /** What the TUI needs from the caller that owns opening sessions. */
@@ -1128,7 +1137,12 @@ export async function runDurableTui(
 				current: () => {
 					const sessionOps = shown.sessionOps;
 					if (sessionOps === undefined) throw new Error("This session has no session operations");
-					return { view: shown.view.current(), controller: shown.controller, sessionOps };
+					return {
+						view: shown.view.current(),
+						controller: shown.controller,
+						sessionOps,
+						...(shown.bugReport === undefined ? {} : { bugReport: shown.bugReport }),
+					};
 				},
 				readSessionName: async () => await shown.sessionOps?.getSessionName(),
 				...(sessions?.reopen === undefined
@@ -1150,7 +1164,8 @@ export async function runDurableTui(
 						}),
 			},
 			{
-				select: (title, items) => view.choose(title, items),
+				select: (title, items, description) => view.choose(title, items, description),
+				input: (title, description) => view.askText(title, description),
 				showLines: (lines) => view.showLines(lines),
 				showMarkdown: (markdown) => view.showMarkdown(markdown),
 				copy: (text) => copyToClipboard(text),

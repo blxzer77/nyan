@@ -6,11 +6,19 @@ import type { DurableTuiOpen } from "./tui.ts";
 
 /** The members of an open that a TUI renders and operates on. */
 export function tuiof(open: OpenDurableResult): DurableTuiOpen {
+	const extensions = open.services.resourceLoader.getExtensions();
 	return {
 		view: open.view,
 		controller: open.controller,
 		extensionHost: open.extensionHost,
 		sessionOps: open.sessionOps,
+		// `/bug` reports the model runtime, settings, and extensions of the process, which outlive every session.
+		bugReport: {
+			modelRuntime: open.modelRuntime,
+			settings: open.settings,
+			extensions: extensions.extensions,
+			extensionErrors: extensions.errors,
+		},
 	};
 }
 
