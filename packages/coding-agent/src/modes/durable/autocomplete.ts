@@ -6,7 +6,7 @@ import {
 	fuzzyFilter,
 	type SlashCommand,
 } from "@ny4n/tui";
-import { DURABLE_TUI_COMMANDS, type DurableTuiCommand } from "../../core/durable/commands.ts";
+import { DURABLE_TUI_COMMANDS, type DurableTuiCommand, pendingCommandMessage } from "../../core/durable/commands.ts";
 import type { ResolvedCommand } from "../../core/extensions/index.ts";
 import type { ModelRuntime } from "../../core/model-runtime.ts";
 import type { PromptTemplate } from "../../core/prompt-templates.ts";
@@ -39,16 +39,23 @@ const DURABLE_ONLY_DESCRIPTIONS: Record<"tasks" | "agents", string> = {
 	agents: "Switch to another agent conversation",
 };
 
+/** How the completion describes a command this build recognizes but can only refuse. */
+export const UNAVAILABLE_DESCRIPTION = "Not available on a durable session; running it says why";
+
 /**
  * One `/` command of the durable TUI, described as legacy describes it. The list is `DURABLE_TUI_COMMANDS`, the same
- * list the router reads: a name offered here is a name that never becomes a prompt.
+ * list the router reads: a name offered here is a name that never becomes a prompt. A command the router only refuses
+ * is described as unavailable rather than as the legacy command it cannot be.
  */
 function durableCommand(name: DurableTuiCommand): SlashCommand {
-	const description =
-		name === "tasks" || name === "agents"
-			? DURABLE_ONLY_DESCRIPTIONS[name]
-			: BUILTIN_SLASH_COMMANDS.find((command) => command.name === name)?.description;
-	return { name, ...(description === undefined ? {} : { description }) };
+	if (name === "tasks" || name === "agents") return { name, description: DURABLE_ONLY_DESCRIPTIONS[name] };
+	if (pendingCommandMessage(name) !== undefined) return { name, description: UNAVAILABLE_DESCRIPTION };
+	const builtin = BUILTIN_SLASH_COMMANDS.find((command) => command.name === name);
+	return {
+		name,
+		...(builtin?.description === undefined ? {} : { description: builtin.description }),
+		...(builtin?.argumentHint === undefined ? {} : { argumentHint: builtin.argumentHint }),
+	};
 }
 
 /**
@@ -67,13 +74,17 @@ function modelArgumentCompletions(sources: DurableAutocompleteSources, prefix: s
 	}));
 }
 
-/** The `/thinking` arguments: the levels the conversation's model supports, which is `off` alone for a model without it. */
+/**
+ * The `/thinking` arguments: the levels the conversation's model supports, which is `off` alone for a model without it.
+ * Nothing is offered without a model to read them from: `/thinking` says so itself, and a completion must not claim a
+ * level that command refuses to set.
+ */
 function thinkingArgumentCompletions(sources: DurableAutocompleteSources, prefix: string): AutocompleteItem[] | null {
 	const current = sources.currentModel();
 	const model = current === undefined ? undefined : sources.modelRuntime?.getModel(current.provider, current.modelId);
-	const levels = model === undefined ? ["off"] : getSupportedThinkingLevels(model);
+	if (model === undefined) return null;
 	return fuzzyAutocompleteItems(
-		levels,
+		getSupportedThinkingLevels(model),
 		prefix,
 		(level) => level,
 		(level) => ({ value: level, label: level }),
@@ -91,10 +102,11 @@ function fuzzyAutocompleteItems<T>(
 }
 
 /**
- * The commands the durable TUI completes: the ones it answers, the prompt templates it expands, and the commands
- * extensions registered. Legacy's filtering applies, so an extension command whose name is a built-in is not offered
- * beside it. Skill commands are left out: this path does not expand `/skill:<name>` yet, and offering one would send its
- * text to the model unexpanded.
+ * The commands the durable TUI completes, in the order one submission is routed through them: the commands it answers,
+ * then the commands extensions registered, then the prompt templates it expands. A name a router command owns is never
+ * offered twice, because the router answers it first. Two extensions may register one name, so each is offered under its
+ * own invocation name. Skill commands are left out: this path does not expand `/skill:<name>` yet, and offering one would
+ * send its text to the model unexpanded.
  */
 export function durableAutocompleteCommands(sources: DurableAutocompleteSources): SlashCommand[] {
 	const commands = DURABLE_TUI_COMMANDS.map(durableCommand);
@@ -104,7 +116,20 @@ export function durableAutocompleteCommands(sources: DurableAutocompleteSources)
 		else if (command.name === "thinking")
 			command.getArgumentCompletions = (prefix) => thinkingArgumentCompletions(sources, prefix);
 	}
-	const taken = new Set(commands.map((command) => command.name));
+	// The router answers its own names before anything else, so those are the ones nothing else may take.
+	const taken = new Set<string>(DURABLE_TUI_COMMANDS);
+	for (const command of sources.extensionCommands ?? []) {
+		// Only a router name hides an extension command: a submission offers the extension the name before a template.
+		if (taken.has(command.name) || taken.has(command.invocationName)) continue;
+		taken.add(command.invocationName);
+		commands.push({
+			name: command.invocationName,
+			...(command.description === undefined ? {} : { description: command.description }),
+			...(command.getArgumentCompletions === undefined
+				? {}
+				: { getArgumentCompletions: command.getArgumentCompletions }),
+		});
+	}
 	for (const template of sources.promptTemplates) {
 		if (taken.has(template.name)) continue;
 		taken.add(template.name);
@@ -112,17 +137,6 @@ export function durableAutocompleteCommands(sources: DurableAutocompleteSources)
 			name: template.name,
 			description: template.description,
 			...(template.argumentHint === undefined ? {} : { argumentHint: template.argumentHint }),
-		});
-	}
-	for (const command of sources.extensionCommands ?? []) {
-		if (taken.has(command.name)) continue;
-		taken.add(command.name);
-		commands.push({
-			name: command.invocationName,
-			...(command.description === undefined ? {} : { description: command.description }),
-			...(command.getArgumentCompletions === undefined
-				? {}
-				: { getArgumentCompletions: command.getArgumentCompletions }),
 		});
 	}
 	return commands;
