@@ -61,8 +61,9 @@ permissions:
   actions: read
 
 env:
-  # The only model this repository sends to OCR. The id is the one in packages/ai/scripts/generate-models.ts.
-  OCR_MODEL: gpt-6.1-sol
+  # A task profile, not a model id: the dispatch host's gateway resolves it to a deep-tier candidate and fails over
+  # inside that tier. See the gateway section of .agents/notes/proposed/process/2026-10-19-pipeline-implementation-plan.md.
+  OCR_MODEL: review.deep
   # The OCR command behind the dispatch service accepts low, medium and high; "xhigh" is rejected there
   # (`--effort: invalid effort "xhigh": must be one of low, medium, high`, checked 2026-10-18). High is its maximum
   # for the OCR dispatcher itself; the model's reasoning strength is sent separately below.
