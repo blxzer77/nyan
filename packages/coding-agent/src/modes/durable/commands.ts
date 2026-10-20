@@ -6,6 +6,7 @@ import type { DurableController, DurableView, Notice } from "../../core/durable/
 import type { DurableSessionOps } from "../../core/durable/session-ops.ts";
 import { normalizeChangelogLinks, parseChangelog } from "../../utils/changelog.ts";
 import { formatTokens } from "../interactive/components/footer.ts";
+import { type DurableBugReportEnvironment, reportDurableBug, shareDurableSession } from "./bug-report.ts";
 import { listSiblingSessions } from "./session-list.ts";
 
 /** The open session a command runs against. A reopen replaces every member. */
@@ -13,6 +14,8 @@ export interface DurableCommandSession {
 	readonly view: DurableView;
 	readonly controller: DurableController;
 	readonly sessionOps: DurableSessionOps;
+	/** What `/bug` reads from the process; absent in an embedding that owns no model runtime. */
+	readonly bugReport?: DurableBugReportEnvironment;
 }
 
 /** A reopened session: the same members, for the next session directory. */
@@ -25,7 +28,9 @@ export type DurableReopenRequest =
 /** Everything a command needs from the terminal: dialogs, the transcript, notices, and the exit. */
 export interface DurableCommandUi {
 	/** A filterable list; undefined when the user cancelled. */
-	select(title: string, items: readonly SelectItem[]): Promise<string | undefined>;
+	select(title: string, items: readonly SelectItem[], description?: string): Promise<string | undefined>;
+	/** One line of text, with `description` above it; undefined when the user cancelled. */
+	input(title: string, description: string): Promise<string | undefined>;
 	/** Add lines to the transcript, as legacy's `/session` and `/name` do. */
 	showLines(lines: readonly string[]): void;
 	/** The display name changed: the footer shows the one stored beside the database. */
@@ -103,6 +108,10 @@ export class DurableCommands {
 				return this.#copy();
 			case "changelog":
 				return this.#changelog();
+			case "share":
+				return this.#share();
+			case "bug":
+				return this.#bug();
 			case "model":
 			case "compact":
 			case "tasks":
@@ -126,6 +135,17 @@ export class DurableCommands {
 		} catch (error) {
 			this.#ui.notify(`Failed to export session: ${messageOf(error)}`, "error");
 		}
+	}
+
+	async #share(): Promise<void> {
+		await shareDurableSession(this.#ui, this.#host.current().sessionOps);
+	}
+
+	async #bug(): Promise<void> {
+		const session = this.#host.current();
+		const environment = session.bugReport;
+		if (environment === undefined) return this.#unavailable("bug");
+		await reportDurableBug(this.#ui, session, environment);
 	}
 
 	async #copy(): Promise<void> {

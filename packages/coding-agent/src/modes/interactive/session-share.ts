@@ -1,12 +1,11 @@
-import { spawn, spawnSync } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { type Container, type EditorComponent, hyperlink, type TUI } from "@ny4n/tui";
-import { getShareViewerUrl } from "../../config.ts";
 import type { AgentSession } from "../../core/agent-session.ts";
 import { exportSessionToJsonl } from "../../core/session-export.ts";
+import { checkGistAuth, createGist } from "../../core/session-share.ts";
 import { theme } from "../../ui/theme/theme.ts";
 import { BorderedLoader } from "./components/bordered-loader.ts";
 
@@ -65,9 +64,9 @@ export async function shareSession(context: SessionShareContext): Promise<void> 
 			return;
 		}
 		try {
-			const authResult = spawnSync("gh", ["auth", "status"], { encoding: "utf-8" });
-			if (authResult.status !== 0) {
-				context.showError("GitHub CLI is not logged in. Run 'gh auth login' first.");
+			const auth = checkGistAuth();
+			if (!auth.ready) {
+				context.showError(auth.message);
 				return;
 			}
 		} catch {
@@ -98,52 +97,25 @@ async function shareViaGist(tmpFile: string, context: SessionShareContext): Prom
 	context.ui.setFocus(loader);
 	context.ui.requestRender();
 
-	let proc: ReturnType<typeof spawn> | null = null;
 	loader.onAbort = () => {
-		proc?.kill();
 		restoreEditor(loader, context);
 		context.showStatus("Share cancelled");
 	};
 
 	try {
-		const result = await new Promise<{ stdout: string; stderr: string; code: number | null }>((resolve) => {
-			proc = spawn("gh", ["gist", "create", "--public=false", tmpFile]);
-			let stdout = "";
-			let stderr = "";
-			proc.stdout?.on("data", (data) => {
-				stdout += data.toString();
-			});
-			proc.stderr?.on("data", (data) => {
-				stderr += data.toString();
-			});
-			proc.on("close", (code) => resolve({ stdout, stderr, code }));
-		});
-
+		const gist = await createGist(tmpFile, { signal: loader.signal });
 		if (loader.signal.aborted) return;
 		restoreEditor(loader, context);
 
-		if (result.code !== 0) {
-			context.showError(`Failed to create gist: ${result.stderr?.trim() || "Unknown error"}`);
-			return;
-		}
-
-		const gistUrl = result.stdout?.trim();
-		const gistId = gistUrl?.split("/").pop();
-		if (!gistId) {
-			context.showError("Failed to parse gist ID from gh output");
-			return;
-		}
-
-		const previewUrl = getShareViewerUrl(gistId);
 		context.showStatus(
-			previewUrl
-				? `Share URL: ${hyperlink(previewUrl, previewUrl)}\nGist: ${hyperlink(gistUrl, gistUrl)}`
-				: `Gist: ${hyperlink(gistUrl, gistUrl)}`,
+			gist.previewUrl === undefined
+				? `Gist: ${hyperlink(gist.gistUrl, gist.gistUrl)}`
+				: `Share URL: ${hyperlink(gist.previewUrl, gist.previewUrl)}\nGist: ${hyperlink(gist.gistUrl, gist.gistUrl)}`,
 		);
 	} catch (error: unknown) {
 		if (!loader.signal.aborted) {
 			restoreEditor(loader, context);
-			context.showError(`Failed to create gist: ${error instanceof Error ? error.message : "Unknown error"}`);
+			context.showError(error instanceof Error ? error.message : "Unknown error");
 		}
 	}
 }

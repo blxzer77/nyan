@@ -59,8 +59,6 @@ const PENDING = {
 	thinking: pending("thinking"),
 	import:
 		"durable sessions are not JSONL files, so /import cannot open one. Open it with `nyan --session <file>`, which reads legacy sessions read-only, or with `nyan --resume`.",
-	share: pending("share"),
-	bug: pending("bug"),
 	hotkeys: pending("hotkeys"),
 	trust: pending("trust"),
 	login: pending("login"),

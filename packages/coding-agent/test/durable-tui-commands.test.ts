@@ -36,6 +36,8 @@ describe("durable TUI command routing", () => {
 		["/export out.html", { kind: "command", name: "export", args: "out.html" }],
 		["/copy", { kind: "command", name: "copy", args: "" }],
 		["/changelog", { kind: "command", name: "changelog", args: "" }],
+		["/share", { kind: "command", name: "share", args: "" }],
+		["/bug", { kind: "command", name: "bug", args: "" }],
 		["!echo bash-ok", { kind: "bash", command: "echo bash-ok", excludeFromContext: false }],
 		["!!echo hidden", { kind: "bash", command: "echo hidden", excludeFromContext: true }],
 		["  !  ls -la  ", { kind: "bash", command: "ls -la", excludeFromContext: false }],
