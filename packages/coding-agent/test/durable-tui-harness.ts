@@ -1,7 +1,13 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type FauxModelDefinition, fauxAssistantMessage, fauxProvider, fauxText } from "@ny4n/ai";
+import {
+	type FauxModelDefinition,
+	type FauxResponseStep,
+	fauxAssistantMessage,
+	fauxProvider,
+	fauxText,
+} from "@ny4n/ai";
 import type { Component } from "@ny4n/tui";
 import { vi } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
@@ -125,18 +131,20 @@ export class TuiHarness {
 
 	/**
 	 * Open a session with a faux provider; `probe` records the extension lifecycle of every reopen. `models` selects the
-	 * faux models, such as one that supports thinking, and `extraFactories` adds extensions after the probe.
+	 * faux models, such as one that supports thinking, and `extraFactories` adds extensions after the probe. `steps`
+	 * answer instead of `responses`, so a test can hold a run open with a step that waits.
 	 */
 	async open(
 		responses: string[] = this.responses,
 		options: {
 			readonly models?: FauxModelDefinition[];
 			readonly extraFactories?: readonly InlineExtension[];
+			readonly steps?: FauxResponseStep[];
 		} = {},
 	): Promise<DurableSessionOwner> {
 		this.responses = responses;
 		const faux = fauxProvider(options.models === undefined ? {} : { models: options.models });
-		faux.setResponses(responses.map((text) => () => fauxAssistantMessage([fauxText(text)])));
+		faux.setResponses(options.steps ?? responses.map((text) => () => fauxAssistantMessage([fauxText(text)])));
 		const model = faux.getModel();
 		const provider: InlineExtension = (pi: ExtensionAPI) => {
 			pi.registerProvider(faux.provider);

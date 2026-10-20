@@ -77,6 +77,7 @@ import { copyToClipboard } from "../../utils/clipboard.ts";
 import { runUserBash } from "./bash.ts";
 import type { DurableBugReportEnvironment } from "./bug-report.ts";
 import { type DurableCommandProduct, DurableCommands, type DurableReopenRequest } from "./commands.ts";
+import { type DurableEditorPort, DurableInput, readClipboardPaste } from "./input.ts";
 import { enabledModelIds } from "./scoped-models.ts";
 import type { DurableSettingsUi } from "./settings.ts";
 
@@ -239,8 +240,22 @@ interface Handlers {
 	followUp(text: string): void;
 	abort(): void;
 	exit(): void;
+	/** ctrl+c: clear the editor, and exit only when it is the second press in the window. */
+	interrupt(): void;
 	selectModel(): void;
 	cycleThinking(): void;
+	cycleModel(direction: "forward" | "backward"): void;
+	/** Restore the queued messages to the editor. */
+	dequeue(): void;
+	/** Paste the clipboard into the editor at the cursor. */
+	paste(): void;
+	/** Copy the newest answer, as `/copy` does. */
+	copyAnswer(): void;
+	toggleThinking(): void;
+	openExternalEditor(): void;
+	suspend(): void;
+	/** One key press: true when an extension shortcut took it, so the editor does not see it. */
+	extensionShortcut(data: string): boolean;
 }
 
 class DurableTui {
@@ -270,6 +285,8 @@ class DurableTui {
 	readonly #summaries: CompactionComponent[] = [];
 	/** Tool output and summaries shown in full; toggled like nyan. */
 	#expanded = false;
+	/** Thinking blocks hidden; toggled by ctrl+t, and stored in the settings for the next start. */
+	#hideThinking: boolean;
 	#renderedEntryIds: number[] = [];
 	#streaming: AssistantMessageComponent | undefined;
 	#indicator: StatusIndicator | undefined;
@@ -289,9 +306,10 @@ class DurableTui {
 	#rebuilt = false;
 	#transcript: ScrollView;
 
-	constructor(cwd: string, handlers: Handlers, outputPad = 1) {
+	constructor(cwd: string, handlers: Handlers, outputPad = 1, hideThinking = false) {
 		this.#cwd = cwd;
 		this.#outputPad = outputPad;
+		this.#hideThinking = hideThinking;
 		this.#ui = new TuiAltScreen(new ProcessTerminal(), false, getAgentDir());
 		const keybindings = KeybindingsManager.create();
 		setKeybindings(keybindings);
@@ -303,9 +321,18 @@ class DurableTui {
 		this.#editor.onSubmit = handlers.submit;
 		this.#editor.onEscape = handlers.abort;
 		this.#editor.onCtrlD = handlers.exit;
-		this.#editor.onAction("app.clear", handlers.exit);
+		this.#editor.onPasteImage = handlers.paste;
+		this.#editor.onExtensionShortcut = (data) => handlers.extensionShortcut(data);
+		this.#editor.onAction("app.clear", handlers.interrupt);
+		this.#editor.onAction("app.suspend", handlers.suspend);
 		this.#editor.onAction("app.model.select", handlers.selectModel);
+		this.#editor.onAction("app.model.cycleForward", () => handlers.cycleModel("forward"));
+		this.#editor.onAction("app.model.cycleBackward", () => handlers.cycleModel("backward"));
 		this.#editor.onAction("app.thinking.cycle", handlers.cycleThinking);
+		this.#editor.onAction("app.thinking.toggle", handlers.toggleThinking);
+		this.#editor.onAction("app.message.dequeue", handlers.dequeue);
+		this.#editor.onAction("app.editor.external", handlers.openExternalEditor);
+		this.#editor.onAction("app.message.copy", handlers.copyAnswer);
 		this.#editor.onAction("app.tools.expand", () => {
 			this.#expanded = !this.#expanded;
 			for (const component of [...this.#cards, ...this.#summaries]) component.setExpanded(this.#expanded);
@@ -589,6 +616,33 @@ class DurableTui {
 		};
 	}
 
+	/** Show or hide the thinking blocks of every message, and of the ones rendered later. */
+	setThinkingHidden(hidden: boolean): void {
+		this.#hideThinking = hidden;
+		for (const child of this.#chat.children) {
+			if (child instanceof AssistantMessageComponent) child.setHideThinkingBlock(hidden);
+		}
+		this.#ui.requestRender();
+	}
+
+	/** The editor as the input actions read and write it: their only view of the terminal. */
+	createEditorPort(): DurableEditorPort {
+		return {
+			getText: () => this.#editor.getExpandedText(),
+			setText: (text) => {
+				this.#editor.setText(text);
+				this.#ui.requestRender();
+			},
+			insertText: (text) => {
+				this.#editor.insertTextAtCursor(text);
+				this.#ui.requestRender();
+			},
+			cursor: () => this.#editor.getCursor(),
+			addToHistory: (text) => this.#editor.addToHistory(text),
+			setThinkingHidden: (hidden) => this.setThinkingHidden(hidden),
+		};
+	}
+
 	/** Reload keybindings and repaint, after a `/reload` replaced the files they come from. */
 	reloadBindings(): void {
 		this.#keybindings.reload();
@@ -767,7 +821,7 @@ class DurableTui {
 		this.#footerHints.setText(
 			`${statuses.length > 0 ? `${theme.fg("accent", statuses.join(" · "))} · ` : ""}${theme.fg(label === "main" ? "dim" : "accent", label)}${theme.fg(
 				"dim",
-				` · ${model} · thinking:${agent.thinkingLevel ?? "off"} (${keyText("app.thinking.cycle")}) · ${keyText("app.model.select")} or /model · /agents · /compact · /tasks · ${keyText("app.message.followUp")} follow-up · ${keyText("app.clear")} exit`,
+				` · ${model} · thinking:${agent.thinkingLevel ?? "off"} (${keyText("app.thinking.cycle")}) · ${keyText("app.model.select")} or /model · /agents · /compact · /tasks · ${keyText("app.message.followUp")} follow-up · ${keyText("app.clear")} clear, twice to exit`,
 			)}`,
 		);
 	}
@@ -803,7 +857,7 @@ class DurableTui {
 			this.#chat.addChild(new Spacer(1));
 			this.#chat.addChild(new UserMessageComponent(userText(message.content)));
 		} else if (entry.kind === "nyan.assistant" && message?.role === "assistant") {
-			const component = this.#streaming ?? new AssistantMessageComponent();
+			const component = this.#streaming ?? new AssistantMessageComponent(undefined, this.#hideThinking);
 			if (this.#streaming === undefined) this.#chat.addChild(component);
 			this.#streaming = undefined;
 			component.updateContent(message, false);
@@ -875,7 +929,7 @@ class DurableTui {
 
 	#syncStreaming(message: AssistantMessage): void {
 		if (this.#streaming === undefined) {
-			this.#streaming = new AssistantMessageComponent();
+			this.#streaming = new AssistantMessageComponent(undefined, this.#hideThinking);
 			this.#chat.addChild(this.#streaming);
 		}
 		this.#streaming.updateContent(message, true);
@@ -1172,44 +1226,64 @@ export async function runDurableTui(
 		}
 	};
 
+	// The input actions are what the editor's keys and submits do; they hold no terminal objects themselves.
+	let input!: DurableInput;
+
 	view = new DurableTui(
 		shown.view.current().session.cwd,
 		{
-			submit: (text) => {
-				const trimmed = text.trim();
-				if (!trimmed) return;
-				if (runCommand(trimmed)) return;
-				const extensionHost = shown.extensionHost;
-				if (extensionHost === undefined) {
-					void shown.controller.submit(trimmed, "steer");
-					return;
-				}
-				void dispatchDurableExtensionCommand(extensionHost.runner, trimmed).then((handled) => {
-					if (!handled) void shown.controller.submit(trimmed, "steer");
-				});
-			},
-			followUp: (text) => {
-				if (runCommand(text.trim())) return;
-				const extensionHost = shown.extensionHost;
-				if (extensionHost === undefined) {
-					void shown.controller.submit(text, "followUp");
-					return;
-				}
-				void dispatchDurableExtensionCommand(extensionHost.runner, text.trim()).then((handled) => {
-					if (!handled) void shown.controller.submit(text, "followUp");
-				});
-			},
+			submit: (text) => void input.submit(text, "steer"),
+			followUp: (text) => void input.submit(text, "followUp"),
 			// Escape cancels the running bash command first, as it does in legacy.
 			abort: () => {
 				if (bashRunning) shown.controller.abortBash();
 				else void shown.controller.abort();
 			},
 			exit,
+			interrupt: () => input.interrupt(),
 			selectModel: () => selectModel(),
 			cycleThinking: () => void shown.controller.cycleThinking(),
+			cycleModel: (direction) => void input.cycleModel(direction),
+			dequeue: () => void input.dequeue(),
+			paste: () => void input.paste(),
+			copyAnswer: () => void input.copyAnswer(),
+			toggleThinking: () => input.toggleThinking(),
+			openExternalEditor: () => void input.openExternalEditor(),
+			suspend: () => input.suspend(),
+			extensionShortcut: (data) => input.extensionShortcut(data),
 		},
 		settings.getOutputPad(),
+		settings.getHideThinkingBlock(),
 	);
+	input = new DurableInput({
+		current: () => ({
+			view: shown.view.current(),
+			controller: shown.controller,
+			sessionOps: shown.sessionOps,
+		}),
+		settings,
+		modelRuntime: shown.modelRuntime,
+		getScopedModels: () => view.scopedModelIds,
+		editor: view.createEditorPort(),
+		keybindings: view.keybindings,
+		extensionRunner: shown.extensionHost?.runner,
+		notify: (message, type) => view.notify(message, type),
+		runCommand,
+		dispatchExtension: async (text) => {
+			const extensionHost = shown.extensionHost;
+			if (extensionHost === undefined) return false;
+			// An extension command runs as soon as it is submitted, whether the agent is idle or streaming.
+			return await dispatchDurableExtensionCommand(extensionHost.runner, text);
+		},
+		readClipboard: readClipboardPaste,
+		copyText: (text) => copyToClipboard(text),
+		stopTerminal: () => view.ui.stop(),
+		startTerminal: () => {
+			view.ui.start();
+			view.ui.requestRender(true);
+		},
+		exit,
+	});
 	// The models a start shows in `/model`: the ones nyan's settings enable, which `/scoped-models` changes.
 	if (shown.modelRuntime !== undefined) {
 		view.setScopedModelIds(enabledModelIds(settings.getEnabledModels(), shown.modelRuntime.getAvailableSnapshot()));
