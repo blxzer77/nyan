@@ -181,4 +181,128 @@ describe("stop retry", () => {
 		expect(setup.faux.state.callCount).toBe(1);
 		await opened.harness.close(context);
 	});
+
+	it("takes repeated requests for one pending retry and ends it once", async () => {
+		const path = await sqlitePath();
+		const setup = chatSetup();
+		setup.faux.setResponses([ERROR_503, fauxAssistantMessage("never")]);
+		longBackoff(setup);
+		setup.now = () => 1_000;
+		let opened = await openChat(await openNodeSqliteStorage(path), setup);
+		opened.harness.resume();
+		const submission = await opened.root.submit({ type: "input", content: "hi" }, context);
+		await waitFor(
+			async () => (await opened.harness.snapshot(LiveDoc, opened.root.id, context))?.generation?.retry !== undefined,
+		);
+		const taskId = await runTaskId(opened.harness);
+		await opened.harness.close(context);
+
+		opened = await openChat(await openNodeSqliteStorage(path), setup);
+		// The phase is still recorded as `retry` and no wait has started, so each request answers for it; the mark is one.
+		expect(await opened.root.stopRetry()).toBe(true);
+		expect(await opened.root.stopRetry()).toBe(true);
+		opened.harness.resume();
+		const settled = await (await opened.harness.submission(submission.id, context))!.wait(context);
+		expect(settled).toMatchObject({ status: "unanswered", reason: "model_error", detail: "503 Service Unavailable" });
+		expect(setup.faux.state.callCount).toBe(1);
+		const task = (await opened.harness.commit((tx) => tx.scanTasks({ conversationId: opened.root.id }, 10), context))
+			.items[0];
+		expect(task?.state).toMatchObject({
+			status: "terminal",
+			outcome: { status: "failed", error: { message: "503 Service Unavailable" } },
+		});
+
+		// The requests were consumed with that phase: the next retry of the conversation waits, and a new request ends it.
+		setup.faux.setResponses([ERROR_503, fauxAssistantMessage("never")]);
+		const next = await opened.root.submit({ type: "input", content: "again" }, context);
+		await waitFor(
+			async () => (await opened.harness.snapshot(LiveDoc, opened.root.id, context))?.generation?.retry !== undefined,
+		);
+		expect(setup.faux.state.callCount).toBe(2);
+		expect(await opened.root.stopRetry()).toBe(true);
+		expect(await next.wait(context)).toMatchObject({
+			status: "unanswered",
+			reason: "model_error",
+			detail: "503 Service Unavailable",
+		});
+		expect(setup.faux.state.callCount).toBe(2);
+		expect((await opened.harness.getTask(taskId, context))?.state).toMatchObject({ status: "terminal" });
+		await opened.harness.close(context);
+	});
+
+	it("ends as aborted when an abort mark lands with the stop request", async () => {
+		const setup = chatSetup();
+		setup.faux.setResponses([ERROR_503, fauxAssistantMessage("never")]);
+		longBackoff(setup);
+		setup.now = () => 1_000;
+		const { harness, root } = await openChat(new MemoryStorage(), setup);
+		harness.resume();
+		const submission = await root.submit({ type: "input", content: "hi" }, context);
+		await waitFor(async () => (await harness.snapshot(LiveDoc, root.id, context))?.generation?.retry !== undefined);
+		const taskId = await runTaskId(harness);
+
+		// An abort of the run and a stop of the retry, with the abort mark's commit already on the line: the stop's commit
+		// meets the mark and fails, so the run ends the way the abort handler ends it, never as a failed request.
+		const marked = harness.abortTask(taskId, context);
+		const stopped = root.stopRetry();
+		expect(await marked).toBe("marked");
+		expect(await stopped).toBe(true);
+		expect(await submission.wait(context)).toMatchObject({ status: "unanswered", reason: "aborted" });
+		const task = (await harness.commit((tx) => tx.scanTasks({ conversationId: root.id }, 10), context)).items[0];
+		expect(task?.state).toMatchObject({ outcome: { status: "aborted" } });
+		expect(setup.faux.state.callCount).toBe(1);
+		await harness.close(context);
+	});
+
+	it("ends as aborted when the abort mark commits after the stop request", async () => {
+		const setup = chatSetup();
+		setup.faux.setResponses([ERROR_503, fauxAssistantMessage("never")]);
+		longBackoff(setup);
+		setup.now = () => 1_000;
+		const { harness, root } = await openChat(new MemoryStorage(), setup);
+		harness.resume();
+		const submission = await root.submit({ type: "input", content: "hi" }, context);
+		await waitFor(async () => (await harness.snapshot(LiveDoc, root.id, context))?.generation?.retry !== undefined);
+		const taskId = await runTaskId(harness);
+
+		// The request cancels the wait first, but its commit is queued behind the abort mark's, which is already requested.
+		const stopped = root.stopRetry();
+		const marked = harness.abortTask(taskId, context);
+		expect(await stopped).toBe(true);
+		expect(await marked).toBe("marked");
+		expect(await submission.wait(context)).toMatchObject({ status: "unanswered", reason: "aborted" });
+		const task = (await harness.commit((tx) => tx.scanTasks({ conversationId: root.id }, 10), context)).items[0];
+		expect(task?.state).toMatchObject({ outcome: { status: "aborted" } });
+		await harness.close(context);
+	});
+
+	it("faults a retry phase that recorded no error instead of naming one", async () => {
+		const setup = chatSetup();
+		setup.faux.setResponses([ERROR_503, fauxAssistantMessage("never")]);
+		longBackoff(setup);
+		setup.now = () => 1_000;
+		const { harness, root } = await openChat(new MemoryStorage(), setup);
+		harness.resume();
+		const submission = await root.submit({ type: "input", content: "hi" }, context);
+		await waitFor(async () => (await harness.snapshot(LiveDoc, root.id, context))?.generation?.retry !== undefined);
+		const taskId = await runTaskId(harness);
+		// Only a persisted state that lost the record reaches this: the commit that parked the retry writes it.
+		await root.commit(async (tx) => {
+			delete (await tx.doc(LiveDoc, root.id)).generation;
+		}, context);
+
+		const message = `Task ${taskId} stopped a retry phase that recorded no error`;
+		expect(await root.stopRetry()).toBe(true);
+		expect(await submission.wait(context)).toMatchObject({
+			status: "unanswered",
+			reason: "faulted",
+			detail: message,
+		});
+		const task = (await harness.commit((tx) => tx.scanTasks({ conversationId: root.id }, 10), context)).items[0];
+		expect(task?.state).toMatchObject({
+			status: "terminal",
+			outcome: { status: "faulted", error: { message } },
+		});
+		await harness.close(context);
+	});
 });
