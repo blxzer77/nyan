@@ -4,6 +4,8 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-20
+
 ### Fixed
 
 - The default interactive mode now completes what you type in the editor. Typing `/` opened nothing, and a slash command had to be spelled out in full. It now lists the commands that mode answers with their descriptions, completes the arguments of `/model` and `/thinking` and of extension commands, and completes `@` file paths from the working directory. `autocompleteMaxVisible` sets how many entries are shown, and `/settings` applies a change to it without a restart.

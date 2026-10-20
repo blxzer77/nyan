@@ -1,6 +1,6 @@
 {
 	"name": "@ny4n/protocol",
-	"version": "1.4.0",
+	"version": "1.4.1",
 	"description": "Transport-neutral CBOR protocol for remote nyan sessions",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -39,7 +39,7 @@
 		"node": ">=22.19.0"
 	},
 	"dependencies": {
-		"@ny4n/chord": "^1.4.0",
+		"@ny4n/chord": "^1.4.1",
 		"typebox": "1.3.27"
 	},
 	"devDependencies": {
