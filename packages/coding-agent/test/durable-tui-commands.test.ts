@@ -36,6 +36,16 @@ describe("durable TUI command routing", () => {
 		["/export out.html", { kind: "command", name: "export", args: "out.html" }],
 		["/copy", { kind: "command", name: "copy", args: "" }],
 		["/changelog", { kind: "command", name: "changelog", args: "" }],
+		["/settings", { kind: "command", name: "settings", args: "" }],
+		["/thinking", { kind: "command", name: "thinking", args: "" }],
+		["/thinking high", { kind: "command", name: "thinking", args: "high" }],
+		["/scoped-models", { kind: "command", name: "scoped-models", args: "" }],
+		["/trust", { kind: "command", name: "trust", args: "" }],
+		["/login", { kind: "command", name: "login", args: "" }],
+		["/login anthropic", { kind: "command", name: "login", args: "anthropic" }],
+		["/logout", { kind: "command", name: "logout", args: "" }],
+		["/reload", { kind: "command", name: "reload", args: "" }],
+		["/hotkeys", { kind: "command", name: "hotkeys", args: "" }],
 		["!echo bash-ok", { kind: "bash", command: "echo bash-ok", excludeFromContext: false }],
 		["!!echo hidden", { kind: "bash", command: "echo hidden", excludeFromContext: true }],
 		["  !  ls -la  ", { kind: "bash", command: "ls -la", excludeFromContext: false }],
@@ -44,11 +54,16 @@ describe("durable TUI command routing", () => {
 		expect(routeDurableInput(text)).toEqual(expected);
 	});
 
-	test("a pending command reports that the durable session cannot run it", () => {
-		expect(routeDurableInput("/settings")).toEqual({
+	test("a command the porting batch has not reached yet reports that the durable session cannot run it", () => {
+		expect(routeDurableInput("/share")).toEqual({
 			kind: "unsupported",
-			name: "settings",
-			message: "/settings is not available on the durable session yet.",
+			name: "share",
+			message: "/share is not available on the durable session yet.",
+		});
+		expect(routeDurableInput("/bug")).toEqual({
+			kind: "unsupported",
+			name: "bug",
+			message: "/bug is not available on the durable session yet.",
 		});
 	});
 

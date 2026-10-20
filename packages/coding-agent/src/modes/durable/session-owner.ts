@@ -1,5 +1,6 @@
 import { join } from "node:path";
-import { type OpenDurableOptions, type OpenDurableResult, openDurable } from "../../core/durable/runtime.ts";
+import type { OpenDurableOptions, OpenDurableResult } from "../../core/durable/runtime.ts";
+import { openDurable } from "../../core/durable/runtime.ts";
 import type { SessionStartEvent } from "../../core/extensions/types.ts";
 import type { DurableReopenRequest } from "./commands.ts";
 import type { DurableTuiOpen } from "./tui.ts";
@@ -11,6 +12,8 @@ export function tuiof(open: OpenDurableResult): DurableTuiOpen {
 		controller: open.controller,
 		extensionHost: open.extensionHost,
 		sessionOps: open.sessionOps,
+		modelRuntime: open.modelRuntime,
+		themes: open.themes,
 	};
 }
 
@@ -51,6 +54,7 @@ export class DurableSessionOwner {
 
 	/** Close this session and open the requested one with the same services. */
 	async reopen(request: DurableReopenRequest): Promise<DurableTuiOpen> {
+		if (request.kind === "reload") return this.reload();
 		const previous = this.#open;
 		const previousSessionFile = sessionFileOf(previous);
 		const nextOptions: OpenDurableOptions = { ...this.#options, services: previous.services };
@@ -78,6 +82,34 @@ export class DurableSessionOwner {
 		// A new session gets its own directory, so nothing conflicts with the one being closed.
 		await previous.close("new");
 		this.#open = await openDurable({ ...nextOptions, continueSession: false });
+		return this.tui;
+	}
+
+	/**
+	 * Reopen this session's own directory without the cached services, which is what reloads extensions and the files
+	 * they load. The session must be closed first because it holds its directory's lock; when the fresh open fails, the
+	 * services that were already loaded put the same session back, so a failed reload leaves a working session behind.
+	 */
+	async reload(): Promise<DurableTuiOpen> {
+		const previous = this.#open;
+		const previousSessionFile = sessionFileOf(previous);
+		const directory = previous.view.current().session.directory;
+		await previous.close("reload");
+		const sessionStartEvent: SessionStartEvent = { type: "session_start", reason: "reload", previousSessionFile };
+		try {
+			this.#open = await openDurable({
+				...this.#options,
+				sessionDirectory: directory,
+				sessionStartEvent,
+			});
+		} catch (error) {
+			this.#open = await openDurable({
+				...this.#options,
+				services: previous.services,
+				sessionDirectory: directory,
+			});
+			throw error;
+		}
 		return this.tui;
 	}
 

@@ -6,7 +6,7 @@ export const DURABLE_TUI_COMMANDS = [
 	// Only the durable path has these.
 	"tasks",
 	"agents",
-	// Built-ins the durable TUI runs today.
+	// Built-ins the durable TUI runs.
 	"model",
 	"compact",
 	"new",
@@ -19,29 +19,19 @@ export const DURABLE_TUI_COMMANDS = [
 	"export",
 	"copy",
 	"changelog",
-	// Built-ins the parity work adds, one batch at a time.
+	// The parity work ported these onto this path; see the parity note for where each one went.
 	"settings",
-	"tree",
 	"thinking",
 	"scoped-models",
-	"export",
 	"import",
 	"share",
 	"bug",
-	"copy",
-	"name",
-	"session",
-	"changelog",
 	"hotkeys",
-	"fork",
-	"clone",
 	"trust",
 	"login",
 	"logout",
-	"new",
-	"resume",
 	"reload",
-	"quit",
+	"tree",
 ] as const;
 
 export type DurableTuiCommand = (typeof DURABLE_TUI_COMMANDS)[number];
@@ -49,37 +39,32 @@ export type DurableTuiCommand = (typeof DURABLE_TUI_COMMANDS)[number];
 const COMMAND_NAMES: readonly string[] = DURABLE_TUI_COMMANDS;
 
 /**
- * Commands this build recognizes but does not implement yet. The TUI answers with `message` instead of submitting the
- * text as a prompt, so a command the durable path cannot run yet is never paid for. The batch that implements a
- * command deletes its entry; the list is empty when the parity work ends.
+ * Commands this build recognizes but answers with a message instead of running. The TUI shows the message and sends
+ * nothing, so a command the durable path cannot run is never paid for as a prompt. These are the reductions the parity
+ * note records, not unfinished work: a durable conversation is linear (Decision #24) and a durable session is not a
+ * JSONL file (Decision #34).
  */
 const PENDING = {
-	settings: pending("settings"),
-	"scoped-models": pending("scoped-models"),
-	thinking: pending("thinking"),
+	// Not ported by the parity line: `/share` and `/bug` share their session-independent code with legacy, which the
+	// release-fix line extracts (Decision #35).
+	share: notAvailable("share"),
+	bug: notAvailable("bug"),
 	import:
 		"durable sessions are not JSONL files, so /import cannot open one. Open it with `nyan --session <file>`, which reads legacy sessions read-only, or with `nyan --resume`.",
-	share: pending("share"),
-	bug: pending("bug"),
-	hotkeys: pending("hotkeys"),
-	trust: pending("trust"),
-	login: pending("login"),
-	logout: pending("logout"),
-	reload: pending("reload"),
 	// Durable conversations are linear, so there is no parent tree to navigate (Decision #24).
 	tree: "durable sessions are linear, so /tree has no branch navigation (Decision #24).",
 } satisfies Partial<Record<DurableTuiCommand, string>>;
 
-/** The same entries, indexed by a command name: `PENDING`'s own keys are only the ones still pending. */
+/** The same entries, indexed by a command name: `PENDING`'s own keys are only the ones it answers. */
 const PENDING_MESSAGES: Partial<Record<DurableTuiCommand, string>> = PENDING;
 
-function pending(name: string): string {
+function notAvailable(name: string): string {
 	return `/${name} is not available on the durable session yet.`;
 }
 
 /**
- * The commands this build runs. It is derived from `PENDING`, so removing an entry there makes the TUI's dispatch
- * switch require a branch for it: an unimplemented command cannot be routed to a missing handler.
+ * The commands this build runs. It is derived from `PENDING`, so adding an entry there makes the TUI's dispatch switch
+ * require a branch for it, and a command that moves out of `PENDING` cannot be routed to a missing handler.
  */
 export type DurableRunnableCommand = Exclude<DurableTuiCommand, keyof typeof PENDING>;
 
