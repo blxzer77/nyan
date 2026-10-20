@@ -75,7 +75,7 @@ See [Compaction Reference](compaction.md) for thresholds, retained boundaries, b
 
 A durable session lives in `~/.nyan/agent/sessions-durable/<working-directory-hash>/<timestamp>-<session-id>/`. The directory holds `session.sqlite` and a `session.json` that records the working directory and the display name, so both survive a restart. The hash names the working directory, so each project keeps its own store, and the store's location is not configurable.
 
-Legacy JSONL sessions stay where earlier releases wrote them, under `~/.nyan/agent/sessions/`, grouped by working directory. Use `--session-dir`, `NYAN_CODING_AGENT_SESSION_DIR`, or the `sessionDir` setting to point the JSONL store somewhere else; the CLI option has highest precedence. Nyan opens a JSONL session read-only and never migrates it, so its file is never changed by a newer Nyan.
+Legacy JSONL sessions stay where earlier releases wrote them, under `~/.nyan/agent/sessions/`, grouped by working directory. Use `--session-dir`, `NYAN_CODING_AGENT_SESSION_DIR`, or the `sessionDir` setting to point the JSONL store somewhere else; the CLI option has highest precedence. Only `--session-dir` also keeps the run on the compatibility route; the environment variable and the setting only change where `--resume` and `--session` look, because a new session always goes to the durable store. Nyan opens a JSONL session read-only and never migrates it, so its file is never changed by a newer Nyan.
 
 Use `--no-session` for an ephemeral run. An ephemeral session cannot be resumed after Nyan exits.
 
