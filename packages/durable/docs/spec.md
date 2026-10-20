@@ -4265,7 +4265,11 @@ The run's inputs live in `nyan.live.run`, not in the task input.
   detail is `nyan.live.generation.retry.error` as the stopped retry recorded it, and the task fails; `run` and
   `generation` are removed. The failed attempt stays the last entry and no further request is
   sent, so a client cannot tell a stopped retry from exhausted ones. An abort of the task or
-  of the caller's context still throws there, and the abort handler ends the run `aborted`.
+  of the caller's context still throws there, and the abort handler ends the run `aborted`. A
+  durable abort mark makes that commit fail, so a stop request that arrives with an abort ends
+  `aborted` too. The commit that moves to `retry` writes
+  `nyan.live.generation.retry.error`, and a retry phase without it faults the task instead of
+  naming an error of its own: the record is the only source of the outcome's text.
 - `poll` sleeps until `pollAt` and calls `models.fetchDeferred()`. A still
   deferred result moves `pollAt` strictly later; any other result is classified
   as above.

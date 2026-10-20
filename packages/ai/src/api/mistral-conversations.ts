@@ -13,6 +13,7 @@ import type {
 	TranscriptContext,
 } from "../types.ts";
 import { combineAbortSignals } from "../utils/abort-signals.ts";
+import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { shortHash } from "../utils/hash.ts";
 import { headersToRecord } from "../utils/headers.ts";
@@ -22,13 +23,11 @@ import { getNyanUserAgent } from "../utils/nyan-user-agent.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
 import { getCurrentTools, resolveTranscript } from "../utils/transcript.ts";
-import { errorMessageWithCertificateCode } from "../utils/transport-error.ts";
 import { getJsonSchemaToolParameters, resolveJsonSchemaStrictSampling } from "./constrained-sampling.ts";
 import { buildBaseOptions } from "./simple-options.ts";
 import { transformMessages } from "./transform-messages.ts";
 
 const MISTRAL_TOOL_CALL_ID_LENGTH = 9;
-const MAX_MISTRAL_ERROR_BODY_CHARS = 4000;
 
 /**
  * Provider-specific options for the Mistral API.
@@ -173,7 +172,7 @@ export const stream: StreamFunction<"mistral-conversations", MistralOptions> = (
 				delete (block as { partialArgs?: string }).partialArgs;
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-			output.errorMessage = formatMistralError(error);
+			output.errorMessage = formatProviderError(normalizeProviderError(error), "Mistral API error");
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
@@ -266,35 +265,6 @@ function deriveMistralToolCallId(id: string, attempt: number): string {
 	return shortHash(seed)
 		.replace(/[^a-zA-Z0-9]/g, "")
 		.slice(0, MISTRAL_TOOL_CALL_ID_LENGTH);
-}
-
-function formatMistralError(error: unknown): string {
-	if (error instanceof Error) {
-		const httpError = error as Error & { statusCode?: unknown; body?: unknown };
-		const statusCode = typeof httpError.statusCode === "number" ? httpError.statusCode : undefined;
-		const bodyText = typeof httpError.body === "string" ? httpError.body.trim() : undefined;
-		if (statusCode !== undefined && bodyText) {
-			return `Mistral API error (${statusCode}): ${truncateErrorText(bodyText, MAX_MISTRAL_ERROR_BODY_CHARS)}`;
-		}
-		if (statusCode !== undefined)
-			return `Mistral API error (${statusCode}): ${errorMessageWithCertificateCode(error)}`;
-		return errorMessageWithCertificateCode(error);
-	}
-	return safeJsonStringify(error);
-}
-
-function truncateErrorText(text: string, maxChars: number): string {
-	if (text.length <= maxChars) return text;
-	return `${text.slice(0, maxChars)}... [truncated ${text.length - maxChars} chars]`;
-}
-
-function safeJsonStringify(value: unknown): string {
-	try {
-		const serialized = JSON.stringify(value);
-		return serialized === undefined ? String(value) : serialized;
-	} catch {
-		return String(value);
-	}
 }
 
 async function requestMistralStream(
