@@ -68,6 +68,10 @@ env:
   # (`--effort: invalid effort "xhigh": must be one of low, medium, high`, checked 2026-10-18). High is its maximum
   # for the OCR dispatcher itself; the model's reasoning strength is sent separately below.
   OCR_EFFORT: high
+  # Files per review are partitioned across this many OCR processes on the dispatch host. One process is one serial
+  # agent loop: 15 files took 67 minutes alone and 26 minutes across 4 shards, so the shard count is roughly the speedup
+  # until the model provider becomes the limit. Results are merged, and any failed shard makes the whole run `partial`.
+  OCR_SHARDS: '4'
   # A review budget, in minutes, passed to OCR as `--timeout`. 0 means no budget, which is what this used to send: one
   # run then spent over an hour on a 767-line diff (28 files, 20 of them tests, every call at max thinking) and was
   # still going. OCR reports what it covered when it stops, so a cut run is `partial` with the uncovered files named,
@@ -198,6 +202,7 @@ jobs:
               # sent from this workflow would be ignored and only look meaningful.
               "effort": os.environ["OCR_EFFORT"],
               "timeout_minutes": int(os.environ["OCR_TIMEOUT_MINUTES"]),
+              "shards": int(os.environ["OCR_SHARDS"]),
           }
           payload = json.dumps(payload_data).encode()
           req = urllib.request.Request(
