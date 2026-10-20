@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type ExternalEditorResult, editInExternalEditor } from "../src/modes/interactive/external-editor.ts";
 
 const editorFixturePath = fileURLToPath(new URL("./fixtures/fake-external-editor.mjs", import.meta.url));
@@ -59,5 +59,22 @@ describe("editInExternalEditor", () => {
 		const { result } = await runExternalEditor("--empty");
 
 		expect(result).toEqual({ status: "complete", content: "" });
+	});
+
+	it("names the product that resumes, not Pi", async () => {
+		const written: string[] = [];
+		const spy = vi.spyOn(process.stdout, "write").mockImplementation(((...args: unknown[]) => {
+			written.push(String(args[0]));
+			return true;
+		}) as typeof process.stdout.write);
+		try {
+			await runExternalEditor();
+		} finally {
+			spy.mockRestore();
+		}
+
+		// The line is user-visible in the default interactive mode since R3b, so the product name matters.
+		expect(written.join("")).toContain("nyan will resume when the editor exits.");
+		expect(written.join("")).not.toContain("Pi will resume");
 	});
 });

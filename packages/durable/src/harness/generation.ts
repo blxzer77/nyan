@@ -393,13 +393,17 @@ function modelErrorRun(tx: Tx, live: Draft<LiveState>, taskId: TaskId, text: str
 
 /**
  * A retry wait cancelled by a stop-retry request: the error the last attempt failed on is the one the run ends with, read
- * from `nyan.live.generation` where the retry that was stopped recorded it. The record is a fallback for a checkpoint no
- * retry wrote, which only a hand-written state produces.
+ * from `nyan.live.generation` where the commit that parked the generation recorded it. That record is the only thing that
+ * names the error, so a retry phase without it cannot end this way: a fixed message would report an invented model
+ * failure as the run's outcome, and the task faults instead.
  */
 async function stopRetried(runtime: Runtime, context: Context): Promise<void> {
 	await runtime.commit(async (tx) => {
 		const live = await tx.doc(LiveDoc, runtime.conversationId);
-		const text = live.generation?.retry?.error ?? "Retry stopped";
+		const text = live.generation?.retry?.error;
+		if (text === undefined || text === "") {
+			throw new Error(`Task ${runtime.taskId} stopped a retry phase that recorded no error`);
+		}
 		return modelErrorRun(tx, live, runtime.taskId, text);
 	}, context);
 }

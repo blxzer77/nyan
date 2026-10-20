@@ -13,9 +13,13 @@ function escapeRegExp(text: string): string {
  * the form formatProviderError writes) or by a space and a body ("503 {...}", the raw Anthropic SDK message; "500 ms",
  * "500 msec" and "500 milliseconds" are durations); in parentheses ("Provider error (429): ..."); or after "HTTP", "status", "status code" or "code", also as a
  * JSON key. A port, an IPv6 group, a millisecond value, or a number inside a host name does not match.
+ *
+ * The keyword form must start where a field can start: at the beginning, after whitespace, a quote, a bracket, a paren, a
+ * comma, a semicolon, or a colon. A URL is the case that needs it: Bun writes the request URL into its message, and a
+ * query (`?status=500`) and a path segment (`…/status=500`) are both text a server chose, not a status this request got.
  */
 const RETRYABLE_HTTP_STATUS_TOKEN =
-	/(?:^|:\s+)(?:408|409|429|5\d{2})(?:\s*:|\s+(?!\s*m(?:s|sec|illiseconds?)\b))|\((?:408|409|429|5\d{2})\)|(?<![?&])\b(?:http|status(?:\s+code)?|code)\b"?\s*[:=]?\s*(?:408|409|429|5\d{2})\b/i;
+	/(?:^|:\s+)(?:408|409|429|5\d{2})(?:\s*:|\s+(?!\s*m(?:s|sec|illiseconds?)\b))|\((?:408|409|429|5\d{2})\)|(?<=^|[\s"'(,;:[{])(?:http|status(?:\s+code)?|code)\b"?\s*[:=]?\s*(?:408|409|429|5\d{2})\b/i;
 
 /**
  * Certificate and host-name verification failures. These are the OpenSSL verification names Node and Bun both report,

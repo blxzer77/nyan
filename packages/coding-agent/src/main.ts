@@ -230,6 +230,16 @@ export function durableOptions(
 	extensionFactories: readonly InlineExtension[],
 	continueSession: boolean,
 ): OpenDurableOptions {
+	// The legacy path reports this while it assembles its diagnostics; without the check here the durable path would
+	// resolve an empty model id and stop with `Error: Could not resolve model:` and nothing after the colon.
+	if (parsed.provider !== undefined && (parsed.model === undefined || parsed.model.length === 0)) {
+		throw new DurableStartupError([
+			{
+				type: "error",
+				message: `--provider requires --model (for example: --provider ${parsed.provider} --model <pattern>)`,
+			},
+		]);
+	}
 	return {
 		cwd,
 		continueSession,

@@ -259,6 +259,33 @@ describe("retry classification of transport failures", () => {
 			'self signed certificate fetching "https://http500.example.com/"',
 			'self signed certificate fetching "https://example.com/?status=500"',
 			'self signed certificate fetching "https://example.com/?code=500"',
+			// A path segment is URL text too: a server naming its own resource `status=500` says nothing about this request.
+			'self signed certificate fetching "https://example.com/status=500"',
+			'self signed certificate fetching "https://example.com/code=503"',
+			'self signed certificate fetching "https://example.com/api/status=500/v1"',
+		]) {
+			expect(retryable(errorMessage), errorMessage).toBe(false);
+		}
+	});
+
+	it("reads a keyword status wherever a field can start", () => {
+		// The same keyword forms still count when they are not inside a URL: log lines, JSON keys, propagated errors.
+		for (const errorMessage of [
+			"status=500: self signed certificate",
+			'{"status":500,"reason":"certificate expired"}',
+			"(code=503) certificate expired",
+			"Request failed: code=503 (certificate expired)",
+		]) {
+			expect(retryable(errorMessage), errorMessage).toBe(true);
+		}
+	});
+
+	it("does not read a status out of a certificate reason", () => {
+		// A reason can end in a number; that number is not a status this request got.
+		for (const errorMessage of [
+			"self signed certificate: 500",
+			"certificate verify failed: 503",
+			"Error: self signed certificate in certificate chain: 500",
 		]) {
 			expect(retryable(errorMessage), errorMessage).toBe(false);
 		}

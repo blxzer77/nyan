@@ -53,10 +53,10 @@ import { KeybindingsManager } from "../../core/keybindings.ts";
 import type { ModelRuntime } from "../../core/model-runtime.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { createAllToolRenderers } from "../../core/tools/renderers/index.ts";
+import { isVirtualModel } from "../../core/virtual-models.ts";
 import { AssistantMessageComponent } from "../../modes/interactive/components/assistant-message.ts";
 import { BashExecutionComponent } from "../../modes/interactive/components/bash-execution.ts";
 import { CustomEditor } from "../../modes/interactive/components/custom-editor.ts";
-import { formatTokens } from "../../modes/interactive/components/footer.ts";
 import { type StatusIndicator, WorkingStatusIndicator } from "../../modes/interactive/components/status-indicator.ts";
 import { ToolExecutionComponent, type ToolRenderers } from "../../modes/interactive/components/tool-execution.ts";
 import { UserMessageComponent } from "../../modes/interactive/components/user-message.ts";
@@ -77,9 +77,11 @@ import { copyToClipboard } from "../../utils/clipboard.ts";
 import { runUserBash } from "./bash.ts";
 import type { DurableBugReportEnvironment } from "./bug-report.ts";
 import { type DurableCommandProduct, DurableCommands, type DurableReopenRequest } from "./commands.ts";
+import { type DurableFooterLabels, footerHintsLine, footerStatsLine } from "./footer.ts";
 import { type DurableEditorPort, DurableInput, readClipboardPaste } from "./input.ts";
 import { enabledModelIds } from "./scoped-models.ts";
 import type { DurableSettingsUi } from "./settings.ts";
+import { type DurableStartupResources, type ResourceSection, runDurableStartup, terminalTitleFor } from "./startup.ts";
 
 const SELECT_THEME: SelectListTheme = {
 	selectedPrefix: (text) => theme.fg("accent", text),
@@ -302,14 +304,23 @@ class DurableTui {
 	#bashCommand: string | undefined = undefined;
 	/** The stored display name, shown in the footer; read from the session beside the database. */
 	#sessionName: string | undefined = undefined;
+	/** What the footer reads from outside the view: auto-compaction, auth, and the model catalog. */
+	readonly #footerLabels: (() => DurableFooterLabels) | undefined;
 	/** Set when the transcript was rebuilt: the next render repaints the screen and shows the end. */
 	#rebuilt = false;
 	#transcript: ScrollView;
 
-	constructor(cwd: string, handlers: Handlers, outputPad = 1, hideThinking = false) {
+	constructor(
+		cwd: string,
+		handlers: Handlers,
+		outputPad = 1,
+		hideThinking = false,
+		footerLabels?: () => DurableFooterLabels,
+	) {
 		this.#cwd = cwd;
 		this.#outputPad = outputPad;
 		this.#hideThinking = hideThinking;
+		this.#footerLabels = footerLabels;
 		this.#ui = new TuiAltScreen(new ProcessTerminal(), false, getAgentDir());
 		const keybindings = KeybindingsManager.create();
 		setKeybindings(keybindings);
@@ -487,11 +498,73 @@ class DurableTui {
 		});
 	}
 
-	/** The display name the footer shows, from the session beside the database. */
+	/** The display name the footer shows, from the session beside the database; the terminal title follows it. */
 	setSessionName(name: string | undefined): void {
 		this.#sessionName = name;
+		this.setTitle(terminalTitleFor(this.#cwd, name));
+		this.refreshFooter();
+	}
+
+	/** Redraw the footer, after something outside the view changed what it shows, such as auto-compaction. */
+	refreshFooter(): void {
 		if (this.#lastView !== undefined) this.#syncFooter(this.#lastView);
 		this.#ui.requestRender();
+	}
+
+	/** The terminal title, as legacy sets it from the session name and the directory. */
+	setTitle(title: string): void {
+		this.#ui.terminal.setTitle(title);
+	}
+
+	/** A warning line in the transcript, as legacy `showWarning`. */
+	showWarning(message: string): void {
+		this.#chat.addChild(new Spacer(1));
+		this.#chat.addChild(new Text(theme.fg("warning", `Warning: ${message}`), 1, 0));
+		this.#showEnd();
+	}
+
+	/** A bordered notice with a title and body lines, as legacy's update notices. */
+	showNoticeCard(title: string, lines: readonly string[]): void {
+		const border = (text: string) => theme.fg("warning", text);
+		this.#chat.addChild(new Spacer(1));
+		this.#chat.addChild(new DynamicBorder(border));
+		this.#chat.addChild(new Text(theme.bold(theme.fg("warning", title)), 1, 0));
+		for (const line of lines) this.#chat.addChild(new Text(theme.fg("muted", line), 1, 0));
+		this.#chat.addChild(new DynamicBorder(border));
+		this.#showEnd();
+	}
+
+	/** The changelog after an update: the new sections, or the condensed line when `collapsed`. */
+	showChangelog(markdown: string, latestVersion: string, collapsed: boolean): void {
+		this.#chat.addChild(new Spacer(1));
+		this.#chat.addChild(new DynamicBorder());
+		if (collapsed) {
+			this.#chat.addChild(
+				new Text(`Updated to v${latestVersion}. Use ${theme.bold("/changelog")} to view full changelog.`, 1, 0),
+			);
+		} else {
+			this.#chat.addChild(new Text(theme.bold(theme.fg("accent", "What's New")), 1, 0));
+			this.#chat.addChild(new Spacer(1));
+			this.#chat.addChild(new Markdown(markdown.trim(), 1, 0, getMarkdownTheme()));
+		}
+		this.#chat.addChild(new DynamicBorder());
+		this.#showEnd();
+	}
+
+	/** The loaded-resources listing: a `[Name]` line per kind, then its items. */
+	showResources(sections: readonly ResourceSection[]): void {
+		this.#chat.addChild(new Spacer(1));
+		for (const section of sections) {
+			this.#chat.addChild(new Text(theme.fg("accent", `[${section.name}]`), 1, 0));
+			this.#chat.addChild(new TruncatedText(theme.fg("dim", `  ${section.items.join(", ")}`), 1, 0));
+		}
+		this.#showEnd();
+	}
+
+	/** Show what was just added to the transcript: repaint and follow its end. */
+	#showEnd(): void {
+		this.#transcript.scrollToEnd();
+		this.#ui.requestRender(true);
 	}
 
 	/** A filterable list in place of the editor; undefined when the user cancelled. */
@@ -550,10 +623,16 @@ class DurableTui {
 		this.#ui.requestRender();
 	}
 
-	/** Drop the running card without a result: the command never ran. */
+	/** Drop the running card without a result: the command never ran, so nothing stays on screen claiming it does. */
 	abandonBash(): void {
+		const component = this.#bash;
 		this.#bash = undefined;
 		this.#bashCommand = undefined;
+		if (component !== undefined) {
+			// The loader ticks on its own timer until a result stops it, and a card left behind keeps spinning.
+			component.setComplete(undefined, true);
+			this.#chat.removeChild(component);
+		}
 		this.#ui.requestRender();
 	}
 
@@ -797,33 +876,38 @@ class DurableTui {
 	#syncFooter(view: DurableView): void {
 		const agent = agentOf(view.conversation);
 		const usage = totalUsage((view.conversation.docs["nyan.usage"] ?? { models: {}, tools: {} }) as UsageState);
-		const stats: string[] = [];
-		if (usage.input) stats.push(`↑${formatTokens(usage.input)}`);
-		if (usage.output) stats.push(`↓${formatTokens(usage.output)}`);
-		if (usage.cacheRead) stats.push(`R${formatTokens(usage.cacheRead)}`);
-		if (usage.cacheWrite) stats.push(`W${formatTokens(usage.cacheWrite)}`);
-		stats.push(`$${usage.cost.total.toFixed(3)}`);
 		const contextWindow =
 			view.models.find((model) => model.provider === agent.model?.provider && model.modelId === agent.model.modelId)
 				?.contextWindow ?? 0;
-		if (contextWindow > 0) {
-			const tokens = contextTokens(view.conversation.entries);
-			const percent = tokens === undefined ? undefined : (tokens / contextWindow) * 100;
-			const text = `${percent === undefined ? "?" : percent.toFixed(1)}%/${formatTokens(contextWindow)}`;
-			stats.push(percent !== undefined && percent > 90 ? theme.fg("error", text) : text);
-		}
-		const name = this.#sessionName === undefined ? "" : `  ${theme.fg("accent", this.#sessionName)}`;
-		this.#footerStats.setText(theme.fg("dim", `${stats.join(" ")}  ${view.session.cwd}`) + name);
-		const model = agent.model === undefined ? "no model" : `${agent.model.provider}/${agent.model.modelId}`;
+		const tokens = contextWindow > 0 ? contextTokens(view.conversation.entries) : undefined;
+		const labels = this.#footerLabels?.();
 		const shown = view.conversations.find((candidate) => candidate.id === view.conversation.conversation.id);
-		const label = shown?.label ?? `conversation ${view.conversation.conversation.id}`;
-		const statuses = [...this.#extensionStatuses.values()];
-		this.#footerHints.setText(
-			`${statuses.length > 0 ? `${theme.fg("accent", statuses.join(" · "))} · ` : ""}${theme.fg(label === "main" ? "dim" : "accent", label)}${theme.fg(
-				"dim",
-				` · ${model} · thinking:${agent.thinkingLevel ?? "off"} (${keyText("app.thinking.cycle")}) · ${keyText("app.model.select")} or /model · /agents · /compact · /tasks · ${keyText("app.message.followUp")} follow-up · ${keyText("app.clear")} clear, twice to exit`,
-			)}`,
-		);
+		const input = {
+			cwd: view.session.cwd,
+			home: process.env.HOME || process.env.USERPROFILE,
+			sessionName: this.#sessionName,
+			usage: {
+				input: usage.input,
+				output: usage.output,
+				cacheRead: usage.cacheRead,
+				cacheWrite: usage.cacheWrite,
+				cost: usage.cost.total,
+			},
+			provider: agent.model?.provider,
+			modelId: agent.model?.modelId,
+			reasoning: labels?.reasoning === true,
+			thinkingLevel: agent.thinkingLevel ?? "off",
+			routedModel: labels?.routedModel,
+			subscription: labels?.subscription === true,
+			providerCount: labels?.providerCount ?? 1,
+			contextWindow,
+			contextPercent: tokens === undefined ? undefined : (tokens / contextWindow) * 100,
+			autoCompaction: labels?.autoCompaction === true,
+			conversationLabel: shown?.label ?? `conversation ${view.conversation.conversation.id}`,
+			extensionStatuses: [...this.#extensionStatuses.values()],
+		};
+		this.#footerStats.setText(footerStatsLine(input));
+		this.#footerHints.setText(footerHintsLine(input));
 	}
 
 	#syncTranscript(entries: readonly EntryRecord[]): void {
@@ -1032,6 +1116,26 @@ function contextTokens(entries: readonly EntryRecord[]): number | undefined {
 	return undefined;
 }
 
+/** The physical model and level of the newest successful answer: where a virtual model's request went. */
+function routedAnswer(
+	entries: readonly EntryRecord[],
+	modelRuntime: ModelRuntime,
+): { readonly modelId: string; readonly thinkingLevel?: string } | undefined {
+	const messages = entries.flatMap((entry) => entry.model ?? []);
+	for (let index = messages.length - 1; index >= 0; index--) {
+		const message = messages[index];
+		if (message === undefined || message.role !== "assistant") continue;
+		if (message.stopReason === "error" || message.stopReason === "aborted") continue;
+		const physical = modelRuntime.getPhysicalModel(message.provider, message.model);
+		if (physical === undefined) return undefined;
+		return {
+			modelId: physical.id,
+			...(message.thinkingLevel === undefined ? {} : { thinkingLevel: message.thinkingLevel }),
+		};
+	}
+	return undefined;
+}
+
 /** One open durable session, as the TUI renders it. A reopen replaces every member. */
 export interface DurableTuiOpen {
 	readonly view: DurableViewSource;
@@ -1045,6 +1149,8 @@ export interface DurableTuiOpen {
 	readonly themes?: readonly Theme[];
 	/** What `/bug` reads from the process: the model runtime, the settings, and the loaded extensions. */
 	readonly bugReport?: DurableBugReportEnvironment;
+	/** What a start lists as loaded: the skills, prompts, extensions, and the loader's diagnostics. */
+	readonly resources?: DurableStartupResources;
 }
 
 /** What the TUI needs from the caller that owns opening sessions. */
@@ -1148,9 +1254,14 @@ export async function runDurableTui(
 			view.notify(`/${name} is not available in this mode.`, "warning");
 			return;
 		}
-		void commands.run(name, args).catch((error: unknown) => {
-			view.notify(`/${name} failed: ${error instanceof Error ? error.message : String(error)}`, "error");
-		});
+		void commands
+			.run(name, args)
+			.catch((error: unknown) => {
+				view.notify(`/${name} failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+			})
+			// A command can change what the footer shows without changing the view: `/settings` turns auto-compaction on
+			// or off, and `/login` adds a provider.
+			.finally(() => view.refreshFooter());
 	};
 
 	/**
@@ -1229,6 +1340,37 @@ export async function runDurableTui(
 	// The input actions are what the editor's keys and submits do; they hold no terminal objects themselves.
 	let input!: DurableInput;
 
+	/** What the footer reads that the view does not carry: auto-compaction, auth, the catalog, and the route. */
+	const footerLabels = (): DurableFooterLabels => {
+		const snapshot = shown.view.current();
+		const agent = agentOf(snapshot.conversation);
+		const modelRuntime = shown.modelRuntime;
+		const model =
+			modelRuntime === undefined || agent.model === undefined
+				? undefined
+				: modelRuntime.getModel(agent.model.provider, agent.model.modelId);
+		const available = modelRuntime?.getAvailableSnapshot() ?? [];
+		const scoped = view.scopedModelIds;
+		const considered =
+			scoped === null
+				? available
+				: available.filter((candidate) => scoped.includes(`${candidate.provider}/${candidate.id}`));
+		const routed =
+			model === undefined || modelRuntime === undefined || !isVirtualModel(model)
+				? undefined
+				: routedAnswer(snapshot.conversation.entries, modelRuntime);
+		return {
+			autoCompaction: shown.controller.getAutoCompaction(),
+			subscription:
+				agent.model !== undefined &&
+				(agent.model.provider === "kimi-coding" ||
+					modelRuntime?.isUsingSubscription(agent.model.provider) === true),
+			providerCount: new Set(considered.map((candidate) => candidate.provider)).size,
+			reasoning: model?.reasoning === true,
+			...(routed === undefined ? {} : { routedModel: routed }),
+		};
+	};
+
 	view = new DurableTui(
 		shown.view.current().session.cwd,
 		{
@@ -1254,6 +1396,7 @@ export async function runDurableTui(
 		},
 		settings.getOutputPad(),
 		settings.getHideThinkingBlock(),
+		footerLabels,
 	);
 	input = new DurableInput({
 		current: () => ({
@@ -1388,6 +1531,22 @@ export async function runDurableTui(
 	view.start();
 	themes.applyFromSettings();
 	follow();
+	// The notices a start shows, in the order legacy shows them; the checks that reach the network answer later.
+	const startup: DurableTuiOpen = shown;
+	void runDurableStartup({
+		cwd: startup.view.current().session.cwd,
+		...(commands?.sessionName === undefined ? {} : { sessionName: commands.sessionName }),
+		resumed: startup.view.current().conversation.entries.length > 0,
+		settings,
+		ui: {
+			warn: (message) => view.showWarning(message),
+			card: (title, lines) => view.showNoticeCard(title, lines),
+			changelog: (markdown, latestVersion, collapsed) => view.showChangelog(markdown, latestVersion, collapsed),
+			resources: (sections) => view.showResources(sections),
+			title: (text) => view.setTitle(text),
+		},
+		...(startup.resources === undefined ? {} : { resources: startup.resources }),
+	});
 	await exited;
 	unsubscribe();
 	themes.dispose();

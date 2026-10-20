@@ -105,6 +105,12 @@ describe("durable TUI session commands", () => {
 		expect(messages.map((message) => message.text)).toEqual(["first question", "second question"]);
 		expect(current.current.view.current().conversation.conversation.id).not.toBe(before);
 		expect(ui.notices).toEqual(["Forked: first question"]);
+		// A fork is not a subagent's task, so neither the footer nor the `/agents` picker calls it one.
+		const forked = current.current.view.current();
+		expect(
+			forked.conversations.find((candidate) => candidate.id === forked.conversation.conversation.id)?.label,
+		).toBe(`fork ${forked.conversation.conversation.id}`);
+		expect(forked.conversations.some((candidate) => candidate.label.startsWith("subagent "))).toBe(false);
 	});
 
 	test("/fork cancelled at the picker keeps the conversation", async () => {
@@ -139,6 +145,10 @@ describe("durable TUI session commands", () => {
 				.map((message) => message.content),
 		).toEqual(["copy me"]);
 		expect(ui.notices).toEqual(["Session cloned"]);
+		const view = current.current.view.current();
+		expect(view.conversations.find((candidate) => candidate.id === cloned.conversation.id)?.label).toBe(
+			`fork ${cloned.conversation.id}`,
+		);
 	});
 
 	test("/quit asks the TUI to exit", async () => {
@@ -162,7 +172,8 @@ describe("durable TUI session commands", () => {
 
 		const opened = current.current.view.current().session;
 		expect(opened.directory).not.toBe(previous);
-		expect(opened.cwd).toBe(current.current.view.current().session.cwd);
+		// The new session keeps the working directory the TUI runs in, which is the harness's.
+		expect(opened.cwd).toBe(cwd);
 		expect(events).toEqual(["start:startup", "shutdown:new", "start:startup"]);
 		expect(ui.notices).toEqual(["New session started"]);
 		// The previous session is closed: its lock is released, so another process could open it.
@@ -229,9 +240,14 @@ describe("durable TUI session commands", () => {
 			.split("\n")
 			.map((line) => JSON.parse(line) as Record_);
 		expect(lines[0]).toMatchObject({ type: "session", cwd });
-		expect(lines.filter((line) => line.type === "message").map((line) => (line.message as Record_).role)).toEqual([
-			"user",
-			"assistant",
+		// The exported session carries each line's own text, not just the roles.
+		expect(
+			lines
+				.filter((line) => line.type === "message")
+				.map((line) => [(line.message as Record_).role, (line.message as Record_).content]),
+		).toEqual([
+			["user", "export me"],
+			["assistant", [{ type: "text", text: "first" }]],
 		]);
 	});
 

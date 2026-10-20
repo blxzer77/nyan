@@ -111,12 +111,14 @@ describe("CLIProxyAPI without a configuration", () => {
 
 		const lines = await captureExtensionOutput(() => selectModel(extension, "cliproxyapi", "gpt-5"));
 
-		expect(lines.filter((line) => line.includes("not configured"))).toEqual([]);
+		// The contract is silence: any line the extension prints here would be a startup notice the user did not ask for.
+		expect(lines).toEqual([]);
 	});
 });
 
 interface CliResult {
 	code: number | null;
+	stdout: string;
 	stderr: string;
 }
 
@@ -125,14 +127,19 @@ function runCli(agentDir: string, cwd: string, args: readonly string[]): Promise
 		const child = spawn(process.execPath, [...sourceRuntimeArgs(), cliPath, ...args], {
 			cwd,
 			env: { ...process.env, HOME: join(agentDir, ".."), [ENV_AGENT_DIR]: agentDir, NYAN_OFFLINE: "1" },
-			stdio: ["ignore", "ignore", "pipe"],
+			// Both channels: a notice written to stdout would be just as unwanted as one on stderr.
+			stdio: ["ignore", "pipe", "pipe"],
 		});
+		let stdout = "";
 		let stderr = "";
+		child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+			stdout += chunk;
+		});
 		child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
 			stderr += chunk;
 		});
 		child.on("error", reject);
-		child.on("close", (code) => resolvePromise({ code, stderr }));
+		child.on("close", (code) => resolvePromise({ code, stdout, stderr }));
 	});
 }
 
@@ -150,5 +157,6 @@ describe("the nyan CLI without CLIProxyAPI", () => {
 
 		expect(result.code).toBe(1);
 		expect(result.stderr).not.toContain(PREFIX);
+		expect(result.stdout).not.toContain(PREFIX);
 	});
 });

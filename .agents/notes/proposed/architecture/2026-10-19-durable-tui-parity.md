@@ -1,6 +1,7 @@
 # Durable TUI parity for 1.4.0
 
-Status: proposed (R0 inventory, R1 and R2 merged, R3a and R3b ported; R3c remains)
+Status: proposed (R0 inventory, R1, R2, R3a, R3b, and R3c merged; the durable TUI has parity with the legacy
+interface except the recorded reductions)
 Line: `prompts/r-tui.md`, worktree `nyan-n2`, branch `r-tui-r0-inventory`.
 Reference: `packages/coding-agent/src/modes/interactive/interactive-mode.ts` (legacy TUI) and
 `packages/coding-agent/src/modes/durable/tui.ts` (default interactive mode since N1).
@@ -142,14 +143,14 @@ Actions the durable TUI binds today: `tui.input.submit`, `tui.input.newLine`, `t
 | Startup diagnostics | Shown as info/warning/error lines | notices from `openDurable` | parity |
 | Model fallback and unavailable-model message | Shown at startup | notices | parity |
 | Project trust prompt | Asked through the extension UI before loading project resources | `ProjectTrustContext` from the CLI | parity (the prompt is the CLI's, not the TUI's) |
-| Project trust warning line | Printed when the project is untrusted and has resources | none | port R3c |
-| Changelog popup | Renders the new sections once after an update, collapsible via `collapseChangelog` | none | port R3c |
-| Version update check | `checkForNewNyanVersion`, notice with the new version | none | port R3c |
-| Package update check | `DefaultPackageManager` check, notice | none | port R3c |
-| Crash notice | `takeUnnotifiedCrash`: offers `/bug` with the recorded crash | none | port R3c |
-| tmux keyboard warning | `checkTmuxKeyboardSetup` | none | port R3c |
-| Loaded resources listing | Skills, prompts, themes, extensions with source tags and diagnostics | none (diagnostics only) | port R3c |
-| Terminal title | `APP_TITLE - session name - cwd`, updated on rename | only when an extension sets it | port R3c |
+| Project trust warning line | Printed when the project is untrusted and has resources | none | ported (R3c): a warning line when the project is untrusted and `hasTrustRequiringProjectResources` says it holds resources, naming `/trust` |
+| Changelog popup | Renders the new sections once after an update, collapsible via `collapseChangelog` | none | ported (R3c): the sections newer than the recorded version, once, and the condensed line when `collapseChangelog` is on |
+| Version update check | `checkForNewNyanVersion`, notice with the new version | none | ported (R3c): a bordered notice with the update command, the release note, and the changelog link |
+| Package update check | `DefaultPackageManager` check, notice | none | ported (R3c): the packages that have an update, with `update --extensions` |
+| Crash notice | `takeUnnotifiedCrash`: offers `/bug` with the recorded crash | none | ported (R3c): shows once, and taking it marks it, so the next start is quiet |
+| tmux keyboard warning | `checkTmuxKeyboardSetup` | none | ported (R3c): only inside tmux, and only when tmux cannot answer or the setting is off |
+| Loaded resources listing | Skills, prompts, themes, extensions with source tags and diagnostics | none (diagnostics only) | ported (R3c): `[Context]`, `[Skills]`, `[Prompts]`, `[Extensions]` with their items, gated by `quietStartup`, and every loader diagnostic as a warning line |
+| Terminal title | `APP_TITLE - session name - cwd`, updated on rename | only when an extension sets it | ported (R3c): set at start and after `/name` |
 | Theme file watcher | Re-renders on theme file change | `InteractiveThemeController` handles themes; no watcher | reduce: #37 (N9) |
 | Git branch watcher | Footer branch display | none | reduce: #37 (N9) |
 | Terminal progress (`showTerminalProgress`) | Progress indicator in the terminal during a turn | none | reduce: #37 (N9) |
@@ -158,18 +159,18 @@ Actions the durable TUI binds today: `tui.input.submit`, `tui.input.newLine`, `t
 
 | Item | Legacy footer | Durable footer | Destination |
 | --- | --- | --- | --- |
-| cwd | `~`-relative | absolute path | port R3c |
+| cwd | `~`-relative | absolute path | ported (R3c): the shared `formatCwdForFooter` |
 | Git branch | ` (branch)` | none | reduce: #37 (N9) |
-| Session name | `• name` | none | port R1 with `/name` |
+| Session name | `• name` | none | ported (R1) |
 | Token and cost totals | `↑ ↓ R W $` | parity | — |
 | Cache hit rate | `CH 42.0%` | none | reduce: #37 (N9) |
 | Context percentage | `45.2%/128k`, warning above 70%, error above 90% | parity (error above 90% only) | reduce: #37 (N9) for the 70% tier |
-| Auto-compaction marker | `(auto)` | none | port R3c |
-| Subscription marker | `$0.123 (sub)` | none | port R3c |
-| Routed model | `model → routed model` | none | port R3c |
-| Provider prefix | `(provider)` when several providers are configured | none | port R3c |
+| Auto-compaction marker | `(auto)` | none | ported (R3c): from `controller.getAutoCompaction()`, refreshed after a command |
+| Subscription marker | `$0.123 (sub)` | none | ported (R3c): `kimi-coding` or `modelRuntime.isUsingSubscription` |
+| Routed model | `model → routed model` | none | ported (R3c): the newest successful answer's physical model while a virtual model is selected |
+| Provider prefix | `(provider)` when several providers are configured | none | ported (R3c): over the scoped set when one is set |
 | Extension statuses | One line, sorted | appended to the hint line | parity |
-| Hint line | `!`, `!!`, `/` hints | `/model`, `/agents`, `/compact`, `/tasks` hints | port R3c, once the command list is final |
+| Hint line | `!`, `!!`, `/` hints | `/model`, `/agents`, `/compact`, `/tasks` hints | ported (R3c): adds `/ commands`, `! bash`, and `!! bash (no context)`; the exit hint stays last |
 
 ## Reductions that need no new decision
 
@@ -237,8 +238,7 @@ necessarily the one that just ended.
 
 ### R3 — split into three batches
 
-R3 was too large for one branch, so it runs as R3a, R3b, and R3c (notice #10). R3a has landed; R3b and
-R3c remain.
+R3 was too large for one branch, so it ran as R3a, R3b, and R3c (notice #10). All three are merged.
 
 #### R3a — settings, account, and toolkit commands (`r-tui-r3a-commands`, ported)
 
@@ -261,12 +261,18 @@ the queue is withdrawn with `sessionOps.clearQueue`, the cycle reads the model r
 applies the level the next model starts at, and `/copy` and `ctrl+x` share one function. `model_select`
 gained the `cycle` source, so an extension can tell a cycle from a picker.
 
-#### R3c — startup and labels (`r-tui-r3c-startup`)
+#### R3c — startup and labels (`r-tui-r3c-startup`, ported)
 
 The version and package update notices, the changelog popup (`collapseChangelog`), the crash notice that
 points at `/bug`, the project trust warning line, the loaded-resources listing, the tmux keyboard warning,
 the terminal title, the footer's `~`-relative cwd and its remaining labels, and the fork/clone label that
 R1 recorded: a forked or cloned conversation showed as `subagent N`.
+
+The notices live in `modes/durable/startup.ts` as plain strings behind a `DurableStartupUi` port, so what a
+start says is testable without a terminal; the checks that reach outside the process (npm, GitHub, tmux,
+the crash log) are injectable. The footer's two lines moved to `modes/durable/footer.ts` for the same
+reason. A conversation's label now follows what made it: the root is `main`, a task-owned conversation is
+`subagent N`, and one made by `/fork` or `/clone` is `fork N`.
 
 ### What the pre-split R3 plan required
 
@@ -278,9 +284,9 @@ Two requirements of the pre-split plan are met by R3a and carry over to R3b and 
   reused from `modes/interactive/components/`. Where a component asks for an `AgentSession` getter,
   the durable equivalent comes from `view`, `controller.get*()`, and `settings`.
 
-When R3c merges, `PENDING` holds only the recorded reductions (`/tree`, `/import`) plus `/share` and
-`/bug` if the release-fix line's F2b has not landed, so the R0 test covers every built-in command as
-either runnable or answered with its reason.
+`PENDING` holds only the recorded reductions (`/tree`, `/import`): `/share` and `/bug` landed with the
+release-fix line's F2b, so the R0 test covers every built-in command as either runnable or answered with
+its reason.
 
 ## Test contract
 
@@ -332,8 +338,8 @@ only records "it called the controller" is not covered.
   name, `/resume` listed only the other session of the directory and reopened it with its transcript
   and name, `/fork` listed the user messages and switched to the branch, and `/quit` returned to the
   shell. Every command produced zero provider requests.
-- Not fixed, recorded: a forked or cloned conversation is labelled `subagent N` in the footer and in
-  `/agents`, which is the label N2 task B2 recorded for a fork.
+- Recorded then, fixed by R3c: a forked or cloned conversation was labelled `subagent N` in the footer and
+  in `/agents`, which is the label N2 task B2 recorded for a fork.
 
 ## R2 verification
 
@@ -386,3 +392,32 @@ only records "it called the controller" is not covered.
   (they open a browser against a real provider — the picker, the cancel path, and the no-credentials
   path are verified); the TUI's own wiring in `runDurableTui`, which the tmux run covers end to end and
   no test drives; and Windows (no Windows host; the owner tracks Windows coverage separately).
+
+## R3c verification
+
+- `test/durable-tui-startup.test.ts` (20 cases, Node and Bun) drives `runDurableStartup` against the real
+  settings manager, the real crash log, the real project trust store, and a changelog file it writes: the
+  terminal title with and without a name, the quiet start, the update and package notices, the tmux
+  warning for an off `extended-keys` and an `xterm` format, the trust warning for an untrusted project
+  that holds `.nyan` resources, the crash notice once and then silence, the changelog for a fresh
+  install, for new sections, and for a resumed session, and the resources listing with and without
+  `quietStartup` while a loader diagnostic is reported either way.
+- `test/durable-tui-footer.test.ts` (9 cases) pins both footer lines: the `~`-relative directory, the
+  session name, the subscription estimate, the `(auto)` marker, the unknown context size, the provider
+  prefix only with several providers, the routed model, the reasoning level, extension statuses, and the
+  `!`, `!!`, and `/` hints ending on the exit hint.
+- `test/durable-tui-session-commands.test.ts` now asserts that a fork and a clone are labelled `fork <id>`
+  and that no conversation of the session is labelled as a subagent.
+- Mutations, each failing a named test: the trust warning printed for a trusted project, the crash notice
+  taken but still warned about, the changelog shown to a resumed session, the changelog version not
+  recorded, the listing shown while `quietStartup` is set, the provider prefix shown with one provider,
+  the `(sub)` and `(auto)` markers dropped, the routed model left out, the `!!` hint dropped, and the fork
+  label left at `subagent N`.
+- tmux with a temporary HOME and a loopback `openai-completions` provider: the title, the changelog
+  popup, the resource listing, the footer markers, and the update notices are listed in the batch report,
+  `reports/r-tui-r3.md`.
+- Not verified: the version and package checks against their real endpoints (network, and CI runs
+  offline; the notices are verified with injected results), the tmux query against a real tmux that has
+  `extended-keys` off (the settings are verified through the injected reader; the real spawn returns
+  nothing here), and the TUI's own wiring in `runDurableTui`, which the tmux run covers end to end and no
+  test drives.
