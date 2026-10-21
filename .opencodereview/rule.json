@@ -1,9 +1,5 @@
 {
-	"include": [
-		"packages/*/test/**/*.ts",
-		"scripts/*.test.mjs",
-		"scripts/*.test.ts"
-	],
+	"include": ["packages/*/test/**/*.ts", "scripts/*.test.mjs", "scripts/*.test.ts"],
 	"exclude": [
 		"packages/ai/src/providers/data/**",
 		"packages/*/dist/**",
