@@ -4,6 +4,14 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+### Added
+
+- The session-selection flags now work on durable sessions instead of routing the run to the legacy JSONL path: `--session <dir>`,
+  `--session-id <id|prefix>`, `--session-dir <dir>`, `--name <name>`, `--fork <entry-id>`, `--resume`, and `--no-session`. An existing
+  `.jsonl` file passed to `--session` still opens read-only through the compatibility route, and a session that cannot be opened prints one
+  `Error:` line and exits 1 instead of a stack trace. `--fork` forks inside the same session, because a durable conversation cannot be copied
+  into another session directory yet.
+
 ### Fixed
 
 - The lines a session shows below the transcript no longer stay for the rest of the session. An extension failure, a
