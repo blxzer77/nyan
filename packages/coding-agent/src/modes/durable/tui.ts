@@ -9,6 +9,7 @@ import type {
 	UsageState,
 } from "@ny4n/durable";
 import {
+	type AutocompleteProvider,
 	Box,
 	type Component,
 	Container,
@@ -51,6 +52,7 @@ import type {
 } from "../../core/extensions/index.ts";
 import { KeybindingsManager } from "../../core/keybindings.ts";
 import type { ModelRuntime } from "../../core/model-runtime.ts";
+import type { PromptTemplate } from "../../core/prompt-templates.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 import { createAllToolRenderers } from "../../core/tools/renderers/index.ts";
 import { isVirtualModel } from "../../core/virtual-models.ts";
@@ -74,6 +76,8 @@ import {
 	theme,
 } from "../../ui/theme/theme.ts";
 import { copyToClipboard } from "../../utils/clipboard.ts";
+import { ensureTool } from "../../utils/tools-manager.ts";
+import { createDurableAutocompleteProvider, type DurableAutocompleteSources } from "./autocomplete.ts";
 import { runUserBash } from "./bash.ts";
 import type { DurableBugReportEnvironment } from "./bug-report.ts";
 import { type DurableCommandProduct, DurableCommands, type DurableReopenRequest } from "./commands.ts";
@@ -676,6 +680,7 @@ class DurableTui {
 				this.#ui.requestRender();
 			},
 			setEditorPaddingX: (padding) => this.#editor.setPaddingX(padding),
+			setAutocompleteMaxVisible: (maxVisible) => this.#editor.setAutocompleteMaxVisible(maxVisible),
 			setShowImages: (show) => {
 				for (const card of this.#cards) card.setShowImages(show);
 				this.#ui.requestRender();
@@ -720,6 +725,16 @@ class DurableTui {
 			addToHistory: (text) => this.#editor.addToHistory(text),
 			setThinkingHidden: (hidden) => this.setThinkingHidden(hidden),
 		};
+	}
+
+	/** The editor's `/` commands and `@` paths; a reopen or a reload replaces the commands they come from. */
+	setAutocompleteProvider(provider: AutocompleteProvider): void {
+		this.#editor.setAutocompleteProvider(provider);
+	}
+
+	/** How many completion rows the editor shows at once; the `autocompleteMaxVisible` setting. */
+	setAutocompleteMaxVisible(maxVisible: number): void {
+		this.#editor.setAutocompleteMaxVisible(maxVisible);
 	}
 
 	/** Reload keybindings and repaint, after a `/reload` replaced the files they come from. */
@@ -1147,6 +1162,8 @@ export interface DurableTuiOpen {
 	readonly modelRuntime?: ModelRuntime;
 	/** The themes this open loaded, which a `/reload` replaces. */
 	readonly themes?: readonly Theme[];
+	/** The prompt templates `/name args` expands, completed as `/` commands. Absent in an embedding that has none. */
+	readonly promptTemplates?: readonly PromptTemplate[];
 	/** What `/bug` reads from the process: the model runtime, the settings, and the loaded extensions. */
 	readonly bugReport?: DurableBugReportEnvironment;
 	/** What a start lists as loaded: the skills, prompts, extensions, and the loader's diagnostics. */
@@ -1162,6 +1179,27 @@ export interface DurableTuiSessions {
 	 * they are unavailable.
 	 */
 	reopen?(request: DurableReopenRequest): Promise<DurableTuiOpen>;
+}
+
+/**
+ * What the editor completes for one open. `open` is read through a function because a reopen replaces the session, and
+ * `scopedModelIds` because `/scoped-models` changes what `/model` offers without reopening anything.
+ */
+export function durableAutocompleteSourcesOf(
+	open: () => DurableTuiOpen,
+	scopedModelIds: () => readonly string[] | null,
+): DurableAutocompleteSources {
+	const current = open();
+	return {
+		cwd: current.view.current().session.cwd,
+		...(current.modelRuntime === undefined ? {} : { modelRuntime: current.modelRuntime }),
+		scopedModelIds,
+		currentModel: () => agentOf(open().view.current().conversation).model,
+		promptTemplates: current.promptTemplates ?? [],
+		...(current.extensionHost === undefined
+			? {}
+			: { extensionCommands: current.extensionHost.runner.getRegisteredCommands() }),
+	};
 }
 
 export async function runDurableTui(
@@ -1398,6 +1436,41 @@ export async function runDurableTui(
 		settings.getHideThinkingBlock(),
 		footerLabels,
 	);
+	/**
+	 * The editor's completions: the commands this TUI answers, the prompt templates and extension commands beside them,
+	 * and `@` paths once `fd` answers. A reopen or a reload replaces what they are built from, so the sources read the
+	 * session that is open now rather than the one the start opened.
+	 */
+	let fdPath: string | null = null;
+	let stopped = false;
+	const refreshAutocomplete = (): void => {
+		view.setAutocompleteProvider(
+			createDurableAutocompleteProvider(
+				durableAutocompleteSourcesOf(
+					() => shown,
+					() => view.scopedModelIds,
+				),
+				fdPath,
+			),
+		);
+	};
+	refreshAutocomplete();
+	view.setAutocompleteMaxVisible(settings.getAutocompleteMaxVisible());
+	// `@` paths need `fd`, the same binary the find tool uses. The check outlives the start, so it paints nothing once
+	// the TUI has stopped, and a failure costs file completion rather than the session.
+	void ensureTool("fd", (status) => {
+		if (!stopped && status.type === "warning") view.notify(status.message, "warning");
+	}).then(
+		(path) => {
+			if (stopped || path === undefined || path === fdPath) return;
+			fdPath = path;
+			refreshAutocomplete();
+		},
+		(error: unknown) => {
+			if (!stopped)
+				view.notify(`Could not check for fd: ${error instanceof Error ? error.message : String(error)}`, "error");
+		},
+	);
 	input = new DurableInput({
 		current: () => ({
 			view: shown.view.current(),
@@ -1502,6 +1575,8 @@ export async function runDurableTui(
 									view.reloadBindings();
 									themes.applyFromSettings();
 								}
+								// The commands and templates of the session now open are not the ones the provider was built from.
+								refreshAutocomplete();
 								await commands?.refreshSessionName();
 								view.setSessionName(commands?.sessionName);
 								view.resetSessionView();
@@ -1548,6 +1623,7 @@ export async function runDurableTui(
 		...(startup.resources === undefined ? {} : { resources: startup.resources }),
 	});
 	await exited;
+	stopped = true;
 	unsubscribe();
 	themes.dispose();
 	view.stop();

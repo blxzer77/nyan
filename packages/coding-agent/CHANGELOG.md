@@ -9,6 +9,12 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 - An extension's `before_agent_start` message or system prompt now reaches the request that carries the prompt that produced it. When a prompt was submitted while a run was in flight, its effects were missing from that request and appeared on the next run's first request instead.
 - A `/fork` or `/clone` whose extension shutdown fails now still switches to the new conversation and reports the failure as a notice. Before, the session stayed on the old conversation and the already-committed fork could not be reached again.
 
+## [1.4.1] - 2026-10-20
+
+### Fixed
+
+- The default interactive mode now completes what you type in the editor. Typing `/` opened nothing, and a slash command had to be spelled out in full. It now lists the commands that mode answers with their descriptions, completes the arguments of `/model` and `/thinking` and of extension commands, and completes `@` file paths from the working directory. `autocompleteMaxVisible` sets how many entries are shown, and `/settings` applies a change to it without a restart. `/import` and `/tree`, which this mode answers with the reason it cannot run them, are listed as unavailable rather than as the commands the legacy interface runs.
+
 ## [1.4.0] - 2026-10-20
 
 ### Breaking Changes

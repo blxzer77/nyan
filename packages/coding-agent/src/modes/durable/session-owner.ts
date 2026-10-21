@@ -16,6 +16,7 @@ export function tuiof(open: OpenDurableResult): DurableTuiOpen {
 		sessionOps: open.sessionOps,
 		modelRuntime: open.modelRuntime,
 		themes: open.themes,
+		promptTemplates: open.promptTemplates,
 		// The listing a start shows: what loaded in this open, and what the loader could not read.
 		resources: startupResources(open.services.resourceLoader),
 		// `/bug` reports the model runtime, settings, and extensions of the process, which outlive every session.
