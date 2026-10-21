@@ -1,10 +1,10 @@
 {
 	"name": "@ny4n/coding-agent-install",
-	"version": "1.4.1",
+	"version": "1.4.2",
 	"private": true,
 	"description": "Lockfile root used by the Nyan installer and updater.",
 	"dependencies": {
-		"@ny4n/coding-agent": "1.4.1"
+		"@ny4n/coding-agent": "1.4.2"
 	},
 	"overrides": {
 		"protobufjs": "7.6.6"

@@ -1,6 +1,6 @@
 {
 	"name": "@ny4n/telemetry",
-	"version": "1.4.1",
+	"version": "1.4.2",
 	"description": "Vendor-neutral telemetry contracts and typed schema utilities for nyan",
 	"type": "module",
 	"main": "./dist/index.js",
