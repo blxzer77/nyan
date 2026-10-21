@@ -435,7 +435,7 @@ What a line may touch, so that parallel work conflicts only where the dependency
 | Bun Phase 4a | `scripts/bench-*.mjs`, `docs/`, `packages/coding-agent/README.md` | none |
 | Retrieval evaluation harness (Decision #43) | `eval/retrieval/**` | none |
 | Retrieval deployment convergence (Queue 8a) | `deploy/retrieval/**` | none |
-| Issue #101 CI and scripts findings | `.github/workflows/**`, `scripts/**` | none; it is the only line that writes workflows |
+| Issue #101 CI and scripts findings | `.github/workflows/**`, `scripts/**` | none; it is the only line that writes workflows. Bun Phase 4a's new `scripts/bench-*.mjs` files are new paths, so they may be created while this line is open |
 
 ## Queue
 
