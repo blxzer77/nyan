@@ -90,24 +90,57 @@ RFC 3986 §6 的规范化（大小写、默认端口、点段、空路径、百�
 `evidenceId`、`quote`（必须来自快照原文）、`finalUrl`、`hash`、`fetchedAt`。
 模型给出的引用必须能在快照里逐字命中，否则该引用作废（这条挡住了"编造引用"这一类失败）。
 
-## 3. 对 N8 的落地建议
+## 3. 供应商策略（owner 决定，2026-10-21）
 
-1. **Provider 接口配置化**（Decision #4 的"配置即授权"）：`retrieval.search.providers[]`，每项 `{ kind, baseUrl, apiKeyRef }`。
-   配置了就可用，没配置就是具名不可用，不发请求。
-2. **两条默认路径**：
-   - 自托管 SearXNG（零密钥、内网、质量一般）作为**默认可用路径**；
-   - 商业 API（Brave / Exa / Tavily 一类，返回结构化结果且平台侧已抓取）作为**质量路径**，需要 key。
-3. **GitHub 搜索是独立 provider**：`kind: "github"`，需要 token，受 10 次/分钟限制；结果上限 1000 由调用方设 N（建议 50）。
-4. **抓取器只有一份**：搜索 provider 只负责返回 hit，抓取、SSRF 校验、证据生成全部走同一个 `Fetch` 实现——
-   商业 API 自带的摘要也不能绕过证据校验。
-5. **评估**：把"外部搜索"的评估跑成 Langfuse dataset（Decision #43/#5），指标是"引用可逐字命中率"与"具名失败占比"，
-   而不是"回答看起来对"。
+三条规则，按优先级排列：
 
-## 4. 仍未定（需要 owner 一句话）
+1. **商业 API 是主路径**，SearXNG 只在没有任何商业 API 可用时兜底。SearXNG 的结果质量实测不够，它剩下的价值只是
+   "零密钥、能离线跑通整条链路"。
+2. **搜索是聚合的，不是单条的**：只要决定去搜，就同时向所有已配置 provider 发并发请求，各自有独立超时与预算，
+   结果合并后返回。不允许"先问一家、不行再问下一家"的串行降级。
+3. **有搜索就说明确实需要外部知识**：因此每次搜索都是一次可披露的 egress 事件（查询、用了哪些 provider、
+   消耗了多少预算、谁失败了），记进回执与会话，不在后台悄悄发生。
 
-- **外部搜索供应商**：默认自托管 SearXNG + 允许配置商业 API，还是直接选一家商业 API？后者更省事、质量更好，
-  但把"外部搜索"变成需要付费与密钥的能力。
-- 建议：按上面第 3 节的两条路径实现，先把自托管跑通（零成本、可离线评估），商业 API 作为配置项。
+已核实的候选（都访问过官方文档/站点）：
+
+| Provider | 形态 | 返回什么 | 备注 |
+| --- | --- | --- | --- |
+| **DeepSeek Search & Fetch** | `POST https://api.deepseek.com/v1/tools/search`（搜索）与同域 Fetch（返回 Markdown） | 结构化网页结果 + 单页 Markdown | 自有检索引擎，与 DeepSeek API 同一套 bearer 鉴权（`api-docs.deepseek.com/guides/search`）；一个 key 同时给搜索与抓取 |
+| **Tavily** | `POST /search`（另有 `/extract`） | title / url / snippet，可选 raw content | 面向 agent，自带正文抽取 |
+| **Brave Search API** | `GET /res/v1/web/search`，头 `X-Subscription-Token` | title / url / description | 自有索引，有免费额度（配额未逐项核对） |
+| **AnySearch** | API / MCP / Skill（`anysearch.com`，控制台发 API key） | "structured results agents can act on" | 定位就是 agent 搜索基础设施；具体响应字段需读其 API 文档确认 |
+| **Exa** | `POST /search` + `/contents` | 语义召回 + 正文 / highlights | 适合"找相似页"，不适合"找权威事实" |
+| Context7 | 库文档解析（本机已通过 `smart-search context7-*` 可用） | 库文档片段 | 依赖用法查询，是独立 kind |
+| GitHub 搜索 | REST `/search/*` | 代码 / 仓库 / issue | 需 token、10 次/分钟、1000 上限（第 1 节实测） |
+| SearXNG | 自托管聚合 | 各引擎的标题 / 摘要 | **仅 fallback** |
+
+## 3.1 聚合的形态
+
+```
+query ─┬─→ deepseek   ─┐
+       ├─→ tavily     ─┤  各自 deadline + 预算
+       ├─→ brave      ─┼─→ 规范化 URL 去重 ─→ 倒数排名融合（RRF）─→ hits（带 per-provider 结果）
+       ├─→ anysearch  ─┤
+       └─→ exa        ─┘
+```
+
+- 每个 provider 的结果是**独立结算的**：`ok`、`quota_exhausted`、`auth_failed`、`timeout`、`denied`、`error`。
+- **部分成功是常态**：只要有一家返回 hit，就把这些 hit 交出去，同时把失败清单一起带上（下游与用户都能看到）。
+  只有全员失败时才是 `unavailable`——绝不把"全部失败"伪装成"没有找到"。
+- 合并用倒数排名融合（RRF），而不是把不同 provider 的分数直接相加：它们的分数不可比，RRF 只用排名。
+- 去重按第 2.1 节的**语法级规范化 URL**；跟踪参数差异只提示重复，不合并身份。
+- 并发上限与每家的超时是配置项；总预算（次数、字节、时长）在第 2.4 节。
+
+## 4. 落地要点（N8 实现时照做）
+
+1. Provider 接口配置化（Decision #4 的"配置即授权"）：每项 `{ kind, baseUrl, apiKeyRef, timeoutMs, weight }`；
+   密钥按引用读文件，仓库里不出现端点与密钥。
+2. **聚合器只有一个**：`search(query)` 扇出到所有 `enabled` provider，返回 `{ hits, perProvider[], coverage }`。
+3. **抓取器只有一个**：商业 API 自带的正文/摘要只是候选，进上下文的必须是 Fetch 到的字节 + 响应哈希 + 逐字可命中的
+   quote（第 2.5 节）。DeepSeek 这类"搜索+抓取"同源的 provider 也走同一个校验。
+4. 搜索事件进回执：查询、provider 集合、各自结果数与失败原因、预算消耗；这是"为什么要去外部找"的披露依据。
+5. 评估（Decision #43/#5）：指标是"引用可逐字命中率"与"具名失败占比"，以及"用聚合后 hit 的首条命中率"有没有比
+   单家更高——这是聚合是否值得的唯一验收标准。
 
 ## 5. 未验证
 
