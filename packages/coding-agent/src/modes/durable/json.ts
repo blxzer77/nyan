@@ -4,17 +4,21 @@ import { dispatchDurableExtensionCommand } from "../../core/durable/extension-co
 import { type OpenDurableOptions, openDurable } from "../../core/durable/runtime.ts";
 import { flushRawStdout, waitForRawStdoutBackpressure, writeRawStdout } from "../../core/output-guard.ts";
 import { DurableJsonEventAdapter } from "./json-events.ts";
+import { applySessionSetup, type DurableSessionSetup } from "./session-setup.ts";
 
 export interface DurableJsonOptions extends OpenDurableOptions {
 	readonly initialMessage?: string;
 	readonly initialImages?: ImageContent[];
 	readonly messages?: readonly string[];
+	/** `--name` and `--fork`, applied before the session line is published. */
+	readonly setup?: DurableSessionSetup;
 }
 
 /** Run the durable product path with the published JSONL event stream. */
 export async function runDurableJson(options: DurableJsonOptions): Promise<number> {
 	const durable = await openDurable({ ...options, eventStream: true });
 	try {
+		await applySessionSetup(durable, options.setup);
 		const events = durable.events;
 		if (events === undefined) throw new Error("Durable JSON mode did not acquire an event stream");
 		const adapter = new DurableJsonEventAdapter(

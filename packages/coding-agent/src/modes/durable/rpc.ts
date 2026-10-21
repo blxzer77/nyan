@@ -29,8 +29,12 @@ import type {
 	RpcSlashCommand,
 } from "../rpc/rpc-types.ts";
 import { DurableJsonEventAdapter } from "./json-events.ts";
+import { applySessionSetup, type DurableSessionSetup } from "./session-setup.ts";
 
-export type DurableRpcOptions = OpenDurableOptions;
+export type DurableRpcOptions = OpenDurableOptions & {
+	/** `--name` and `--fork`, applied before the first command is read. */
+	readonly setup?: DurableSessionSetup;
+};
 
 /** Run the durable product path with the JSON-lines RPC protocol. */
 export async function runDurableRpc(options: DurableRpcOptions): Promise<never> {
@@ -59,6 +63,9 @@ export async function runDurableRpc(options: DurableRpcOptions): Promise<never> 
 		);
 	};
 	bindExtensionErrors(durable);
+	// `--name` and `--fork` are applied before anything reads the session, so `get_state` reports the name the command
+	// line asked for and every prompt goes to the forked conversation.
+	await applySessionSetup(durable, options.setup);
 	/**
 	 * The dialogs the client has been asked and has not answered. Each one names the method it asks for, so a response
 	 * shaped for another dialog cannot be mistaken for its answer, and carries the way to settle it with its default

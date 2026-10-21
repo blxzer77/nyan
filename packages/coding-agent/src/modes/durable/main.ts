@@ -1,15 +1,19 @@
 import { dispatchDurableExtensionCommand } from "../../core/durable/extension-commands.ts";
 import type { OpenDurableOptions } from "../../core/durable/runtime.ts";
 import { DurableSessionOwner } from "./session-owner.ts";
+import { applySessionSetup, type DurableSessionSetup } from "./session-setup.ts";
 import { runDurableTui } from "./tui.ts";
 
 export interface DurableInteractiveOptions extends OpenDurableOptions {
 	readonly initialMessage?: string;
+	/** `--name` and `--fork`, applied before the TUI shows the session. */
+	readonly setup?: DurableSessionSetup;
 }
 
 export async function runDurableInteractive(options: DurableInteractiveOptions): Promise<void> {
 	const owner = await DurableSessionOwner.open(options);
 	try {
+		await applySessionSetup(owner.current, options.setup);
 		if (options.initialMessage !== undefined) {
 			const handled = await dispatchDurableExtensionCommand(
 				owner.current.extensionHost.runner,

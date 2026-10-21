@@ -3,17 +3,21 @@ import type { UserInput } from "@ny4n/durable";
 import { dispatchDurableExtensionCommand } from "../../core/durable/extension-commands.ts";
 import { type OpenDurableOptions, openDurable } from "../../core/durable/runtime.ts";
 import { flushRawStdout, writeRawStdout } from "../../core/output-guard.ts";
+import { applySessionSetup, type DurableSessionSetup } from "./session-setup.ts";
 
 export interface DurablePrintOptions extends OpenDurableOptions {
 	readonly initialMessage?: string;
 	readonly initialImages?: ImageContent[];
 	readonly messages?: readonly string[];
+	/** `--name` and `--fork`, applied before the first prompt is submitted. */
+	readonly setup?: DurableSessionSetup;
 }
 
 /** Run the durable product path in the text-only print mode. */
 export async function runDurablePrint(options: DurablePrintOptions): Promise<number> {
 	const durable = await openDurable(options);
 	try {
+		await applySessionSetup(durable, options.setup);
 		let lastAnswer: AssistantMessage | undefined;
 		const submit = async (content: UserInput): Promise<void> => {
 			const commandText = typeof content === "string" ? content : content.find((part) => part.type === "text")?.text;
