@@ -309,5 +309,40 @@
 			"note": "Still 16 of 34 findings about package versions, and the first one quotes a premise the diff contradicts: it says only 4 manifests changed, while `git diff --name-only` across the same range lists 18. Prompt rules did not move this; the claim does not depend on the prompt, it depends on the reviewer's reading of the diff and of files it never opened."
 		}
 	],
-	"resolution": "Manifests are excluded from review instead: lockstep is enforced by `scripts/sync-versions.js`, `npm run check` and `scripts/publish-packages.mjs`, and dependency health by `npm audit`, `check:pinned-deps` and `check:runtime-deps`. A reviewer that invents manifest state adds tokens and buries the findings it does get right."
+	"resolution": "Manifests are excluded from review instead: lockstep is enforced by `scripts/sync-versions.js`, `npm run check` and `scripts/publish-packages.mjs`, and dependency health by `npm audit`, `check:pinned-deps` and `check:runtime-deps`. A reviewer that invents manifest state adds tokens and buries the findings it does get right.",
+	"reflector": {
+		"question": "Does the same 34 findings survive an independent adjudication, with the finding text and the file in front of it?",
+		"runs": [
+			{
+				"context": "the accused file only",
+				"gateway": "review.reflect",
+				"manifest": {
+					"confirmed": 0,
+					"rejected": 0,
+					"insufficient_evidence": 16
+				},
+				"code": {
+					"confirmed": 2,
+					"rejected": 2,
+					"insufficient_evidence": 14
+				},
+				"note": "16 of 16 manifest findings came back insufficient_evidence: the adjudicator refused to confirm claims about files it could not see, which is the behaviour wanted but gives no decision."
+			},
+			{
+				"context": "changed-file list + the file's diff + the file around the line",
+				"manifest": {
+					"confirmed": 0,
+					"rejected": 15,
+					"insufficient_evidence": 1
+				},
+				"code": {
+					"confirmed": 8,
+					"rejected": 7,
+					"insufficient_evidence": 3
+				},
+				"note": "The changed-file list alone refutes the manifest claims: every rejection cites it. Code findings become decidable too (8 confirmed, 7 rejected, 3 undecided)."
+			}
+		],
+		"conclusion": "The adjudicator works when it is given the diff and the list of changed files, not just the file. Two consequences: a review's findings need that context when they are adjudicated, and `insufficient_evidence` must stay visible rather than be dropped, because silence and 'wrong' are different failures."
+	}
 }
