@@ -1,3 +1,22 @@
+export {
+	type ArtifactBasis,
+	type ArtifactContent,
+	ArtifactError,
+	type ArtifactFailure,
+	type ArtifactFailureDetail,
+	type ArtifactFileSystem,
+	type ArtifactKey,
+	type ArtifactPut,
+	type ArtifactRead,
+	type ArtifactRecord,
+	type ArtifactScope,
+	type ArtifactStore,
+	type ArtifactStoreOptions,
+	artifactKey,
+	artifactScope,
+	isArtifactDigest,
+	openArtifactStore,
+} from "./artifacts/index.ts";
 export { defineDoc, defineDocFamily } from "./documents.ts";
 export {
 	AssistantEntry,
