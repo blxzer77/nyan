@@ -89,6 +89,13 @@ export class NoticeArea {
 	}
 
 	#add(notice: ShownNotice, now: number): void {
+		// The same line again (a `/reload` re-emitting a `session_start`, say) refreshes the one on screen instead of
+		// adding a second copy of text the user has already read.
+		const newest = this.#entries.at(-1);
+		if (newest !== undefined && newest.level === notice.level && newest.message === notice.message) {
+			this.#entries[this.#entries.length - 1] = { ...notice, expiresAt: now + this.#ttl[notice.level] };
+			return;
+		}
 		this.#entries.push({ ...notice, expiresAt: now + this.#ttl[notice.level] });
 	}
 

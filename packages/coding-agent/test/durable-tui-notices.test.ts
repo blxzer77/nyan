@@ -30,6 +30,16 @@ describe("notice lifetime", () => {
 		expect(shown(area, t0 + NOTICE_TTL_MS.error)).toEqual([]);
 	});
 
+	test("the same line again refreshes the one on screen instead of adding a second copy", () => {
+		const area = new NoticeArea();
+		const message = "Extension /ext/a.ts failed on session_start: Theme not initialized";
+		area.push("error", message, t0);
+		area.push("error", message, t0 + 5_000);
+		expect(shown(area, t0 + 5_000)).toEqual([`error: ${message}`]);
+		expect(area.nextExpiry(t0 + 5_000)).toBe(t0 + 5_000 + NOTICE_TTL_MS.error);
+		expect(shown(area, t0 + 5_000 + NOTICE_TTL_MS.error)).toEqual([]);
+	});
+
 	test("the area reports when its next line expires, and nothing once it is empty", () => {
 		const area = new NoticeArea();
 		expect(area.nextExpiry(t0)).toBeUndefined();

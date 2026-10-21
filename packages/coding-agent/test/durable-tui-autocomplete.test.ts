@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AutocompleteItem, AutocompleteProvider } from "@ny4n/tui";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -288,4 +289,26 @@ describe("durable autocomplete against a real session", () => {
 		]);
 		expect((await suggestions(scoped, "/thinking hi"))?.items.map((item) => item.value)).toEqual(["high"]);
 	});
+});
+
+describe("durable autocomplete paths", () => {
+	it.skipIf(process.platform === "win32")(
+		"offers a nested path only once the tool check handed the provider an fd",
+		async () => {
+			// A directory walk of the base directory finds a top-level file; only fd searches below it, so a nested path is
+			// what separates "no fd yet" from "fd found". The fake stands in for the real binary, which the start may still
+			// be downloading.
+			const cwd = await mkdtemp(join(tmpdir(), "nyan-tui-fd-"));
+			await writeFile(join(cwd, "alpha.txt"), "x");
+			await mkdir(join(cwd, "nested"), { recursive: true });
+			await writeFile(join(cwd, "nested", "beta.txt"), "x");
+			const fakeFd = join(cwd, "fd-under-test");
+			await writeFile(fakeFd, "#!/usr/bin/env node\nconsole.log('nested/beta.txt');\n");
+			await chmod(fakeFd, 0o755);
+			const sources = sourcesWithoutModels({ cwd });
+			expect((await suggestions(createDurableAutocompleteProvider(sources, null), "@bet"))?.items ?? []).toEqual([]);
+			const offered = await suggestions(createDurableAutocompleteProvider(sources, fakeFd), "@bet");
+			expect(offered?.items.map((item) => item.value)).toEqual(["@nested/beta.txt"]);
+		},
+	);
 });
