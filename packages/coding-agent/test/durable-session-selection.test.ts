@@ -227,6 +227,12 @@ describe("session selection", () => {
 		expect(await resolveSessionSelection(parseArgs(["--session", "/old/a.jsonl"]), options())).toEqual({
 			kind: "compatibility",
 		});
+		// A file that is not a `.jsonl` session keeps the compatibility route's own validation of it.
+		const other = join(cwd, "not-a-session.log");
+		await writeFile(other, "not a session\n");
+		expect(await resolveSessionSelection(parseArgs(["--session", other]), options())).toEqual({
+			kind: "compatibility",
+		});
 		// An empty value names no session, so it gets the compatibility route's own message for it.
 		expect(await resolveSessionSelection(parseArgs(["--session", ""]), options())).toEqual({
 			kind: "compatibility",

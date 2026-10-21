@@ -5,6 +5,7 @@
  * createAgentSession() options. The SDK does the heavy lifting.
  */
 
+import { statSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { type ImageContent, modelsAreEqual } from "@ny4n/ai";
 import { setCapabilityOverrides } from "@ny4n/tui";
@@ -257,6 +258,15 @@ function isPathArgument(value: string): boolean {
 	return value.includes("/") || value.includes("\\");
 }
 
+/** What is at `path`, without failing on a path that does not exist. */
+function pathKind(path: string): "directory" | "file" | "missing" {
+	try {
+		return statSync(path).isDirectory() ? "directory" : "file";
+	} catch {
+		return "missing";
+	}
+}
+
 /**
  * Decision #25: the session-selection flags address durable sessions.
  *
@@ -315,11 +325,18 @@ export async function resolveSessionSelection(
 	if (parsed.session !== undefined) {
 		const value = parsed.session;
 		// An empty value names nothing; the compatibility route answers it with the message it already has.
-		if (value.length > 0 && !isSessionFilePath(value)) {
-			// A path names a durable session directory; anything else is an id, or a unique prefix of one.
-			if (isPathArgument(value)) return selected({ directory: resolvePath(value, cwd), forkAt: parsed.fork });
-			const found = await findSessionDirectory(value, cwd, store);
-			if (found !== undefined) return selected({ directory: found.directory, forkAt: parsed.fork });
+		if (value.length > 0) {
+			const target = resolvePath(value, cwd);
+			const kind = pathKind(target);
+			// A directory is a durable session. A file is a JSONL session, whose own validation is the compatibility
+			// route's, so a file that is not a session keeps the error it has always given. A path that does not exist
+			// names a durable session directory and gets the named error for one; anything else is an id.
+			if (kind === "directory") return selected({ directory: target, forkAt: parsed.fork });
+			if (kind === "missing" && !isSessionFilePath(value)) {
+				if (isPathArgument(value)) return selected({ directory: target, forkAt: parsed.fork });
+				const found = await findSessionDirectory(value, cwd, store);
+				if (found !== undefined) return selected({ directory: found.directory, forkAt: parsed.fork });
+			}
 		}
 		// A JSONL file, a legacy id, and an id neither store holds get the compatibility route's own answer.
 		return COMPATIBILITY;

@@ -128,6 +128,22 @@ function pathsBelow(directory: string): string[] {
 	return paths.sort();
 }
 
+/** Every session directory below the store, so a run that started a session is visible whatever files it wrote. */
+function sessionDirectories(directory: string): string[] {
+	const directories: string[] = [];
+	const walk = (path: string): void => {
+		if (!existsSync(path)) return;
+		for (const entry of readdirSync(path, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			const child = join(path, entry.name);
+			if (SESSION_DIRECTORY.test(entry.name)) directories.push(child);
+			else walk(child);
+		}
+	};
+	walk(directory);
+	return directories.sort();
+}
+
 /** A real durable session with one answered turn: something to open, to name, and to fork from. */
 async function seedAnsweredSession(): Promise<{ directory: string; entryId: string; messages: number }> {
 	const faux = fauxProvider();
@@ -314,13 +330,14 @@ describe("--fork", () => {
 
 	test("reports an entry that does not exist", async () => {
 		const { directory, messages } = await seedAnsweredSession();
-		const before = pathsBelow(directory);
+		const before = sessionDirectories(agentDir);
 
 		const result = await runRpc(["--session", directory, "--fork", String(messages + 1)]);
 
 		expect(result.code).toBe(1);
 		expect(result.stderr).toContain(`Entry not found: ${messages + 1}`);
-		expect(pathsBelow(directory)).toEqual(before);
+		// A fork inside a session makes no new session directory, and this one forked nothing.
+		expect(sessionDirectories(agentDir)).toEqual(before);
 	}, 120_000);
 
 	test("refuses a value it was not given", async () => {
