@@ -434,6 +434,7 @@ raises N2's scope: 8 durable capabilities must be added, and two events are part
 | 9 | Context governance | N7 decision providers and policy gate | N3; Owner Decision #4 |
 | 10 | Context governance | N5 memory lifecycle | N4; Owner Decisions #1 and #11 |
 | 11 | Context governance | N8 external search, fetch, and evidence | N6 and N7; Owner Decision #7 |
+| 11b | Context governance | External search design research: what mature search/fetch/evidence stacks do about canonicalization, retention, budgets, and allowlists, to inform N8 | Decision #7 resolved; runs before N8 starts |
 | 12 | TUI | N9 TUI rewrite | N5 |
 | 13 | Bun-first | Phase 3 compatibility remainder | Done: closed 2026-10-19 by PRs #61, #62, #64, and #65 |
 | 14a | Bun-first | Phase 4a release hardening without signing: binary size and startup benchmark, provider-independent install guidance | Bun Phase 3 merged; no owner decision needed (signing is split out as 14b) |
@@ -446,22 +447,24 @@ Do not close or reinterpret these entries without an owner decision. Work may co
 
 Every open item below is also gathered, with evidence and a recommendation each, in the decision packet at [#141](https://github.com/blxzer77/nyan/issues/141); that issue is the place to answer them in one pass.
 
+On 2026-10-21 the owner answered that packet: Decisions #1, #7, #11, #15, and #16 are resolved above. Still open: #4 (the retrieval provider configuration), which waits on an analysis of the retrieval infrastructure the owner reports as already built in a separate package, and #5 (the Pactile stage 1a runner), which the owner wants to discuss; #13 (release signing) is explained and waits on a decision.
+
 | # | Question | Recommended | Blocks |
 | --- | --- | --- | --- |
-| 1 | Cross-session memory location | Under durable storage; the physical layout follows the durable session directory policy frozen in N0 | N5 |
+| 1 | Cross-session memory location | Resolved 2026-10-21: under durable storage, whose physical layout follows the durable session directory policy frozen in N0. Persistent Memory is not given a third root beside the session store, because durable is already the product path's persistence owner and a side directory would add a new way for a memory write and a session commit to disagree | Resolved; N5 |
 | 2 | Develop context governance only in nyan from now on | Yes | N3 |
 | 3 | Keep Pactile review gates or use Nyan tests and notes | Tests + notes, keep evaluation fixtures and zero-tolerance rules | N3 |
 | 4 | Unified decision/retrieval provider configuration, endpoint names, auth references, and test credentials | One structured `retrieval` block covers TEI embedding/rerank, Qdrant, Tantivy, model profiles, readiness, timeouts, and batch limits; no default hosted endpoints; owner provides credentials | N6 and N7 |
 | 5 | Location of the Pactile stage 1a evaluation runner | Owner to point at it | N4 |
 | 6 | Separate `@ny4n/decision` package or merge into `@ny4n/durable` | Separate package | N7 |
-| 7 | External search open questions including URL canonicalization, retention, refetch, budget, schema, and allowlist | See the original checklist item 7 | N8 |
+| 7 | External search open questions including URL canonicalization, retention, refetch, budget, schema, and allowlist | Resolved 2026-10-21: the six answers in the [decision packet](https://github.com/blxzer77/nyan/issues/141) are accepted — RFC 3986 syntax-level canonicalization only; Evidence keeps a response hash with a de-tagged snapshot for 30 days by default; a refetch updates only an unchanged-canonicalization URL whose hash moved and keeps the old record as superseded; search count, fetched bytes and total duration each carry a default budget and a named state when hit; the `SearchHit -> Fetch -> Evidence -> Citation` schema is append-only; the allowlist defaults to deny, HTTPS only, private, loopback and metadata addresses refused, every redirect hop rechecked. The owner also asked for an external research pass to inform the design, which Queue 11b records | Resolved; N8 |
 | 9 | Bring Pactile non-context modules including Kernel, tasks, tiles, and app | Not now | None |
-| 11 | Approver for lossy compression, permanent drop, and memory deletion | Low-risk memory promotion is automatic by policy; these three remain explicit user confirmations recorded as a durable entry | N5 |
+| 11 | Approver for lossy compression, permanent drop, and memory deletion | Resolved 2026-10-21: low-risk memory promotion is automatic by policy; these three stay explicit user confirmations, each recorded as a durable entry (who, when, on what). No approval-chain UI is added, because C7 and C8 remain open product-shape questions | Resolved; N5 |
 | 12 | Bun HTTP dispatcher, keep undici or switch to Bun-native fetch | Resolved 2026-10-17: Bun-native fetch behind the runtime adapter; PR #13 is only a partial implementation slice | Resolved; Bun Phase 3 |
 | 13 | Bun release signing certificate and key scope | Owner provides a certificate or explicitly defers signing | Bun Phase 4b |
 | 14 | Retrieval index storage placement and publication ownership | Resolved 2026-10-16: self-hosted server-side index coordinator over Qdrant and strict Tantivy/BM25; staged immutable generations, active-manifest CAS, coordinator epoch/fencing, durable jobs, reconciliation, rollback, and retention are the required contract. Nyan uses the client protocol and never mounts remote index files. | Resolved; N6 |
-| 15 | Keep the `V1` suffix in public contract names | Freeze one naming rule before public package exports are created | N3, N6, and N7 |
-| 16 | Keep Pactile documents as an appendix or link-only reference | Rewrite verified Nyan behavior in English and link to Pactile design references | Documentation for N3 through N9 |
+| 15 | Keep the `V1` suffix in public contract names | Resolved 2026-10-21: no suffix. Version lives in the package version and the changelog; a contract that must coexist with an older one gets a second subpath (`@ny4n/durable/artifact`, then `@ny4n/durable/artifact-next`) rather than a version in an export name, which is what the 12 existing packages already do | Resolved; N3, N6, and N7 |
+| 16 | Keep Pactile documents as an appendix or link-only reference | Resolved 2026-10-21: link only. Nyan documents state verified Nyan behavior in English and link the Pactile design references; an appendix would drift and would blur which document owns which fact | Resolved; documentation for N3 through N9 |
 | 17 | Durable Harness as the product path or a runtime beside `AgentSession` | Durable Harness as the product path; resolved on 2026-10-15 | Resolved; N1 and N2 |
 | 18 | Does durable gain a bounded streaming channel, or do the streamed events arrive another way? | Resolved 2026-10-15: keep all streaming events and add the bounded channel. `--mode json` and `--mode rpc` stream `message_update` and tool events, so reducing them would break a documented interface | Resolved; N2 |
 | 19 | Does durable gain the phased request transform? | Resolved 2026-10-15: preserve fidelity by adding the phased channel, including the two ordered phases and the prompt/tool restoration between them | Resolved; N2 |
