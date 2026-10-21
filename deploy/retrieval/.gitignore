@@ -1,0 +1,4 @@
+# Runtime state, not source: the API key for Qdrant, the vLLM weight cache (~42 MB) and the last probe output.
+keys/
+vllm-cache/
+last-probe.txt
