@@ -4,6 +4,8 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-10-21
+
 ### Fixed
 
 - An extension's `before_agent_start` message or system prompt now reaches the request that carries the prompt that produced it. When a prompt was submitted while a run was in flight, its effects were missing from that request and appeared on the next run's first request instead.
