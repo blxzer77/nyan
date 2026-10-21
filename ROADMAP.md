@@ -21,10 +21,10 @@ gantt
     N1 product path switch to durable :done, crit, n1, after n0, 21d
     N2 extension and hook adaptation :done, crit, n2, after n1, 21d
     Release 1.4.0 readiness :done, crit, r14, after n2, 7d
-    Durable session selection :n2s, after r14, 14d
+    Durable session selection :done, n2s, after r14, 14d
 
     section Context governance
-    N3 content-addressed artifact store :crit, n3, after n2, 14d
+    N3 content-addressed artifact store :done, n3, after n2, 14d
     N4 compaction semantics :crit, n4, after n3, 21d
     N5 memory lifecycle :crit, n5, after n4, 21d
     N6 retrieval controller, all branches :crit, n6, after n3, 28d
@@ -43,7 +43,7 @@ gantt
 
 The Queue table records complete multi-parent dependencies where the compact Gantt representation uses one primary predecessor. Critical bars identify work waiting on an owner decision or on a task blocked by one. GitHub's current Mermaid renderer keeps the today marker on by default but rejects an explicit `todayMarker on` directive and its style form for this chart; the valid chart therefore relies on that default.
 
-The verified baseline is `origin/main` at `f9fbc89d8` after N2 task C batches C3b and C3c and Bun Phase 3 batch 5d. The Nyan tree has 12 packages and has no `packages/context`, `packages/retrieval`, `packages/decision`, or `packages/coding-agent/src/core/context-governance` implementation. Pactile's source, tests, design documents, evidence fixtures, and the external retrieval worker are available as migration inputs, not as Nyan completion evidence. The 1.3.0 Herdr, Bun, and provider fixes are published; they do not implement Context Governance. On 2026-10-15 the owner fixed the target architecture for compression, memory, retrieval, decision, egress, and the terminal UI, and selected the implementation shape; those decisions are recorded in the [Decided architecture](#decided-architecture-2026-10-15), [Implementation orchestration](#implementation-orchestration-2026-10-15), and [TUI rewrite](#tui-rewrite) sections below. They are planning records, not implementation evidence. Bun Phase 3 closed on 2026-10-19 and N2 closed on 2026-10-19; no implementation line is active until the owner chooses the next one.
+The verified baseline is `origin/main` at `7f68587c1` after N2 task C batches C3b and C3c and Bun Phase 3 batch 5d. The Nyan tree has 12 packages and has no `packages/context`, `packages/retrieval`, `packages/decision`, or `packages/coding-agent/src/core/context-governance` implementation. Pactile's source, tests, design documents, evidence fixtures, and the external retrieval worker are available as migration inputs, not as Nyan completion evidence. The 1.3.0 Herdr, Bun, and provider fixes are published; they do not implement Context Governance. On 2026-10-15 the owner fixed the target architecture for compression, memory, retrieval, decision, egress, and the terminal UI, and selected the implementation shape; those decisions are recorded in the [Decided architecture](#decided-architecture-2026-10-15), [Implementation orchestration](#implementation-orchestration-2026-10-15), and [TUI rewrite](#tui-rewrite) sections below. They are planning records, not implementation evidence. Bun Phase 3 closed on 2026-10-19 and N2 closed on 2026-10-19; no implementation line is active until the owner chooses the next one.
 
 ### Status key
 
@@ -275,7 +275,7 @@ Durable already provides the Context Operation primitives: the effect sandwich (
 | N8 external search, fetch, and evidence | `SearchHit` to `Fetch` to `Evidence` to citation, with the fixed safety constraints. | No search hit becomes a citation without a fetch record and a response hash. |
 | N9 TUI rewrite | The [TUI rewrite](#tui-rewrite) design. | Every durable operation state renders from the view, and no recovery logic lives in the TUI. |
 
-N0, N1, and N2 are complete, and Bun Phase 2 and Phase 3 are closed; every phase carries a gate that must pass with recorded evidence before the next phase starts, and each phase is a separate change that can be reverted on its own. The Bun Phase 2 boundary and reservation are recorded in [the parallelization note](.agents/notes/implemented/architecture/2026-10-16-bun-runtime-adapter-parallelization.md).
+N0, N1, N2, and N3 are complete, durable session selection landed on 2026-10-21, and Bun Phase 2 and Phase 3 are closed; every phase carries a gate that must pass with recorded evidence before the next phase starts, and each phase is a separate change that can be reverted on its own. The Bun Phase 2 boundary and reservation are recorded in [the parallelization note](.agents/notes/implemented/architecture/2026-10-16-bun-runtime-adapter-parallelization.md).
 
 ## Decided architecture (2026-10-15; retrieval revision 2026-10-16)
 
@@ -447,8 +447,8 @@ What a line may touch, so that parallel work conflicts only where the dependency
 | 4 | Migration | N2 extension and hook adaptation | Done: closed by the N2 gate (see [Done](#done)) |
 | 4b | Release | 1.4.0 readiness: durable TUI parity and release fixes | Done: R0–R3c and F1–F3 merged (#95–#122) |
 | 4c | Release | Close the output-file stream before removing a full-output file, and cover it (#30, #31) | Done: audit A3b (`core/output-spill.ts` plus five cases in `test/output-spill.test.ts`) |
-| 5 | Migration | Durable session selection | N2; the flags `--session`, `--session-id`, `--resume`, `--fork`, `--session-dir`, `--no-session`, and `--name` keep the legacy route until this ships (Decision #25) |
-| 6 | Context governance | N3 content-addressed artifact store | N2 |
+| 5 | Migration | Durable session selection | Done 2026-10-21: [PR #155](https://github.com/blxzer77/nyan/pull/155) squash `eeb16a751`. `core/durable/sessions.ts` gained `DurableSessionStore` (a real root or `:memory:`), `listSessionDirectory`, and `findSessionDirectory` (exact id, a unique prefix, or a named ambiguity error); `main.ts` resolves the selection before either runtime starts, so an unopenable session prints one `Error:` line and exits 1 instead of a stack. `--session <dir>`, `--session-id`, `--session-dir`, `--name`, `--fork <entry-id>`, `--resume`, and `--no-session` all land on the durable path, while an existing JSONL file keeps the compatibility route. Evidence: `test/durable-session-selection.test.ts` (20 cases) and `test/durable-session-selection-cli.test.ts` (14 cases, real entry point in a subprocess observing `get_state` over `--mode rpc`), ten mutations each failing a named case, `npm run check` exit 0, and tmux runs with a temporary HOME. `--fork` forks within one session only, because durable cannot copy a conversation into another session directory |
+| 6 | Context governance | N3 content-addressed artifact store | Done 2026-10-21: [PR #152](https://github.com/blxzer77/nyan/pull/152) squash `2985a9542`. `packages/durable/src/artifacts/` stores one blob per digest under `blobs/<2 hex>/<key>` and one record per scope under `meta/<scope>/<key>.json`, reads by checking length then re-computing the digest, and answers `missing`, `scope`, `length`, or `corrupt` without returning bytes; writes go through a `.tmp-` sibling and a rename. Evidence: `test/artifacts.test.ts` (10 cases including the four refusal rows), five mutations each killing a named row, `npm run check` exit 0. The store is a root of its own, so a caller must write the artifact before the entry that points at it; making the two atomic with a Session commit would be a storage-shape change (recorded in `docs/spec.md` §14) |
 | 7 | Context governance | N4 compaction semantics: admission policy, protected regions, source fingerprint, receipt, and the fail-closed matrix in [the N4 note](.agents/notes/proposed/architecture/2026-10-21-n4-compaction-semantics.md) | N3 |
 | 8 | Context governance | N6 retrieval controller with all branches and remote hybrid code retrieval | N3; Decision #14 resolved; proposed retrieval architecture note |
 | 8a | Context governance | Retrieval deployment convergence: `deploy/retrieval/sync.sh`, a recorded deployed commit, and drift reporting in `probe.sh` (Decision #42) | None; small and independent of N3 |
@@ -462,6 +462,7 @@ What a line may touch, so that parallel work conflicts only where the dependency
 | 14a | Bun-first | Phase 4a release hardening without signing: binary size and startup benchmark, provider-independent install guidance | Bun Phase 3 merged; no owner decision needed (signing is split out as 14b) |
 | 14b | Bun-first | Phase 4b: release signing certificate and key scope | Owner Decision #13 |
 | 15 | Improvement | Codemode admission queue: a script that finds both workers busy waits instead of failing | Decision #26 (rejection stays until then); a design note covering cancellation while queued, timeout accounting, fairness across sessions, shutdown, and recovery of a queued call; design preparation in [the admission queue note](.agents/notes/proposed/architecture/2026-10-21-codemode-admission-queue.md), which answers the five questions; still rejected until Decision #26 changes |
+| 5b | Migration | The `--help` text still describes the 1.4.2 flag semantics (`--session <path|id>`, `--session-id` "creating it if missing", `--fork <path|id>`), which the session-selection line could not change because `src/cli/args.ts` was outside its write set | Queue 5 merged |
 
 ## Decisions waiting on the owner
 
@@ -566,6 +567,8 @@ Only merged or formally published milestones verified from GitHub metadata are l
 | 2026-10-21 | Release follow-up: `/` command, argument, and `@` path completion in the default TUI | [PR #128](https://github.com/blxzer77/nyan/pull/128), [PR #131](https://github.com/blxzer77/nyan/pull/131) |
 | 2026-10-21 | Nyan 1.4.1 release | [nyan-v1.4.1 release](https://github.com/blxzer77/nyan/releases/tag/nyan-v1.4.1) and [release run 39472305143](https://github.com/blxzer77/nyan/actions/runs/39472305143): the tag `nyan-v1.4.1` at `121ee520c` published all 12 packages at 1.4.1 with provenance, built the six Bun binaries with `SHA256SUMS`, passed the four binary smoke tests, and created the release |
 | 2026-10-21 | Nyan 1.4.2 release | [nyan-v1.4.2 release](https://github.com/blxzer77/nyan/releases/tag/nyan-v1.4.2) and [release run 39551358700](https://github.com/blxzer77/nyan/actions/runs/39551358700): the tag `nyan-v1.4.2` at `514868bc2` published all 12 packages at 1.4.2 with provenance, built the six Bun binaries with `SHA256SUMS`, and passed the four binary smoke tests. It carries Decisions #39 and #40 (a steer's `before_agent_start` effects, and a fork that survives a failed extension shutdown) |
+| 2026-10-21 | N3 content-addressed artifact store | [PR #152](https://github.com/blxzer77/nyan/pull/152) |
+| 2026-10-21 | Durable session selection | [PR #155](https://github.com/blxzer77/nyan/pull/155) |
 | 2026-10-20 | 1.4.0 readiness: durable TUI parity (R0–R3c) | [PR #96](https://github.com/blxzer77/nyan/pull/96), [PR #98](https://github.com/blxzer77/nyan/pull/98), [PR #99](https://github.com/blxzer77/nyan/pull/99), [PR #105](https://github.com/blxzer77/nyan/pull/105), [PR #109](https://github.com/blxzer77/nyan/pull/109), [PR #111](https://github.com/blxzer77/nyan/pull/111) |
 | 2026-10-20 | 1.4.0 readiness: release fixes (F1, F2, F2b, F3) | [PR #97](https://github.com/blxzer77/nyan/pull/97), [PR #100](https://github.com/blxzer77/nyan/pull/100), [PR #106](https://github.com/blxzer77/nyan/pull/106), [PR #112](https://github.com/blxzer77/nyan/pull/112) |
 | 2026-10-21 | Audit round: issue #101's CI and script findings (fail-closed merge gate, cache-prune branch and limits, tool and prebuild verification, process-level script tests) | [PR #144](https://github.com/blxzer77/nyan/pull/144) |
