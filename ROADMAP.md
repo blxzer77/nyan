@@ -449,9 +449,10 @@ What a line may touch, so that parallel work conflicts only where the dependency
 | 4c | Release | Close the output-file stream before removing a full-output file, and cover it (#30, #31) | Done: audit A3b (`core/output-spill.ts` plus five cases in `test/output-spill.test.ts`) |
 | 5 | Migration | Durable session selection | N2; the flags `--session`, `--session-id`, `--resume`, `--fork`, `--session-dir`, `--no-session`, and `--name` keep the legacy route until this ships (Decision #25) |
 | 6 | Context governance | N3 content-addressed artifact store | N2 |
-| 7 | Context governance | N4 compaction semantics | N3 |
+| 7 | Context governance | N4 compaction semantics: admission policy, protected regions, source fingerprint, receipt, and the fail-closed matrix in [the N4 note](.agents/notes/proposed/architecture/2026-10-21-n4-compaction-semantics.md) | N3 |
 | 8 | Context governance | N6 retrieval controller with all branches and remote hybrid code retrieval | N3; Decision #14 resolved; proposed retrieval architecture note |
 | 8a | Context governance | Retrieval deployment convergence: `deploy/retrieval/sync.sh`, a recorded deployed commit, and drift reporting in `probe.sh` (Decision #42) | None; small and independent of N3 |
+| 8b | Context governance | Evaluation runs recorded as Langfuse dataset items with a configuration fingerprint (Decisions #5 and #43) | Decision #43; the evaluation suite is merged |
 | 9 | Context governance | N7 decision providers and policy gate | N3; Owner Decision #4 |
 | 10 | Context governance | N5 memory lifecycle | N4; Owner Decisions #1 and #11 |
 | 11 | Context governance | N8 external search, fetch, and evidence | N6 and N7; Owner Decision #7 |
