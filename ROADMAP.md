@@ -1,10 +1,10 @@
 # Roadmap
 
-Planned work and its status. Updated in the PR that changes it.
+Planned work and its status. Owned by the orchestration session; an implementation session reports its row and its evidence in the PR body instead of editing this file.
 
 Last updated: 2026-10-21
 
-WIP rule: No more than two roadmap lines may be active simultaneously.
+Parallelism rule (owner, 2026-10-21): concurrency is bounded by the dependency graph and by disjoint write sets, not by a fixed count of active lines. The orchestration session owns the shared documents — this file, `packages/coding-agent/CHANGELOG.md`, `docs/handoff/`, `docs/layers.json`, the root manifests, and `install-lock` — and every other session leaves them alone, reporting its roadmap row and changelog entry in the PR body for the orchestration session to fold in. A line may start when its dependencies are merged and its write set (see [Write sets](#write-sets)) does not overlap a line that is still open; where two lines need the same file, the earlier start holds it until it merges. This replaces the former "no more than two roadmap lines may be active" rule, which shipped with the first version of this file (`f0d0720eb`) without a recorded reason: every conflict observed since was in the shared documents rather than in code, including two `main` merges and one `ROADMAP.md` conflict in the two parallel PRs of 2026-10-21.
 
 This roadmap is the single source of truth for planned work and status. Future dates are estimates, not delivery commitments. A task is not considered done merely because source code, a design, or an external Pactile asset exists; its status requires verified Nyan repository or GitHub evidence. Owner recommendations below are planning assumptions, not owner decisions.
 
@@ -416,6 +416,26 @@ generation/tool recovery tests, the print/JSON/RPC no-model smoke tests, the leg
 smoke test, and source plus built-bundle startup checks with `NYAN_OFFLINE=1`. The corrected inventory
 raises N2's scope: 8 durable capabilities must be added, and two events are part of the documented
 `--mode json` contract.
+
+## Write sets
+
+What a line may touch, so that parallel work conflicts only where the dependency order already serializes it. A path not listed for a line is not its to change; ask the orchestration session to add it here first.
+
+| Line | Writes | Collides with |
+| --- | --- | --- |
+| Orchestration (every session) | `ROADMAP.md`, `packages/coding-agent/CHANGELOG.md`, `docs/handoff/`, `docs/layers.json`, root `package.json` and lockfiles, `packages/coding-agent/install-lock/`, `.github/quality/policy.json` | nothing: it is the only writer |
+| Durable session selection (Queue 5) | `packages/coding-agent/src/core/durable/sessions.ts`, `src/core/durable/startup-error.ts`, `src/main.ts`, `src/modes/durable/**` and its tests | N9 needs `src/modes/durable/tui.ts`; whichever starts first holds it until it merges |
+| N3 artifacts | new `packages/durable/src/artifacts/**`, the one export line it adds to `packages/durable/src/index.ts`, an appended section in `packages/durable/docs/spec.md` | every durable line appends to the same `index.ts`; the export line is a one-line append, resolved at merge |
+| N4 compaction | `packages/durable/src/harness/compaction*.ts`, new `packages/durable/src/context/**` | N3 and N4 both extend `src/harness`; N4 starts after N3 merges |
+| N5 memory | new `packages/durable/src/memory/**` | none; starts after N4 |
+| N6 retrieval | new `packages/retrieval/**` (created by the orchestration session's scaffolding PR), new `packages/coding-agent/src/core/durable/retrieval*.ts` | N8 extends the same package; N8 starts after N6 merges its contracts |
+| N7 decision | new `packages/decision/**` (scaffolded the same way) | none |
+| N8 external search | `packages/retrieval/src/search/**`, new `packages/retrieval/src/evidence/**` | N6; see above |
+| N9 TUI rewrite | `packages/coding-agent/src/modes/durable/**`, `packages/tui/**` | Queue 5 holds `modes/durable/tui.ts` until it merges |
+| Bun Phase 4a | `scripts/bench-*.mjs`, `docs/`, `packages/coding-agent/README.md` | none |
+| Retrieval evaluation harness (Decision #43) | `eval/retrieval/**` | none |
+| Retrieval deployment convergence (Queue 8a) | `deploy/retrieval/**` | none |
+| Issue #101 CI and scripts findings | `.github/workflows/**`, `scripts/**` | none; it is the only line that writes workflows |
 
 ## Queue
 
