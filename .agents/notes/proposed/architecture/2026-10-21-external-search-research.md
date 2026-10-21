@@ -90,24 +90,37 @@ RFC 3986 §6 的规范化（大小写、默认端口、点段、空路径、百�
 `evidenceId`、`quote`（必须来自快照原文）、`finalUrl`、`hash`、`fetchedAt`。
 模型给出的引用必须能在快照里逐字命中，否则该引用作废（这条挡住了"编造引用"这一类失败）。
 
-## 3. 对 N8 的落地建议
+## 3. 供应商策略（owner 决定，2026-10-21）
 
-1. **Provider 接口配置化**（Decision #4 的"配置即授权"）：`retrieval.search.providers[]`，每项 `{ kind, baseUrl, apiKeyRef }`。
-   配置了就可用，没配置就是具名不可用，不发请求。
-2. **两条默认路径**：
-   - 自托管 SearXNG（零密钥、内网、质量一般）作为**默认可用路径**；
-   - 商业 API（Brave / Exa / Tavily 一类，返回结构化结果且平台侧已抓取）作为**质量路径**，需要 key。
-3. **GitHub 搜索是独立 provider**：`kind: "github"`，需要 token，受 10 次/分钟限制；结果上限 1000 由调用方设 N（建议 50）。
-4. **抓取器只有一份**：搜索 provider 只负责返回 hit，抓取、SSRF 校验、证据生成全部走同一个 `Fetch` 实现——
-   商业 API 自带的摘要也不能绕过证据校验。
-5. **评估**：把"外部搜索"的评估跑成 Langfuse dataset（Decision #43/#5），指标是"引用可逐字命中率"与"具名失败占比"，
-   而不是"回答看起来对"。
+**商业 API 是主路径，SearXNG 只在没有任何商业 API 可用时作兜底。** 理由：SearXNG 的结果质量实测不够，
+它剩下的价值只是"零密钥、能离线跑通整条链路"，所以它退到 fallback，而不是默认。
 
-## 4. 仍未定（需要 owner 一句话）
+候选与能力（按"能否直接给出可校验的网页结果"排序）：
 
-- **外部搜索供应商**：默认自托管 SearXNG + 允许配置商业 API，还是直接选一家商业 API？后者更省事、质量更好，
-  但把"外部搜索"变成需要付费与密钥的能力。
-- 建议：按上面第 3 节的两条路径实现，先把自托管跑通（零成本、可离线评估），商业 API 作为配置项。
+| Provider | 形态 | 返回什么 | 备注 |
+| --- | --- | --- | --- |
+| **Tavily** | `POST /search`（另有 `/extract`） | title / url / snippet，可选 raw content | 面向 agent 设计，自带正文抽取；按额度计费 |
+| **Brave Search API** | `GET /res/v1/web/search`，头 `X-Subscription-Token` | title / url / description | 自有索引，有免费额度（配额未逐项核对） |
+| **Exa** | `POST /search` + `/contents`，neural / hybrid | 语义召回 + 正文 / highlights | 适合"找相似页"，不适合"找权威事实" |
+| Context7 | 库文档解析（本机已通过 `smart-search context7-*` 可用） | 库文档片段 | 依赖用法查询，不是网页搜索；是独立 kind |
+| GitHub 搜索 | REST `/search/*` | 代码 / 仓库 / issue | 见第 1 节：需 token、10 次/分钟、1000 上限 |
+| SearXNG | 自托管聚合 | 各引擎的标题 / 摘要 | **仅 fallback**：配了任何商业 API 就不用它 |
+| AnySearch | 公开资料里未核到对应产品 | — | 需要 owner 给一个网址或文档链接才能评估 |
+| DeepSeek | 公开 API 未见独立搜索端点（应用内搜索不走 API，未核实） | — | 不建议当搜索 provider |
+
+**选择顺序 = 配置顺序**：`retrieval.search.providers[]` 里排在前面的先用；某个 provider 返回具名失败（配额、鉴权、
+超时）才降级到下一个；全部不可用才用 SearXNG（若配置了），都没有就返回 `unavailable`。
+
+**商业 API 也不能绕过证据校验**：它返回的摘要/正文只是候选，真正进上下文的必须是 Fetch 抓到的字节 + 响应哈希 +
+逐字可命中的 quote。否则一个被投毒的搜索摘要就能直接变成引用。
+
+## 4. 落地要点（N8 实现时照做）
+
+1. Provider 接口配置化（Decision #4 的"配置即授权"）：每项 `{ kind, baseUrl, apiKeyRef, order }`，密钥按引用读文件。
+2. 抓取器只有一份：搜索 provider 只返回 hit，SSRF 校验、抓取、证据生成全部走同一个 `Fetch`。
+3. 预算三个上限（搜索次数、抓取字节、总时长），命中返回具名状态。
+4. 评估（Decision #43/#5）：把"引用可逐字命中率"和"具名失败占比"写进 Langfuse dataset，而不是看回答像不像。
+5. Context7 与 GitHub 各是独立 kind，只在配置时启用；GitHub 的 N 建议 50（1000 上限之内，且 10 次/分钟）。
 
 ## 5. 未验证
 
