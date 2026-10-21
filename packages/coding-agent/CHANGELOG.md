@@ -4,6 +4,13 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+### Fixed
+
+- The lines a session shows below the transcript no longer stay for the rest of the session. An extension failure, a
+  command's answer, or a warning the runtime recorded now disappears on its own (10 s for an info line, 15 s for a
+  warning, 30 s for an error), and at most the newest three are shown, so a long session no longer collects a growing
+  block of old messages above the editor.
+
 ## [1.4.2] - 2026-10-21
 
 ### Fixed

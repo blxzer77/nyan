@@ -83,6 +83,7 @@ import type { DurableBugReportEnvironment } from "./bug-report.ts";
 import { type DurableCommandProduct, DurableCommands, type DurableReopenRequest } from "./commands.ts";
 import { type DurableFooterLabels, footerHintsLine, footerStatsLine } from "./footer.ts";
 import { type DurableEditorPort, DurableInput, readClipboardPaste } from "./input.ts";
+import { NoticeArea, type NoticeLevel } from "./notices.ts";
 import { enabledModelIds } from "./scoped-models.ts";
 import type { DurableSettingsUi } from "./settings.ts";
 import { type DurableStartupResources, type ResourceSection, runDurableStartup, terminalTitleFor } from "./startup.ts";
@@ -298,8 +299,10 @@ class DurableTui {
 	#indicator: StatusIndicator | undefined;
 	#statusText = "";
 	readonly #extensionStatuses = new Map<string, string>();
-	readonly #extensionNotices: Array<{ message: string; type: "info" | "warning" | "error" }> = [];
-	#lastViewNotices: DurableView["notices"] = [];
+	/** The lines below the transcript: each one expires, so a session's failures do not pile up for its whole length. */
+	readonly #noticeArea = new NoticeArea();
+	#noticeTimer: ReturnType<typeof setTimeout> | undefined;
+	#stopped = false;
 	/** The newest view applied, so a footer change that arrives outside an update can redraw it. */
 	#lastView: DurableView | undefined = undefined;
 	/** The card of the bash command running now, if any. */
@@ -404,6 +407,9 @@ class DurableTui {
 	}
 
 	stop(): void {
+		this.#stopped = true;
+		if (this.#noticeTimer !== undefined) clearTimeout(this.#noticeTimer);
+		this.#noticeTimer = undefined;
 		this.#discardTools();
 		this.#indicator?.dispose();
 		this.#ui.stop();
@@ -746,7 +752,7 @@ class DurableTui {
 
 	/** Start again in another session: its entries, names, and notices are not the ones shown before. */
 	resetSessionView(): void {
-		this.#extensionNotices.length = 0;
+		this.#noticeArea.reset();
 		this.#extensionStatuses.clear();
 		this.#sessionName = undefined;
 		this.#statusText = "";
@@ -755,9 +761,9 @@ class DurableTui {
 	}
 
 	/** Show a line in the notice area: an answer the TUI gives itself, such as a command it cannot run. */
-	notify(message: string, type: "info" | "warning" | "error" = "info"): void {
-		this.#extensionNotices.push({ message, type });
-		if (this.#extensionNotices.length > 8) this.#extensionNotices.shift();
+	notify(message: string, type: NoticeLevel = "info"): void {
+		this.#noticeArea.push(type, message, Date.now());
+		this.#scheduleNoticeExpiry();
 		this.#renderNotices();
 		this.#ui.requestRender();
 	}
@@ -850,19 +856,40 @@ class DurableTui {
 	}
 
 	#syncNotices(view: DurableView): void {
-		this.#lastViewNotices = view.notices;
+		this.#noticeArea.adopt(view.notices, Date.now());
+		this.#scheduleNoticeExpiry();
 		this.#renderNotices();
 	}
 
 	#renderNotices(): void {
 		this.#notices.clear();
-		for (const item of [
-			...this.#lastViewNotices.slice(-4),
-			...this.#extensionNotices.slice(-4).map((item) => ({ level: item.type, message: item.message })),
-		].slice(-4)) {
+		for (const item of this.#noticeArea.visible(Date.now())) {
 			const color = item.level === "error" ? "error" : item.level === "warning" ? "warning" : "muted";
 			this.#notices.addChild(new TruncatedText(theme.fg(color, item.message), 1, 0));
 		}
+	}
+
+	/**
+	 * One redraw when the oldest shown line expires. A redraw of the transcript does not restart the countdown, and a
+	 * stopped TUI schedules nothing; the timer is unref'd so a notice cannot keep the process alive after the exit.
+	 */
+	#scheduleNoticeExpiry(): void {
+		if (this.#noticeTimer !== undefined) clearTimeout(this.#noticeTimer);
+		this.#noticeTimer = undefined;
+		if (this.#stopped) return;
+		const next = this.#noticeArea.nextExpiry(Date.now());
+		if (next === undefined) return;
+		const timer = setTimeout(
+			() => {
+				this.#noticeTimer = undefined;
+				this.#scheduleNoticeExpiry();
+				this.#renderNotices();
+				this.#ui.requestRender();
+			},
+			Math.max(0, next - Date.now()),
+		);
+		(timer as { unref?: () => void }).unref?.();
+		this.#noticeTimer = timer;
 	}
 
 	#syncStatus(live: LiveState): void {
