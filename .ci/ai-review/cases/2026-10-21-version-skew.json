@@ -297,5 +297,17 @@
 			"label": "unverified",
 			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
 		}
-	]
+	],
+	"measurements": [
+		{
+			"run": 39571374875,
+			"change": "the manifest rule and the catch-all 'quote the file' clause (#137)",
+			"head": "0c8326456f92f42d256d98b96fd30c7ca5b2b7a3",
+			"findings": 34,
+			"manifestFindings": 16,
+			"verdict": "no effect",
+			"note": "Still 16 of 34 findings about package versions, and the first one quotes a premise the diff contradicts: it says only 4 manifests changed, while `git diff --name-only` across the same range lists 18. Prompt rules did not move this; the claim does not depend on the prompt, it depends on the reviewer's reading of the diff and of files it never opened."
+		}
+	],
+	"resolution": "Manifests are excluded from review instead: lockstep is enforced by `scripts/sync-versions.js`, `npm run check` and `scripts/publish-packages.mjs`, and dependency health by `npm audit`, `check:pinned-deps` and `check:runtime-deps`. A reviewer that invents manifest state adds tokens and buries the findings it does get right."
 }
