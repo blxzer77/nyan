@@ -4,7 +4,9 @@
 		"packages/ai/src/providers/data/**",
 		"packages/*/dist/**",
 		".ci/model-data/**",
-		"packages/coding-agent/install-lock/**"
+		"packages/coding-agent/install-lock/**",
+		"**/package.json",
+		"**/package-lock.json"
 	],
 	"rules": [
 		{
@@ -36,11 +38,6 @@
 			"path": ".github/workflows/**",
 			"merge_system_rule": true,
 			"rule": "Review this workflow as a claim about what has been verified.\n\n- Report a step that can pass without proving what its name claims, and a required status check that a renamed job would silently break.\n- Report a job whose result cannot be used by the job that depends on it, and a `needs`/`if` combination that skips a required job.\n- Report a secret, token, or internal address written in the clear, and an external action not pinned to a 40-character commit SHA.\n- Report a self-hosted runner scheduled from a fork-triggered event, and a pull-request job that checks out untrusted code on it.\n- Report a timeout, a retry, or a cache policy that assumes a behaviour of the runner that nothing verifies."
-		},
-		{
-			"path": "**/{package.json,package-lock.json}",
-			"merge_system_rule": true,
-			"rule": "A manifest claim is a claim about several files at once, so it needs several files read.\n\n- Do not infer a sibling package's version from the diff. This repository keeps every package in lockstep, and a diff that bumps one manifest usually bumps all of them in the same commit; a finding that says \"the others are still 1.4.1\" must quote the line in each file that says so.\n- Do not claim `package-lock.json` is stale without quoting the entry you mean.\n- If you have not opened a file, you cannot report it. Say what you checked and stop there."
 		},
 		{
 			"path": "**/*",
