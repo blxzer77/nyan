@@ -133,8 +133,8 @@ Run `npm run version:set -- X.Y.Z` (it also dates the changelog), commit, then p
 ## Roadmap
 
 - Read `ROADMAP.md` before starting work; it lists the active lines, the queue, and decisions waiting on the owner.
-- When a unit of work finishes, update `ROADMAP.md` in the same change: keep Active, Queue, and Decisions accurate, record verification evidence, and commit the handoff-ready state so continuing elsewhere requires only a push.
-- A PR that finishes or changes a roadmap item updates `ROADMAP.md` in the same PR (status, gantt bar, and the table row).
+- The orchestration session owns `ROADMAP.md` and `packages/coding-agent/CHANGELOG.md`. Any other session leaves both alone and puts its roadmap row (status, gantt bar, table row) and its changelog entry in the PR body; the orchestration session folds them in, so parallel sessions never conflict in the shared documents. See [Write sets](ROADMAP.md#write-sets) for what each line may touch.
+- When a unit of work finishes, the roadmap stays handoff-ready: Active, Queue, and Decisions accurate, verification evidence recorded, so continuing elsewhere requires only a push.
 - Do not decide an item listed under "Decisions"; add new owner decisions there, keep working on the reversible part with the recommended option, and say so in the PR.
 
 ## Documentation
@@ -147,7 +147,7 @@ Run `npm run version:set -- X.Y.Z` (it also dates the changelog), commit, then p
 
 `packages/coding-agent/CHANGELOG.md` is the only changelog. Nyan shows it in `/changelog` and shows the new sections once after an update, so it describes what a `nyan` user notices, not internal changes.
 
-- Add entries under `## [Unreleased]` in `### Breaking Changes`, `### Added`, `### Changed`, `### Fixed`, or `### Removed`. Read the whole section first and append to existing subsections.
+- Add entries under `## [Unreleased]` in `### Breaking Changes`, `### Added`, `### Changed`, `### Fixed`, or `### Removed`. Read the whole section first and append to existing subsections. Only the orchestration session edits this file (see the Roadmap section); another session states its entry in the PR body.
 - Released sections are immutable. `npm run version:set` moves the Unreleased entries under the new version and refuses a release without entries; the release workflow refuses a tag whose version has no section.
 - Links to repository files may be relative to `packages/coding-agent/`; Nyan rewrites them to the release tag. Link Nyan issues as `([#123](https://github.com/blxzer77/nyan/issues/123))`.
 
