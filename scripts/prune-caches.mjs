@@ -3,36 +3,66 @@
 /**
  * Prune the GitHub Actions caches, so 10 GB of quota does not slowly fill with entries nobody will reuse.
  *
- *   GH_TOKEN=... GITHUB_REPOSITORY=owner/repo node scripts/prune-caches.mjs [--max-age-days 14] [--max-bytes 7e9] [--dry-run]
+ *   GH_TOKEN=... GITHUB_REPOSITORY=owner/repo node scripts/prune-caches.mjs --branch main
+ *     [--max-age-days 14] [--max-bytes 7e9] [--dry-run]
  *
  * GitHub already evicts an entry after 7 days without access and evicts oldest-first above the limit. This is the
- * cheaper middle ground: `main`'s entries are the ones a new branch restores from, and they are the ones a flood of
- * pull-request entries pushes out first. So the order is
+ * cheaper middle ground: the default branch's entries are the ones a new branch restores from, and they are the ones
+ * a flood of pull-request entries pushes out first. So the order is
  *
  *   1. delete anything not accessed within `--max-age-days`,
  *   2. then delete the oldest remaining entries that are not on the default branch until the total is under
  *      `--max-bytes`,
  *   3. never delete an entry on the default branch that was accessed in the last day.
  *
+ * `--branch` has no default: the caller knows the repository's default branch (the workflow passes
+ * `github.event.repository.default_branch`), and a guess of "main" on a repository that renamed it would treat the
+ * real default branch as an ordinary one and delete its entries first.
+ *
  * The run prints what it did, and the workflow copies that into the job summary.
  */
 
-const { GITHUB_REPOSITORY, GH_TOKEN } = process.env;
 const args = process.argv.slice(2);
-const option = (name, fallback) => {
+const option = (name) => {
 	const index = args.indexOf(name);
-	return index === -1 ? fallback : args[index + 1];
+	if (index === -1) return undefined;
+	const value = args[index + 1];
+	if (value === undefined || value.startsWith("--")) {
+		fail(`${name} needs a value`);
+	}
+	return value;
 };
 
+function fail(message) {
+	console.error(message);
+	process.exit(2);
+}
+
+/** A finite, non-negative number of a command-line option; NaN would silently disable the limit it configures. */
+function numberOption(name, fallback) {
+	const raw = option(name);
+	if (raw === undefined) return fallback;
+	const value = Number(raw);
+	if (!Number.isFinite(value) || value < 0) {
+		fail(`${name} must be a finite, non-negative number, got ${JSON.stringify(raw)}`);
+	}
+	return value;
+}
+
+const GITHUB_REPOSITORY = process.env.GITHUB_REPOSITORY;
+const GH_TOKEN = process.env.GH_TOKEN;
+const GITHUB_API_URL = process.env.GITHUB_API_URL ?? "https://api.github.com";
+
 const dryRun = args.includes("--dry-run");
-const maxAgeDays = Number(option("--max-age-days", "14"));
-const maxBytes = Number(option("--max-bytes", String(7 * 1024 ** 3)));
-const branch = option("--branch", "main");
+const maxAgeDays = numberOption("--max-age-days", 14);
+const maxBytes = numberOption("--max-bytes", 7 * 1024 ** 3);
+const branch = option("--branch");
 
-if (!GITHUB_REPOSITORY) throw new Error("GITHUB_REPOSITORY is required");
-if (!GH_TOKEN) throw new Error("GH_TOKEN is required");
+if (!GITHUB_REPOSITORY) fail("GITHUB_REPOSITORY is required");
+if (!GH_TOKEN) fail("GH_TOKEN is required");
+if (!branch) fail("--branch is required: pass the repository's default branch");
 
-const api = `https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/caches`;
+const api = `${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/caches`;
 const headers = {
 	Accept: "application/vnd.github+json",
 	Authorization: `Bearer ${GH_TOKEN}`,
@@ -81,8 +111,8 @@ let remaining = total - freed;
 
 if (remaining > maxBytes) {
 	const byAge = (left, right) => Date.parse(left.last_accessed_at) - Date.parse(right.last_accessed_at);
-	// Branch and pull-request entries first: they are scoped to a ref nobody restores from again. `main`'s entry is
-	// what a new branch restores, so it is only touched when dropping every other entry was not enough.
+	// Branch and pull-request entries first: they are scoped to a ref nobody restores from again. The default branch's
+	// entry is what a new branch restores, so it is only touched when dropping every other entry was not enough.
 	const offDefaultBranch = caches
 		.filter((cache) => !doomed.includes(cache) && !onDefaultBranch(cache))
 		.sort(byAge);

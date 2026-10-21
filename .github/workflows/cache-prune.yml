@@ -35,7 +35,12 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
+        # The default branch, never `github.ref`: a manual run may name any branch, and the script below runs with the
+        # `actions: write` token of this repository. Checking out the ref that was asked for would let whoever
+        # dispatches the run execute their own `scripts/prune-caches.mjs` with permission to delete the caches.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
 
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -46,10 +51,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
         run: |
           set -euo pipefail
-          node scripts/prune-caches.mjs --max-age-days 14 --max-bytes 7500000000 $DRY_RUN | tee prune.log
+          # The default branch is passed in rather than assumed: the script refuses to run without it, so renaming the
+          # branch cannot silently make every entry look like a throwaway one.
+          node scripts/prune-caches.mjs --branch "$DEFAULT_BRANCH" --max-age-days 14 --max-bytes 7500000000 $DRY_RUN \
+            | tee prune.log
 
       - name: Report
         if: always()

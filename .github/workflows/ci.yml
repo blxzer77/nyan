@@ -510,6 +510,9 @@ jobs:
       - name: Evaluate required results
         # The required list is `.github/quality/policy.json` plus the impact flags, not a second copy here: this file
         # used to repeat the names, and a renamed job then either stopped being required or blocked a merge forever.
+        # A job that is required but missing from CI_GATE_RESULTS fails the gate, so deleting a job here without
+        # updating the policy is caught; an impact output the policy job did not produce arrives empty and is rejected
+        # too, which is what keeps a failed policy job from silently cancelling the conditional checks.
         env:
           CI_GATE_RESULTS: >-
             {"policy":"${{ needs.policy.result }}","prepare":"${{ needs.prepare.result }}","static":"${{ needs.static.result }}","node-tests":"${{ needs.node-tests.result }}","bun-tests":"${{ needs.bun-tests.result }}","windows-smoke":"${{ needs.windows-smoke.result }}","mcp-conformance":"${{ needs.mcp-conformance.result }}","supply-chain":"${{ needs.supply-chain.result }}","deep-gate":"${{ needs.deep-gate.result }}"}
