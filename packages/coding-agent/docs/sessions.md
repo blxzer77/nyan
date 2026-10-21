@@ -18,12 +18,15 @@ Nyan keeps two session stores. A session Nyan creates now is a **durable** sessi
 The session flags follow the store they name:
 
 - `--continue` continues the current directory's newest durable session, as described above. It only reads the durable store to decide, so a run in a directory without sessions leaves nothing behind.
-- `--resume` lists the legacy JSONL sessions and opens the one you choose read-only. `--session` opens the path, exact ID, or partial ID it names read-only; a match in another project offers to fork it, and that fork is written as a new JSONL session.
-- `--session-id`, `--fork`, `--session-dir`, `--no-session`, and `--name` keep the compatibility route and its JSONL storage. `--session-id` opens an existing ID read-only or creates that ID, `--fork` writes the forked session as a new JSONL file, `--name` records the name in the JSONL session, `--session-dir` chooses where the JSONL store is, and `--no-session` keeps the session in memory.
+- `--session <dir|id>` opens the durable session that directory or id names. A path that is not a JSONL file is read as a session directory; a bare value is read as an exact id, then as the prefix of one session. `--session <file.jsonl>` still opens that legacy JSONL file read-only, and so does an id only the JSONL store holds.
+- `--session-id <id>` opens the durable session with that exact id. An id the durable store does not hold falls back to the JSONL store, and one neither store holds is an error rather than a new session with that id.
+- `--resume` lists this working directory's durable sessions and opens the one you choose; cancelling opens nothing. A directory with no durable session yet, and a mode without a terminal, keep the JSONL picker.
+- `--fork <entry-id>` forks inside the session the run opens — the one `--session` or `--session-id` names, or else this directory's newest durable session — at the user message with that entry id, and continues in the forked conversation. Durable keeps one conversation tree per session directory, so a fork cannot move a conversation into another session; the forked conversation is labelled `fork <id>` so it is not mistaken for a subagent's.
+- `--name <name>` stores the display name in the durable session, which the footer and `/session` show. `--name ""` clears it.
+- `--session-dir <dir>` chooses the root of the durable store (see [Control session storage](#control-session-storage)).
+- `--no-session` keeps the session in memory: no session directory, no database, and nothing to resume afterwards. It cannot be combined with a flag that names a session.
 
-Durable session selection, so that these flags can address durable sessions, is not part of 1.4.0.
-
-`/import <path>` has no durable form. A durable session is a SQLite directory rather than a JSONL file, and 1.4.0 does not import JSONL into a durable session, so the command answers with the route that does work: `nyan --session <path>` opens that legacy file read-only, and `nyan --resume` opens a legacy session from the current directory.
+`/import <path>` has no durable form. A durable session is a SQLite directory rather than a JSONL file, and Nyan does not import JSONL into a durable session, so the command answers with the route that does work: `nyan --session <path>` opens that legacy file read-only, and `nyan --resume` opens a legacy session from the current directory.
 
 Use `/name` or `--name` to assign a recognizable session name. Run `/session` to verify the current session file, ID, message count, token usage, and cost.
 
@@ -73,13 +76,15 @@ See [Compaction Reference](compaction.md) for thresholds, retained boundaries, b
 
 ## Control session storage
 
-A durable session lives in `~/.nyan/agent/sessions-durable/<working-directory-hash>/<timestamp>-<session-id>/`. The directory holds `session.sqlite` and a `session.json` that records the working directory and the display name, so both survive a restart. The hash names the working directory, so each project keeps its own store, and the store's location is not configurable.
+A durable session lives in `~/.nyan/agent/sessions-durable/<working-directory-hash>/<timestamp>-<session-id>/`. The directory holds `session.sqlite` and a `session.json` that records the working directory and the display name, so both survive a restart. The hash names the working directory, so each project keeps its own store.
 
-Legacy JSONL sessions stay where earlier releases wrote them, under `~/.nyan/agent/sessions/`, grouped by working directory. Use `--session-dir`, `NYAN_CODING_AGENT_SESSION_DIR`, or the `sessionDir` setting to point the JSONL store somewhere else; the CLI option has highest precedence. Only `--session-dir` also keeps the run on the compatibility route; the environment variable and the setting only change where `--resume` and `--session` look, because a new session always goes to the durable store. Nyan opens a JSONL session read-only and never migrates it, so its file is never changed by a newer Nyan.
+`--session-dir` moves that store: new durable sessions are written below the directory it names, with the same `<hash>/<session>/` layout, and `--session-id` and `--resume` look there too. It is the only setting that moves the durable store; a durable session is never written into the JSONL tree.
 
-Use `--no-session` for an ephemeral run. An ephemeral session cannot be resumed after Nyan exits.
+Legacy JSONL sessions stay where earlier releases wrote them, under `~/.nyan/agent/sessions/`, grouped by working directory. Use `NYAN_CODING_AGENT_SESSION_DIR` or the `sessionDir` setting to point the JSONL store somewhere else; they only change where `--resume` and `--session` find JSONL sessions, because a new session always goes to the durable store. Nyan opens a JSONL session read-only and never migrates it, so its file is never changed by a newer Nyan.
 
-Use `--session` when you already know the session path or ID. Use `--fork` to create a new session from an existing session before interactive mode starts.
+Use `--no-session` for an ephemeral run: the session is held in memory, nothing is written to either store, and it cannot be resumed after Nyan exits.
+
+Use `--session` when you already know the session directory or id. Use `--fork` to continue in a forked conversation from an existing user message.
 
 ## Export or share a session
 

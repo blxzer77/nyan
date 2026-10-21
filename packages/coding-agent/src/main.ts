@@ -46,7 +46,16 @@ import {
 import { formatNoModelsAvailableMessage } from "./core/auth-guidance.ts";
 import { AuthStorage, ReadOnlyAuthStorage } from "./core/auth-storage.ts";
 import type { OpenDurableOptions } from "./core/durable/runtime.ts";
-import { DurableSessionError, hasDurableSession } from "./core/durable/sessions.ts";
+import {
+	type DurableSessionEntry,
+	DurableSessionError,
+	type DurableSessionStore,
+	durableSessionStoreRoot,
+	findSessionDirectory,
+	hasDurableSession,
+	listSessionDirectory,
+	setDurableSessionStore,
+} from "./core/durable/sessions.ts";
 import { DurableStartupError } from "./core/durable/startup-error.ts";
 import { exportFromFile } from "./core/export-html/index.ts";
 import type { InlineExtension } from "./core/extensions/types.ts";
@@ -73,6 +82,7 @@ import { runDurableJson } from "./modes/durable/json.ts";
 import { runDurableInteractive } from "./modes/durable/main.ts";
 import { runDurablePrint } from "./modes/durable/print.ts";
 import { runDurableRpc } from "./modes/durable/rpc.ts";
+import type { DurableSessionSetup } from "./modes/durable/session-setup.ts";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.ts";
 import { cleanupManagedInstall, handleConfigCommand, handlePackageCommand } from "./package-manager-cli.ts";
 import { isBunBinary } from "./runtime.ts";
@@ -146,18 +156,15 @@ function isPlainRuntimeMetadataCommand(parsed: Args): boolean {
 	return !parsed.print && parsed.mode === undefined && (parsed.help === true || parsed.listModels !== undefined);
 }
 
-/** The durable product path accepts the common new-session flags; legacy session selectors stay on compatibility paths. */
+/**
+ * The durable product path accepts the common new-session flags. Session selection is not one of them: the flags are
+ * resolved against the stores before either runtime starts (`resolveSessionSelection`), so a flag that names a durable
+ * session reaches this path and one that names a JSONL file keeps the compatibility route.
+ */
 export function canRunDurableProductPath(parsed: Args, allowMultipleMessages = false): boolean {
 	return (
 		parsed.help !== true &&
 		parsed.listModels === undefined &&
-		parsed.resume !== true &&
-		parsed.session === undefined &&
-		parsed.sessionId === undefined &&
-		parsed.fork === undefined &&
-		parsed.sessionDir === undefined &&
-		parsed.noSession !== true &&
-		parsed.name === undefined &&
 		parsed.models === undefined &&
 		parsed.tools === undefined &&
 		parsed.excludeTools === undefined &&
@@ -191,16 +198,159 @@ export async function resolveContinueRoute(
 	parsed: Args,
 	cwd: string,
 	sessionDir: string | undefined,
+	store: DurableSessionStore = {},
 ): Promise<ContinueRoute> {
 	if (parsed.continue !== true) return "new";
 	// A durable session wins: the durable store is this release's store, and legacy is only the fallback.
-	if (await hasDurableSession(cwd)) return "durable";
+	if (await hasDurableSession(cwd, store)) return "durable";
 	return legacySessionExists(cwd, sessionDir) ? "legacy" : "new";
 }
 
 /** Prints one warning or error from the durable path's startup, as the legacy path prints its startup diagnostics. */
 function printDurableDiagnostic(diagnostic: AgentSessionRuntimeDiagnostic): void {
 	reportDiagnostics([diagnostic]);
+}
+
+/**
+ * The durable session the session-selection flags open, and the store they open it in. `directory` names an existing
+ * session; without it the run selects by working directory (new, or the newest one to continue).
+ */
+export interface DurableSessionSelection {
+	readonly directory?: string;
+	readonly continueSession: boolean;
+	readonly store: DurableSessionStore;
+	/** The trimmed `--name` value; an empty string clears the stored name. */
+	readonly name?: string;
+	/** The user-message entry `--fork` names, forked inside the session this run opens. */
+	readonly forkAt?: string;
+}
+
+/**
+ * What a run opens: a durable session, the compatibility route (legacy JSONL sessions and the flags it still owns), or
+ * nothing because the user cancelled the resume picker.
+ */
+export type SessionSelection =
+	| { readonly kind: "durable"; readonly selection: DurableSessionSelection }
+	| { readonly kind: "compatibility" }
+	| { readonly kind: "cancelled" };
+
+export interface SessionSelectionOptions {
+	readonly cwd: string;
+	readonly appMode: AppMode;
+	/** Where the compatibility route looks for JSONL sessions: `--session-dir`, the environment, or the setting. */
+	readonly legacySessionDir: string | undefined;
+	/** The store root `--session-dir` names. The environment and the setting never move the durable store. */
+	readonly storeRoot?: string;
+	/** The picker `--resume` shows; a mode that has no terminal keeps the compatibility picker. */
+	readonly pick?: (sessions: readonly DurableSessionEntry[]) => Promise<string | undefined>;
+}
+
+const COMPATIBILITY: SessionSelection = { kind: "compatibility" };
+
+/** Whether the value names a JSONL session file, which the compatibility route opens read-only. */
+function isSessionFilePath(value: string): boolean {
+	return value.endsWith(".jsonl");
+}
+
+/** Whether the value is a path rather than a session id. */
+function isPathArgument(value: string): boolean {
+	return value.includes("/") || value.includes("\\");
+}
+
+/**
+ * Decision #25: the session-selection flags address durable sessions.
+ *
+ * `--session` opens the durable session directory, or the durable session with that id, it names; `--session-id` opens
+ * the session with that exact id; `--resume` lists this working directory's durable sessions; `--fork` forks inside the
+ * session the other flags selected; `--session-dir` and `--no-session` decide the store; `--name` names the session.
+ *
+ * Three things keep the compatibility route, because there the answer is a JSONL file rather than a durable session: a
+ * `--session` value that names a JSONL file or an id only the legacy store holds, a `--resume` outside the interactive
+ * mode or in a directory with no durable session yet, and the flags Decision #32 already routes there.
+ */
+export async function resolveSessionSelection(
+	parsed: Args,
+	options: SessionSelectionOptions,
+): Promise<SessionSelection> {
+	const { cwd, appMode, legacySessionDir, storeRoot, pick } = options;
+	const store: DurableSessionStore = {
+		...(storeRoot === undefined ? {} : { root: storeRoot }),
+		...(parsed.noSession === true ? { memory: true } : {}),
+	};
+	const name = parsed.name === undefined ? undefined : (normalizeSessionName(parsed.name) ?? "");
+	const selected = (selection: {
+		readonly directory?: string;
+		readonly continueSession?: boolean;
+		readonly forkAt?: string;
+	}): SessionSelection => ({
+		kind: "durable",
+		selection: {
+			...(selection.directory === undefined ? {} : { directory: selection.directory }),
+			continueSession: selection.continueSession === true,
+			store,
+			...(name === undefined ? {} : { name }),
+			...(selection.forkAt === undefined ? {} : { forkAt: selection.forkAt }),
+		},
+	});
+
+	// `--help` and `--list-models` report the runtime, not a conversation: the compatibility path opens the in-memory
+	// session they need, so a session id that names nothing is not a failure for them.
+	if (parsed.help === true || parsed.listModels !== undefined) return COMPATIBILITY;
+
+	// An ephemeral session writes nothing, so it has no session to select and none to fork from; `main` refuses those
+	// combinations before this point rather than letting `--no-session` swallow them.
+	if (parsed.noSession === true) return selected({});
+
+	if (parsed.sessionId !== undefined) {
+		const found = await findSessionDirectory(parsed.sessionId, cwd, store);
+		if (found !== undefined) return selected({ directory: found.directory, forkAt: parsed.fork });
+		// An id the durable store does not hold keeps opening its JSONL session read-only, as it did before 1.4.0.
+		if (SessionManager.findById(cwd, parsed.sessionId, legacySessionDir) !== undefined) return COMPATIBILITY;
+		throw new DurableSessionError(
+			"DURABLE_SESSION_NOT_FOUND",
+			`No durable session has the id ${parsed.sessionId} (${durableSessionStoreRoot(store)})`,
+		);
+	}
+
+	if (parsed.session !== undefined) {
+		const value = parsed.session;
+		// An empty value names nothing; the compatibility route answers it with the message it already has.
+		if (value.length > 0 && !isSessionFilePath(value)) {
+			// A path names a durable session directory; anything else is an id, or a unique prefix of one.
+			if (isPathArgument(value)) return selected({ directory: resolvePath(value, cwd), forkAt: parsed.fork });
+			const found = await findSessionDirectory(value, cwd, store);
+			if (found !== undefined) return selected({ directory: found.directory, forkAt: parsed.fork });
+		}
+		// A JSONL file, a legacy id, and an id neither store holds get the compatibility route's own answer.
+		return COMPATIBILITY;
+	}
+
+	if (parsed.resume === true) {
+		// The picker needs a terminal; the modes that have none keep the compatibility picker.
+		if (appMode !== "interactive" || pick === undefined) return COMPATIBILITY;
+		const sessions = await listSessionDirectory(cwd, store);
+		// A directory with no durable session yet keeps the compatibility picker, where its JSONL sessions are listed.
+		if (sessions.length === 0) return COMPATIBILITY;
+		const chosen = await pick(sessions);
+		return chosen === undefined ? { kind: "cancelled" } : selected({ directory: chosen, forkAt: parsed.fork });
+	}
+
+	if (parsed.continue === true) {
+		const route = await resolveContinueRoute(parsed, cwd, legacySessionDir, store);
+		if (route === "legacy") return COMPATIBILITY;
+		return selected({ continueSession: route === "durable", forkAt: parsed.fork });
+	}
+
+	if (parsed.fork !== undefined) {
+		// `--fork` alone forks inside this directory's newest durable session, which is the session `--continue` opens.
+		const newest = (await listSessionDirectory(cwd, store))[0];
+		if (newest === undefined) {
+			throw new DurableSessionError("DURABLE_SESSION_NOT_FOUND", `No durable session exists for ${cwd}`);
+		}
+		return selected({ directory: newest.directory, forkAt: parsed.fork });
+	}
+
+	return selected({});
 }
 
 /**
@@ -228,9 +378,9 @@ async function runDurableCommand<T>(run: () => Promise<T>): Promise<T | undefine
 }
 
 /**
- * The durable path's options from the command line: model, resource flags, project trust, and extension flags.
- * `continueSession` is the resolved `--continue` decision rather than the raw flag: only the caller knows whether the
- * directory has a durable session to continue (Decision #32).
+ * The durable path's options from the command line: model, resource flags, project trust, extension flags, and the
+ * session the selection flags resolved. `selection.continueSession` is the resolved `--continue` decision rather than the
+ * raw flag: only the caller knows whether the directory has a durable session to continue (Decision #32).
  */
 export function durableOptions(
 	parsed: Args,
@@ -238,7 +388,7 @@ export function durableOptions(
 	mode: AppMode,
 	settingsManager: SettingsManager,
 	extensionFactories: readonly InlineExtension[],
-	continueSession: boolean,
+	selection: DurableSessionSelection,
 ): OpenDurableOptions {
 	// The legacy path reports this while it assembles its diagnostics; without the check here the durable path would
 	// resolve an empty model id and stop with `Error: Could not resolve model:` and nothing after the colon.
@@ -252,7 +402,8 @@ export function durableOptions(
 	}
 	return {
 		cwd,
-		continueSession,
+		continueSession: selection.continueSession,
+		...(selection.directory === undefined ? {} : { sessionDirectory: selection.directory }),
 		...(parsed.provider === undefined && parsed.model === undefined
 			? {}
 			: { model: { provider: parsed.provider, modelId: parsed.model ?? "" } }),
@@ -455,20 +606,50 @@ async function promptConfirm(message: string): Promise<boolean> {
 	});
 }
 
+/** One flag cannot be combined with others: report it the way the session id checks do, and end the run. */
+function reportFlagConflict(flag: string, conflicts: readonly string[]): void {
+	console.error(chalk.red(`Error: ${flag} cannot be combined with ${conflicts.join(", ")}`));
+	process.exit(1);
+}
+
+/** The flags every route refuses before a store is touched, so nothing is probed for a run that cannot start. */
+function validateSessionSelectionFlags(parsed: Args): void {
+	// A metadata command opens no conversation, so a session flag cannot make it fail.
+	if (parsed.help === true || parsed.listModels !== undefined) return;
+	// `--fork` without a value reached the unknown flags, or took the flag after it as its value: an extension could still
+	// claim a bare `--fork`, but as a session flag it is incomplete, and forking from nothing is not a run.
+	const forkValue = parsed.fork;
+	if (forkValue === undefined ? parsed.unknownFlags.has("fork") : forkValue.startsWith("-")) {
+		console.error(chalk.red("Error: --fork requires the id of a user message to fork from"));
+		console.error(chalk.dim(`Use "${APP_NAME} --help" to see the session flags.`));
+		process.exit(1);
+	}
+	if (parsed.fork !== undefined && parsed.resume === true) reportFlagConflict("--fork", ["--resume"]);
+	if (parsed.noSession === true) {
+		const conflicts = [
+			parsed.continue ? "--continue" : undefined,
+			parsed.resume ? "--resume" : undefined,
+			parsed.session ? "--session" : undefined,
+			parsed.sessionId ? "--session-id" : undefined,
+			parsed.fork ? "--fork" : undefined,
+		].filter((flag): flag is string => flag !== undefined);
+		if (conflicts.length > 0) reportFlagConflict("--no-session", conflicts);
+	}
+}
+
+/**
+ * The compatibility route selects a JSONL session by its own rules, so a `--fork` that names its source cannot also
+ * name the session to open.
+ */
 function validateForkFlags(parsed: Args): void {
 	if (!parsed.fork) return;
 
 	const conflictingFlags = [
 		parsed.session ? "--session" : undefined,
 		parsed.continue ? "--continue" : undefined,
-		parsed.resume ? "--resume" : undefined,
-		parsed.noSession ? "--no-session" : undefined,
 	].filter((flag): flag is string => flag !== undefined);
 
-	if (conflictingFlags.length > 0) {
-		console.error(chalk.red(`Error: --fork cannot be combined with ${conflictingFlags.join(", ")}`));
-		process.exit(1);
-	}
+	if (conflictingFlags.length > 0) reportFlagConflict("--fork", conflictingFlags);
 }
 
 function validateSessionIdFlags(parsed: Args): void {
@@ -725,6 +906,25 @@ async function promptForMissingSessionCwd(
 	]);
 }
 
+/**
+ * `--resume` on the durable path: this working directory's durable sessions, newest first. The value is the session
+ * directory, which is what opening one needs; a name is what a person recognises, and the creation time separates the
+ * sessions that never got one.
+ */
+async function pickDurableSession(
+	settingsManager: SettingsManager,
+	sessions: readonly DurableSessionEntry[],
+): Promise<string | undefined> {
+	return showStartupSelector(
+		settingsManager,
+		"Resume session:",
+		sessions.map((session) => ({
+			label: `${session.name ?? "(no name)"} · ${session.created.toLocaleString()}`,
+			value: session.directory,
+		})),
+	);
+}
+
 export interface MainOptions {
 	extensionFactories?: InlineExtension[];
 }
@@ -823,7 +1023,7 @@ export async function main(args: string[], options?: MainOptions) {
 		process.exit(1);
 	}
 
-	validateForkFlags(parsed);
+	validateSessionSelectionFlags(parsed);
 	validateSessionIdFlags(parsed);
 
 	const startupSettingsManager = SettingsManager.create(cwd, agentDir);
@@ -840,50 +1040,87 @@ export async function main(args: string[], options?: MainOptions) {
 		startupSettingsManager.applyOverrides({ theme: parsed.useTheme });
 	}
 
-	// The `--continue` route is decided before either runtime starts: it names the session store to open, and probing
-	// the durable store leaves no directory behind.
+	// The session flags are resolved before either runtime starts: they decide which store this run opens, and probing
+	// either store leaves no directory behind. A run that cannot open the session it named ends here, with one message.
 	const envSessionDir = process.env[ENV_SESSION_DIR];
 	const sessionDir =
 		(parsed.sessionDir ? normalizePath(parsed.sessionDir) : undefined) ??
 		(envSessionDir ? expandTildePath(envSessionDir) : undefined) ??
 		startupSettingsManager.getSessionDir();
-	const continueRoute = await resolveContinueRoute(parsed, cwd, sessionDir);
-	const continueSession = continueRoute === "durable";
-	const continueUsesLegacy = continueRoute === "legacy";
+	const sessionSelection = await runDurableCommand(() =>
+		resolveSessionSelection(parsed, {
+			cwd,
+			appMode,
+			legacySessionDir: sessionDir,
+			...(parsed.sessionDir === undefined ? {} : { storeRoot: normalizePath(parsed.sessionDir) }),
+			...(appMode === "interactive"
+				? { pick: (sessions) => pickDurableSession(startupSettingsManager, sessions) }
+				: {}),
+		}),
+	);
+	if (sessionSelection === undefined) {
+		stopThemeWatcher();
+		return;
+	}
+	if (sessionSelection.kind === "cancelled") {
+		console.log(chalk.dim("No session selected"));
+		stopThemeWatcher();
+		return;
+	}
+	const durableSelection = sessionSelection.kind === "durable" ? sessionSelection.selection : undefined;
+	if (durableSelection === undefined) {
+		// The compatibility route keeps its own combination rule for `--fork`, which names the file to fork.
+		validateForkFlags(parsed);
+	} else {
+		// A reopen (`/new`, `/resume`) is the same run, so it writes where the command line said.
+		setDurableSessionStore(durableSelection.store);
+	}
+	const durableSetup: DurableSessionSetup | undefined =
+		durableSelection === undefined
+			? undefined
+			: {
+					...(durableSelection.name === undefined ? {} : { name: durableSelection.name }),
+					...(durableSelection.forkAt === undefined ? {} : { forkAt: durableSelection.forkAt }),
+				};
 	if (
 		appMode === "interactive" &&
 		!parsed.help &&
 		parsed.listModels === undefined &&
-		!continueUsesLegacy &&
+		durableSelection !== undefined &&
 		canRunDurableProductPath(parsed)
 	) {
 		const initial = await prepareInitialMessage(parsed);
 		await runDurableCommand(() =>
 			runDurableInteractive({
-				...durableOptions(parsed, cwd, "interactive", startupSettingsManager, extensionFactories, continueSession),
+				...durableOptions(parsed, cwd, "interactive", startupSettingsManager, extensionFactories, durableSelection),
 				...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
+				...(durableSetup === undefined ? {} : { setup: durableSetup }),
 			}),
 		);
 		stopThemeWatcher();
 		return;
 	}
 
-	if (appMode === "rpc" && !continueUsesLegacy && canRunDurableProductPath(parsed, true)) {
+	if (appMode === "rpc" && durableSelection !== undefined && canRunDurableProductPath(parsed, true)) {
 		await runDurableCommand(() =>
-			runDurableRpc(durableOptions(parsed, cwd, "rpc", startupSettingsManager, extensionFactories, continueSession)),
+			runDurableRpc({
+				...durableOptions(parsed, cwd, "rpc", startupSettingsManager, extensionFactories, durableSelection),
+				...(durableSetup === undefined ? {} : { setup: durableSetup }),
+			}),
 		);
 		return;
 	}
 
-	if (appMode === "json" && !continueUsesLegacy && canRunDurableProductPath(parsed, true)) {
+	if (appMode === "json" && durableSelection !== undefined && canRunDurableProductPath(parsed, true)) {
 		const stdinContent = await readPipedStdin();
 		const initial = await prepareInitialMessage(parsed, stdinContent);
 		const exitCode = await runDurableCommand(() =>
 			runDurableJson({
-				...durableOptions(parsed, cwd, "json", startupSettingsManager, extensionFactories, continueSession),
+				...durableOptions(parsed, cwd, "json", startupSettingsManager, extensionFactories, durableSelection),
 				...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
 				...(initial.initialImages === undefined ? {} : { initialImages: initial.initialImages }),
 				messages: parsed.messages,
+				...(durableSetup === undefined ? {} : { setup: durableSetup }),
 			}),
 		);
 		stopThemeWatcher();
@@ -892,15 +1129,21 @@ export async function main(args: string[], options?: MainOptions) {
 		return;
 	}
 
-	if (appMode === "print" && parsed.mode !== "json" && !continueUsesLegacy && canRunDurableProductPath(parsed, true)) {
+	if (
+		appMode === "print" &&
+		parsed.mode !== "json" &&
+		durableSelection !== undefined &&
+		canRunDurableProductPath(parsed, true)
+	) {
 		const stdinContent = await readPipedStdin();
 		const initial = await prepareInitialMessage(parsed, stdinContent);
 		const exitCode = await runDurableCommand(() =>
 			runDurablePrint({
-				...durableOptions(parsed, cwd, "print", startupSettingsManager, extensionFactories, continueSession),
+				...durableOptions(parsed, cwd, "print", startupSettingsManager, extensionFactories, durableSelection),
 				...(initial.initialMessage === undefined ? {} : { initialMessage: initial.initialMessage }),
 				...(initial.initialImages === undefined ? {} : { initialImages: initial.initialImages }),
 				messages: parsed.messages,
+				...(durableSetup === undefined ? {} : { setup: durableSetup }),
 			}),
 		);
 		stopThemeWatcher();
