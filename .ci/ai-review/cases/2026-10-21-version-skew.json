@@ -1,0 +1,301 @@
+{
+	"case": "2026-10-21-version-skew",
+	"recordedFrom": {
+		"run": 39558505167,
+		"repo": "blxzer77/nyan",
+		"head": "9afb7770915a6082d08f7f0710c787183486f12d",
+		"base": "aab174ca8a477cb7de13b565f873c1578e666c2b",
+		"model": "review.deep",
+		"shards": 3,
+		"wallClock": "57m3s",
+		"tokens": 17373583,
+		"filesReviewed": 22
+	},
+	"why": "The first run through the gateway and the sharded dispatch. Every finding about package versions is false: the reviewed commit has all twelve packages and the lockfile at 1.4.2, and no finding quotes a file that says otherwise. 20 of 35 findings restate one unchecked inference, which is why this is a precision case rather than a coverage case.",
+	"verification": {
+		"method": "git show <commit>:<path> for every package.json and for the lockfile entry",
+		"result": "all twelve packages and package-lock.json are 1.4.2 at the reviewed commit"
+	},
+	"findings": [
+		{
+			"category": "缺陷",
+			"severity": "critical",
+			"path": "packages/agent/package.json",
+			"line": "26",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "critical",
+			"path": "packages/client/package.json",
+			"line": "49-L50",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "critical",
+			"path": "packages/ai/package.json",
+			"line": "3",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "critical",
+			"path": "packages/ai/package.json",
+			"line": "80",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "critical",
+			"path": "packages/protocol/package.json",
+			"line": "42",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "critical",
+			"path": "packages/server/package.json",
+			"line": "49-L50",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "high",
+			"path": "packages/tui/package.json",
+			"line": "3",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "high",
+			"path": "packages/coding-agent/package.json",
+			"line": "3",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "high",
+			"path": "packages/mcp/package.json",
+			"line": "3",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "high",
+			"path": "packages/coding-agent/src/core/durable/extension-host.ts",
+			"line": "160-L162",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "可维护性",
+			"severity": "high",
+			"path": "packages/codemode/package.json",
+			"line": "3",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "high",
+			"path": "packages/coding-agent/src/core/durable/extension-host.ts",
+			"line": "162",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "缺陷",
+			"severity": "high",
+			"path": "packages/coding-agent/src/core/durable/extension-host.ts",
+			"line": "161",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "缺陷",
+			"severity": "high",
+			"path": "packages/chord/package.json",
+			"line": "3",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "high",
+			"path": "packages/durable/package.json",
+			"line": "143-L145",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "medium",
+			"path": "packages/coding-agent/examples/extensions/gondolin/package.json",
+			"line": "4",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "缺陷",
+			"severity": "medium",
+			"path": "packages/coding-agent/examples/extensions/custom-provider-gitlab-duo/package.json",
+			"line": "4",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "可维护性",
+			"severity": "medium",
+			"path": "packages/coding-agent/examples/extensions/with-deps/package.json",
+			"line": "4",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "可维护性",
+			"severity": "medium",
+			"path": "packages/telemetry/package.json",
+			"line": "3",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "documentation",
+			"severity": "medium",
+			"path": "packages/agent/package.json",
+			"line": "3",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "test",
+			"severity": "medium",
+			"path": "packages/coding-agent/test/durable-provider-call-scope.test.ts",
+			"line": "154",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "test",
+			"severity": "medium",
+			"path": "packages/coding-agent/test/durable-provider-call-scope.test.ts",
+			"line": "149",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "缺陷",
+			"severity": "medium",
+			"path": "packages/coding-agent/src/core/durable/extension-host.ts",
+			"line": "381",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "缺陷",
+			"severity": "medium",
+			"path": "packages/coding-agent/src/core/durable/extension-host.ts",
+			"line": "164",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "test",
+			"severity": "medium",
+			"path": "packages/coding-agent/test/durable-provider-call-scope.test.ts",
+			"line": "106",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "documentation",
+			"severity": "medium",
+			"path": "packages/coding-agent/src/core/durable/session-ops.ts",
+			"line": "116-L118",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "test",
+			"severity": "medium",
+			"path": "packages/coding-agent/test/durable-fork-shutdown-failure.test.ts",
+			"line": "10",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "documentation",
+			"severity": "medium",
+			"path": "packages/durable/package.json",
+			"line": "3",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "test",
+			"severity": "medium",
+			"path": "packages/coding-agent/test/durable-fork-shutdown-failure.test.ts",
+			"line": "43",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "可维护性",
+			"severity": "low",
+			"path": "packages/coding-agent/examples/extensions/sandbox/package.json",
+			"line": "4",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "test",
+			"severity": "low",
+			"path": "packages/coding-agent/test/durable-fork-shutdown-failure.test.ts",
+			"line": "26-L28",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "可维护性",
+			"severity": "low",
+			"path": "packages/coding-agent/src/core/durable/session-ops.ts",
+			"line": "127",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "可维护性",
+			"severity": "low",
+			"path": "packages/coding-agent/examples/extensions/custom-provider-anthropic/package.json",
+			"line": "4",
+			"label": "false_positive",
+			"note": "Verified against the reviewed commit 9afb77709: every package and the lockfile are at 1.4.2, so the claim that `packages/ai` and the others stayed at 1.4.1 is wrong. The review inferred sibling versions from a diff that bumped one manifest, without reading the others."
+		},
+		{
+			"category": "可维护性",
+			"severity": "low",
+			"path": "packages/coding-agent/src/core/durable/session-ops.ts",
+			"line": "132",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		},
+		{
+			"category": "test",
+			"severity": "low",
+			"path": "packages/coding-agent/test/durable-fork-shutdown-failure.test.ts",
+			"line": "31-L32",
+			"label": "unverified",
+			"note": "Not checked yet: this run was recorded to measure pipeline behaviour, not the accuracy of each finding."
+		}
+	]
+}
