@@ -5598,3 +5598,74 @@ Durable has no:
 - JSONL global compaction or automatic corruption repair;
 - compatibility layer for earlier harness prototypes;
 - forced termination of non-cooperative extension code inside one process.
+
+## 14. Artifact store
+
+`openArtifactStore()` returns a content-addressed store for payloads that are
+too large to keep in an entry or a document, such as an original tool result
+that a later entry masks. It is a separate store, not a `Storage` backend:
+artifacts live in their own root directory, and an artifact write does not
+participate in a Session commit.
+
+```ts
+type ArtifactKey = string;  // lowercase hex SHA-256 of the bytes
+type ArtifactScope = string;  // opaque owner label, conventionally `conversation:<id>`
+
+type ArtifactBasis = {
+  readonly conversationId: ConversationId;
+  readonly seq: Seq;
+};
+
+type ArtifactRecord = {
+  readonly scope: ArtifactScope;
+  readonly key: ArtifactKey;
+  readonly basis: ArtifactBasis;
+  readonly length: number;
+};
+
+type ArtifactContent = ArtifactRecord & { readonly bytes: Uint8Array };
+
+type ArtifactStore = {
+  put(input: { readonly scope: ArtifactScope; readonly bytes: Uint8Array; readonly basis: ArtifactBasis }): Promise<ArtifactRecord>;
+  read(input: { readonly scope: ArtifactScope; readonly key: ArtifactKey }): Promise<ArtifactContent>;
+  close(): Promise<void>;
+};
+```
+
+**Layout.** Under the root, `blobs/<first two hex digits>/<key>` holds one file
+per digest, and `meta/<scope digest>/<key>.json` holds one JSON record per scope
+with the basis and the length. The digest is therefore global and the visibility
+per scope: the same bytes stored in two scopes is one blob and two records, and
+a scope that never stored a key cannot read it (`ArtifactError` `scope`) even
+though the bytes exist.
+
+**Reads verify.** A read resolves the scope's record, then reads the blob and
+recomputes SHA-256 over it. Fewer or more bytes than the record's `length` is
+`length`; the recorded length but another digest is `corrupt`; an absent record
+is `missing`, or `scope` when another scope's record names the same key. A
+record that does not parse, does not carry format `1`, or names another
+scope/key is `corrupt`. No path returns part of an artifact: a read either
+yields a complete verified `ArtifactContent` or throws `ArtifactError`, whose
+`kind` is `"artifact"` and whose `reason` is `"missing" | "scope" | "length" |
+"corrupt"`; callers dispatch on `reason`, never on the message. Only those four
+verdicts are store errors: an underlying file-system failure is rethrown as it
+arrived, because it says nothing about the artifact.
+
+**Writes are atomic and idempotent.** Bytes are staged under a `.tmp-` name in
+their destination directory and renamed into place, so a crash leaves either the
+finished file or nothing a key can name; a leftover `.tmp-` file is unreachable
+by any read. The blob is made visible before its record, so a crash between them
+leaves an invisible orphan blob rather than a record whose content cannot be
+verified. Writing bytes that a scope already holds is a no-op that returns the
+recorded metadata, which keeps the first basis: the bytes the key names have not
+changed, so the basis they were externalized against has not either.
+
+**Durability.** A record and a blob are ordinary files, so a store reopened over
+the same root reads what a previous process wrote. `close()` releases nothing;
+the store holds no open handle.
+
+**Not implemented here.** There is no reclamation: an orphan blob, a superseded
+record, or a leftover `.tmp-` file stays until something outside the store
+removes it. There is no migration of an older layout, and no artifact write is
+atomic with a Session commit, so a caller that must not point an entry at a
+missing artifact writes the artifact first and commits the entry afterwards.
