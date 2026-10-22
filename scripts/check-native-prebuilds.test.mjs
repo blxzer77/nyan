@@ -140,6 +140,26 @@ test("the Mach-O and PE architecture fields are read too", () => {
 	);
 });
 
+test("a PE whose DOS header does not point at a COFF header fails", () => {
+	// The reported gap: every other format is read at a fixed offset, but PE is the one indirect read, and it took
+	// whatever two bytes followed `e_lfanew`. A header pointing at bytes that happen to carry 0x8664 was accepted as an
+	// x64 prebuild even though no "PE\0\0" signature anchors the COFF header there.
+	const root = completeTree((directory) => {
+		const bogus = Buffer.alloc(512);
+		Buffer.from([0x4d, 0x5a]).copy(bogus, 0);
+		bogus.writeUInt32LE(0x80, 0x3c); // e_lfanew, pointing at zeros rather than a signature
+		bogus.writeUInt16LE(0x8664, 0x84); // what the machine field would be, four bytes after a real signature
+		writeFileSync(join(directory, FILES[4].file), bogus);
+	});
+	const result = run(["--root", root]);
+
+	assert.equal(result.status, 1);
+	assert.match(
+		result.stderr,
+		/- win32\/prebuilds\/win32-x64\/win32-platform\.node: win32 and x64 machine field is missing from the header \(expected 0x8664\)/,
+	);
+});
+
 test("--platform checks only that platform, so a cross-compiled tree passes on a host that has one", () => {
 	const root = temporaryRoot();
 	for (const entry of FILES.filter((candidate) => candidate.platform === "linux")) {

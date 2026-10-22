@@ -50,8 +50,14 @@ test("the committed policy describes the workflow the gate expects", () => {
 	for (const job of ["policy", "prepare", "static", "node-tests", "bun-tests", "supply-chain"]) {
 		assert.ok(jobs.has(job), `${job} must stay required`);
 	}
-	// `deep-gate` is conditional: it runs only when the impact analysis asks for deep testing.
-	assert.equal(committed.required.includes("deep-gate"), false);
+	// `deep-gate` is conditional: it runs only when the impact analysis asks for deep testing. The whole mapping is
+	// asserted, because dropping an entry here is invisible to `results()` and `impact()`: both derive their keys from
+	// this map, so a deleted conditional job would shrink every case below instead of failing one.
+	assert.deepEqual(committed.conditionalRequired, {
+		"windows-smoke": "windows_required",
+		"mcp-conformance": "mcp_required",
+		"deep-gate": "deep_required",
+	});
 	// The gate rejects an impact map that lacks a flag, so every conditional job needs its own flag name: two jobs
 	// sharing one flag would be selected together and checked separately.
 	assert.equal(flags.length, Object.keys(committed.conditionalRequired ?? {}).length, "one flag per conditional job");
