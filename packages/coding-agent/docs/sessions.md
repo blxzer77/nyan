@@ -30,7 +30,9 @@ The session flags follow the store they name:
 
 Use `/name` or `--name` to assign a recognizable session name. Run `/session` to verify the current session file, ID, message count, token usage, and cost.
 
-The session picker lets you search, rename, and delete sessions. It can also show paths, change sorting, and limit results to named sessions. See [Keybindings](keybindings.md#sessions) for its shortcuts.
+A durable session does not need a name to be recognizable: the picker lists it by the first thing you asked in it, with how many messages it holds and when it was last used. To read that, Nyan opens the session's database read-only, so listing never writes to a session another process may have open; a session whose database cannot be read is still listed, by its creation time, id, and stored name.
+
+The legacy session picker lets you search, rename, and delete sessions. It can also show paths, change sorting, and limit results to named sessions. See [Keybindings](keybindings.md#sessions) for its shortcuts.
 
 ## What a start shows
 
