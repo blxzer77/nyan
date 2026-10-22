@@ -19,7 +19,10 @@ const INT64_MIN = -(2n ** 63n);
 const directories: string[] = [];
 const databases: SqliteDatabase[] = [];
 
-async function open(path = ":memory:", options?: { busyTimeoutMs?: number; walAutoCheckpointPages?: number }) {
+async function open(
+	path = ":memory:",
+	options?: { busyTimeoutMs?: number; walAutoCheckpointPages?: number; readOnly?: boolean },
+) {
 	const database = await openRuntimeSqliteDatabase(path, options);
 	databases.push(database);
 	return database;
@@ -274,6 +277,24 @@ describe("the SQLite adapter for this runtime", () => {
 			await open(path);
 
 			expect(existsSync(path)).toBe(true);
+		});
+
+		it("reads an existing file without write access, and never creates one", async () => {
+			const directory = await temporaryDirectory();
+			const path = join(directory, "reader.sqlite");
+			const writer = await open(path);
+			await writer.exec("CREATE TABLE t (id INTEGER PRIMARY KEY)");
+			await writer.run("INSERT INTO t (id) VALUES (1)");
+			await writer.close();
+
+			const reader = await open(path, { readOnly: true });
+			expect(await reader.get("SELECT id FROM t")).toEqual({ id: 1 });
+			await expect(reader.run("INSERT INTO t (id) VALUES (2)")).rejects.toThrow(/readonly/u);
+			await expect(reader.exec("CREATE TABLE other (id INTEGER)")).rejects.toThrow(/readonly/u);
+
+			// A reader of a session that is gone gets the open failure instead of an empty database.
+			await expect(open(join(directory, "missing.sqlite"), { readOnly: true })).rejects.toThrow();
+			expect(existsSync(join(directory, "missing.sqlite"))).toBe(false);
 		});
 	});
 

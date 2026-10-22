@@ -5387,6 +5387,14 @@ Schema shape, WAL checkpoint cadence, and synchronous defaults are backend
 implementation choices validated by conformance, reopen, query-plan, and storage
 benchmarks.
 
+The same file can be opened read-only by a process that only reads it. Such a
+reader opens the database without write access, applies only the pragmas a
+read-only connection can apply, and never creates the file; it is not a Session,
+so it runs no migrations and commits nothing, and it reads records the schema it
+knows how to interpret. The product uses this to describe a session by its own
+transcript — the first message asked in it, the message count, and the last
+activity — while another process owns that session.
+
 ### 11.3 JSONL
 
 JSONL depends on the portable `FileSystem` capability, not the broader

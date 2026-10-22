@@ -13,6 +13,11 @@ export type NodeSqliteStorageOptions = {
 	readonly walAutoCheckpointPages?: number;
 	/** Time SQLite waits for a competing file lock. SQLite defaults to 0; this adapter defaults to 5,000 ms. */
 	readonly busyTimeoutMs?: number;
+	/**
+	 * Open the file without write access, for a reader of a session another process may own. A read-only connection
+	 * cannot change the journal mode or checkpoint, so those pragmas are skipped, and it never creates the file.
+	 */
+	readonly readOnly?: boolean;
 };
 
 const DEFAULT_WAL_AUTO_CHECKPOINT_PAGES = 1_000;
@@ -134,6 +139,21 @@ export async function openNodeSqliteDatabase(
 ): Promise<NodeSqliteDatabase> {
 	const checkpointPages = options.walAutoCheckpointPages ?? DEFAULT_WAL_AUTO_CHECKPOINT_PAGES;
 	const timeout = options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS;
+	if (options.readOnly === true) {
+		// A reader opens the file the writer created; it must not create one, and it cannot configure journaling.
+		const reader = new NodeSqliteDatabase(new DatabaseSync(path, { timeout, readOnly: true }));
+		try {
+			await reader.exec(`PRAGMA busy_timeout = ${timeout}`);
+			return reader;
+		} catch (error) {
+			try {
+				await reader.close();
+			} catch {
+				// Preserve the configuration failure.
+			}
+			throw error;
+		}
+	}
 	if (path !== ":memory:") await mkdir(dirname(path), { recursive: true });
 	const database = new DatabaseSync(path, { timeout });
 	const adapter = new NodeSqliteDatabase(database);
