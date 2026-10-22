@@ -119,6 +119,9 @@ export interface ExtensionHost {
 	 * Retire this open's bindings: the runner refuses every context afterwards, so a reference kept from a closed open
 	 * fails instead of acting on a session that is gone. The extensions stay loaded for the next open, which builds its
 	 * own host.
+	 *
+	 * Never rejects: retirement is the last step of a close that already shut the session down, so a failure here is
+	 * reported through `onExtensionError` rather than thrown at a caller that cannot recover from it.
 	 */
 	retire(): Promise<void>;
 }
@@ -267,6 +270,15 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 	}
 	// The durable codemode sandbox: created on first activation, closed with the session.
 	let codemodeSandbox: CodemodeSandbox | undefined;
+	/**
+	 * Releases the sandbox, once: the reference is taken before the close is awaited, so a shutdown followed by a retire
+	 * (a close that already shut the session down) or two concurrent calls close one sandbox one time.
+	 */
+	async function closeSandbox(): Promise<void> {
+		const sandbox = codemodeSandbox;
+		codemodeSandbox = undefined;
+		await sandbox?.close();
+	}
 	/** The runner's tools as `getAllTools()` reports them, then the native tools that no runner tool shadows. */
 	function toolInfos(): ToolInfo[] {
 		const registered = runner.getAllRegisteredTools();
@@ -388,16 +400,20 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 			await runner.emit({ type: "agent_end", messages: [...messages] });
 			await runner.emit({ type: "agent_settled", aborted });
 		},
-		shutdown: (reason) =>
-			runner.emit({ type: "session_shutdown", reason }).then(async () => {
-				await codemodeSandbox?.close();
-			}),
+		shutdown: (reason) => runner.emit({ type: "session_shutdown", reason }).then(closeSandbox),
 		retire: async () => {
 			// The extensions are shared with the next open; only this runner was bound to the session that closed.
 			runner.retire();
-			// `shutdown` already closed the sandbox. Retiring a host that never shut down must not keep a worker alive either.
-			await codemodeSandbox?.close();
-			codemodeSandbox = undefined;
+			// `shutdown` closed the sandbox already; a host that is retired without one must not keep a worker alive either.
+			// Retiring is the last step of a close that already shut the session down, so it reports instead of throwing:
+			// the session is gone either way, and a caller has nothing left to recover.
+			await closeSandbox().catch((error: unknown) => {
+				options.onExtensionError({
+					extensionPath: "durable:codemode",
+					event: "session_shutdown",
+					error: error instanceof Error ? error.message : String(error),
+				});
+			});
 		},
 		beforePrompt: async (content) => {
 			turnCounter.value = 0;

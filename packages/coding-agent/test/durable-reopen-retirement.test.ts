@@ -48,6 +48,34 @@ describe("durable open retirement", () => {
 		expect(harness.events).toEqual(["start:startup", "shutdown:reload", "start:reload"]);
 	});
 
+	/**
+	 * A close follows a shutdown that already happened elsewhere (the owner's own start and shutdown steps, a fork, or a
+	 * caller that shut the host down), so retirement is the last thing between a closed session and the close that
+	 * reports it. It must not be able to fail that close.
+	 */
+	test("an open whose session already shut down retires without failing its close", async () => {
+		// The codemode sandbox is the one resource retirement touches, and shutdown closes it first; activating the tool
+		// makes the second close this test is about a real one.
+		const codemode: InlineExtension = (pi) => {
+			pi.on("session_start", () => {
+				pi.setActiveTools([...pi.getActiveTools(), "codemode"]);
+			});
+		};
+		const owner = await harness.open(undefined, { extraFactories: [codemode] });
+		const open = owner.current;
+		expect(open.extensionHost.runner.createContext().cwd).toBe(harness.cwd);
+
+		await open.extensionHost.shutdown("quit");
+		await open.extensionHost.retire();
+		// A second retirement has nothing left to close, and reports nothing.
+		await open.extensionHost.retire();
+		expect(() => open.extensionHost.runner.createContext().cwd).toThrow(/stale after session replacement or reload/);
+
+		await expect(owner.close()).resolves.toBeUndefined();
+		// The close shut the session down again, after the retirement above.
+		expect(harness.events).toEqual(["start:startup", "shutdown:quit", "shutdown:quit"]);
+	});
+
 	test("/new keeps the loaded extensions: a subscription they made at load still delivers", async () => {
 		const delivered: string[] = [];
 		const extensions: InlineExtension = (pi: ExtensionAPI) => {
