@@ -175,6 +175,31 @@ describe("the durable store", () => {
 		expect(sessions[0]?.created.toISOString()).toBe(new Date(9_999_999_999_999).toISOString());
 	});
 
+	test("lists a session with the first thing asked in it and how much it holds", async () => {
+		// The answered session has to land in the store this test lists, so the process store is the same root.
+		setDurableSessionStore({ root: storeRoot });
+		await openAnsweredSession();
+
+		const [session] = await listSessionDirectory(cwd, { root: storeRoot });
+
+		expect(session?.preview?.firstMessage).toBe("go");
+		// One user message and the answer it got: the entries a person reads, not durable's bookkeeping.
+		expect(session?.preview?.messageCount).toBe(2);
+		expect(session?.preview?.lastActivity).toBeInstanceOf(Date);
+	});
+
+	test("lists a session whose database cannot be read, without a preview", async () => {
+		const store = await seededStore();
+		const directory = join(store, "9000000000000-11111111-1111-4111-8111-111111111111");
+		await seedSession(directory);
+
+		const sessions = await listSessionDirectory(cwd, { root: storeRoot });
+
+		// The placeholder is not a database, so the session is still listed by what its directory says.
+		expect(sessions.map((entry) => entry.directory)).toEqual([directory]);
+		expect(sessions[0]?.preview).toBeUndefined();
+	});
+
 	test("finds a session by exact id and by a prefix only one session carries", async () => {
 		const store = await seededStore();
 		const older = join(store, "9000000000000-11111111-1111-4111-8111-111111111111");

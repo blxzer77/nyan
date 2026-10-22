@@ -47,6 +47,7 @@ import {
 import { formatNoModelsAvailableMessage } from "./core/auth-guidance.ts";
 import { AuthStorage, ReadOnlyAuthStorage } from "./core/auth-storage.ts";
 import type { OpenDurableOptions } from "./core/durable/runtime.ts";
+import { sessionDetailOf, sessionLabelOf } from "./core/durable/session-preview.ts";
 import {
 	type DurableSessionEntry,
 	DurableSessionError,
@@ -925,8 +926,8 @@ async function promptForMissingSessionCwd(
 
 /**
  * `--resume` on the durable path: this working directory's durable sessions, newest first. The value is the session
- * directory, which is what opening one needs; a name is what a person recognises, and the creation time separates the
- * sessions that never got one.
+ * directory, which is what opening one needs; the label is the display name, or else the first thing asked in the
+ * session, and the creation time keeps it apart from a session that has neither.
  */
 async function pickDurableSession(
 	settingsManager: SettingsManager,
@@ -936,7 +937,7 @@ async function pickDurableSession(
 		settingsManager,
 		"Resume session:",
 		sessions.map((session) => ({
-			label: `${session.name ?? "(no name)"} · ${session.created.toLocaleString()}`,
+			label: `${sessionLabelOf(session)} · ${sessionDetailOf(session)}`,
 			value: session.directory,
 		})),
 	);
