@@ -198,6 +198,26 @@ test("an unusable limit is refused instead of silently pruning nothing", async (
 	}
 });
 
+test("a blank limit is refused instead of becoming a limit of zero", async () => {
+	// `Number("")` and `Number("  ")` are 0, which passed a finite and non-negative check. `--max-bytes "$MAX_BYTES"`
+	// with an unset variable then meant "no budget at all" and the run deleted every entry the rules allow, and a blank
+	// `--max-age-days` marked everything older than this second as past the limit.
+	const api = await startApi({ caches: [cache(1, { ageDays: 20 }), cache(2, { branch: "topic", ageDays: 0.1 })] });
+	try {
+		for (const [args, message] of [
+			[["--branch", "main", "--max-bytes", ""], /--max-bytes must be a finite, non-negative number, got ""/],
+			[["--branch", "main", "--max-age-days", "  "], /--max-age-days must be a finite, non-negative number, got "  "/],
+		]) {
+			const result = await run(args, api);
+			assert.equal(result.status, 2, `${JSON.stringify(args)} must be refused`);
+			assert.match(result.stderr, message);
+		}
+		assert.deepEqual(api.requests, [], "nothing was read, let alone deleted");
+	} finally {
+		await api.close();
+	}
+});
+
 test("a run without --branch is refused", async () => {
 	const api = await startApi({ caches: [cache(1, { ageDays: 20 })] });
 	try {

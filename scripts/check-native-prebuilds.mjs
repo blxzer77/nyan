@@ -87,10 +87,13 @@ function machineOf(buffer, platform) {
 		return buffer.length < 8 ? undefined : buffer.readUInt32LE(4);
 	}
 	// PE: the DOS header holds the offset of the COFF header at 0x3c, whose Machine field follows the "PE\0\0"
-	// signature.
+	// signature. Anchoring on the signature is what makes this read as trustworthy as the fixed offsets above: without
+	// it, an offset pointing anywhere that happened to carry a machine field was accepted.
 	if (buffer.length < 0x40) return undefined;
 	const coff = buffer.readUInt32LE(0x3c);
-	return coff + 6 > buffer.length ? undefined : buffer.readUInt16LE(coff + 4);
+	if (coff + 24 > buffer.length) return undefined;
+	if (buffer.readUInt32LE(coff) !== 0x00004550) return undefined;
+	return buffer.readUInt16LE(coff + 4);
 }
 
 const hex = (value) => `0x${value.toString(16)}`;
@@ -124,7 +127,9 @@ for (const entry of EXPECTED) {
 	const expectedMachine = MACHINES[entry.arch][entry.platform];
 	if (machine !== expectedMachine) {
 		failures.push(
-			`${entry.file}: ${entry.platform} machine ${machine === undefined ? "is missing from the header" : hex(machine)} is not ${entry.arch} (expected ${hex(expectedMachine)})`,
+			machine === undefined
+				? `${entry.file}: ${entry.platform} and ${entry.arch} machine field is missing from the header (expected ${hex(expectedMachine)})`
+				: `${entry.file}: ${entry.platform} machine ${hex(machine)} is not ${entry.arch} (expected ${hex(expectedMachine)})`,
 		);
 		continue;
 	}

@@ -38,11 +38,18 @@ function fail(message) {
 	process.exit(2);
 }
 
-/** A finite, non-negative number of a command-line option; NaN would silently disable the limit it configures. */
+/**
+ * A finite, non-negative number of a command-line option.
+ *
+ * A blank value is refused instead of being handed to `Number`: `Number("")` and `Number("  ")` are 0, which passed a
+ * finite and non-negative check. `--max-bytes "$MAX_BYTES"` with an unset variable therefore meant "no budget at all"
+ * and deleted every entry the rules allow, instead of failing. Zero itself stays valid: it is how a caller asks for the
+ * smallest budget there is.
+ */
 function numberOption(name, fallback) {
 	const raw = option(name);
 	if (raw === undefined) return fallback;
-	const value = Number(raw);
+	const value = raw.trim() === "" ? Number.NaN : Number(raw);
 	if (!Number.isFinite(value) || value < 0) {
 		fail(`${name} must be a finite, non-negative number, got ${JSON.stringify(raw)}`);
 	}

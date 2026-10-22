@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, test } from "node:test";
+import { loadTools, TOOLS } from "./fetch-ci-tools.mjs";
 
 const script = join(resolve(import.meta.dirname), "fetch-ci-tools.mjs");
 const ARCHES = { x64: "x86_64", arm64: "aarch64" };
@@ -98,11 +99,11 @@ function run(args, env) {
 	});
 }
 
-/** An installed fake tool that reports `version`. */
-function installTool(outDir, name, version) {
+/** An installed fake tool that reports `version`, or runs `body` instead when a case needs a different behaviour. */
+function installTool(outDir, name, version, { body = `#!/bin/sh\necho "${name} ${version}"\n` } = {}) {
 	mkdirSync(outDir, { recursive: true });
 	const path = join(outDir, name);
-	writeFileSync(path, `#!/bin/sh\necho "${name} ${version}"\n`, { mode: 0o755 });
+	writeFileSync(path, body, { mode: 0o755 });
 	return path;
 }
 
@@ -226,6 +227,76 @@ test("a manifest without a pinned digest is refused", supported, async () => {
 	} finally {
 		await server.close();
 	}
+});
+
+test("a version probe that hangs is treated as not running instead of blocking the job", supported, async () => {
+	// `--out` holds whatever was there before, including a binary from an interrupted download. Without a timeout the
+	// probe blocked until the whole `prepare` job timed out; now it gives up and fetches the tool again.
+	const out = temporaryDirectory("nyan-ci-tools-out-");
+	installTool(out, "rg", "unused", { body: "#!/bin/sh\nsleep 30\n" });
+	const server = await startServer({ "/rg.tar.gz": archiveFor("rg", "9.9.9") });
+	try {
+		const manifest = manifestFor({ rg: entryFor("rg", "9.9.9", server.url) });
+		const result = await run(["--out", out], { NYAN_CI_TOOLS_MANIFEST: manifest });
+
+		const output = `${result.stdout}${result.stderr}`;
+		assert.equal(result.status, 0, output);
+		assert.match(result.stdout, new RegExp(`^${out}/rg: missing or does not run; fetching it again$`, "m"));
+		assert.equal(installedVersion(join(out, "rg")), "rg 9.9.9");
+	} finally {
+		await server.close();
+	}
+});
+
+test("a binary that hangs after installation fails with a message, not an empty one", supported, async () => {
+	// A probe that times out leaves `status` null and `stderr` empty, so the failure was reported as
+	// "rg does not run after installation: " with nothing after it. `reportedVersion` already reports why.
+	const out = temporaryDirectory("nyan-ci-tools-out-");
+	const archive = archiveFor("rg", "9.9.9", { body: "#!/bin/sh\nsleep 30\n" });
+	const server = await startServer({ "/rg.tar.gz": archive });
+	try {
+		const manifest = manifestFor({ rg: entryFor("rg", "9.9.9", server.url, { archive }) });
+		const result = await run(["--out", out], { NYAN_CI_TOOLS_MANIFEST: manifest });
+
+		assert.equal(result.status, 1);
+		assert.match(result.stderr, /^rg does not run after installation: spawnSync .* ETIMEDOUT$/m);
+	} finally {
+		await server.close();
+	}
+});
+
+test("a manifest whose tool name is a path is refused", supported, async () => {
+	// The name becomes `join(outDir, name)` and the target of a chmod, so `../..` would write outside `--out`.
+	const out = temporaryDirectory("nyan-ci-tools-out-");
+	const server = await startServer({});
+	try {
+		const manifest = manifestFor({ "../../escape": entryFor("rg", "9.9.9", server.url) });
+		const result = await run(["--out", out], { NYAN_CI_TOOLS_MANIFEST: manifest });
+
+		assert.equal(result.status, 1);
+		assert.match(result.stderr, /^the tool manifest .* names an unusable tool: "\.\.\/\.\.\/escape"$/m);
+		assert.deepEqual(server.requests, [], "nothing was downloaded for a manifest that cannot be used");
+	} finally {
+		await server.close();
+	}
+});
+
+test("the manifest rules can be asserted in process, not only through the script", () => {
+	// The module used to run its CLI body on import and to end the process on an invalid manifest, so the validation
+	// could only be observed as the exit code of a subprocess. Importing it now runs nothing.
+	assert.deepEqual(loadTools({}), TOOLS);
+	assert.throws(
+		() => loadTools({ NYAN_CI_TOOLS_MANIFEST: manifestFor({ rg: { version: "9.9.9" } }) }),
+		/the tool manifest .* has no url for rg/,
+	);
+	assert.throws(
+		() =>
+			loadTools({
+				NYAN_CI_TOOLS_MANIFEST: manifestFor({ "../escape": entryFor("rg", "9.9.9", "http://127.0.0.1") }),
+			}),
+		/names an unusable tool: "\.\.\/escape"/,
+	);
+	assert.throws(() => loadTools({ NYAN_CI_TOOLS_MANIFEST: manifestFor({}) }), /names no tools/);
 });
 
 /** The first line an installed fake tool prints, which is the version the script compares. */
