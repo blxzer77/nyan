@@ -18,6 +18,11 @@ DIM = int(os.environ.get("EXPECTED_DIM", "1536"))
 
 fails = 0
 
+if API not in ("llama", "tei"):
+    # An unknown value is a configuration mistake, not a reason to probe llama.cpp's endpoints with the wrong protocol.
+    print(f"FAIL  EMBED_API {API!r} is not 'llama' or 'tei'", file=sys.stderr)
+    sys.exit(2)
+
 
 def check(name, ok, detail=""):
     global fails

@@ -10,7 +10,10 @@ services:
     # TEI cuda-1.9 (FlashQwen2) hangs on this GPU: it loads the model, then burns
     # one CPU core at 100% without binding the port. llama.cpp serves the same
     # model from Jina's official BF16 GGUF with --pooling last.
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    # Pinned by digest to the build measured on this GPU: llama.cpp revision 1d88cb0 (built 2026-10-20). The startup
+    # flags below are version-sensitive (`--pooling last`, the GGUF alias), and `server-cuda` is a moving tag, so a
+    # `pull` would silently replace the server. Upgrading is an explicit edit of this line.
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda@sha256:4ca0d26c2d3032bd0c269599b94457911d379db2c3da0748df742d27634c792f
     container_name: retrieval-llama-embed
     restart: unless-stopped
     command:
@@ -38,7 +41,10 @@ services:
     ports:
       - 127.0.0.1:8090:80
     volumes:
-      - /home/blxze/models:/models:ro
+      # `MODELS_DIR` names the host directory holding `gguf/` and `Qwen/`. Without it a host that keeps the weights
+      # elsewhere gets an empty directory inside the container, and both services fail while the compose file says
+      # nothing was wrong.
+      - "${MODELS_DIR:-/home/blxze/models}:/models:ro"
     deploy:
       resources:
         reservations:
@@ -59,7 +65,10 @@ services:
         max-file: "3"
 
   vllm-rerank:
-    image: vllm/vllm-openai:latest
+    # Pinned by digest: vLLM 0.32.0, which is the server the `--runner=pooling` flags and the
+    # `classifier_from_token` override were verified against. vLLM renames these fields between releases, so `latest`
+    # would restart-loop on a new one instead of failing here.
+    image: vllm/vllm-openai:latest@sha256:c11e525d1416ec6df92847d9a45319b8dc3b23c348a0c7a4dcac009628a1063f
     container_name: retrieval-vllm-rerank
     restart: unless-stopped
     # Qwen3-Reranker is a causal LM that scores by the "no"/"yes" token pair, so
@@ -78,7 +87,7 @@ services:
     ports:
       - 127.0.0.1:8091:8091
     volumes:
-      - /home/blxze/models:/models:ro
+      - "${MODELS_DIR:-/home/blxze/models}:/models:ro"
     ipc: host
     deploy:
       resources:

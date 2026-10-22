@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""Embedding throughput benchmark for the local TEI service.
+"""Embedding throughput benchmark for the local embedding service.
 
 Measures sustained document-embedding throughput and query-embed latency at the
 profile the retrieval contract will use: chunk ~400 tokens, client batch 32.
 
-Usage: TEI_URL=http://127.0.0.1:8090 ./bench-embed.py [--chunks 512] [--batch 32]
+Usage: EMBED_URL=http://127.0.0.1:8090 ./bench-embed.py [--chunks 512] [--batch 32]
+       (EMBED_API=tei switches to the TEI /embed endpoint instead of llama.cpp /v1/embeddings)
+
+The default is llama.cpp on this workstation, which is what serves the profile
+measured in README.md; TEI cannot serve this model here.
 """
 import argparse
 import json
+import math
 import os
 import random
 import statistics
+import sys
 import time
 import urllib.request
 
@@ -66,10 +72,16 @@ def make_chunks(n):
 
 
 def main():
+    if API not in ("llama", "tei"):
+        # An unknown value is a configuration mistake, not a reason to fall through to llama.cpp's protocol.
+        print(f"EMBED_API {API!r} is not 'llama' or 'tei'", file=sys.stderr)
+        return 2
     ap = argparse.ArgumentParser()
     ap.add_argument("--chunks", type=int, default=512)
     ap.add_argument("--batch", type=int, default=32)
     args = ap.parse_args()
+    if args.chunks < 1 or args.batch < 1:
+        ap.error("--chunks and --batch must be at least 1")
 
     if API == "tei":
         info = json.load(urllib.request.urlopen(URL + "/info", timeout=10))
@@ -101,7 +113,9 @@ def main():
         embed(["how does the durable harness checkpoint a phase boundary? " + str(i)])
         ql.append(time.perf_counter() - s)
     ql.sort()
-    print(f"query lat   p50 {ql[len(ql)//2]*1000:.0f}ms  p90 {ql[int(len(ql)*0.9)]*1000:.0f}ms  (short query, single item)")
+    # Nearest-rank percentiles, the same definition for both, and the same one statistics.median uses for p50.
+    p90 = ql[min(len(ql) - 1, math.ceil(0.9 * len(ql)) - 1)]
+    print(f"query lat   p50 {statistics.median(ql)*1000:.0f}ms  p90 {p90*1000:.0f}ms  (short query, single item)")
 
     # Header values only; the retrieval contract records dim/normalization in the
     # generation tuple, so print what this profile actually produces.
