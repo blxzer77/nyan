@@ -1189,6 +1189,11 @@ export interface DurableTuiOpen {
 	readonly modelRuntime?: ModelRuntime;
 	/** The themes this open loaded, which a `/reload` replaces. */
 	readonly themes?: readonly Theme[];
+	/**
+	 * nyan's settings for this open. A `/reload` creates fresh services, so its settings manager is not the one the
+	 * TUI started with; the reader goes through it instead of the instance the start was handed.
+	 */
+	readonly settings?: SettingsManager;
 	/** The prompt templates `/name args` expands, completed as `/` commands. Absent in an embedding that has none. */
 	readonly promptTemplates?: readonly PromptTemplate[];
 	/** What `/bug` reads from the process: the model runtime, the settings, and the loaded extensions. */
@@ -1206,6 +1211,11 @@ export interface DurableTuiSessions {
 	 * they are unavailable.
 	 */
 	reopen?(request: DurableReopenRequest): Promise<DurableTuiOpen>;
+	/**
+	 * The session the caller shows now. A reopen that fails puts a live session back before it reports the failure, so
+	 * this is what the TUI follows after one instead of the session it held, which is closed by then.
+	 */
+	current?(): DurableTuiOpen;
 }
 
 /**
@@ -1248,6 +1258,8 @@ export async function runDurableTui(
 	/** The open session the TUI shows; a reopen replaces it, so every reader goes through this. */
 	let shown: DurableTuiOpen = sessions?.open ?? { view: source, controller, extensionHost: host };
 	let commands: DurableCommands | undefined;
+	/** The settings of the session shown now: a `/reload` replaces them along with the services that own them. */
+	const settingsNow = (): SettingsManager => shown.settings ?? settings;
 
 	const selectModel = (search?: string): void => {
 		const snapshot = shown.view.current();
@@ -1509,7 +1521,10 @@ export async function runDurableTui(
 		getScopedModels: () => view.scopedModelIds,
 		editor: view.createEditorPort(),
 		keybindings: view.keybindings,
-		extensionRunner: shown.extensionHost?.runner,
+		// A reopen replaces the host whose runner the shortcuts belong to, so this is read per keystroke rather than once.
+		get extensionRunner() {
+			return shown.extensionHost?.runner;
+		},
 		notify: (message, type) => view.notify(message, type),
 		runCommand,
 		dispatchExtension: async (text) => {
@@ -1535,14 +1550,37 @@ export async function runDurableTui(
 	/** Render the open session the TUI holds now, and follow it. */
 	const follow = (): void => view.apply(shown.view.current());
 	let unsubscribe = (): void => {};
-
 	// nyan's theme handling: the theme setting (also light/dark pairs) resolved against the terminal's reported colors.
 	// It exists before the commands, because `/settings` reads and applies the theme through it.
 	const themes = new InteractiveThemeController(view.ui, {
-		getSettingsManager: () => settings,
+		getSettingsManager: () => settingsNow(),
 		showError: (message) => console.error(message),
 		onChanged: () => view.ui.requestRender(),
 	});
+
+	/**
+	 * Show `next` as the session this TUI operates on. The one it showed before is closed by the caller, so every
+	 * binding that belonged to it is replaced: the view subscription, the extension UI context, the themes, the
+	 * autocomplete sources, the display name, and the rendered transcript.
+	 */
+	const adopt = async (next: DurableTuiOpen, request: DurableReopenRequest): Promise<void> => {
+		unsubscribe();
+		shown = next;
+		unsubscribe = shown.view.subscribe(follow);
+		shown.extensionHost?.runner.setUIContext(view.createExtensionUIContext(), "tui");
+		if (shown.themes !== undefined) setRegisteredThemes([...shown.themes]);
+		if (request.kind === "reload") {
+			setCapabilityOverrides(settingsNow().getTerminalCapabilityOverrides());
+			view.reloadBindings();
+			themes.applyFromSettings();
+		}
+		// The commands and templates of the session now open are not the ones the provider was built from.
+		refreshAutocomplete();
+		await commands?.refreshSessionName();
+		view.setSessionName(commands?.sessionName);
+		view.resetSessionView();
+		follow();
+	};
 
 	/**
 	 * The settings and account surface. It is absent when the caller opened a session without a model runtime (the
@@ -1552,7 +1590,7 @@ export async function runDurableTui(
 		const modelRuntime = shown.modelRuntime;
 		if (modelRuntime === undefined) return undefined;
 		return {
-			settings,
+			settings: settingsNow(),
 			modelRuntime,
 			tui: view.ui,
 			settingsUi: view.createSettingsUi({
@@ -1589,25 +1627,19 @@ export async function runDurableTui(
 					? {}
 					: {
 							reopen: async (request: DurableReopenRequest): Promise<void> => {
-								const next = await sessions.reopen?.(request);
-								if (next === undefined) return;
-								// The session this TUI showed is closed by the caller; follow the one it opened.
-								unsubscribe();
-								shown = next;
-								unsubscribe = shown.view.subscribe(follow);
-								shown.extensionHost?.runner.setUIContext(view.createExtensionUIContext(), "tui");
-								if (shown.themes !== undefined) setRegisteredThemes([...shown.themes]);
-								if (request.kind === "reload") {
-									setCapabilityOverrides(settings.getTerminalCapabilityOverrides());
-									view.reloadBindings();
-									themes.applyFromSettings();
+								let next: DurableTuiOpen;
+								try {
+									const opened = await sessions.reopen?.(request);
+									if (opened === undefined) return;
+									next = opened;
+								} catch (error) {
+									// The owner puts a live session back before it reports a failure, and the one shown until now is closed:
+									// its view, controller, and session operations no longer work, so follow the recovered session instead.
+									const live = sessions.current?.();
+									if (live !== undefined) await adopt(live, request);
+									throw error;
 								}
-								// The commands and templates of the session now open are not the ones the provider was built from.
-								refreshAutocomplete();
-								await commands?.refreshSessionName();
-								view.setSessionName(commands?.sessionName);
-								view.resetSessionView();
-								follow();
+								await adopt(next, request);
 							},
 						}),
 			},

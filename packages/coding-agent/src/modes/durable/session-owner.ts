@@ -15,6 +15,7 @@ export function tuiof(open: OpenDurableResult): DurableTuiOpen {
 		extensionHost: open.extensionHost,
 		sessionOps: open.sessionOps,
 		modelRuntime: open.modelRuntime,
+		settings: open.settings,
 		themes: open.themes,
 		promptTemplates: open.promptTemplates,
 		// The listing a start shows: what loaded in this open, and what the loader could not read.
@@ -93,7 +94,19 @@ export class DurableSessionOwner {
 		}
 		// A new session gets its own directory, so nothing conflicts with the one being closed.
 		await previous.close("new");
-		this.#open = await openDurable({ ...nextOptions, continueSession: false });
+		try {
+			this.#open = await openDurable({ ...nextOptions, continueSession: false });
+		} catch (error) {
+			// The session being left is closed by now, so put a live one back before reporting the failure: a caller that
+			// renders what this owner shows must not be left holding a closed session.
+			const directory = previous.view.current().session.directory;
+			this.#open = await openDurable({
+				...this.#options,
+				services: previous.services,
+				sessionDirectory: directory,
+			}).catch(() => previous);
+			throw error;
+		}
 		return this.tui;
 	}
 

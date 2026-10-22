@@ -25,6 +25,8 @@ export async function runDurableInteractive(options: DurableInteractiveOptions):
 		await runDurableTui(open.view, open.controller, open.settings, open.extensionHost, open.themes, {
 			open: owner.tui,
 			reopen: (request) => owner.reopen(request),
+			// A reopen that fails leaves a live session behind, which the TUI follows instead of the closed one.
+			current: () => owner.tui,
 		});
 	} finally {
 		await owner.close();
