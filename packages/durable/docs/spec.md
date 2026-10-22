@@ -4628,6 +4628,87 @@ and fails with `model_error` when it failed, faulted, was orphaned, or was
 aborted directly (section 8.3).
 
 
+### 8.8 Context primitives
+
+`src/context/` holds the pure decisions an admission, masking, or source-binding
+step reads: the protected positions of a context, the basis of a selected cut,
+and the admission decision over a measurement. They take a `ContextView`
+(section 9.3), return values, and touch no storage, no clock, and no harness.
+The compaction task does not call them yet; it selects and summarizes exactly as
+section 8.7 describes.
+
+```ts
+type ProtectionReason = "system" | "first-user-after-head" | "in-flight-turn" | "fact";
+/** `reason` is present exactly when `protected` is true. */
+type Protection = { protected: false; reason?: never } | { protected: true; reason: ProtectionReason };
+type ProtectionOptions = {
+  /** First entry of the run that is still in flight, from `nyan.live.run`. */
+  inFlightFrom?: EntryId;
+  /** Whether an entry is a protected fact; N5 supplies it, N4 passes nothing. */
+  isProtectedFact?: (entryId: EntryId) => boolean;
+};
+type ContextBasis = { head: EntryId | undefined; entryCount: number; tailId: EntryId };
+type Admission = "continue" | "mask" | "compact";
+
+function isProtected(view: ContextLayout, index: number, options?: ProtectionOptions): Protection;
+function basisOf(view: ContextLayout, cut: number): ContextBasis;
+function decideAdmission(measure: {
+  estimated: number;
+  budget: number;
+  hasMaskable: boolean;
+}): Admission;
+```
+
+`ContextLayout` is the part of a view these functions read: `head`, `entries`,
+and `contributions`. It is structural, so a `ContextView` and a fixture are both
+accepted and the module does not depend on the harness.
+
+**Protected positions.** `index` is a position in `view.entries`, and the answer
+is about the entry there, not about a boundary between entries. A protected
+entry is never a masking target and is never the entry a summary starts at
+(`firstKept`); the two reasons `in-flight-turn` and `fact` additionally keep it
+out of the summarized range, because the turn the model is working on and a
+protected fact must reach the model verbatim. `system` and
+`first-user-after-head` may still sit inside a summarized range: entries are
+immutable and are not deleted, the head marker is what moves, and the next
+preparation writes a complete system baseline after it (section 7.4).
+
+| reason | position | masked | in the summarized range | `firstKept` |
+|---|---|---|---|---|
+| `system` | contributes a system message | never | allowed | never |
+| `first-user-after-head` | first entry at or after the head marker that begins with a user message | never | allowed | never |
+| `in-flight-turn` | entry id at or after `options.inFlightFrom` | never | never | never |
+| `fact` | `options.isProtectedFact(entry.id)` | never | never | never |
+
+The reason reported is the strictest that applies: `in-flight-turn`, then
+`fact`, then `system`, then `first-user-after-head`. A caller that acts on the
+reason therefore never lets a position be summarized that must survive
+verbatim. A position that is not an entry — negative, not an integer, or
+`>= entries.length` — throws a `RangeError`, because a position that is not an
+entry cannot be answered. The head marker itself is unprotected: section 8.7
+summarizes an earlier marker together with the history after it, and the range
+start, not this predicate, is what keeps the selector off it.
+
+**Basis.** `basisOf(view, cut)` names the summarized prefix and the read it came
+from: `head` is the head marker's own entry id, absent when the context starts at
+the transcript's first entry; `entryCount` is `cut`, the number of active entries
+the summary covers; `tailId` is the newest entry of that read, the value a
+`SummaryRequest` pins as `tail`. Comparing this triple against the one a later
+read produces detects an appended entry, a cut that moved, and a marker that
+took over, without hashing the summarized content: entries are immutable and
+their ids increase, and the active list after a marker is fixed by that marker's
+id, so id, count, and marker identify the prefix a hash would. `cut` must cover
+at least one entry and at most all of them; anything else throws a `RangeError`,
+because a context with no entry has neither a cut nor a basis.
+
+**Admission.** `decideAdmission()` returns `continue` when `estimated <= budget`.
+Above the budget it returns `mask` when a maskable entry exists and `compact`
+otherwise, so masking is tried before a summary. There is no `blocked` outcome:
+masking clears content that stays in storage, and a context that is still too
+large afterwards is summarized. A negative or non-finite `estimated` or `budget`
+throws a `RangeError` instead of reading as over budget.
+
+
 ## 9. Document observation and Chord
 
 ### 9.1 Document state
