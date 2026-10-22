@@ -198,6 +198,22 @@ export async function openBunSqliteDatabase(
 		options.walAutoCheckpointPages ?? DEFAULT_WAL_AUTO_CHECKPOINT_PAGES,
 	);
 	const timeout = nonNegativeInteger("busyTimeoutMs", options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS);
+	if (options.readOnly === true) {
+		// A reader opens the file the writer created; it must not create one, and it cannot configure journaling.
+		const { Database } = await import("bun:sqlite");
+		const reader = new BunSqliteDatabase(new Database(path, { readonly: true }));
+		try {
+			await reader.exec(`PRAGMA busy_timeout = ${timeout}`);
+			return reader;
+		} catch (error) {
+			try {
+				await reader.close();
+			} catch {
+				// Preserve the configuration failure.
+			}
+			throw error;
+		}
+	}
 	if (path !== ":memory:") await mkdir(dirname(path), { recursive: true });
 	const { Database } = await import("bun:sqlite");
 	const adapter = new BunSqliteDatabase(new Database(path));

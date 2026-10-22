@@ -1,6 +1,6 @@
 {
 	"name": "@ny4n/server",
-	"version": "1.4.2",
+	"version": "1.4.3",
 	"description": "experimental server package for nyan",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -46,8 +46,8 @@
 		"node": ">=22.19.0"
 	},
 	"dependencies": {
-		"@ny4n/chord": "^1.4.2",
-		"@ny4n/protocol": "^1.4.2"
+		"@ny4n/chord": "^1.4.3",
+		"@ny4n/protocol": "^1.4.3"
 	},
 	"devDependencies": {
 		"shx": "0.3.4",

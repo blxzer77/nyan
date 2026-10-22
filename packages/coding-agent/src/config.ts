@@ -90,6 +90,29 @@ export function detectInstallMethod(): InstallMethod {
 	return "unknown";
 }
 
+/**
+ * The source checkout that provides this installation, when Nyan runs from one instead of from an installed package.
+ *
+ * Path-based install detection sees no package manager in a checkout (and none at all through a launcher wrapper), so
+ * this is what turns "cannot self-update" into the command that actually updates the checkout. A `.git` entry is the
+ * signal: a worktree has a `.git` file rather than a directory, and no package manager install carries one.
+ */
+export function detectSourceCheckout(): { readonly root: string; readonly packageDir: string } | undefined {
+	if (isBunBinary) return undefined;
+	const packageDir = getPackageDir();
+	for (let dir = packageDir; ; dir = dirname(dir)) {
+		if (existsSync(join(dir, ".git"))) return { root: dir, packageDir };
+		if (dirname(dir) === dir) return undefined;
+	}
+}
+
+/** How a source checkout is updated: the same install and offline build the repository documents. */
+const SOURCE_CHECKOUT_UPDATE = `git pull && npm ci --ignore-scripts && npm run build:offline`;
+
+function sourceCheckoutInstruction(root: string): string {
+	return `This ${APP_NAME} runs from the source checkout at ${root}. Update it with \`${SOURCE_CHECKOUT_UPDATE}\` from that directory, or run ${APP_NAME} from an installed package instead.`;
+}
+
 function getInferredNpmInstall(): { root: string; prefix: string } | undefined {
 	const packageDir = getPackageDir();
 	const path = process.platform === "win32" || packageDir.includes("\\") ? win32 : { basename, dirname };
@@ -340,8 +363,13 @@ export function getSelfUpdateUnavailableInstruction(
 		if (isManagedByGlobalPackageManager(method, packageName, npmCommand) && !isSelfUpdatePathWritable()) {
 			return `This installation is managed by a global ${method} install, but the install path is not writable. Update it yourself with: ${command.display}`;
 		}
+		// A path that looks package-managed but is not managed by one is usually a checkout run through a launcher.
+		const checkout = detectSourceCheckout();
+		if (checkout !== undefined) return sourceCheckoutInstruction(checkout.root);
 		return `This installation is not managed by a global ${method} install. Update it with the package manager, wrapper, or source checkout that provides it.`;
 	}
+	const checkout = detectSourceCheckout();
+	if (checkout !== undefined) return sourceCheckoutInstruction(checkout.root);
 	return `Update ${target.installSpec} using the package manager, wrapper, or source checkout that provides this installation.`;
 }
 

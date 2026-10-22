@@ -4,8 +4,13 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-10-22
+
 ### Fixed
 
+- `/resume` lists a durable session by the first thing you asked in it, with how many messages it holds and when it was last used, instead of by its directory name. The session picker in the TUI and `nyan --resume` both show it, and reading it never writes to the session.
+- A `/reload` that fails no longer leaves the interactive session running against a session that was already closed. The session you keep talking to is the one the reload put back, extension shortcuts and settings follow the reload, and a `/new` that cannot open its session leaves the previous one live instead of showing a closed one.
+- `nyan update` from a source checkout now says which checkout it runs from and the commands that refresh it (`git pull && npm ci --ignore-scripts && npm run build:offline`), instead of telling you to use the package manager or source checkout that provides the installation. The same applies when a launcher script hides the install location.
 - The lines a session shows below the transcript no longer stay for the rest of the session. An extension failure, a
   command's answer, or a warning the runtime recorded now disappears on its own (10 s for an info line, 15 s for a
   warning, 30 s for an error), and at most the newest three are shown, so a long session no longer collects a growing

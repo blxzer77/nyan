@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import lockfile from "proper-lockfile";
 import { APP_NAME, getAgentDir } from "../../config.ts";
+import { type DurableSessionPreview, readSessionPreview } from "./session-preview.ts";
 
 export const DURABLE_SESSION_METADATA_FILE = "session.json";
 
@@ -82,9 +83,12 @@ export function durableSessionStoreRoot(store: DurableSessionStore = processStor
 export interface DurableSessionEntry {
 	readonly id: string;
 	readonly directory: string;
+	/** The stored display name, which only `/name` or `--name` writes. */
 	readonly name?: string;
 	/** The session's creation time, taken from its directory name. */
 	readonly created: Date;
+	/** What its transcript says about it; absent when its database cannot be read. */
+	readonly preview?: DurableSessionPreview;
 }
 
 export async function readSessionMetadata(directory: string): Promise<DurableSessionMetadata> {
@@ -119,8 +123,27 @@ async function sessionRoot(cwdInput: string, store: DurableSessionStore): Promis
 	};
 }
 
+/**
+ * Read the previews of `sessions` with bounded concurrency, so listing a store opens a few databases at a time rather
+ * than one per session in flight.
+ */
+async function withPreviews(sessions: readonly DurableSessionEntry[]): Promise<DurableSessionEntry[]> {
+	const CONCURRENCY = 8;
+	const result: DurableSessionEntry[] = new Array(sessions.length);
+	let next = 0;
+	const worker = async (): Promise<void> => {
+		for (let index = next++; index < sessions.length; index = next++) {
+			const session = sessions[index]!;
+			const preview = await readSessionPreview(session.directory);
+			result[index] = preview === undefined ? session : { ...session, preview };
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(CONCURRENCY, sessions.length) }, worker));
+	return result;
+}
+
 /** The sessions a store directory holds, newest first. A directory without `session.sqlite` never started a session. */
-async function sessionsIn(root: string): Promise<DurableSessionEntry[]> {
+async function sessionsIn(root: string, previews = true): Promise<DurableSessionEntry[]> {
 	const sessions: DurableSessionEntry[] = [];
 	for (const entry of await readdir(root, { withFileTypes: true })) {
 		const match = SESSION_DIRECTORY_NAME.exec(entry.name);
@@ -140,7 +163,23 @@ async function sessionsIn(root: string): Promise<DurableSessionEntry[]> {
 		});
 	}
 	// Newest first: the directory name starts with its creation time, so ordering the names orders the sessions.
-	return sessions.sort((left, right) => right.id.localeCompare(left.id));
+	const ordered = sessions.sort((left, right) => right.id.localeCompare(left.id));
+	return previews ? await withPreviews(ordered) : ordered;
+}
+
+/**
+ * The sessions of one store directory, newest first, each with what its transcript says about it.
+ *
+ * `selectSession` lays a working directory's sessions out as `<agent dir>/sessions-durable/<hash of cwd>/<session>/`, so
+ * the parent of an open session is the store of every session of the same working directory.
+ */
+export async function listSessionsIn(root: string): Promise<DurableSessionEntry[]> {
+	try {
+		return await sessionsIn(root);
+	} catch {
+		// No store for this directory yet is the ordinary case for a first run, not a failure.
+		return [];
+	}
 }
 
 /** The sessions of `cwd`'s own store, newest first. */
@@ -150,12 +189,7 @@ export async function listSessionDirectory(
 ): Promise<DurableSessionEntry[]> {
 	if (store.memory === true) return [];
 	const { root } = await sessionRoot(cwdInput, store);
-	try {
-		return await sessionsIn(root);
-	} catch {
-		// No store for this directory yet is the ordinary case for a first run, not a failure.
-		return [];
-	}
+	return await listSessionsIn(root);
 }
 
 /** Every session below the store's root, whichever working directory it belongs to, newest first. */
@@ -164,7 +198,7 @@ async function sessionsBelowRoot(store: DurableSessionStore): Promise<DurableSes
 	for (const entry of await readdir(durableSessionStoreRoot(store), { withFileTypes: true })) {
 		if (!entry.isDirectory()) continue;
 		try {
-			sessions.push(...(await sessionsIn(join(durableSessionStoreRoot(store), entry.name))));
+			sessions.push(...(await sessionsIn(join(durableSessionStoreRoot(store), entry.name), false)));
 		} catch {
 			// A store directory that went away while it was being read holds no session to find.
 		}

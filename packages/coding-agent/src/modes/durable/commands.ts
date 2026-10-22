@@ -260,8 +260,8 @@ export class DurableCommands {
 			"Resume session:",
 			other.map((session) => ({
 				value: session.directory,
-				label: session.name ?? session.directory.split("/").at(-1) ?? session.directory,
-				description: `${session.created.toLocaleString()} · ${session.directory}`,
+				label: session.label,
+				description: `${session.detail} · ${session.directory}`,
 			})),
 		);
 		if (chosen === undefined) {
