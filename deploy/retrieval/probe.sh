@@ -29,27 +29,45 @@ probe_embed() {
 probe_rerank() {
   echo "== rerank: $RERANK_URL"
   local out
-  out="$(curl -s --max-time 60 -X POST "$RERANK_URL/score" -H 'content-type: application/json' -d '{
+  # `-f` so a non-2xx answer is this function's failure instead of JSON that happens to parse.
+  if ! out="$(curl -sf --max-time 60 -X POST "$RERANK_URL/score" -H 'content-type: application/json' -d '{
     "model": "qwen3-reranker-0.6b",
     "text_1": "how do durable tasks checkpoint a phase",
     "text_2": [
       "The harness commits an intent row, performs the effect, then commits the outcome; on restart it replays only intents whose outcome is missing.",
       "The weather in Paris is mild in spring and people enjoy walking along the Seine."
     ]
-  }')"
-  printf '%s' "$out" | jq_py '
+  }')"; then
+    fail "rerank request failed"
+    return
+  fi
+  # The checks print one `CHECK <name> PASS|FAIL` line each; the count comes from those lines, because a printed FAIL is
+  # the verdict and the helper's own exit code cannot carry how many of them there were.
+  local checks
+  checks="$(printf '%s' "$out" | jq_py '
 import json,sys
-d=json.load(sys.stdin)
+try:
+    d=json.load(sys.stdin)
+except Exception as error:
+    print("CHECK answer_parses    FAIL %s" % error); sys.exit(0)
 data=d.get("data") or d.get("results")
 if not data:
-    print("CHECK score_shape      FAIL %r" % (d,)); raise SystemExit
+    print("CHECK score_shape      FAIL %r" % (d,)); sys.exit(0)
 scores=[x.get("score") for x in data]
 print("CHECK score_shape      PASS n=%d" % len(scores))
-ok=all(isinstance(s,(int,float)) and 0.0<=s<=1.0 for s in scores)
+ok=all(isinstance(s,(int,float)) and not isinstance(s,bool) and 0.0<=s<=1.0 for s in scores)
 print("CHECK score_range_0_1  %s %r" % ("PASS" if ok else "FAIL", scores))
 rel=len(scores)==2 and scores[0]>scores[1]
 print("CHECK ranking_sanity   %s" % ("PASS" if rel else "FAIL"))
-' || fail "rerank request failed"
+') "
+  if [[ -z "$checks" ]]; then
+    fail "rerank produced no checks"
+    return
+  fi
+  printf '%s\n' "$checks"
+  local failed=0
+  failed="$(printf '%s\n' "$checks" | grep -c ' FAIL' || true)"
+  fails=$((fails + failed))
 }
 
 probe_qdrant() {
@@ -59,7 +77,12 @@ probe_qdrant() {
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$QDRANT_URL/collections")"
   [[ "$code" == "401" ]] && pass "anonymous request refused (401)" || fail "anonymous request answered $code"
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H "api-key: $key" "$QDRANT_URL/collections")"
+  # The key goes through a 0600 config file rather than `-H`: an argument is readable by anyone who can run `ps`.
+  local cfg; cfg="$(mktemp)"
+  chmod 600 "$cfg"
+  printf 'header = "api-key: %s"\n' "$key" >"$cfg"
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 --config "$cfg" "$QDRANT_URL/collections")"
+  rm -f "$cfg"
   [[ "$code" == "200" ]] && pass "authenticated request ok (200)" || fail "authenticated request answered $code"
 }
 
