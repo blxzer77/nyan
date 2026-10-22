@@ -115,6 +115,12 @@ export interface ExtensionHost {
 	beforeSwitch(targetSessionFile: string): Promise<{ readonly cancelled: boolean }>;
 	start(event: SessionStartEvent): Promise<void>;
 	shutdown(reason: SessionShutdownEvent["reason"]): Promise<void>;
+	/**
+	 * Retire this open's bindings: the runner refuses every context afterwards, so a reference kept from a closed open
+	 * fails instead of acting on a session that is gone. The extensions stay loaded for the next open, which builds its
+	 * own host.
+	 */
+	retire(): Promise<void>;
 }
 
 /**
@@ -386,6 +392,13 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 			runner.emit({ type: "session_shutdown", reason }).then(async () => {
 				await codemodeSandbox?.close();
 			}),
+		retire: async () => {
+			// The extensions are shared with the next open; only this runner was bound to the session that closed.
+			runner.retire();
+			// `shutdown` already closed the sandbox. Retiring a host that never shut down must not keep a worker alive either.
+			await codemodeSandbox?.close();
+			codemodeSandbox = undefined;
+		},
 		beforePrompt: async (content) => {
 			turnCounter.value = 0;
 			const images = Array.isArray(content)

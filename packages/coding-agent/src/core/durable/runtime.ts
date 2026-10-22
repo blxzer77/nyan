@@ -1057,6 +1057,8 @@ export async function openDurable(options: OpenDurableOptions = {}): Promise<Ope
 					closeTasks();
 					try {
 						await host.shutdown(reason);
+						// The runner of a closed open is retired, so a context kept from it cannot reach the session that closed.
+						await host.retire();
 						await runEvents?.stop();
 						await events?.stop();
 						// Close writes no outcome: a running turn resumes with --continue.
