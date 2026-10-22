@@ -138,7 +138,7 @@ describe("durable RPC extension UI", () => {
 	});
 
 	/** Start the adapter with a faux provider and the probe command. */
-	async function start(): Promise<void> {
+	async function start(extraFactories: readonly InlineExtension[] = []): Promise<void> {
 		const faux = fauxProvider();
 		faux.setResponses([() => fauxAssistantMessage([fauxText("answer")])]);
 		const model = faux.getModel();
@@ -147,7 +147,7 @@ describe("durable RPC extension UI", () => {
 		};
 		void runDurableRpc({
 			cwd,
-			extensionFactories: [provider, probe],
+			extensionFactories: [provider, probe, ...extraFactories],
 			model: { provider: model.provider, modelId: model.id },
 			projectTrustContext: { ...headless, cwd },
 		});
@@ -270,7 +270,29 @@ describe("durable RPC extension UI", () => {
 
 		process.stdin.emit("end");
 		await vi.waitFor(() => expect(notices(from)).toEqual(["ui:true answer:none"]), { timeout: 20_000 });
-		expect(exit).toHaveBeenCalledWith(0);
+		// The exit follows the close, which the dialog's settlement does not wait for: read it once it happened.
+		await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0), { timeout: 20_000 });
+	});
+
+	/**
+	 * The dialog settles as soon as the connection ends, while the mode is still closing the session; the exit follows the
+	 * close. A shutdown handler that takes its time puts the two far enough apart for the order to be observable, which is
+	 * what a loaded runner showed when the exit was read before the close finished.
+	 */
+	test("a shutdown handler that takes its time still lets the connection close exit 0", async () => {
+		const slow: InlineExtension = (pi) => {
+			pi.on("session_shutdown", async () => {
+				await new Promise((resolve) => setTimeout(resolve, 500));
+			});
+		};
+		await start([slow]);
+		const from = records().length;
+		await openDialog();
+
+		process.stdin.emit("end");
+		await vi.waitFor(() => expect(notices(from)).toEqual(["ui:true answer:none"]), { timeout: 20_000 });
+		// The exit follows the close, which the dialog's settlement does not wait for: read it once it happened.
+		await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0), { timeout: 20_000 });
 	});
 
 	test("a confirm dialog takes its own answer, not only the select shape", async () => {

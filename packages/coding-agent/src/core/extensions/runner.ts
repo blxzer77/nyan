@@ -112,6 +112,10 @@ const RESERVED_KEYBINDINGS_FOR_EXTENSION_CONFLICTS = [
 
 type BuiltInKeyBindings = Partial<Record<KeyId, { keybinding: string; restrictOverride: boolean }>>;
 
+/** What a stale runner reports, to a context it hands out and to the extension runtime it was bound with. */
+const STALE_RUNNER_MESSAGE =
+	"This extension ctx is stale after session replacement or reload. Do not use a captured nyan or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().";
+
 const buildBuiltinKeybindings = (resolvedKeybindings: KeybindingsConfig): BuiltInKeyBindings => {
 	const builtinKeybindings = {} as BuiltInKeyBindings;
 	for (const [keybinding, keys] of Object.entries(resolvedKeybindings)) {
@@ -721,13 +725,18 @@ export class ExtensionRunner {
 		return this.shortcutDiagnostics;
 	}
 
-	invalidate(
-		message = "This extension ctx is stale after session replacement or reload. Do not use a captured nyan or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().",
-	): void {
-		if (!this.staleMessage) {
-			this.staleMessage = message;
-			this.runtime.invalidate(message);
-		}
+	/**
+	 * Mark this runner stale: every context it creates and every emit fails. The extensions it runs stay loaded, so a
+	 * second runner over the same `ExtensionRuntime` (the durable path reopens with the same services) is unaffected.
+	 */
+	retire(message = STALE_RUNNER_MESSAGE): void {
+		this.staleMessage ??= message;
+	}
+
+	invalidate(message = STALE_RUNNER_MESSAGE): void {
+		if (this.staleMessage) return;
+		this.retire(message);
+		this.runtime.invalidate(message);
 	}
 
 	private assertActive(): void {

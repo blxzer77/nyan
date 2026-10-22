@@ -45,6 +45,7 @@ import {
 } from "../../core/durable/runtime.ts";
 import type { DurableSessionOps } from "../../core/durable/session-ops.ts";
 import type {
+	ExtensionRunner,
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
 	ExtensionWidgetOptions,
@@ -1239,6 +1240,112 @@ export function durableAutocompleteSourcesOf(
 	};
 }
 
+/** What a TUI rebuilds when the session it operates on is replaced. `runDurableTui` renders it; a test records it. */
+export interface DurableTuiRebind {
+	/** Follow the view of the session shown now; returns the unsubscribe that replaces the previous one. */
+	follow(source: DurableViewSource): () => void;
+	/**
+	 * Rebind every binding the previous open owned: the extension UI context, the registered themes, the capabilities
+	 * the settings decide, the autocomplete sources, the display name, and the rendered transcript.
+	 */
+	bind(next: DurableTuiOpen, request: DurableReopenRequest): Promise<void>;
+}
+
+export interface DurableTuiSessionOptions extends DurableTuiRebind {
+	/** The session the start opened. */
+	readonly open: DurableTuiOpen;
+	/** The settings the start was handed; an open that carries none (the experimental modes) keeps using it. */
+	readonly settings: SettingsManager;
+	/** The owner that closes this session and opens the next; absent when the caller owns a single session. */
+	readonly sessions?: DurableTuiSessions;
+}
+
+/**
+ * The durable session a running TUI operates on, and the reopen that replaces it.
+ *
+ * Every reader goes through this object instead of the open the start was handed: a `/reload` replaces the settings,
+ * the themes, and the extension runner along with the services that own them, and a reopen that fails leaves the
+ * session the owner recovered. `runDurableTui` supplies the ports that render a replacement; a test supplies its own
+ * ports and drives the same wiring, including the recovery that follows a failure.
+ */
+export class DurableTuiSession {
+	#shown: DurableTuiOpen;
+	#unsubscribe: () => void = () => {};
+	readonly #settings: SettingsManager;
+	readonly #sessions: DurableTuiSessions | undefined;
+	readonly #rebind: DurableTuiRebind;
+
+	constructor(options: DurableTuiSessionOptions) {
+		this.#shown = options.open;
+		this.#settings = options.settings;
+		this.#sessions = options.sessions;
+		this.#rebind = options;
+	}
+
+	/** The open shown now. */
+	get current(): DurableTuiOpen {
+		return this.#shown;
+	}
+
+	/** The settings of the open shown now: a `/reload` replaces them along with the services that own them. */
+	get settings(): SettingsManager {
+		return this.#shown.settings ?? this.#settings;
+	}
+
+	/**
+	 * The extensions the editor dispatches a shortcut through. Read per key press rather than once, because a `/reload`
+	 * brings a new runner and the one of the open it replaced is retired.
+	 */
+	get extensionRunner(): ExtensionRunner | undefined {
+		return this.#shown.extensionHost?.runner;
+	}
+
+	/** Whether the caller owns a session owner, so the session commands that reopen have somewhere to go. */
+	get canReopen(): boolean {
+		return this.#sessions?.reopen !== undefined;
+	}
+
+	/** Follow the view of the open shown now; called when the TUI starts, and again after every replacement. */
+	listen(): void {
+		this.#unsubscribe = this.#rebind.follow(this.#shown.view);
+	}
+
+	/** Stop following the view; called when the TUI exits. */
+	detach(): void {
+		this.#unsubscribe();
+		this.#unsubscribe = () => {};
+	}
+
+	/**
+	 * Show `next` as the session this TUI operates on. The one shown before is closed by the caller, so every binding
+	 * that belonged to it is replaced: the subscription, and whatever `bind` rebuilds.
+	 */
+	async adopt(next: DurableTuiOpen, request: DurableReopenRequest): Promise<void> {
+		this.#unsubscribe();
+		this.#shown = next;
+		this.#unsubscribe = this.#rebind.follow(next.view);
+		await this.#rebind.bind(next, request);
+	}
+
+	/**
+	 * Close the session shown and open the requested one, as `/reload`, `/new`, and `/resume` do. A failure is the
+	 * owner's to recover from: it puts a live session back before it reports, and the TUI follows that one, because the
+	 * session it held is closed by then.
+	 */
+	async reopen(request: DurableReopenRequest): Promise<void> {
+		const reopen = this.#sessions?.reopen;
+		if (reopen === undefined) return;
+		try {
+			const opened = await reopen(request);
+			if (opened !== undefined) await this.adopt(opened, request);
+		} catch (error) {
+			const live = this.#sessions?.current?.();
+			if (live !== undefined) await this.adopt(live, request);
+			throw error;
+		}
+	}
+}
+
 export async function runDurableTui(
 	source: DurableViewSource,
 	controller: DurableController,
@@ -1255,21 +1362,40 @@ export async function runDurableTui(
 		exit = resolve;
 	});
 	let view!: DurableTui;
-	/** The open session the TUI shows; a reopen replaces it, so every reader goes through this. */
-	let shown: DurableTuiOpen = sessions?.open ?? { view: source, controller, extensionHost: host };
+	/** The session shown now, and the reopen that replaces it; every reader goes through it. */
+	const session = new DurableTuiSession({
+		open: sessions?.open ?? { view: source, controller, extensionHost: host },
+		settings,
+		...(sessions === undefined ? {} : { sessions }),
+		follow: (target) => target.subscribe(follow),
+		bind: async (next, request) => {
+			next.extensionHost?.runner.setUIContext(view.createExtensionUIContext(), "tui");
+			if (next.themes !== undefined) setRegisteredThemes([...next.themes]);
+			if (request.kind === "reload") {
+				// A reload replaced the settings and keybindings files the terminal capabilities and keys come from.
+				setCapabilityOverrides(session.settings.getTerminalCapabilityOverrides());
+				view.reloadBindings();
+				themes.applyFromSettings();
+			}
+			// The commands and templates of the session now open are not the ones the provider was built from.
+			refreshAutocomplete();
+			await commands?.refreshSessionName();
+			view.setSessionName(commands?.sessionName);
+			view.resetSessionView();
+			follow();
+		},
+	});
 	let commands: DurableCommands | undefined;
-	/** The settings of the session shown now: a `/reload` replaces them along with the services that own them. */
-	const settingsNow = (): SettingsManager => shown.settings ?? settings;
 
 	const selectModel = (search?: string): void => {
-		const snapshot = shown.view.current();
+		const snapshot = session.current.view.current();
 		const current = agentOf(snapshot.conversation).model;
 		const isCurrent = (model: { provider: string; modelId: string }) =>
 			model.provider === current?.provider && model.modelId === current.modelId;
 		// The runtime holds the newest catalog, which a login or a catalog refresh replaces; the view's list is the one
 		// the session opened with.
 		const available =
-			shown.modelRuntime?.getAvailableSnapshot().map((model) => ({
+			session.current.modelRuntime?.getAvailableSnapshot().map((model) => ({
 				provider: model.provider,
 				modelId: model.id,
 			})) ?? snapshot.models;
@@ -1292,7 +1418,7 @@ export async function runDurableTui(
 			(value) => {
 				view.restoreEditor();
 				const separator = value.indexOf("/");
-				void shown.controller.setModel({
+				void session.current.controller.setModel({
 					provider: value.slice(0, separator),
 					modelId: value.slice(separator + 1),
 				});
@@ -1304,7 +1430,7 @@ export async function runDurableTui(
 	};
 
 	const selectConversation = (): void => {
-		const snapshot = shown.view.current();
+		const snapshot = session.current.view.current();
 		const items: SelectItem[] = [...snapshot.conversations].reverse().map((candidate) => ({
 			value: String(candidate.id),
 			label: candidate.label,
@@ -1315,7 +1441,7 @@ export async function runDurableTui(
 			items,
 			(value) => {
 				view.restoreEditor();
-				void shown.controller.switchConversation(Number(value) as ConversationId);
+				void session.current.controller.switchConversation(Number(value) as ConversationId);
 			},
 			() => view.restoreEditor(),
 		);
@@ -1362,13 +1488,13 @@ export async function runDurableTui(
 				selectModel(route.args.length === 0 ? undefined : route.args);
 				return true;
 			case "tasks":
-				void shown.controller.toggleTasks();
+				void session.current.controller.toggleTasks();
 				return true;
 			case "agents":
 				selectConversation();
 				return true;
 			case "compact":
-				void shown.controller.compact(route.args.length === 0 ? undefined : route.args);
+				void session.current.controller.compact(route.args.length === 0 ? undefined : route.args);
 				return true;
 			default:
 				// The session commands are the command layer's; it reports a name it does not handle at compile time.
@@ -1395,11 +1521,11 @@ export async function runDurableTui(
 			const outcome = await runUserBash({
 				command,
 				excludeFromContext,
-				cwd: shown.view.current().session.cwd,
-				...(shown.extensionHost === undefined ? {} : { extensionHost: shown.extensionHost }),
+				cwd: session.current.view.current().session.cwd,
+				...(session.current.extensionHost === undefined ? {} : { extensionHost: session.current.extensionHost }),
 				execute: (text, excluded, onChunk, operations) =>
-					shown.controller.executeBash(text, excluded, onChunk, operations),
-				record: (text, result, excluded) => shown.controller.recordBashResult(text, result, excluded),
+					session.current.controller.executeBash(text, excluded, onChunk, operations),
+				record: (text, result, excluded) => session.current.controller.recordBashResult(text, result, excluded),
 				view: {
 					append: (chunk) => view.appendBash(chunk),
 					finish: (result) => view.finishBash(result),
@@ -1419,9 +1545,9 @@ export async function runDurableTui(
 
 	/** What the footer reads that the view does not carry: auto-compaction, auth, the catalog, and the route. */
 	const footerLabels = (): DurableFooterLabels => {
-		const snapshot = shown.view.current();
+		const snapshot = session.current.view.current();
 		const agent = agentOf(snapshot.conversation);
-		const modelRuntime = shown.modelRuntime;
+		const modelRuntime = session.current.modelRuntime;
 		const model =
 			modelRuntime === undefined || agent.model === undefined
 				? undefined
@@ -1437,7 +1563,7 @@ export async function runDurableTui(
 				? undefined
 				: routedAnswer(snapshot.conversation.entries, modelRuntime);
 		return {
-			autoCompaction: shown.controller.getAutoCompaction(),
+			autoCompaction: session.current.controller.getAutoCompaction(),
 			subscription:
 				agent.model !== undefined &&
 				(agent.model.provider === "kimi-coding" ||
@@ -1449,19 +1575,19 @@ export async function runDurableTui(
 	};
 
 	view = new DurableTui(
-		shown.view.current().session.cwd,
+		session.current.view.current().session.cwd,
 		{
 			submit: (text) => void input.submit(text, "steer"),
 			followUp: (text) => void input.submit(text, "followUp"),
 			// Escape cancels the running bash command first, as it does in legacy.
 			abort: () => {
-				if (bashRunning) shown.controller.abortBash();
-				else void shown.controller.abort();
+				if (bashRunning) session.current.controller.abortBash();
+				else void session.current.controller.abort();
 			},
 			exit,
 			interrupt: () => input.interrupt(),
 			selectModel: () => selectModel(),
-			cycleThinking: () => void shown.controller.cycleThinking(),
+			cycleThinking: () => void session.current.controller.cycleThinking(),
 			cycleModel: (direction) => void input.cycleModel(direction),
 			dequeue: () => void input.dequeue(),
 			paste: () => void input.paste(),
@@ -1486,7 +1612,7 @@ export async function runDurableTui(
 		view.setAutocompleteProvider(
 			createDurableAutocompleteProvider(
 				durableAutocompleteSourcesOf(
-					() => shown,
+					() => session.current,
 					() => view.scopedModelIds,
 				),
 				fdPath,
@@ -1512,23 +1638,23 @@ export async function runDurableTui(
 	);
 	input = new DurableInput({
 		current: () => ({
-			view: shown.view.current(),
-			controller: shown.controller,
-			sessionOps: shown.sessionOps,
+			view: session.current.view.current(),
+			controller: session.current.controller,
+			sessionOps: session.current.sessionOps,
 		}),
 		settings,
-		modelRuntime: shown.modelRuntime,
+		modelRuntime: session.current.modelRuntime,
 		getScopedModels: () => view.scopedModelIds,
 		editor: view.createEditorPort(),
 		keybindings: view.keybindings,
 		// A reopen replaces the host whose runner the shortcuts belong to, so this is read per keystroke rather than once.
 		get extensionRunner() {
-			return shown.extensionHost?.runner;
+			return session.extensionRunner;
 		},
 		notify: (message, type) => view.notify(message, type),
 		runCommand,
 		dispatchExtension: async (text) => {
-			const extensionHost = shown.extensionHost;
+			const extensionHost = session.current.extensionHost;
 			if (extensionHost === undefined) return false;
 			// An extension command runs as soon as it is submitted, whether the agent is idle or streaming.
 			return await dispatchDurableExtensionCommand(extensionHost.runner, text);
@@ -1543,54 +1669,31 @@ export async function runDurableTui(
 		exit,
 	});
 	// The models a start shows in `/model`: the ones nyan's settings enable, which `/scoped-models` changes.
-	if (shown.modelRuntime !== undefined) {
-		view.setScopedModelIds(enabledModelIds(settings.getEnabledModels(), shown.modelRuntime.getAvailableSnapshot()));
+	if (session.current.modelRuntime !== undefined) {
+		view.setScopedModelIds(
+			enabledModelIds(settings.getEnabledModels(), session.current.modelRuntime.getAvailableSnapshot()),
+		);
 	}
 
 	/** Render the open session the TUI holds now, and follow it. */
-	const follow = (): void => view.apply(shown.view.current());
-	let unsubscribe = (): void => {};
+	const follow = (): void => view.apply(session.current.view.current());
 	// nyan's theme handling: the theme setting (also light/dark pairs) resolved against the terminal's reported colors.
 	// It exists before the commands, because `/settings` reads and applies the theme through it.
 	const themes = new InteractiveThemeController(view.ui, {
-		getSettingsManager: () => settingsNow(),
+		getSettingsManager: () => session.settings,
 		showError: (message) => console.error(message),
 		onChanged: () => view.ui.requestRender(),
 	});
-
-	/**
-	 * Show `next` as the session this TUI operates on. The one it showed before is closed by the caller, so every
-	 * binding that belonged to it is replaced: the view subscription, the extension UI context, the themes, the
-	 * autocomplete sources, the display name, and the rendered transcript.
-	 */
-	const adopt = async (next: DurableTuiOpen, request: DurableReopenRequest): Promise<void> => {
-		unsubscribe();
-		shown = next;
-		unsubscribe = shown.view.subscribe(follow);
-		shown.extensionHost?.runner.setUIContext(view.createExtensionUIContext(), "tui");
-		if (shown.themes !== undefined) setRegisteredThemes([...shown.themes]);
-		if (request.kind === "reload") {
-			setCapabilityOverrides(settingsNow().getTerminalCapabilityOverrides());
-			view.reloadBindings();
-			themes.applyFromSettings();
-		}
-		// The commands and templates of the session now open are not the ones the provider was built from.
-		refreshAutocomplete();
-		await commands?.refreshSessionName();
-		view.setSessionName(commands?.sessionName);
-		view.resetSessionView();
-		follow();
-	};
 
 	/**
 	 * The settings and account surface. It is absent when the caller opened a session without a model runtime (the
 	 * experimental modes), where those commands answer that they are unavailable.
 	 */
 	const product = (): DurableCommandProduct | undefined => {
-		const modelRuntime = shown.modelRuntime;
+		const modelRuntime = session.current.modelRuntime;
 		if (modelRuntime === undefined) return undefined;
 		return {
-			settings: settingsNow(),
+			settings: session.settings,
 			modelRuntime,
 			tui: view.ui,
 			settingsUi: view.createSettingsUi({
@@ -1600,48 +1703,32 @@ export async function runDurableTui(
 				previewTheme: (setting) => themes.preview(setting),
 			}),
 			keybindings: view.keybindings,
-			...(shown.extensionHost === undefined ? {} : { extensionRunner: shown.extensionHost.runner }),
+			...(session.current.extensionHost === undefined
+				? {}
+				: { extensionRunner: session.current.extensionHost.runner }),
 			getScopedModels: () => view.scopedModelIds,
 			setScopedModels: (ids) => view.setScopedModelIds(ids),
 		};
 	};
 
-	if (shown.sessionOps !== undefined) {
+	if (session.current.sessionOps !== undefined) {
 		commands = await DurableCommands.create(
 			{
 				current: () => {
-					const sessionOps = shown.sessionOps;
+					const sessionOps = session.current.sessionOps;
 					if (sessionOps === undefined) throw new Error("This session has no session operations");
 					return {
-						view: shown.view.current(),
-						controller: shown.controller,
+						view: session.current.view.current(),
+						controller: session.current.controller,
 						sessionOps,
-						...(shown.bugReport === undefined ? {} : { bugReport: shown.bugReport }),
+						...(session.current.bugReport === undefined ? {} : { bugReport: session.current.bugReport }),
 					};
 				},
-				readSessionName: async () => await shown.sessionOps?.getSessionName(),
+				readSessionName: async () => await session.current.sessionOps?.getSessionName(),
 				get product() {
 					return product();
 				},
-				...(sessions?.reopen === undefined
-					? {}
-					: {
-							reopen: async (request: DurableReopenRequest): Promise<void> => {
-								let next: DurableTuiOpen;
-								try {
-									const opened = await sessions.reopen?.(request);
-									if (opened === undefined) return;
-									next = opened;
-								} catch (error) {
-									// The owner puts a live session back before it reports a failure, and the one shown until now is closed:
-									// its view, controller, and session operations no longer work, so follow the recovered session instead.
-									const live = sessions.current?.();
-									if (live !== undefined) await adopt(live, request);
-									throw error;
-								}
-								await adopt(next, request);
-							},
-						}),
+				...(session.canReopen ? { reopen: (request: DurableReopenRequest) => session.reopen(request) } : {}),
 			},
 			{
 				select: (title, items, description) => view.choose(title, items, description),
@@ -1659,14 +1746,14 @@ export async function runDurableTui(
 		view.setSessionName(commands.sessionName);
 	}
 
-	shown.extensionHost?.runner.setUIContext(view.createExtensionUIContext(), "tui");
+	session.current.extensionHost?.runner.setUIContext(view.createExtensionUIContext(), "tui");
 	setRegisteredThemes([...availableThemes]);
-	unsubscribe = shown.view.subscribe(follow);
+	session.listen();
 	view.start();
 	themes.applyFromSettings();
 	follow();
 	// The notices a start shows, in the order legacy shows them; the checks that reach the network answer later.
-	const startup: DurableTuiOpen = shown;
+	const startup = session.current;
 	void runDurableStartup({
 		cwd: startup.view.current().session.cwd,
 		...(commands?.sessionName === undefined ? {} : { sessionName: commands.sessionName }),
@@ -1683,7 +1770,7 @@ export async function runDurableTui(
 	});
 	await exited;
 	stopped = true;
-	unsubscribe();
+	session.detach();
 	themes.dispose();
 	view.stop();
 }
