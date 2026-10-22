@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
 	detectInstallChange,
 	detectInstallMethod,
+	detectSourceCheckout,
 	findNodePackageDir,
 	getSelfUpdateCommand,
 	getSelfUpdateUnavailableInstruction,
@@ -59,6 +60,17 @@ afterEach(() => {
 		tempDir = undefined;
 	}
 });
+
+function createSourceCheckout(): { root: string; packageDir: string } {
+	const root = mkdtempSync(join(tmpdir(), "nyan-checkout-"));
+	const packageDir = join(root, "packages", "coding-agent");
+	mkdirSync(packageDir, { recursive: true });
+	// A worktree records `.git` as a file, so either form marks a checkout.
+	writeFileSync(join(root, ".git"), "gitdir: /elsewhere\n");
+	tempDir = root;
+	process.env.NYAN_PACKAGE_DIR = packageDir;
+	return { root, packageDir };
+}
 
 function createNpmPrefixInstall(
 	template = "nyan-prefix-",
@@ -195,10 +207,27 @@ describe("detectInstallMethod", () => {
 		);
 	});
 
-	test("does not self-update unknown wrapper installs", () => {
-		setExecPath("/usr/local/bin/node");
+	test("names the source checkout a wrapper install runs, instead of a dead end", () => {
+		// The launcher in the report runs a checkout's bundle with an fnm node, so no path segment names a manager and
+		// the package directory is the checkout's own package.
+		const checkout = createSourceCheckout();
+		setExecPath("/home/yuki/.local/share/fnm/node-versions/v24.22.0/installation/bin/node");
 
 		expect(detectInstallMethod()).toBe("unknown");
+		expect(detectSourceCheckout()).toEqual({ root: checkout.root, packageDir: checkout.packageDir });
+		expect(getSelfUpdateCommand("@ny4n/coding-agent")).toBeUndefined();
+		expect(getUpdateInstruction("@ny4n/coding-agent")).toBe(
+			`This nyan runs from the source checkout at ${checkout.root}. Update it with \`git pull && npm ci --ignore-scripts && npm run build:offline\` from that directory, or run nyan from an installed package instead.`,
+		);
+	});
+
+	test("keeps the generic instruction when no checkout and no package manager owns the install", () => {
+		// A package directory below a temporary root has no `.git` above it, so neither a checkout nor a manager owns it.
+		const { packageDir } = createNpmPrefixInstall();
+		process.env.NYAN_PACKAGE_DIR = packageDir;
+		setExecPath("/opt/unknown-runtime/bin/node");
+
+		expect(detectSourceCheckout()).toBeUndefined();
 		expect(getSelfUpdateCommand("@ny4n/coding-agent")).toBeUndefined();
 		expect(getUpdateInstruction("@ny4n/coding-agent")).toBe(
 			"Update @ny4n/coding-agent using the package manager, wrapper, or source checkout that provides this installation.",

@@ -283,6 +283,8 @@ Add `--force` to reinstall Nyan when the selected update includes Nyan.
 
 `nyan update` cannot update Nyan when another package manager provides it, such as Nix. Update Nyan with that package manager, for example `nix profile upgrade nyan`. Package and model catalog updates still work.
 
+The same holds when Nyan runs from a source checkout, directly or through a launcher script that runs its bundle: there is no published package to install over it, so the command names the checkout and the commands that refresh it.
+
 ### Aliases and command options
 
 - `nyan uninstall <source>` is an alias for `nyan remove <source>`.
