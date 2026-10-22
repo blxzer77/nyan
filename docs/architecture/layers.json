@@ -235,7 +235,7 @@
 			"exceptions": []
 		},
 		"durable": {
-			"purpose": "Identifiers, documents, entries and the execution environment contract are the stable core; session and storage implement persistence over them; the harness runs agents on top; tools, extensions and testing consume the harness (extensions are the code mode and tool search extensions, loaded only through their own package subpaths); image processors implement the tools' ImageProcessor contract and are loaded only through their own package subpaths.",
+			"purpose": "Identifiers, documents, entries and the execution environment contract are the stable core; context decides over a context view without storage or the harness, so the harness can consume it; session and storage implement persistence over them; the harness runs agents on top; tools, extensions and testing consume the harness (extensions are the code mode and tool search extensions, loaded only through their own package subpaths); image processors implement the tools' ImageProcessor contract and are loaded only through their own package subpaths.",
 			"layers": [
 				{
 					"id": "core",
@@ -250,6 +250,15 @@
 						"env/"
 					],
 					"mayDependOn": []
+				},
+				{
+					"id": "context",
+					"paths": [
+						"context/"
+					],
+					"mayDependOn": [
+						"core"
+					]
 				},
 				{
 					"id": "artifacts",
@@ -285,6 +294,7 @@
 					],
 					"mayDependOn": [
 						"core",
+						"context",
 						"session",
 						"storage"
 					]
