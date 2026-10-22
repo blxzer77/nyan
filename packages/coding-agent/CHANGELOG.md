@@ -4,6 +4,8 @@ User-visible changes to `@ny4n/coding-agent`, the `nyan` CLI. `/changelog` shows
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-10-22
+
 ### Fixed
 
 - `/resume` lists a durable session by the first thing you asked in it, with how many messages it holds and when it was last used, instead of by its directory name. The session picker in the TUI and `nyan --resume` both show it, and reading it never writes to the session.
