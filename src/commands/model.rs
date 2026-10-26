@@ -349,19 +349,13 @@ mod tests {
     fn model_picker_options_use_official_visible_copy_and_select_output() {
         let options = model_picker_options(120);
 
-        assert_eq!(options[0].label, "Default (recommended)");
-        assert_eq!(options[0].value, MODEL_NO_PREFERENCE);
-        assert_eq!(
-            options[0].description.as_deref(),
-            Some("Use the default model (currently Sonnet 4.6)")
+        assert_eq!(options[0].label, "Sonnet (1M context)");
+        assert_eq!(options[0].value, "sonnet[1m]");
+        assert!(
+            options
+                .iter()
+                .all(|option| option.value != MODEL_NO_PREFERENCE)
         );
-        assert!(options.iter().any(|option| {
-            option.label == "Sonnet"
-                && option
-                    .description
-                    .as_deref()
-                    .is_some_and(|description| description.contains("Sonnet 4.6"))
-        }));
 
         let output = handle_select_output(&options[1], None);
         assert_eq!(
@@ -406,8 +400,11 @@ mod tests {
             "canvas=\n{text}"
         );
         assert!(text.contains("specify with --model."), "canvas=\n{text}");
-        assert!(text.contains("Default (recommended)"), "canvas=\n{text}");
-        assert!(text.contains("Sonnet 4.6 · Best"), "canvas=\n{text}");
+        assert!(text.contains("Sonnet (1M context)"), "canvas=\n{text}");
+        assert!(
+            text.contains("Sonnet 4.6 for long sessions"),
+            "canvas=\n{text}"
+        );
         assert!(text.contains("● High effort (default)"), "canvas=\n{text}");
         assert!(
             !text.contains("Use /fast to turn on Fast mode"),

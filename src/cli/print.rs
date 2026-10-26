@@ -3189,8 +3189,8 @@ mod tests {
     #[test]
     fn sdk_model_info_response_is_non_empty() {
         let models = sdk_model_infos();
-        assert!(models.iter().any(|model| model["value"] == "default"));
-        assert!(models.iter().any(|model| model["value"] == "sonnet"));
+        assert!(models.iter().any(|model| model["value"] == "sonnet[1m]"));
+        assert!(models.iter().any(|model| model["value"] == "haiku"));
     }
 
     #[test]

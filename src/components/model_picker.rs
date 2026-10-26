@@ -54,30 +54,76 @@ fn model_option(
     }
 }
 
+/// @cometix offset: CC's ModelPicker hard-codes six Claude entries and reads no
+/// settings, so a gateway's own models (`availableModels`) could not be picked
+/// from `/model` at all. Append every allowlisted model the built-in aliases do
+/// not already resolve to, labelled from `additionalModelOptionsCache` when the
+/// global config carries an entry for it.
+fn gateway_model_options(
+    max_description_chars: usize,
+    builtin: &[SelectOptionData],
+) -> Vec<SelectOptionData> {
+    let Some(available) = crate::utils::settings::get_initial_settings().available_models else {
+        return Vec::new();
+    };
+    if available.is_empty() {
+        return Vec::new();
+    }
+    let cached = crate::utils::config::load_global_config()
+        .additional_model_options_cache
+        .unwrap_or_default();
+    // Built-in entries are aliases (`sonnet`, `opus[1m]`, …); a model id is
+    // already covered when one of them resolves to it, or when the entry's own
+    // value matches.
+    let claimed: Vec<String> = builtin
+        .iter()
+        .flat_map(|option| {
+            [
+                Some(option.value.clone()),
+                resolve_option_model(&option.value),
+            ]
+            .into_iter()
+            .flatten()
+        })
+        .collect();
+
+    let mut options: Vec<SelectOptionData> = Vec::new();
+    for model in available {
+        let id = model.trim();
+        if id.is_empty()
+            || claimed.iter().any(|name| name.eq_ignore_ascii_case(id))
+            || options.iter().any(|option| option.value == id)
+        {
+            continue;
+        }
+        let entry = cached
+            .iter()
+            .find(|option| option.value.as_deref() == Some(id));
+        let label = entry.map_or_else(|| id.to_string(), |option| option.label.clone());
+        let description = entry.map_or_else(
+            || format!("Custom model ({id})"),
+            |option| option.description.clone(),
+        );
+        options.push(model_option(
+            &label,
+            id,
+            &description,
+            max_description_chars,
+        ));
+    }
+    options
+}
+
 pub(crate) fn model_picker_options(max_description_chars: usize) -> Vec<SelectOptionData> {
-    vec![
-        model_option(
-            "Default (recommended)",
-            MODEL_NO_PREFERENCE,
-            "Use the default model (currently Sonnet 4.6)",
-            max_description_chars,
-        ),
-        model_option(
-            "Sonnet",
-            "sonnet",
-            "Sonnet 4.6 · Best for everyday tasks",
-            max_description_chars,
-        ),
+    let mut options = vec![
+        // @cometix offset: the official picker lists Sonnet and Opus twice, once
+        // plain and once with 1M context. A gateway serves one model per family,
+        // so only the 1M entry is kept — the plain one is the same model with a
+        // smaller window.
         model_option(
             "Sonnet (1M context)",
             "sonnet[1m]",
             "Sonnet 4.6 for long sessions",
-            max_description_chars,
-        ),
-        model_option(
-            "Opus",
-            "opus",
-            "Opus 4.6 · Most capable for complex work",
             max_description_chars,
         ),
         model_option(
@@ -92,7 +138,10 @@ pub(crate) fn model_picker_options(max_description_chars: usize) -> Vec<SelectOp
             "Haiku 4.5 · Fastest for quick answers",
             max_description_chars,
         ),
-    ]
+    ];
+    let extra = gateway_model_options(max_description_chars, &options);
+    options.extend(extra);
+    options
 }
 
 fn next_index(index: usize, count: usize) -> usize {
@@ -317,7 +366,20 @@ pub(crate) fn apply_model_picker_selection(
     let fast_mode_disabled = crate::utils::fast_mode::is_fast_mode_enabled()
         && state.fast_mode
         && !crate::utils::fast_mode::is_fast_mode_supported_by_model(model.as_deref());
-    state.main_loop_model = model;
+    state.main_loop_model = model.clone();
+    // @cometix offset: CC persists a picker choice to user settings `model`
+    // (`/model` promises "this session and future Claude Code sessions"), but
+    // this port wrote only `effortLevel`, so a pick was forgotten on restart.
+    // `Value::Null` deletes the key, restoring the default option.
+    let _ = crate::utils::settings::update_settings_for_source(
+        crate::utils::settings::SettingSource::User,
+        &serde_json::Map::from_iter([(
+            "model".to_string(),
+            model.as_ref().map_or(serde_json::Value::Null, |value| {
+                serde_json::Value::String(value.clone())
+            }),
+        )]),
+    );
     state.main_loop_model_for_session = None;
     if fast_mode_disabled {
         state.fast_mode = false;
@@ -804,12 +866,14 @@ mod tests {
         crate::utils::process_env::remove("CLAUDE_CODE_USE_FOUNDRY");
 
         let options = model_picker_options(120);
-        assert_eq!(options[0].label, "Default (recommended)");
-        assert_eq!(options[0].value, MODEL_NO_PREFERENCE);
         assert_eq!(
-            options[0].description.as_deref(),
-            Some("Use the default model (currently Sonnet 4.6)")
+            options
+                .iter()
+                .map(|option| option.value.as_str())
+                .collect::<Vec<_>>(),
+            ["sonnet[1m]", "opus[1m]", "haiku"]
         );
+        assert_eq!(options[0].label, "Sonnet (1M context)");
         assert_eq!(
             cycle_effort(ModelEffortLevel::High, KeyCode::Right, "opus"),
             ModelEffortLevel::Max
@@ -897,8 +961,11 @@ mod tests {
             "canvas=\n{text}"
         );
         assert!(text.contains("specify with --model."), "canvas=\n{text}");
-        assert!(text.contains("Default (recommended)"), "canvas=\n{text}");
-        assert!(text.contains("Sonnet 4.6 · Best"), "canvas=\n{text}");
+        assert!(text.contains("Sonnet (1M context)"), "canvas=\n{text}");
+        assert!(
+            text.contains("Sonnet 4.6 for long sessions"),
+            "canvas=\n{text}"
+        );
         assert!(text.contains("● High effort (default)"), "canvas=\n{text}");
         assert!(text.contains("← → to adjust"), "canvas=\n{text}");
         assert_eq!(ModelEffortLevel::Xhigh.symbol(), "◉");

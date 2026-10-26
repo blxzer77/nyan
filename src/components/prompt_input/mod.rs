@@ -4349,11 +4349,11 @@ mod tests {
         assert_eq!(
             max_effort_store.get().effort_value,
             Some(crate::utils::effort::EffortValue::Named("max".to_string())),
-            "ModelPicker High → Max on Sonnet 4.6 must apply Max to AppState"
+            "ModelPicker High → Max on Opus 4.6 must apply Max to AppState"
         );
         assert_eq!(
             max_effort_store.get().main_loop_model.as_deref(),
-            Some("sonnet")
+            Some("opus[1m]")
         );
 
         let thinking_store = crate::state::store::AppStore::new(

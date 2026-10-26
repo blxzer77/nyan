@@ -2811,7 +2811,7 @@ mod tests {
         model_events.push(press(KeyCode::Enter));
         let model_text = drive_config_keys_text(model_events);
         assert!(
-            model_text.contains("Model") && model_text.contains("Sonnet"),
+            model_text.contains("Model") && model_text.contains("Opus"),
             "Model selection should update only the in-memory preview; canvas=\n{model_text}"
         );
 
@@ -3248,8 +3248,8 @@ mod tests {
         );
         assert!(
             text.lines().any(|line| {
-                line.contains("Default (recommended)")
-                    && line.contains("Use the default model (currently Sonnet 4.6)")
+                line.contains("Sonnet (1M context)")
+                    && line.contains("Sonnet 4.6 for long sessions")
             }),
             "ModelPicker should use official compact rows with inline descriptions; canvas=\n{text}"
         );
@@ -3300,7 +3300,7 @@ mod tests {
         let text = render_text_with_events(events);
 
         assert!(
-            text.contains("Model") && text.contains("Sonnet"),
+            text.contains("Model") && text.contains("Opus"),
             "selecting a ModelPicker option should update only the in-memory row value; canvas=\n{text}"
         );
         assert!(
