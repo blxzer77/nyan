@@ -1,4 +1,5 @@
 //!    - .claude/CLAUDE.md (dot-claude)
+//!    - AGENTS.md (cross-tool convention; `@cometix offset`)
 
 use crate::utils::config;
 use std::collections::HashSet;
@@ -110,6 +111,11 @@ static SHOULD_FIRE_INSTRUCTIONS_LOADED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(true);
 static NEXT_EAGER_LOAD_REASON: LazyLock<RwLock<&'static str>> =
     LazyLock::new(|| RwLock::new("session_start"));
+
+/// @cometix offset: the agent-instructions filename shared by other coding
+/// CLIs. Official Claude Code only reads `CLAUDE.md`; this port also accepts
+/// `AGENTS.md` in each scope where `CLAUDE.md` is discovered.
+const AGENTS_MEMORY_FILE: &str = "AGENTS.md";
 
 pub fn discover_claude_md_files() -> Vec<ClaudeMdFile> {
     #[cfg(not(test))]
@@ -233,6 +239,18 @@ pub fn discover_claude_md_files_with_external_policy(
         ) {
             process_memory_file(
                 &config_home.join("CLAUDE.md"),
+                ClaudeMdSource::UserGlobal,
+                true,
+                0,
+                None,
+                &cwd,
+                &mut processed,
+                &mut files,
+            );
+            // @cometix offset: also honor the cross-tool `AGENTS.md` convention
+            // at the global scope, so one file can drive several CLIs.
+            process_memory_file(
+                &config_home.join(AGENTS_MEMORY_FILE),
                 ClaudeMdSource::UserGlobal,
                 true,
                 0,
@@ -490,6 +508,17 @@ pub fn get_memory_files_for_nested_directory(
             processed,
             &mut files,
         );
+        // @cometix offset: nested directories honor `AGENTS.md` too.
+        process_memory_file(
+            &dir.join(AGENTS_MEMORY_FILE),
+            ClaudeMdSource::Project,
+            false,
+            0,
+            None,
+            original_cwd,
+            processed,
+            &mut files,
+        );
     }
     if crate::utils::settings::constants::is_setting_source_enabled(
         crate::utils::settings::constants::SettingSource::Local,
@@ -606,7 +635,12 @@ fn load_project_claude_md_files(
     processed: &mut HashSet<PathBuf>,
     files: &mut Vec<ClaudeMdFile>,
 ) {
-    for path in [dir.join("CLAUDE.md"), dir.join(".claude").join("CLAUDE.md")] {
+    for path in [
+        dir.join("CLAUDE.md"),
+        dir.join(".claude").join("CLAUDE.md"),
+        // @cometix offset: same cross-tool convention as the user-global scope.
+        dir.join(AGENTS_MEMORY_FILE),
+    ] {
         process_memory_file(
             &path,
             ClaudeMdSource::Project,
@@ -1739,6 +1773,60 @@ mod tests {
                 .all(|file| file.source == ClaudeMdSource::Project)
         );
         let _ = std::fs::remove_dir_all(extra);
+    }
+
+    #[test]
+    fn agents_md_is_loaded_from_user_global_and_project_scopes() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let _sources = AllowedSettingSourcesGuard::capture();
+        let root = temp_dir("agents-md");
+        let cwd = root.join("project");
+        let config_home = root.join("config");
+        let managed = root.join("managed");
+        std::fs::create_dir_all(&cwd).unwrap();
+        std::fs::create_dir_all(&config_home).unwrap();
+        std::fs::create_dir_all(&managed).unwrap();
+        std::fs::write(config_home.join("AGENTS.md"), "global agents").unwrap();
+        std::fs::write(cwd.join("AGENTS.md"), "project agents").unwrap();
+        std::fs::write(cwd.join("CLAUDE.md"), "project claude").unwrap();
+
+        {
+            let _current_dir = CurrentDirGuard::set(&cwd);
+            let _original_cwd = OriginalCwdGuard::set(&cwd);
+            let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &managed);
+            let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+            let _global_config =
+                GlobalConfigGuard::set(crate::utils::config::GlobalConfig::default());
+            crate::bootstrap::state::set_allowed_setting_sources(vec![
+                "userSettings".to_string(),
+                "projectSettings".to_string(),
+            ]);
+
+            let files = discover_claude_md_files_with_options(true, &[]);
+            let contents = files
+                .iter()
+                .map(|file| file.content.as_str())
+                .collect::<Vec<_>>();
+            assert!(contents.contains(&"global agents"), "files={files:#?}");
+            assert!(contents.contains(&"project agents"), "files={files:#?}");
+            assert!(contents.contains(&"project claude"), "files={files:#?}");
+            assert!(
+                files
+                    .iter()
+                    .any(|file| file.path.ends_with("AGENTS.md")
+                        && file.kind == ClaudeMdKind::User)
+            );
+            assert!(
+                files
+                    .iter()
+                    .any(|file| file.path.ends_with("AGENTS.md")
+                        && file.kind == ClaudeMdKind::Project)
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
