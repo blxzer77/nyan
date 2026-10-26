@@ -894,13 +894,23 @@ fn has_permissions_to_use_tool_inner<'a>(
     let process_tool_permission_result = |params: HasPermissionsToUseToolParams<'a>,
                                           result: PermissionResult|
      -> PreClassifierOutcome<'a> {
-        let ask_is_bypass_immune = matches!(
-            &result,
-            PermissionResult::Ask {
-                decision_reason,
-                ..
-            } if tool_permission_ask_is_bypass_immune(decision_reason.as_ref())
-        );
+        let ask_is_bypass_immune = match &result {
+            // @cometix offset: CC's step 1g keeps a `safetyCheck` ask above step
+            // 2a's bypassPermissions allow, so switching bypass mode on still
+            // prompted for shell-analysis findings (redirection, `rm`, …). Bypass
+            // is the user turning confirmation off wholesale, so it covers these
+            // too; a user-configured `ask` rule (step 1f) still wins.
+            PermissionResult::Ask { decision_reason, .. } => {
+                let safety_check = matches!(
+                    decision_reason,
+                    Some(crate::utils::permissions::permission_result::PermissionDecisionReason::SafetyCheck { .. })
+                );
+                tool_permission_ask_is_bypass_immune(decision_reason.as_ref())
+                    && !(safety_check
+                        && params.context.mode == PermissionMode::BypassPermissions)
+            }
+            _ => false,
+        };
         // CC steps 2a/2b run after the early deny/immune-ask returns, including
         // when the tool itself allowed. Re-read the live state after its check.
         if !matches!(&result, PermissionResult::Deny { .. }) && !ask_is_bypass_immune {
@@ -5546,7 +5556,7 @@ mod tests {
     }
 
     #[test]
-    fn edit_explicit_ask_rule_and_safety_check_remain_bypass_immune() {
+    fn edit_explicit_ask_rule_stays_bypass_immune_but_safety_check_does_not() {
         let cwd = crate::bootstrap::state::get_original_cwd();
         let ordinary_path = cwd.join("explicit-ask-edit.txt").display().to_string();
         let mut context = ToolPermissionContext {
@@ -5588,7 +5598,8 @@ mod tests {
             "old_string": "old",
             "new_string": "new"
         });
-        assert!(matches!(
+        // @cometix offset: bypass mode also covers safetyCheck asks.
+        assert_eq!(
             has_permissions_to_use_tool(HasPermissionsToUseToolParams {
                 tool_use_id: "toolu-edit-safety-ask",
                 tool_name: "Edit",
@@ -5601,8 +5612,13 @@ mod tests {
                 local_denial_tracking: None,
                 abort_signal: None,
             }),
-            HasPermissionsToUseToolResult::Ask(_)
-        ));
+            expected_allow(
+                &safety_input,
+                PermissionDecisionReason::Mode {
+                    mode: PermissionMode::BypassPermissions
+                }
+            )
+        );
     }
 
     #[test]
