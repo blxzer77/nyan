@@ -60,8 +60,9 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
    分开、退避 30 s 起翻倍至 5 min、到期后由下一次使用触发一次后台探测、启动不探测。每个服务一个实例，进程内共享。
    是批次 1 的独立切片（"公共 H"），检索 F / G0、外部搜索 E / F / H、Decision Provider 都依赖它。
 
-10. **Decision Provider**（[decision-provider.md](decision-provider.md)）：四个模块里需要"快速判断"的决策点由一个
-    快速决策模型负责，统一接口、超时、回退与评测接缝；不可用时一律回退到确定性规则。
+10. **Decision Provider**（[decision-provider.md](decision-provider.md)）：四个模块以及宿主运行时里需要"快速判断"的场景都可接入
+    同一个分类后端（权限分流、建议 / speculation 门控、agent / plan / skill 路由、结果质量判断等）；统一接口、批量、超时、回退与评测接缝。
+    硬安全规则和生成型文本不由它替代；不可用时一律回退到当前确定性 / 原模型路径。
 
 ## 二、开发与验证流程（每个切片）
 
