@@ -15,6 +15,8 @@ mod file_io;
 mod fs_io_tests;
 pub(crate) mod internal_writes;
 pub mod managed_path;
+/// @nyan: formal settings family for nyan's own modules.
+pub mod nyan;
 pub mod permission_validation;
 pub mod plugin_only_policy;
 pub mod schema_output;

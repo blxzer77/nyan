@@ -209,6 +209,13 @@ pub struct SettingsJson {
     pub xaa_idp: Option<XaaIdpSettings>,
 
     pub disable_deep_link_registration: Option<String>,
+
+    /// @nyan: one formal family for every nyan module's settings (compaction,
+    /// cache warming, memory, retrieval, web search, decision provider, tool
+    /// I/O). A single top-level key keeps the strict settings schema honest and
+    /// gives each feature a shared off switch. See `settings/nyan.rs`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nyan: Option<super::nyan::NyanSettings>,
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1377,6 +1384,12 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                     "Custom message to append to the plugin trust warning shown before installation. Only read from policy settings (managed-settings.json / MDM). Useful for enterprise administrators to add organization-specific context (e.g., \"All plugins from our internal marketplace are vetted and approved.\").",
                 ),
             ),
+            // @nyan: the strict top-level schema must know this key, otherwise
+            // editing settings.json rejects any nyan configuration.
+            (
+                "nyan",
+                super::nyan::nyan_settings_schema().optional(),
+            ),
         ]);
         zod::passthrough_object(shape)
     })
@@ -1576,6 +1589,46 @@ mod zod_schema_tests {
             crate::utils::zod::safe_parse(schema, &serde_json::json!({"defaultMode": "bubble"}),)
                 .is_err()
         );
+    }
+
+    /// @nyan: `nyan` is a formal top-level key. The strict edit-time schema
+    /// must accept it (and its documented shape), or any nyan configuration
+    /// would be rejected as an unknown field; a typo inside `nyan` is stripped
+    /// like every other nested family, while a typo at the top level still
+    /// fails.
+    #[test]
+    fn strict_settings_schema_accepts_the_nyan_family() {
+        let ok = serde_json::json!({
+            "model": "opus",
+            "nyan": {
+                "compaction": {"mask": true, "summaryStyle": "legacy"},
+                "retrieval": {"rerank": {"enabled": false}},
+                "decision": {"points": {"retrieval.answers": {"mode": "active"}}}
+            }
+        });
+        let parsed = crate::utils::zod::safe_parse(&settings_schema().clone().strict(), &ok)
+            .expect("nyan is a known top-level key");
+        assert_eq!(parsed["nyan"]["compaction"]["mask"], true);
+
+        let parsed = crate::utils::zod::safe_parse(
+            settings_schema(),
+            &serde_json::json!({"nyan": {"compaction": {"maks": true}, "futureSection": {}}}),
+        )
+        .expect("unknown nested keys are stripped");
+        assert!(parsed["nyan"]["compaction"].get("maks").is_none());
+        assert!(parsed["nyan"].get("futureSection").is_none());
+
+        assert!(
+            crate::utils::zod::safe_parse(
+                &settings_schema().clone().strict(),
+                &serde_json::json!({"nyaan": {}}),
+            )
+            .is_err(),
+            "a typo at the top level still fails"
+        );
+
+        let settings: SettingsJson = serde_json::from_value(ok).unwrap();
+        assert!(settings.nyan.is_some());
     }
 
     /// Maps to: CC `SettingsSchema` — the full assembly parses a realistic
