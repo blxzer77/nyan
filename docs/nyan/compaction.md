@@ -329,19 +329,24 @@ legacy 的思想（`packages/coding-agent/src/core/cache-warmer.ts`）：在 cac
   前缀与主线程逐字节相同，目的就是命中主线程的 cache。
 - 对 Anthropic 直连无影响（该头不进 cache key）。这一项是独立的小切片，见第五节切片 G。
 
-### C14 决策点
+### C14 决策点（Decision Provider）
 
-本模块曾考虑过的"快速判断"点与确定性规则：
+| 决策点 | 确定性规则 | Decision Provider（decision-provider.md 4.4） |
+|---|---|---|
+| 掩码候选的**清理顺序** | C2：从旧到新累加；最早被清位置之后的候选一并清 | `compaction.keep`（shadow）：见下 |
+| 清多少 / 何时掩码 | C2 / C3：清到 `measure ≤ 阈值 − maskHeadroom`，只在超阈值时 | 不接入（token 账精确，是 cache 约束的核心） |
+| 是否直接摘要 | 先掩码再 measure，仍超才摘要 | 不接入 |
+| 摘要切点 | C7 `keepRecentTokens`，tool_use / tool_result 成对 | 不接入（成对必须可证明） |
+| 保活是否值得 | C12 token 账 | 不接入 |
 
-| 决策点 | 确定性规则 |
-|---|---|
-| 超阈值时掩码够不够、是否直接摘要 | 先掩码再重新 measure，仍超才摘要（第二节流水线） |
-| 掩码候选取舍 | C2 四个条件 + 从旧到新累加到 `阈值 − maskHeadroom`，最早被清位置之后的候选一并清 |
-| 摘要切点微调 | C7 的 `keepRecentTokens` 切点，tool_use / tool_result 成对 |
-| 保活是否值得 | C12 的 token 账：`minCachedTokens`、TTL 可读、thinking 兼容 |
+**`compaction.keep` 的语义**：在一次掩码发生的那一轮，对 C2 的候选批量问"这条旧工具结果对当前任务是否仍然需要"（输入：
+当前任务摘要 + 每个候选前 1500 字符）。判"仍需要"的候选从本轮的清理序列中**移到末尾**：
 
-结论：依 [decision-provider.md](decision-provider.md) 第四节，压缩**没有 active 决策点**——改变请求前缀的决定必须确定性、
-可复算；Decision Provider 的请求是独立 HTTP 调用，不进主会话上下文、不影响 cache。
+- 先按 C2 从旧到新只清"不再需要"的候选，累加到 `阈值 − maskHeadroom`；不够再按从旧到新清"仍需要"的。**清理总量不变**。
+- C2 的"最早被清位置之后的候选一并清"改为：只对"不再需要"的候选适用；"仍需要"的不因此被顺带清掉。
+- cache：前缀失效从"最早被清的位置"开始；把仍需要的旧结果留下，最早被清的位置不会更早，失效量相同或更小。
+- 决定随 `content-replacement` 条目持久化，之后字节稳定、不重复询问（C3）。cache 共享分叉不发起这个决策（README 第一节第 8 条）。
+- Decision Provider 不可用或超时（800 ms）：按 C2 原规则。默认 shadow：先观察"被留下的结果之后是否被模型引用"，再决定是否 active。
 
 ## 四、明确不做
 

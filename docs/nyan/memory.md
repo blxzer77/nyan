@@ -253,13 +253,14 @@ CC 原有的 `autoMemoryEnabled = false` 时，提取与合并一并关闭。
 本模块中可能交给快速决策模型的判断点。**是否接入、接口与评测由 [decision-provider.md](decision-provider.md) 决定；
 未接入或 Decision Provider 不可用时一律用下表的确定性规则（默认）**。本模块不定义接口。
 
-| 决策点 | 位置 | 确定性规则（默认 / 回退） | decision-provider.md 第四节结论 |
+| 决策点 | 位置 | 确定性规则（默认 / 回退） | Decision Provider（decision-provider.md 4.3） |
 |---|---|---|---|
-| 这一轮值不值得提取 | M2 节流 | 每 8 轮或 token 增长 ≥ 30k；压缩前强制（M2.1） | `memory.extract_worth`：只能**跳过**一次节流触发的提取，连续跳过 3 次后强制一次；**压缩前强制提取（M2.1）不可跳过** |
-| 候选记忆是否晋升进索引 | M4 | 冲突 / `type: user` / 提取 agent 自评无把握 → 候选；其余直接生效 | `memory.promote`：第二意见，与规则一致才直接生效；`type: user` 仍由硬规则判为候选 |
-| 新记忆与已有条目是否重复（更新 vs 新建） | M2 提示词、M4 第 1 条 | 由提取 agent 自身判断（提示词要求优先更新） | 并入 `memory.promote` 的「是否重复」问题；判重复时转为候选，由用户确认，不自动合并 |
-| consolidate 是否该跑 | M5 触发 | ≥ 24 h 且 ≥ 5 个新文件；手动命令不看阈值 | `memory.consolidate`：只能**推迟**（最多到 72 h），不能提前；手动命令不经 Decision Provider |
-| 读时检查命中是否为误报 | M3 | 不判误报：命中即隔离，由用户在 `/memory` 处理 | 不接入（安全拦截必须确定性） |
+| 这一轮是否该**提前**提取 | M2 节流 | 每 8 轮或 token 增长 ≥ 30k | `memory.extract_now`（active）：判"有可记内容"时提前触发，每 3 轮最多 1 次 |
+| 节流到点时是否**跳过**提取 | M2 节流 | 按规则提取 | `memory.extract_skip`（shadow）：连续跳过 ≥ 3 次强制一次；压缩前强制提取（M2.1）不可跳过 |
+| 新记忆的类型 | M2、M4 | 提取 agent 自判 | `memory.type`（active）：与提取 agent 不一致时转为候选；`type: user` 仍由硬规则判为候选 |
+| 新记忆是否与已有条目重复 | M2、M4 | 提取 agent 自判（提示词要求优先更新） | `memory.duplicate`（active）：判重复时转为候选并提示，不自动合并、不删除 |
+| consolidate 是否该跑 | M5 | ≥ 24 h 且 ≥ 5 个新文件；手动命令不看阈值 | `memory.consolidate`（shadow）：可提前到 ≥ 12 h 且 ≥ 3 个、或推迟到 ≤ 72 h；手动命令不经 Decision Provider |
+| 读时检查是否误报 | M3 | 命中即隔离 | 不接入（安全拦截必须确定性） |
 
 ## 四、明确不做
 

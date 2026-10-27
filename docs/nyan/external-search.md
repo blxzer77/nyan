@@ -158,6 +158,7 @@ query
   ─▶ RRF 融合（k = 60，只用名次；同分按 URL 字节序决胜）→ 保留前 fusionKeep 条（默认 30）
   ─▶ 精排：rerank 服务对 (query, title + snippet) 打分（Qwen3-Reranker，网页指令模板，见检索 4.9）
        → 最终分 = rerank 分；rerank 不可用时用 RRF 顺序
+  ─▶ [Decision Provider] web.answers 批量判定 → 重排与标注（3.7）
   ─▶ 过滤：allowed_domains / blocked_domains；每域名最多 domainCap 条（默认 3）
   ─▶ 前 max_results 条（默认 8，上限 20）给模型
 ```
@@ -260,15 +261,17 @@ Exa、Tavily、Firecrawl、DeepSeek、AnySearch 可以在搜索时一并返回�
 以下决策点**由 Decision Provider 文档（`decision-provider.md`）决定是否接入快速决策模型；本文默认全部用确定性规则**，
 接口与回退以那份文档为准，这里只登记位置与确定性默认：
 
-| 决策点 | 位置 | 确定性默认 | decision-provider.md 第四节结论 |
+| 决策点 | 位置 | 确定性默认 | Decision Provider（decision-provider.md 4.2） |
 |---|---|---|---|
-| 是否需要搜索 | 模型调用 WebSearch 之前（模型自己决定） | 不干预：模型调用即搜索 | 不接入（主模型已决定） |
-| 查询改写 / 拆分 | 3.3 扇出之前 | 原样使用 `query`，不改写、不拆分 | 不接入（生成参数值，DP 第九节明确不做） |
-| 按查询类型选 provider 子集（省预算） | 3.3 扇出之前 | 所有 enabled 且未超预算的 provider 全部参与（Decision #44） | `web.providers`，下限集合 `minProviders` |
-| 是否需要精排 | 3.3 RRF 之后 | `search.rerank.enabled` 为真且服务 Ready 即精排 | `web.rerank` |
-| fetch 回退时机 | 4.6 nyan 抓取失败之后 | 4.6 的固定触发条件（403 / 429 / 451 / timeout / 正文 < 200 字符） | `web.fetch_fallback`（只能把"规则判成功"改判为"需回退"） |
-| fetch 回退选哪家 | 4.6 | `fetchFallback` 固定顺序 | 不接入（顺序回退已是第一家成功即停，选择收益小） |
-| `prompt` 抽取是否值得调用模型 | 4.4 | 给了 `prompt` 就抽取 | 不接入（模型显式给了 `prompt` 即表达了意图） |
+| 候选是否可能回答查询 | 3.3 精排之后 | RRF / rerank 顺序 | `web.answers`（active）：批量判定，可能回答的提到最前并标 `(likely answers)`；不删除 |
+| 抓到的页面是否含答案 | 4.4 返回之前 | 无 | `web.page_answers`（active）：判"不含"时在结果末尾提示下一个候选 URL；不改正文 |
+| fetch 回退时机 | 4.6 nyan 抓取之后 | 403 / 429 / 451 / timeout / 正文 < 200 字符 | `web.fetch_fallback`（active）：只能把"规则判成功"改判为"需回退" |
+| 查询类型 → provider 参数 | 3.3 扇出之前 | 不加参数 | `web.query_kind`（active）：只给 provider 加参数（AnySearch `zone=cn`、Brave `freshness`、DeepSeek `after:`）；所有 provider 照常参与 |
+| 删除无关候选 | 3.3 之后 | 不删 | `web.prune`（shadow）：P < 0.05 才删，至少留 5 条 |
+| 是否需要搜索 | 主模型决定 | 模型调用即搜索 | 不接入 |
+| 查询改写 / 拆分 | 3.3 之前 | 原样使用 | 不接入（需要生成文本） |
+| 减少 provider 省预算 | 3.3 之前 | 全量扇出 | 不接入（效果优先；预算由 3.5 的确定性上限管） |
+| fetch 回退选哪家 / `prompt` 抽取是否调用 | 4.6 / 4.4 | 固定顺序 / 给了 `prompt` 就抽取 | 不接入 |
 
 ## 四、WebFetch（Fetch + Evidence 段）
 

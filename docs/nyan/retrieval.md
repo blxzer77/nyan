@@ -189,6 +189,7 @@ query → 选分支（4.3 的规则）
       → RRF 融合（只用名次，k 与权重是常量；同分按 路径字节序 → 起始行 → 分支顺序 决胜，保证可复算）
       → [可选] rerank
       → Inspect（4.6）
+      → [Decision Provider] retrieval.answers 批量判定 → 重排与标注；retrieval.sufficient → 必要时追加一轮（4.11）
       → 渲染（4.2）
 ```
 
@@ -420,16 +421,17 @@ Cancelled | Stale`（`Partial` / `Rebuilding` 只用于 semantic，由 4.8.1 的
 决定**；本文只列出决策点与确定性回退——Decision Provider 未配置、不可用或超时时，一律按回退执行，结果与没有
 Decision Provider 时完全相同。
 
-| 决策点 | 输入（可得的信息） | 确定性回退（现行规则） | decision-provider.md 第四节结论 |
-|---|---|---|---|
-| 分支选择 | 查询文本、`path` / `glob`、各分支服务状态 | 四个分支都跑；semantic 未配置或 `Down` 时不跑（4.3） | `retrieval.branches`：只能**追加**分支，不能跳过 exact / symbol / text |
-| 分支加权 | 查询文本 | 单个标识符或路径 → `symbol` 权重 2.0，其余等权（4.3） | `retrieval.branches` 的 intent 问题：symbol 权重只能取 1.0 / 2.0 |
-| 是否返回引用 / 调用者 | 查询文本 | 关键词表（`caller`、`who calls`、`调用`、`依赖`、`影响`…）命中则返回（4.3） | `retrieval.branches` 的 intent = `callers` 时追加；不能去掉关键词命中的 |
-| 查询改写 / 扩展（同义词、标识符变体、中英互译） | 查询文本 | 只做 snake / camel 变体（exact 分支），不改写 | 不接入（生成参数值，DP 第九节明确不做） |
-| 是否值得调用 semantic | 查询文本、semantic 预计耗时（服务状态） | 已配置且 `Ready` 就调用 | 并入 `retrieval.branches`；默认四路全跑，故 active 时实际不会跳过 semantic，只影响 Decision Provider 自身是否值得问 |
-| 是否值得调用 rerank | 融合后候选数与分支一致度 | 按 `rerank.enabled` 开关，开则总是调用 | `retrieval.rerank` |
+| 决策点 | 确定性回退（现行规则） | Decision Provider（decision-provider.md 4.1） |
+|---|---|---|
+| 查询意图 → symbol 加权、是否返回调用者 | 4.3 关键词规则 | `retrieval.intent`（active）：只影响权重 1.0 / 2.0 与是否返回调用者 |
+| 候选是否回答查询 | RRF / rerank 顺序 | `retrieval.answers`（active）：Inspect 后对候选批量判定，回答查询的提到最前并标注；不删除 |
+| 结果是否已足够 | 不续搜 | `retrieval.sufficient`（active）：判"不足"时追加一轮（补跑 semantic 或扩大 `max_results`），最多 1 轮 |
+| 删除无关候选 | 不删 | `retrieval.prune`（shadow）：P(answers) < 0.05 才删，至少留 3 条 |
+| 查询改写 / 扩展 | 只做 snake / camel 变体 | 不接入（需要生成文本） |
+| 是否跳过某个分支 | 四路全跑 | 不接入（效果优先，只增不减） |
+| 是否调用 rerank | `rerank.enabled` | 不接入（由检索评测定默认值） |
 
-约束（与本模块设计思想一致，第一节）：决策只影响**追加哪些分支、symbol 怎么加权、是否精排**，不影响 Inspect 与
+约束（与本模块设计思想一致，第一节）：决策只影响**排序、标注、symbol 加权、是否追加一轮**，不影响 Inspect 与
 "没找到"的判定。三个确定性分支（exact / symbol / text）**始终运行**——Decision Provider 的安全集合不含"跳过确定性分支"，
 所以"没找到只在所有确定性分支都成功时才能说"的规则不受影响。排序可复算：决策输出记入 `SearchOutcome`（库接口），
 评测回放时重用记录的决策而不重新请求（decision-provider.md 第三节"可复算"）。

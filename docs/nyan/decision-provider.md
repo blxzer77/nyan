@@ -1,59 +1,77 @@
 # Decision Provider 设计
 
-状态：已定稿，未实现（2026-10-27）。后端定为 EMRank（`typesafe/jev-1.14.0` 关键路径、`cloudflare/clef` 后台），已实测。
+状态：已定稿，未实现（2026-10-27 修订：以性能与效果为先）。后端为 EMRank（`typesafe/jev-1.14.0` 关键路径、`cloudflare/clef`
+后台），已实测；决策从"粗粒度路由"扩展为**看内容的判断**（候选是否回答查询、结果是否已足够、页面是否含答案）。
 
 设计来源：nyan-legacy 的 Jev / DecisionProvider（`references/pactile-context-governance/source/pactile/jev/`、
 `source/pactile/retrieval/jev-planning.ts.txt`、`design/context-governance/implementation/03-stage-plan.zh-CN.md`、
 `compression/compression-decision-chain-v1.zh-CN.md`）与 `packages/ai/src/api/{typesafe-system-one,llama-cpp-classify}.ts`。
 偏离 CC 的代码用 `@nyan` 标注。
 
-**定位**：四个模块里有一批"要不要 / 选哪个"的小判断（这次检索要不要 semantic、这一轮值不值得提取记忆、这个页面是不是
-挑战页……）。现在它们要么用粗糙的确定性规则，要么交给主模型 / 小模型的完整调用（慢、贵、占上下文）。Decision Provider 把
-这类判断交给**专用的快速分类模型**：只回答结构化问题、不生成文本、亚秒级。它是**加速与提质的增强**，不是依赖——任何时候
-不可用，都回退到确定性规则，行为与没有它时一致。
+**定位**：四个模块里有大量"这个算不算 / 够不够 / 要不要"的判断。现在它们要么用粗糙的规则（正文 < 200 字符算挑战页、
+每 8 轮提取一次），要么只靠向量相似度（rerank 分数只说明"像"，不说明"回答了"），要么交给主模型多走一轮（慢、占上下文）。
+Decision Provider 把这类判断交给**专用的快速分类模型**：读输入内容、只回答结构化问题、不生成文本、约 0.4 s。
 
-## 一、为什么是分类模型，不是小对话模型（2026-10-27 实测）
+**取舍原则**（用户 2026-10-27："不是很惧怕源码泄露，主要是要性能和表现，需要达到最佳"）：
+
+1. **效果优先**：决策模型可以看源码正文、页面正文、工具结果——判断的质量来自看到内容。凭据仍然拦截（第六节）。
+2. **只增不减的决策默认生效（active）**：追加分支、续搜、触发回退、多抓一页——错了只多花时间与钱，不丢结果。
+3. **会减少结果的决策先观察（shadow）**：过滤候选、跳过提取——错了会丢东西，先积累一致率再放开。
+4. **永不阻塞**：关键路径上与确定性路径并行发起，超时即按规则继续；任何时候不可用，行为与没有它时一致。
+
+## 一、实测（2026-10-27，corp-pc 经代理，EMRank）
+
+### 1.1 为什么是分类模型
 
 | 方案 | 实测 | 结论 |
 |---|---|---|
-| 网关上的 haiku（`claude-haiku-5-5`，结构化 JSON 输出，`max_tokens 40`） | 3 次 2.22 / 3.29 / 2.28 s；答案正确 | 正确但慢：每个决策 2–3 s，放在检索、搜索的关键路径上不可接受 |
-| Qwen3-Reranker（已部署，yes/no 打分）当二分类器 | 三组元决策问题（是否需要 semantic、是否值得记、是否挑战页）得分全部 < 0.1，第一组排序反了 | **不可用**：reranker 只判断"文档与查询是否相关"，不回答通用决策问题 |
-| Jev 经自建 router（nyan-exit `:50008`） | 协议打通（`POST /systemone`，`{state, questions}`）；上游唯一账户 `oc-1` 429 限流，返回 `all_accounts_failed` | 不可用，不采用（第五节） |
-| **EMRank 托管的 System One**（`POST https://emrank.tech/v1/decisions`），`typesafe/jev-latest` 与 `cloudflare/clef` | 见下表 | **采用** |
+| 网关上的 haiku（结构化 JSON 输出，`max_tokens 40`） | 2.22 / 3.29 / 2.28 s；答案正确 | 正确但慢，不进关键路径 |
+| Qwen3-Reranker 当二分类器 | 三组元决策问题（是否需要 semantic、是否值得记、是否挑战页）得分全 < 0.1，第一组排序反了 | 不能做通用判断；它只做"文档与查询的相关性" |
+| 自建 Jev router（nyan-exit `:50008`） | 上游单账户 429，`all_accounts_failed` | 不可用 |
+| **EMRank System One**（`POST https://emrank.tech/v1/decisions`） | 见 1.2–1.4 | **采用** |
 
-**EMRank 实测（2026-10-27，corp-pc 经代理）**。10 个用例、14 个问题，覆盖第四节的四类决策点（检索分支 4 例、记忆是否值得提取 2 例、
-挑战页判定 2 例、搜索查询类型 2 例），人工给定期望答案：
+### 1.2 质量（两轮共 30 个问题，人工给定期望答案）
 
-| 模型 | 准确 | 区分度（noul 概率 / choice 置信度） | 延迟：首次（含建连） | 延迟：连接复用后 p50（1 / 2 / 4 个问题） |
-|---|---|---|---|---|
-| `typesafe/jev-latest` | 13 / 14（把字面量错误信息 `"Project write queue stopped"` 判为需要 semantic，0.79） | noul 中等（0.13–0.89），choice 置信度高（0.49–1.0） | 0.96–1.16 s | **0.40 / 0.49 / 0.41 s** |
-| `cloudflare/clef` | **14 / 14** | noul 极端（0.015–0.992），choice 置信度中等（0.44–0.89） | 2.39 s | 0.65 / 0.69 / 0.74 s |
+| 用例 | 内容 | `jev-1.14.0` | `clef` |
+|---|---|---|---|
+| 第一轮：路由类（14 问） | 检索分支 / 查询意图 4 例、记忆是否值得提取 2 例、挑战页 2 例、搜索查询类型 2 例 | 13 / 14 | **14 / 14** |
+| 第二轮：看内容（16 问） | 代码片段是否回答查询（读真实源码）、结果是否已足够、网页候选是否值得抓、页面正文是否含答案、记忆类型、记忆是否重复、旧工具结果是否仍需要 | 15 / 16 | 15 / 16 |
 
-- 延迟主要在建连：经代理 TLS 握手 0.8–1.2 s（不经代理直连更慢且不稳定），所以**必须复用连接并预热**（第五节）。
-- 问题数从 1 到 4 对延迟几乎无影响——一个决策点的多个问题合并成一次请求。
-- 计费只按成功请求的**输入 token**（`usage.input_tokens`，单个决策请求约 200–380 token）；RPM 按用户计。
-- 两个坑：(1) 默认 `Python-urllib` 一类 User-Agent 被 Cloudflare 拦截（403 `error code: 1010`），**请求必须带明确的 UA**；
-  (2) jev 返回 `usage.output_tokens`、clef 返回 0——不计费，只记录。
-- 样本量只有 14 个问题，只能说明"可用、方向正确"，不能当作质量结论；质量由 shadow 日志积累（第七节）。
+- 两轮唯一共同的错误：把"pipeline bugs are tracked in the Linear project INGEST"分成 `project`（期望 `reference`）——本身有歧义。
+- jev 的 noul 概率较温和（0.02–0.95），choice 置信度高（多为 0.8–1.0）；clef 的 noul 更极端（0.008–0.977）。
+- 30 个问题只能说明"方向正确、可用"，不是质量结论；质量由第七节的日志积累。
 
-所以 Decision Provider 的后端是**专用分类模型**；对话模型只作为"慢速兜底"不进关键路径（第五节）。
+### 1.3 延迟
+
+| 场景 | `jev-1.14.0` | `clef` |
+|---|---|---|
+| 首次请求（含经代理的 TLS 建连，0.8–1.2 s） | 0.96–1.16 s | 2.39 s |
+| 连接复用后，1 / 2 / 4 个问题 | **0.40 / 0.49 / 0.41 s** | 0.65 / 0.69 / 0.74 s |
+| 连接复用后，**一次请求 20 个候选**（每个候选一个 noul，正文约 1200 字符） | **0.49–0.60 s** | 1.47–1.56 s |
+| 20 次独立请求、10 个池化连接并发 | 墙钟 1.46 s（单次 p50 0.54 s） | — |
+
+结论：**批量放进一次请求**远好于并发多次；jev 一次判 20 个候选与判 1 个几乎同价。连接必须复用并预热（第五节）。
+
+### 1.4 协议要点
+
+- 请求 `{model, state, questions}`；`state` 可以是文本、JSON 对象或数组；`questions` 是字典，每个问题 `noul` / `choice` / `score`。
+- 响应 `{model, answers, usage}`；`noul` 返回 0–1 概率，`choice` 返回选项、概率与置信度，`score` 返回加权等级。
+- 只按成功请求的**输入 token** 计费（实测每次 198–376 token，20 候选批量约 6–8k）；RPM 按用户计。
+- **默认库 User-Agent 被 Cloudflare 拦截**（403 `error code: 1010`）——请求必须带 `User-Agent: nyan/<版本>`。
 
 ## 二、legacy 的结论与本设计的取舍
 
-legacy 把 Jev 放在 shadow（只记录、与确定性结果对比、不改变行为），原因是**设计闸门而非评测结论**：放权条件是"一致率与不
-一致归因被 Review 接受"，而阶段 3–4 从未执行，没有任何质量数据（`03-stage-plan.zh-CN.md:186-218`、`evidence/p1a/evaluation-receipt.json`
-写明"没有连接 JEV"）。2026-10-14 的 handoff 移除了旧 Jev 传输，只保留决策策略与 readiness。
-
-本设计保留 legacy 的安全结构，改变放权方式：
+legacy 把 Jev 放在 shadow，是**设计闸门而非评测结论**：放权条件是"一致率与不一致归因被 Review 接受"，而阶段 3–4 从未执行，
+没有任何质量数据（`03-stage-plan.zh-CN.md:186-218`；`evidence/p1a/evaluation-receipt.json` 写明"没有连接 JEV"）。
 
 | legacy | 本设计 |
 |---|---|
-| 封闭的决策节点（6 个，四模块只对应 retrieval-planning） | 封闭的决策点注册表（第四节），按四模块重新划分 |
-| shadow 直到 Review 放权，全局一刀切 | **每个决策点独立三档**：`off` / `shadow` / `active`；新决策点默认 `shadow`，用户逐个放权 |
-| 检索只能"在 exact-only 时追加分支，不能删意图、改证据" | 保留为通用约束：**决策只能在确定性结果的安全集合内选择**（第三节"安全集合"） |
-| 置信度阈值 0.65（检索 0.75），低于即回退 | 保留，按决策点配置 |
-| 外发审查：拒绝凭据、`key=value`、机密标记 | 保留，并扩展为本项目的外发规则（第六节） |
-| 每 facade 决策次数上限、deadline 2.5 s / 最大 5 s、最多重试 1 次 | deadline 收紧到 800 ms（关键路径）/ 2 s（后台），不重试；次数上限按会话 |
+| 封闭决策节点（6 个，四模块只对应 retrieval-planning） | 封闭决策点注册表（第四节），按四模块重新划分，含看内容的判断 |
+| 全部 shadow，直到 Review 放权 | 每点独立 `off` / `shadow` / `active`；**只增不减的点默认 active**，会减少结果的点默认 shadow |
+| 检索只能"追加分支、不能删意图、不改证据" | 保留为通用约束：**安全集合**（第三节）——决策只能在规则允许的范围内选择 |
+| 置信度阈值 0.65（检索 0.75） | 保留，按决策点配置 |
+| 外发审查拒绝源码、凭据、机密标记 | **只拦凭据**（第六节）；源码与正文可以发，换判断质量 |
+| deadline 2.5 s / 最大 5 s，重试 1 次 | 关键路径 800 ms / 后台 2 s，不重试；与确定性路径并行 |
 
 ## 三、接口
 
@@ -61,18 +79,17 @@ legacy 把 Jev 放在 shadow（只记录、与确定性结果对比、不改变�
 // services/decision/mod.rs   (@nyan)
 pub struct DecisionRequest {
     pub point: DecisionPoint,                  // 封闭枚举（第四节）
-    pub state: String,                         // 任务摘要，≤ 2000 字符（System One 的 state / taskSummary）
-    pub snippets: Vec<Snippet>,                // ≤ 3 段、每段 ≤ 3500 字符，已过外发审查（第六节）
-    pub questions: BTreeMap<String, Question>, // noul / choice / score
+    pub state: serde_json::Value,              // 文本或 JSON：查询、候选正文、对话片段……
+    pub questions: BTreeMap<String, Question>, // noul / choice / score；批量判断时每个候选一问
 }
 pub enum Question {
-    Noul   { instructions: String },                         // 二值，返回 P(true)
-    Choice { instructions: String, options: BTreeMap<String, String> }, // 多选一，返回各项概率
-    Score  { instructions: String, levels: Vec<String> },    // 有序等级
+    Noul   { instructions: String },
+    Choice { instructions: String, options: BTreeMap<String, String> },
+    Score  { instructions: String, levels: Vec<String> },
 }
 pub enum DecisionOutcome {
     Answered { answers: BTreeMap<String, Answer>, receipt: Receipt },
-    Fallback { reason: FallbackReason, receipt: Receipt },   // 调用方必须走确定性路径
+    Fallback { reason: FallbackReason, receipt: Receipt },   // 调用方走确定性路径
 }
 #[async_trait]
 pub trait DecisionBackend: Send + Sync {
@@ -82,127 +99,145 @@ pub trait DecisionBackend: Send + Sync {
 
 **每个决策点由调用方提供三样东西**，Decision Provider 只负责"问"：
 
-1. **确定性答案**（必须先算出来）：回退时直接用；shadow 时作为对照。
-2. **安全集合**：模型答案只能落在其中，落在集合外 → `Fallback(out_of_safe_set)`。例：检索分支选择的安全集合是
-   "确定性规则选出的分支 ∪ 可追加分支"，模型不能去掉任何确定性分支。
+1. **确定性答案**（先算出来）：回退时直接用；shadow 时作为对照。
+2. **安全集合**：模型答案落在集合外 → `Fallback(out_of_safe_set)`。例如检索的安全集合不含"跳过 exact / symbol / text"。
 3. **置信度阈值**：低于阈值 → `Fallback(low_confidence)`。
 
-`FallbackReason`（具名、封闭）：`disabled`、`shadow`、`backend_down`（服务状态机判 Down）、`timeout`、`rate_limited`、
-`budget_exhausted`、`egress_denied`（第六节审查拒绝）、`low_confidence`、`out_of_safe_set`、`invalid_response`、`cancelled`。
+`FallbackReason`（封闭）：`disabled`、`shadow`、`backend_down`、`timeout`、`rate_limited`、`budget_exhausted`、`egress_denied`、
+`low_confidence`、`out_of_safe_set`、`invalid_response`、`cancelled`。
 
-**`shadow` 模式**：照常请求、记录答案与确定性结果是否一致，但返回 `Fallback(shadow)`——行为与关闭时完全相同。
+- **shadow**：照常请求并记录与确定性答案是否一致，但返回 `Fallback(shadow)`——行为与关闭时相同。
+- **批量**：一个决策点需要对 N 个候选各判一次时，合并为**一次请求**、每个候选一个问题（1.3：20 个候选 0.5 s）；单次最多 30 个
+  候选，超出按排名截取前 30。
+- **回执**（`Receipt`）只记服务方返回的值：后端、模型、延迟、usage、`X-Request-ID`、各问题的答案与置信度、与确定性答案是否一致。
+  写入本地日志（第七节），不进模型上下文。
+- **可复算**：生效的决策记进模块的结构化结果（检索的 `SearchOutcome`）；评测回放时注入记录的决策、不重新请求。
 
-**回执**（`Receipt`）只记服务方返回的值，不推断：后端、延迟、usage、各问题的置信度、是否与确定性答案一致。
-回执写入本地评测日志（第七节），不进模型上下文、不写成消息。
+## 四、决策点注册表
 
-**可复算**：决策结果是非确定的（模型、后端可用性、超时都会变），所以凡要求"排序可复算"的模块（检索第一节第 5 条），
-把本次生效的决策（`DecisionOutcome` 的答案或回退原因）记进该模块的结构化结果（检索的 `SearchOutcome`）；评测回放时
-注入记录的决策、不重新请求。同输入 + 同决策 ⇒ 同输出，确定性部分仍可复算。
+每个点：确定性规则是默认与回退；`active` 时答案在安全集合内且置信度达标才生效。"方向"一列：**增** = 只会多做（多跑一路、多抓一页、
+多搜一次），错了只多花时间与钱；**减** = 会少给 / 少做，错了会丢东西。
 
-## 四、决策点注册表（四模块）
+### 4.1 检索
 
-每个决策点：确定性规则是默认与回退；`active` 时模型答案在安全集合内且置信度达标才生效。
-
-| 模块 | 决策点 | 问题 | 确定性回退 | 安全集合 / 约束 | 默认档 | 关键路径 |
+| 决策点 | 问题（输入） | 确定性回退 | 安全集合 / 约束 | 方向 | 默认 | 模型 |
 |---|---|---|---|---|---|---|
-| 检索 | `retrieval.branches` | semantic 是否值得跑（noul）；查询意图（choice：definition / callers / concept / literal） | 检索 4.3 规则：默认四路全跑；标识符查询 symbol 加权 2.0 | 只能**追加**分支或调整 symbol 权重（1.0 / 2.0），exact / symbol / text 始终运行；semantic 未配置或 Down 时不可选 | shadow | 是（800 ms） |
-| 检索 | `retrieval.rerank` | 融合后结果是否需要精排（noul） | 按 `nyan.retrieval.rerank.enabled` | 只在 rerank 服务 Ready 时可选"跑" | shadow | 是 |
-| 外部搜索 | `web.providers` | 查询类型（choice：中文 / 技术文档 / 新闻时效 / 通用）→ provider 子集 | 全部 enabled provider 扇出 | 子集必须包含**下限集合**（`nyan.decision.web.minProviders`，默认 `["brave", "deepseek", "searxng"]`）；只能减少付费 provider，不能新增未配置的 | shadow | 是 |
-| 外部搜索 | `web.rerank` | 候选是否需要精排（noul） | 按 `nyan.web.search.rerank.enabled` | 同检索 | shadow | 是 |
-| 外部搜索 | `web.fetch_fallback` | 直抓结果是否为挑战页 / 空壳（noul） | 外部搜索 4.6：403 / 429 / 超时 / 正文 < 200 字符 | 只能把"规则判成功"的改判为"需要回退"（多花一次 provider 调用），不能把规则判失败的改成成功 | shadow | 是 |
-| 记忆 | `memory.extract_worth` | 这一段对话是否含值得长期记住的内容（noul） | 记忆 M2：每 8 轮或 token 增长 ≥ 30k 触发提取 | 只能**跳过**一次节流触发的提取（省一次分叉），不能凭空触发；连续跳过 ≥ 3 次后强制按规则提取一次（防止漏记）；**压缩前的强制提取（记忆 M2.1）不可跳过** | shadow | 否（2 s，后台） |
-| 记忆 | `memory.promote` | 候选是否晋升进 MEMORY.md 索引（noul）；与已有条目是否重复（noul） | 记忆 M4 的规则与提取 agent 自判 | 只作为第二意见：两者一致才晋升；判重复时转为候选由用户确认，不自动合并；`type: user` 仍由硬规则判为候选 | shadow | 否 |
-| 记忆 | `memory.consolidate` | 现在是否该合并（noul） | 记忆 M9：24 h 且 ≥ 5 条新候选 | 只能**推迟**（最多到 72 h），不能提前 | shadow | 否 |
+| `retrieval.intent` | 查询意图 choice：definition / callers / concept / literal（查询文本） | 检索 4.3 关键词规则 | 只影响 symbol 权重（1.0 / 2.0）与是否返回调用者；四路分支始终全跑 | 增 | **active** | fast |
+| `retrieval.answers` | 每个候选：这段代码是否直接回答查询（noul；查询 + Inspect 后的候选片段，批量） | 无（只有 RRF / rerank 顺序） | **只标注、只排序**：回答查询的候选提到最前，并在结果里标 `(answers query)`；不删除任何候选 | 增 | **active** | fast |
+| `retrieval.sufficient` | 前几名结果是否已定位到所问内容（noul；查询 + top-5 片段） | 无（不续搜） | 判"不足"时**追加**一轮：semantic 未跑则补跑；已全跑则把 `max_results` 扩到 2 倍；最多 1 轮 | 增 | **active** | fast |
+| `retrieval.prune` | 每个候选：是否与查询无关（noul，复用 `retrieval.answers` 同一请求的反面） | 不删 | 删除判为无关（P(answers) < 0.05）的候选；至少保留 3 条 | 减 | shadow | fast |
 
-**明确不交给 Decision Provider 的点**（各模块文档的"决策点"小节中列出的其余项）：
+- `retrieval.answers` 与 rerank 的关系：Qwen3-Reranker 给的是"相关性"分数，Decision Provider 判的是"是否回答了查询"——
+  两者叠加，不替换。管线：RRF → rerank（若开）→ Inspect → **`retrieval.answers` 批量判定** → 渲染。rerank 是否默认开仍等检索评测（检索 H）。
+- 原 `retrieval.branches`（"semantic 是否值得跑"）删除：四路默认全跑，问它只会少跑，不符合"效果优先"；需要补跑的情况由
+  `retrieval.sufficient` 覆盖。
+
+### 4.2 外部搜索
+
+| 决策点 | 问题（输入） | 确定性回退 | 安全集合 / 约束 | 方向 | 默认 | 模型 |
+|---|---|---|---|---|---|---|
+| `web.answers` | 每个候选（title + snippet）：是否值得抓取 / 可能回答查询（noul，批量 30） | RRF / rerank 顺序 | **只排序与标注**：可能回答的提到最前、标 `(likely answers)`；不删 | 增 | **active** | fast |
+| `web.page_answers` | 抓到的页面正文是否含答案（noul；查询 + 正文前 8000 字符） | 无 | 判"不含"时在结果末尾提示 `[page may not answer the query — consider fetching: <下一个候选 URL>]`；不改正文 | 增 | **active** | fast |
+| `web.fetch_fallback` | 直抓正文是否为挑战页 / 空壳（noul；正文前 3000 字符） | 外部搜索 4.6：403 / 429 / 451 / 超时 / 正文 < 200 字符 | 只能把规则判成功的改判为**需要回退**（多一次 provider 调用）；不能把失败改成功 | 增 | **active** | accurate |
+| `web.query_kind` | 查询类型 choice：中文 / 技术文档 / 新闻时效 / 通用 | 无 | 只用于**给 provider 加参数**（AnySearch `zone=cn`、Brave `freshness`、DeepSeek `after:`）；所有 provider 照常全量扇出 | 增 | **active** | fast |
+| `web.prune` | 每个候选：是否与查询无关（复用 `web.answers`） | 不删 | 删除 P < 0.05 的候选，至少保留 5 条 | 减 | shadow | fast |
+
+- 原 `web.providers`（按查询类型**减少** provider 省钱）删除：效果优先，默认全量扇出（Decision #44）；查询类型只用来给每家加更好的参数。
+- 外部搜索的费用上限（外部搜索 3.5）不变，仍是确定性的。
+
+### 4.3 记忆
+
+| 决策点 | 问题（输入） | 确定性回退 | 安全集合 / 约束 | 方向 | 默认 | 模型 |
+|---|---|---|---|---|---|---|
+| `memory.extract_now` | 刚结束的这一轮是否含值得长期记住的内容（noul；本轮用户 / 助手文本） | 记忆 M2：每 8 轮或 token 增长 ≥ 30k | 判"有"时**提前**触发提取（不等 8 轮）；每 3 轮最多提前 1 次 | 增 | **active** | accurate |
+| `memory.extract_skip` | 节流到点时，这一段是否没有可记内容（noul） | 按规则提取 | 只能跳过节流触发的提取；连续跳过 ≥ 3 次后强制一次；压缩前的强制提取（记忆 M2.1）不可跳过 | 减 | shadow | accurate |
+| `memory.type` | 新记忆的类型 choice：user / feedback / project / reference / none | 提取 agent 自判 | 与提取 agent 不一致时转为候选（M4），由用户确认；`type: user` 仍由硬规则判为候选 | 增 | **active** | accurate |
+| `memory.duplicate` | 新记忆是否与已有条目重复（noul；新条目 + 同类型已有条目） | 提取 agent 自判 | 判重复时转为候选（提示"可能与 X 重复"），不自动合并、不删除 | 增 | **active** | accurate |
+| `memory.consolidate` | 现在是否该合并（noul；新文件数、上次合并时间、索引行数） | 记忆 M9：24 h 且 ≥ 5 个新文件 | 只能**提前**到 ≥ 12 h 且 ≥ 3 个新文件，或推迟到 ≤ 72 h | 增 / 减 | shadow | accurate |
+
+- "转为候选"在这里是**增**：多给用户一次确认机会，不丢记忆（候选文件照常写入，只是不进索引，记忆 M4）。
+
+### 4.4 压缩
+
+| 决策点 | 问题（输入） | 确定性回退 | 安全集合 / 约束 | 方向 | 默认 | 模型 |
+|---|---|---|---|---|---|---|
+| `compaction.keep` | 每个掩码候选：这条旧工具结果对当前任务是否仍然需要（noul；当前任务摘要 + 候选前 1500 字符，批量） | 压缩 C2：从旧到新清到阈值以下 | 只调整**清理顺序**：判"仍需要"的候选排到最后清；仍须清到 `measure ≤ 阈值 − 余量`，清多少不变 | 增 | shadow | fast |
+
+- 只改顺序、不改"清多少"，所以 C3 的 cache 约束（一次清到位、之后字节稳定）不受影响；但它改变"清哪些"，前缀变化的位置会不同
+  （最早被清位置可能更靠后，cache 失效量**更小**），所以先 shadow 观察。决策在掩码发生的那一轮做一次，结果随 `content-replacement`
+  持久化，之后字节稳定、不重复询问。
+- 其余压缩决定（是否摘要、摘要切点、保活）仍是确定性的，见下表。
+
+### 4.5 不交给 Decision Provider 的决定
 
 | 决策 | 理由 |
 |---|---|
-| 压缩：掩码候选的取舍、何时掩码 | 改变请求前缀，必须确定性、可复算（cache 第一约束）；且已有精确的 token 账 |
-| 压缩：是否摘要、保活是否值得 | 有精确数值依据（measure、cache token 量），模型无增益 |
-| 压缩：摘要切点 | 必须保证 tool_use / tool_result 成对，规则可证明，模型不可证明 |
-| 外部搜索：私网判定、预算 | 安全边界与费用上限只能是确定性的 |
-| 记忆：读时 / 写时安全检查（M3） | 安全拦截必须确定性；误报由用户在 `/memory` 处理 |
-| 检索 / 外部搜索：查询改写、扩展、拆分 | 生成参数值（第九节） |
-
-压缩模块因此**没有** active 决策点；它与 Decision Provider 的关系只有一条：Decision Provider 的请求不进入主会话上下文、
-不影响 cache（它是独立的 HTTP 调用，不是分叉）。
+| 压缩：清多少、何时掩码、是否摘要、保活是否值得 | 有精确的 token 账；是 cache 约束的核心，必须可复算 |
+| 压缩：摘要切点 | 必须保证 tool_use / tool_result 成对，规则可证明 |
+| 外部搜索：私网判定、费用上限 | 安全与费用边界只能是确定性的 |
+| 记忆：读时 / 写时安全检查（M3） | 安全拦截必须确定性 |
+| 查询改写、扩展、拆分 | 需要生成文本，分类模型做不了；主模型自己会改写重搜 |
 
 ## 五、后端
 
-后端只有一种协议：**System One**（`{model, state, questions}` → `{model, answers, usage}`）。主后端是 EMRank 托管的服务
-（用户提供，2026-10-27 实测可用）；其余是不可用时的退路。
+只有一种协议：System One。
 
 | 后端 | 形态 | 状态 |
 |---|---|---|
-| `emrank`（主） | `POST https://emrank.tech/v1/decisions`（别名 `/v1/decision`），Bearer key 按文件引用；模型按决策点选（下表）；只按成功请求的输入 token 计费 | 可用（实测见第一节） |
-| `local`（退路，可选） | 自托管分类：llama.cpp `/completion`（`n_predict: 1`、`n_probs`）读标签 token 的 logprob 做 softmax（legacy `llama-cpp-classify.ts` 的做法），对外仍是 System One 形态 | 未部署；**不在首批**——只在 EMRank 长期不可用或外发受限时再部署 |
-| `chat`（慢速兜底） | 网关上的对话模型，结构化 JSON 输出 | 可用（haiku 实测 2.2–3.3 s）；**只用于后台决策点**（记忆三项），关键路径点不用它 |
+| `emrank`（主） | `POST https://emrank.tech/v1/decisions`，Bearer key 按文件引用 | 可用（第一节） |
+| `chat`（后台兜底） | 网关对话模型，结构化 JSON 输出 | 可用（haiku 2.2–3.3 s）；只用于后台点（记忆），emrank Down 时 |
+| `local`（不在首批） | llama.cpp `/completion`（`n_predict: 1`、`n_probs`）读标签 logprob，对外仍是 System One 形态 | EMRank 长期不可用时再部署 |
 
-nyan-exit 上的自建 Jev router（`:50008`，上游单账户 429）不再作为后端：EMRank 提供同一模型（`typesafe/jev-latest`）且可用。
+### 5.1 模型
 
-### 5.1 模型按决策点选
-
-两个模型的取舍来自第一节实测：jev 延迟低（连接复用后约 0.4 s）、choice 置信度高；clef 准确率更好（14 / 14）、noul 区分度更高，
-但约 0.65–0.75 s。
-
-| 决策点 | 模型 | 理由 |
+| 别名 | 模型 | 用于 |
 |---|---|---|
-| `retrieval.branches`、`retrieval.rerank`、`web.providers`、`web.rerank` | `typesafe/jev-1.14.0` | 关键路径，800 ms 上限内要有余量；以 choice 为主 |
-| `web.fetch_fallback` | `cloudflare/clef` | 纯 noul，clef 区分度更好；发生在抓取已失败 / 可疑之后，多 0.3 s 可接受 |
-| `memory.extract_worth`、`memory.promote`、`memory.consolidate` | `cloudflare/clef` | 后台（2 s 上限），准确率优先 |
+| `fast` | `typesafe/jev-1.14.0` | 关键路径（检索、外部搜索、压缩）：连接复用后 0.4 s，20 个候选批量 0.5–0.6 s |
+| `accurate` | `cloudflare/clef` | 后台与"增"类低频点（记忆、`web.fetch_fallback`）：noul 区分度更高，0.65–0.75 s |
 
-- **固定版本**：关键路径用 `typesafe/jev-1.14.0` 而不是 `jev-latest`——`latest` 会随上游升级（EMRank 文档：截至 2026-10-15
-  `latest` = 1.14.0），升级会让 shadow 日志里前后两段的一致率不可比。升级版本是一次显式配置变更，日志按模型 ID 分段统计。
-  `cloudflare/clef` 目前没有固定版本 ID，日志记录响应里的 `model` 字段。
-- **同一决策点不混用模型**，也不做"一个失败换另一个重试"——超时即回退到确定性规则（关键路径没有时间重试）。
-  后台点在 `emrank` Down 时才落到 `chat`。
+- 关键路径固定 `jev-1.14.0`（`latest` 会随上游升级，升级后日志前后不可比）；升级是一次显式配置变更，日志按模型 ID 分段。
+  `clef` 目前没有固定版本 ID，日志记录响应里的 `model`。
+- 同一决策点不混用模型，不做"失败换另一个重试"。
 
-### 5.2 连接：复用与预热
+### 5.2 连接
 
-实测首次请求 1–2.4 s（经代理 TLS 握手 0.8–1.2 s），连接复用后 jev 0.4 s。所以：
-
-- 一个进程内共享的 HTTP/1.1 keep-alive 连接池（reqwest `Client` 默认即可，`pool_idle_timeout` 设 90 s）。
-- **预热**：会话启动后、第一次用户输入时，后台发一个最小请求（1 个 noul 问题，约 100 输入 token）建立连接；之后每次真实
-  决策复用连接。空闲超过 `pool_idle_timeout` 后，下一次关键路径决策若赶不上 800 ms 就回退（不阻塞），并在后台重新预热。
-- 请求必须带 `User-Agent: nyan/<版本>`——默认 UA 会被 Cloudflare 拦截（403 `error code: 1010`，实测）。
-- 出站经本地代理（与外部搜索相同的代理构建方式，外部搜索 4.2 规则 1；EMRank 是公网服务）。
-- 可用性由服务健康状态机管理（README 第一节第 9 条）：429 → `rate_limited` 并进入退避；402 / 余额不足 → `budget_exhausted`；
-  401 → `backend_down`（配置错误，退避到上限）。
+- 进程内共享的 keep-alive 连接池（reqwest `Client`，`pool_idle_timeout` 90 s，`pool_max_idle_per_host` 4）。
+- **预热**：会话启动后第一次用户输入时，后台发一个最小请求；空闲超过 90 s 后的第一次关键路径决策若赶不上 deadline 就回退，
+  同时后台重新预热。
+- 请求带 `User-Agent: nyan/<版本>`（默认 UA 被拦截）。
+- 出站经本地代理（与外部搜索相同的代理构建方式，外部搜索 4.2 规则 1）。
+- 可用性由服务健康状态机管理（README 第一节第 9 条）：429 → `rate_limited` 退避；402 → `budget_exhausted`；401 → `backend_down`。
 
 ### 5.3 费用与限速
 
-- 每次决策约 200–400 输入 token（实测 198 / 376）；按 `maxPerSession = 200` 计，单会话上限约 8 万输入 token。
-- RPM 按 EMRank 用户统计（多 key 共享）。关键路径点每次 `CodeSearch` / `WebSearch` 最多 1 次决策，记忆点每轮最多 1 次；
-  shadow 期间也照常请求（要积累数据），所以 shadow 不省钱——`mode: "off"` 才不发请求。
-- 响应头 `X-Request-ID` 记入回执，便于到 EMRank 控制台对账。
+- 单次决策约 200–400 输入 token；批量 20 个候选约 6–8k。按每次 `CodeSearch` / `WebSearch` 2–3 个决策估，单会话约 50–150 万
+  输入 token。上限 `maxInputTokensPerSession`（默认 300 万）与 `maxCallsPerSession`（默认 600）只防失控，正常使用碰不到。
+- shadow 也照常请求（要积累数据）；`mode: "off"` 才不发。
+- 响应头 `X-Request-ID` 记入回执。
 
-## 六、外发与隐私
+## 六、外发
 
-`state` 与 `snippets` 会发给后端（`emrank` 是第三方——它再转发给 TypeSafe / Cloudflare；`local` 在用户自己的机器；`chat`
-经用户的网关）。外发审查对所有后端一律执行，命中即 `Fallback(egress_denied)`，不截断改写后再发：
+`state` 发给 EMRank（第三方，再转给 TypeSafe / Cloudflare）。按用户的取舍，**源码正文、页面正文、对话文本、工具结果都可以发**。
+只拦一类：**凭据**。
 
-- 凭据形态：`sk-…`、`ghp_…`、`AKIA…`、`-----BEGIN … KEY-----`、JWT、长 hex / base64 串、`key=value` 中 key 含
-  `token|secret|password|api[_-]?key`——复用记忆 M3 的 secret scanner，不另写一套。
-- 路径：`.env`、`*.pem`、`id_*`、`credentials*` 等凭据类路径的内容（检索 4.5 的跳过分类）。
-- `emrank` 后端额外限制：**不发源码正文**——检索决策只发查询文本与分支元数据；外部搜索决策只发查询文本与页面正文的
-  前 1500 字符（`web.fetch_fallback` 需要看页面开头）；记忆决策只发对话的用户 / 助手文本，**不发工具结果正文**。
-  `local` 后端不受此额外限制。
+- 复用记忆 M3 的 secret scanner（`sk-…`、`ghp_…`、`AKIA…`、私钥块、JWT、`key=value` 中 key 含 token / secret / password / api key 等）。
+- 命中时**只遮蔽命中的片段**（替换为 `<redacted>`）后照常发送，不整体拒绝——判断仍然能做，凭据不出本机。
+- 凭据类路径（`.env`、`*.pem`、`id_*`、`credentials*`）的文件内容不进 `state`（检索 4.5 本就不索引它们）。
 
-## 七、评测与放权
+## 七、日志与放权
 
-legacy 卡在"没有评测数据"。本设计让数据在日常使用中自然积累：
-
-- **shadow 日志**：每次决策（含 shadow）写一行到 `$CLAUDE_CONFIG_DIR/decision/<point>.jsonl`：时间、后端、延迟、
-  模型答案与置信度、确定性答案、是否一致、事后信号（见下）。不含 `state` 原文，只含其 hash 与长度。
-- **事后信号**（判断模型对错的依据，每个决策点一个）：
-  - `retrieval.branches`：semantic 是否贡献了最终返回的结果（融合后的来源分支）；
-  - `web.providers`：被省掉的 provider 在 shadow 期间若被调用，是否会贡献 top-8（shadow 时照常全量扇出，可直接计算）；
-  - `web.fetch_fallback`：回退后取到的正文是否显著长于直抓；
-  - `memory.extract_worth`：按规则执行的提取是否真的产生了候选。
-- **`/decision` 命令**：按决策点显示样本数、一致率、模型"对而规则错"与"错而规则对"的次数、p50 / p95 延迟、各后端可用率；
-  用户据此把某个点从 `shadow` 改为 `active`（写 settings）。不做自动放权。
-- 日志保留 30 天，按文件 mtime 清理，与网页快照同一机制。
+- 每次决策写一行 `$CLAUDE_CONFIG_DIR/decision/<point>.jsonl`：时间、模型、延迟、答案与置信度、确定性答案、是否一致、事后信号；
+  `state` 只记 hash 与长度。保留 30 天。
+- **事后信号**：
+  - `retrieval.answers` / `web.answers`：模型最后实际 Read / WebFetch 了哪些候选（被标"回答查询"的是否被用了）；
+  - `retrieval.sufficient`：追加一轮后新出现的结果是否被使用；
+  - `web.page_answers`：提示"可能不含答案"后，模型是否抓了下一个候选并引用了它；
+  - `web.fetch_fallback`：回退后正文是否显著长于直抓；
+  - `memory.extract_now` / `extract_skip`：提取是否真的产生了记忆；
+  - `memory.type` / `duplicate`：用户在 `/memory` 里对候选的处理（接受 / 改类型 / 删除）；
+  - `compaction.keep`：被保留到最后清的结果，之后是否被模型引用（例如同一文件再次 Read）。
+- **`/decision` 命令**：每个点的样本数、一致率、"模型对而规则错 / 模型错而规则对"的次数、p50 / p95 延迟、可用率；用户据此把
+  shadow 点改为 active。不做自动放权。
 
 ## 八、配置
 
@@ -218,77 +253,81 @@ legacy 卡在"没有评测数据"。本设计让数据在日常使用中自然�
     "poolIdleTimeoutMs": 90000,
     "prewarm": true
   },
-  "local": null,                          // 首批不部署；部署后填 { "url": ..., "model": ... }
-  "chat":  { "model": "haiku" },          // 仅后台决策点，emrank Down 时用
+  "chat": { "model": "haiku" },
   "deadlineMs": { "critical": 800, "background": 2000 },
-  "maxPerSession": 200,                   // 超过 → Fallback(budget_exhausted)
+  "maxBatch": 30,
+  "maxCallsPerSession": 600,
+  "maxInputTokensPerSession": 3000000,
   "points": {
-    "retrieval.branches":   { "mode": "shadow", "model": "fast",     "minConfidence": 0.75 },
-    "retrieval.rerank":     { "mode": "shadow", "model": "fast",     "minConfidence": 0.75 },
-    "web.providers":        { "mode": "shadow", "model": "fast",     "minConfidence": 0.7, "minProviders": ["brave", "deepseek", "searxng"] },
-    "web.rerank":           { "mode": "shadow", "model": "fast",     "minConfidence": 0.7 },
-    "web.fetch_fallback":   { "mode": "shadow", "model": "accurate", "minConfidence": 0.8 },
-    "memory.extract_worth": { "mode": "shadow", "model": "accurate", "minConfidence": 0.7 },
-    "memory.promote":       { "mode": "shadow", "model": "accurate", "minConfidence": 0.8 },
-    "memory.consolidate":   { "mode": "shadow", "model": "accurate", "minConfidence": 0.7 }
+    "retrieval.intent":     { "mode": "active", "model": "fast",     "minConfidence": 0.7 },
+    "retrieval.answers":    { "mode": "active", "model": "fast",     "minConfidence": 0.6 },
+    "retrieval.sufficient": { "mode": "active", "model": "fast",     "minConfidence": 0.7 },
+    "retrieval.prune":      { "mode": "shadow", "model": "fast",     "maxProb": 0.05, "keepAtLeast": 3 },
+    "web.answers":          { "mode": "active", "model": "fast",     "minConfidence": 0.6 },
+    "web.page_answers":     { "mode": "active", "model": "fast",     "minConfidence": 0.7 },
+    "web.fetch_fallback":   { "mode": "active", "model": "accurate", "minConfidence": 0.8 },
+    "web.query_kind":       { "mode": "active", "model": "fast",     "minConfidence": 0.7 },
+    "web.prune":            { "mode": "shadow", "model": "fast",     "maxProb": 0.05, "keepAtLeast": 5 },
+    "memory.extract_now":   { "mode": "active", "model": "accurate", "minConfidence": 0.8 },
+    "memory.extract_skip":  { "mode": "shadow", "model": "accurate", "minConfidence": 0.8 },
+    "memory.type":          { "mode": "active", "model": "accurate", "minConfidence": 0.7 },
+    "memory.duplicate":     { "mode": "active", "model": "accurate", "minConfidence": 0.7 },
+    "memory.consolidate":   { "mode": "shadow", "model": "accurate", "minConfidence": 0.7 },
+    "compaction.keep":      { "mode": "shadow", "model": "fast",     "minConfidence": 0.7 }
   },
   "logRetentionDays": 30
 }
 ```
 
-- `enabled: false` 或某点 `mode: "off"`：不发任何请求，行为与无 Decision Provider 完全相同。
-- 每台机器各自配置（README 第一节第 7 条）；EMRank key 在 `~/.cometix/keys/emrank`（0600，corp-pc 已就位；nyan-pc 需
-  复制同一文件）。读取时 trim 首尾空白（同类 key 曾因末尾换行导致 400）。
-- `points.<id>.model` 取 `emrank.models` 的键（`fast` / `accurate`），换模型只改一处。
-- 关键路径点（检索、外部搜索）的 deadline 800 ms 是硬上限：超过即 `Fallback(timeout)`，不等待、不重试。
-  关键路径上决策与确定性分支**并行发起**——不等决策结果才开始跑 exact / symbol / text；决策只影响"是否追加 semantic、
-  是否精排、是否省 provider"，到 deadline 未返回就按确定性规则继续。
+- `enabled: false` 或某点 `off`：不发请求，行为与没有 Decision Provider 时相同。
+- 每台机器各自配置；key 在 `~/.cometix/keys/emrank`（0600，corp-pc 已就位，nyan-pc 复制同一文件）；读取时 trim。
+- **关键路径**（检索、外部搜索、压缩）的 800 ms 是硬上限：与确定性路径**并行发起**，到点未返回就按规则继续，不等待、不重试。
+  `retrieval.answers` / `web.answers` 在 Inspect / 融合完成后发起，此时其余工作已结束，等待它的 0.5 s 计入工具耗时；
+  `retrieval.sufficient` 判"不足"时追加的一轮在同一个工具调用内完成（总 deadline 不变）。
 
 ## 九、明确不做
 
 | 项 | 理由 |
 |---|---|
-| 决策自动放权（按一致率自动从 shadow 升 active） | 放权是行为变更，由用户看 `/decision` 数据后决定 |
-| 多后端聚合 / 投票 | 增加延迟与成本；决策是"快速判断"，不是召回 |
-| 让模型生成参数值（查询改写文本、provider 新增、权重连续值） | 只允许在封闭的安全集合内选择；生成内容无法验证 |
-| 压缩相关决策 | 见第四节，必须确定性 |
-| legacy 的 21 种回退码、tile / scheduling / review 等节点 | 本项目只有第四节的决策点；回退码收敛为第三节的 11 个 |
+| 自动放权（按一致率自动从 shadow 升 active） | 行为变更由用户看 `/decision` 后决定 |
+| 多后端聚合 / 投票 | 加延迟；决策要快 |
+| 生成型决策（查询改写、摘要、参数值） | 分类模型不生成文本；只在封闭选项内选择 |
+| 用决策减少 provider / 跳过检索分支 | 效果优先；只用于加参数、补跑、排序 |
+| legacy 的 21 种回退码、tile / scheduling / review 等节点 | 本项目只有第四节的决策点 |
 
 ## 十、实现切片
 
 | 切片 | 内容 | 主要写集 | 依赖 |
 |---|---|---|---|
-| A | 接口、`DecisionOutcome`、安全集合与阈值校验、shadow 语义、外发审查（复用 secret scanner）、会话上限 | 新 `services/decision/{mod,egress}.rs` | 公共 H（服务状态机）、记忆 A（secret scanner） |
-| B | `emrank` 后端（System One，`{model, state, questions}`）：连接池与预热、UA、按决策点选模型、401 / 402 / 429 映射、`X-Request-ID` 入回执 | `services/decision/backends/emrank.rs` | A |
-| C | `local` 后端（llama.cpp logprob 读出）——**不在首批**，EMRank 长期不可用或外发受限时再做 | `services/decision/backends/local.rs` | A |
-| D | `chat` 后端（网关结构化输出，仅后台点） | `services/decision/backends/chat.rs` | A |
+| A | 接口、批量问题、安全集合与阈值、shadow 语义、凭据遮蔽（复用 secret scanner）、会话上限 | 新 `services/decision/{mod,egress}.rs` | 公共 H、记忆 A（secret scanner） |
+| B | `emrank` 后端：连接池与预热、UA、模型别名、401 / 402 / 429 映射、`X-Request-ID` | `services/decision/backends/emrank.rs` | A |
+| D | `chat` 后端（后台点兜底） | `services/decision/backends/chat.rs` | A |
 | E | 决策日志、事后信号、`/decision` 命令 | `services/decision/log.rs`、`commands/decision/` | A |
-| F | 接入：检索 `retrieval.branches` / `retrieval.rerank` | 检索切片 B / G 的调用点 | A、检索 B |
-| G | 接入：外部搜索 `web.providers` / `web.rerank` / `web.fetch_fallback` | 外部搜索切片 E / F / H 的调用点 | A、外部搜索 E |
-| H | 接入：记忆 `memory.extract_worth` / `memory.promote` / `memory.consolidate` | 记忆切片 C / D 的调用点 | A、记忆 C |
+| F | 接入检索：`intent`、`answers`（Inspect 后批量）、`sufficient`（追加一轮）、`prune` | 检索切片 B / F 的管线 | A、检索 B |
+| G | 接入外部搜索：`answers`、`page_answers`、`fetch_fallback`、`query_kind`（provider 参数）、`prune` | 外部搜索切片 E / H 与 WebFetch 返回 | A、外部搜索 E |
+| H | 接入记忆：`extract_now`、`extract_skip`、`type`、`duplicate`、`consolidate` | 记忆切片 C / D | A、记忆 C |
+| I | 接入压缩：`compaction.keep`（掩码候选排序） | 压缩切片 A 的候选选择 | A、压缩 A |
 
-A 进批次 1；B、D、E 可并行（C 不在首批）；F、G、H 跟随各自模块的调用点切片。
+A 进批次 1；B、D、E 并行；F、G、H、I 跟随各模块的调用点切片。`local` 后端不在首批。
 
 ## 十一、验收
 
-1. `nyan.decision.enabled = false`、所有点 `off`、或所有后端 Down 时，四个模块的行为与没有 Decision Provider 时逐字节一致
-   （确定性回退）。
-2. `shadow` 模式下照常请求并记录日志，但模块行为与 `off` 完全相同。
-3. `active` 模式下：答案在安全集合内且置信度达标才生效；落在集合外 → `out_of_safe_set`、低于阈值 → `low_confidence`，
-   都回退到确定性答案。
-4. 关键路径决策超过 800 ms 即回退，检索 / 搜索的总耗时不因 Decision Provider 增加超过 800 ms；确定性分支与决策并行发起。
-5. 含凭据形态的 `state` / `snippets` 不发出（`egress_denied`）；`emrank` 后端不收到源码正文与工具结果正文。
-6. `web.providers` 的 active 答案始终包含 `minProviders`；`memory.extract_worth` 连续跳过 3 次后强制提取一次。
-7. 后端不可用（EMRank 429 / 402 / 超时、网络中断）时服务状态机判 Down，退避期间不再发请求；后台点落到 `chat`，关键路径点直接回退。
-10. 连接复用：预热后关键路径决策 p50 < 500 ms（实测 jev 0.40 s）；请求带 `User-Agent: nyan/<版本>`（默认 UA 被拦截，403 / 1010）。
-11. 日志按响应 `model` 字段分段统计；`jev-1.14.0` 换版本后新旧样本不混算。
-8. `/decision` 显示每个点的样本数、一致率、延迟、后端可用率。
-9. 离线测试：后端 URL 可注入，用 `TcpListener::bind("127.0.0.1:0")` 起 mock（与外部搜索的测试替身相同），覆盖
-   answered / 各回退原因。
+1. `enabled = false`、所有点 `off`、或后端 Down 时，四个模块的行为与没有 Decision Provider 时逐字节一致。
+2. shadow 点照常请求并记日志，行为与 `off` 相同；active 点答案在安全集合内且置信度达标才生效，否则回退。
+3. 关键路径决策超过 800 ms 即回退；检索 / 搜索的总耗时增加不超过 800 ms（实测预期约 0.5 s）。
+4. 批量判定：20 个候选合并为一次请求，预热后 p50 < 800 ms（实测 jev 0.49–0.60 s）。
+5. `retrieval.answers` / `web.answers` 只重排与标注，不减少返回条数；`prune` 点（shadow 关闭前）不删任何候选。
+6. `retrieval.sufficient` 判"不足"时最多追加 1 轮；三个确定性分支始终运行。
+7. `web.query_kind` 只给 provider 加参数，所有 enabled provider 照常参与。
+8. `memory.extract_now` 每 3 轮最多提前 1 次；`memory.type` / `duplicate` 只把记忆转为候选，不删除、不合并。
+9. `compaction.keep` 只改变清理顺序、不改变清理量；决定随 `content-replacement` 持久化，之后不重复询问、字节稳定。
+10. 含凭据的片段被遮蔽为 `<redacted>` 后发送；凭据类路径的文件内容不进 `state`。
+11. 请求带 `User-Agent: nyan/<版本>`；日志按响应 `model` 分段统计。
+12. 离线测试：后端 URL 可注入，`TcpListener::bind("127.0.0.1:0")` 起 mock，覆盖 answered / 批量 / 各回退原因。
 
 ## 十二、待验证（实现切片的第一步，不阻塞设计）
 
-- 各决策点在真实使用中的 shadow 一致率（第一节只有 14 个问题的抽样）。
-- nyan-pc 上经代理到 EMRank 的建连与复用延迟（第一节只在 corp-pc 测过）。
-- EMRank 的模型倍率与 RPM 档位（个人中心 / 模型广场，需登录查看）；按此复核 `maxPerSession` 与预算。
-- `cloudflare/clef` 是否会提供固定版本 ID（目前没有，日志按响应 `model` 字段记录）。
+- 各决策点的真实一致率与事后信号（第一节只有 30 个问题）。
+- nyan-pc 到 EMRank 的建连与复用延迟（只在 corp-pc 测过）。
+- EMRank 的模型倍率与 RPM 档位（需登录控制台）；据此复核会话上限。
+- `retrieval.answers` 与 Qwen3-Reranker 叠加后的排序收益——并入检索评测（检索 H）。

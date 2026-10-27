@@ -15,7 +15,7 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 | [memory.md](memory.md) | 记忆：后台提取、合并、写入安全、候选（= 不在索引里的记忆文件） | 定稿 |
 | [retrieval.md](retrieval.md) | 检索：`CodeSearch` 融合工具、本机索引、Inspect、semantic（两机可用、可降级） | 定稿 |
 | [external-search.md](external-search.md) | 外部搜索：七家 provider 聚合召回 + 精排、SSRF 安全 WebFetch + provider 回退、原文快照与逐字摘录 | 定稿 |
-| [decision-provider.md](decision-provider.md) | 快速决策模型：四模块的决策点注册表、安全集合与确定性回退、shadow / active 逐点放权、EMRank 后端（jev 关键路径、clef 后台，已实测） | 定稿 |
+| [decision-provider.md](decision-provider.md) | 快速决策模型：四模块的决策点注册表、安全集合与确定性回退、看内容的判断（候选是否回答查询、结果是否足够、页面是否含答案、记忆类型与重复）、EMRank 后端（jev 关键路径、clef 后台，已实测） | 定稿 |
 
 ## 一、通用约定
 
@@ -127,8 +127,10 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
     精排共用客户端与服务地址，开关各自独立（代码检索默认关、网页精排默认开）。reranker 不能当通用决策器（实测
     元决策问题得分全 < 0.1，见 decision-provider.md 第一节）。
 12. **Decision Provider 只在安全集合内选择**（decision-provider.md 第三、四节）：每个决策点先算确定性答案，模型答案
-    落在安全集合外或置信度不足即回退；关键路径决策与确定性分支并行、800 ms 硬上限；压缩没有 active 决策点
-    （改变请求前缀的决定必须确定性）。各模块文档的"决策点"小节列候选，接入与否以 decision-provider.md 第四节为准。
+    落在安全集合外或置信度不足即回退；关键路径与确定性路径并行、800 ms 硬上限。**只增不减的点默认 active**（标注、重排、
+    续搜、补跑、触发回退、提前提取），**会减少结果的点默认 shadow**（删除候选、跳过提取）；不用它减少 provider 或跳过分支。
+    压缩只有一个 shadow 点（掩码清理顺序，不改清理量）。决策点清单以 decision-provider.md 第四节为准，各模块"决策点"小节引用它。
+13. **效果优先于源码隐私**（用户 2026-10-27）：决策模型可以看源码、页面正文、对话与工具结果；只遮蔽凭据片段。
 
 ## 五、待定项
 
@@ -151,7 +153,7 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 | 项 | 状态 |
 |---|---|
 | 检索评测（检索 H） | 后续单独安排；rerank 默认值、融合权重等它出结论 |
-| Decision Provider 的真实一致率 | EMRank 已实测可用（jev 13/14、clef 14/14，连接复用后 0.40 / 0.65 s）；一致率由 shadow 日志积累 |
+| Decision Provider 的真实一致率 | EMRank 已实测（30 问：jev 28/30、clef 29/30；复用连接后 0.40 / 0.65 s；20 候选批量 jev 0.5–0.6 s）；一致率由日志积累 |
 | nyan-pc 到 EMRank 的延迟 | 只在 corp-pc 测过；实现时在 nyan-pc 复测 |
 | 保活与 thinking 参数是否进入消息级 cache key | 压缩切片 F 第一步实测 |
 
