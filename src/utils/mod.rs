@@ -176,6 +176,9 @@ pub mod string_utils;
 pub mod subprocess_env;
 pub mod suggestions;
 pub mod swarm;
+// @nyan: strict encoding detection shared by Read / Grep / the retrieval
+// index (docs/nyan/tool-io.md T5).
+pub mod text_decode;
 pub mod system_prompt;
 pub mod system_prompt_type;
 pub mod system_theme;
