@@ -1,6 +1,6 @@
 # Decision Provider 设计
 
-状态：已定稿，未实现（2026-10-27）。
+状态：已定稿，未实现（2026-10-27）。后端定为 EMRank（`typesafe/jev-1.14.0` 关键路径、`cloudflare/clef` 后台），已实测。
 
 设计来源：nyan-legacy 的 Jev / DecisionProvider（`references/pactile-context-governance/source/pactile/jev/`、
 `source/pactile/retrieval/jev-planning.ts.txt`、`design/context-governance/implementation/03-stage-plan.zh-CN.md`、
@@ -18,9 +18,25 @@
 |---|---|---|
 | 网关上的 haiku（`claude-haiku-5-5`，结构化 JSON 输出，`max_tokens 40`） | 3 次 2.22 / 3.29 / 2.28 s；答案正确 | 正确但慢：每个决策 2–3 s，放在检索、搜索的关键路径上不可接受 |
 | Qwen3-Reranker（已部署，yes/no 打分）当二分类器 | 三组元决策问题（是否需要 semantic、是否值得记、是否挑战页）得分全部 < 0.1，第一组排序反了 | **不可用**：reranker 只判断"文档与查询是否相关"，不回答通用决策问题 |
-| Jev（TypeSafe System One 分类模型，nyan-exit 上的 router） | 协议打通（`POST /systemone`，`{state, questions}`）；上游唯一账户 `oc-1` 当前 429 限流，router 返回 `all_accounts_failed`；health 往返直连 0.4–1.1 s、经 nyan-ops 入口 1.1–4.8 s | 形态正确，**可用性未验证**；决策延迟与质量未测（legacy 也从未评测） |
+| Jev 经自建 router（nyan-exit `:50008`） | 协议打通（`POST /systemone`，`{state, questions}`）；上游唯一账户 `oc-1` 429 限流，返回 `all_accounts_failed` | 不可用，不采用（第五节） |
+| **EMRank 托管的 System One**（`POST https://emrank.tech/v1/decisions`），`typesafe/jev-latest` 与 `cloudflare/clef` | 见下表 | **采用** |
 
-所以 Decision Provider 的后端必须是**专用分类模型**；对话模型只作为"慢速兜底"不进关键路径（第五节）。
+**EMRank 实测（2026-10-27，corp-pc 经代理）**。10 个用例、14 个问题，覆盖第四节的四类决策点（检索分支 4 例、记忆是否值得提取 2 例、
+挑战页判定 2 例、搜索查询类型 2 例），人工给定期望答案：
+
+| 模型 | 准确 | 区分度（noul 概率 / choice 置信度） | 延迟：首次（含建连） | 延迟：连接复用后 p50（1 / 2 / 4 个问题） |
+|---|---|---|---|---|
+| `typesafe/jev-latest` | 13 / 14（把字面量错误信息 `"Project write queue stopped"` 判为需要 semantic，0.79） | noul 中等（0.13–0.89），choice 置信度高（0.49–1.0） | 0.96–1.16 s | **0.40 / 0.49 / 0.41 s** |
+| `cloudflare/clef` | **14 / 14** | noul 极端（0.015–0.992），choice 置信度中等（0.44–0.89） | 2.39 s | 0.65 / 0.69 / 0.74 s |
+
+- 延迟主要在建连：经代理 TLS 握手 0.8–1.2 s（不经代理直连更慢且不稳定），所以**必须复用连接并预热**（第五节）。
+- 问题数从 1 到 4 对延迟几乎无影响——一个决策点的多个问题合并成一次请求。
+- 计费只按成功请求的**输入 token**（`usage.input_tokens`，单个决策请求约 200–380 token）；RPM 按用户计。
+- 两个坑：(1) 默认 `Python-urllib` 一类 User-Agent 被 Cloudflare 拦截（403 `error code: 1010`），**请求必须带明确的 UA**；
+  (2) jev 返回 `usage.output_tokens`、clef 返回 0——不计费，只记录。
+- 样本量只有 14 个问题，只能说明"可用、方向正确"，不能当作质量结论；质量由 shadow 日志积累（第七节）。
+
+所以 Decision Provider 的后端是**专用分类模型**；对话模型只作为"慢速兜底"不进关键路径（第五节）。
 
 ## 二、legacy 的结论与本设计的取舍
 
@@ -114,35 +130,64 @@ pub trait DecisionBackend: Send + Sync {
 
 ## 五、后端
 
-`DecisionBackend` 的实现，按 `nyan.decision.backends` 顺序选第一个 Ready 的（不聚合、不并发）：
+后端只有一种协议：**System One**（`{model, state, questions}` → `{model, answers, usage}`）。主后端是 EMRank 托管的服务
+（用户提供，2026-10-27 实测可用）；其余是不可用时的退路。
 
 | 后端 | 形态 | 状态 |
 |---|---|---|
-| `jev` | System One router：`POST <url>/systemone`，`{state, questions}`（**不是** legacy 契约的 `taskSummary`，2026-10-27 实测），Bearer key 按文件引用 | 已部署（nyan-exit `:50008`，nyan-ops `/jev/` 入口）；上游当前 429 |
-| `local` | 自托管分类：llama.cpp 的 `/completion`（`n_predict: 1`、`n_probs`）读标签 token 的 logprob 做 softmax，即 legacy `llama-cpp-classify.ts` 的做法；模型用一个小的指令模型（例如 Qwen3-1.7B / 4B 的 GGUF，部署时选定并实测） | 未部署；部署见下 |
-| `chat` | 网关上的对话模型，结构化 JSON 输出 | 可用（haiku 实测 2.2–3.3 s）；**只允许用于后台决策点**（记忆三项），关键路径点不用它 |
+| `emrank`（主） | `POST https://emrank.tech/v1/decisions`（别名 `/v1/decision`），Bearer key 按文件引用；模型按决策点选（下表）；只按成功请求的输入 token 计费 | 可用（实测见第一节） |
+| `local`（退路，可选） | 自托管分类：llama.cpp `/completion`（`n_predict: 1`、`n_probs`）读标签 token 的 logprob 做 softmax（legacy `llama-cpp-classify.ts` 的做法），对外仍是 System One 形态 | 未部署；**不在首批**——只在 EMRank 长期不可用或外发受限时再部署 |
+| `chat`（慢速兜底） | 网关上的对话模型，结构化 JSON 输出 | 可用（haiku 实测 2.2–3.3 s）；**只用于后台决策点**（记忆三项），关键路径点不用它 |
 
-**`local` 的部署**（独立于代码，可先做）：
+nyan-exit 上的自建 Jev router（`:50008`，上游单账户 429）不再作为后端：EMRank 提供同一模型（`typesafe/jev-latest`）且可用。
 
-- 位置：corp-pc 的 GPU 剩余约 2.5 GB（embed 0.45 + rerank 0.25 已占）。小模型（1.7B Q4 约 1.2 GB）可放下；若显存不够，
-  放 nyan-ops 用 CPU 推理（6 核，单 token 读出、prompt 约 500 token，预计数百毫秒，需实测）。**部署时先实测延迟再定位置**，
-  目标 p50 < 300 ms。
-- 访问：与检索相同——corp-pc 上回环，nyan-pc 经 `tailscale serve`；放 nyan-ops 时同 SearXNG 的 Serve 方式。
-- 不可用时由服务状态机（README 第一节第 9 条）判 Down，回退到下一个后端或确定性规则。
+### 5.1 模型按决策点选
 
-**为什么不默认 Jev**：第三方服务、单账户、当前限流、质量从未评测；且 `state` / `snippets` 要外发给第三方（第六节）。
-默认顺序 `["local", "jev"]`；`local` 未部署时就是 `["jev"]`。
+两个模型的取舍来自第一节实测：jev 延迟低（连接复用后约 0.4 s）、choice 置信度高；clef 准确率更好（14 / 14）、noul 区分度更高，
+但约 0.65–0.75 s。
+
+| 决策点 | 模型 | 理由 |
+|---|---|---|
+| `retrieval.branches`、`retrieval.rerank`、`web.providers`、`web.rerank` | `typesafe/jev-1.14.0` | 关键路径，800 ms 上限内要有余量；以 choice 为主 |
+| `web.fetch_fallback` | `cloudflare/clef` | 纯 noul，clef 区分度更好；发生在抓取已失败 / 可疑之后，多 0.3 s 可接受 |
+| `memory.extract_worth`、`memory.promote`、`memory.consolidate` | `cloudflare/clef` | 后台（2 s 上限），准确率优先 |
+
+- **固定版本**：关键路径用 `typesafe/jev-1.14.0` 而不是 `jev-latest`——`latest` 会随上游升级（EMRank 文档：截至 2026-10-15
+  `latest` = 1.14.0），升级会让 shadow 日志里前后两段的一致率不可比。升级版本是一次显式配置变更，日志按模型 ID 分段统计。
+  `cloudflare/clef` 目前没有固定版本 ID，日志记录响应里的 `model` 字段。
+- **同一决策点不混用模型**，也不做"一个失败换另一个重试"——超时即回退到确定性规则（关键路径没有时间重试）。
+  后台点在 `emrank` Down 时才落到 `chat`。
+
+### 5.2 连接：复用与预热
+
+实测首次请求 1–2.4 s（经代理 TLS 握手 0.8–1.2 s），连接复用后 jev 0.4 s。所以：
+
+- 一个进程内共享的 HTTP/1.1 keep-alive 连接池（reqwest `Client` 默认即可，`pool_idle_timeout` 设 90 s）。
+- **预热**：会话启动后、第一次用户输入时，后台发一个最小请求（1 个 noul 问题，约 100 输入 token）建立连接；之后每次真实
+  决策复用连接。空闲超过 `pool_idle_timeout` 后，下一次关键路径决策若赶不上 800 ms 就回退（不阻塞），并在后台重新预热。
+- 请求必须带 `User-Agent: nyan/<版本>`——默认 UA 会被 Cloudflare 拦截（403 `error code: 1010`，实测）。
+- 出站经本地代理（与外部搜索相同的代理构建方式，外部搜索 4.2 规则 1；EMRank 是公网服务）。
+- 可用性由服务健康状态机管理（README 第一节第 9 条）：429 → `rate_limited` 并进入退避；402 / 余额不足 → `budget_exhausted`；
+  401 → `backend_down`（配置错误，退避到上限）。
+
+### 5.3 费用与限速
+
+- 每次决策约 200–400 输入 token（实测 198 / 376）；按 `maxPerSession = 200` 计，单会话上限约 8 万输入 token。
+- RPM 按 EMRank 用户统计（多 key 共享）。关键路径点每次 `CodeSearch` / `WebSearch` 最多 1 次决策，记忆点每轮最多 1 次；
+  shadow 期间也照常请求（要积累数据），所以 shadow 不省钱——`mode: "off"` 才不发请求。
+- 响应头 `X-Request-ID` 记入回执，便于到 EMRank 控制台对账。
 
 ## 六、外发与隐私
 
-`state` 与 `snippets` 会发给后端（`jev` 是第三方，`local` / `chat` 在用户自己的机器或网关）。外发审查对所有后端一律执行，
-命中即 `Fallback(egress_denied)`，不截断改写后再发：
+`state` 与 `snippets` 会发给后端（`emrank` 是第三方——它再转发给 TypeSafe / Cloudflare；`local` 在用户自己的机器；`chat`
+经用户的网关）。外发审查对所有后端一律执行，命中即 `Fallback(egress_denied)`，不截断改写后再发：
 
 - 凭据形态：`sk-…`、`ghp_…`、`AKIA…`、`-----BEGIN … KEY-----`、JWT、长 hex / base64 串、`key=value` 中 key 含
   `token|secret|password|api[_-]?key`——复用记忆 M3 的 secret scanner，不另写一套。
 - 路径：`.env`、`*.pem`、`id_*`、`credentials*` 等凭据类路径的内容（检索 4.5 的跳过分类）。
-- `jev` 后端额外限制：**不发源码正文**——检索决策只发查询文本与分支元数据；记忆决策只发对话的用户 / 助手文本，
-  不发工具结果正文。`local` 后端不受此额外限制。
+- `emrank` 后端额外限制：**不发源码正文**——检索决策只发查询文本与分支元数据；外部搜索决策只发查询文本与页面正文的
+  前 1500 字符（`web.fetch_fallback` 需要看页面开头）；记忆决策只发对话的用户 / 助手文本，**不发工具结果正文**。
+  `local` 后端不受此额外限制。
 
 ## 七、评测与放权
 
@@ -166,29 +211,35 @@ legacy 卡在"没有评测数据"。本设计让数据在日常使用中自然�
 ```jsonc
 {
   "enabled": true,
-  "backends": ["local", "jev"],          // 顺序尝试第一个 Ready 的
-  "jev":   { "url": "https://nyan-ops.tail6334e5.ts.net/jev", "apiKeyFile": "~/.cometix/keys/jev" },
-  "local": { "url": "http://127.0.0.1:8093", "model": "<部署时选定>" },
-  "chat":  { "model": "haiku" },          // 仅后台决策点可用
+  "emrank": {
+    "url": "https://emrank.tech/v1/decisions",
+    "apiKeyFile": "~/.cometix/keys/emrank",
+    "models": { "fast": "typesafe/jev-1.14.0", "accurate": "cloudflare/clef" },
+    "poolIdleTimeoutMs": 90000,
+    "prewarm": true
+  },
+  "local": null,                          // 首批不部署；部署后填 { "url": ..., "model": ... }
+  "chat":  { "model": "haiku" },          // 仅后台决策点，emrank Down 时用
   "deadlineMs": { "critical": 800, "background": 2000 },
   "maxPerSession": 200,                   // 超过 → Fallback(budget_exhausted)
   "points": {
-    "retrieval.branches":   { "mode": "shadow", "minConfidence": 0.75 },
-    "retrieval.rerank":     { "mode": "shadow", "minConfidence": 0.75 },
-    "web.providers":        { "mode": "shadow", "minConfidence": 0.7, "minProviders": ["brave", "deepseek", "searxng"] },
-    "web.rerank":           { "mode": "shadow", "minConfidence": 0.7 },
-    "web.fetch_fallback":   { "mode": "shadow", "minConfidence": 0.8 },
-    "memory.extract_worth": { "mode": "shadow", "minConfidence": 0.7 },
-    "memory.promote":       { "mode": "shadow", "minConfidence": 0.8 },
-    "memory.consolidate":   { "mode": "shadow", "minConfidence": 0.7 }
+    "retrieval.branches":   { "mode": "shadow", "model": "fast",     "minConfidence": 0.75 },
+    "retrieval.rerank":     { "mode": "shadow", "model": "fast",     "minConfidence": 0.75 },
+    "web.providers":        { "mode": "shadow", "model": "fast",     "minConfidence": 0.7, "minProviders": ["brave", "deepseek", "searxng"] },
+    "web.rerank":           { "mode": "shadow", "model": "fast",     "minConfidence": 0.7 },
+    "web.fetch_fallback":   { "mode": "shadow", "model": "accurate", "minConfidence": 0.8 },
+    "memory.extract_worth": { "mode": "shadow", "model": "accurate", "minConfidence": 0.7 },
+    "memory.promote":       { "mode": "shadow", "model": "accurate", "minConfidence": 0.8 },
+    "memory.consolidate":   { "mode": "shadow", "model": "accurate", "minConfidence": 0.7 }
   },
   "logRetentionDays": 30
 }
 ```
 
 - `enabled: false` 或某点 `mode: "off"`：不发任何请求，行为与无 Decision Provider 完全相同。
-- 每台机器各自配置（README 第一节第 7 条）；`jev` 的 key 需复制到 `~/.cometix/keys/jev`（0600）。
-  **注意**：本机环境变量 `JEV_KEY` 的值末尾带换行，读取时必须 trim（2026-10-27 实测导致 400）。
+- 每台机器各自配置（README 第一节第 7 条）；EMRank key 在 `~/.cometix/keys/emrank`（0600，corp-pc 已就位；nyan-pc 需
+  复制同一文件）。读取时 trim 首尾空白（同类 key 曾因末尾换行导致 400）。
+- `points.<id>.model` 取 `emrank.models` 的键（`fast` / `accurate`），换模型只改一处。
 - 关键路径点（检索、外部搜索）的 deadline 800 ms 是硬上限：超过即 `Fallback(timeout)`，不等待、不重试。
   关键路径上决策与确定性分支**并行发起**——不等决策结果才开始跑 exact / symbol / text；决策只影响"是否追加 semantic、
   是否精排、是否省 provider"，到 deadline 未返回就按确定性规则继续。
@@ -208,15 +259,15 @@ legacy 卡在"没有评测数据"。本设计让数据在日常使用中自然�
 | 切片 | 内容 | 主要写集 | 依赖 |
 |---|---|---|---|
 | A | 接口、`DecisionOutcome`、安全集合与阈值校验、shadow 语义、外发审查（复用 secret scanner）、会话上限 | 新 `services/decision/{mod,egress}.rs` | 公共 H（服务状态机）、记忆 A（secret scanner） |
-| B | `jev` 后端（System One router，`{state, questions}`） | `services/decision/backends/jev.rs` | A |
-| C | `local` 后端（llama.cpp logprob 读出）+ 部署（模型选定、延迟实测、Quadlet / Serve） | `services/decision/backends/local.rs`；部署独立 | A |
+| B | `emrank` 后端（System One，`{model, state, questions}`）：连接池与预热、UA、按决策点选模型、401 / 402 / 429 映射、`X-Request-ID` 入回执 | `services/decision/backends/emrank.rs` | A |
+| C | `local` 后端（llama.cpp logprob 读出）——**不在首批**，EMRank 长期不可用或外发受限时再做 | `services/decision/backends/local.rs` | A |
 | D | `chat` 后端（网关结构化输出，仅后台点） | `services/decision/backends/chat.rs` | A |
 | E | 决策日志、事后信号、`/decision` 命令 | `services/decision/log.rs`、`commands/decision/` | A |
 | F | 接入：检索 `retrieval.branches` / `retrieval.rerank` | 检索切片 B / G 的调用点 | A、检索 B |
 | G | 接入：外部搜索 `web.providers` / `web.rerank` / `web.fetch_fallback` | 外部搜索切片 E / F / H 的调用点 | A、外部搜索 E |
 | H | 接入：记忆 `memory.extract_worth` / `memory.promote` / `memory.consolidate` | 记忆切片 C / D 的调用点 | A、记忆 C |
 
-A 进批次 1；B、C、D、E 可并行；F、G、H 跟随各自模块的调用点切片。
+A 进批次 1；B、D、E 可并行（C 不在首批）；F、G、H 跟随各自模块的调用点切片。
 
 ## 十一、验收
 
@@ -226,14 +277,18 @@ A 进批次 1；B、C、D、E 可并行；F、G、H 跟随各自模块的调用�
 3. `active` 模式下：答案在安全集合内且置信度达标才生效；落在集合外 → `out_of_safe_set`、低于阈值 → `low_confidence`，
    都回退到确定性答案。
 4. 关键路径决策超过 800 ms 即回退，检索 / 搜索的总耗时不因 Decision Provider 增加超过 800 ms；确定性分支与决策并行发起。
-5. 含凭据形态的 `state` / `snippets` 不发出（`egress_denied`）；`jev` 后端不收到源码正文与工具结果正文。
+5. 含凭据形态的 `state` / `snippets` 不发出（`egress_denied`）；`emrank` 后端不收到源码正文与工具结果正文。
 6. `web.providers` 的 active 答案始终包含 `minProviders`；`memory.extract_worth` 连续跳过 3 次后强制提取一次。
-7. 后端 Down（corp-pc 关机、Jev 429）时服务状态机判 Down，退避期间不再发请求。
+7. 后端不可用（EMRank 429 / 402 / 超时、网络中断）时服务状态机判 Down，退避期间不再发请求；后台点落到 `chat`，关键路径点直接回退。
+10. 连接复用：预热后关键路径决策 p50 < 500 ms（实测 jev 0.40 s）；请求带 `User-Agent: nyan/<版本>`（默认 UA 被拦截，403 / 1010）。
+11. 日志按响应 `model` 字段分段统计；`jev-1.14.0` 换版本后新旧样本不混算。
 8. `/decision` 显示每个点的样本数、一致率、延迟、后端可用率。
 9. 离线测试：后端 URL 可注入，用 `TcpListener::bind("127.0.0.1:0")` 起 mock（与外部搜索的测试替身相同），覆盖
    answered / 各回退原因。
 
 ## 十二、待验证（实现切片的第一步，不阻塞设计）
 
-- Jev 上游恢复后的真实决策延迟（目标 < 800 ms）与各决策点的 shadow 一致率。
-- `local` 后端的模型选择、显存与 p50 延迟（目标 < 300 ms）；放 corp-pc GPU 还是 nyan-ops CPU。
+- 各决策点在真实使用中的 shadow 一致率（第一节只有 14 个问题的抽样）。
+- nyan-pc 上经代理到 EMRank 的建连与复用延迟（第一节只在 corp-pc 测过）。
+- EMRank 的模型倍率与 RPM 档位（个人中心 / 模型广场，需登录查看）；按此复核 `maxPerSession` 与预算。
+- `cloudflare/clef` 是否会提供固定版本 ID（目前没有，日志按响应 `model` 字段记录）。

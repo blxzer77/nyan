@@ -15,7 +15,7 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 | [memory.md](memory.md) | 记忆：后台提取、合并、写入安全、候选（= 不在索引里的记忆文件） | 定稿 |
 | [retrieval.md](retrieval.md) | 检索：`CodeSearch` 融合工具、本机索引、Inspect、semantic（两机可用、可降级） | 定稿 |
 | [external-search.md](external-search.md) | 外部搜索：七家 provider 聚合召回 + 精排、SSRF 安全 WebFetch + provider 回退、原文快照与逐字摘录 | 定稿 |
-| [decision-provider.md](decision-provider.md) | 快速决策模型：四模块的决策点注册表、安全集合与确定性回退、shadow / active 逐点放权、jev / local / chat 后端 | 定稿 |
+| [decision-provider.md](decision-provider.md) | 快速决策模型：四模块的决策点注册表、安全集合与确定性回退、shadow / active 逐点放权、EMRank 后端（jev 关键路径、clef 后台，已实测） | 定稿 |
 
 ## 一、通用约定
 
@@ -88,7 +88,7 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 | 2 | 压缩 B（估算 + 接线）、压缩 F（cache 保活）、外部搜索 B（快照 + 原文返回）、外部搜索 E（聚合 WebSearch）、外部搜索 G（配置与 `is_enabled`）、检索 B（exact + `CodeSearch` 工具）、检索 D（symbol）、检索 E（text） | 依赖批次 1 |
 | 3 | 压缩 E（保留尾部 + 回执）、记忆 C（提取 agent）、记忆 D（合并 agent）、外部搜索 C（逐字摘录）、外部搜索 F（网页精排）、外部搜索 H（fetch provider 回退）、检索 F（semantic + 两机访问 + 回退） | |
 | 4 | 记忆 E（`/memory` UI）、检索 G（代码检索接入 rerank，默认关）、检索 I（接入压缩名单 / 记忆 M6 / 后台子代理白名单） | |
-| 2–4 | DP B / C / D / E（jev、local、chat 后端，决策日志与 `/decision`）；DP F / G / H 跟随检索 B、外部搜索 E、记忆 C 的调用点 | DP A 之后 |
+| 2–4 | DP B / D / E（emrank、chat 后端，决策日志与 `/decision`；DP C `local` 不在首批）；DP F / G / H 跟随检索 B、外部搜索 E、记忆 C 的调用点 | DP A 之后 |
 | 后续 | 检索 H（评测） | 后续单独安排 |
 
 **跨模块写集重叠**（不在同一批次，按批次先后顺序做即可，后做的切片在先做的基础上追加）：
@@ -151,8 +151,8 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 | 项 | 状态 |
 |---|---|
 | 检索评测（检索 H） | 后续单独安排；rerank 默认值、融合权重等它出结论 |
-| Decision Provider `local` 后端的模型与位置 | 部署时实测：corp-pc GPU（剩余约 2.5 GB）或 nyan-ops CPU，目标 p50 < 300 ms |
-| Jev 真实决策延迟与一致率 | 上游 `oc-1` 账户当前 429；恢复后实测，shadow 日志积累一致率 |
+| Decision Provider 的真实一致率 | EMRank 已实测可用（jev 13/14、clef 14/14，连接复用后 0.40 / 0.65 s）；一致率由 shadow 日志积累 |
+| nyan-pc 到 EMRank 的延迟 | 只在 corp-pc 测过；实现时在 nyan-pc 复测 |
 | 保活与 thinking 参数是否进入消息级 cache key | 压缩切片 F 第一步实测 |
 
 仓库外基础设施：FlClash 经代理可直达回环 / LAN / tailnet——已报告并由负责方在两台机器上修复（2026-10-27 13:12，7897 入站
