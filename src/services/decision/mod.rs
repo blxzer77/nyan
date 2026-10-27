@@ -637,7 +637,6 @@ impl DecisionProvider {
         questions: BTreeMap<String, Question>,
         deterministic: &BTreeMap<String, DeterministicAnswer>,
         safe: &SafeSet,
-        critical_path: bool,
         abort: &AbortController,
     ) -> DecisionOutcome {
         let digest = digest_state(&state);
@@ -714,7 +713,11 @@ impl DecisionProvider {
             questions,
         };
 
-        let deadline = self.settings.deadline(critical_path);
+        // Retrieval / web / compaction points run beside the deterministic
+        // path under the 800 ms budget; everything else is background (§5.2).
+        let deadline = self
+            .settings
+            .deadline(DecisionSettings::is_critical_point(point.as_str()));
         let outcome = backend.decide(&request, deadline, abort).await;
 
         if let Some(usage) = outcome.receipt().usage {
@@ -901,7 +904,6 @@ mod tests {
                     questions(),
                     &BTreeMap::new(),
                     &SafeSet::any(),
-                    true,
                     &AbortController::default(),
                 )
                 .await;
@@ -927,7 +929,6 @@ mod tests {
                 questions(),
                 &deterministic,
                 &SafeSet::any().with("q", SafeAnswer::Bool(true)),
-                true,
                 &AbortController::default(),
             )
             .await;
@@ -954,7 +955,6 @@ mod tests {
                 questions(),
                 &BTreeMap::new(),
                 &SafeSet::any(),
-                true,
                 &AbortController::default(),
             )
             .await;
@@ -976,7 +976,6 @@ mod tests {
                 &BTreeMap::new(),
                 // The point may only add when the answer is "no".
                 &SafeSet::any().with("q", SafeAnswer::Bool(false)),
-                true,
                 &AbortController::default(),
             )
             .await;
@@ -1000,7 +999,6 @@ mod tests {
                 questions(),
                 &BTreeMap::new(),
                 &SafeSet::any(),
-                true,
                 &AbortController::default(),
             )
             .await;
@@ -1025,7 +1023,6 @@ mod tests {
                     questions(),
                     &BTreeMap::new(),
                     &SafeSet::any(),
-                    true,
                     &AbortController::default(),
                 )
                 .await
@@ -1057,7 +1054,6 @@ mod tests {
                     questions(),
                     &BTreeMap::new(),
                     &SafeSet::any(),
-                    true,
                     &AbortController::default(),
                 )
                 .await
@@ -1077,7 +1073,6 @@ mod tests {
                     questions(),
                     &BTreeMap::new(),
                     &SafeSet::any(),
-                    true,
                     &AbortController::default(),
                 )
                 .await
@@ -1103,7 +1098,6 @@ mod tests {
                 questions,
                 &BTreeMap::new(),
                 &SafeSet::any(),
-                true,
                 &AbortController::default(),
             )
             .await;
@@ -1134,7 +1128,6 @@ mod tests {
                 questions,
                 &BTreeMap::new(),
                 &SafeSet::any(),
-                true,
                 &AbortController::default(),
             )
             .await;
@@ -1166,7 +1159,6 @@ mod tests {
                 questions(),
                 &BTreeMap::new(),
                 &SafeSet::any(),
-                true,
                 &abort,
             )
             .await;
@@ -1188,7 +1180,6 @@ mod tests {
                 questions(),
                 &BTreeMap::new(),
                 &SafeSet::any(),
-                true,
                 &AbortController::default(),
             )
             .await;
