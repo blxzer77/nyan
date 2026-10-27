@@ -246,6 +246,12 @@ impl ServiceHealth {
     /// Start the background probe claimed by [`CallPermit::Probe`]. Without a
     /// probe closure the service is restored to Ready so an unconfigured
     /// instance cannot stay Down forever.
+    ///
+    /// The probe must outlive the turn that triggered it
+    /// (`utils::process_runtime` documents why a per-query runtime is the wrong
+    /// home). When no process-lifetime runtime is published — tests and
+    /// embedded callers — the ambient runtime is used; with neither, the probe
+    /// cannot run and the service stays Down instead of wedging `probing` on.
     pub fn spawn_probe(self: &Arc<Self>) {
         let probe = self.probe.lock().unwrap_or_else(|p| p.into_inner()).clone();
         let Some(probe) = probe else {
@@ -254,13 +260,27 @@ impl ServiceHealth {
         };
         let health = Arc::clone(self);
         let request_timeout = self.request_timeout;
-        tokio::spawn(async move {
+        let future = async move {
             let ok = matches!(
                 tokio::time::timeout(request_timeout, probe()).await,
                 Ok(Ok(()))
             );
             health.finish_probe(ok);
-        });
+        };
+        if let Some(handle) = crate::utils::process_runtime::runtime_handle_for_detached_work() {
+            handle.spawn(future);
+        } else if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::spawn(future);
+        } else {
+            // Cannot probe: release the claim and keep the service Down, so a
+            // later caller (on a runtime) can try again.
+            self.release_probe_claim();
+        }
+    }
+
+    fn release_probe_claim(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        state.probing = false;
     }
 
     /// Record a successful request: back to Ready and reset the backoff.
