@@ -285,10 +285,6 @@ impl ServiceHealth {
 
     /// Record a successful request: back to Ready and reset the backoff.
     pub fn record_success(&self) {
-        self.record_success_at(Instant::now());
-    }
-
-    pub(crate) fn record_success_at(&self, _now: Instant) {
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
         state.down_until = None;
         state.consecutive_failures = 0;

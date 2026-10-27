@@ -275,8 +275,11 @@ struct PostError {
 
 impl PostError {
     fn transport(error: reqwest::Error) -> Self {
-        #[cfg(test)]
-        eprintln!("system_one transport error: {error}");
+        // Debug log only: never the key or the body (decision-provider §3.6
+        // applies the same rule to provider errors).
+        crate::utils::debug::log_for_debugging(&format!(
+            "DecisionProvider: transport error: {error}"
+        ));
         let timed_out = error.is_timeout();
         Self {
             reason: if timed_out {
