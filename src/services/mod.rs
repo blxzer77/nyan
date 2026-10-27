@@ -20,6 +20,9 @@ pub mod policy_limits;
 pub mod prompt_suggestion;
 pub mod rate_limit_messages;
 pub mod rate_limit_mocking;
+/// @nyan: shared Ready ⇄ Down(until) state machine for self-hosted services
+/// and the Decision Provider backend (README §1.9).
+pub mod service_health;
 pub mod team_memory_sync;
 pub mod tips;
 pub mod token_estimation;
