@@ -1,6 +1,7 @@
 # 压缩（Compaction）设计
 
-状态：已定稿，未实现（2026-10-26）。cache 保活（C12）与 ContentReplacementState 默认开启已确认。
+状态：已定稿，未实现（2026-10-27）。cache 保活（C12）与 ContentReplacementState 默认开启已确认；C13 已查清
+（统计口径错误 + 网关侧断崖 + 子代理缺 Agent-Id，新增切片 G）。
 
 本文是 nyan 在 CometixCode（Claude Code 的 Rust 移植，下称 CC）之上的二次开发设计。设计来源是
 nyan-legacy 的 N4 定稿（`.agents/notes/proposed/architecture/2026-10-22-n4-slices-and-admission-design.md`）
@@ -98,6 +99,8 @@ prompt cache 是第一约束：**不允许任何因时间流逝而丢掉 cache �
 
 - `measure` = 最后一次 assistant `usage` + 其后消息的粗估（CC 现状），再减去自该 usage 之后新掩码条目的
   token 数。否则掩码后的重新 measure 仍读到掩码前的 usage，会误判"仍超"直接走摘要。
+- resume 后最后一条 assistant 的 usage 若是 `message_start` 阶段的值（无 `stop_reason` 且 `output_tokens = 0`），视为
+  不可信，改用粗估（原因见 C13-1）。
 
 ### C5 Read 去重修正
 
@@ -193,7 +196,7 @@ nyan: { maskedCount, maskedTokens, summaryModel, summaryStyle, keepRecentTokens,
 | 66b6b0c1 | claude-opus | 98% | 10 次空闲超 5 分钟，最长 23 分钟，仍 98%：网关侧对 Claude 的 cache 寿命明显长于 5 分钟（未验证具体值） |
 | 244e7657 | deepseek-flash | 98% | 无长空闲 |
 | e570820f | deepseek-flash | 93% | 无长空闲 |
-| 83c495ff | gpt-6.1-sol + deepseek | 45% | gpt 167 次请求中 101 次 `cache_read=0` 且无空闲、无换模型：**不是过期，是 cache 根本没被利用**（见 C13） |
+| 83c495ff | gpt-6.1-sol + deepseek | 71%（按最终 usage） | 原记"45%、167 次中 101 次 `cache_read=0`"是统计口径错误：208/351 个 gpt 请求的 transcript 只有 `message_start` 阶段的 usage（`cache_read=0`、`output=0`），不是真实未命中。按最终 usage：前 247 个请求约 99%；第 248 个起（约 300k token）连续只命中 12544（system + tools）直到 7.5 小时后自行恢复（见 C13） |
 
 legacy 的思想（`packages/coding-agent/src/core/cache-warmer.ts`）：在 cache 过期前把**同一个请求原样重放、输出
 上限 1 token**，续上寿命；值不值得续由经济账决定。legacy 的经济账按美元算（价格表 + $0.05 阈值 + 0.15 空闲继续概率），
@@ -206,10 +209,14 @@ legacy 的思想（`packages/coding-agent/src/core/cache-warmer.ts`）：在 cac
   `ephemeral_1h_input_tokens`（CC 已解析，`services/api/claude.rs:148`）——哪个非零就是哪个 TTL。都为零且
   `cache_read` 也为零（这个模型 / 网关没 cache）就不保活。网关若对 Claude 的实际寿命更长（本机实测空闲 23 分钟仍
   命中），按 5 分钟保活只是多花少量读取，不会出错。
+- **没有 `ephemeral_*` 字段但 `cache_read > 0`**（经网关的 GPT / DeepSeek 等，由上游自动缓存）：TTL 未知，**不保活**。
+  这类上游的自动缓存寿命由服务端决定、无法从响应得知，保活请求能否续命也无法验证；本机这几类会话在无长空闲时
+  命中率已达 93%–99%（上表，按最终 usage）。以后若实测某个上游有固定 TTL 且保活有效，再按模型名加白名单。
+- 判断用**内存里的最终 usage**（`message_delta` 合并后），不读 transcript（落盘值可能停在 `message_start`，见 C13-1）。
 - **时机**：TTL 的 90%（至少留 10 秒余量）发一次；定时器迟到超过余量一半就放弃（迟到的刷新等于一次全价写入）。
 - **请求**：复用 CC 每轮结束时保存的主线程 cache-safe 参数（`get_last_cache_safe_params`，`utils/forked_agent.rs:404`；
   由 `query/stop_hooks.rs:91-114` 写入，CC 本来就用它让 `/btw`、prompt suggestion 等分叉共享主会话 cache）。
-  保活走 `run_forked_agent`：`max_output_tokens = Some(1)`、`max_turns = 1`、`skip_transcript = true`，追加一条极短的
+  保活走 `run_forked_agent`（cache 共享分叉，**不带** `X-Claude-Code-Agent-Id`，见 C13-3）：`max_output_tokens = Some(1)`、`max_turns = 1`、`skip_transcript = true`，追加一条极短的
   user 消息。分叉请求 = 主会话前缀（system、tools、历史逐字节相同）+ 这条消息，读到整段已缓存前缀、刷新其寿命，
   只新写几个 token——与 CC 现有分叉共享 cache 的机制相同，不需要另存"最后一次请求的原始字节"。
   - `max_output_tokens` 会影响 budget 型 thinking 的 `budget_tokens`，进而改变 cache key（`utils/forked_agent.rs:451`
@@ -222,18 +229,47 @@ legacy 的思想（`packages/coding-agent/src/core/cache-warmer.ts`）：在 cac
 - **1 小时 TTL**：CC 已有 `promptCache1h` 开关（`feature_flags.rs:488`，默认关）。不改默认；保活在 1h TTL 下自然
   变成每 54 分钟一次，开不开交给用户。
 
-### C13 非 Anthropic 模型的 cache 利用（单独问题，不属于压缩）
+### C13 非 Anthropic 模型的 cache 利用（已查清，2026-10-27）
 
-83c495ff 的数据说明：经网关调用 gpt 时 cache 基本失效，与 TTL 无关。legacy 对此的处理是 compat 层的
-`sessionAffinity` / `prompt_cache_key` / `supportsLongCacheRetention`
-（`packages/ai/src/schemas/compat-schema.ts:326-430`）。nyan 只说 Anthropic Messages 协议，转换发生在
-网关（CLIProxyAPI）里，所以修复点有两处，需要先验证再决定：
+原判断"经网关调用 gpt 时 cache 基本失效"**不成立**，是统计口径错误；真实问题有两个，一个在 nyan，一个在网关。
 
-1. 客户端：请求头带稳定的会话亲和标识（CC 已发 `X-Claude-Code-Session-Id`，`services/api/client.rs:199`；
-   `metadata.user_id` 每会话固定），确认网关是否把它映射为 OpenAI 的 `prompt_cache_key`。
-2. 网关：CLIProxyAPI 的 Anthropic→OpenAI 转换是否设置 `prompt_cache_key`，以及 system/tools 序列化是否稳定。
+**1. transcript 里的 usage 不是最终值（nyan 侧，统计口径）**
 
-此项不在压缩切片里，单列为待查问题。
+- 83c495ff（nyan-pc 会话）的 351 个 gpt 请求中，208 个在 transcript 里没有任何带 `stop_reason` 的条目，usage 是
+  `message_start` 阶段的值（`cache_read=0`、`output=0`）；这 208 个全部以 `tool_use` 结尾、紧跟 `tool_result`。
+- 机制：主会话的 assistant 记录入写队列后，由 `message_delta` 的 `AssistantDelta` 回写修补
+  （`query.rs:2132-2172` → `session_storage.rs:3870` `apply_assistant_delta_to_queued_record`）。CLIProxyAPI 会提前推出
+  tool_use 块，流式执行器立即开跑工具，`tool_result` 记录先入队，delta 晚到时修补不到——CC 自己也接受这个竞态
+  （100 ms 刷新，`session_storage.rs:3936-3938` 注释）。本机直连 Claude / DeepSeek 的会话里每会话只有 0–4 个这样的请求。
+- **影响范围只在落盘的数字**：内存里的 usage 是最终值。C4 measure、C12 保活判断都读内存里的最后一条 assistant usage，
+  不受影响；受影响的是事后按 transcript 做的统计（命中率、费用复盘）以及 resume 后第一次 measure。
+- **决定**：
+  - resume 后的 measure 若最后一条 assistant 的 usage 是 `output_tokens=0` 且无 `stop_reason`，视为不可信，退回
+    CC 的粗估（`token_count_with_estimation` 的估算分支），不当作真实 usage。写进压缩切片 B。
+  - 不改写队列的竞态（与 CC 行为一致，改动面大、收益只在统计）；本文与后续统计脚本**只用带 `stop_reason` 的条目**
+    计算命中率。
+
+**2. 第 248 个请求起的命中断崖（网关侧，不在 nyan 修）**
+
+- 第 248 个 gpt 请求（约 300k token）起，`cache_read` 连续固定为 12544（只命中 system + tools），未缓存 290k–330k，
+  请求间隔 10–60 s、未换模型、未压缩；约 7.5 小时后自行恢复到 308k 命中。
+- 已排除：`prompt_cache_key` 不稳定。CLIProxyAPI（v8.0.44 源码）的 Codex executor 取 `X-Claude-Code-Session-Id` +
+  `X-Claude-Code-Agent-Id` 生成 `prompt_cache_key`（`helps/claude_code_session.go:120-127`、
+  `codex_executor_request.go:117-153`），会话内稳定。
+- 未验证的假设：(a) 上游把请求路由到另一账号 / 机器，或 cache 被淘汰；(b) CPA 的 reasoning replay 每 agent 上限
+  256 turns / 16 MB（`internal/cache/codex_reasoning_replay_cache.go:31-34`），超限从头部裁剪旧 turn，改变了请求前缀。
+  需要 CPA 日志（trace-id、auth 切换、replay 裁剪）核实，属于网关运维，不进入任何 nyan 切片。
+
+**3. 子代理与主线程共用网关 cache 身份（nyan 侧，需修）**
+
+- CPA 的 `prompt_cache_key` = `sha1(model, "claude:<sessionId>:agent:<agentId>")`，`agentId` 只取 `X-Claude-Code-Agent-Id`
+  头、缺失即 `main`（`helps/claude_code_session.go:31-45,120-127`）。nyan 不发这个头（全仓无此字符串；CC 原版是否发未核实），
+  所以所有子代理与主线程共用同一个 `prompt_cache_key` 与 reasoning replay 状态。前缀不同的请求挤同一个 key，会互相顶掉 cache，也会让 replay 把子代理
+  的 reasoning 混进主线程。
+- **决定**：子代理请求（`run_agent` / `run_forked_agent`）带 `X-Claude-Code-Agent-Id: <agentId>`，主线程不带（CPA 缺省为
+  `main`）。**例外**：共享主会话 cache 的分叉（摘要 C6、保活 C12、记忆提取 / 合并）必须**不带**或带主线程的身份——它们的
+  前缀与主线程逐字节相同，目的就是命中主线程的 cache。
+- 对 Anthropic 直连无影响（该头不进 cache key）。这一项是独立的小切片，见第五节切片 G。
 
 ## 四、明确不做
 
@@ -255,8 +291,13 @@ legacy 的思想（`packages/coding-agent/src/core/cache-warmer.ts`）：在 cac
 | D | legacy 摘要格式与校验、回退开关、摘要模型配置 | `services/compact/compact.rs`、`services/compact/prompt.rs` | — |
 | E | keepRecentTokens 切点 + 走 partial compact UpTo；回执 | `services/compact/auto_compact.rs`、`services/compact/compact.rs`、`types/message.rs` | B、D |
 | F | cache 保活：从 usage 读 TTL、token 账、定时器、复用 cache-safe 参数重放、费用记账、开关 | 新 `services/cache_warmer.rs`、`query/stop_hooks.rs`（启动）、`query.rs`（新请求时停止）、`cost_tracker.rs` | — |
+| G | 网关 cache 身份（C13-3）：普通子代理请求带 `X-Claude-Code-Agent-Id`；cache 共享分叉不带 | `services/api/claude.rs`（按请求加头，`agent_id` 已在 options 里，`claude.rs:411`）、`utils/forked_agent.rs` | — |
 
-A、C、D、F 可并行（写集不重叠）；B 在 A 后；E 最后。每个切片：受影响测试改为断言新行为，新增行为各有测试；
+A、C、D、F、G 可并行（写集不重叠）；B 在 A 后；E 最后。
+
+切片 G 的判别：`run_forked_agent` 给每个分叉也分配 `agent_id`（`forked_agent.rs:199`），所以不能按"有无 `agent_id`"
+决定是否带头；cache 共享分叉（`fork_context_messages` 非空、复用主线程 cache-safe 参数的：摘要、保活、记忆提取 /
+合并、`/btw`、prompt suggestion）不带，其余子代理（Agent 工具派生的独立上下文）带。每个切片：受影响测试改为断言新行为，新增行为各有测试；
 `just test` 的隔离方式跑受影响模块；用真实会话回放验证掩码后的 token 曲线。
 
 ## 六、验收

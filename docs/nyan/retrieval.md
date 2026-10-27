@@ -1,6 +1,6 @@
 # 检索（Retrieval）设计：`code_search`
 
-状态：已定稿，未实现（2026-10-26）。semantic 部署方式待定（只影响切片 F、G）。
+状态：已定稿，未实现（2026-10-27）。两机访问与 corp-pc 不可用时的回退已定（3.1、3.2）。
 
 设计来源：nyan-legacy N6（旧 roadmap `88ef45bb0:ROADMAP.md` R1–R20、"Decided architecture" Retrieval 一节）、
 Pactile `design/context-governance/retrieval/00–13`（以 01 provider 契约、03 generation、04 Inspect、
@@ -39,17 +39,79 @@ Pactile `design/context-governance/retrieval/00–13`（以 01 provider 契约�
 
 | 组件 | 位置 | 接口 | 实测 |
 |---|---|---|---|
-| Embedding `jinaai/jina-code-embeddings-1.5b` | corp-pc，vLLM pooling，fp16 | OpenAI 兼容 `POST /v1/embeddings`，`127.0.0.1:8090` | 1536 维、L2 归一、8192 ctx；40.5 chunks/s（1 并发）、91.8（8 并发）；每小时探测全通过 |
-| Rerank `Qwen/Qwen3-Reranker-0.6B` | corp-pc，vLLM | `POST /score`，`127.0.0.1:8091`，返回 [0,1] | 在线；20 候选 p50 350 ms |
-| Qdrant 1.19.2 | nyan-ops | `:6333`，需 API key | 本机经 tailnet 可达（DERP 中继，~0.45 s/请求） |
+| Embedding `jinaai/jina-code-embeddings-1.5b` | corp-pc，vLLM pooling，fp16（user unit `retrieval-vllm-embed`） | OpenAI 兼容 `POST /v1/embeddings`，`127.0.0.1:8090` | 1536 维、L2 归一、8192 ctx；40.5 chunks/s（1 并发）、91.8（8 并发）；每小时探测全通过 |
+| Rerank `Qwen/Qwen3-Reranker-0.6B` | corp-pc，vLLM（`retrieval-vllm-rerank`） | `POST /score`，`127.0.0.1:8091`，返回 [0,1] | 在线；20 候选 p50 350 ms |
+| Qdrant 1.19.2 | nyan-ops | `:6333`，需 API key | corp-pc 经 tailnet 直连约 0.5 s/请求（首次建连约 1.3 s）；nyan-pc 走 DERP 中继 |
 
-**部署缺口（必须先解决）**：embedding / rerank 只绑定 corp-pc 的 `127.0.0.1`，本机（nyan-pc）经 tailnet 访问不到。
-两个选项：
+部署说明与探测脚本在 `~/Projects/work/internal/retrieval/`（corp-pc；`probe.sh`、`retrieval-probes.timer` 每小时一次）。
+`retrieval-llama-embed.container` 是保留的 llama.cpp 回退单元，镜像未拉取，处于 failed 状态，不影响 vLLM 服务。
 
-- **R-D1**（推荐）：corp-pc 的两个 Quadlet 单元把 `PublishPort` 改为绑定 corp-pc 的 tailnet 地址，并加一个
-  简单的 bearer token（vLLM `--api-key`）。网络范围限于 tailnet，凭据按文件引用。
-- **R-D2**：nyan 侧在需要时开 SSH 端口转发（`ssh -L 8090:127.0.0.1:8090 corp-pc`），不改服务端。可用于验证，
-  不适合常驻。
+### 3.1 两台机器的访问方式（已定，2026-10-27）
+
+nyan 在 **nyan-pc** 与 **corp-pc** 上都要能用 semantic 与 rerank；GPU 服务只在 corp-pc，且 corp-pc 可能关机。
+
+| 机器 | embedding / rerank 地址 | 路径 | 实测 |
+|---|---|---|---|
+| corp-pc | `http://127.0.0.1:8090` / `:8091` | 同机回环 | 查询 embedding 约 20 ms |
+| nyan-pc | `https://corp-pc.tail6334e5.ts.net:8090` / `:8091` | tailnet；当前两机之间只有 DERP(hkg) 中继，无直连 | tailscale ping 约 0.7 s |
+
+**corp-pc 侧用 `tailscale serve` 发布，不改 Quadlet、不改防火墙**：
+
+```
+tailscale serve --bg --https=8090 http://127.0.0.1:8090
+tailscale serve --bg --https=8091 http://127.0.0.1:8091
+```
+
+- corp-pc 的 tailscale `OperatorUser` 是 `blxze`，serve 不需要 sudo；`--bg` 配置持久化在 tailscaled 里，重启后仍生效。
+- 服务本身仍只绑 `127.0.0.1`，不暴露到 LAN（firewalld 默认区对 Wi-Fi 网卡生效，tailscale0 不在任何区）。
+- TLS 证书由 tailscale 签发（MagicDNS 名），访问范围是 tailnet。tailnet 内的设备都是用户自己的，所以**不加 token**。
+  若以后 tailnet 加入他人的设备，再开 vLLM `--api-key`，`apiKeyFile` 字段为此保留。
+- 原 R-D1（改 `PublishPort` 绑 tailnet 地址 + token）、R-D2（SSH 转发）不采用：前者要改两个单元并处理 tailnet 地址在
+  tailscaled 起来之前不存在的启动顺序问题；后者 nyan-pc 到 corp-pc 的 SSH 实测超时，且不适合常驻。
+
+**客户端**：
+
+- 检索的三个客户端（embedding、rerank、Qdrant）**一律不走代理**（`reqwest::Client::builder().no_proxy()`），不依赖
+  `NO_PROXY` 是否设对。代理会照常替客户端连回环与 tailnet（实测经代理访问 `127.0.0.1:8090` 返回 200），绕一圈只是
+  多一跳、多一个故障点。
+- 远端 embedding 用 `encoding_format: "base64"`（vLLM 0.32 支持）：单条 1536 维响应从约 33 KB 降到约 8.5 KB，
+  中继链路上差别明显；本机回环也用同一格式，不分两套。
+- 每台机器的 settings 各自配置 URL（`~/.cometix/settings.json` 不同步），nyan 不做"自动发现 corp-pc"。
+
+### 3.2 corp-pc 不可用时的回退（已定，2026-10-27）
+
+semantic 与 rerank 是**可选增强**：不可用时，CodeSearch 退回 exact / symbol / text，结果照常返回并注明，不报错、
+不卡住。关键是**快速判定不可用**——关机的 corp-pc 不会拒绝连接，只会让连接挂起，不能每次查询都白等一个 deadline。
+
+**服务状态机**（每个外部服务各一份，进程内共享）：
+
+```
+Ready ──请求失败 / 超时──▶ Down(until = now + backoff)
+  ▲                           │
+  └──── 探测成功 ◀── 到期后由下一次查询触发一次后台探测
+```
+
+- **连接超时与请求超时分开**：连接 1.5 s（覆盖 DERP 中继下的建连，实测 nyan-ops 首次建连 1.3 s）；查询侧 embedding
+  请求 2.5 s；rerank 2 s。超时即判 `Down`。
+- **Down 期间不发请求**：直接跳过该分支，渲染 `[semantic unavailable (corp-pc unreachable)]`，不计入 deadline。
+- **退避**：30 s 起，翻倍到最多 5 min；探测成功立刻回到 `Ready`。探测是后台任务，不阻塞当前查询。
+- **探测内容**：`GET /v1/models` 并核对模型 id（readiness 的完整检查见 4.8，探测只做这一项，够判断"在不在"）。
+- **启动时不探测**：第一次 CodeSearch 才建立状态，nyan 启动不因 corp-pc 关机而变慢。
+- embedding 与 Qdrant 任一 Down，semantic 整体跳过；rerank Down 只跳过重排（排序退回 RRF 融合顺序，不提示）。
+
+**索引同步在 corp-pc 不可用时**：
+
+- 增量同步要先算 embedding，corp-pc 不可用时**不写 Qdrant**，变更的 chunk 记入本机待同步队列（索引目录下的
+  `pending.jsonl`，只存 chunkId 与文件 hash，不存正文）。
+- corp-pc 恢复（状态机回到 `Ready`）后后台补同步；补同步完成前，这些文件的 semantic 候选会因 hash 不一致在
+  Inspect 时被拒（4.6），不会返回过期结果。
+- nyan-pc 与 corp-pc 各自维护本机索引与各自的 Qdrant collection（collection 名含 `worktreeId`，见 4.8），两机互不干扰。
+
+**写进渲染与验收**：
+
+- `[semantic unavailable (corp-pc unreachable)]`、`[semantic index syncing: N files pending]` 两种说明行（4.2 风格）。
+- 验收：corp-pc 关机时，nyan-pc 上 CodeSearch 首次查询最多多等一次连接超时（1.5 s），之后的查询不再等待；
+  corp-pc 开机后 5 min 内自动恢复 semantic。
 
 ## 四、`code_search` 工具
 
@@ -204,7 +266,8 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
   fileHashRaw, symbol?}`，只存 hash 与范围、**不存正文**（03 CH-3，同时满足隐私：正文不留在 nyan-ops）。
 - **同步**：本机索引增量扫描产生变更 chunk → 批量（32）embedding → upsert / delete；失败的批次不提交，状态
   `index_partial`，该批文件的 semantic 候选在 Inspect 时会因 generation 或 hash 不一致被拒。
-- **egress**：发往 corp-pc 的是源码 chunk 正文（D2 源码），发往 nyan-ops 的是向量 + 路径/行号/hash。按 legacy
+- **egress**：源码 chunk 正文只发往用户自己的 embedding 服务（corp-pc 上为本机回环；nyan-pc 上经 tailnet 的 WireGuard
+  加密链路到 corp-pc，不经第三方）；发往 nyan-ops 的是向量 + 路径/行号/hash。按 legacy
   Decision #8"配置即授权"：在 `settings.nyan.retrieval.semantic` 里配置了服务即视为授权；未配置不发任何请求。
   `.env`、私钥、凭据类路径在索引阶段就跳过（4.5），永不外发。
 - **单写者**：多个 nyan 进程同时打开同一项目时，用索引目录下的文件锁保证只有一个进程做同步；其它进程只读查询。
@@ -214,9 +277,25 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
 
 - legacy 记录"reranker 评测负收益、默认关闭"，但仓库与 corp-pc 上都**找不到这份评测的数据**；按 legacy 评测原则
   （不得引用无法复现的旧数字），这只能作为待验证假设。
+- **请求必须套 Qwen3-Reranker 的官方指令模板**（2026-10-27 实测，同一组 相关 / 无关 / 半相关 文档）：
+  裸文本 `text_1=query, text_2=docs` 得分 0.878 / 0.145 / 0.836（区分度差，半相关几乎与相关同分）；套模板后
+  0.999 / 0.000 / 0.010。部署的 `probe.sh` 与 `bench-rerank.py` 都用裸文本——legacy 的"负收益"很可能就是没套模板。
+  模板（`/score` 的 `text_1` / `text_2`）：
+
+  ```
+  text_1 = "<|im_start|>system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".<|im_end|>\n<|im_start|>user\n<Instruct>: {instruct}\n<Query>: {query}\n"
+  text_2 = "<Document>: {doc}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  ```
+
+  `instruct`：代码检索用 `Given a code search query, retrieve relevant code snippets that answer the query`；网页候选
+  （外部搜索 3.4）用 `Given a web search query, retrieve relevant passages that answer the query`。模板字符串进
+  generation（换模板即换 rerank 行为，评测可区分）。20 个候选套模板后 133 ms（本机）。
 - 设计：`settings.nyan.retrieval.rerank = false`（默认关），开启时对融合后 top-N（默认 20）调一次 `/score`，
   只用于重排；分数必须在 [0,1] 且有限，否则整批作废、回退到融合顺序。
 - 是否默认开启，由评测决定（第八节）。
+- **rerank 客户端是共享组件**：模板、`/score` 调用、分数校验与服务状态机（3.2）放在 `services/rerank.rs`，代码检索与
+  外部搜索精排（外部搜索 3.3）共用；服务地址只在 `nyan.retrieval.rerank.url` 配一处。**开关各自独立**：
+  `nyan.retrieval.rerank.enabled`（代码检索，默认关，等评测）与 `nyan.web.search.rerank.enabled`（网页精排，默认开）。
 
 ### 4.10 降级（legacy 06 的语义，按本项目表达）
 
@@ -226,7 +305,8 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
 | 情况 | 行为 | 模型看到的 |
 |---|---|---|
 | semantic 未配置 | 不跑、不提 | 什么都不提（未启用 ≠ 降级） |
-| embedding / Qdrant 不可用 | 跳过 semantic，其余照常 | `[semantic unavailable (…)]` |
+| embedding / Qdrant 不可用 | 跳过 semantic，其余照常；进入 Down 退避，期间不再发请求（3.2） | `[semantic unavailable (…)]` |
+| corp-pc 恢复前有未同步的变更 | 已同步部分照常；未同步文件的 semantic 候选在 Inspect 被拒 | `[semantic index syncing: N files pending]` |
 | 本机索引还在首次构建 | symbol / text 跳过，exact 照常 | `[symbol, text index building — exact only]` |
 | 模型参数变了（generation 不符 / 维度不符） | semantic 候选全部丢弃，后台重建 | `[semantic index rebuilding]` |
 | rerank 失败 | 用融合顺序 | 不提（排序质量问题，不影响结果真实性） |
@@ -252,16 +332,22 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
   "enabled": true,
   "index": { "maxFileBytes": 1048576, "languages": "auto" },
   "semantic": {
-    "embedding": { "url": "http://<corp-pc>:8090", "model": "jina-code-embeddings-1.5b",
-                   "dim": 1536, "apiKeyFile": "~/.cometix/keys/embed" },
-    "qdrant":    { "url": "http://<nyan-ops>:6333", "apiKeyFile": "~/.cometix/keys/qdrant" }
+    // corp-pc: "http://127.0.0.1:8090"；nyan-pc: "https://corp-pc.tail6334e5.ts.net:8090"（3.1）
+    "embedding": { "url": "http://127.0.0.1:8090", "model": "jina-code-embeddings-1.5b",
+                   "dim": 1536, "apiKeyFile": null },
+    "qdrant":    { "url": "http://100.80.19.12:6333", "apiKeyFile": "~/.cometix/keys/qdrant" }
   },
-  "rerank": { "enabled": false, "url": "http://<corp-pc>:8091", "model": "qwen3-reranker-0.6b", "topN": 20 },
-  "budget": { "deadlineMs": 8000, "semanticDeadlineMs": 3000, "rrfK": 60 }
+  // corp-pc: "http://127.0.0.1:8091"；nyan-pc: "https://corp-pc.tail6334e5.ts.net:8091"
+  "rerank": { "enabled": false, "url": "http://127.0.0.1:8091", "model": "qwen3-reranker-0.6b", "topN": 20 },
+  "budget": { "deadlineMs": 8000, "semanticDeadlineMs": 3000, "rrfK": 60,
+              "connectTimeoutMs": 1500, "embedTimeoutMs": 2500, "rerankTimeoutMs": 2000,
+              "downBackoffMs": [30000, 300000] }
 }
 ```
 
 凭据只按文件引用（legacy Decision #4），不写进 settings 正文；未配置 `semantic` = 该分支不启用、不发请求。
+`apiKeyFile` 为 `null` 时不发 `Authorization` 头（回环与 tailnet serve 都不鉴权，见 3.1）。Qdrant 的 key 首次配置时从
+`~/Projects/work/internal/retrieval/keys/qdrant-api-key` 复制到 `~/.cometix/keys/qdrant`（0600）。
 
 ## 七、实现切片
 
@@ -272,12 +358,13 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
 | C | 本机索引：遍历、文件 hash、增量、跳过分类、文件锁；tree-sitter 语法与符号表；chunker | 新 `services/retrieval/index/`、`Cargo.toml`（语法 crates） | — |
 | D | symbol 分支（定义、大纲、引用） | `services/retrieval/symbol.rs` | A、C |
 | E | text 分支（tantivy） | `services/retrieval/text.rs`、`Cargo.toml` | A、C |
-| F | semantic：embedding / Qdrant 客户端、readiness、generation、同步、校验 | `services/retrieval/semantic/` | A、C |
-| G | rerank（开关） | `services/retrieval/rerank.rs` | F |
+| F | semantic：embedding / Qdrant 客户端（`no_proxy`、base64、分开的连接 / 请求超时）、服务状态机与退避、readiness、generation、同步与待同步队列、校验 | `services/retrieval/semantic/` | A、C |
+| G0 | rerank 共享客户端：Qwen3 指令模板、`/score`、分数校验、服务状态机（3.2） | 新 `services/rerank.rs` | — |
+| G | 代码检索接入 rerank（开关，默认关） | `services/retrieval/` 融合后调用 G0 | F、G0 |
 | H | 评测（后续单独安排，见第八节） | — | — |
-| I | 接入：压缩可清名单、记忆 M6（Explore 子代理由用户后续统一调整） | 对应文件 | B、F |
+| I | 接入：压缩可清名单、记忆 M6、后台子代理工具白名单（`is_async_agent_allowed_tool`，`agent_tool_utils.rs:224-243`，否则后台运行的子代理拿不到 `CodeSearch`）；Explore 子代理的提示词与模型由用户后续统一调整 | 对应文件 | B、F |
 
-部署 R-D1（corp-pc 端口与 token）独立于代码，可先做。
+部署：corp-pc 上执行 3.1 的两条 `tailscale serve` 命令即可（独立于代码，可先做）；服务本身不改。
 
 ## 八、评测（后续单独安排）
 
@@ -305,6 +392,7 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
 ## 十、待定与已定
 
 - 已定：首批语言为 Rust、TS/JS、Python、Go、Java、C/C++、Bash、Markdown，后续按需添加；评测后续单独安排。
-- 待定（2026-10-27 用户到公司后决定）：corp-pc 上 embedding / rerank 的访问方式（R-D1 绑定 tailnet + token，
-  或 R-D2 SSH 转发）。只影响切片 F、G，不阻塞其余切片。
-- 不在本模块：Explore 子代理的工具与默认模型由用户后续统一调整；切片 I 只把 `CodeSearch` 加进压缩可清名单与记忆 M6。
+- 已定（2026-10-27）：nyan-pc 与 corp-pc 都用 semantic / rerank——corp-pc 走回环，nyan-pc 经 `tailscale serve` 发布的
+  tailnet HTTPS；客户端不走代理、不鉴权；corp-pc 不可用时快速判定并退回 exact / symbol / text（3.1、3.2）。
+- 不在本模块：Explore 子代理的提示词与默认模型由用户后续统一调整；切片 I 把 `CodeSearch` 加进压缩可清名单、记忆 M6
+  与后台子代理工具白名单。

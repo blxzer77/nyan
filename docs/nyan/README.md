@@ -13,8 +13,8 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 |---|---|---|
 | [compaction.md](compaction.md) | 压缩：先清后摘、掩码、cache 不因时间失效、cache 保活 | 定稿 |
 | [memory.md](memory.md) | 记忆：后台提取、合并、写入安全、候选（= 不在索引里的记忆文件） | 定稿 |
-| [retrieval.md](retrieval.md) | 检索：`CodeSearch` 融合工具、本机索引、Inspect、semantic | 定稿（部署项待定） |
-| [external-search.md](external-search.md) | 外部搜索：聚合 WebSearch、SSRF 安全 WebFetch、原文快照与逐字摘录 | 定稿（三个待定项） |
+| [retrieval.md](retrieval.md) | 检索：`CodeSearch` 融合工具、本机索引、Inspect、semantic（两机可用、可降级） | 定稿 |
+| [external-search.md](external-search.md) | 外部搜索：七家 provider 聚合召回 + 精排、SSRF 安全 WebFetch + provider 回退、原文快照与逐字摘录 | 定稿 |
 
 ## 一、通用约定
 
@@ -54,13 +54,14 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 | 批次 | 切片 | 说明 |
 |---|---|---|
 | 0 | 公共：`SettingsJson.nyan` 字段与各模块配置结构体；`@nyan` 约定 | 所有模块的前置 |
-| 1 | 压缩 A（掩码 + 移除 time-based + `METADATA_MARKERS`）、压缩 C（Read 去重）、压缩 D（摘要指令与校验）、记忆 A（写入安全）、记忆 B（候选机制）、外部搜索 A（安全抓取器）、外部搜索 D（provider 适配器）、检索 A（库接口、结果模型、Inspect、渲染）、检索 C（本机索引） | 写集互不重叠 |
+| 1 | 压缩 A（掩码 + 移除 time-based + `METADATA_MARKERS`）、压缩 C（Read 去重）、压缩 D（摘要指令与校验）、压缩 G（子代理 `X-Claude-Code-Agent-Id`）、记忆 A（写入安全）、记忆 B（候选机制）、外部搜索 A（安全抓取器）、外部搜索 D（七家 provider 适配器）、检索 A（库接口、结果模型、Inspect、渲染）、检索 C（本机索引）、检索 G0（rerank 共享客户端 + 服务状态机） | 写集互不重叠 |
 | 2 | 压缩 B（估算 + 接线）、压缩 F（cache 保活）、外部搜索 B（快照 + 原文返回）、外部搜索 E（聚合 WebSearch）、外部搜索 G（配置与 `is_enabled`）、检索 B（exact + `CodeSearch` 工具）、检索 D（symbol）、检索 E（text） | 依赖批次 1 |
-| 3 | 压缩 E（保留尾部 + 回执）、记忆 C（提取 agent）、记忆 D（合并 agent）、外部搜索 C（逐字摘录）、检索 F（semantic，需部署就绪） | |
-| 4 | 记忆 E（`/memory` UI）、检索 G（rerank 开关）、检索 I（接入压缩名单 / 记忆 M6） | |
+| 3 | 压缩 E（保留尾部 + 回执）、记忆 C（提取 agent）、记忆 D（合并 agent）、外部搜索 C（逐字摘录）、外部搜索 F（网页精排）、外部搜索 H（fetch provider 回退）、检索 F（semantic + 两机访问 + 回退） | |
+| 4 | 记忆 E（`/memory` UI）、检索 G（代码检索接入 rerank，默认关）、检索 I（接入压缩名单 / 记忆 M6 / 后台子代理白名单） | |
 | 后续 | 检索 H（评测） | 后续单独安排 |
 
-建议明天从**批次 0 + 压缩 A/C/D** 开始：压缩改动最小、收益最大、能最快验证"cache 不断"的核心约束。
+**先设计、后实现**：四个模块的设计全部完成（第五节待定项清零）并经用户确认后，才开始实现。开工时从**批次 0 +
+压缩 A/C/D** 开始：压缩改动最小、收益最大、能最快验证"cache 不断"的核心约束。
 
 ## 四、跨模块注意事项（审阅四份设计时发现的问题，已写入各文档）
 
@@ -72,19 +73,35 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 4. **路径作用域**：记忆按 git root、索引按 worktree、快照全局（见第一节第 6 条）。
 5. **压缩可清名单**：新增的 `CodeSearch` 要加进 `is_compactable_tool_name`（`services/compact/micro_compact.rs:507`）；
    WebFetch / WebSearch 已在名单里。WebFetch 改为返回原文后单条结果更大，正是掩码的主要清理对象。
-6. **代理与 SSRF**（外部搜索 4.2）：本机所有出站经本地代理 `127.0.0.1:7897`，代理模式下客户端看不到真实连接 IP；
-   设计为"本地先解析校验 + 拒绝私网 IP 字面量 + 经代理请求"，残余风险已写明。
+6. **代理与 SSRF**（外部搜索 4.2）：本机所有出站经本地代理 `127.0.0.1:7897`；实测代理会替客户端连回环与 LAN，
+   本地 DNS 有污染且代理配置为 fake-ip。设计为"拒绝私网 IP 字面量与私网名字 + 不做本地解析 + 经代理远端解析"，
+   残余风险（公网名字远端解析到私网）与代理侧 `REJECT` 的缓解选项已写明。
 7. **WebSearch 的 provider 判定**：CC 的 `get_api_provider()` 不看 base URL，网关被当成 first-party；新实现不再依赖
    Anthropic 服务端工具，`is_enabled` 改为"至少配置了一个 provider"。
+8. **自建服务不走代理、可降级**（检索 3.1、3.2；外部搜索 3.2.1）：embedding / rerank（corp-pc）、Qdrant / SearXNG
+   （nyan-ops）的客户端显式 `no_proxy()`；任一不可达时服务状态机判 Down、退避期间不发请求——corp-pc 关机时 CodeSearch
+   用确定性分支、WebSearch 跳过精排；nyan-ops 不可达时 semantic 与 SearXNG 跳过。状态机一份实现、两个模块共用。
+9. **cache 共享分叉不带 Agent-Id**（压缩 C13-3、切片 G）：普通子代理带 `X-Claude-Code-Agent-Id`，让网关给它独立的
+   `prompt_cache_key`；摘要、保活、记忆提取 / 合并这类要命中主线程 cache 的分叉一律不带。记忆 C / D 实现时照此处理。
+10. **usage 只信最终值**（压缩 C13-1）：transcript 里的 assistant usage 可能停在 `message_start` 阶段；保活判断、measure
+    用内存值，任何事后统计只用带 `stop_reason` 的条目。
+11. **rerank 是共享组件**（检索 4.9、G0）：Qwen3-Reranker 必须套官方指令模板（实测裸文本区分度差）；代码检索与网页
+    精排共用客户端与服务地址，开关各自独立（代码检索默认关、网页精排默认开）。
 
-## 五、待定项（实现时遇到再定，不阻塞开工）
+## 五、待定项
 
-| 模块 | 待定 | 影响的切片 |
-|---|---|---|
-| 检索 | corp-pc embedding / rerank 的访问方式（绑定 tailnet + token，或 SSH 转发） | 检索 F、G |
-| — | Explore 子代理的工具与默认模型（用户后续统一调整，不在四个模块内） | — |
-| 外部搜索 | `fetchVia` 默认 `proxy` 与残余 SSRF 风险 | 外部搜索 A |
-| 外部搜索 | WebFetch 默认返回原文 20000 字符的上下文占用 | 外部搜索 B |
-| 外部搜索 | 是否补 DeepSeek / Brave 的 key | 外部搜索 D |
-| 检索 | 评测（后续单独安排） | 检索 H |
-| 压缩 | gpt 经网关 cache 基本失效（C13，与压缩无关，需查 CLIProxyAPI） | 独立问题 |
+2026-10-27 逐项清理：
+
+| 模块 | 原待定 | 结论 | 文档 |
+|---|---|---|---|
+| 检索 | corp-pc embedding / rerank 的访问方式 | 两机都用：corp-pc 回环、nyan-pc 经 `tailscale serve`；不走代理、不鉴权；corp-pc 关机时快速判定 Down 并退回 exact / symbol / text | 检索 3.1、3.2 |
+| 外部搜索 | `fetchVia` 默认 `proxy` 与残余 SSRF 风险 | 默认 `proxy`；实测代理会连回环与 LAN、本地 DNS 有污染，改为"拒绝私网字面量与私网名字 + 不做本地解析"；残余风险与缓解已写明 | 外部搜索 4.2 |
+| 外部搜索 | WebFetch 默认返回 20000 字符 | 保留（≈5k token，低于 50k 持久化阈值、高于掩码 1% 下限），新增 `maxReturnChars` | 外部搜索 4.4 |
+| 外部搜索 | provider 选择、召回与候选 | AnySearch、Brave、DeepSeek、Exa、Firecrawl、Tavily、SearXNG（自建）全部接入，search 与 fetch 都接；每家召回 20 → RRF 30 → Qwen3-Reranker 精排 → 8；fetch 由 nyan 先抓、失败按序回退 provider | 外部搜索二·五、3.2–3.4、4.6 |
+| 压缩 | gpt 经网关 cache 基本失效（C13） | 原结论是统计口径错误；实际是网关侧一次断崖（不在 nyan 修）+ 子代理缺 Agent-Id（新增切片 G） | 压缩 C13 |
+
+仍未定、但不属于四个模块的设计：
+
+| 项 | 状态 |
+|---|---|
+| 检索评测（检索 H） | 后续单独安排；rerank 默认值、融合权重等它出结论 |
