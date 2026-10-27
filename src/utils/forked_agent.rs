@@ -4,8 +4,37 @@
 //! denial tracking, UI callback clearing, fresh in-progress tool IDs, and
 //! content-replacement / read-file-state cloning.
 
+use crate::constants::query_source::QuerySource;
 use crate::tool::{AbortController, ToolUseContext};
 use crate::utils::permissions::denial_tracking::create_denial_tracking_state;
+
+/// @nyan: forks whose prompt prefix must stay byte-identical to the main
+/// thread so they hit its prompt cache (README §1.8).
+///
+/// The list is closed and lives in exactly one place. Every consumer — the
+/// masking pipeline (compaction C2), the `X-Claude-Code-Agent-Id` header
+/// decision (compaction C13-3 / slice G) and the background-subagent tool
+/// allowlist (retrieval slice I) — asks this helper rather than matching on
+/// `QuerySource` itself, so a new cache-sharing fork is added once.
+///
+/// Three rules apply to every member:
+/// 1. No `X-Claude-Code-Agent-Id` header, so the gateway keeps the main
+///    thread's `prompt_cache_key`.
+/// 2. Replay the parent's `ContentReplacementState`; never add masking
+///    decisions (see [`crate::utils::tool_result_storage::ContentReplacementState`]).
+/// 3. Never rewrite the request prefix (system prompt, tools, context).
+pub fn is_cache_sharing_fork(source: &QuerySource) -> bool {
+    matches!(
+        source,
+        QuerySource::Compact
+            | QuerySource::SideQuestion
+            | QuerySource::PromptSuggestion
+            | QuerySource::Speculation
+            | QuerySource::ExtractMemories
+            | QuerySource::AutoDream
+            | QuerySource::CacheWarm
+    )
+}
 
 /// Maps to: CC `SubagentContextOverrides` (`utils/forkedAgent.ts:260-306`).
 #[derive(Clone, Debug, Default)]
@@ -711,6 +740,42 @@ where
 mod tests {
     use super::*;
     use crate::tool::ToolPermissionContext;
+
+    /// @nyan: the cache-sharing fork list is closed (README §1.8). Every
+    /// member is a fork that replays the main thread's prefix; the two agent
+    /// sources, host services and the main thread itself are not members.
+    #[test]
+    fn cache_sharing_forks_are_exactly_the_documented_set() {
+        for source in [
+            QuerySource::Compact,
+            QuerySource::SideQuestion,
+            QuerySource::PromptSuggestion,
+            QuerySource::Speculation,
+            QuerySource::ExtractMemories,
+            QuerySource::AutoDream,
+            QuerySource::CacheWarm,
+        ] {
+            assert!(is_cache_sharing_fork(&source), "{source:?} shares the cache");
+        }
+        for source in [
+            QuerySource::Prompt,
+            QuerySource::Sdk,
+            QuerySource::Agent,
+            QuerySource::agent_builtin("fork"),
+            QuerySource::AgentDefault,
+            QuerySource::AgentCustom,
+            QuerySource::AgentSummary,
+            QuerySource::HookAgent,
+            QuerySource::SessionMemory,
+            QuerySource::MarbleOrigami,
+            QuerySource::Unknown,
+        ] {
+            assert!(
+                !is_cache_sharing_fork(&source),
+                "{source:?} must not inherit the cache-sharing rules"
+            );
+        }
+    }
 
     #[test]
     fn async_subagent_set_app_state_is_noop_but_tasks_reach_root() {
