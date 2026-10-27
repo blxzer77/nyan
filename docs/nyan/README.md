@@ -1,4 +1,4 @@
-# nyan 二次开发：压缩、记忆、检索、外部搜索
+# nyan 二次开发：压缩、记忆、检索、外部搜索、Decision Provider
 
 本目录是 nyan（CometixCode 的 fork）在 Claude Code 移植之上做的二次开发设计与实施计划。设计思想来自
 nyan-legacy（pactile context-governance、旧 roadmap N3–N8），实现以 CC 现有代码为基座。
@@ -15,12 +15,13 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 | [memory.md](memory.md) | 记忆：后台提取、合并、写入安全、候选（= 不在索引里的记忆文件） | 定稿 |
 | [retrieval.md](retrieval.md) | 检索：`CodeSearch` 融合工具、本机索引、Inspect、semantic（两机可用、可降级） | 定稿 |
 | [external-search.md](external-search.md) | 外部搜索：七家 provider 聚合召回 + 精排、SSRF 安全 WebFetch + provider 回退、原文快照与逐字摘录 | 定稿 |
+| [decision-provider.md](decision-provider.md) | 快速决策模型：四模块的决策点注册表、安全集合与确定性回退、shadow / active 逐点放权、jev / local / chat 后端 | 定稿 |
 
 ## 一、通用约定
 
 1. **偏离标记**：所有有意偏离 CC 的代码位置加 `// @nyan: <原因>` 注释；上游自己的偏离是 `@cometix offset`，不混用。
 2. **配置**：全部挂在 `SettingsJson` 新增的一个正式字段 `nyan` 下（settings 是严格 schema，未知顶层键会报错，
-   `utils/settings/validation.rs:454`）：`nyan.compaction` / `nyan.cache` / `nyan.memory` / `nyan.retrieval` / `nyan.web`。
+   `utils/settings/validation.rs:454`）：`nyan.compaction` / `nyan.cache` / `nyan.memory` / `nyan.retrieval` / `nyan.web` / `nyan.decision`。
    凭据只按文件路径或环境变量名引用，不写进 settings 正文。
 3. **回退开关**：每个模块都能关掉回到 CC 行为（`nyan.compaction.mask=false`、`summaryStyle="cc"`、
    `nyan.memory.extract=false`、`nyan.retrieval.enabled=false`……），用于对照与回退。
@@ -31,6 +32,35 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
    - 记忆：按 canonical git root（沿用 CC memdir）；
    - 检索索引：按 worktree 根（不同 worktree 内容不同）；
    - 网页快照：全局一份、内容寻址。
+7. **两台机器**：nyan 在 nyan-pc 与 corp-pc 上都用。`~/.cometix`（settings、keys、记忆、索引、快照）各机一份、
+   **不同步**（接受：两机的工作区与会话本就不同）。任何依赖某台机器的能力都要可降级（第 9 条）。
+
+### 公共组件（各模块共用，只定义一次）
+
+8. **cache 共享分叉**（压缩 C6 / C12、记忆 M2 / M5 引用）：前缀与主线程逐字节相同、目的是命中主线程 cache 的分叉。
+   判别按 `QuerySource`（`constants/query_source.rs`），名单是封闭的：
+
+   | `QuerySource` | 来源 | 现状 |
+   |---|---|---|
+   | `Compact` | 摘要（压缩 C6） | 已有，`compact.rs:1044` |
+   | `SideQuestion` | `/btw` | 已有，`side_question.rs:94` |
+   | `PromptSuggestion`、`Speculation` | CC 的建议 / 预测 | 枚举已有 |
+   | `ExtractMemories`、`AutoDream` | 记忆提取 / 合并（记忆 M2 / M5） | 枚举已有，nyan 实现 |
+   | `CacheWarm`（新增） | 保活（压缩 C12） | nyan 新增 |
+
+   对名单内的分叉，统一三条规则：
+   - **不带 `X-Claude-Code-Agent-Id`**（压缩 C13-3、切片 G），让网关用主线程的 `prompt_cache_key`；
+   - **只重放、不新增掩码**：继承主线程的 `ContentReplacementState`（`forked_agent.rs:204`），跳过掩码候选选择与单消息
+     预算替换的新决定（压缩 C2）；
+   - 判别函数 `is_cache_sharing_fork(source)` 放在 `utils/forked_agent.rs`，三处共用，不各自写名单。
+
+9. **服务健康状态机**（检索 3.2、外部搜索 3.2.1 / 3.3 引用）：所有自建服务（embedding、rerank、Qdrant、SearXNG）与
+   Decision Provider（第 10 条）共用一份实现 `services/service_health.rs`：`Ready ⇄ Down(until)`、连接超时与请求超时
+   分开、退避 30 s 起翻倍至 5 min、到期后由下一次使用触发一次后台探测、启动不探测。每个服务一个实例，进程内共享。
+   是批次 1 的独立切片（"公共 H"），检索 F / G0、外部搜索 E / F / H、Decision Provider 都依赖它。
+
+10. **Decision Provider**（[decision-provider.md](decision-provider.md)）：四个模块里需要"快速判断"的决策点由一个
+    快速决策模型负责，统一接口、超时、回退与评测接缝；不可用时一律回退到确定性规则。
 
 ## 二、开发与验证流程（每个切片）
 
@@ -53,12 +83,18 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 
 | 批次 | 切片 | 说明 |
 |---|---|---|
-| 0 | 公共：`SettingsJson.nyan` 字段与各模块配置结构体；`@nyan` 约定 | 所有模块的前置 |
-| 1 | 压缩 A（掩码 + 移除 time-based + `METADATA_MARKERS`）、压缩 C（Read 去重）、压缩 D（摘要指令与校验）、压缩 G（子代理 `X-Claude-Code-Agent-Id`）、记忆 A（写入安全）、记忆 B（候选机制）、外部搜索 A（安全抓取器）、外部搜索 D（七家 provider 适配器）、检索 A（库接口、结果模型、Inspect、渲染）、检索 C（本机索引）、检索 G0（rerank 共享客户端 + 服务状态机） | 写集互不重叠 |
+| 0 | 公共：`SettingsJson.nyan` 字段与各模块配置结构体；`@nyan` 约定；`is_cache_sharing_fork`（第一节第 8 条） | 所有模块的前置 |
+| 1 | 压缩 A（掩码 + 移除 time-based + `METADATA_MARKERS`）、压缩 C（Read 去重）、压缩 D（摘要指令与校验）、压缩 G（子代理 `X-Claude-Code-Agent-Id`）、记忆 A（写入安全）、记忆 B（候选机制）、外部搜索 A（安全抓取器）、外部搜索 D（七家 provider 适配器）、检索 A（库接口、结果模型、Inspect、渲染）、检索 C（本机索引）、检索 G0（rerank 共享客户端）、公共 H（服务健康状态机，第一节第 9 条）、DP A（Decision Provider 接口与回退） | 写集互不重叠 |
 | 2 | 压缩 B（估算 + 接线）、压缩 F（cache 保活）、外部搜索 B（快照 + 原文返回）、外部搜索 E（聚合 WebSearch）、外部搜索 G（配置与 `is_enabled`）、检索 B（exact + `CodeSearch` 工具）、检索 D（symbol）、检索 E（text） | 依赖批次 1 |
 | 3 | 压缩 E（保留尾部 + 回执）、记忆 C（提取 agent）、记忆 D（合并 agent）、外部搜索 C（逐字摘录）、外部搜索 F（网页精排）、外部搜索 H（fetch provider 回退）、检索 F（semantic + 两机访问 + 回退） | |
 | 4 | 记忆 E（`/memory` UI）、检索 G（代码检索接入 rerank，默认关）、检索 I（接入压缩名单 / 记忆 M6 / 后台子代理白名单） | |
+| 2–4 | DP B / C / D / E（jev、local、chat 后端，决策日志与 `/decision`）；DP F / G / H 跟随检索 B、外部搜索 E、记忆 C 的调用点 | DP A 之后 |
 | 后续 | 检索 H（评测） | 后续单独安排 |
+
+**跨模块写集重叠**（不在同一批次，按批次先后顺序做即可，后做的切片在先做的基础上追加）：
+- `utils/session_storage.rs` 的 `METADATA_MARKERS`：压缩 A 加 `content-replacement`（批次 1）→ 记忆 C 加提取游标条目（批次 3）。
+- `services/compact/auto_compact.rs`：压缩 B（批次 2）、压缩 E（批次 3）→ 记忆 C 的压缩前强制提取（批次 3，与压缩 E 同批
+  但须排在其后）。
 
 **先设计、后实现**：四个模块的设计全部完成（第五节待定项清零）并经用户确认后，才开始实现。开工时从**批次 0 +
 压缩 A/C/D** 开始：压缩改动最小、收益最大、能最快验证"cache 不断"的核心约束。
@@ -80,13 +116,19 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
    Anthropic 服务端工具，`is_enabled` 改为"至少配置了一个 provider"。
 8. **自建服务不走代理、可降级**（检索 3.1、3.2；外部搜索 3.2.1）：embedding / rerank（corp-pc）、Qdrant / SearXNG
    （nyan-ops）的客户端显式 `no_proxy()`；任一不可达时服务状态机判 Down、退避期间不发请求——corp-pc 关机时 CodeSearch
-   用确定性分支、WebSearch 跳过精排；nyan-ops 不可达时 semantic 与 SearXNG 跳过。状态机一份实现、两个模块共用。
-9. **cache 共享分叉不带 Agent-Id**（压缩 C13-3、切片 G）：普通子代理带 `X-Claude-Code-Agent-Id`，让网关给它独立的
-   `prompt_cache_key`；摘要、保活、记忆提取 / 合并这类要命中主线程 cache 的分叉一律不带。记忆 C / D 实现时照此处理。
-10. **usage 只信最终值**（压缩 C13-1）：transcript 里的 assistant usage 可能停在 `message_start` 阶段；保活判断、measure
-    用内存值，任何事后统计只用带 `stop_reason` 的条目。
+   用确定性分支、WebSearch 跳过精排；nyan-ops 不可达时 semantic 与 SearXNG 跳过。状态机一份实现（第一节第 9 条），
+   检索、外部搜索、Decision Provider 共用。
+9. **cache 共享分叉的三条规则**（第一节第 8 条）：不带 Agent-Id、只重放不新增掩码、统一用 `is_cache_sharing_fork`
+   判别。压缩 C2 / C6 / C12 / G 与记忆 M2 / M5 都引用这一处。
+10. **落盘 usage 只用于事后统计**（压缩 C13-1）：transcript 里的 assistant usage 可能缺 output 与最终 cache 拆分（停在
+    `message_start`）；prompt 侧总量与最终值一致（87 个样本实测），所以 measure 不受影响；保活要 cache 拆分，读内存值；
+    事后统计只用带 `stop_reason` 的条目。
 11. **rerank 是共享组件**（检索 4.9、G0）：Qwen3-Reranker 必须套官方指令模板（实测裸文本区分度差）；代码检索与网页
-    精排共用客户端与服务地址，开关各自独立（代码检索默认关、网页精排默认开）。
+    精排共用客户端与服务地址，开关各自独立（代码检索默认关、网页精排默认开）。reranker 不能当通用决策器（实测
+    元决策问题得分全 < 0.1，见 decision-provider.md 第一节）。
+12. **Decision Provider 只在安全集合内选择**（decision-provider.md 第三、四节）：每个决策点先算确定性答案，模型答案
+    落在安全集合外或置信度不足即回退；关键路径决策与确定性分支并行、800 ms 硬上限；压缩没有 active 决策点
+    （改变请求前缀的决定必须确定性）。各模块文档的"决策点"小节列候选，接入与否以 decision-provider.md 第四节为准。
 
 ## 五、待定项
 
@@ -97,11 +139,22 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 | 检索 | corp-pc embedding / rerank 的访问方式 | 两机都用：corp-pc 回环、nyan-pc 经 `tailscale serve`；不走代理、不鉴权；corp-pc 关机时快速判定 Down 并退回 exact / symbol / text | 检索 3.1、3.2 |
 | 外部搜索 | `fetchVia` 默认 `proxy` 与残余 SSRF 风险 | 默认 `proxy`；实测代理会连回环与 LAN、本地 DNS 有污染，改为"拒绝私网字面量与私网名字 + 不做本地解析"；残余风险与缓解已写明 | 外部搜索 4.2 |
 | 外部搜索 | WebFetch 默认返回 20000 字符 | 保留（≈5k token，低于 50k 持久化阈值、高于掩码 1% 下限），新增 `maxReturnChars` | 外部搜索 4.4 |
-| 外部搜索 | provider 选择、召回与候选 | AnySearch、Brave、DeepSeek、Exa、Firecrawl、Tavily、SearXNG（自建）全部接入，search 与 fetch 都接；每家召回 20 → RRF 30 → Qwen3-Reranker 精排 → 8；fetch 由 nyan 先抓、失败按序回退 provider | 外部搜索二·五、3.2–3.4、4.6 |
+| 外部搜索 | provider 选择、召回与候选 | AnySearch、Brave、DeepSeek、Exa、Firecrawl、Tavily、SearXNG（自建）全部接入，search 与 fetch 都接；每家召回 20 → RRF 30 → Qwen3-Reranker 精排 → 8；fetch 由 nyan 先抓、失败按序回退 provider | 外部搜索 2.2、3.2–3.4、4.6 |
 | 压缩 | gpt 经网关 cache 基本失效（C13） | 原结论是统计口径错误；实际是网关侧一次断崖（不在 nyan 修）+ 子代理缺 Agent-Id（新增切片 G） | 压缩 C13 |
 
-仍未定、但不属于四个模块的设计：
+2026-10-27 设计审查（四个独立审查，对照代码）后的修订：必须修 11 项、跨模块 3 项、应该修约 25 项，已全部写入各文档；
+新增 Decision Provider 设计。审查推翻的旧结论：外部搜索 4.2 的"代理只会碰到私网 443"（实测代理可直达 LAN / tailnet 字面量）、
+压缩 C4 的"`message_start` usage 不可信"（prompt 侧与最终值一致）。
+
+仍未定、但不阻塞设计（实现切片的第一步实测）：
 
 | 项 | 状态 |
 |---|---|
 | 检索评测（检索 H） | 后续单独安排；rerank 默认值、融合权重等它出结论 |
+| Decision Provider `local` 后端的模型与位置 | 部署时实测：corp-pc GPU（剩余约 2.5 GB）或 nyan-ops CPU，目标 p50 < 300 ms |
+| Jev 真实决策延迟与一致率 | 上游 `oc-1` 账户当前 429；恢复后实测，shadow 日志积累一致率 |
+| 保活与 thinking 参数是否进入消息级 cache key | 压缩切片 F 第一步实测 |
+
+仓库外基础设施：FlClash 经代理可直达回环 / LAN / tailnet——已报告并由负责方在两台机器上修复（2026-10-27 13:12，7897 入站
+私网目标 REJECT，回归已复核）；nyan 的主机判定仍是第一道防线、不依赖该修复（外部搜索 4.2；报告在
+`~/.cometix/reports/2026-10-27-flclash-proxy-private-egress.md`，不在仓库）。

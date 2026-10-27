@@ -1,6 +1,7 @@
 # 检索（Retrieval）设计：`code_search`
 
-状态：已定稿，未实现（2026-10-27）。两机访问与 corp-pc 不可用时的回退已定（3.1、3.2）。
+状态：已定稿，未实现（2026-10-27 审查修订）。两机访问与 corp-pc 不可用时的回退（3.1、3.2）、`worktreeId` 与 collection
+命名（4.8）、同步状态与首次同步（4.8.1）、deadline（4.4）已定。
 
 设计来源：nyan-legacy N6（旧 roadmap `88ef45bb0:ROADMAP.md` R1–R20、"Decided architecture" Retrieval 一节）、
 Pactile `design/context-governance/retrieval/00–13`（以 01 provider 契约、03 generation、04 Inspect、
@@ -43,7 +44,8 @@ Pactile `design/context-governance/retrieval/00–13`（以 01 provider 契约�
 | Rerank `Qwen/Qwen3-Reranker-0.6B` | corp-pc，vLLM（`retrieval-vllm-rerank`） | `POST /score`，`127.0.0.1:8091`，返回 [0,1] | 在线；20 候选 p50 350 ms |
 | Qdrant 1.19.2 | nyan-ops | `:6333`，需 API key | corp-pc 经 tailnet 直连约 0.5 s/请求（首次建连约 1.3 s）；nyan-pc 走 DERP 中继 |
 
-部署说明与探测脚本在 `~/Projects/work/internal/retrieval/`（corp-pc；`probe.sh`、`retrieval-probes.timer` 每小时一次）。
+部署说明与探测脚本在 corp-pc 的 `~/Projects/work/internal/retrieval/`（仅 corp-pc 上有；`probe.sh`、
+`retrieval-probes.timer` 每小时一次）。
 `retrieval-llama-embed.container` 是保留的 llama.cpp 回退单元，镜像未拉取，处于 failed 状态，不影响 vLLM 服务。
 
 ### 3.1 两台机器的访问方式（已定，2026-10-27）
@@ -83,35 +85,31 @@ tailscale serve --bg --https=8091 http://127.0.0.1:8091
 semantic 与 rerank 是**可选增强**：不可用时，CodeSearch 退回 exact / symbol / text，结果照常返回并注明，不报错、
 不卡住。关键是**快速判定不可用**——关机的 corp-pc 不会拒绝连接，只会让连接挂起，不能每次查询都白等一个 deadline。
 
-**服务状态机**（每个外部服务各一份，进程内共享）：
+**服务状态机**：使用公共的 `services/service_health.rs`（README 第一节第 9 条：`Ready ⇄ Down(until)`、退避 30 s 起
+翻倍至 5 min、到期后由下一次使用触发一次后台探测、启动不探测；公共切片 H）。本模块不另写状态机，只为三个服务
+各注册一个实例，并给出本模块特有的参数：
 
-```
-Ready ──请求失败 / 超时──▶ Down(until = now + backoff)
-  ▲                           │
-  └──── 探测成功 ◀── 到期后由下一次查询触发一次后台探测
-```
+| 服务 | 连接超时 | 请求超时 | 探测（`Down` 到期后的一次后台请求） |
+|---|---|---|---|
+| embedding | 1.5 s | 查询侧 2.5 s；同步批次 15 s（4.8.1） | `GET /v1/models`，核对模型 id |
+| Qdrant | 1.5 s | 1.5 s | `GET /healthz` |
+| rerank | 1.5 s | 2 s | `GET /v1/models`，核对模型 id |
 
-- **连接超时与请求超时分开**：连接 1.5 s（覆盖 DERP 中继下的建连，实测 nyan-ops 首次建连 1.3 s）；查询侧 embedding
-  请求 2.5 s；rerank 2 s。超时即判 `Down`。
+- 连接 1.5 s 覆盖 DERP 中继下的建连（实测 corp-pc → nyan-ops 首次建连约 1.3 s）。超时即判 `Down`。
 - **Down 期间不发请求**：直接跳过该分支，渲染 `[semantic unavailable (corp-pc unreachable)]`，不计入 deadline。
-- **退避**：30 s 起，翻倍到最多 5 min；探测成功立刻回到 `Ready`。探测是后台任务，不阻塞当前查询。
-- **探测内容**：`GET /v1/models` 并核对模型 id（readiness 的完整检查见 4.8，探测只做这一项，够判断"在不在"）。
-- **启动时不探测**：第一次 CodeSearch 才建立状态，nyan 启动不因 corp-pc 关机而变慢。
+- 探测只判断"在不在"；readiness 的完整检查（维度、范数等）见 4.8。
 - embedding 与 Qdrant 任一 Down，semantic 整体跳过；rerank Down 只跳过重排（排序退回 RRF 融合顺序，不提示）。
 
-**索引同步在 corp-pc 不可用时**：
-
-- 增量同步要先算 embedding，corp-pc 不可用时**不写 Qdrant**，变更的 chunk 记入本机待同步队列（索引目录下的
-  `pending.jsonl`，只存 chunkId 与文件 hash，不存正文）。
-- corp-pc 恢复（状态机回到 `Ready`）后后台补同步；补同步完成前，这些文件的 semantic 候选会因 hash 不一致在
-  Inspect 时被拒（4.6），不会返回过期结果。
-- nyan-pc 与 corp-pc 各自维护本机索引与各自的 Qdrant collection（collection 名含 `worktreeId`，见 4.8），两机互不干扰。
+**索引同步在 corp-pc 或 nyan-ops 不可用时**：变更文件进入待同步队列，服务恢复后后台补同步（同步状态与队列的
+完整定义见 4.8.1）。补同步完成前，这些文件的 semantic 候选会因 hash 不一致在 Inspect 时被拒（4.6），不会返回
+过期结果。两台机器各自维护本机索引与各自的 Qdrant collection（collection 名含机器标识，见 4.8），互不干扰。
 
 **写进渲染与验收**：
 
 - `[semantic unavailable (corp-pc unreachable)]`、`[semantic index syncing: N files pending]` 两种说明行（4.2 风格）。
-- 验收：corp-pc 关机时，nyan-pc 上 CodeSearch 首次查询最多多等一次连接超时（1.5 s），之后的查询不再等待；
-  corp-pc 开机后 5 min 内自动恢复 semantic。
+- 验收：corp-pc 关机时，nyan-pc 上 CodeSearch 首次查询最多多等一次连接超时（1.5 s），之后的查询不再等待。
+  corp-pc 开机后，恢复由"下一次使用"触发（README 第一节第 9 条）：开机后的查询最多再等一个退避窗口（≤ 5 min）
+  即触发探测，探测成功后的下一次查询带上 semantic。期间无人查询则不探测、也不恢复（不做后台轮询）。
 
 ## 四、`code_search` 工具
 
@@ -160,10 +158,17 @@ src/query.rs:1093-1102  (text, semantic)
 
 | 分支 | legacy 对应 | 实现 | 可信度 |
 |---|---|---|---|
-| `exact` | exact | 复用 CC 的 `rip_grep`（`utils/ripgrep.rs`）：查询中的标识符及其 snake/camel 变体；与 Grep 同一套 ignore 与权限规则 | 确定性，下限 |
+| `exact` | exact | 复用 CC 的 `rip_grep`（`utils/ripgrep.rs:650`）：查询中的标识符及其 snake/camel 变体；ignore 与 Read deny 规则见下 | 确定性，下限 |
 | `symbol` | structural + relation | tree-sitter 符号表（4.5）：按名查定义、文件大纲；引用 / 调用者由同一张表的"标识符出现位置"派生 | 确定性 |
 | `text` | lexical | 进程内 BM25（tantivy），按 chunk；分词同时切标识符（`autoCompactIfNeeded` → `auto compact if needed`） | 确定性 |
 | `semantic` | semantic | jina embedding（corp-pc）+ Qdrant（nyan-ops），按 chunk | 参考，不可用时不影响其余 |
+
+**exact 分支的权限**：`rip_grep` 本身只执行 `rg`，不带任何 ignore 或权限过滤。Grep 工具是在调用前自己拼
+`--glob !<pattern>`：`grep_tool/mod.rs:283-321` 的 `read_deny_globs` 用 `get_file_read_ignore_patterns` 取 Read deny
+规则、`normalize_patterns_to_path` 按项目根与（含符号链接解析后的）搜索根展开。exact 分支**复用同一段逻辑**：把
+`read_deny_globs` 从 Grep 工具私有函数提出为共享函数（如 `utils/permissions/filesystem.rs` 旁的
+`read_deny_rg_globs(permission_context, project_cwd, search_root)`），Grep 与 exact 都调用它；写进切片 B 的写集。
+`.gitignore` 由 `rg` 自身处理（与 Grep 同一默认参数）。
 
 选分支的规则（确定性，legacy `RuleDecisionProvider` 的思路）：
 
@@ -172,7 +177,7 @@ src/query.rs:1093-1102  (text, semantic)
 - 查询含调用 / 依赖信号（`caller`、`who calls`、`调用`、`依赖`、`影响`…）时，`symbol` 额外返回引用位置；
 - semantic 未配置时不跑、不提。
 
-不引入 DecisionProvider / 模型参与规划：legacy 也只把它放在 shadow，规则足够且可复算。
+以上规则是**确定性默认**，也是 Decision Provider 不可用时的回退；哪些点可交给快速决策模型见 4.11。
 
 ### 4.4 执行管线
 
@@ -188,7 +193,21 @@ query → 选分支（4.3 的规则）
 ```
 
 默认参数（常量，可在 `nyan.retrieval` 覆盖）：每分支最多 50 个候选；融合后保留 50；返回 `max_results`（默认 10，
-上限 30）；每文件最多 3 条；每条片段 40 行；总 deadline 8 s，semantic 3 s；RRF `k = 60`，各分支等权。
+上限 30）；每文件最多 3 条；每条片段 40 行；总 deadline 8 s；RRF `k = 60`，各分支等权。
+
+**semantic 的 deadline**（审查修订）：semantic 分支是串行的两步——查询 embedding → Qdrant 检索——**分支 deadline 截断
+子请求**：每个子请求有自己的请求超时（3.2 表），分支在 `semanticDeadlineMs` 到达时整体放弃（`TimedOut`），不等子请求
+自然超时。默认 `semanticDeadlineMs = 4500`，满足 ≥ embed 请求超时 2.5 s + Qdrant 请求超时 1.5 s + 余量：
+
+| 机器 | embedding（查询，1 条） | Qdrant 检索 | semantic 典型耗时 |
+|---|---|---|---|
+| corp-pc | ~20 ms（回环） | ~0.5 s（tailnet 直连 nyan-ops，热连接；首次建连 ~1.2 s） | ~0.5 s |
+| nyan-pc | ~0.7–1 s（DERP 中继到 corp-pc，HTTPS 热连接） | 0.5 s 以上（DERP 中继到 nyan-ops，未实测） | ~1.5–2.5 s |
+
+- 两步共用连接池（keep-alive），中继下 TLS 建连只在首次付出。
+- semantic 与其余分支并行，总 deadline 8 s 不变；semantic 超时不影响 exact / symbol / text 的结果。
+- nyan-pc 上的数字是按 RTT 推算（tailscale ping ~0.7 s），实现时实测；若 p90 超过 4.5 s，只调大 `semanticDeadlineMs`，
+  不改结构。
 
 - 用户按 Esc：沿用 CC 工具的 abort 语义（整个工具调用取消），不另造状态。
 - 某分支超时：该分支结果丢弃，其余照常，渲染为 `[semantic timed out]`；超时与取消在内部枚举里是两个值，
@@ -207,8 +226,12 @@ query → 选分支（4.3 的规则）
   不跨文件（03 CH-2）。语言：Rust、TypeScript/JavaScript、Python、Go、Java、C/C++、Bash、Markdown（标题切分）
   ——首批以本仓库与 nyan-legacy 用到的为准，其余语言退化为行窗口 chunk + 无符号表（这些文件只参与 text / semantic，
   结果标注 `(no symbol check)`）。
-- **文件清单**：复用 CC 已有的文件索引（`hooks/file_suggestions.rs`：`git ls-files --exclude-standard` + ripgrep
-  ignore 规则，后台刷新），不另写遍历；非 git 目录退回 `ignore` crate 遍历。
+- **文件清单**：**不复用** `hooks/file_suggestions.rs`——它以进程 cwd 为键（`file_suggestions.rs:330`，
+  `std::env::current_dir()`）、是 typeahead 共用的单例缓存（`FILE_CACHE`，`:30`）、节流刷新（`:301-326`），且结果是相对 cwd
+  的路径，不是以 worktree 根为准的完整清单。本模块自己遍历：用 `ignore` crate 的 `WalkBuilder`（`Cargo.toml:99`
+  已依赖 `ignore = "0.4.24"`，锁定 0.4.33），以 worktree 根为起点，规则来源为 `.gitignore` / `.ignore` / git 全局
+  excludes（`WalkBuilder` 默认行为，与 `rg` 一致），另加 Read deny 规则（与 exact 分支同一个共享函数，见 4.3）
+  与 4.5"跳过"规则。git 与非 git 目录同一条路径，不分两套。
 - **变更检测**：有 git 时用 `git status --porcelain` + 上次索引时的 HEAD 与当前 HEAD 的 `git diff --name-only`
   得到变更文件集合，只对这些文件比 mtime/size、再算 sha256；无 git 时对清单做 mtime/size 预筛。68 万行的本仓库
   每次检索前全量 stat 太重，git 已经知道哪些文件变了。
@@ -221,6 +244,11 @@ query → 选分支（4.3 的规则）
   `-go` 0.25.0、`-java` 0.23.5、`-cpp` 0.23.4、`-md` 0.5.4）只依赖 `tree-sitter-language ^0.1`（本仓库已有 0.1.7），
   与已链接的 tree-sitter 0.25 ABI 兼容；`tantivy` 0.27.0，MIT，`rust-version` 1.88，与本 crate 的 `rust-version = 1.88` 一致。
   许可均与 AGPL-3.0 兼容。
+- **构建代价（决定）**：语法 crate 每个是 0.4–1.0 MB 的生成 C 源码（crates.io 包体：rust 0.4 MB、typescript 0.8 MB、
+  cpp 1.0 MB），编译成静态对象并链接进二进制；`tantivy` 0.27 有 42 个非可选的普通依赖。本机尚无构建产物，**不预估数字**：
+  切片 C 与 E 的第一步各自测量 release 构建的增量（二进制体积、`cargo build --release` 冷编译时间，与改动前对比），
+  写进切片 commit message。阈值：二进制增量 > 15 MB 或冷编译时间增量 > 25%，则该部分改为 cargo feature
+  （`retrieval-grammars` / `retrieval-text`，默认开启，可在构建时关掉），对应分支在关闭时按"未启用"处理（4.10）。
 
 ### 4.6 Inspect：候选进入结果前重读当前文件
 
@@ -264,14 +292,85 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
 - **响应校验**（EMB-1）：条数不符、维度不符、出现 NaN/Inf → 整批 `invalid_response`，不部分接受、不当低分。
 - **Qdrant**：每个 `(worktreeId, semanticGeneration)` 一个 collection；payload `{path, startLine, endLine, chunkId,
   fileHashRaw, symbol?}`，只存 hash 与范围、**不存正文**（03 CH-3，同时满足隐私：正文不留在 nyan-ops）。
-- **同步**：本机索引增量扫描产生变更 chunk → 批量（32）embedding → upsert / delete；失败的批次不提交，状态
-  `index_partial`，该批文件的 semantic 候选在 Inspect 时会因 generation 或 hash 不一致被拒。
+- **`worktreeId`**（审查修订）：两台机器共用 nyan-ops 上同一个 Qdrant，collection 名必须跨机器唯一。不能靠
+  `sanitize_path`（`session_storage.rs:725`，只把非字母数字换成 `-`）——两机路径不同（`/home/yuki/…` 与 `/home/blxze/…`）
+  只是巧合，同用户名同路径的两台机器就会撞名。定义：
+
+  ```
+  machineId  = sha256("/etc/machine-id" 的内容，去掉末尾换行)[..12]   (hex)
+  worktreeId = machineId + "-" + sha256(worktree 根的规范路径，realpath + NFC)[..16]
+  ```
+
+  - 机器标识取 `/etc/machine-id` 而不是 tailscale 主机名：前者由 systemd 生成、全局唯一、机器在线离线与 tailscale 改名
+    都不影响，读取不需要 tailscale 运行；只取 hash，不把原值发往 nyan-ops（`machine-id` 本身视为不应外发的标识）。
+    非 Linux 或读取失败时退回 `sha256(hostname)` 并在索引元数据里标注 `machineIdSource = "hostname"`。
+  - worktree 根取 `git rev-parse --show-toplevel` 的 realpath（4.5），同一机器上不同 worktree 必然不同。
+- **collection 名**：`nyan_<worktreeId>_<semanticGeneration 的前 16 位 hex>`，例：
+  `nyan_3f9a1c0b7d2e-8c41f0aa93b25e6d_a1b2c3d4e5f60718`（63 字符）。只含 `[a-z0-9_-]`，满足 Qdrant 的限制
+  （核实 qdrant/qdrant master `lib/common/common/src/validation.rs`：不得含 `< > : " / \ | ? * \0 \x1F`、不能是 `.` / `..`；
+  `lib/api/build.rs`：长度 1–255）。人类可读的对照（机器名、worktree 路径、generation 全文）只存在本机索引元数据里，
+  不进 collection 名或 payload。
+- **nyan-ops 上的 collection 清理**：
+  - generation 被替换：新 collection 构建完成并切换后，**删除同一 `worktreeId` 的旧 collection**（只删本机 `machineId`
+    前缀下、本机元数据记录过的名字，不按通配删别的机器的）。
+  - worktree 删除或长期不用：**不自动删**（无法区分"暂时没打开"与"不再需要"）。提供手动命令
+    `/retrieval prune [--dry-run]`：列出本机 `machineId` 前缀下、本机索引目录已不存在或超过 90 天未同步的 collection，
+    确认后删除。另一台机器的 collection 只能在那台机器上清理。
+- **同步**：本机索引增量扫描产生变更 chunk → 批量（32）embedding → upsert / delete；同步状态、失败处理与首次全量同步
+  见 4.8.1。
 - **egress**：源码 chunk 正文只发往用户自己的 embedding 服务（corp-pc 上为本机回环；nyan-pc 上经 tailnet 的 WireGuard
   加密链路到 corp-pc，不经第三方）；发往 nyan-ops 的是向量 + 路径/行号/hash。按 legacy
   Decision #8"配置即授权"：在 `settings.nyan.retrieval.semantic` 里配置了服务即视为授权；未配置不发任何请求。
   `.env`、私钥、凭据类路径在索引阶段就跳过（4.5），永不外发。
 - **单写者**：多个 nyan 进程同时打开同一项目时，用索引目录下的文件锁保证只有一个进程做同步；其它进程只读查询。
   不做 legacy 的远端协调器 / epoch / CAS（见第九节）。
+
+### 4.8.1 同步状态、待同步队列与首次全量同步（审查修订）
+
+**一套状态**（替代原先分散的 `pending.jsonl` 与 `index_partial` 两种说法）：
+
+```
+SemanticSyncState = Synced
+                  | Pending { files: n, reason: ServiceDown | BatchFailed | InitialSync }
+                  | Rebuilding                       // generation 变更，新 collection 构建中（4.7）
+```
+
+- **待同步队列**是唯一的进度记录：索引目录下 `semantic-pending.jsonl`，每行 `{path, fileHashRaw}`（不存正文）。
+  - 本机索引发现文件变更 → 入队；
+  - 批次成功（embedding 全部校验通过且 Qdrant upsert 返回成功）→ 该批文件出队；
+  - 批次失败（embedding 或 Qdrant 报错、超时、`invalid_response`）→ **该批文件留在队列**，`reason = BatchFailed`，
+    不部分提交；同一批连续失败 3 次则该服务判 `Down`（交给状态机退避），不在本地空转重试。
+  - 服务 `Down` → 不尝试同步，新变更照常入队，`reason = ServiceDown`。
+- **状态由队列推导**：队列空 → `Synced`；非空 → `Pending { files: 队列中的文件数 }`。不另存状态字段，重启后读队列即恢复。
+- **渲染**：`Pending` 时 `[semantic index syncing: N files pending]`（N = 队列文件数）；`Rebuilding` 时
+  `[semantic index rebuilding]`。两者都不阻止 semantic 分支对已同步部分返回结果；未同步文件的候选在 Inspect 时因
+  hash 不一致被拒（4.6）。内部分支结果枚举相应增加 `Partial { pending }`（4.10）。
+
+**首次全量同步的规模（本仓库估算，2026-10-27）**：
+
+- 本仓库 `git ls-files` 中 Rust 1438 个文件、约 68 万行（首批语言合计约 68 万行，几乎全是 Rust）。按 4.5 的切分规则
+  （符号边界，超过 60 行再按窗口切）粗估 **约 3.3 万个 chunk**，平均约 200 token / chunk。
+- **corp-pc**：本机实测批量 32 条（~200 token / 条，base64）p50 0.15 s ⇒ 约 210 chunk/s（单并发，高于部署 README 的
+  40.5 chunk/s——那是 ~400 token 的单条请求）。embedding 约 **2.5–3 分钟**；Qdrant upsert 走 tailnet 直连，每批一次
+  往返（~0.5–1.2 s），约 1040 批、4 个并发批次计约 **2–5 分钟**（与 embedding 流水线重叠）。总计约 5 分钟量级。
+- **nyan-pc**：embedding 走 DERP 中继到 corp-pc，每批一次往返 ≥ 0.7 s RTT + 传输：请求体约 32 × 800 B ≈ 26 KB，
+  base64 响应约 260 KB / 批（实测 257 KB）。约 1040 批：单并发 ≥ 12 分钟（只计 RTT），加上中继带宽（未实测，按
+  1–2 MB/s 估，260 MB 响应需 2–4 分钟）；upsert 再走一次中继到 nyan-ops。**4 并发时估计 10–20 分钟**。
+- **取舍（决定）**：接受耗时，不限制只在直连时同步——首次同步在后台进行，期间 semantic 对已同步部分照常可用、
+  其余分支不受影响，模型看到 `[semantic index syncing: N files pending]`；中断（退出、关机、网络断）后重启从队列续传，
+  已完成的批次不重做。若实测 nyan-pc 上超过 30 分钟，再考虑由 corp-pc 代为计算向量（需 corp-pc 上有相同 worktree，
+  本设计不做）。
+
+**首次同步的规则**：
+
+- 触发：本机索引首次构建完成后（symbol / text 已就绪），且 semantic 已配置；把全部可索引文件入队，`reason = InitialSync`。
+- **前提**：embedding 与 Qdrant 均为 `Ready`（第一次使用时探测）；任一 `Down` 则首次同步不开始，队列保持，
+  状态 `Pending { reason: ServiceDown }`，等服务恢复由下一次使用触发。
+- 并发度：同时在途 4 个批次（`syncConcurrency`，默认 4；corp-pc 本机 GPU 服务的 `--max-num-seqs=16`，4 × 32 = 128 条
+  在途不会压垮它）；每批 32 条；embedding 同步请求超时 15 s（与查询侧 2.5 s 分开，见 3.2）。
+- 后台任务：不阻塞会话，不阻塞 CodeSearch；用户按 Esc 只取消当前工具调用，不取消后台同步。nyan 退出时等在途批次
+  最多 2 s，未完成的批次留在队列。
+- 单写者：同步持有 4.8 的文件锁；第二个进程只读查询，不同步。
 
 ### 4.9 rerank（可开关，交给评测决定）
 
@@ -290,28 +389,50 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
   `instruct`：代码检索用 `Given a code search query, retrieve relevant code snippets that answer the query`；网页候选
   （外部搜索 3.4）用 `Given a web search query, retrieve relevant passages that answer the query`。模板字符串进
   generation（换模板即换 rerank 行为，评测可区分）。20 个候选套模板后 133 ms（本机）。
-- 设计：`settings.nyan.retrieval.rerank = false`（默认关），开启时对融合后 top-N（默认 20）调一次 `/score`，
+- 设计：`settings.nyan.retrieval.rerank.enabled = false`（默认关），开启时对融合后 top-N（默认 20）调一次 `/score`，
   只用于重排；分数必须在 [0,1] 且有限，否则整批作废、回退到融合顺序。
 - 是否默认开启，由评测决定（第八节）。
-- **rerank 客户端是共享组件**：模板、`/score` 调用、分数校验与服务状态机（3.2）放在 `services/rerank.rs`，代码检索与
-  外部搜索精排（外部搜索 3.3）共用；服务地址只在 `nyan.retrieval.rerank.url` 配一处。**开关各自独立**：
+- **rerank 客户端是共享组件**：模板、`/score` 调用、分数校验放在 `services/rerank.rs`（切片 G0），服务健康用公共
+  `services/service_health.rs` 的 rerank 实例（README 第一节第 9 条），代码检索与外部搜索精排（外部搜索 3.3）共用；
+  服务地址只在 `nyan.retrieval.rerank.url` 配一处。**开关各自独立**：
   `nyan.retrieval.rerank.enabled`（代码检索，默认关，等评测）与 `nyan.web.search.rerank.enabled`（网页精排，默认开）。
 
 ### 4.10 降级（legacy 06 的语义，按本项目表达）
 
-内部用一个枚举表达每个分支的结果：`Ok | Unavailable(reason) | Building | TimedOut | Cancelled | Stale`，
-渲染时转成 4.2 的方括号说明行。规则：
+内部用一个枚举表达每个分支的结果：`Ok | Partial { pending } | Unavailable(reason) | Building | Rebuilding | TimedOut |
+Cancelled | Stale`（`Partial` / `Rebuilding` 只用于 semantic，由 4.8.1 的同步状态映射），渲染时转成 4.2 的方括号说明行。规则：
 
 | 情况 | 行为 | 模型看到的 |
 |---|---|---|
 | semantic 未配置 | 不跑、不提 | 什么都不提（未启用 ≠ 降级） |
 | embedding / Qdrant 不可用 | 跳过 semantic，其余照常；进入 Down 退避，期间不再发请求（3.2） | `[semantic unavailable (…)]` |
-| corp-pc 恢复前有未同步的变更 | 已同步部分照常；未同步文件的 semantic 候选在 Inspect 被拒 | `[semantic index syncing: N files pending]` |
+| 待同步队列非空（首次同步中、服务曾 Down、批次失败；4.8.1） | 已同步部分照常（`Partial`）；未同步文件的 semantic 候选在 Inspect 被拒 | `[semantic index syncing: N files pending]` |
 | 本机索引还在首次构建 | symbol / text 跳过，exact 照常 | `[symbol, text index building — exact only]` |
-| 模型参数变了（generation 不符 / 维度不符） | semantic 候选全部丢弃，后台重建 | `[semantic index rebuilding]` |
+| 模型参数变了（generation 不符 / 维度不符） | semantic 候选全部丢弃，后台重建（`Rebuilding`） | `[semantic index rebuilding]` |
+| semantic 分支超过 `semanticDeadlineMs` | 丢弃该分支，其余照常（`TimedOut`） | `[semantic timed out]` |
 | rerank 失败 | 用融合顺序 | 不提（排序质量问题，不影响结果真实性） |
 | 所有分支都失败 | 工具返回错误（`is_error`），不返回空结果 | `Search failed: …` |
 | 全部成功且零命中 | — | `No matches found` |
+
+### 4.11 决策点（Decision Provider 接缝）
+
+本模块里可能交给快速决策模型的点如下。**是否接入、接口、超时与评测由 [decision-provider.md](decision-provider.md)
+决定**；本文只列出决策点与确定性回退——Decision Provider 未配置、不可用或超时时，一律按回退执行，结果与没有
+Decision Provider 时完全相同。
+
+| 决策点 | 输入（可得的信息） | 确定性回退（现行规则） | decision-provider.md 第四节结论 |
+|---|---|---|---|
+| 分支选择 | 查询文本、`path` / `glob`、各分支服务状态 | 四个分支都跑；semantic 未配置或 `Down` 时不跑（4.3） | `retrieval.branches`：只能**追加**分支，不能跳过 exact / symbol / text |
+| 分支加权 | 查询文本 | 单个标识符或路径 → `symbol` 权重 2.0，其余等权（4.3） | `retrieval.branches` 的 intent 问题：symbol 权重只能取 1.0 / 2.0 |
+| 是否返回引用 / 调用者 | 查询文本 | 关键词表（`caller`、`who calls`、`调用`、`依赖`、`影响`…）命中则返回（4.3） | `retrieval.branches` 的 intent = `callers` 时追加；不能去掉关键词命中的 |
+| 查询改写 / 扩展（同义词、标识符变体、中英互译） | 查询文本 | 只做 snake / camel 变体（exact 分支），不改写 | 不接入（生成参数值，DP 第九节明确不做） |
+| 是否值得调用 semantic | 查询文本、semantic 预计耗时（服务状态） | 已配置且 `Ready` 就调用 | 并入 `retrieval.branches`；默认四路全跑，故 active 时实际不会跳过 semantic，只影响 Decision Provider 自身是否值得问 |
+| 是否值得调用 rerank | 融合后候选数与分支一致度 | 按 `rerank.enabled` 开关，开则总是调用 | `retrieval.rerank` |
+
+约束（与本模块设计思想一致，第一节）：决策只影响**追加哪些分支、symbol 怎么加权、是否精排**，不影响 Inspect 与
+"没找到"的判定。三个确定性分支（exact / symbol / text）**始终运行**——Decision Provider 的安全集合不含"跳过确定性分支"，
+所以"没找到只在所有确定性分支都成功时才能说"的规则不受影响。排序可复算：决策输出记入 `SearchOutcome`（库接口），
+评测回放时重用记录的决策而不重新请求（decision-provider.md 第三节"可复算"）。
 
 ## 五、与其它模块的关系
 
@@ -319,9 +440,13 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
   库接口检索 memdir（memdir 单独建一个小索引：只有 text + semantic，按 git root），命中项用 CC 现成的
   `Attachment::RelevantMemories` 注入——走 CC 的 attachment 管线，不经工具调用。只在记忆条数超过 MEMORY.md
   索引能容纳的规模时启用（记忆少时 MEMORY.md 已全量注入）。
-- **Explore 子代理**：由用户后续统一调整（工具列表、默认模型），本模块不改。
-- **压缩**：`CodeSearch` 加入 `is_compactable_tool_name`（可被掩码清理）。
-- **外部搜索**：不在本工具内；N8 的 `web_search` / `web_fetch` 单独设计（Search → Fetch → Evidence）。
+- **压缩**：`CodeSearch` 加入 `is_compactable_tool_name`（`services/compact/micro_compact.rs:507`，可被掩码清理），由切片 I
+  完成；README 第四节第 5 条有同样的记载（`compaction.md` 本身未列出 `CodeSearch`，以 README 与本切片为准）。
+- **外部搜索**：不在本工具内；`WebSearch` / `WebFetch` 单独设计（Search → Fetch → Evidence）。两处共享：rerank 客户端
+  （切片 G0，`services/rerank.rs`；外部搜索切片 F 依赖它）与服务健康状态机（公共切片 H，`services/service_health.rs`）。
+  rerank 的服务地址只配在 `nyan.retrieval.rerank.url`，开关各自独立（4.9）。
+- **Decision Provider**：本模块的决策点与回退见 4.11。
+- Explore 子代理由用户后续统一调整。
 
 ## 六、配置
 
@@ -339,30 +464,36 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
   },
   // corp-pc: "http://127.0.0.1:8091"；nyan-pc: "https://corp-pc.tail6334e5.ts.net:8091"
   "rerank": { "enabled": false, "url": "http://127.0.0.1:8091", "model": "qwen3-reranker-0.6b", "topN": 20 },
-  "budget": { "deadlineMs": 8000, "semanticDeadlineMs": 3000, "rrfK": 60,
-              "connectTimeoutMs": 1500, "embedTimeoutMs": 2500, "rerankTimeoutMs": 2000,
-              "downBackoffMs": [30000, 300000] }
+  "budget": { "deadlineMs": 8000, "semanticDeadlineMs": 4500, "rrfK": 60,
+              "connectTimeoutMs": 1500, "embedTimeoutMs": 2500, "qdrantTimeoutMs": 1500, "rerankTimeoutMs": 2000 },
+  "sync": { "batchSize": 32, "concurrency": 4, "embedBatchTimeoutMs": 15000, "maxBatchFailures": 3,
+            "pruneAfterDays": 90 }
 }
 ```
 
+退避参数（30 s 起、上限 5 min）属于公共状态机（README 第一节第 9 条），不在本模块配置。
+
 凭据只按文件引用（legacy Decision #4），不写进 settings 正文；未配置 `semantic` = 该分支不启用、不发请求。
 `apiKeyFile` 为 `null` 时不发 `Authorization` 头（回环与 tailnet serve 都不鉴权，见 3.1）。Qdrant 的 key 首次配置时从
-`~/Projects/work/internal/retrieval/keys/qdrant-api-key` 复制到 `~/.cometix/keys/qdrant`（0600）。
+corp-pc 的 `~/Projects/work/internal/retrieval/keys/qdrant-api-key` 复制到各机的 `~/.cometix/keys/qdrant`（0600；
+两台机器各一份，README 第一节第 7 条）。
 
 ## 七、实现切片
 
 | 切片 | 内容 | 主要写集 | 依赖 |
 |---|---|---|---|
 | A | 库接口与结果模型：`SearchRequest` / `SearchOutcome`、分支结果枚举、确定性 RRF、路径规范化、Inspect、文本渲染 | 新 `services/retrieval/{mod,outcome,fusion,inspect,render}.rs` | — |
-| B | exact 分支（复用 `rip_grep`）+ `CodeSearch` 工具壳 + `auto` 规则 | 新 `services/retrieval/exact.rs`、`tools/code_search_tool/`、`tools/mod.rs` | A |
-| C | 本机索引：遍历、文件 hash、增量、跳过分类、文件锁；tree-sitter 语法与符号表；chunker | 新 `services/retrieval/index/`、`Cargo.toml`（语法 crates） | — |
+| B | exact 分支（复用 `rip_grep`）+ `CodeSearch` 工具壳 + 4.3 的确定性规则；把 Grep 的 `read_deny_globs` 提为共享函数（4.3） | 新 `services/retrieval/exact.rs`、`tools/code_search_tool/`、`tools/mod.rs`、`tools/grep_tool/mod.rs`（改为调用共享函数）、`utils/permissions/filesystem.rs`（共享函数） | A |
+| C | 本机索引：`ignore::WalkBuilder` 遍历、文件 hash、增量、跳过分类、文件锁；tree-sitter 语法与符号表；chunker；第一步测量构建代价（4.5） | 新 `services/retrieval/index/`、`Cargo.toml`（语法 crates） | — |
 | D | symbol 分支（定义、大纲、引用） | `services/retrieval/symbol.rs` | A、C |
-| E | text 分支（tantivy） | `services/retrieval/text.rs`、`Cargo.toml` | A、C |
-| F | semantic：embedding / Qdrant 客户端（`no_proxy`、base64、分开的连接 / 请求超时）、服务状态机与退避、readiness、generation、同步与待同步队列、校验 | `services/retrieval/semantic/` | A、C |
-| G0 | rerank 共享客户端：Qwen3 指令模板、`/score`、分数校验、服务状态机（3.2） | 新 `services/rerank.rs` | — |
+| E | text 分支（tantivy）；第一步测量构建代价（4.5） | `services/retrieval/text.rs`、`Cargo.toml` | A、C |
+| F | semantic：embedding / Qdrant 客户端（`no_proxy`、base64、连接 / 请求超时、分支 deadline 截断）、readiness、generation、`worktreeId` 与 collection 命名、同步状态与待同步队列、首次全量同步、generation 替换后删旧 collection、`/retrieval prune`、校验 | `services/retrieval/semantic/` | A、C、公共 H |
+| G0 | rerank 共享客户端：Qwen3 指令模板、`/score`、分数校验 | 新 `services/rerank.rs` | 公共 H |
 | G | 代码检索接入 rerank（开关，默认关） | `services/retrieval/` 融合后调用 G0 | F、G0 |
 | H | 评测（后续单独安排，见第八节） | — | — |
-| I | 接入：压缩可清名单、记忆 M6、后台子代理工具白名单（`is_async_agent_allowed_tool`，`agent_tool_utils.rs:224-243`，否则后台运行的子代理拿不到 `CodeSearch`）；Explore 子代理的提示词与模型由用户后续统一调整 | 对应文件 | B、F |
+| I | 接入：压缩可清名单（`micro_compact.rs:507`）、记忆 M6、后台子代理工具白名单（`is_async_agent_allowed_tool`，`agent_tool_utils.rs:224-243`，否则后台运行的子代理拿不到 `CodeSearch`） | 对应文件 | B、F |
+
+"公共 H" 是 README 第一节第 9 条的服务健康状态机（`services/service_health.rs`），不属于本模块的写集。
 
 部署：corp-pc 上执行 3.1 的两条 `tailscale serve` 命令即可（独立于代码，可先做）；服务本身不改。
 
@@ -385,7 +516,7 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
 | Tantivy 远端服务 | text 用进程内 tantivy，本机索引即可 |
 | legacy Inspect 13 项检查表（含 worktree / branch / source_revision / operation_epoch / snapshot） | 本项目用"重读文件 + 比 hash + 比范围 + 比符号"一个函数表达同一要求（4.6）；单 worktree、无 operation epoch |
 | ABI V3 ref / `unconvertible` | Pactile Kernel 的引用语法，nyan 无此边界 |
-| DecisionProvider / Jev 规划 | legacy 只放 shadow；本 fork 用确定性规则 |
+| DecisionProvider / Jev 规划 | 见 [decision-provider.md](decision-provider.md)（默认确定性规则，Decision Provider 可接管 4.3 的分支选择与权重；决策点见 4.11） |
 | RetrievalPack 词汇、reason.code 封闭枚举、ContextUnit / durable 适配 | 结果以 CC 工具结果的文本风格给模型（4.2），结构化数据留在库接口里；进上下文后由压缩模块负责清理 |
 | 评测平面与产品平面的 receipt / Langfuse 接入 | 评测结果写本地文件；Langfuse 可后续接入 |
 
@@ -394,5 +525,6 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
 - 已定：首批语言为 Rust、TS/JS、Python、Go、Java、C/C++、Bash、Markdown，后续按需添加；评测后续单独安排。
 - 已定（2026-10-27）：nyan-pc 与 corp-pc 都用 semantic / rerank——corp-pc 走回环，nyan-pc 经 `tailscale serve` 发布的
   tailnet HTTPS；客户端不走代理、不鉴权；corp-pc 不可用时快速判定并退回 exact / symbol / text（3.1、3.2）。
-- 不在本模块：Explore 子代理的提示词与默认模型由用户后续统一调整；切片 I 把 `CodeSearch` 加进压缩可清名单、记忆 M6
-  与后台子代理工具白名单。
+- 已定（2026-10-27 审查修订）：服务状态机用公共组件（3.2）；`worktreeId` 含机器标识，collection 命名与清理（4.8）；
+  同步状态由待同步队列推导、首次全量同步后台续传（4.8.1）；semantic deadline 4.5 s 截断子请求（4.4）；文件清单用
+  `ignore::WalkBuilder`（4.5）；exact 复用 Grep 的 Read deny 拼接（4.3）；构建代价在切片 C / E 第一步实测（4.5）。
