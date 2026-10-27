@@ -1,4 +1,4 @@
-# nyan 二次开发：压缩、记忆、检索、外部搜索、Decision Provider
+# nyan 二次开发：压缩、记忆、检索、外部搜索、Decision Provider、工具 I/O
 
 本目录是 nyan（CometixCode 的 fork）在 Claude Code 移植之上做的二次开发设计与实施计划。设计思想来自
 nyan-legacy（pactile context-governance、旧 roadmap N3–N8），实现以 CC 现有代码为基座。
@@ -15,13 +15,14 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 | [memory.md](memory.md) | 记忆：后台提取、合并、写入安全、候选（= 不在索引里的记忆文件） | 定稿 |
 | [retrieval.md](retrieval.md) | 检索：`CodeSearch` 融合工具、本机索引、Inspect、semantic（两机可用、可降级） | 定稿 |
 | [external-search.md](external-search.md) | 外部搜索：七家 provider 聚合召回 + 精排、SSRF 安全 WebFetch + provider 回退、原文快照与逐字摘录 | 定稿 |
+| [tool-io.md](tool-io.md) | 工具 I/O：Read / Grep / Glob / Bash 的完整性尾行、确定性顺序、编码检测、批量读、Bash 头尾保留（借鉴 fastctx v0.2.6）；检索与搜索做内置工具、不做 MCP / Skill 的结论 | 定稿 |
 | [decision-provider.md](decision-provider.md) | 快速决策模型：四模块的决策点注册表、安全集合与确定性回退、看内容的判断（候选是否回答查询、结果是否足够、页面是否含答案、记忆类型与重复）、EMRank 后端（jev 关键路径、clef 后台，已实测） | 定稿 |
 
 ## 一、通用约定
 
 1. **偏离标记**：所有有意偏离 CC 的代码位置加 `// @nyan: <原因>` 注释；上游自己的偏离是 `@cometix offset`，不混用。
 2. **配置**：全部挂在 `SettingsJson` 新增的一个正式字段 `nyan` 下（settings 是严格 schema，未知顶层键会报错，
-   `utils/settings/validation.rs:454`）：`nyan.compaction` / `nyan.cache` / `nyan.memory` / `nyan.retrieval` / `nyan.web` / `nyan.decision`。
+   `utils/settings/validation.rs:454`）：`nyan.compaction` / `nyan.cache` / `nyan.memory` / `nyan.retrieval` / `nyan.web` / `nyan.decision` / `nyan.toolIo`。
    凭据只按文件路径或环境变量名引用，不写进 settings 正文。
 3. **回退开关**：每个模块都能关掉回到 CC 行为（`nyan.compaction.mask=false`、`summaryStyle="cc"`、
    `nyan.memory.extract=false`、`nyan.retrieval.enabled=false`……），用于对照与回退。
@@ -88,6 +89,7 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 | 2 | 压缩 B（估算 + 接线）、压缩 F（cache 保活）、外部搜索 B（快照 + 原文返回）、外部搜索 E（聚合 WebSearch）、外部搜索 G（配置与 `is_enabled`）、检索 B（exact + `CodeSearch` 工具）、检索 D（symbol）、检索 E（text） | 依赖批次 1 |
 | 3 | 压缩 E（保留尾部 + 回执）、记忆 C（提取 agent）、记忆 D（合并 agent）、外部搜索 C（逐字摘录）、外部搜索 F（网页精排）、外部搜索 H（fetch provider 回退）、检索 F（semantic + 两机访问 + 回退） | |
 | 4 | 记忆 E（`/memory` UI）、检索 G（代码检索接入 rerank，默认关）、检索 I（接入压缩名单 / 记忆 M6 / 后台子代理白名单） | |
+| 1–2 | 工具 I/O A / E（编码检测、Bash 头尾保留）进批次 1；B / D（Read、Grep / Glob 的尾行与顺序）进批次 2；C（批量 Read）在压缩 C 之后；F 收尾（tool-io.md 第七节） | |
 | 2–4 | DP B / D / E（emrank、chat 后端，决策日志与 `/decision`；DP C `local` 不在首批）；DP F / G / H 跟随检索 B、外部搜索 E、记忆 C 的调用点 | DP A 之后 |
 | 后续 | 检索 H（评测） | 后续单独安排 |
 
@@ -131,6 +133,10 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
     续搜、补跑、触发回退、提前提取），**会减少结果的点默认 shadow**（删除候选、跳过提取）；不用它减少 provider 或跳过分支。
     压缩只有一个 shadow 点（掩码清理顺序，不改清理量）。决策点清单以 decision-provider.md 第四节为准，各模块"决策点"小节引用它。
 13. **效果优先于源码隐私**（用户 2026-10-27）：决策模型可以看源码、页面正文、对话与工具结果；只遮蔽凭据片段。
+14. **工具输出确定性**（tool-io.md T2）：rg 多线程输出顺序不确定（同命令 20 次 20 种输出，实测），与压缩 C3 的字节一致
+    重放、prompt cache 前缀稳定冲突；Grep content / count 加 `--sort=path`。CodeSearch exact 同样排序。
+15. **完整性尾行是跨模块契约**（tool-io.md T1）：Read / Grep / Glob / CodeSearch / WebFetch 统一以 `(Complete …)` /
+    `(Partial … Continue with …)` 结尾；各模块渲染按此格式。
 
 ## 五、待定项
 
