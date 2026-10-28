@@ -25,9 +25,18 @@ pub fn input_schema() -> &'static crate::utils::zod::Schema {
                     .url()
                     .describe("The URL to fetch content from"),
             ),
+            // @nyan: prompt is an optional literal-excerpt request; range reads a snapshot.
             (
                 "prompt",
-                zod::string().describe("The prompt to run on the fetched content"),
+                zod::string()
+                    .optional()
+                    .describe("Optional request for verbatim excerpts from the fetched content"),
+            ),
+            (
+                "range",
+                zod::string()
+                    .optional()
+                    .describe("Read a snapshot range such as chars:0-20000 or #section"),
             ),
         ])
     })
@@ -80,24 +89,6 @@ fn web_fetch_error_output(message: impl Into<String>) -> crate::tool::ToolOutput
     }
 }
 
-fn web_fetch_redirect_output(
-    url: &str,
-    prompt: &str,
-    redirect: utils::RedirectInfo,
-    duration_ms: u64,
-) -> Output {
-    // Maps to CC `tools/WebFetchTool/WebFetchTool.ts` redirect branch in `call`.
-    let result = utils::redirect_message(&redirect, prompt);
-    Output {
-        bytes: result.len(),
-        code: i64::from(redirect.status_code),
-        code_text: utils::redirect_code_text(redirect.status_code),
-        result,
-        duration_ms,
-        url: url.to_string(),
-    }
-}
-
 fn preapproved_markdown_direct_result(
     url: &str,
     content_type: &str,
@@ -129,6 +120,115 @@ fn append_binary_content_note(
             crate::utils::format::format_file_size(size as u64)
         ));
     }
+}
+
+async fn run_nyan_web_fetch(
+    args: &serde_json::Value,
+    context: &crate::tool::ToolUseContext,
+) -> Result<Output, String> {
+    let started = std::time::Instant::now();
+    let url = args
+        .get("url")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "Error: Missing URL".to_string())?;
+    let prompt = args
+        .get("prompt")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    let range = crate::services::web::snapshot::parse_range(
+        args.get("range").and_then(|value| value.as_str()),
+    )
+    .map_err(|error| error.to_string())?;
+    let web = crate::services::web::settings()
+        .ok_or_else(|| "Error: nyan.web is not configured".to_string())?;
+    let _ = crate::services::web::snapshot::cleanup_retention(web.snapshot_retention_days());
+    let fetch_config = crate::services::web::fetcher::FetchConfig::from_settings(&web);
+    let normalized_url = crate::services::web::fetcher::validate_target(url, &fetch_config)
+        .map_err(|error| error.to_string())?
+        .url
+        .to_string();
+
+    let (snapshot, direct_reason) =
+        if let Some(snapshot) = crate::services::web::snapshot::lookup_latest(&normalized_url) {
+            (snapshot, None)
+        } else {
+            crate::services::web::budget::begin_fetch(&web.fetch())
+                .map_err(|error| error.to_string())?;
+            let fetched = crate::services::web::fallback::fetch_with_fallback(
+                url,
+                &context.abort_controller,
+                &web,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            crate::services::web::budget::add_fetch_bytes(
+                &web.fetch(),
+                fetched.snapshot.metadata.bytes as u64,
+            )
+            .map_err(|error| error.to_string())?;
+            (fetched.snapshot, fetched.direct_reason)
+        };
+
+    let selected = crate::services::web::snapshot::select_range(
+        &snapshot.text,
+        range.as_ref(),
+        web.max_return_chars() as usize,
+    )
+    .map_err(|error| error.to_string())?;
+    let body = if prompt.trim().is_empty() {
+        selected.text.clone()
+    } else {
+        crate::services::web::extract::extract_prompt(
+            prompt,
+            &selected.text,
+            web.extract_model.as_deref(),
+            context.is_non_interactive_session,
+            &context.abort_controller,
+        )
+        .await
+        .map_err(|error| error.to_string())?
+        .render()
+    };
+    let body = body
+        .chars()
+        .take(web.max_return_chars() as usize)
+        .collect::<String>();
+    let fetched_at = snapshot.metadata.fetched_at.to_rfc3339();
+    let source = &snapshot.metadata.final_url;
+    let origin_note = match direct_reason {
+        Some(reason) => format!(
+            "(fetched via {}, {fetched_at}, {} chars; direct fetch failed: {reason})",
+            snapshot.metadata.fetched_by,
+            snapshot.text.chars().count()
+        ),
+        None => format!(
+            "(fetched {fetched_at}, {} chars; source: {})",
+            snapshot.text.chars().count(),
+            snapshot.metadata.fetched_by
+        ),
+    };
+    let continuation = if selected.end < selected.total {
+        format!(". Continue with range=chars:{}-", selected.end)
+    } else {
+        String::new()
+    };
+    let result = format!(
+        "{source}  {origin_note}\n\n<web_content source=\"{source}\">\n{body}\n</web_content>\n\n[Showing chars {}–{} of {}{}]",
+        selected.start, selected.end, selected.total, continuation,
+    );
+    let code_text = reqwest::StatusCode::from_u16(snapshot.metadata.status)
+        .ok()
+        .and_then(|status| status.canonical_reason())
+        .unwrap_or("Unknown")
+        .to_string();
+    Ok(Output {
+        bytes: snapshot.metadata.bytes,
+        code: i64::from(snapshot.metadata.status),
+        code_text,
+        result,
+        duration_ms: started.elapsed().as_millis() as u64,
+        url: url.to_string(),
+    })
 }
 
 /// Behavioral half of CC `WebFetchTool` — dispatched via `crate::tool::ToolCall`.
@@ -369,16 +469,21 @@ impl crate::tool::ToolCall for WebFetchTool {
                 .and_then(|value| value.as_str())
                 .unwrap_or_default();
 
+            // @nyan: configured web mode returns the verified snapshot directly;
+            // the CC small-model rewrite path remains the explicit fallback.
+            if crate::services::web::is_configured() {
+                let data = match run_nyan_web_fetch(args, context).await {
+                    Ok(output) => crate::tool::ToolOutput::WebFetch(output),
+                    Err(error) => web_fetch_error_output(error),
+                };
+                return crate::tool::ToolResult {
+                    data,
+                    new_messages: Vec::new(),
+                };
+            }
+
             let start = std::time::Instant::now();
             let data = match utils::get_url_markdown_content(url, &context.abort_controller).await {
-                Ok(utils::UrlMarkdownContent::Redirect(redirect)) => {
-                    crate::tool::ToolOutput::WebFetch(web_fetch_redirect_output(
-                        url,
-                        prompt,
-                        redirect,
-                        start.elapsed().as_millis() as u64,
-                    ))
-                }
                 Ok(utils::UrlMarkdownContent::Fetched(content)) => {
                     let result = if let Some(result) = preapproved_markdown_direct_result(
                         url,
@@ -488,10 +593,7 @@ mod tests {
     fn web_fetch_tool_schema_matches_official_input_shape() {
         let schema = web_fetch_tool_schema();
         assert_eq!(schema.name, "WebFetch");
-        assert_eq!(
-            schema.input_schema["required"],
-            serde_json::json!(["url", "prompt"])
-        );
+        assert_eq!(schema.input_schema["required"], serde_json::json!(["url"]));
         assert_eq!(schema.input_schema["properties"]["url"]["format"], "uri");
         assert!(schema.description.contains("Fetches content"));
         assert!(
@@ -559,49 +661,6 @@ mod tests {
         let mut no_path = "summary".to_string();
         append_binary_content_note(&mut no_path, "application/pdf", None, Some(2048), 4096);
         assert_eq!(no_path, "summary");
-    }
-
-    #[test]
-    fn web_fetch_redirect_output_returns_official_success_schema() {
-        use crate::tool::ToolCall;
-
-        let tool = WebFetchTool;
-        let output = web_fetch_redirect_output(
-            "https://example.com/docs",
-            "summarize",
-            utils::RedirectInfo {
-                original_url: "https://example.com/docs".to_string(),
-                redirect_url: "https://other.example/docs".to_string(),
-                status_code: 308,
-            },
-            12,
-        );
-        assert_eq!(output.bytes, output.result.len());
-        assert_eq!(output.code, 308);
-        assert_eq!(output.code_text, "Permanent Redirect");
-        assert_eq!(output.duration_ms, 12);
-        assert_eq!(output.url, "https://example.com/docs");
-        assert!(output.result.contains("REDIRECT DETECTED"));
-
-        let data = crate::tool::ToolOutput::WebFetch(output);
-        let (content, status) =
-            tool.map_tool_result_to_tool_result_block_param(&data, "toolu_web_fetch");
-        assert_eq!(status, crate::types::message::ToolResultStatus::Success);
-        assert!(content.contains("Please use WebFetch again"));
-        // No WebFetch display shape — the trait projects the raw
-        // `toolUseResult` with every schema field intact.
-        let raw = tool
-            .tool_use_result(&data)
-            .expect("web fetch projects raw output");
-        assert_eq!(raw["code"], serde_json::json!(308));
-        assert_eq!(raw["codeText"], serde_json::json!("Permanent Redirect"));
-        assert!(
-            raw["result"]
-                .as_str()
-                .is_some_and(|result| result.contains("REDIRECT DETECTED"))
-        );
-        // The live projection always satisfies the tool's own output schema.
-        assert!(crate::tools::web_fetch_tool::ui::parse_output(&raw).is_some());
     }
 
     #[test]

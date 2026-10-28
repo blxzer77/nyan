@@ -69,6 +69,9 @@ pub fn clear_session_caches(preserved_agent_ids: &HashSet<String>) {
     // conversation.
     crate::utils::session_env_vars::clear_session_env_vars();
     crate::tools::web_fetch_tool::utils::clear_web_fetch_cache();
+    // @nyan: `/clear` also resets provider/fetch budgets and the snapshot URL index.
+    crate::services::web::budget::reset();
+    crate::services::web::snapshot::clear_index();
 }
 
 #[cfg(test)]

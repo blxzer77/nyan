@@ -12,6 +12,9 @@ pub mod ui;
 
 /// Maps to CC `tools/WebSearchTool/WebSearchTool.ts` `isEnabled(...)`.
 pub fn is_web_search_tool_enabled() -> bool {
+    if crate::services::web::has_search_provider() {
+        return true;
+    }
     match crate::utils::model::providers::get_api_provider() {
         crate::utils::model::providers::ApiProvider::FirstParty => true,
         crate::utils::model::providers::ApiProvider::Foundry => true,
@@ -86,6 +89,16 @@ pub fn input_schema() -> &'static crate::utils::zod::Schema {
                 zod::array(zod::string())
                     .optional()
                     .describe("Never include search results from these domains"),
+            ),
+            // @nyan: provider aggregation exposes an explicit deterministic result cap.
+            (
+                "max_results",
+                zod::number()
+                    .int()
+                    .positive()
+                    .max(20)
+                    .optional()
+                    .describe("Maximum number of search results (default 8, maximum 20)"),
             ),
         ])
     })
@@ -301,6 +314,41 @@ fn emit_web_search_progress(
     if let Some(on_progress) = on_progress {
         on_progress(progress);
     }
+}
+
+async fn run_nyan_web_search(args: &serde_json::Value) -> Result<Output, String> {
+    let started = std::time::Instant::now();
+    let query = args
+        .get("query")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "Error: Missing query".to_string())?;
+    let web = crate::services::web::settings()
+        .ok_or_else(|| "Error: nyan.web is not configured".to_string())?;
+    let allowed = optional_string_array(args, "allowed_domains").unwrap_or_default();
+    let blocked = optional_string_array(args, "blocked_domains").unwrap_or_default();
+    let max_results = args
+        .get("max_results")
+        .and_then(|value| value.as_u64())
+        .map(|value| value as usize)
+        .unwrap_or(8);
+    let rerank = crate::services::web::rerank_client(&web);
+    let outcome = crate::services::web::search::search(
+        query,
+        &allowed,
+        &blocked,
+        max_results,
+        &web,
+        rerank.as_ref(),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    Ok(Output {
+        query: query.to_string(),
+        results: vec![WebSearchResultItem::Text(
+            crate::services::web::search::render_outcome(&outcome),
+        )],
+        duration_seconds: started.elapsed().as_secs_f64(),
+    })
 }
 
 /// Maps to CC `tools/WebSearchTool/WebSearchTool.ts` `call(...)` progress
@@ -607,6 +655,18 @@ impl crate::tool::ToolCall for WebSearchTool {
                 };
             };
 
+            // @nyan: configured providers replace CC's nested Anthropic web tool.
+            if crate::services::web::has_search_provider() {
+                let data = match run_nyan_web_search(args).await {
+                    Ok(output) => crate::tool::ToolOutput::WebSearch(output),
+                    Err(error) => web_search_error_output(error),
+                };
+                return crate::tool::ToolResult {
+                    data,
+                    new_messages: Vec::new(),
+                };
+            }
+
             let start = std::time::Instant::now();
             let user_message =
                 crate::types::message::Message::User(crate::types::message::UserMessage {
@@ -717,9 +777,15 @@ impl crate::tool::ToolCall for WebSearchTool {
                         }
                     }
                 }
-                formatted_output.push_str(
-                    "\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.",
-                );
+                if crate::services::web::has_search_provider() {
+                    formatted_output.push_str(
+                        "\nREMINDER: Search results are leads, not sources. Only cite pages you fetched with WebFetch.",
+                    );
+                } else {
+                    formatted_output.push_str(
+                        "\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.",
+                    );
+                }
                 (
                     formatted_output.trim().to_string(),
                     crate::types::message::ToolResultStatus::Success,
