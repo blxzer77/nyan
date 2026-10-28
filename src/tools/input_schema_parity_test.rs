@@ -256,6 +256,38 @@ const GATE_DEPENDENT_ORACLE_PATCHES: &[OraclePatch] = &[
     ),
 ];
 
+/// @nyan: tools whose schema deliberately EXTENDS CC's (docs/nyan/tool-io.md
+/// T4/T5/T6). Each entry names the parameters nyan adds; the comparison strips
+/// exactly those (and restores CC's `required` list) before diffing, so every
+/// property CC owns stays under the net. The switches themselves live in
+/// `settings.nyan.toolIo`, not in the wire schema: the parameters exist even
+/// when a behavior is off, and only `files` disappears when `readBatchMax=0`.
+///
+/// `(tool, added properties, file_path is no longer required)`.
+const NYAN_SCHEMA_EXTENSIONS: &[(&str, &[&str], bool)] =
+    &[("FileReadTool", &["encoding", "view", "files"], true)];
+
+fn strip_nyan_extensions(tool_dir: &str, mut schema: Value) -> Value {
+    let Some((_, added, relaxes_file_path)) = NYAN_SCHEMA_EXTENSIONS
+        .iter()
+        .find(|(name, _, _)| *name == tool_dir)
+    else {
+        return schema;
+    };
+    if let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut) {
+        for key in *added {
+            properties.remove(*key);
+        }
+    }
+    if *relaxes_file_path
+        && schema.get("required").is_none()
+        && schema.pointer("/properties/file_path").is_some()
+    {
+        schema["required"] = serde_json::json!(["file_path"]);
+    }
+    schema
+}
+
 /// Ported tools the oracle never captured, so their schemas stay unverified.
 /// Empty: the dump script keys every tool a directory exports, not just the one
 /// in `<Dir>/<Dir>.ts`, so `ExitPlanModeTool` (ships from `ExitPlanModeV2Tool.ts`)
@@ -359,7 +391,7 @@ fn migrated_tools_project_the_official_input_schema() {
     let mut report = String::new();
     for (tool_dir, schema_fn) in MIGRATED {
         let want = oracle_schema(tool_dir);
-        let got = schema_fn().input_schema;
+        let got = strip_nyan_extensions(tool_dir, schema_fn().input_schema);
         let differences = json_differences(&got, &want);
         if differences.is_empty() {
             continue;

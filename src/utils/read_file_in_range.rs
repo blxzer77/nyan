@@ -27,6 +27,15 @@ pub struct ReadFileRangeResult {
     pub read_bytes: u64,
     pub mtime_ms: f64,
     pub truncated_by_bytes: bool,
+    /// @nyan: WHATWG label of the source encoding when it was not plain
+    /// UTF-8 (T5), so Read can say where the text came from.
+    pub encoding: Option<String>,
+    /// @nyan: `(Note: decoded from gbk; output is UTF-8.)` for detected
+    /// encodings; `None` for UTF-8, BOM and explicit-label decoding.
+    pub encoding_note: Option<String>,
+    /// @nyan: real line count. CC counts the empty fragment after a trailing
+    /// newline as a line; the completion tail should not.
+    pub actual_total_lines: usize,
 }
 
 /// Maps to CC `FileTooLargeError`.
@@ -58,6 +67,12 @@ pub enum ReadFileInRangeError {
         path: std::path::PathBuf,
     },
     FileTooLarge(FileTooLargeError),
+    /// @nyan: strict decode failure (T5/T6). `message` already carries the
+    /// path and the next step, so callers only print it.
+    Decode {
+        error: crate::utils::text_decode::DecodeError,
+        path: std::path::PathBuf,
+    },
     AbortedBeforeIo,
     Aborted,
 }
@@ -66,7 +81,9 @@ impl ReadFileInRangeError {
     pub fn io_error(&self) -> Option<&std::io::Error> {
         match self {
             Self::Io(error) | Self::IoAtPath { source: error, .. } => Some(error),
-            Self::FileTooLarge(_) | Self::AbortedBeforeIo | Self::Aborted => None,
+            Self::FileTooLarge(_) | Self::Decode { .. } | Self::AbortedBeforeIo | Self::Aborted => {
+                None
+            }
         }
     }
 
@@ -96,6 +113,9 @@ impl std::fmt::Display for ReadFileInRangeError {
                 Some(path),
             )),
             Self::FileTooLarge(error) => error.fmt(f),
+            Self::Decode { error, path } => {
+                f.write_str(&error.message(&path.display().to_string()))
+            }
             Self::AbortedBeforeIo => f.write_str("This operation was aborted"),
             Self::Aborted => f.write_str("The operation was aborted"),
         }
@@ -107,7 +127,7 @@ impl std::error::Error for ReadFileInRangeError {
         match self {
             Self::Io(error) | Self::IoAtPath { source: error, .. } => Some(error),
             Self::FileTooLarge(error) => Some(error),
-            Self::AbortedBeforeIo | Self::Aborted => None,
+            Self::Decode { .. } | Self::AbortedBeforeIo | Self::Aborted => None,
         }
     }
 }
@@ -119,9 +139,17 @@ impl From<std::io::Error> for ReadFileInRangeError {
 }
 
 /// Maps to CC `readFileInRange(..., options)`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReadFileRangeOptions {
     pub truncate_on_byte_limit: bool,
+    /// @nyan: T5 — an explicit WHATWG label from the `encoding` parameter.
+    /// Always honored, even when detection is switched off.
+    pub encoding: Option<String>,
+    /// @nyan: T5 — strict decoding with detection instead of CC's
+    /// `from_utf8_lossy`.
+    pub encoding_detection: bool,
+    /// @nyan: T6 — content-level binary sniffing (`nyan.toolIo.contentBinaryCheck`).
+    pub content_binary_check: bool,
 }
 
 fn check_aborted_before_io(abort: Option<&AbortController>) -> Result<(), ReadFileInRangeError> {
@@ -315,9 +343,22 @@ pub fn read_file_in_range(
             bytes.extend_from_slice(&chunk[..read]);
         }
         check_aborted(abort)?;
-        let raw = String::from_utf8_lossy(&bytes).into_owned();
-        return Ok(read_file_in_range_fast(
-            &raw,
+        let decoded = if options.encoding_detection || options.encoding.is_some() {
+            crate::utils::text_decode::decode_bytes_with(
+                &bytes,
+                options.encoding.as_deref(),
+                &file_path.display().to_string(),
+                options.content_binary_check,
+            )
+            .map_err(|error| ReadFileInRangeError::Decode {
+                error,
+                path: file_path.to_path_buf(),
+            })?
+        } else {
+            crate::utils::text_decode::DecodedText::lossy(&bytes)
+        };
+        let mut result = read_file_in_range_fast(
+            &decoded.text,
             mtime_ms,
             offset,
             max_lines.as_ref(),
@@ -325,7 +366,10 @@ pub fn read_file_in_range(
                 .truncate_on_byte_limit
                 .then_some(max_bytes)
                 .flatten(),
-        ));
+        );
+        result.encoding = (decoded.encoding != "utf-8").then_some(decoded.encoding);
+        result.encoding_note = decoded.note;
+        return Ok(result);
     }
 
     read_file_in_range_streaming(
@@ -334,7 +378,7 @@ pub fn read_file_in_range(
         offset,
         max_lines.as_ref(),
         max_bytes,
-        options.truncate_on_byte_limit,
+        &options,
         abort,
     )
 }
@@ -428,6 +472,8 @@ fn read_file_in_range_fast(
     line_index = line_index.saturating_add(1);
 
     let content = selected_lines.join("\n");
+    let actual_total_lines =
+        line_index.saturating_sub(usize::from(text.ends_with('\n') && !text.is_empty()));
     ReadFileRangeResult {
         line_count: selected_lines.len(),
         total_lines: line_index,
@@ -436,6 +482,9 @@ fn read_file_in_range_fast(
         content,
         mtime_ms,
         truncated_by_bytes,
+        encoding: None,
+        encoding_note: None,
+        actual_total_lines,
     }
 }
 
@@ -569,9 +618,10 @@ fn read_file_in_range_streaming(
     offset: f64,
     max_lines: Option<&serde_json::Value>,
     max_bytes: Option<f64>,
-    truncate_on_byte_limit: bool,
+    options: &ReadFileRangeOptions,
     abort: Option<&AbortController>,
 ) -> Result<ReadFileRangeResult, ReadFileInRangeError> {
+    let truncate_on_byte_limit = options.truncate_on_byte_limit;
     check_aborted(abort)?;
     let (mut file, is_fifo, opened_metadata) = open_stream_file(file_path, path_metadata)
         .map_err(|error| ReadFileInRangeError::Io(error).at_path("open", file_path))?;
@@ -606,7 +656,11 @@ fn read_file_in_range_streaming(
     let mut selected_lines = Vec::<String>::new();
     let mut partial = String::new();
     let mut first_decoded_chunk = true;
+    let mut last_byte_was_newline = false;
+    let mut any_bytes = false;
     let mut pending_utf8 = Vec::new();
+    let mut streaming_decoder = None;
+    let strict_encoding = options.encoding_detection || options.encoding.is_some();
     let mut bytes = vec![0u8; STREAM_CHUNK_SIZE];
     loop {
         check_aborted(abort)?;
@@ -615,7 +669,36 @@ fn read_file_in_range_streaming(
         if count == 0 {
             break;
         }
-        let mut chunk = decode_utf8_chunk(&bytes[..count], &mut pending_utf8, false);
+        any_bytes = true;
+        last_byte_was_newline = bytes[count - 1] == b'\n';
+        // @nyan: with detection on, the encoding is settled from the first
+        // chunk and malformed input is an error instead of U+FFFD (T5). With
+        // it off this keeps CC's incremental lossy decoder byte for byte.
+        let mut chunk = if strict_encoding {
+            let decoder = match streaming_decoder.as_mut() {
+                Some(decoder) => decoder,
+                None => streaming_decoder.insert(
+                    crate::utils::text_decode::StreamingDecoder::new(
+                        &bytes[..count],
+                        options.encoding.as_deref(),
+                        &file_path.display().to_string(),
+                        options.content_binary_check,
+                    )
+                    .map_err(|error| ReadFileInRangeError::Decode {
+                        error,
+                        path: file_path.to_path_buf(),
+                    })?,
+                ),
+            };
+            decoder
+                .decode(&bytes[..count])
+                .map_err(|error| ReadFileInRangeError::Decode {
+                    error,
+                    path: file_path.to_path_buf(),
+                })?
+        } else {
+            decode_utf8_chunk(&bytes[..count], &mut pending_utf8, false)
+        };
         if first_decoded_chunk && !chunk.is_empty() {
             first_decoded_chunk = false;
             if let Some(without_bom) = chunk.strip_prefix('\u{feff}') {
@@ -694,7 +777,15 @@ fn read_file_in_range_streaming(
         }
     }
 
-    let final_decoded = decode_utf8_chunk(&[], &mut pending_utf8, true);
+    let final_decoded = match streaming_decoder.as_mut() {
+        Some(decoder) => decoder
+            .finish()
+            .map_err(|error| ReadFileInRangeError::Decode {
+                error,
+                path: file_path.to_path_buf(),
+            })?,
+        None => decode_utf8_chunk(&[], &mut pending_utf8, true),
+    };
     if !final_decoded.is_empty() {
         total_bytes_read = total_bytes_read.saturating_add(final_decoded.len() as u64);
         if !truncate_on_byte_limit
@@ -734,6 +825,15 @@ fn read_file_in_range_streaming(
 
     let content = selected_lines.join("\n");
     check_aborted(abort)?;
+    let (encoding, encoding_note) = match streaming_decoder.as_ref() {
+        Some(decoder) => (
+            (decoder.encoding_label() != "utf-8").then(|| decoder.encoding_label().to_string()),
+            decoder.note().map(str::to_string),
+        ),
+        None => (None, None),
+    };
+    let actual_total_lines =
+        current_line_index.saturating_sub(usize::from(last_byte_was_newline || !any_bytes));
     Ok(ReadFileRangeResult {
         line_count: selected_lines.len(),
         total_lines: current_line_index,
@@ -742,6 +842,9 @@ fn read_file_in_range_streaming(
         content,
         mtime_ms,
         truncated_by_bytes,
+        encoding,
+        encoding_note,
+        actual_total_lines,
     })
 }
 

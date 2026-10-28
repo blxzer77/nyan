@@ -173,6 +173,44 @@ pub fn hex_note(start: usize, shown: usize, total: usize) -> String {
     read_note(start, shown, total)
 }
 
+/// Read tail when the shown prefix was cut by the token budget rather than by
+/// the requested range. Always Partial, with the next offset to continue at.
+pub fn read_budget_note(start: usize, shown: usize, total: usize) -> String {
+    if shown == 0 {
+        return format!(
+            "(Partial: token budget exhausted at line {start} of {total}. Continue with offset={start} after raising the limit.)"
+        );
+    }
+    let end = start.saturating_add(shown).saturating_sub(1);
+    format!(
+        "(Partial: lines {start}-{end} of {total} shown. Continue with offset={}.)",
+        end.saturating_add(1)
+    )
+}
+
+/// Batch Read tail (T4). `continuation` is the JSON value for the `files`
+/// parameter that resumes the unprocessed members.
+pub fn batch_note(
+    processed: usize,
+    total: usize,
+    failed: usize,
+    continuation: Option<&serde_json::Value>,
+) -> String {
+    let failed_note = if failed > 0 {
+        format!("; {failed} failed")
+    } else {
+        String::new()
+    };
+    // A non-empty continuation means the budget ran out even when every
+    // member was visited: the last visited member is itself continued.
+    match continuation {
+        Some(continuation) if !continuation.as_array().is_some_and(Vec::is_empty) => format!(
+            "(Partial: {processed} of {total} files processed{failed_note}. Continue with files={continuation}.)"
+        ),
+        _ => format!("(Complete: all {total} files shown{failed_note}.)"),
+    }
+}
+
 /// Grep content tail. `offset` is the model-facing `offset` parameter, which
 /// counts matching lines (not file lines).
 pub fn grep_content_note(total: usize, shown: usize, offset: usize, issues: NoteIssues) -> String {
@@ -354,6 +392,22 @@ mod tests {
         assert_eq!(
             glob_note(120, 100, NoteIssues::default()),
             "(Partial: files 1-100 of 120 shown. Use a more specific path or pattern.)"
+        );
+        assert_eq!(
+            read_budget_note(1, 40, 512),
+            "(Partial: lines 1-40 of 512 shown. Continue with offset=41.)"
+        );
+        assert_eq!(batch_note(5, 5, 0, None), "(Complete: all 5 files shown.)");
+        let continuation = serde_json::json!([{"path": "src/a.rs", "offset": 301}]);
+        assert_eq!(
+            batch_note(2, 5, 0, Some(&continuation)),
+            "(Partial: 2 of 5 files processed. Continue with files=[{\"path\":\"src/a.rs\",\"offset\":301}].)"
+        );
+        // Budget ran out on the last member: it is still continued.
+        assert!(batch_note(5, 5, 0, Some(&continuation)).starts_with("(Partial: 5 of 5"));
+        assert_eq!(
+            batch_note(5, 5, 1, None),
+            "(Complete: all 5 files shown; 1 failed.)"
         );
     }
 }

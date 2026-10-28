@@ -39,6 +39,11 @@ pub struct DecodedText {
 }
 
 impl DecodedText {
+    /// CC's `String::from_utf8_lossy` behavior, kept for the switch-off path.
+    pub fn lossy(bytes: &[u8]) -> Self {
+        Self::utf8(String::from_utf8_lossy(bytes).into_owned())
+    }
+
     fn utf8(text: String) -> Self {
         Self {
             text,
@@ -103,6 +108,19 @@ pub fn decode_bytes(
     explicit: Option<&str>,
     label: &str,
 ) -> Result<DecodedText, DecodeError> {
+    decode_bytes_with(bytes, explicit, label, true)
+}
+
+/// [`decode_bytes`] with the content-binary sniff switchable
+/// (`nyan.toolIo.contentBinaryCheck`). `label` currently only reaches the
+/// caller through its own error copy; keep the parameter so the signature
+/// does not churn when a step starts naming the file.
+pub fn decode_bytes_with(
+    bytes: &[u8],
+    explicit: Option<&str>,
+    _label: &str,
+    check_binary: bool,
+) -> Result<DecodedText, DecodeError> {
     if let Some(explicit) = explicit {
         let encoding =
             encoding_rs::Encoding::for_label(explicit.trim().as_bytes()).ok_or_else(|| {
@@ -124,16 +142,19 @@ pub fn decode_bytes(
     }
 
     let sniff = &bytes[..bytes.len().min(SNIFF_LIMIT)];
-    if sniff.contains(&0) {
+    if check_binary {
+        // @nyan: magic runs before the strict-UTF-8 check. Some binary
+        // prefixes (ELF's `\x7fELF\x02\x01`, PE's `MZ`) are valid UTF-8
+        // control sequences, so the design's step order (UTF-8 at 4, magic at
+        // 5) would classify a short binary header as text.
+        if let Some(kind) = binary_kind(bytes) {
+            return Err(DecodeError::Binary { kind });
+        }
+    } else if sniff.contains(&0) {
+        // Even with content binary checking off, a NUL in the sniff window
+        // means the strict decoders below cannot succeed; report it as binary
+        // rather than an encoding guess.
         return Err(DecodeError::Binary { kind: "NUL bytes" });
-    }
-
-    // @nyan: magic runs before the strict-UTF-8 check. Some binary prefixes
-    // (ELF's `\x7fELF\x02\x01`, PE's `MZ`) are valid UTF-8 control sequences,
-    // so step order in the design (UTF-8 at 4, magic at 5) would classify a
-    // short binary header as text.
-    if let Some(kind) = binary_magic(bytes) {
-        return Err(DecodeError::Binary { kind });
     }
 
     if let Ok(text) = std::str::from_utf8(bytes) {
@@ -187,6 +208,254 @@ pub fn decode_line(bytes: &[u8]) -> Option<DecodedText> {
         return Some(DecodedText::utf8(text.to_string()));
     }
     decode_bytes(bytes, None, "match line").ok()
+}
+
+/// Incremental decoder for the streaming Read path (files ≥ 10 MiB and FIFOs).
+///
+/// The encoding is settled from the first chunk: an explicit label, a BOM, a
+/// binary sniff, a clean UTF-8 prefix, or a nominated legacy encoding that
+/// decodes the prefix without a malformed sequence. Once chosen it does not
+/// change, and a malformed sequence later in the stream is an error rather
+/// than a replacement character — the "never emit mojibake" rule holds here
+/// too.
+pub struct StreamingDecoder {
+    inner: StreamingInner,
+    encoding: &'static str,
+    note: Option<String>,
+    first_chunk: bool,
+}
+
+enum StreamingInner {
+    /// Every encoding `encoding_rs` implements except UTF-32.
+    Encoding(encoding_rs::Decoder),
+    /// UTF-32 has no `encoding_rs` decoder; a fixed-width decoder buffers a
+    /// partial code unit across chunk boundaries.
+    Utf32 {
+        little_endian: bool,
+        pending: Vec<u8>,
+    },
+}
+
+impl StreamingDecoder {
+    /// `chunk` is the first non-empty read. `explicit` wins outright; `label`
+    /// is the path used in error messages.
+    pub fn new(
+        chunk: &[u8],
+        explicit: Option<&str>,
+        label: &str,
+        check_binary: bool,
+    ) -> Result<Self, DecodeError> {
+        if let Some(explicit) = explicit {
+            let encoding = encoding_rs::Encoding::for_label(explicit.trim().as_bytes())
+                .ok_or_else(|| DecodeError::UnsupportedEncoding {
+                    encoding: explicit.to_string(),
+                })?;
+            return Ok(Self {
+                inner: StreamingInner::Encoding(encoding.new_decoder_without_bom_handling()),
+                encoding: canonical_label(encoding),
+                note: None,
+                first_chunk: true,
+            });
+        }
+
+        if chunk.starts_with(&[0xFF, 0xFE, 0x00, 0x00]) {
+            return Ok(Self::utf32(true));
+        }
+        if chunk.starts_with(&[0x00, 0x00, 0xFE, 0xFF]) {
+            return Ok(Self::utf32(false));
+        }
+        if chunk.starts_with(&[0xFF, 0xFE]) {
+            return Ok(Self::with_encoding(encoding_rs::UTF_16LE, "utf-16le"));
+        }
+        if chunk.starts_with(&[0xFE, 0xFF]) {
+            return Ok(Self::with_encoding(encoding_rs::UTF_16BE, "utf-16be"));
+        }
+        if check_binary {
+            if let Some(kind) = binary_kind(chunk) {
+                return Err(DecodeError::Binary { kind });
+            }
+        }
+        if valid_utf8_prefix(chunk) {
+            return Ok(Self::with_encoding(encoding_rs::UTF_8, "utf-8"));
+        }
+        let encoding = nominate(chunk, label)?;
+        Ok(Self {
+            inner: StreamingInner::Encoding(encoding.new_decoder_without_bom_handling()),
+            encoding: canonical_label(encoding),
+            note: Some(format!(
+                "(Note: decoded from {}; output is UTF-8.)",
+                canonical_label(encoding)
+            )),
+            first_chunk: true,
+        })
+    }
+
+    fn with_encoding(encoding: &'static encoding_rs::Encoding, label: &'static str) -> Self {
+        Self {
+            inner: StreamingInner::Encoding(encoding.new_decoder_without_bom_handling()),
+            encoding: label,
+            note: None,
+            first_chunk: true,
+        }
+    }
+
+    fn utf32(little_endian: bool) -> Self {
+        Self {
+            inner: StreamingInner::Utf32 {
+                little_endian,
+                pending: Vec::new(),
+            },
+            encoding: if little_endian {
+                "utf-32le"
+            } else {
+                "utf-32be"
+            },
+            note: None,
+            first_chunk: true,
+        }
+    }
+
+    pub fn note(&self) -> Option<&str> {
+        self.note.as_deref()
+    }
+
+    pub fn encoding_label(&self) -> &'static str {
+        self.encoding
+    }
+
+    pub fn decode(&mut self, bytes: &[u8]) -> Result<String, DecodeError> {
+        if self.first_chunk {
+            self.first_chunk = false;
+            // The UTF-8 BOM belongs to the stream, not the text. For every
+            // other source encoding the BOM was consumed by `new`.
+            let bytes = if self.encoding == "utf-8" {
+                bytes.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(bytes)
+            } else {
+                bytes
+            };
+            return self.decode_inner(bytes, false);
+        }
+        self.decode_inner(bytes, false)
+    }
+
+    pub fn finish(&mut self) -> Result<String, DecodeError> {
+        self.decode_inner(&[], true)
+    }
+
+    fn decode_inner(&mut self, bytes: &[u8], last: bool) -> Result<String, DecodeError> {
+        match &mut self.inner {
+            StreamingInner::Encoding(decoder) => {
+                let mut output = String::new();
+                let mut remaining = bytes;
+                loop {
+                    let worst_case = decoder
+                        .max_utf8_buffer_length(remaining.len())
+                        .ok_or(DecodeError::Undecodable)?;
+                    output.reserve(worst_case.max(8));
+                    let (result, read) =
+                        decoder.decode_to_string_without_replacement(remaining, &mut output, last);
+                    remaining = &remaining[read..];
+                    match result {
+                        encoding_rs::DecoderResult::InputEmpty => return Ok(output),
+                        encoding_rs::DecoderResult::OutputFull => continue,
+                        encoding_rs::DecoderResult::Malformed(_, _) => {
+                            return Err(DecodeError::Undecodable);
+                        }
+                    }
+                }
+            }
+            StreamingInner::Utf32 {
+                little_endian,
+                pending,
+            } => {
+                pending.extend_from_slice(bytes);
+                let complete = pending.len() / 4 * 4;
+                let mut output = String::with_capacity(complete / 2);
+                for chunk in pending[..complete].chunks_exact(4) {
+                    let value = if *little_endian {
+                        u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])
+                    } else {
+                        u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])
+                    };
+                    let character = char::from_u32(value).ok_or(DecodeError::Undecodable)?;
+                    output.push(character);
+                }
+                pending.drain(..complete);
+                if last && !pending.is_empty() {
+                    return Err(DecodeError::Undecodable);
+                }
+                Ok(output)
+            }
+        }
+    }
+}
+
+fn valid_utf8_prefix(chunk: &[u8]) -> bool {
+    match std::str::from_utf8(chunk) {
+        Ok(_) => true,
+        Err(error) => {
+            // An incomplete sequence at the very end of the prefix is not
+            // evidence against UTF-8; anything else is.
+            error.error_len().is_none() && error.valid_up_to() + 3 >= chunk.len()
+        }
+    }
+}
+
+fn nominate(chunk: &[u8], label: &str) -> Result<&'static encoding_rs::Encoding, DecodeError> {
+    let sample = &chunk[..chunk.len().min(DETECTOR_SAMPLE_LIMIT)];
+    if non_ascii_bytes(sample) >= MIN_NON_ASCII_BYTES {
+        let mut detector = chardetng::EncodingDetector::new(chardetng::Iso2022JpDetection::Deny);
+        detector.feed(sample, true);
+        let nominated = detector.guess(None, chardetng::Utf8Detection::Deny);
+        if nominated != encoding_rs::UTF_8 && decodes_cleanly(nominated, sample) {
+            return Ok(nominated);
+        }
+    }
+    let mut candidates = Vec::new();
+    for candidate in FALLBACK_LABELS {
+        let Some(encoding) = encoding_rs::Encoding::for_label(candidate) else {
+            continue;
+        };
+        if decodes_cleanly(encoding, sample) {
+            candidates.push(encoding);
+        }
+    }
+    match candidates.as_slice() {
+        [] => {
+            let _ = label;
+            Err(DecodeError::Undecodable)
+        }
+        [only] => Ok(only),
+        many => Err(DecodeError::Ambiguous {
+            candidates: many
+                .iter()
+                .map(|encoding| canonical_label(encoding))
+                .collect(),
+        }),
+    }
+}
+
+/// True when every complete sequence decodes. A trailing partial sequence is
+/// buffered by the decoder instead of being reported malformed, so a chunk cut
+/// through a multi-byte character does not disqualify its encoding.
+fn decodes_cleanly(encoding: &'static encoding_rs::Encoding, bytes: &[u8]) -> bool {
+    let mut decoder = encoding.new_decoder_without_bom_handling();
+    let mut output = String::new();
+    let mut remaining = bytes;
+    loop {
+        let Some(worst_case) = decoder.max_utf8_buffer_length(remaining.len()) else {
+            return false;
+        };
+        output.reserve(worst_case.max(8));
+        let (result, read) =
+            decoder.decode_to_string_without_replacement(remaining, &mut output, false);
+        remaining = &remaining[read..];
+        match result {
+            encoding_rs::DecoderResult::InputEmpty => return true,
+            encoding_rs::DecoderResult::OutputFull => continue,
+            encoding_rs::DecoderResult::Malformed(_, _) => return false,
+        }
+    }
 }
 
 /// Content-level binary sniff used by Read (design T6). `Some(kind)` means

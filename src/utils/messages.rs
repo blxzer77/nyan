@@ -2930,6 +2930,11 @@ Read the team config to discover your teammates' names. Check the task list peri
                         num_lines: num_lines.as_u64().unwrap_or_default() as usize,
                         start_line: Value::Number(start_line.clone()),
                         total_lines: total_lines.as_u64().unwrap_or_default() as usize,
+                        completion_note: None,
+                        encoding_note: None,
+                        budget_truncated: false,
+                        preformatted: false,
+                        actual_total_lines: total_lines.as_u64().unwrap_or_default() as usize,
                     }),
                     Output::Image { base64, media_type, original_size, .. } => ReadOutput::Image(ReadImageOutput {
                         base64: base64.clone(), media_type: media_type.clone(),
