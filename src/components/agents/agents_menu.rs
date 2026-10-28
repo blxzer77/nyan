@@ -293,7 +293,11 @@ mod tests {
         let agent = custom_agent();
         let text = element! {
             ContextProvider(value: Context::owned(*crate::utils::theme::current())) {
-                AgentsMenu(all_agents: vec![agent.clone()], active_agents: vec![agent])
+                // Fragment is layout-transparent, so the list and the footer
+                // would become siblings in the default (row) flex direction.
+                View(flex_direction: FlexDirection::Column) {
+                    AgentsMenu(all_agents: vec![agent.clone()], active_agents: vec![agent])
+                }
             }
         }
         .render(Some(110))
