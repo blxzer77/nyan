@@ -277,6 +277,9 @@ pub(crate) fn parse_output(value: &serde_json::Value) -> Option<Output> {
         num_matches: parse_optional_number(map, "numMatches")?,
         applied_limit: parse_optional_number(map, "appliedLimit")?,
         applied_offset: parse_optional_number(map, "appliedOffset")?,
+        completion_note: None,
+        unreachable_paths: Vec::new(),
+        skipped_encoding: 0,
     })
 }
 

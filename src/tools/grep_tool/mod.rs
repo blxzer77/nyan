@@ -239,6 +239,13 @@ pub(crate) struct Output {
     pub(crate) applied_limit: Option<serde_json::Number>,
     /// CC `appliedOffset` — only when offset > 0.
     pub(crate) applied_offset: Option<serde_json::Number>,
+    /// @nyan: presentation-only completion tail; omitted from the CC wire
+    /// schema so recorded toolUseResult remains byte-compatible.
+    pub(crate) completion_note: Option<String>,
+    /// @nyan: rg traversal diagnostics rendered before the completion tail.
+    pub(crate) unreachable_paths: Vec<String>,
+    /// @nyan: files whose matching lines could not be decoded determinately.
+    pub(crate) skipped_encoding: usize,
 }
 
 impl Output {
@@ -278,6 +285,98 @@ fn relativize_count_line(line: &str, cwd: &std::path::Path) -> String {
     };
     let (file_path, count) = line.split_at(colon);
     format!("{}{count}", to_relative_path(file_path, cwd))
+}
+
+/// @nyan: path used to attribute an undecodable matching line to a file.
+fn search_line_path(line: &str) -> String {
+    line.split_once(':')
+        .map(|(path, _)| path.to_string())
+        .unwrap_or_else(|| line.to_string())
+}
+
+/// @nyan: Grep's T6 window keeps both sides of a very long matching line so
+/// the match is still visible instead of always returning its unrelated head.
+fn truncate_grep_line(line: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return line.to_string();
+    }
+    let total = line.chars().count();
+    if total <= max_chars {
+        return line.to_string();
+    }
+    let left = max_chars / 2;
+    let right = max_chars.saturating_sub(left);
+    let prefix = line.chars().take(left).collect::<String>();
+    let suffix = line
+        .chars()
+        .rev()
+        .take(right)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>();
+    format!("{prefix} … [line truncated: {total} chars total] … {suffix}")
+}
+
+/// @nyan: Decode content-mode rows without making CC's switch-off path lossy
+/// behavior change. A file is counted once even if several of its rows fail.
+fn prepare_content_lines(
+    run: &crate::utils::ripgrep::RipgrepRun,
+    encoding_detection: bool,
+    max_chars: usize,
+) -> (Vec<String>, usize) {
+    let mut skipped = std::collections::BTreeSet::new();
+    let mut lines = Vec::with_capacity(run.lines.len());
+    for (index, fallback) in run.lines.iter().enumerate() {
+        let line = if encoding_detection {
+            run.raw_lines
+                .get(index)
+                .and_then(|raw| crate::utils::text_decode::decode_line(raw))
+                .map(|decoded| decoded.text)
+        } else {
+            Some(fallback.clone())
+        };
+        match line {
+            Some(line) => lines.push(truncate_grep_line(&line, max_chars)),
+            None => {
+                skipped.insert(search_line_path(fallback));
+            }
+        }
+    }
+    (lines, skipped.len())
+}
+
+fn diagnostic_lines(output: &Output) -> Vec<String> {
+    let mut lines = output
+        .unreachable_paths
+        .iter()
+        .take(20)
+        .map(|path| format!("Unreachable path: {path}"))
+        .collect::<Vec<_>>();
+    if output.skipped_encoding > 0 {
+        lines.push(format!(
+            "Skipped {} files because their matching lines had an ambiguous or undecodable encoding.",
+            output.skipped_encoding
+        ));
+    }
+    lines
+}
+
+fn append_completion_note(mut content: String, output: &Output) -> String {
+    let diagnostics = diagnostic_lines(output);
+    if !diagnostics.is_empty() {
+        if !content.is_empty() {
+            content.push_str("\n\n");
+        }
+        content.push_str(&diagnostics.join("\n"));
+    }
+    if let Some(note) = &output.completion_note {
+        if !content.is_empty() {
+            content.push_str("\n");
+        }
+        content.push_str(note);
+    }
+    content
 }
 
 fn read_deny_globs(
@@ -464,8 +563,9 @@ fn grep_output_with_context(
     permission_context: &crate::tool::ToolPermissionContext,
 ) -> Result<Output, String> {
     use crate::types::message::SearchResultMode;
-    use crate::utils::ripgrep::rip_grep;
+    use crate::utils::ripgrep::rip_grep_detailed;
 
+    let tool_io = crate::utils::tool_io::config();
     let Some(pattern) = args.get("pattern").and_then(|value| value.as_str()) else {
         return Err("Error searching files: missing pattern".to_string());
     };
@@ -499,7 +599,27 @@ fn grep_output_with_context(
         rg_args.push(format!("!{dir}"));
     }
     rg_args.push("--max-columns".to_string());
-    rg_args.push("500".to_string());
+    // @nyan: leave enough bytes for our T6 nearby-window renderer. The old
+    // 500-column rg cap emits `[Omitted long matching line]` before nyan can
+    // preserve the match context.
+    rg_args.push(
+        tool_io
+            .max_line_chars_grep
+            .saturating_mul(4)
+            .max(500)
+            .to_string(),
+    );
+    // @nyan: rg's worker scheduling is nondeterministic; content/count are
+    // cache-sensitive result modes, so stabilize them by path (T2). Filename
+    // mode keeps CC's mtime ordering below.
+    if tool_io.stable_grep_order
+        && matches!(
+            output_mode,
+            SearchResultMode::Content | SearchResultMode::Count
+        )
+    {
+        rg_args.push("--sort=path".to_string());
+    }
 
     if args
         .get("multiline")
@@ -601,7 +721,24 @@ fn grep_output_with_context(
         rg_args.push(exclusion);
     }
 
-    let results = rip_grep(&rg_args, &absolute_path, abort).map_err(|error| error.to_string())?;
+    // @nyan: keep rg stderr so unreadable traversal paths are visible in the
+    // result instead of being mistaken for a complete search (T8).
+    let run =
+        rip_grep_detailed(&rg_args, &absolute_path, abort).map_err(|error| error.to_string())?;
+    let unreachable_paths = if tool_io.report_unreachable {
+        crate::utils::tool_io::unreachable_paths(&run.stderr)
+    } else {
+        Vec::new()
+    };
+    let (results, skipped_encoding) = if output_mode == SearchResultMode::Content {
+        prepare_content_lines(
+            &run,
+            tool_io.encoding_detection,
+            tool_io.max_line_chars_grep,
+        )
+    } else {
+        (run.lines, 0)
+    };
 
     let head_limit = input_number(args, "head_limit");
     let offset = input_number(args, "offset").unwrap_or_else(|| javascript_number(0.0));
@@ -609,6 +746,15 @@ fn grep_output_with_context(
         .as_f64()
         .is_some_and(|value| value > 0.0)
         .then(|| offset.clone());
+    let offset_for_note = offset
+        .as_f64()
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .map(|value| value.trunc() as usize)
+        .unwrap_or(0);
+    let note_issues = crate::utils::tool_io::NoteIssues {
+        skipped_encoding,
+        unreachable: unreachable_paths.len(),
+    };
 
     Ok(match output_mode {
         SearchResultMode::Content => {
@@ -617,6 +763,14 @@ fn grep_output_with_context(
                 .iter()
                 .map(|line| relativize_content_line(line, &project_cwd))
                 .collect::<Vec<_>>();
+            let completion_note = tool_io.completion_notes.then(|| {
+                crate::utils::tool_io::grep_content_note(
+                    results.len(),
+                    final_lines.len(),
+                    offset_for_note,
+                    note_issues,
+                )
+            });
             Output {
                 mode: Some(output_mode),
                 num_files: usize_number(0),
@@ -626,6 +780,9 @@ fn grep_output_with_context(
                 num_matches: None,
                 applied_limit,
                 applied_offset,
+                completion_note,
+                unreachable_paths: unreachable_paths.clone(),
+                skipped_encoding,
             }
         }
         SearchResultMode::Count => {
@@ -644,6 +801,14 @@ fn grep_output_with_context(
                     }
                 }
             }
+            let completion_note = tool_io.completion_notes.then(|| {
+                crate::utils::tool_io::grep_files_note(
+                    results.len(),
+                    final_count_lines.len(),
+                    offset_for_note,
+                    note_issues,
+                )
+            });
             Output {
                 mode: Some(output_mode),
                 num_files: usize_number(file_count),
@@ -653,13 +818,16 @@ fn grep_output_with_context(
                 num_matches: Some(javascript_number(total_matches)),
                 applied_limit,
                 applied_offset,
+                completion_note,
+                unreachable_paths: unreachable_paths.clone(),
+                skipped_encoding,
             }
         }
         SearchResultMode::FilesWithMatches => {
             // Maps to CC `GrepTool.ts:540-562`: production mtime-descending,
             // filename tiebreaker; NODE_ENV=test uses filename-only ordering.
-            let filename_only_sort =
-                cfg!(test) || crate::utils::process_env::var("NODE_ENV").is_some_and(|value| value == "test");
+            let filename_only_sort = cfg!(test)
+                || crate::utils::process_env::var("NODE_ENV").is_some_and(|value| value == "test");
             let mtimes = futures::executor::block_on(file_match_mtimes(&results));
             let mut times = mtimes.into_iter();
             let sorted =
@@ -669,6 +837,14 @@ fn grep_output_with_context(
                 .iter()
                 .map(|path| to_relative_path(path, &project_cwd))
                 .collect::<Vec<_>>();
+            let completion_note = tool_io.completion_notes.then(|| {
+                crate::utils::tool_io::grep_files_note(
+                    sorted.len(),
+                    relative_matches.len(),
+                    offset_for_note,
+                    note_issues,
+                )
+            });
             Output {
                 mode: Some(output_mode),
                 num_files: usize_number(relative_matches.len()),
@@ -678,6 +854,9 @@ fn grep_output_with_context(
                 num_matches: None,
                 applied_limit,
                 applied_offset,
+                completion_note,
+                unreachable_paths,
+                skipped_encoding,
             }
         }
     })
@@ -855,6 +1034,17 @@ impl crate::tool::ToolCall for GrepTool {
         match futures::executor::block_on(
             crate::utils::fs_operations::get_fs_implementation().stat(&absolute_path),
         ) {
+            Ok(stats) if stats.kind.is_dir() => {
+                // @nyan: an unreadable traversal root must not look like a
+                // successful no-match search (T8).
+                match std::fs::read_dir(&absolute_path) {
+                    Ok(_) => crate::tool::ValidationResult::Ok,
+                    Err(error) => crate::tool::ValidationResult::fatal(format!(
+                        "Cannot read search root '{}': {error}",
+                        absolute_path.display()
+                    )),
+                }
+            }
             Ok(_) => crate::tool::ValidationResult::Ok,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 let mut message = format!(
@@ -1019,7 +1209,10 @@ impl crate::tool::ToolCall for GrepTool {
                         }
                     }
                 };
-                (content, ToolResultStatus::Success)
+                (
+                    append_completion_note(content, output),
+                    ToolResultStatus::Success,
+                )
             }
             crate::tool::ToolOutput::Composed {
                 content, status, ..
@@ -1637,6 +1830,115 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    #[test]
+    fn grep_content_and_count_order_is_stable_and_results_have_completion_notes() {
+        let root = std::env::temp_dir().join(format!(
+            "cometix-grep-stable-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("b.txt"), "needle b\n").unwrap();
+        std::fs::write(root.join("a.txt"), "needle a\n").unwrap();
+        let abort = crate::tool::AbortController::default();
+        let mut previous = None;
+        for _ in 0..20 {
+            let output = grep_output(
+                &serde_json::json!({
+                    "pattern": "needle",
+                    "output_mode": "content",
+                    "-n": true,
+                }),
+                Some(&root),
+                &abort,
+            )
+            .expect("stable grep");
+            let content = output.content.clone().unwrap_or_default();
+            assert!(content.find("a.txt").unwrap() < content.find("b.txt").unwrap());
+            assert!(output.completion_note.is_some());
+            if let Some(previous) = previous.as_deref() {
+                assert_eq!(previous, content);
+            }
+            previous = Some(content);
+        }
+        let count = grep_output(
+            &serde_json::json!({"pattern": "needle", "output_mode": "count"}),
+            Some(&root),
+            &abort,
+        )
+        .expect("stable count");
+        assert!(count.content.as_deref().unwrap().starts_with("a.txt:1"));
+        assert!(count.completion_note.is_some());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn grep_decodes_legacy_content_and_truncates_long_lines() {
+        let root = std::env::temp_dir().join(format!(
+            "cometix-grep-encoding-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let gbk_text =
+            "你好，世界。这是一段用于检测编码的测试文本，需要足够的非 ASCII 字节。needle";
+        std::fs::write(
+            root.join("gbk.txt"),
+            encoding_rs::GBK.encode(gbk_text).0.as_ref(),
+        )
+        .unwrap();
+        let gbk = grep_output(
+            &serde_json::json!({"pattern": "needle", "output_mode": "content"}),
+            Some(&root),
+            &crate::tool::AbortController::default(),
+        )
+        .expect("GBK content grep");
+        let gbk_content = gbk.content.unwrap_or_default();
+        assert!(gbk_content.contains("你好，世界"), "{gbk_content:?}");
+        assert!(!gbk_content.contains('\u{fffd}'), "{gbk_content:?}");
+
+        let long = root.join("long.txt");
+        std::fs::write(
+            &long,
+            format!("{}needle{}\n", "x".repeat(600), "y".repeat(600)),
+        )
+        .unwrap();
+        let long_output = grep_output(
+            &serde_json::json!({"pattern": "needle", "output_mode": "content"}),
+            Some(&root),
+            &crate::tool::AbortController::default(),
+        )
+        .expect("long-line grep");
+        let content = long_output.content.unwrap_or_default();
+        assert!(content.contains("line truncated:"), "{content:?}");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn grep_mapping_places_diagnostics_before_the_completion_tail() {
+        use crate::tool::ToolCall as _;
+        use crate::types::message::{SearchResultMode, ToolResultStatus};
+        let output = Output {
+            mode: Some(SearchResultMode::Content),
+            num_files: usize_number(0),
+            filenames: Vec::new(),
+            content: Some("src/a.rs:1:needle".to_string()),
+            num_lines: Some(usize_number(1)),
+            num_matches: None,
+            applied_limit: None,
+            applied_offset: None,
+            completion_note: Some("(Complete: all 1 matching lines shown.)".to_string()),
+            unreachable_paths: vec!["src/blocked".to_string()],
+            skipped_encoding: 2,
+        };
+        let (mapped, status) = GrepTool.map_tool_result_to_tool_result_block_param(
+            &crate::tool::ToolOutput::Grep(output),
+            "toolu-diagnostics",
+        );
+        assert_eq!(status, ToolResultStatus::Success);
+        assert!(mapped.contains("Unreachable path: src/blocked"));
+        assert!(mapped.contains("Skipped 2 files"));
+        assert!(mapped.ends_with("(Complete: all 1 matching lines shown.)"));
+    }
+
     #[cfg(unix)]
     #[test]
     fn grep_read_deny_rules_filter_every_mode_and_symlink_traversal_roots() {
@@ -1778,6 +2080,9 @@ mod tests {
             num_matches: None,
             applied_limit: Some(javascript_number(2.5)),
             applied_offset: Some(usize_number(1)),
+            completion_note: None,
+            unreachable_paths: Vec::new(),
+            skipped_encoding: 0,
         };
         assert_eq!(
             GrepTool.map_tool_result_to_tool_result_block_param(
@@ -1820,6 +2125,9 @@ mod tests {
             num_matches: Some(usize_number(1)),
             applied_limit: None,
             applied_offset: None,
+            completion_note: None,
+            unreachable_paths: Vec::new(),
+            skipped_encoding: 0,
         };
         assert_eq!(
             GrepTool
@@ -1840,6 +2148,9 @@ mod tests {
             num_matches: None,
             applied_limit: None,
             applied_offset: None,
+            completion_note: None,
+            unreachable_paths: Vec::new(),
+            skipped_encoding: 0,
         };
         assert_eq!(
             GrepTool

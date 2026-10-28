@@ -61,6 +61,9 @@ pub struct Output {
     pub filenames: Vec<String>,
     /// CC `truncated` — results limited to 100 files.
     pub truncated: bool,
+    /// @nyan: presentation-only completion tail and traversal diagnostics.
+    pub(crate) completion_note: Option<String>,
+    pub(crate) unreachable_paths: Vec<String>,
 }
 
 fn requested_glob_root(
@@ -133,11 +136,21 @@ fn glob_output_with_context(
         .iter()
         .map(|path| to_relative_path(path, &active_cwd))
         .collect::<Vec<_>>();
+    let tool_io = crate::utils::tool_io::config();
+    let issues = crate::utils::tool_io::NoteIssues {
+        unreachable: result.unreachable_paths.len(),
+        ..Default::default()
+    };
+    let completion_note = tool_io
+        .completion_notes
+        .then(|| crate::utils::tool_io::glob_note(result.total_files, filenames.len(), issues));
     Ok(Output {
         duration_ms: serde_json::Number::from(started.elapsed().as_millis() as u64),
         num_files: serde_json::Number::from(filenames.len() as u64),
         filenames,
         truncated: result.truncated,
+        completion_note,
+        unreachable_paths: result.unreachable_paths,
     })
 }
 
@@ -421,19 +434,25 @@ impl crate::tool::ToolCall for GlobTool {
         use crate::types::message::ToolResultStatus;
         match data {
             crate::tool::ToolOutput::Glob(output) => {
-                let content = if output.filenames.is_empty() {
-                    "No files found".to_string()
+                let mut lines = if output.filenames.is_empty() {
+                    vec!["No files found".to_string()]
                 } else {
-                    let mut lines = output.filenames.clone();
-                    if output.truncated {
-                        lines.push(
-                            "(Results are truncated. Consider using a more specific path or pattern.)"
-                                .to_string(),
-                        );
-                    }
-                    lines.join("\n")
+                    output.filenames.clone()
                 };
-                (content, ToolResultStatus::Success)
+                if output.truncated && output.completion_note.is_none() {
+                    // CC fallback when T1 is disabled.
+                    lines.push(
+                        "(Results are truncated. Consider using a more specific path or pattern.)"
+                            .to_string(),
+                    );
+                }
+                for path in output.unreachable_paths.iter().take(20) {
+                    lines.push(format!("Unreachable path: {path}"));
+                }
+                if let Some(note) = &output.completion_note {
+                    lines.push(note.clone());
+                }
+                (lines.join("\n"), ToolResultStatus::Success)
             }
             crate::tool::ToolOutput::Composed {
                 content, status, ..
@@ -943,6 +962,8 @@ mod tests {
             num_files: serde_json::Number::from(0),
             filenames: Vec::new(),
             truncated: false,
+            completion_note: None,
+            unreachable_paths: Vec::new(),
         });
         assert_eq!(
             GlobTool.map_tool_result_to_tool_result_block_param(&empty, "toolu-empty"),
@@ -954,6 +975,8 @@ mod tests {
             num_files: serde_json::Number::from(2),
             filenames: vec!["src/a.rs".to_string(), "src/b.rs".to_string()],
             truncated: true,
+            completion_note: None,
+            unreachable_paths: Vec::new(),
         });
         assert_eq!(
             GlobTool.map_tool_result_to_tool_result_block_param(&output, "toolu-glob"),
@@ -1004,6 +1027,28 @@ mod tests {
                 .all(|path| !std::path::Path::new(path).is_absolute())
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn glob_results_have_completion_notes_and_unreachable_diagnostics() {
+        use crate::tool::ToolCall as _;
+        use crate::types::message::ToolResultStatus;
+        let output = crate::tool::ToolOutput::Glob(Output {
+            duration_ms: serde_json::Number::from(1),
+            num_files: serde_json::Number::from(2),
+            filenames: vec!["a.rs".to_string(), "b.rs".to_string()],
+            truncated: true,
+            completion_note: Some(
+                "(Partial: files 1-2 of 5 shown. Use a more specific path or pattern.)".to_string(),
+            ),
+            unreachable_paths: vec!["blocked".to_string()],
+        });
+        let (mapped, status) =
+            GlobTool.map_tool_result_to_tool_result_block_param(&output, "toolu-glob-diagnostics");
+        assert_eq!(status, ToolResultStatus::Success);
+        assert!(mapped.contains("Unreachable path: blocked"));
+        assert!(mapped.ends_with("Use a more specific path or pattern.)"));
+        assert!(!mapped.contains("Results are truncated"));
     }
 
     #[cfg(unix)]

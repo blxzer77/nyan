@@ -67,6 +67,8 @@ pub fn parse_output(value: &serde_json::Value) -> Option<Output> {
         num_files,
         filenames,
         truncated: value.get("truncated")?.as_bool()?,
+        completion_note: None,
+        unreachable_paths: Vec::new(),
     })
 }
 
@@ -138,6 +140,9 @@ pub(crate) fn render_tool_result_message(
             num_matches: None,
             applied_limit: None,
             applied_offset: None,
+            completion_note: None,
+            unreachable_paths: Vec::new(),
+            skipped_encoding: 0,
         },
         options,
     )
@@ -208,6 +213,8 @@ mod tests {
                 num_files: serde_json::Number::from(1),
                 filenames: vec!["/outside/project/file.rs".to_string()],
                 truncated: false,
+                completion_note: None,
+                unreachable_paths: Vec::new(),
             })
         );
         assert!(

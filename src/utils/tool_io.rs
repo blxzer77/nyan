@@ -4,13 +4,11 @@
 //! added to Read / Grep / Glob / Bash is switchable here; turning a switch off
 //! restores the CC code path byte for byte.
 //!
-//! The configuration lives under the passthrough settings key `nyan.toolIo`.
-//! `SettingsJson` has no typed field for it yet (batch 0 owns the shared
-//! schema), so this module reads the already-validated raw JSON each source
-//! kept in the settings cache. Sources merge in the same order the loader uses
-//! (user → project → local → flag → policy), later sources winning.
+//! The configuration lives under the formal `SettingsJson.nyan.toolIo` family
+//! (`utils/settings/nyan.rs`), so a read here sees the same merged object every
+//! other consumer does — one settings load, one source order.
 
-use crate::utils::settings::{SettingSource, get_enabled_setting_sources, settings_cache};
+use crate::utils::settings::get_settings_with_errors;
 
 /// `settings.nyan.toolIo`, after merging every enabled source.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,74 +50,26 @@ pub const DEFAULT_TOOL_IO_CONFIG: ToolIoConfig = ToolIoConfig {
     report_unreachable: true,
 };
 
-/// Read and merge `nyan.toolIo` from every enabled settings source.
+/// Read `nyan.toolIo` from the merged session settings. The typed accessors
+/// already apply the design defaults, so an absent section yields exactly
+/// [`DEFAULT_TOOL_IO_CONFIG`].
 pub fn config() -> ToolIoConfig {
-    let mut config = DEFAULT_TOOL_IO_CONFIG;
-    for source in get_enabled_setting_sources() {
-        let Some(value) = source_tool_io_value(source) else {
-            continue;
-        };
-        apply_value(&mut config, &value);
-    }
-    config
-}
-
-fn source_tool_io_value(source: SettingSource) -> Option<serde_json::Value> {
-    let path = crate::utils::settings::get_settings_file_path_for_source(source)?;
-    crate::utils::settings::parse_settings_file(&path);
-    settings_cache::get_cached_parsed_file(&path)?
-        .value
-        .as_ref()?
-        .get("nyan")?
-        .get("toolIo")
-        .cloned()
-}
-
-fn apply_value(config: &mut ToolIoConfig, value: &serde_json::Value) {
-    let Some(object) = value.as_object() else {
-        return;
+    let settings = get_settings_with_errors().settings;
+    let tool_io = settings.nyan.as_ref().map(|nyan| nyan.tool_io());
+    let Some(tool_io) = tool_io else {
+        return DEFAULT_TOOL_IO_CONFIG;
     };
-    macro_rules! boolean {
-        ($field:ident, $key:literal) => {
-            if let Some(setting) = object.get($key).and_then(serde_json::Value::as_bool) {
-                config.$field = setting;
-            }
-        };
-    }
-    macro_rules! count {
-        ($field:ident, $key:literal) => {
-            if let Some(setting) = object
-                .get($key)
-                .and_then(serde_json::Value::as_f64)
-                .filter(|setting| setting.is_finite() && *setting >= 0.0)
-            {
-                config.$field = setting as usize;
-            }
-        };
-    }
-    boolean!(completion_notes, "completionNotes");
-    boolean!(stable_grep_order, "stableGrepOrder");
-    boolean!(read_partial_on_overflow, "readPartialOnOverflow");
-    count!(read_batch_max, "readBatchMax");
-    boolean!(encoding_detection, "encodingDetection");
-    boolean!(content_binary_check, "contentBinaryCheck");
-    boolean!(bash_head_tail, "bashHeadTail");
-    boolean!(report_unreachable, "reportUnreachable");
-    if let Some(max_line_chars) = object.get("maxLineChars").and_then(|v| v.as_object()) {
-        if let Some(read) = max_line_chars
-            .get("read")
-            .and_then(serde_json::Value::as_f64)
-            .filter(|value| value.is_finite() && *value > 0.0)
-        {
-            config.max_line_chars_read = read as usize;
-        }
-        if let Some(grep) = max_line_chars
-            .get("grep")
-            .and_then(serde_json::Value::as_f64)
-            .filter(|value| value.is_finite() && *value > 0.0)
-        {
-            config.max_line_chars_grep = grep as usize;
-        }
+    ToolIoConfig {
+        completion_notes: tool_io.completion_notes(),
+        stable_grep_order: tool_io.stable_grep_order(),
+        read_partial_on_overflow: tool_io.read_partial_on_overflow(),
+        read_batch_max: tool_io.read_batch_max() as usize,
+        encoding_detection: tool_io.encoding_detection(),
+        content_binary_check: tool_io.content_binary_check(),
+        max_line_chars_read: tool_io.max_line_chars().read() as usize,
+        max_line_chars_grep: tool_io.max_line_chars().grep() as usize,
+        bash_head_tail: tool_io.bash_head_tail(),
+        report_unreachable: tool_io.report_unreachable(),
     }
 }
 
@@ -249,6 +199,44 @@ pub fn grep_files_note(total: usize, shown: usize, offset: usize, issues: NoteIs
             last
         )
     }
+}
+
+/// @nyan: T8 — parse rg's stderr into the unreadable paths it names. Each
+/// line is `rg: <path>: <reason>` or `rg: <path>: IO error for operation on
+/// <path>: <reason>`; anything else (usage errors, EAGAIN retries) is not a
+/// traversal failure and is ignored.
+pub fn unreachable_paths(stderr: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    for line in stderr.lines() {
+        let Some(rest) = line.strip_prefix("rg: ") else {
+            continue;
+        };
+        // Two shapes:
+        //   rg: <path>: Permission denied (os error 13)
+        //   rg: <path>: IO error for operation on <path>: No such file ...
+        let (path, reason) =
+            if let Some((before, after)) = rest.split_once(": IO error for operation on ") {
+                (
+                    before,
+                    after.split_once(": ").map_or(after, |(_, reason)| reason),
+                )
+            } else if let Some((path, reason)) = rest.rsplit_once(": ") {
+                if !(reason.starts_with("Permission denied")
+                    || reason.contains("No such file or directory")
+                    || reason.contains("Not a directory"))
+                {
+                    continue;
+                }
+                (path, reason)
+            } else {
+                continue;
+            };
+        let _ = reason;
+        paths.push(path.to_string());
+    }
+    paths.sort();
+    paths.dedup();
+    paths
 }
 
 /// Glob has no continuation parameter, so a partial note names the way out.
@@ -392,6 +380,15 @@ mod tests {
         assert_eq!(
             glob_note(120, 100, NoteIssues::default()),
             "(Partial: files 1-100 of 120 shown. Use a more specific path or pattern.)"
+        );
+        // T8: rg's own diagnostics, deduplicated and sorted.
+        let stderr = "rg: rs/blocked: Permission denied (os error 13)\n\
+                      rg: rs/missing: IO error for operation on rs/missing: No such file or directory (os error 2)\n\
+                      rg: rs/blocked: Permission denied (os error 13)\n\
+                      rg: unrecognized flag --bogus";
+        assert_eq!(
+            unreachable_paths(stderr),
+            vec!["rs/blocked".to_string(), "rs/missing".to_string()]
         );
         assert_eq!(
             read_budget_note(1, 40, 512),
