@@ -211,7 +211,7 @@ mod tests {
             "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
             "github_pat_11ABCDEFG0123456789_abcdefghijklmnop",
             "AKIAIOSFODNN7EXAMPLE",
-            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U", // gitleaks:allow -- RFC 7519 sample token
         ] {
             let text = format!("before {secret} after");
             let redacted = redact_text(&text);
@@ -264,7 +264,7 @@ mod tests {
                 {"text": "use sk-proj-abcdefghijklmnopqrstuvwxyz012345 here"},
                 {"token": "plain"},
             ],
-            "api_key": "abcdef1234567890",
+            "api_key": "abcdef1234567890", // gitleaks:allow -- synthetic redaction fixture
         });
         redact_value(&mut value);
         assert!(
