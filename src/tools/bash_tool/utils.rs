@@ -148,13 +148,25 @@ pub fn format_output(content: &str) -> FormattedOutput {
         };
     }
 
-    let (truncated_part, _) = split_at_utf16_units(content, max_output_length);
-    let remaining_lines = count_char_in_string(content, "\n", max_output_length) + 1;
+    let total_lines = count_char_in_string(content, "\n", 0) + 1;
+    let truncated_content = if crate::utils::tool_io::config().bash_head_tail {
+        // @nyan: keep roughly 1/10 at the head and the rest at the tail so
+        // compiler/test diagnostics at the end survive truncation (T7).
+        let head_units = (max_output_length / 10).max(1);
+        let tail_units = max_output_length.saturating_sub(head_units).max(1);
+        let (head, _) = split_at_utf16_units(content, head_units);
+        let tail_start = byte_index_before_utf16_units_from_end(content, tail_units);
+        let tail = &content[tail_start..];
+        let omitted = count_char_in_string(&content[head.len()..tail_start], "\n", 0);
+        format!("{head}\n\n... [{omitted} lines omitted] ...\n\n{tail}")
+    } else {
+        let (truncated_part, _) = split_at_utf16_units(content, max_output_length);
+        let remaining_lines = count_char_in_string(content, "\n", max_output_length) + 1;
+        format!("{truncated_part}\n\n... [{remaining_lines} lines truncated] ...")
+    };
     FormattedOutput {
-        total_lines: count_char_in_string(content, "\n", 0) + 1,
-        truncated_content: format!(
-            "{truncated_part}\n\n... [{remaining_lines} lines truncated] ..."
-        ),
+        total_lines,
+        truncated_content,
         is_image,
     }
 }
@@ -255,6 +267,19 @@ fn split_at_utf16_units(value: &str, max_units: usize) -> (&str, &str) {
         units = next;
     }
     (value, "")
+}
+
+/// Return the byte boundary that keeps the last `max_units` UTF-16 units.
+fn byte_index_before_utf16_units_from_end(value: &str, max_units: usize) -> usize {
+    let mut units = 0usize;
+    for (index, character) in value.char_indices().rev() {
+        let next = units + character.len_utf16();
+        if next > max_units {
+            return index + character.len_utf8();
+        }
+        units = next;
+    }
+    0
 }
 
 #[cfg(test)]
@@ -375,8 +400,31 @@ mod tests {
         assert_eq!(formatted.total_lines, 3);
         assert_eq!(
             formatted.truncated_content,
+            "1\n\n... [1 lines omitted] ...\n\n78\n9"
+        );
+    }
+
+    #[test]
+    fn format_output_switch_off_restores_the_cc_head_only_path() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "cometix-bash-head-tail-off-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("settings.json"),
+            r#"{"nyan":{"toolIo":{"bashHeadTail":false}}}"#,
+        )
+        .unwrap();
+        let _home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.to_str().unwrap());
+        let _env = EnvVarGuard::set("BASH_MAX_OUTPUT_LENGTH", "5");
+        let formatted = format_output("12345\n678\n9");
+        assert_eq!(
+            formatted.truncated_content,
             "12345\n\n... [3 lines truncated] ..."
         );
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

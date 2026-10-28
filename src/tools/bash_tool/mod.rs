@@ -1031,8 +1031,12 @@ pub(crate) fn bash_output(
             None => is_image = false,
         }
     }
+    let contained_replacement_character = stripped.contains('\u{fffd}');
     if !is_image && persisted_output_path.is_none() {
         stripped = utils::format_output(&stripped).truncated_content;
+    }
+    if contained_replacement_character && !is_image {
+        stripped.push_str("\n(output contained invalid UTF-8)");
     }
 
     Ok(BashOutput {
@@ -1401,6 +1405,11 @@ impl crate::tool::ToolCall for BashTool {
                                 has_more,
                             },
                         );
+                    if crate::utils::tool_io::config().bash_head_tail {
+                        processed_stdout.push_str(
+                            "\nUse Read with an offset to page the full output file shown above.",
+                        );
+                    }
                 }
 
                 let mut error_message = output.stderr.trim().to_string();
@@ -2035,7 +2044,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(output.stdout, "ab�tail");
+        assert_eq!(output.stdout, "ab�tail\n(output contained invalid UTF-8)");
         assert!(output.stderr.is_empty());
         assert_eq!(output.exit_code, Some(0));
         let _ = std::fs::remove_dir_all(root);
