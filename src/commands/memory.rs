@@ -7,7 +7,10 @@
 //! File/folder selection and toggle behavior remain in MemoryFileSelector.
 
 use crate::components::design_system::dialog::Dialog;
-use crate::components::memory::{MemoryFileSelector, get_relative_memory_path};
+use crate::components::memory::{
+    ADD_CANDIDATE_PREFIX, CONSOLIDATE_MEMORY_VALUE, DELETE_CANDIDATE_PREFIX, MemoryFileSelector,
+    get_relative_memory_path,
+};
 use crate::utils::process_env::JsTruthy;
 use crate::utils::prompt_editor::{EditorResult, ExternalEditorRuntime};
 use crate::utils::theme::Theme;
@@ -90,9 +93,33 @@ pub fn MemoryCommandPanel<'a>(
         (props.on_close)(());
     }
     let selection = { pending_selection.read().clone() };
-    if let Some(memory_path) = selection {
+    if let Some(selection) = selection {
         pending_selection.set(None);
-        let _ = editor_channel.0.try_send(PathBuf::from(memory_path));
+        if let Some(path) = selection.strip_prefix(ADD_CANDIDATE_PREFIX) {
+            let result =
+                crate::memdir::memdir::add_memory_to_index(&PathBuf::from(path)).map(|_| {
+                    format!(
+                        "Added memory candidate to MEMORY.md: {}",
+                        get_relative_memory_path(&PathBuf::from(path))
+                    )
+                });
+            completed_selection.set(Some(result));
+        } else if let Some(path) = selection.strip_prefix(DELETE_CANDIDATE_PREFIX) {
+            let result =
+                crate::memdir::memdir::delete_memory_candidate(&PathBuf::from(path)).map(|_| {
+                    format!(
+                        "Deleted memory candidate: {}",
+                        get_relative_memory_path(&PathBuf::from(path))
+                    )
+                });
+            completed_selection.set(Some(result));
+        } else if selection == CONSOLIDATE_MEMORY_VALUE {
+            completed_selection.set(Some(Err(
+                "Memory consolidation is not wired into the command driver yet.".to_string(),
+            )));
+        } else {
+            let _ = editor_channel.0.try_send(PathBuf::from(selection));
+        }
     }
     let completed = { completed_selection.read().clone() };
     if let Some(result) = completed {

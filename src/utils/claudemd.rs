@@ -333,8 +333,7 @@ pub fn discover_claude_md_files_with_external_policy(
     }
 
     if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD").as_deref(),
     ) {
         for dir in additional_dirs {
             load_project_claude_md_files(
@@ -1324,6 +1323,13 @@ fn process_memory_file_with_kind(
     let Ok(raw_content) = std::fs::read_to_string(path) else {
         return;
     };
+    // @nyan: this is the read-time safety net for Bash/external-editor writes.
+    // Do not delete or rewrite a blocked file; isolate this injection only.
+    if matches!(kind, ClaudeMdKind::AutoMem | ClaudeMdKind::TeamMem)
+        && !crate::memdir::write_guard::check_memory_injection(path, &raw_content)
+    {
+        return;
+    }
     let (mut content, _) = parsed_memory_content(&raw_content);
     if matches!(kind, ClaudeMdKind::AutoMem | ClaudeMdKind::TeamMem) {
         content = truncate_memory_entrypoint(&content);

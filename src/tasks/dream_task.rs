@@ -11,14 +11,12 @@
 //! - driver missing: CC's producer is `services/autoDream/autoDream.ts`
 //!   (fork + onMessage feed), not ported (auto-dream TODO in
 //!   `query/stop_hooks.rs`) — `register_dream_task` has no production caller.
-//! - pill/dialog projection unwired: `background_task_items()` builds
-//!   only Shell + LocalAgent items, so dream tasks reach neither the footer
-//!   pill nor the Shift+Down dialog yet.
-//! - dialog `x` kill unwired: CC BackgroundTasksDialog.tsx:359-362
-//!   (`killDreamTask` on `x`) has no Rust dialog arm.
-//! - `rollbackConsolidationLock` unported: CC DreamTask.ts:150-155 rewinds
-//!   the lock mtime on kill via services/autoDream/consolidationLock.ts:91;
-//!   `prior_mtime` is carried for that wiring but no lock file exists yet.
+//! - the Dream pill/dialog projection and kill dispatch are wired in the
+//!   background-task component; the idle producer still belongs to the
+//!   unregistered `services/auto_dream` seam.
+//! - `rollbackConsolidationLock` is implemented by
+//!   `services/auto_dream/lock.rs`, but the kill path still needs the
+//!   coordinator's lock handle to invoke it after registration.
 
 use crate::state::app_state_store::TaskState;
 use crate::state::store::AppStore;
@@ -195,10 +193,11 @@ pub fn fail_dream_task(task_id: &str, store: &AppStore) {
 ///
 /// Returns true when a running task transitioned to killed.
 ///
-/// SEAM (service missing): CC rewinds the consolidation-lock mtime via
-/// `rollbackConsolidationLock(priorMtime)` (`:153-155`) so the next session
-/// can retry — `services/autoDream/consolidationLock.ts` has no Rust port, so
-/// no lock file exists to rewind; `prior_mtime` is carried for that wiring.
+/// SEAM (coordinator registration): CC rewinds the consolidation-lock mtime
+/// via `rollbackConsolidationLock(priorMtime)` (`:153-155`) so the next
+/// session can retry. The lock implementation lives in the unregistered
+/// `services/auto_dream/lock.rs`; the coordinator must retain its lease and
+/// call `rollback` after this state transition.
 pub fn kill_dream_task(task_id: &str, store: &AppStore) -> bool {
     let mut killed = false;
     update_task_state(task_id, store, |existing| {

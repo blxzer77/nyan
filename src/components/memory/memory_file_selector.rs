@@ -26,6 +26,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const VISIBLE_MEMORY_OPTION_COUNT: usize = 5;
 pub const OPEN_FOLDER_PREFIX: &str = "__open_folder__";
+pub const ADD_CANDIDATE_PREFIX: &str = "__add_memory_candidate__";
+pub const DELETE_CANDIDATE_PREFIX: &str = "__delete_memory_candidate__";
+pub const CONSOLIDATE_MEMORY_VALUE: &str = "__consolidate_memory__";
 
 static LAST_SELECTED_PATH: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
@@ -255,6 +258,75 @@ fn append_agent_memory_folder_options(
     }
 }
 
+fn append_memory_management_options(
+    options: &mut Vec<SelectOptionData>,
+    auto_memory_enabled: bool,
+) {
+    if !auto_memory_enabled {
+        return;
+    }
+    let candidates = crate::memdir::memdir::list_memory_candidates();
+    for candidate in &candidates {
+        let display = get_display_path(&candidate.path.display().to_string());
+        if let Some(blocked) = candidate.isolated.clone() {
+            options.push(SelectOptionData {
+                label: format!("Isolated memory: {display}"),
+                value: format!("{DELETE_CANDIDATE_PREFIX}{}", candidate.path.display()),
+                description: Some(format!("blocked: {}", blocked.labels.join(", "))),
+                dim_description: true,
+                disabled: true,
+                input: None,
+            });
+            continue;
+        }
+        let type_description = candidate
+            .memory_type
+            .as_deref()
+            .map(|memory_type| format!("type: {memory_type}"));
+        options.push(SelectOptionData {
+            label: format!("Add candidate: {display}"),
+            value: format!("{ADD_CANDIDATE_PREFIX}{}", candidate.path.display()),
+            description: type_description.clone(),
+            dim_description: true,
+            disabled: false,
+            input: None,
+        });
+        options.push(SelectOptionData {
+            label: format!("Delete candidate: {display}"),
+            value: format!("{DELETE_CANDIDATE_PREFIX}{}", candidate.path.display()),
+            description: Some("explicitly remove this unindexed file".to_string()),
+            dim_description: true,
+            disabled: false,
+            input: None,
+        });
+    }
+    for blocked in crate::memdir::memdir::scan_isolated_memory_files() {
+        if candidates
+            .iter()
+            .any(|candidate| candidate.path == blocked.path)
+        {
+            continue;
+        }
+        let display = get_display_path(&blocked.path.display().to_string());
+        options.push(SelectOptionData {
+            label: format!("Isolated memory: {display}"),
+            value: format!("{DELETE_CANDIDATE_PREFIX}{}", blocked.path.display()),
+            description: Some(format!("blocked: {}", blocked.labels.join(", "))),
+            dim_description: true,
+            disabled: true,
+            input: None,
+        });
+    }
+    options.push(SelectOptionData {
+        label: "Consolidate memory now".to_string(),
+        value: CONSOLIDATE_MEMORY_VALUE.to_string(),
+        description: Some("manual auto-dream run".to_string()),
+        dim_description: true,
+        disabled: false,
+        input: None,
+    });
+}
+
 fn unix_time_millis(time: SystemTime) -> i64 {
     time.duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
@@ -336,6 +408,7 @@ pub fn MemoryFileSelector<'a>(
         auto_memory_option_path,
     );
     append_agent_memory_folder_options(&mut options, &cwd, auto_memory_on.get());
+    append_memory_management_options(&mut options, auto_memory_on.get());
 
     let initial_path = LAST_SELECTED_PATH
         .lock()

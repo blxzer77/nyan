@@ -322,7 +322,13 @@ pub fn build_memory_prompt(
     extra_guidelines: Option<&[String]>,
 ) -> String {
     let entrypoint = memory_dir.join(ENTRYPOINT_NAME);
-    let entrypoint_content = std::fs::read_to_string(entrypoint).unwrap_or_default();
+    let entrypoint_content = std::fs::read_to_string(&entrypoint).unwrap_or_default();
+    let entrypoint_content =
+        if crate::memdir::write_guard::check_memory_injection(&entrypoint, &entrypoint_content) {
+            entrypoint_content
+        } else {
+            String::new()
+        };
     let mut lines = build_memory_lines(display_name, memory_dir, extra_guidelines, false);
 
     lines.push(format!("## {ENTRYPOINT_NAME}"));
@@ -497,6 +503,299 @@ fn display_memory_dir(path: &Path) -> String {
         display.push(sep);
     }
     display
+}
+
+/// A memory file that exists in the auto-memory directory but is not active
+/// because it has no entry in `MEMORY.md`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MemoryCandidate {
+    pub path: std::path::PathBuf,
+    pub name: String,
+    pub description: Option<String>,
+    pub memory_type: Option<String>,
+    pub source: Option<String>,
+    pub isolated: Option<crate::memdir::write_guard::BlockedMemoryFile>,
+}
+
+fn normalize_memory_path(path: &Path) -> std::path::PathBuf {
+    let mut normalized = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            std::path::Component::Prefix(_)
+            | std::path::Component::RootDir
+            | std::path::Component::Normal(_) => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
+}
+
+fn memory_path_is_direct_child_or_descendant(path: &Path, memory_dir: &Path) -> bool {
+    let path = normalize_memory_path(path);
+    let memory_dir = normalize_memory_path(memory_dir);
+    path != memory_dir && path.starts_with(memory_dir)
+}
+
+fn index_target_paths(
+    index: &str,
+    memory_dir: &Path,
+) -> std::collections::BTreeSet<std::path::PathBuf> {
+    let mut paths = std::collections::BTreeSet::new();
+    for line in index.lines() {
+        let mut rest = line;
+        while let Some(open) = rest.find("](") {
+            let target_text = &rest[open + 2..];
+            let Some(close) = target_text.find(')') else {
+                break;
+            };
+            let raw_target = &target_text[..close];
+            let target = raw_target
+                .split_once('#')
+                .map(|(path, _)| path)
+                .unwrap_or(raw_target)
+                .trim();
+            if !target.is_empty() {
+                let path = Path::new(target);
+                let path = if path.is_absolute() {
+                    path.to_path_buf()
+                } else {
+                    memory_dir.join(path)
+                };
+                paths.insert(normalize_memory_path(&path));
+            }
+            rest = &target_text[close + 1..];
+        }
+    }
+    paths
+}
+
+fn collect_memory_markdown_files(directory: &Path, files: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return;
+    };
+    let mut entries = entries.filter_map(Result::ok).collect::<Vec<_>>();
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            if path.file_name().and_then(|name| name.to_str()) != Some("logs") {
+                collect_memory_markdown_files(&path, files);
+            }
+        } else if file_type.is_file()
+            && path.extension().and_then(|extension| extension.to_str()) == Some("md")
+            && path.file_name().and_then(|name| name.to_str()) != Some(ENTRYPOINT_NAME)
+        {
+            files.push(path);
+        }
+    }
+}
+
+fn memory_candidate_from_path(path: std::path::PathBuf) -> Option<MemoryCandidate> {
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let parsed = crate::utils::frontmatter_parser::parse_frontmatter(&raw);
+    let name = parsed
+        .frontmatter
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            path.file_stem()
+                .map(|name| name.to_string_lossy().to_string())
+        })
+        .unwrap_or_else(|| "memory".to_string());
+    let description = parsed
+        .frontmatter
+        .get("description")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let memory_type = parsed
+        .frontmatter
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let source = parsed
+        .frontmatter
+        .get("source")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    Some(MemoryCandidate {
+        isolated: crate::memdir::write_guard::blocked_memory_file(&path),
+        path,
+        name,
+        description,
+        memory_type,
+        source,
+    })
+}
+
+/// List topic files that are not referenced by the current `MEMORY.md` index.
+///
+/// @nyan: candidate state is derived from the existing memdir and index; no
+/// second memory store or status field is introduced.
+pub fn list_memory_candidates() -> Vec<MemoryCandidate> {
+    let memory_dir = crate::memdir::paths::get_auto_mem_path();
+    let index = std::fs::read_to_string(memory_dir.join(ENTRYPOINT_NAME)).unwrap_or_default();
+    let indexed = index_target_paths(&index, &memory_dir);
+    let mut files = Vec::new();
+    collect_memory_markdown_files(&memory_dir, &mut files);
+    files
+        .into_iter()
+        .filter(|path| !indexed.contains(&normalize_memory_path(path)))
+        .filter_map(memory_candidate_from_path)
+        .collect()
+}
+
+/// Compatibility name for callers that use the design document's terminology.
+pub fn list_candidate_memories() -> Vec<MemoryCandidate> {
+    list_memory_candidates()
+}
+
+fn candidate_path(path: &Path) -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
+    let memory_dir = crate::memdir::paths::get_auto_mem_path();
+    let path = normalize_memory_path(path);
+    if !memory_path_is_direct_child_or_descendant(&path, &memory_dir)
+        || path.file_name().and_then(|name| name.to_str()) == Some(ENTRYPOINT_NAME)
+        || path.extension().and_then(|extension| extension.to_str()) != Some("md")
+    {
+        return Err("Memory path must be a topic Markdown file inside auto-memory.".to_string());
+    }
+    Ok((path, normalize_memory_path(&memory_dir)))
+}
+
+fn write_memory_index(memory_dir: &Path, content: &str) -> Result<(), String> {
+    let index_path = memory_dir.join(ENTRYPOINT_NAME);
+    crate::memdir::write_guard::check_memory_content(&index_path, content)
+        .map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(memory_dir).map_err(|error| error.to_string())?;
+    std::fs::write(index_path, content).map_err(|error| error.to_string())
+}
+
+fn memory_candidate_is_indexed(path: &Path, memory_dir: &Path) -> Result<bool, String> {
+    let index = std::fs::read_to_string(memory_dir.join(ENTRYPOINT_NAME)).unwrap_or_default();
+    Ok(index_target_paths(&index, memory_dir).contains(&normalize_memory_path(path)))
+}
+
+fn memory_index_entry(path: &Path, memory_dir: &Path, name: &str) -> String {
+    let relative = path
+        .strip_prefix(memory_dir)
+        .unwrap_or(path)
+        .display()
+        .to_string();
+    format!("- [{name}]({relative}) — {name}")
+}
+
+/// Add a candidate to `MEMORY.md` so it becomes active and injectable.
+pub fn add_memory_to_index(path: &Path) -> Result<(), String> {
+    let (path, memory_dir) = candidate_path(path)?;
+    if !path.is_file() {
+        return Err("Memory candidate does not exist.".to_string());
+    }
+    if memory_candidate_is_indexed(&path, &memory_dir)? {
+        return Ok(());
+    }
+    let candidate = memory_candidate_from_path(path.clone())
+        .ok_or_else(|| "Memory candidate cannot be read.".to_string())?;
+    let index_path = memory_dir.join(ENTRYPOINT_NAME);
+    let current = std::fs::read_to_string(&index_path).unwrap_or_default();
+    let mut next = current.trim_end_matches('\n').to_string();
+    if !next.is_empty() {
+        next.push('\n');
+    }
+    next.push_str(&memory_index_entry(&path, &memory_dir, &candidate.name));
+    next.push('\n');
+    write_memory_index(&memory_dir, &next)
+}
+
+/// Agent-facing promotion gate. `type: user` stays a candidate unless a user
+/// explicitly calls [`add_memory_to_index`].
+pub fn add_memory_to_index_for_agent(path: &Path) -> Result<(), String> {
+    let (path, _) = candidate_path(path)?;
+    let candidate = memory_candidate_from_path(path)
+        .ok_or_else(|| "Memory candidate cannot be read.".to_string())?;
+    if candidate.memory_type.as_deref() == Some("user") {
+        return Err("type: user memories require explicit user confirmation.".to_string());
+    }
+    add_memory_to_index(&candidate.path)
+}
+
+pub fn promote_memory_candidate(path: &Path) -> Result<(), String> {
+    add_memory_to_index(path)
+}
+
+/// Prevent extraction/consolidation agents from silently activating a new
+/// `type: user` memory. Existing user entries remain untouched.
+pub fn validate_agent_memory_index_update(previous: &str, updated: &str) -> Result<(), String> {
+    let memory_dir = crate::memdir::paths::get_auto_mem_path();
+    let previous_paths = index_target_paths(previous, &memory_dir);
+    for path in index_target_paths(updated, &memory_dir).difference(&previous_paths) {
+        if !memory_path_is_direct_child_or_descendant(path, &memory_dir) {
+            continue;
+        }
+        let Some(content) = std::fs::read_to_string(path).ok() else {
+            continue;
+        };
+        let parsed = crate::utils::frontmatter_parser::parse_frontmatter(&content);
+        if parsed
+            .frontmatter
+            .get("type")
+            .and_then(serde_json::Value::as_str)
+            == Some("user")
+        {
+            return Err("type: user memories require explicit user confirmation.".to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Remove an unindexed candidate after explicit user confirmation.
+pub fn delete_memory_candidate(path: &Path) -> Result<(), String> {
+    let (path, memory_dir) = candidate_path(path)?;
+    if memory_candidate_is_indexed(&path, &memory_dir)? {
+        return Err(
+            "Refusing to delete an indexed memory; remove it from the index first.".to_string(),
+        );
+    }
+    std::fs::remove_file(path).map_err(|error| error.to_string())
+}
+
+/// Remove an entry from the active index but leave its file for confirmation.
+pub fn remove_memory_from_index(path: &Path) -> Result<(), String> {
+    let (path, memory_dir) = candidate_path(path)?;
+    let index_path = memory_dir.join(ENTRYPOINT_NAME);
+    let current = std::fs::read_to_string(&index_path).unwrap_or_default();
+    let indexed = index_target_paths(&current, &memory_dir);
+    if !indexed.contains(&path) {
+        return Ok(());
+    }
+    let mut next = String::new();
+    for line in current.lines() {
+        let targets = index_target_paths(line, &memory_dir);
+        if !targets.contains(&path) {
+            next.push_str(line);
+            next.push('\n');
+        }
+    }
+    write_memory_index(&memory_dir, &next)
+}
+
+/// Scan all topic files for the `/memory` isolation view. Files are never
+/// deleted or rewritten by this operation.
+pub fn scan_isolated_memory_files() -> Vec<crate::memdir::write_guard::BlockedMemoryFile> {
+    let memory_dir = crate::memdir::paths::get_auto_mem_path();
+    let mut paths = vec![memory_dir.join(ENTRYPOINT_NAME)];
+    collect_memory_markdown_files(&memory_dir, &mut paths);
+    for path in paths {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            let _ = crate::memdir::write_guard::check_memory_injection(&path, &content);
+        }
+    }
+    crate::memdir::write_guard::blocked_memory_files()
 }
 
 #[cfg(test)]
