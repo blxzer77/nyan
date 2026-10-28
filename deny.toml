@@ -1,0 +1,73 @@
+# cargo-deny configuration (CI `supply-chain`, see docs/nyan/cicd.md §4.4-4.5).
+#
+# Four checks run as separate steps so a failure names the axis:
+#   cargo deny --locked check advisories bans licenses sources
+# Everything is fail-closed: a new advisory, a disallowed license or an
+# unexpected source is a red PR, not a note.
+
+[graph]
+# The binary is the product; `--all-features` would pull the internal
+# profile into a public dependency graph, which is not what ships.
+targets = []
+all-features = false
+no-default-features = false
+
+[advisories]
+# A vulnerability with no patched version and no reachable call path cannot
+# be silenced by severity alone; the ignore list starts empty on purpose.
+version = 2
+db-urls = ["https://github.com/rustsec/advisory-db"]
+ignore = []
+yanked = "deny"
+unmaintained = "workspace"
+unsound = "all"
+
+[bans]
+multiple-versions = "allow"
+# The seven git dependencies carry no `rev`/`tag` on purpose: Cargo.lock pins
+# the commit, and scripts/sync-public-cargo.sh derives the mirror manifest
+# from this one (Cargo.toml comment). cargo-deny reads a version-less
+# requirement as a wildcard, so the lint is off; the lock file is the pin.
+wildcards = "allow"
+highlight = "all"
+# The git siblings are four crates from two repositories; a duplicate
+# version warning there is noise, not a supply-chain event.
+workspace-default-features = "allow"
+external-default-features = "allow"
+allow-wildcard-paths = true
+
+[licenses]
+version = 2
+# AGPL-3.0-only is the project's own license. LGPL-3.0-or-later (ansi_colours,
+# via bat) and MPL-2.0 are combinable with it; CDLA-Permissive-2.0 covers the
+# webpki root-cert data, which is not code. Everything else is permissive.
+allow = [
+    "AGPL-3.0-only",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "LGPL-3.0-or-later",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+# No crate exceptions: every dependency, the four git siblings included,
+# declares an SPDX id from the list above.
+exceptions = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    "https://github.com/Haleclipse/CometixTUI",
+    "https://github.com/Haleclipse/anthropic-sdk-rs",
+    "https://github.com/Haleclipse/marked-rs",
+]

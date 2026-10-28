@@ -1,0 +1,86 @@
+{
+  "$comment": "Pinned non-action tools (docs/nyan/cicd.md §6.2). Versions must equal policy.json's toolchain block; scripts/ci/fetch-tool.mjs verifies url+sha256 before use. Both Linux architectures are listed because PR jobs are amd64 and the release arm64 build job is native.",
+  "schemaVersion": 1,
+  "tools": {
+    "nextest": {
+      "version": "0.9.150",
+      "license": "MIT OR Apache-2.0",
+      "assets": {
+        "x86_64-unknown-linux-musl": {
+          "url": "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.150/cargo-nextest-0.9.150-x86_64-unknown-linux-musl.tar.gz",
+          "sha256": "84f0f9ba75d0b6fa117bc418d49747ba78e20e4583057f6fa628f1b17c17234d",
+          "binary": "cargo-nextest"
+        },
+        "aarch64-unknown-linux-musl": {
+          "url": "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.150/cargo-nextest-0.9.150-aarch64-unknown-linux-musl.tar.gz",
+          "sha256": "5a7fe62b64a9006e1e47422021df7b1d308cc76c528c9eaf4649a488615ed6fb",
+          "binary": "cargo-nextest"
+        }
+      }
+    },
+    "actionlint": {
+      "version": "1.7.12",
+      "license": "MIT",
+      "assets": {
+        "x86_64-unknown-linux-musl": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz",
+          "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+          "binary": "actionlint"
+        },
+        "aarch64-unknown-linux-musl": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_arm64.tar.gz",
+          "sha256": "325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6",
+          "binary": "actionlint"
+        }
+      }
+    },
+    "gitleaks": {
+      "version": "8.30.1",
+      "license": "MIT",
+      "assets": {
+        "x86_64-unknown-linux-musl": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
+          "sha256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+          "binary": "gitleaks"
+        },
+        "aarch64-unknown-linux-musl": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_arm64.tar.gz",
+          "sha256": "e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080",
+          "binary": "gitleaks"
+        }
+      }
+    },
+    "cargo-deny": {
+      "version": "0.20.2",
+      "license": "MIT OR Apache-2.0",
+      "assets": {
+        "x86_64-unknown-linux-musl": {
+          "url": "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz",
+          "sha256": "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f",
+          "binary": "cargo-deny-0.20.2-x86_64-unknown-linux-musl/cargo-deny"
+        },
+        "aarch64-unknown-linux-musl": {
+          "url": "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-aarch64-unknown-linux-musl.tar.gz",
+          "sha256": "995c82be0defc7a025cae49a2aa2644ce8245c9a3318fc4103907c6a285e8c7d",
+          "binary": "cargo-deny-0.20.2-aarch64-unknown-linux-musl/cargo-deny"
+        }
+      }
+    },
+    "ripgrep": {
+      "version": "15.2.0",
+      "license": "MIT OR Apache-2.0",
+      "assets": {
+        "x86_64-unknown-linux-musl": {
+          "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz",
+          "sha256": "33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c",
+          "binary": "ripgrep-15.2.0-x86_64-unknown-linux-musl/rg"
+        },
+        "aarch64-unknown-linux-musl": {
+          "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-aarch64-unknown-linux-musl.tar.gz",
+          "sha256": "800b1e7206afe799dfb5a6901f23147cfaabe0e52210538100f61e86e1740915",
+          "binary": "ripgrep-15.2.0-aarch64-unknown-linux-musl/rg"
+        }
+      }
+    }
+  }
+}
