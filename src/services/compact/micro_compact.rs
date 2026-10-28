@@ -512,6 +512,7 @@ fn is_compactable_tool_name(tool_name: &str) -> bool {
             | "PowerShell"
             | "Grep"
             | "Glob"
+            | "CodeSearch"
             | "WebSearch"
             | "WebFetch"
             | "Edit"

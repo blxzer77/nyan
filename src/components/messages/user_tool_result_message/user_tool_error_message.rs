@@ -200,7 +200,10 @@ pub fn UserToolErrorMessage(
         .into_any();
     }
     // Maps to CC Grep/Glob `renderToolUseErrorMessage` before Fallback.
-    let is_search_tool = matches!(props.tool_name.as_str(), "Grep" | "Glob" | "Search");
+    let is_search_tool = matches!(
+        props.tool_name.as_str(),
+        "Grep" | "Glob" | "CodeSearch" | "Search"
+    );
     if is_search_tool {
         if let Some(short) = grep_tool::ui::search_tool_use_error_message(&content, props.verbose) {
             return element! {

@@ -22,9 +22,9 @@ use crate::components::file_edit_tool_updated_message::FileEditToolUpdatedMessag
 use crate::components::file_edit_tool_use_rejected_message::FileEditToolUseRejectedMessage;
 use crate::components::notebook_edit_tool_use_rejected_message::NotebookEditToolUseRejectedMessage;
 use crate::tools::{
-    ask_user_question_tool, bash_tool, config_tool, enter_plan_mode_tool, enter_worktree_tool,
-    exit_plan_mode_tool, exit_worktree_tool, file_edit_tool, file_read_tool, file_write_tool,
-    glob_tool, grep_tool, list_mcp_resources_tool, lsp_tool, mcp_tool, notebook_edit_tool,
+    ask_user_question_tool, bash_tool, code_search_tool, config_tool, enter_plan_mode_tool,
+    enter_worktree_tool, exit_plan_mode_tool, exit_worktree_tool, file_edit_tool, file_read_tool,
+    file_write_tool, glob_tool, grep_tool, list_mcp_resources_tool, lsp_tool, mcp_tool, notebook_edit_tool,
     powershell_tool, read_mcp_resource_tool, remote_trigger_tool, schedule_cron_tool,
     send_message_tool, skill_tool, synthetic_output_tool, task_output_tool, task_stop_tool,
     web_fetch_tool, web_search_tool,
@@ -245,6 +245,7 @@ pub(crate) fn migrated_output_parses(tool_name: &str) -> Option<fn(&serde_json::
         },
         "grep" => |raw| crate::tools::grep_tool::ui::parse_output(raw).is_some(),
         "glob" => |raw| crate::tools::glob_tool::ui::parse_output(raw).is_some(),
+        "codesearch" => |raw| crate::tools::code_search_tool::parse_output(raw).is_some(),
         "notebookedit" => |raw| crate::tools::notebook_edit_tool::ui::parse_output(raw).is_some(),
         "webfetch" => |raw| crate::tools::web_fetch_tool::ui::parse_output(raw).is_some(),
         "websearch" => |raw| crate::tools::web_search_tool::ui::parse_output(raw).is_some(),
@@ -546,6 +547,15 @@ fn render_tool_result_lines_by_tool_name(
             content,
             options,
         ));
+    }
+    if tool_name.eq_ignore_ascii_case("CodeSearch") {
+        if status == ToolResultStatus::Error {
+            return Some(fallback_tool_use_error_lines(content, options.verbose));
+        }
+        let Some(output) = tool_use_result.and_then(code_search_tool::parse_output) else {
+            return Some(Vec::new());
+        };
+        return Some(vec![ToolRenderLine::new(output.content, ToolRenderTone::Normal)]);
     }
     if tool_name.eq_ignore_ascii_case("EnterWorktree")
         || tool_name.eq_ignore_ascii_case("ExitWorktree")

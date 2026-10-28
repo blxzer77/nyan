@@ -9699,6 +9699,7 @@ static TOOL_CALL_REGISTRY: &[&dyn crate::tool::ToolCall] = &[
     &crate::tools::file_edit_tool::FileEditTool,
     &crate::tools::glob_tool::GlobTool,
     &crate::tools::grep_tool::GrepTool,
+    &crate::tools::code_search_tool::CodeSearchTool,
     &crate::tools::task_output_tool::TaskOutputTool,
     &crate::tools::task_stop_tool::TaskStopTool,
     &crate::tools::task_create_tool::TaskCreateTool,

@@ -690,6 +690,13 @@ impl From<serde_json::Value> for Attachment {
     }
 }
 
+/// @nyan: M6 seam for library-based memory retrieval. Empty results do not
+/// create an attachment, preserving the existing attachment pass semantics.
+pub fn relevant_memories_attachment(memories: Vec<RelevantMemory>) -> Option<AttachmentMessage> {
+    (!memories.is_empty())
+        .then(|| AttachmentMessage::new(Attachment::RelevantMemories { memories }))
+}
+
 /// A post-tool attachment yielded to the UI and appended to the model history.
 /// Maps to CC `query.ts` `yield attachment; toolResults.push(attachment)`.
 #[derive(Clone, Debug, PartialEq, Eq)]

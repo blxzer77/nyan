@@ -1937,6 +1937,9 @@ pub enum ToolOutput {
     Glob(crate::tools::glob_tool::Output),
     /// CC `tools/GrepTool/GrepTool.ts` outputSchema (:144).
     Grep(crate::tools::grep_tool::Output),
+    /// @nyan: structured CodeSearch result; model-facing text remains in the
+    /// normal tool-result content while the raw carrier preserves counts.
+    CodeSearch(crate::tools::code_search_tool::Output),
     /// CC `tools/BashTool/BashTool.tsx` outputSchema (:439).
     Bash(crate::tools::bash_tool::BashOutput),
     /// CC `tools/PowerShellTool/PowerShellTool.tsx` outputSchema (:310).
@@ -2440,6 +2443,7 @@ fn output_variant_name(output: &ToolOutput) -> &'static str {
         ToolOutput::EditError(_) => "EditError",
         ToolOutput::Glob(_) => "Glob",
         ToolOutput::Grep(_) => "Grep",
+        ToolOutput::CodeSearch(_) => "CodeSearch",
         ToolOutput::Bash(_) => "Bash",
         ToolOutput::PowerShell(_) => "PowerShell",
         ToolOutput::TodoWrite(_) => "TodoWrite",
