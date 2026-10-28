@@ -1023,6 +1023,70 @@ mod tests {
         }
     }
 
+    /// @nyan: T9 prevents the prompt/schema contract from drifting when a
+    /// tool gains parameters (files/encoding/view were the first Read case).
+    #[test]
+    fn tool_prompts_reference_registered_tools_and_real_schema_parameters() {
+        let tools = get_all_base_tools();
+        let names = tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        for name in ["Read", "Grep", "Glob", "Bash"] {
+            assert!(
+                names.contains(name),
+                "prompt references unregistered {name}"
+            );
+        }
+
+        let read = crate::tools::file_read_tool::file_read_tool_schema();
+        let read_prompt = crate::tools::file_read_tool::api_prompt();
+        for parameter in ["file_path", "files", "encoding", "view", "offset", "limit"] {
+            assert!(
+                read.input_schema["properties"].get(parameter).is_some(),
+                "Read schema lacks {parameter}"
+            );
+        }
+        for text in ["files", "encoding", "view", "offset"] {
+            assert!(read_prompt.contains(text), "Read prompt lacks {text}");
+        }
+
+        let grep = crate::tools::grep_tool::grep_tool_schema();
+        let grep_prompt = crate::tools::grep_tool::prompt::get_description();
+        for parameter in [
+            "pattern",
+            "path",
+            "glob",
+            "output_mode",
+            "type",
+            "multiline",
+        ] {
+            assert!(
+                grep.input_schema["properties"].get(parameter).is_some(),
+                "Grep schema lacks {parameter}"
+            );
+        }
+        for text in ["Grep", "glob", "multiline"] {
+            assert!(grep_prompt.contains(text), "Grep prompt lacks {text}");
+        }
+
+        let glob = crate::tools::glob_tool::glob_tool_schema();
+        assert!(glob.input_schema["properties"].get("pattern").is_some());
+        assert!(crate::tools::glob_tool::prompt::DESCRIPTION.contains("pattern"));
+
+        let bash = crate::tools::bash_tool::bash_tool_schema();
+        for parameter in ["command", "timeout", "run_in_background"] {
+            assert!(
+                bash.input_schema["properties"].get(parameter).is_some(),
+                "Bash schema lacks {parameter}"
+            );
+        }
+        let bash_prompt = crate::tools::bash_tool::prompt::get_simple_prompt();
+        for text in ["run_in_background", "Read", "non-zero exit code"] {
+            assert!(bash_prompt.contains(text), "Bash prompt lacks {text}");
+        }
+    }
+
     #[test]
     fn ask_user_question_enabled_gate_matches_official_channels_guard() {
         assert!(ask_user_question_tool_is_enabled_for_channels(false, 0));
