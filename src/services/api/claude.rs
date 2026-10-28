@@ -5793,14 +5793,14 @@ mod tests {
         .expect("SDK params build");
         let value = serde_json::to_value(params).expect("params serialize");
 
-        assert!(value["system"].is_array());
-        assert_eq!(value["system"][0]["type"], serde_json::json!("text"));
+        let system = value["system"].as_array().expect("system blocks");
+        assert_eq!(system[0]["type"], serde_json::json!("text"));
+        let prompt_block = system
+            .iter()
+            .find(|block| block["text"] == serde_json::json!("System A\n\nSystem B"))
+            .expect("user system prompt block");
         assert_eq!(
-            value["system"][0]["text"],
-            serde_json::json!("System A\n\nSystem B")
-        );
-        assert_eq!(
-            value["system"][0]["cache_control"]["type"],
+            prompt_block["cache_control"]["type"],
             serde_json::json!("ephemeral")
         );
     }
@@ -5850,13 +5850,20 @@ mod tests {
                 .expect("effective body serialize");
 
         crate::utils::process_env::remove("CLAUDE_CODE_USE_GLOBAL_CACHE_SCOPE");
-        assert_eq!(value["system"][0]["text"], serde_json::json!("static"));
+        let system = value["system"].as_array().expect("system blocks");
+        let static_block = system
+            .iter()
+            .find(|block| block["text"] == serde_json::json!("static"))
+            .expect("static system block");
         assert_eq!(
-            value["system"][0]["cache_control"]["scope"],
+            static_block["cache_control"]["scope"],
             serde_json::json!("global")
         );
-        assert_eq!(value["system"][1]["text"], serde_json::json!("dynamic"));
-        assert!(value["system"][1].get("cache_control").is_none());
+        let dynamic_block = system
+            .iter()
+            .find(|block| block["text"] == serde_json::json!("dynamic"))
+            .expect("dynamic system block");
+        assert!(dynamic_block.get("cache_control").is_none());
     }
 
     #[test]
@@ -5911,16 +5918,17 @@ mod tests {
         let value = serde_json::to_value(params).expect("params serialize");
 
         crate::utils::process_env::remove("CLAUDE_CODE_USE_GLOBAL_CACHE_SCOPE");
+        let system = value["system"].as_array().expect("system blocks");
+        let prompt_block = system
+            .iter()
+            .find(|block| block["text"] == serde_json::json!("static\n\ndynamic"))
+            .expect("combined system prompt block");
         assert_eq!(
-            value["system"][0]["text"],
-            serde_json::json!("static\n\ndynamic")
-        );
-        assert_eq!(
-            value["system"][0]["cache_control"]["type"],
+            prompt_block["cache_control"]["type"],
             serde_json::json!("ephemeral")
         );
-        assert!(value["system"][0]["cache_control"].get("scope").is_none());
-        assert!(value["system"].as_array().unwrap().len() == 1);
+        assert!(prompt_block["cache_control"].get("scope").is_none());
+        assert_eq!(system.len(), 2, "CLI prefix plus combined prompt block");
     }
 
     #[test]

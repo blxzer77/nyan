@@ -12,6 +12,15 @@ use std::process::Command;
 
 /// Maps to: CC `utils/getWorktreePaths.ts#getWorktreePaths`.
 pub fn get_worktree_paths(cwd: &str) -> Vec<String> {
+    // Test harnesses often run from a repository with auxiliary worktrees,
+    // while the fixture project is deliberately not one of them. Pinning this
+    // process-local probe keeps UI tests independent of the checkout topology;
+    // production never sets this variable.
+    #[cfg(test)]
+    if crate::utils::process_env::var("COMETIX_TEST_SINGLE_WORKTREE").as_deref() == Some("1") {
+        return vec![cwd.to_string()];
+    }
+
     let mut command = Command::new(crate::utils::git::git_exe());
     // CC inherits process.env (execFileNoThrowWithCwd); the carrier is its counterpart.
     crate::utils::subprocess_env::apply_process_env_std(&mut command);
