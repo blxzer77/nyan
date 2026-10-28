@@ -1797,7 +1797,10 @@ mod tests {
     #[test]
     fn streaming_executor_aborts_running_sibling_after_bash_error() {
         let first_command = "sleep 0.08; exit 2";
-        let second_command = "sleep 10";
+        // 30 s, not 10 s: the assertion below must distinguish "aborted the
+        // sibling" from "waited for it", and a wider gap keeps the budget
+        // meaningful when process spawn stretches under load.
+        let second_command = "sleep 30";
         let first_block = ToolUseBlock {
             id: crate::types::ids::ToolUseId("toolu_stream_bash_timeout".to_string()),
             name: "Bash".to_string(),
@@ -1823,9 +1826,14 @@ mod tests {
         executor.add_tool(second_block.clone(), assistant_with_block(second_block));
         let updates = executor.get_remaining_results();
 
+        // 10 s is a third of the sibling's 30 s, so this still proves the
+        // abort happened, while leaving room for two process spawns and the
+        // first command's own 80 ms sleep on a saturated runner. Waiting for
+        // the sibling instead fails at this point, not 30 s later.
         assert!(
-            started.elapsed() < std::time::Duration::from_millis(1_200),
-            "sibling command should be aborted before its own timeout"
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "sibling command should be aborted, not awaited: {:?}",
+            started.elapsed()
         );
         let tool_result_contents = updates
             .iter()

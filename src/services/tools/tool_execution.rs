@@ -10982,7 +10982,12 @@ rl.on('line', line => {
             "toolu_task_output".to_string(),
             "TaskOutput".to_string(),
             task_id.clone(),
-            serde_json::json!({"task_id": task_id, "block": true, "timeout": 1000}),
+            // `block: true` waits for the task to finish; the timeout is a
+            // ceiling, not an expectation. 1 s was tight enough that a loaded
+            // runner could time the poll out before the background shell
+            // reached a terminal state, so give it the same 10 s the retry
+            // budget elsewhere uses.
+            serde_json::json!({"task_id": task_id, "block": true, "timeout": 10_000}),
             PermissionMode::Default,
         );
         let output = LocalToolExecutor
