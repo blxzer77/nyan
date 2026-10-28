@@ -1,0 +1,16 @@
+# CI-specific nextest profile. `cargo nextest` reads this file for every
+# run; the default profile is unchanged, so `just test` behaves as before.
+#
+# `fail-fast` and `retries` are mirrored on the command line when needed, but
+# keeping them here means a caller cannot accidentally reintroduce retries:
+# a flaky test is a defect, not a pass (`justfile` known-failures note).
+[profile.ci]
+fail-fast = false
+retries = 0
+
+# JUnit output lands at target/nextest/ci/junit.xml. The shard jobs upload it
+# when the run fails, so a red job keeps the per-test evidence.
+[profile.ci.junit]
+path = "junit.xml"
+store-failure-output = true
+report-skipped = "ignored"
