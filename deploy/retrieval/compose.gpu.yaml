@@ -1,7 +1,7 @@
 name: retrieval-gpu
 
 # GPU side of the retrieval stack. Both services bind to loopback only: the nyan
-# client runs on this host, so no tailnet exposure and no service auth is needed.
+# client runs on this host, so no mesh exposure and no service auth is needed.
 # Rerank goes through vLLM because TEI cannot serve a causal-LM scorer like
 # Qwen3-Reranker (its score is the yes/no logit pair, not a classifier head).
 

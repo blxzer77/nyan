@@ -21,9 +21,9 @@ retrieval budget (0.6B; revisit only if quality proves insufficient).
 | --- | --- | --- | --- |
 | Embedding: `jinaai/jina-code-embeddings-1.5b` (BF16 GGUF) via llama.cpp | this workstation, RTX 3060 Laptop 12 GB | `http://127.0.0.1:8090` | rootless podman, user unit `retrieval-llama-embed` |
 | Rerank: `Qwen/Qwen3-Reranker-0.6B` via vLLM `--runner pooling` | this workstation | `http://127.0.0.1:8091` | rootless podman, user unit `retrieval-vllm-rerank` |
-| Vector backend: Qdrant 1.19.2 | nyan-dev-02 (6 vCPU, 23 GB, no GPU) | `http://100.80.19.12:6333` (+ loopback) | docker compose, `/opt/stacks/retrieval` |
+| Vector backend: Qdrant 1.19.2 | nyan-dev-02 (6 vCPU, 23 GB, no GPU) | `http://10.144.0.3:6333` (+ loopback) | docker compose, `/opt/stacks/retrieval` |
 | Coordinator metadata DB: PostgreSQL 17.11 (`retrieval_coord`, own role) | nyan-dev-02, inside the langfuse Postgres container | `127.0.0.1:5433/retrieval_coord` | row in `/opt/stacks/retrieval/keys/coord-db.env` |
-| Observability/eval plane: Langfuse 4 API | nyan-dev-02 | `http://100.80.19.12:50007/langfuse-api/` | existing langfuse stack, new nginx location |
+| Observability/eval plane: Langfuse 4 API | nyan-dev-02 | `http://10.144.0.3:50007/langfuse-api/` | existing langfuse stack, new nginx location |
 
 GPU services are Quadlet units: `~/.config/containers/systemd/retrieval-*.container`.
 Operate with `systemctl --user {start,stop,status} retrieval-llama-embed retrieval-vllm-rerank`;
@@ -32,7 +32,7 @@ without a docker daemon. `compose.gpu.yaml` is the docker equivalent, kept for
 reference only — nothing runs from it.
 
 Both GPU services bind loopback only: the client runs on this host, so there is
-no tailnet exposure and no service auth. Qdrant binds the tailnet address and
+no mesh exposure and no service auth. Qdrant binds the EasyTier mesh address and
 loopback and requires its API key (anonymous requests get 401).
 
 ## Verified (2026-10-20)
@@ -52,7 +52,7 @@ PASS  distinct_texts cos=0.4446
 CHECK score_shape      PASS n=2
 CHECK score_range_0_1  PASS [0.587, 0.211]
 CHECK ranking_sanity   PASS
-== qdrant: http://100.80.19.12:6333
+== qdrant: http://10.144.0.3:6333
 PASS  anonymous request refused (401)
 PASS  authenticated request ok (200)
 ```
@@ -123,8 +123,9 @@ Deferred until an eval set shows the 0.6B is insufficient.
   created in the existing PostgreSQL 17 container (langfuse's), reachable only on
   `127.0.0.1:5433`. The role owns an empty database and sees no langfuse tables.
   Credentials: `/opt/stacks/retrieval/keys/coord-db.env` (0600).
-- **Langfuse API** at `http://100.80.19.12:50007/langfuse-api/` (nginx location
-  proxying `/api/public/`); the browser UI stays on Tailscale Serve :8448. Verified
+- **Langfuse API** at `http://10.144.0.3:50007/langfuse-api/` (nginx location
+  proxying `/api/public/`). The browser UI was published with Tailscale Serve on
+  port 8448; that ingress is retired, and this record has no replacement URL. Verified
   with `GET /langfuse-api/health` (200) and an authenticated
   `GET /langfuse-api/projects` returning project `nyan`. Keys for the client are in
   `/opt/stacks/retrieval/keys/langfuse.env` (0600, `pk-lf-nyan-local` /
