@@ -87,7 +87,7 @@ pub struct ChunkRecord {
     pub tokens: Vec<String>,
 }
 
-struct IndexLock {
+pub(crate) struct IndexLock {
     path: PathBuf,
 }
 
@@ -316,7 +316,7 @@ fn load_persisted(storage: &Path) -> Option<PersistedIndex> {
     (index.schema == INDEX_SCHEMA_VERSION).then_some(index)
 }
 
-fn acquire_lock(storage: &Path) -> Option<IndexLock> {
+pub(crate) fn acquire_lock(storage: &Path) -> Option<IndexLock> {
     let path = storage.join("index.lock");
     std::fs::OpenOptions::new()
         .write(true)

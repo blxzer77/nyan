@@ -205,6 +205,17 @@ pub async fn search(
         let _ = semantic::SemanticClient::ensure_initial_pending(index);
         match semantic::SemanticClient::from_settings(&semantic_settings, &root, &budget) {
             Ok(client) => {
+                let pending_before = semantic::SemanticClient::pending_count(index);
+                if pending_before > 0 {
+                    let background_client = client.clone();
+                    let background_index = index.clone();
+                    let sync_settings = retrieval.sync();
+                    tokio::spawn(async move {
+                        let _ = background_client
+                            .sync_pending(&background_index, &sync_settings)
+                            .await;
+                    });
+                }
                 let semantic_started = Instant::now();
                 let mut result = client
                     .search(

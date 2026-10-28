@@ -2,17 +2,19 @@
 //! deterministic local branches: an unavailable corp-pc or Qdrant never turns
 //! a code search into an empty success.
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine as _;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::services::service_health::{self, CallPermit, FailureKind, ServiceKind};
-use crate::utils::settings::nyan::SemanticSettings;
+use crate::utils::settings::nyan::{RetrievalSyncSettings, SemanticSettings};
 
-use super::index::LocalIndex;
+use super::index::{LocalIndex, acquire_lock};
 use super::outcome::{Branch, BranchStatus, Candidate, SearchRequest};
 
 const QUERY_PREFIX: &str = "Find the most relevant code snippet given the following query:\n";
@@ -48,6 +50,20 @@ struct QdrantClient {
 pub struct SemanticSearchResult {
     pub candidates: Vec<Candidate>,
     pub status: BranchStatus,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SyncReport {
+    pub synced_files: usize,
+    pub pending_files: usize,
+    pub status: BranchStatus,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct PendingEntry {
+    path: String,
+    #[serde(rename = "fileHashRaw")]
+    file_hash_raw: String,
 }
 
 impl SemanticClient {
@@ -277,6 +293,187 @@ impl SemanticClient {
         std::fs::write(marker, b"v1").map_err(|error| error.to_string())?;
         Ok(index.files().len())
     }
+
+    /// Synchronize pending files in deterministic batches. A file leaves the
+    /// queue only after every embedding and Qdrant upsert in that file's batch
+    /// succeeds; a failure leaves the entry for the next background attempt.
+    pub async fn sync_pending(
+        &self,
+        index: &LocalIndex,
+        settings: &RetrievalSyncSettings,
+    ) -> SyncReport {
+        let Some(_lock) = acquire_lock(index.storage()) else {
+            let pending = Self::pending_count(index);
+            return SyncReport {
+                synced_files: 0,
+                pending_files: pending,
+                status: BranchStatus::Partial { pending },
+            };
+        };
+        let queue_path = index.storage().join("semantic-pending.jsonl");
+        let entries = std::fs::read_to_string(&queue_path)
+            .map(|text| {
+                text.lines()
+                    .filter_map(|line| serde_json::from_str::<PendingEntry>(line).ok())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if entries.is_empty() {
+            return SyncReport {
+                synced_files: 0,
+                pending_files: 0,
+                status: BranchStatus::Ok,
+            };
+        }
+
+        let batch_size = settings.batch_size().max(1) as usize;
+        let mut remaining = Vec::new();
+        let mut synced = 0;
+        let mut failure = None;
+        let mut failed_after = None;
+        let mut seen = HashSet::new();
+        for (entry_index, entry) in entries.iter().cloned().enumerate() {
+            if !seen.insert((entry.path.clone(), entry.file_hash_raw.clone())) {
+                continue;
+            }
+            let Some(file) = index
+                .files()
+                .iter()
+                .find(|file| file.path == entry.path && file.file_hash_raw == entry.file_hash_raw)
+            else {
+                // A deleted or changed file is not a successful old payload;
+                // leave changed files to the next index refresh and drop deleted
+                // files from this queue generation.
+                if index.files().iter().any(|file| file.path == entry.path) {
+                    remaining.push(entry);
+                }
+                continue;
+            };
+            let Ok(text) = std::fs::read_to_string(index.root().join(&file.path)) else {
+                remaining.push(entry);
+                failure = Some("file unavailable".to_string());
+                failed_after = Some(entry_index + 1);
+                break;
+            };
+            let lines = text.lines().collect::<Vec<_>>();
+            let mut points = Vec::new();
+            for chunk in &file.chunks {
+                let content = lines
+                    .get(chunk.start_line.saturating_sub(1)..chunk.end_line.min(lines.len()))
+                    .map(|lines| lines.join("\\n"))
+                    .unwrap_or_default();
+                if content.is_empty() {
+                    continue;
+                }
+                points.push((chunk, content));
+            }
+            let mut file_ok = true;
+            for batch in points.chunks(batch_size) {
+                let documents = batch
+                    .iter()
+                    .map(|(_, content)| content.clone())
+                    .collect::<Vec<_>>();
+                let vectors = match self.embedding.embed(&documents).await {
+                    Ok(vectors) if vectors.len() == batch.len() => vectors,
+                    Ok(_) => {
+                        failure = Some("embedding count mismatch".to_string());
+                        file_ok = false;
+                        break;
+                    }
+                    Err(error) => {
+                        failure = Some(error);
+                        file_ok = false;
+                        break;
+                    }
+                };
+                let payloads = batch
+                    .iter()
+                    .map(|(chunk, _)| {
+                        let chunk_id = short_hash(
+                            format!("{}:{}:{}", file.path, chunk.start_line, chunk.end_line)
+                                .as_bytes(),
+                            32,
+                        );
+                        json!({
+                            "id": chunk_id,
+                            "vector": [],
+                            "payload": {
+                                "path": file.path,
+                                "startLine": chunk.start_line,
+                                "endLine": chunk.end_line,
+                                "chunkId": chunk_id,
+                                "fileHashRaw": file.file_hash_raw,
+                                "symbol": chunk.symbol,
+                            }
+                        })
+                    })
+                    .zip(vectors)
+                    .map(|(mut point, vector)| {
+                        point["vector"] = serde_json::to_value(vector).unwrap_or(Value::Null);
+                        point
+                    })
+                    .collect::<Vec<_>>();
+                if let Err(error) = self
+                    .qdrant
+                    .upsert(&self.collection, payloads, self.embedding.dim)
+                    .await
+                {
+                    failure = Some(error);
+                    file_ok = false;
+                    break;
+                }
+            }
+            if file_ok {
+                synced += 1;
+            } else {
+                remaining.push(entry);
+                if failure.is_some() {
+                    failed_after = Some(entry_index + 1);
+                    break;
+                }
+            }
+        }
+        if let Some(error) = failure {
+            // Preserve entries not visited after the first failed file.
+            if let Some(start) = failed_after {
+                remaining.extend(entries.into_iter().skip(start));
+            }
+            let _ = std::fs::write(
+                &queue_path,
+                remaining
+                    .iter()
+                    .filter_map(|entry| serde_json::to_string(entry).ok())
+                    .collect::<Vec<_>>()
+                    .join("\\n")
+                    + if remaining.is_empty() { "" } else { "\\n" },
+            );
+            return SyncReport {
+                synced_files: synced,
+                pending_files: remaining.len(),
+                status: BranchStatus::Unavailable { reason: error },
+            };
+        }
+        let _ = std::fs::write(
+            &queue_path,
+            remaining
+                .iter()
+                .filter_map(|entry| serde_json::to_string(entry).ok())
+                .collect::<Vec<_>>()
+                .join("\\n")
+                + if remaining.is_empty() { "" } else { "\\n" },
+        );
+        SyncReport {
+            synced_files: synced,
+            pending_files: remaining.len(),
+            status: if remaining.is_empty() {
+                BranchStatus::Ok
+            } else {
+                BranchStatus::Partial {
+                    pending: remaining.len(),
+                }
+            },
+        }
+    }
 }
 
 impl EmbeddingClient {
@@ -414,6 +611,58 @@ impl QdrantClient {
                 response.status().is_success().then_some(()).ok_or(())
             })
         })));
+    }
+
+    async fn upsert(
+        &self,
+        collection: &str,
+        points: Vec<Value>,
+        dimension: usize,
+    ) -> Result<(), String> {
+        match self.health.call_permit() {
+            CallPermit::Skipped => return Err("Qdrant service unreachable".to_string()),
+            CallPermit::Probe => {
+                self.health.spawn_probe();
+                return Err("Qdrant service unreachable".to_string());
+            }
+            CallPermit::Allowed => {}
+        }
+        self.ensure_collection(collection, dimension).await?;
+        let url = format!("{}/collections/{collection}/points?wait=true", self.url);
+        let mut request = self.client.put(url).json(&json!({"points": points}));
+        if let Some(key) = self.api_key.as_deref() {
+            request = request.header("api-key", key);
+        }
+        let response = request.send().await.map_err(|error| {
+            self.health.record_failure(if error.is_timeout() {
+                FailureKind::Timeout
+            } else {
+                FailureKind::Unreachable
+            });
+            error.to_string()
+        })?;
+        if !response.status().is_success() {
+            self.health.record_failure(FailureKind::Unreachable);
+            return Err(format!("Qdrant upsert HTTP {}", response.status()));
+        }
+        self.health.record_success();
+        Ok(())
+    }
+
+    async fn ensure_collection(&self, collection: &str, dimension: usize) -> Result<(), String> {
+        let url = format!("{}/collections/{collection}", self.url);
+        let mut request = self.client.put(url).json(&json!({
+            "vectors": {"size": dimension, "distance": "Cosine"}
+        }));
+        if let Some(key) = self.api_key.as_deref() {
+            request = request.header("api-key", key);
+        }
+        let response = request.send().await.map_err(|error| error.to_string())?;
+        if response.status().is_success() || response.status().as_u16() == 409 {
+            Ok(())
+        } else {
+            Err(format!("Qdrant collection HTTP {}", response.status()))
+        }
     }
 
     async fn search(
