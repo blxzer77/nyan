@@ -202,6 +202,9 @@ pub mod todo;
 pub mod token_budget;
 pub mod tokens;
 pub mod tool_errors;
+// @nyan: tool I/O switches and the shared completion-note contract
+// (docs/nyan/tool-io.md section 5, T1).
+pub mod tool_io;
 pub mod tool_pool;
 pub mod tool_result_storage;
 pub mod tool_schema_cache;
