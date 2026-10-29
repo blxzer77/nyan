@@ -611,7 +611,7 @@ mod tests {
         let invalid_read = ToolUseBlock {
             id: crate::types::ids::ToolUseId("toolu_invalid_read_partition".to_string()),
             name: "Read".to_string(),
-            input: serde_json::json!({ "limit": 20 }),
+            input: serde_json::json!({ "file_path": 5 }),
         };
         let grep = ToolUseBlock {
             id: crate::types::ids::ToolUseId("toolu_grep_after_invalid".to_string()),

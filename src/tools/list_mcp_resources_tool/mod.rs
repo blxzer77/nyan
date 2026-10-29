@@ -535,11 +535,10 @@ rl.on('line', line => {
 
                 // `resources/list_changed` is one of the two official
                 // invalidation points; after it the next fetch is fresh.
-                let refreshed =
-                    crate::services::mcp::client::refresh_mcp_resources_for_client(
-                        &discovery.server,
-                    )
-                    .await;
+                let refreshed = crate::services::mcp::client::refresh_mcp_resources_for_client(
+                    &discovery.server,
+                )
+                .await;
                 assert_eq!(refreshed.len(), 1);
                 assert_eq!(refreshed[0].uri, "file:///tmp/call-2.txt");
 

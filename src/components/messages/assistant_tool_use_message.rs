@@ -2489,7 +2489,11 @@ mod tests {
 
         // Gated, and the gate has teeth.
         assert!(parses("Read", serde_json::json!({ "file_path": "/a" })));
-        assert!(!parses("Read", serde_json::json!({})));
+        assert!(!parses("Read", serde_json::json!({ "file_path": 5 })));
+        // T4 makes the carrier schema accept an empty object because `files`
+        // is an alternative to `file_path`; FileReadTool::call owns the
+        // exactly-one path check after this schema gate.
+        assert!(parses("Read", serde_json::json!({})));
         assert!(!parses(
             "Agent",
             serde_json::json!({ "description": "d", "prompt": "p", "model": "gpt" })

@@ -2220,6 +2220,7 @@ mod tests {
     #[derive(Default, Props)]
     struct MessagesPromptOnlyRerenderProbeProps {
         pub is_loading: bool,
+        pub wait_for_events: bool,
     }
 
     #[component]
@@ -2230,7 +2231,24 @@ mod tests {
         let mut system = hooks.use_context_mut::<SystemContext>();
         let mut tick = hooks.use_state(|| 0u8);
         let stable_messages = hooks.use_const(|| Arc::new(messages(3)));
-        if tick.get() < 2 {
+        if props.wait_for_events {
+            let mut tick_for_event = tick;
+            hooks.use_terminal_events(move |event| {
+                if matches!(
+                    event,
+                    TerminalEvent::Key(KeyEvent {
+                        code: KeyCode::Char('t'),
+                        kind: KeyEventKind::Press,
+                        ..
+                    })
+                ) {
+                    tick_for_event.set((tick_for_event.get() + 1).min(2));
+                }
+            });
+            if tick.get() >= 2 {
+                system.exit();
+            }
+        } else if tick.get() < 2 {
             tick += 1;
         } else {
             system.exit();
@@ -2260,15 +2278,59 @@ mod tests {
     }
 
     fn render_prompt_only_probe(is_loading: bool) -> String {
-        let canvases = futures::executor::block_on(
-            element!(MessagesPromptOnlyRerenderProbe(is_loading: is_loading))
-                .mock_terminal_render_loop(MockTerminalConfig::default().with_size(80, 24))
-                .collect::<Vec<_>>(),
-        );
-        canvases
-            .last()
-            .expect("mock render should produce a final canvas")
-            .to_string()
+        let (rendered, _) = render_prompt_only_probe_frames(is_loading, false);
+        rendered
+    }
+
+    fn render_prompt_only_probe_frames(is_loading: bool, wait_for_events: bool) -> (String, usize) {
+        futures::executor::block_on(async move {
+            let (event_sender, events) = async_channel::unbounded();
+            let mut app = element!(MessagesPromptOnlyRerenderProbe(
+                is_loading: is_loading,
+                wait_for_events: wait_for_events,
+            ));
+            let mut render_loop = Box::pin(app.mock_terminal_render_loop(
+                MockTerminalConfig::with_events(events).with_size(80, 24),
+            ));
+
+            if wait_for_events {
+                let initial = render_loop
+                    .next()
+                    .await
+                    .expect("mock render should produce an initial canvas");
+                let initial_logo_count = logo_header_render_count();
+                assert!(initial_logo_count > 0, "initial render must mount LogoHeader");
+                // The first mock canvas includes terminal-size settling inside
+                // LogoV2. Reset after mount so the assertions cover only the
+                // explicit idle parent updates below.
+                reset_logo_header_render_count();
+                crate::components::logo_v2::logo_v2::reset_logo_display_data_current_call_count();
+                let mut last = initial;
+                for _ in 0..2 {
+                    event_sender
+                        .send(TerminalEvent::Key(KeyEvent::new(
+                            KeyEventKind::Press,
+                            KeyCode::Char('t'),
+                        )))
+                        .await
+                        .expect("send probe tick");
+                    last = render_loop
+                        .next()
+                        .await
+                        .expect("mock render should produce a tick canvas");
+                }
+                return (last.to_string(), logo_header_render_count());
+            }
+
+            let canvases = render_loop.collect::<Vec<_>>().await;
+            (
+                canvases
+                    .last()
+                    .expect("mock render should produce a final canvas")
+                    .to_string(),
+                logo_header_render_count(),
+            )
+        })
     }
 
     #[test]
@@ -2948,14 +3010,15 @@ mod tests {
         reset_logo_header_render_count();
         crate::components::logo_v2::logo_v2::reset_logo_display_data_current_call_count();
 
-        let rendered = render_prompt_only_probe(false);
+        let (rendered, logo_count) = render_prompt_only_probe_frames(false, true);
 
         assert!(rendered.contains("message 0"));
-        assert_eq!(logo_header_render_count(), 1);
+        assert!(rendered.contains("tick 2"));
+        assert_eq!(logo_count, 0);
         assert_eq!(
             crate::components::logo_v2::logo_v2::logo_display_data_current_call_count(),
-            1,
-            "LogoV2 data helpers must run once across idle parent frames"
+            0,
+            "LogoV2 data helpers must not run across idle parent frames"
         );
     }
 

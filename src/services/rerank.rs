@@ -125,9 +125,10 @@ impl RerankClient {
         settings: &RerankSettings,
         request_timeout_ms: u64,
     ) -> anyhow::Result<Self> {
-        crate::utils::tls_provider::install_crypto_provider();
         let health = service_health::shared(ServiceKind::Rerank);
-        let client = reqwest::Client::builder()
+        // `client_builder` is the one allowed reqwest constructor (clippy.toml);
+        // `.no_proxy()` overrides any proxy it would otherwise pick up.
+        let client = crate::utils::proxy::client_builder()
             .no_proxy()
             .connect_timeout(health.connect_timeout())
             .timeout(Duration::from_millis(request_timeout_ms))

@@ -1908,7 +1908,11 @@ impl FileReadTool {
                     content: Some(output.content.clone()),
                     timestamp_ms: Some(read_timestamp_ms),
                     offset: Some(input.offset.clone()),
-                    limit: input.limit.clone(),
+                    limit: if budget_truncated {
+                        Some(serde_json::json!(output.num_lines))
+                    } else {
+                        input.limit.clone()
+                    },
                     is_partial_view: false,
                     source: crate::utils::query_helpers::ReadFileStateSource::Read,
                 },

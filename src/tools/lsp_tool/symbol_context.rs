@@ -24,8 +24,8 @@ fn symbol_class(unit: u16) -> Option<SymbolClass> {
 }
 
 fn read_head(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
-    let result = crate::utils::fs_operations::get_fs_implementation()
-        .read_sync(path, MAX_READ_BYTES)?;
+    let result =
+        crate::utils::fs_operations::get_fs_implementation().read_sync(path, MAX_READ_BYTES)?;
     let mut buffer = result.buffer;
     buffer.truncate(result.bytes_read);
     Ok(buffer)

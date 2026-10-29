@@ -852,7 +852,19 @@ pub(crate) async fn generate_file_attachment(
         .call(&args, &read_context, None)
         .await
     {
-        Ok(output) => output,
+        Ok(output) => {
+            // T3 can return a successful token-budget prefix instead of the
+            // legacy error path; preserve that state on the attachment wire
+            // value just like the fallback below does.
+            if matches!(
+                &output.data,
+                crate::tools::file_read_tool::ReadOutput::Text(text)
+                    if text.budget_truncated
+            ) {
+                truncated = true;
+            }
+            output
+        }
         Err(error) if error.is_max_token_exceeded() || error.is_file_too_large() => {
             if mode == FileAttachmentMode::Compact {
                 return Some(AttachmentMessage::new(serde_json::json!({
@@ -3083,6 +3095,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn at_mention_token_fallback_keeps_truncated_read_state_range() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let root = std::env::temp_dir().join(format!(
             "cometix-at-mention-token-fallback-{}",
             uuid::Uuid::new_v4().simple()
@@ -3090,7 +3103,12 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("dense.json");
         let content = (0..3_000)
-            .map(|index| format!("{{\"dense\":{index:010}}}"))
+            .map(|index| {
+                format!(
+                    "{{\"dense\":{index:010},\"payload\":\"{}\"}}",
+                    "x".repeat(12)
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
         std::fs::write(&path, content).unwrap();
@@ -3112,7 +3130,12 @@ mod tests {
             .find(|entry| entry.path == path.display().to_string())
             .expect("truncated Read state");
         assert_eq!(state.offset, Some(serde_json::json!(1)));
-        assert_eq!(state.limit, Some(serde_json::json!(2_000)));
+        let kept_lines = state
+            .limit
+            .as_ref()
+            .and_then(serde_json::Value::as_u64)
+            .expect("partial Read state records its returned line count");
+        assert!(kept_lines > 0 && kept_lines <= 2_000);
         assert_eq!(
             state
                 .content
@@ -3120,7 +3143,7 @@ mod tests {
                 .unwrap_or_default()
                 .split('\n')
                 .count(),
-            2_000
+            kept_lines as usize
         );
         let _ = std::fs::remove_dir_all(root);
     }
