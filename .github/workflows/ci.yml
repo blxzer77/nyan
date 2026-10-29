@@ -159,6 +159,12 @@ jobs:
           mkdir -p "$RUNNER_TEMP/nyan-tools/nextest"
           nextest="$(node scripts/ci/fetch-tool.mjs nextest --dest "$RUNNER_TEMP/nyan-tools/nextest")"
           dirname "$nextest" >> "$GITHUB_PATH"
+      - name: Install ripgrep
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/nyan-tools/ripgrep"
+          ripgrep="$(node scripts/ci/fetch-tool.mjs ripgrep --dest "$RUNNER_TEMP/nyan-tools/ripgrep")"
+          dirname "$ripgrep" >> "$GITHUB_PATH"
       - name: Download nextest archive
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
