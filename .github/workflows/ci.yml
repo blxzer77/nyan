@@ -75,7 +75,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/nyan-tools/nextest"
           nextest="$(node scripts/ci/fetch-tool.mjs nextest --dest "$RUNNER_TEMP/nyan-tools/nextest")"
-          echo "$(dirname "$nextest")" >> "$GITHUB_PATH"
+          dirname "$nextest" >> "$GITHUB_PATH"
       - name: Build nextest archive
         shell: bash
         run: cargo nextest archive --locked --lib --archive-file "$RUNNER_TEMP/nyan-tests.tar.zst"
@@ -119,7 +119,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/nyan-tools/actionlint"
           actionlint="$(node scripts/ci/fetch-tool.mjs actionlint --dest "$RUNNER_TEMP/nyan-tools/actionlint")"
-          echo "$(dirname "$actionlint")" >> "$GITHUB_PATH"
+          dirname "$actionlint" >> "$GITHUB_PATH"
       - name: Check default and internal builds
         run: |
           cargo check --locked --lib --tests
@@ -139,7 +139,8 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.policy.outputs.test_matrix) }}
+      matrix:
+        include: ${{ fromJSON(needs.policy.outputs.test_matrix) }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -157,7 +158,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/nyan-tools/nextest"
           nextest="$(node scripts/ci/fetch-tool.mjs nextest --dest "$RUNNER_TEMP/nyan-tools/nextest")"
-          echo "$(dirname "$nextest")" >> "$GITHUB_PATH"
+          dirname "$nextest" >> "$GITHUB_PATH"
       - name: Download nextest archive
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -201,8 +202,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/nyan-tools/gitleaks" "$RUNNER_TEMP/nyan-tools/cargo-deny"
           gitleaks="$(node scripts/ci/fetch-tool.mjs gitleaks --dest "$RUNNER_TEMP/nyan-tools/gitleaks")"
           cargo_deny="$(node scripts/ci/fetch-tool.mjs cargo-deny --dest "$RUNNER_TEMP/nyan-tools/cargo-deny")"
-          echo "$(dirname "$gitleaks")" >> "$GITHUB_PATH"
-          echo "$(dirname "$cargo_deny")" >> "$GITHUB_PATH"
+          dirname "$gitleaks" >> "$GITHUB_PATH"
+          dirname "$cargo_deny" >> "$GITHUB_PATH"
       - name: Scan repository snapshot for secrets
         shell: bash
         run: |
