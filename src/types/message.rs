@@ -695,6 +695,23 @@ impl PartialCompactDirection {
     }
 }
 
+/// @nyan: receipt for the deterministic mask/summary admission decision.
+/// `Option` on the enclosing field keeps old transcripts wire-compatible.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NyanCompactReceipt {
+    pub masked_count: usize,
+    pub masked_tokens: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary_style: Option<String>,
+    pub keep_recent_tokens: u32,
+    pub tokens_after_estimate: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
+}
+
 /// Maps to CC `types/message.ts` `SystemCompactBoundaryMessage.compactMetadata`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -713,6 +730,8 @@ pub struct CompactMetadata {
     pub pre_tokens: Option<i64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pre_compact_discovered_tools: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nyan: Option<NyanCompactReceipt>,
 }
 
 /// Maps to: CC `types/message.ts:65` `SystemMessageBase = MessageBase &

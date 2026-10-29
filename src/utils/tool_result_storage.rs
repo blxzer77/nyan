@@ -8,7 +8,28 @@
 //! before model delivery, and the aggregate per-message budget remains a
 //! separate replay-stable pass. Non-text result persistence stays explicit.
 
+/// Legacy marker retained so old transcripts can be recognized and replayed
+/// byte-for-byte. New decisions use [`cleared_tool_result_message`].
 pub const TOOL_RESULT_CLEARED_MESSAGE: &str = "[Old tool result content cleared]";
+
+/// @nyan: replacement text carries enough metadata to make a new decision
+/// deterministic while preserving the original transcript untouched.
+pub fn cleared_tool_result_message(tool_name: &str, bytes: usize, tool_use_id: &str) -> String {
+    format!("[tool result cleared: {tool_name} {bytes} bytes, id {tool_use_id}]")
+}
+
+pub fn is_tool_result_cleared(content: &str) -> bool {
+    content == TOOL_RESULT_CLEARED_MESSAGE
+        || (content.starts_with("[tool result cleared: ") && content.ends_with(']'))
+}
+
+pub fn tool_result_cleared_bytes(content: &str) -> Option<usize> {
+    let body = content
+        .strip_prefix("[tool result cleared: ")?
+        .strip_suffix(']')?;
+    let bytes = body.split_once(" bytes, id ")?.0.rsplit_once(' ')?.1;
+    bytes.parse().ok()
+}
 /// Maps to CC `utils/toolResultStorage.ts` `PERSISTED_OUTPUT_TAG`.
 pub const PERSISTED_OUTPUT_TAG: &str = "<persisted-output>";
 /// Maps to CC `utils/toolResultStorage.ts` `PERSISTED_OUTPUT_CLOSING_TAG`.
@@ -28,10 +49,10 @@ pub const PER_MESSAGE_BUDGET_LIMIT_FEATURE: &str = "tengu_hawthorn_window";
 
 /// Maps to CC `utils/toolResultStorage.ts` `ContentReplacementState`.
 ///
-/// Cometix keeps session writes disabled, so replacements are in-memory clear
-/// markers rather than persisted-output preview strings. The important cache
-/// contract still applies: once a tool_use_id has been seen, its replacement
-/// decision is frozen and re-applied byte-identically on later passes.
+/// Replacements are clear markers (`[tool result cleared: ...]`), recorded as
+/// `content-replacement` transcript entries and rebuilt on resume. The cache
+/// contract: once a tool_use_id has been seen, its replacement decision is
+/// frozen and re-applied byte-identically on later passes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ContentReplacementState {
     pub seen_ids: std::collections::HashSet<String>,
@@ -551,18 +572,19 @@ pub fn apply_tool_result_budget_with_state_and_skip_tool_names_result(
         }
 
         for candidate in selected {
+            let replacement = cleared_tool_result_message(
+                &candidate.tool_name,
+                candidate.len,
+                &candidate.tool_use_id,
+            );
             state.seen_ids.insert(candidate.tool_use_id.clone());
-            state.replacements.insert(
-                candidate.tool_use_id.clone(),
-                TOOL_RESULT_CLEARED_MESSAGE.to_string(),
-            );
-            replacement_map.insert(
-                candidate.tool_use_id.clone(),
-                TOOL_RESULT_CLEARED_MESSAGE.to_string(),
-            );
+            state
+                .replacements
+                .insert(candidate.tool_use_id.clone(), replacement.clone());
+            replacement_map.insert(candidate.tool_use_id.clone(), replacement.clone());
             newly_replaced.push(ContentReplacementRecord::tool_result(
                 candidate.tool_use_id,
-                TOOL_RESULT_CLEARED_MESSAGE.to_string(),
+                replacement,
             ));
         }
     }
@@ -579,6 +601,7 @@ struct ToolResultCandidate {
     message_index: usize,
     content_index: usize,
     tool_use_id: String,
+    tool_name: String,
     len: usize,
     clearable: bool,
 }
@@ -612,6 +635,7 @@ fn build_tool_name_map(
 fn collect_tool_result_groups(
     messages: &[crate::types::message::Message],
 ) -> Vec<Vec<ToolResultCandidate>> {
+    let tool_name_by_use_id = build_tool_name_map(messages);
     let mut groups = Vec::<Vec<ToolResultCandidate>>::new();
     let mut current = Vec::<ToolResultCandidate>::new();
 
@@ -633,7 +657,9 @@ fn collect_tool_result_groups(
                     if !has_api_content_blocks && result.content.is_empty() {
                         continue;
                     }
-                    if is_content_already_compacted(&result.content) {
+                    if is_content_already_compacted(&result.content)
+                        || is_tool_result_cleared(&result.content)
+                    {
                         continue;
                     }
                     let len = if has_api_content_blocks {
@@ -649,10 +675,14 @@ fn collect_tool_result_groups(
                         message_index,
                         content_index,
                         tool_use_id: result.tool_use_id.0.clone(),
+                        tool_name: tool_name_by_use_id
+                            .get(&result.tool_use_id.0)
+                            .cloned()
+                            .unwrap_or_else(|| "tool".to_string()),
                         len,
                         clearable: !has_api_content_blocks
                             && !result.content.is_empty()
-                            && result.content != TOOL_RESULT_CLEARED_MESSAGE,
+                            && !is_tool_result_cleared(&result.content),
                     });
                 }
             }
@@ -669,6 +699,16 @@ fn collect_tool_result_groups(
 }
 
 /// Maps to CC `utils/toolResultStorage.ts` `replaceToolResultContents(...)`.
+/// Apply only decisions already present in `state`. Cache-sharing forks use
+/// this projection and never make a new replacement decision.
+pub fn apply_tool_result_replacements_only(
+    mut messages: Vec<crate::types::message::Message>,
+    state: &ContentReplacementState,
+) -> Vec<crate::types::message::Message> {
+    replace_tool_result_contents(&mut messages, &state.replacements);
+    messages
+}
+
 fn replace_tool_result_contents(
     messages: &mut [crate::types::message::Message],
     replacement_map: &std::collections::HashMap<String, String>,
@@ -818,7 +858,7 @@ mod tests {
                 matches!(
                     content,
                     crate::types::message::UserContent::ToolResult(result)
-                        if result.content == TOOL_RESULT_CLEARED_MESSAGE
+                        if is_tool_result_cleared(&result.content)
                 )
             })
             .count();
@@ -855,7 +895,7 @@ mod tests {
                 matches!(
                     content,
                     crate::types::message::UserContent::ToolResult(result)
-                        if result.content == TOOL_RESULT_CLEARED_MESSAGE
+                        if is_tool_result_cleared(&result.content)
                 )
             })
             .count();
@@ -880,25 +920,20 @@ mod tests {
         assert_eq!(result.newly_replaced.len(), 1);
         assert_eq!(result.newly_replaced[0].kind, "tool-result");
         assert_eq!(result.newly_replaced[0].tool_use_id, "toolu_large_a");
-        assert_eq!(
-            result.newly_replaced[0].replacement,
-            TOOL_RESULT_CLEARED_MESSAGE
-        );
-        assert_eq!(
-            serde_json::to_value(&result.newly_replaced[0]).unwrap(),
-            serde_json::json!({
-                "kind": "tool-result",
-                "toolUseId": "toolu_large_a",
-                "replacement": TOOL_RESULT_CLEARED_MESSAGE,
-            })
-        );
+        assert!(result.newly_replaced[0]
+            .replacement
+            .starts_with("[tool result cleared: "));
+        let wire = serde_json::to_value(&result.newly_replaced[0]).unwrap();
+        assert_eq!(wire["kind"], "tool-result");
+        assert_eq!(wire["toolUseId"], "toolu_large_a");
+        assert_eq!(wire["replacement"], result.newly_replaced[0].replacement);
         assert!(result.messages.iter().any(|message| match message {
             crate::types::message::Message::User(user) => user.content.iter().any(|content| {
                 matches!(
                     content,
                     crate::types::message::UserContent::ToolResult(result)
                         if result.tool_use_id.0 == "toolu_large_a"
-                            && result.content == TOOL_RESULT_CLEARED_MESSAGE
+                            && is_tool_result_cleared(&result.content)
                 )
             }),
             _ => false,
@@ -916,7 +951,7 @@ mod tests {
                 !matches!(
                     content,
                     crate::types::message::UserContent::ToolResult(result)
-                        if result.content == TOOL_RESULT_CLEARED_MESSAGE
+                        if is_tool_result_cleared(&result.content)
                 )
             }),
             _ => true,
@@ -942,10 +977,10 @@ mod tests {
                     continue;
                 };
                 if result.tool_use_id.0 == "toolu_old" {
-                    old_cleared = result.content == TOOL_RESULT_CLEARED_MESSAGE;
+                    old_cleared = is_tool_result_cleared(&result.content);
                 }
                 if result.tool_use_id.0 == "toolu_new" {
-                    new_cleared = result.content == TOOL_RESULT_CLEARED_MESSAGE;
+                    new_cleared = is_tool_result_cleared(&result.content);
                 }
             }
         }
@@ -953,10 +988,10 @@ mod tests {
         assert!(!old_cleared);
         assert!(new_cleared);
         assert!(!state.replacements.contains_key("toolu_old"));
-        assert_eq!(
-            state.replacements.get("toolu_new").map(String::as_str),
-            Some(TOOL_RESULT_CLEARED_MESSAGE)
-        );
+        assert!(state
+            .replacements
+            .get("toolu_new")
+            .is_some_and(|replacement| is_tool_result_cleared(replacement)));
     }
 
     #[test]
@@ -1011,7 +1046,7 @@ mod tests {
                     content,
                     crate::types::message::UserContent::ToolResult(result)
                         if result.tool_use_id.0 == "toolu_large_a"
-                            && result.content == TOOL_RESULT_CLEARED_MESSAGE
+                            && is_tool_result_cleared(&result.content)
                 )
             }),
             _ => false,
@@ -1029,7 +1064,7 @@ mod tests {
             .flat_map(|user| user.content.iter())
             .filter_map(|content| match content {
                 crate::types::message::UserContent::ToolResult(result)
-                    if result.content == TOOL_RESULT_CLEARED_MESSAGE =>
+                    if is_tool_result_cleared(&result.content) =>
                 {
                     Some(result.tool_use_id.0.as_str())
                 }
@@ -1074,7 +1109,7 @@ mod tests {
                 crate::utils::feature_flags::FeatureFlag::ToolResultContentReplacement,
             )
         );
-        assert!(!is_content_replacement_enabled());
+        assert!(is_content_replacement_enabled());
 
         crate::utils::process_env::remove("CLAUDE_CONFIG_DIR");
         crate::utils::process_env::remove("CLAUDE_INTERNAL_FC_OVERRIDES");
@@ -1150,10 +1185,10 @@ mod tests {
                     continue;
                 };
                 if result.tool_use_id.0 == "toolu_old" {
-                    old_cleared = result.content == TOOL_RESULT_CLEARED_MESSAGE;
+                    old_cleared = is_tool_result_cleared(&result.content);
                 }
                 if result.tool_use_id.0 == "toolu_new" {
-                    new_cleared = result.content == TOOL_RESULT_CLEARED_MESSAGE;
+                    new_cleared = is_tool_result_cleared(&result.content);
                 }
             }
         }
@@ -1266,7 +1301,7 @@ mod tests {
                 matches!(
                     content,
                     crate::types::message::UserContent::ToolResult(result)
-                        if result.content == TOOL_RESULT_CLEARED_MESSAGE
+                        if is_tool_result_cleared(&result.content)
                 )
             })
             .count();
@@ -1326,7 +1361,7 @@ mod tests {
         assert!(user.content.iter().all(|content| !matches!(
             content,
             crate::types::message::UserContent::ToolResult(result)
-                if result.content == TOOL_RESULT_CLEARED_MESSAGE
+                if is_tool_result_cleared(&result.content)
         )));
     }
 
@@ -1350,11 +1385,67 @@ mod tests {
                 matches!(
                     content,
                     crate::types::message::UserContent::ToolResult(result)
-                        if result.content == TOOL_RESULT_CLEARED_MESSAGE
+                        if is_tool_result_cleared(&result.content)
                 )
             })
             .count();
 
         assert_eq!(cleared, 0);
+    }
+
+    #[test]
+    fn legacy_and_new_cleared_markers_are_both_recognized() {
+        let new = cleared_tool_result_message("Read", 4096, "toolu_x");
+        assert_eq!(new, "[tool result cleared: Read 4096 bytes, id toolu_x]");
+        assert!(is_tool_result_cleared(&new));
+        assert!(is_tool_result_cleared(TOOL_RESULT_CLEARED_MESSAGE));
+        assert!(!is_tool_result_cleared("[tool result cleared: unterminated"));
+        assert!(!is_tool_result_cleared("ordinary output"));
+        assert_eq!(tool_result_cleared_bytes(&new), Some(4096));
+        assert_eq!(tool_result_cleared_bytes(TOOL_RESULT_CLEARED_MESSAGE), None);
+    }
+
+    #[test]
+    fn resume_replays_legacy_placeholder_verbatim() {
+        let loaded = vec![tool_result_message("toolu_old", "original body".to_string())];
+        let records = vec![ContentReplacementRecord::tool_result(
+            "toolu_old".to_string(),
+            TOOL_RESULT_CLEARED_MESSAGE.to_string(),
+        )];
+        let mut state =
+            provision_content_replacement_state_with_enabled(true, Some(&loaded), &records)
+                .expect("state");
+        let first = apply_tool_result_replacements_only(loaded.clone(), &state);
+        assert_eq!(
+            first_tool_result_content(&first[0]),
+            Some(TOOL_RESULT_CLEARED_MESSAGE)
+        );
+        // A later budget pass must keep replaying the recorded text, not
+        // rewrite it into the new metadata format.
+        let again = apply_tool_result_budget_with_state(loaded, &mut state);
+        assert_eq!(
+            first_tool_result_content(&again[0]),
+            Some(TOOL_RESULT_CLEARED_MESSAGE)
+        );
+        assert_eq!(
+            state.replacements.get("toolu_old").map(String::as_str),
+            Some(TOOL_RESULT_CLEARED_MESSAGE)
+        );
+    }
+
+    #[test]
+    fn replacements_only_projection_never_mutates_state() {
+        let loaded = vec![
+            assistant_tool_use("toolu_a", "Read"),
+            tool_result_message("toolu_a", "x".repeat(300_000)),
+        ];
+        let state = ContentReplacementState::new();
+        let before = state.clone();
+        let projected = apply_tool_result_replacements_only(loaded, &state);
+        assert_eq!(state, before);
+        assert_eq!(
+            first_tool_result_content(&projected[1]).map(str::len),
+            Some(300_000)
+        );
     }
 }

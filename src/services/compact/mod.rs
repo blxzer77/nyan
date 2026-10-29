@@ -11,4 +11,3 @@ pub mod prompt;
 pub mod reactive_compact;
 pub mod snip_compact;
 pub mod snip_projection;
-pub mod time_based_mc_config;

@@ -5734,6 +5734,9 @@ const METADATA_MARKERS: &[&[u8]] = &[
     b"\"type\":\"mode\"",
     b"\"type\":\"worktree-state\"",
     b"\"type\":\"pr-link\"",
+    // @nyan: large-transcript resume must retain replacement receipts before
+    // the compact boundary, or frozen tool results can reappear as raw output.
+    b"\"type\":\"content-replacement\"",
 ];
 
 const MAX_CARRY_SIZE: usize = 64 * 1024;

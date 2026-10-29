@@ -2,34 +2,94 @@
 //! Maps to CC `services/compact/prompt.ts`.
 
 const COMPACT_PROMPT_TEMPLATE: &str = include_str!("base_compact_prompt.txt");
+const CC_COMPACT_PROMPT_TEMPLATE: &str = include_str!("cc_compact_prompt.txt");
 
-/// Maps to CC `getCompactPrompt(...)`.
-pub fn get_compact_prompt(custom_instructions: Option<&str>) -> String {
-    let custom = custom_instructions
-        .filter(|instructions| !instructions.trim().is_empty())
-        .map(|instructions| format!("\n\nAdditional Instructions:\n{instructions}"))
-        .unwrap_or_default();
-    COMPACT_PROMPT_TEMPLATE.replace("\n{{CUSTOM_INSTRUCTIONS}}", &custom)
+fn configured_summary_style() -> crate::utils::settings::nyan::SummaryStyle {
+    crate::utils::settings::get_initial_settings()
+        .nyan
+        .map(|settings| settings.compaction().summary_style())
+        .unwrap_or(crate::utils::settings::nyan::SummaryStyle::Legacy)
 }
 
-/// Maps to CC prompt.ts#getPartialCompactPrompt. Template text is copied from CC 2.1.88.
+/// `summaryStyle = "cc"` must stay byte-identical to upstream, including the
+/// custom-instruction heading; the legacy format appends an `Additional focus`
+/// line instead.
+fn custom_focus(
+    custom_instructions: Option<&str>,
+    style: crate::utils::settings::nyan::SummaryStyle,
+) -> String {
+    custom_instructions
+        .filter(|instructions| !instructions.trim().is_empty())
+        .map(|instructions| match style {
+            crate::utils::settings::nyan::SummaryStyle::Cc => {
+                format!("\n\nAdditional Instructions:\n{instructions}")
+            }
+            crate::utils::settings::nyan::SummaryStyle::Legacy => {
+                format!("\n\nAdditional focus: {instructions}")
+            }
+        })
+        .unwrap_or_default()
+}
+
+/// Maps to CC `getCompactPrompt(...)`. `summaryStyle = "cc"` restores the
+/// upstream prompt; nyan's default is the structured legacy format.
+pub fn get_compact_prompt(custom_instructions: Option<&str>) -> String {
+    get_compact_prompt_with_style(custom_instructions, configured_summary_style())
+}
+
+pub fn get_compact_prompt_with_style(
+    custom_instructions: Option<&str>,
+    style: crate::utils::settings::nyan::SummaryStyle,
+) -> String {
+    let template = match style {
+        crate::utils::settings::nyan::SummaryStyle::Legacy => COMPACT_PROMPT_TEMPLATE,
+        crate::utils::settings::nyan::SummaryStyle::Cc => CC_COMPACT_PROMPT_TEMPLATE,
+    };
+    template.replace(
+        "{{CUSTOM_INSTRUCTIONS}}",
+        &custom_focus(custom_instructions, style),
+    )
+}
+
+/// Maps to CC prompt.ts#getPartialCompactPrompt.
 pub fn get_partial_compact_prompt(
     custom_instructions: Option<&str>,
     direction: crate::types::message::PartialCompactDirection,
 ) -> String {
-    let template = match direction {
-        crate::types::message::PartialCompactDirection::From => {
-            include_str!("partial_compact_from_prompt.txt")
-        }
-        crate::types::message::PartialCompactDirection::UpTo => {
-            include_str!("partial_compact_up_to_prompt.txt")
-        }
+    get_partial_compact_prompt_with_style(
+        custom_instructions,
+        direction,
+        configured_summary_style(),
+    )
+}
+
+pub fn get_partial_compact_prompt_with_style(
+    custom_instructions: Option<&str>,
+    direction: crate::types::message::PartialCompactDirection,
+    style: crate::utils::settings::nyan::SummaryStyle,
+) -> String {
+    let template = match (style, direction) {
+        (
+            crate::utils::settings::nyan::SummaryStyle::Legacy,
+            crate::types::message::PartialCompactDirection::From,
+        ) => include_str!("partial_compact_from_prompt.txt"),
+        (
+            crate::utils::settings::nyan::SummaryStyle::Legacy,
+            crate::types::message::PartialCompactDirection::UpTo,
+        ) => include_str!("partial_compact_up_to_prompt.txt"),
+        (
+            crate::utils::settings::nyan::SummaryStyle::Cc,
+            crate::types::message::PartialCompactDirection::From,
+        ) => include_str!("cc_partial_compact_from_prompt.txt"),
+        (
+            crate::utils::settings::nyan::SummaryStyle::Cc,
+            crate::types::message::PartialCompactDirection::UpTo,
+        ) => include_str!("cc_partial_compact_up_to_prompt.txt"),
     };
-    let custom = custom_instructions
-        .filter(|text| !text.trim().is_empty())
-        .map(|text| format!("\n\nAdditional Instructions:\n{text}"))
-        .unwrap_or_default();
-    template.replace("{{CUSTOM_INSTRUCTIONS}}", &custom)
+    template.replace(
+        "{{CUSTOM_INSTRUCTIONS}}",
+        &custom_focus(custom_instructions, style),
+    )
 }
 
 /// Maps to CC `formatCompactSummary(...)`.
@@ -120,9 +180,10 @@ mod tests {
     #[test]
     fn compact_prompt_matches_official_no_tools_and_custom_instruction_shape() {
         let prompt = get_compact_prompt(Some("Focus on Rust changes"));
-        assert!(prompt.starts_with("CRITICAL: Respond with TEXT ONLY."));
-        assert!(prompt.contains("Additional Instructions:\nFocus on Rust changes"));
-        assert!(prompt.ends_with("Tool calls will be rejected and you will fail the task."));
+        assert!(prompt.starts_with("You are summarizing a coding conversation"));
+        assert!(prompt.contains("Additional focus: Focus on Rust changes"));
+        assert!(prompt.contains("Goal:"));
+        assert!(prompt.contains("Critical Context:"));
     }
 
     #[test]
@@ -140,14 +201,45 @@ mod tests {
         // CC prompt.ts:274-294, external text is copied verbatim to the two templates.
         let from =
             get_partial_compact_prompt(Some("  keep decisions  "), PartialCompactDirection::From);
-        assert!(from.starts_with("CRITICAL: Respond with TEXT ONLY. Do NOT call any tools."));
+        assert!(from.starts_with("You are summarizing the RECENT portion"));
         assert!(from.contains("RECENT portion of the conversation"));
-        assert!(from.contains("\n\nAdditional Instructions:\n  keep decisions  \n\nREMINDER:"));
+        assert!(from.contains("Additional focus:   keep decisions  "));
         let up = get_partial_compact_prompt(Some(" "), PartialCompactDirection::UpTo);
-        assert!(
-            up.contains("newer messages that build on this context will follow after your summary")
+        assert!(up.contains("newer messages that build on this context will follow"));
+        assert!(!up.contains("Additional focus:"));
+        assert!(up.contains("portion before the selected boundary"));
+    }
+
+    #[test]
+    fn cc_style_restores_the_upstream_prompt_byte_for_byte() {
+        let prompt = get_compact_prompt_with_style(
+            Some("Focus on Rust changes"),
+            crate::utils::settings::nyan::SummaryStyle::Cc,
         );
-        assert!(!up.contains("Additional Instructions:"));
-        assert!(up.ends_with("Tool calls will be rejected and you will fail the task."));
+        assert!(prompt.starts_with("CRITICAL: Respond with TEXT ONLY."));
+        assert!(prompt.contains(
+            "Additional Instructions:\nFocus on Rust changes"
+        ));
+        assert!(prompt.ends_with("Tool calls will be rejected and you will fail the task."));
+        // Placeholder consumed exactly once; no `Additional focus` leak.
+        assert!(!prompt.contains("{{CUSTOM_INSTRUCTIONS}}"));
+        assert!(!prompt.contains("Additional focus:"));
+    }
+
+    #[test]
+    fn cc_partial_styles_restore_the_upstream_text() {
+        for direction in [
+            crate::types::message::PartialCompactDirection::From,
+            crate::types::message::PartialCompactDirection::UpTo,
+        ] {
+            let prompt = get_partial_compact_prompt_with_style(
+                Some("keep decisions"),
+                direction,
+                crate::utils::settings::nyan::SummaryStyle::Cc,
+            );
+            assert!(prompt.starts_with("CRITICAL: Respond with TEXT ONLY."));
+            assert!(prompt.contains("Additional Instructions:\nkeep decisions"));
+            assert!(prompt.ends_with("Tool calls will be rejected and you will fail the task."));
+        }
     }
 }

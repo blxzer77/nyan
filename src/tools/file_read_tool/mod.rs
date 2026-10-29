@@ -1155,6 +1155,112 @@ fn is_unc_path(path: &str) -> bool {
     path.starts_with("\\\\") || path.starts_with("//")
 }
 
+/// @nyan: the read cache entry intentionally stays unchanged. When a dedup
+/// hit would point at a tool result that was masked, inspect the live typed
+/// history instead of trusting the old stub.
+fn latest_read_tool_use_id(
+    context: &crate::tool::ToolUseContext,
+    full_file_path: &std::path::Path,
+    offset: &serde_json::Value,
+    limit: &Option<serde_json::Value>,
+) -> Option<String> {
+    let matches_range = |input: &serde_json::Value, base: Option<&std::path::Path>| {
+        let candidate_offset = input
+            .get("offset")
+            .map(javascript_runtime_value)
+            .unwrap_or_else(|| serde_json::json!(1));
+        let candidate_limit = input.get("limit").map(javascript_runtime_value);
+        javascript_strict_equal(&candidate_offset, offset)
+            && javascript_strict_equal_option(&candidate_limit, limit)
+            && input
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|path| crate::utils::path::expand_path(path, base).ok())
+                .is_some_and(|path| path == full_file_path)
+    };
+
+    for message in context.messages.iter().rev() {
+        let crate::types::message::Message::Assistant(assistant) = message else {
+            continue;
+        };
+        for content in assistant.content.iter().rev() {
+            let crate::types::message::AssistantContent::ToolUse(tool_use) = content else {
+                continue;
+            };
+            if tool_use.name != prompt::FILE_READ_TOOL_NAME {
+                continue;
+            }
+            if let Some(file_path) = tool_use
+                .input
+                .get("file_path")
+                .and_then(serde_json::Value::as_str)
+            {
+                let candidate_offset = tool_use
+                    .input
+                    .get("offset")
+                    .map(javascript_runtime_value)
+                    .unwrap_or_else(|| serde_json::json!(1));
+                let candidate_limit = tool_use.input.get("limit").map(javascript_runtime_value);
+                let Ok(candidate_path) =
+                    crate::utils::path::expand_path(file_path, context.cwd_override.as_deref())
+                else {
+                    continue;
+                };
+                if candidate_path == full_file_path
+                    && javascript_strict_equal(&candidate_offset, offset)
+                    && javascript_strict_equal_option(&candidate_limit, limit)
+                {
+                    return Some(tool_use.id.0.clone());
+                }
+                continue;
+            }
+            let Some(files) = tool_use
+                .input
+                .get("files")
+                .and_then(serde_json::Value::as_array)
+            else {
+                continue;
+            };
+            let cwd = context.effective_cwd();
+            if files.iter().any(|member| matches_range(member, Some(&cwd))) {
+                return Some(tool_use.id.0.clone());
+            }
+        }
+    }
+    None
+}
+
+/// A dedup stub is only safe while the earlier result is still in the model
+/// projection. Without a replacement state the feature is off and nothing can
+/// have been masked; with one, a previous Read whose id is recorded as replaced
+/// — or whose tool_use is no longer in the conversation at all — cannot be
+/// referenced, so the file is served again (compaction C5).
+fn dedup_target_is_still_in_context(
+    context: &crate::tool::ToolUseContext,
+    full_file_path: &std::path::Path,
+    offset: &serde_json::Value,
+    limit: &Option<serde_json::Value>,
+) -> bool {
+    let Some(state) = context.content_replacement_state.as_ref() else {
+        return true;
+    };
+    match latest_read_tool_use_id(context, full_file_path, offset, limit) {
+        Some(tool_use_id) => !state.replacements.contains_key(&tool_use_id),
+        None => false,
+    }
+}
+
+fn javascript_strict_equal_option(
+    left: &Option<serde_json::Value>,
+    right: &Option<serde_json::Value>,
+) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(left), Some(right)) => javascript_strict_equal(left, right),
+        _ => false,
+    }
+}
+
 /// Behavioral half of CC `FileReadTool` — dispatched via `crate::tool::ToolCall`.
 pub(crate) struct FileReadTool;
 
@@ -1229,7 +1335,14 @@ impl FileReadTool {
                     && crate::utils::file::get_file_modification_time_result(&full_file_path)
                         .ok()
                         .is_some_and(|mtime| existing.timestamp_ms == Some(mtime));
-                if unchanged {
+                let still_in_context = unchanged
+                    && dedup_target_is_still_in_context(
+                        context,
+                        &full_file_path,
+                        &input.offset,
+                        &input.limit,
+                    );
+                if still_in_context {
                     return Ok(FileReadToolResult {
                         data: ReadOutput::FileUnchanged(ReadFileUnchangedOutput {
                             file_path: input.file_path.clone(),
@@ -1431,7 +1544,14 @@ impl FileReadTool {
                     && crate::utils::file::get_file_modification_time_result(&full_path)
                         .ok()
                         .is_some_and(|mtime| existing.timestamp_ms == Some(mtime));
-                if unchanged {
+                let still_in_context = unchanged
+                    && dedup_target_is_still_in_context(
+                        context,
+                        &full_path,
+                        &single.offset,
+                        &single.limit,
+                    );
+                if still_in_context {
                     processed = index + 1;
                     segments.push(format!(
                         "=== {} ===\n{}",
@@ -4826,6 +4946,129 @@ PY\n\
                 .data,
             ReadOutput::FileUnchanged(_)
         ));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn dedup_re_reads_when_prior_read_result_was_replaced() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!(
+            "cometix-read-dedup-replacement-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("same.txt");
+        std::fs::write(&path, "hello\n").unwrap();
+        let mtime = crate::utils::file::get_file_modification_time_result(&path).unwrap();
+        let path_str = path.display().to_string();
+        let mut context = crate::tool::ToolUseContext::default();
+        context
+            .read_file_state
+            .set_entry(crate::utils::query_helpers::ReadFileStateEntry {
+                path: path_str.clone(),
+                content: Some("hello\n".to_string()),
+                timestamp_ms: Some(mtime),
+                offset: Some(serde_json::json!(1)),
+                limit: None,
+                is_partial_view: false,
+                source: crate::utils::query_helpers::ReadFileStateSource::Read,
+            });
+        context.messages = vec![crate::types::message::Message::Assistant(
+            crate::types::message::AssistantMessage {
+                uuid: uuid::Uuid::new_v4().to_string(),
+                timestamp: chrono::Utc::now(),
+                content: vec![crate::types::message::AssistantContent::ToolUse(
+                    crate::types::message::ToolUseBlock {
+                        id: crate::types::ids::ToolUseId("toolu-replaced-read".to_string()),
+                        name: prompt::FILE_READ_TOOL_NAME.to_string(),
+                        input: serde_json::json!({"file_path": path_str}),
+                    },
+                )],
+                model: None,
+                stop_reason: None,
+                usage: None,
+            },
+        )];
+        let mut replacement_state =
+            crate::utils::tool_result_storage::ContentReplacementState::new();
+        replacement_state.replacements.insert(
+            "toolu-replaced-read".to_string(),
+            "[tool result cleared: Read 6 bytes, id toolu-replaced-read]".to_string(),
+        );
+        context.content_replacement_state = Some(replacement_state);
+
+        let output = FileReadTool
+            .call(&serde_json::json!({"file_path": path_str}), &context, None)
+            .await
+            .expect("read");
+        assert!(matches!(
+            output.data,
+            ReadOutput::Text(ref output) if output.content == "hello\n"
+        ));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn batch_dedup_re_reads_when_prior_batch_result_was_replaced() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!(
+            "cometix-read-batch-dedup-replacement-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("same.txt");
+        std::fs::write(&path, "hello\n").unwrap();
+        let mtime = crate::utils::file::get_file_modification_time_result(&path).unwrap();
+        let path_str = path.display().to_string();
+        let mut context = crate::tool::ToolUseContext::default();
+        context
+            .read_file_state
+            .set_entry(crate::utils::query_helpers::ReadFileStateEntry {
+                path: path_str.clone(),
+                content: Some("hello\n".to_string()),
+                timestamp_ms: Some(mtime),
+                offset: Some(serde_json::json!(1)),
+                limit: None,
+                is_partial_view: false,
+                source: crate::utils::query_helpers::ReadFileStateSource::Read,
+            });
+        context.messages = vec![crate::types::message::Message::Assistant(
+            crate::types::message::AssistantMessage {
+                uuid: uuid::Uuid::new_v4().to_string(),
+                timestamp: chrono::Utc::now(),
+                content: vec![crate::types::message::AssistantContent::ToolUse(
+                    crate::types::message::ToolUseBlock {
+                        id: crate::types::ids::ToolUseId("toolu-replaced-batch".to_string()),
+                        name: prompt::FILE_READ_TOOL_NAME.to_string(),
+                        input: serde_json::json!({"files": [{"path": path_str}]}),
+                    },
+                )],
+                model: None,
+                stop_reason: None,
+                usage: None,
+            },
+        )];
+        let mut replacement_state =
+            crate::utils::tool_result_storage::ContentReplacementState::new();
+        replacement_state.replacements.insert(
+            "toolu-replaced-batch".to_string(),
+            "[tool result cleared: Read 6 bytes, id toolu-replaced-batch]".to_string(),
+        );
+        context.content_replacement_state = Some(replacement_state);
+
+        let output = FileReadTool
+            .call(
+                &serde_json::json!({"files": [{"path": path_str}]}),
+                &context,
+                None,
+            )
+            .await
+            .expect("batch read");
+        let ReadOutput::Text(output) = output.data else {
+            panic!("expected text");
+        };
+        assert!(output.content.contains("1\thello"), "{}", output.content);
+        assert!(!output.content.contains(prompt::FILE_UNCHANGED_STUB));
         let _ = std::fs::remove_dir_all(dir);
     }
 

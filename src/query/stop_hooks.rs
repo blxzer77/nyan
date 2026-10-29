@@ -139,6 +139,17 @@ fn stop_hooks_config(tool_use_context: &ToolUseContext) -> RegisteredHooks {
 #[cfg(not(test))]
 pub async fn handle_stop_hooks(params: StopHookParams) -> StopHookResult {
     let cache_safe_params = maybe_save_cache_safe_params(&params);
+    // @nyan (compaction C12): the turn ended and the agent now waits for the
+    // user. The saved params include the final assistant reply, which is the
+    // prefix the next real request extends. Only `warming = "idle"` acts on
+    // this; `"active"` needs a response that still has tools to run.
+    if let Some(cache) = cache_safe_params.as_ref() {
+        crate::services::cache_warmer::observe_response(
+            &params.query_source,
+            cache.clone(),
+            &params.assistant_messages,
+        );
+    }
     let prompt_suggestion_env_disabled = crate::utils::env_utils::is_env_defined_falsy(
         crate::utils::process_env::var("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION").as_deref(),
     );
