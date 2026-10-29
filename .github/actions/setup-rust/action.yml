@@ -1,0 +1,37 @@
+name: Set up pinned Rust
+description: Activate rust-toolchain.toml, install required components, and restore Cargo caches
+inputs:
+  cache:
+    description: Restore the shared Cargo registry and git dependency cache
+    required: false
+    default: 'true'
+outputs:
+  cache-primary-key:
+    description: Primary key used by the Cargo cache restore step
+    value: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+  cache-hit:
+    description: Whether the exact Cargo cache key was restored
+    value: ${{ steps.cargo-cache.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - name: Restore Cargo cache
+      id: cargo-cache
+      if: inputs.cache == 'true'
+      uses: actions/cache/restore@d4323d4df104b026a6aa633fdb11d772146be0bf
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+        restore-keys: |
+          cargo-${{ runner.os }}-${{ runner.arch }}-
+    - name: Install Rust components
+      shell: bash
+      run: rustup component add rustfmt clippy
+    - name: Verify pinned toolchain
+      shell: bash
+      run: |
+        rustup show active-toolchain
+        rustc --version
+        cargo --version
