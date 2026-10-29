@@ -1183,7 +1183,6 @@ mod tests {
         requests: Arc<Mutex<Vec<(String, String)>>>,
         dim: usize,
         model: String,
-        search_payload: Value,
     }
 
     impl MockServices {
@@ -1213,7 +1212,6 @@ mod tests {
                 requests,
                 dim,
                 model: model.to_string(),
-                search_payload,
             }
         }
 
