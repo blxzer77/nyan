@@ -1708,6 +1708,33 @@ mod tests {
         element! { Text(content: format!("keys={} pressed", keys.get())) }
     }
 
+    #[component]
+    fn ConfigKeyCountHarness(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+        use crate::components::design_system::theme_provider::{ThemeProvider, ThemeSaveHandler};
+        let keybinding_runtime =
+            crate::keybindings::keybinding_provider_setup::use_keybinding_setup(
+                &mut hooks,
+                crate::keybindings::keybinding_context::KeybindingRuntime::with_default_bindings(),
+            );
+        element! {
+            ContextProvider(value: Context::owned(keybinding_runtime)) {
+                ThemeProvider(
+                    initial_state: Some(ThemeSetting::Named(ThemeName::Dark)),
+                    on_theme_save: Some(std::sync::Arc::new(|_| {}) as ThemeSaveHandler),
+                ) {
+                    crate::state::app_state::AppStateProvider(
+                        children: crate::state::app_state::ProviderChildren::new(|| element! {
+                            View(flex_direction: FlexDirection::Column) {
+                                Config(max_visible: Some(12u32), header_focused: false)
+                                KeyCountEcho
+                            }
+                        }.into_any()),
+                    )
+                }
+            }
+        }
+    }
+
     #[derive(Default, Props)]
     struct ConfigAutoUpdatesDisabledHarnessProps {
         /// Adds a `KeyCountEcho` below Config.
@@ -1918,12 +1945,12 @@ mod tests {
 
     fn render_text_with_events(events: Vec<TerminalEvent>) -> String {
         // Keybinding actions and raw search/picker input are separate React-
-        // style consumers. Deliver one event per update, matching a terminal,
-        // rather than draining a synthetic stream before retained state can
-        // commit between events.
-        let events = terminal_timed_events(events);
-        let canvases =
-            render_with_config(MockTerminalConfig::with_events(events).with_size(100, 24));
+        // style consumers. Send one event only after the previous event's
+        // frame commits, so slow test hosts cannot lose the first character.
+        let canvases = drive_harness(
+            element!(ConfigKeyCountHarness).into_any(),
+            events.into_iter().map(|event| vec![event]).collect(),
+        );
         canvas_lines(
             canvases
                 .last()

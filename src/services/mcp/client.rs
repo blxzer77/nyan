@@ -6429,9 +6429,15 @@ rl.on('line', line => {
                 });
                 let request_id = tokio::time::timeout(std::time::Duration::from_secs(5), async {
                     loop {
-                        for crate::services::mcp::use_manage_mcp_connections::McpConnectionCallbackObservation::ElicitationRequested { event } in
-                            drain_mcp_connection_callback_observations().await
-                        {
+                        let event = drain_mcp_connection_callback_observations()
+                            .await
+                            .into_iter()
+                            .find_map(|observation| match observation {
+                                crate::services::mcp::use_manage_mcp_connections::McpConnectionCallbackObservation::ElicitationRequested { event } => {
+                                    Some(event)
+                                }
+                            });
+                        if let Some(event) = event {
                             assert_eq!(event.server_name, SERVER);
                             assert_eq!(event.request_id, "error-elicit-fixture-elicit");
                             assert!(event.waiting_state.is_some());

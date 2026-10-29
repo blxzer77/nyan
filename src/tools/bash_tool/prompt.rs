@@ -12,8 +12,7 @@ pub fn get_max_timeout_ms() -> u64 {
 
 pub fn get_background_usage_note() -> Option<&'static str> {
     if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS").as_deref(),
     ) {
         return None;
     }
@@ -430,5 +429,13 @@ pub fn get_simple_prompt() -> String {
         lines.push(String::new());
         lines.push(commit_and_pr);
     }
-    lines.join("\n")
+    let mut prompt = lines.join("\n");
+    if crate::utils::tool_io::config().bash_head_tail {
+        // @nyan: tell the model why Bash output has a middle omission and how
+        // to obtain the persisted full result (T7).
+        prompt.push_str(
+            "\n\n- A non-zero exit code is a normal result, not an error.\n- There is no stdin; pass non-interactive flags (e.g. -y).\n- For very long output, redirect to a file and page it with Read.",
+        );
+    }
+    prompt
 }

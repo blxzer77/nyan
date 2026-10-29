@@ -1031,8 +1031,12 @@ pub(crate) fn bash_output(
             None => is_image = false,
         }
     }
+    let contained_replacement_character = stripped.contains('\u{fffd}');
     if !is_image && persisted_output_path.is_none() {
         stripped = utils::format_output(&stripped).truncated_content;
+    }
+    if contained_replacement_character && !is_image {
+        stripped.push_str("\n(output contained invalid UTF-8)");
     }
 
     Ok(BashOutput {
@@ -1401,6 +1405,11 @@ impl crate::tool::ToolCall for BashTool {
                                 has_more,
                             },
                         );
+                    if crate::utils::tool_io::config().bash_head_tail {
+                        processed_stdout.push_str(
+                            "\nUse Read with an offset to page the full output file shown above.",
+                        );
+                    }
                 }
 
                 let mut error_message = output.stderr.trim().to_string();
@@ -2035,7 +2044,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(output.stdout, "ab�tail");
+        assert_eq!(output.stdout, "ab�tail\n(output contained invalid UTF-8)");
         assert!(output.stderr.is_empty());
         assert_eq!(output.exit_code, Some(0));
         let _ = std::fs::remove_dir_all(root);
@@ -2089,14 +2098,25 @@ mod tests {
         let started = std::time::Instant::now();
         let output = bash_output(
             &serde_json::json!({
-                "command": "(sleep 0.8; printf late) & printf early"
+                // The grandchild outlives any plausible spawn budget, and its
+                // "late" marker proves whether its output leaked into ours.
+                "command": "(sleep 60; printf late) & printf early"
             }),
             &crate::tool::ToolUseContext::default(),
             None,
             None,
         )
         .unwrap();
-        assert!(started.elapsed() < std::time::Duration::from_millis(500));
+        // The contract is "return when the shell exits, not when the grandchild
+        // closes the inherited stdout fd". A 30 s budget against a 60 s
+        // grandchild keeps the assertion meaningful under load (a saturated
+        // 24-core host stretched spawn to ~2 s in measurement) while still
+        // failing loudly if the call ever waits on the grandchild.
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(30),
+            "bash_output waited on the grandchild fd: {:?}",
+            started.elapsed()
+        );
         assert_eq!(output.stdout, "early");
         assert_eq!(output.exit_code, Some(0));
         let _ = std::fs::remove_dir_all(root);
@@ -2126,7 +2146,7 @@ mod tests {
         let started = std::time::Instant::now();
         let output = bash_output(
             &serde_json::json!({
-                "command": "sleep 2.5; printf timeout-background-done",
+                "command": "sleep 5; printf timeout-background-done",
                 "timeout": 20
             }),
             &context,
@@ -2134,7 +2154,14 @@ mod tests {
             None,
         )
         .expect("timed-out foreground command is backgrounded");
-        assert!(started.elapsed() < std::time::Duration::from_millis(2_400));
+        // The foreground timeout is 20 ms and the command runs 5 s: returning
+        // inside 4 s proves the timeout path backgrounded instead of waiting,
+        // without the 100 ms margin the old 2.5 s / 2.4 s pair left for spawn.
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(4),
+            "foreground timeout did not return promptly: {:?}",
+            started.elapsed()
+        );
         let task_id = output
             .background_task_id
             .expect("timeout returns a background task ID");
@@ -2143,7 +2170,10 @@ mod tests {
             Some(crate::state::app_state_store::TaskState::LocalShell(task)) if task.is_backgrounded
         ));
 
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        // Wait for completion, not for a fixed budget: the command really
+        // sleeps 5 s and a loaded runner stretches that. The deadline is a
+        // hang guard; the task reaching `completed` ends the loop.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
         while std::time::Instant::now() < deadline
             && store.get().tasks.get(&task_id).is_some_and(|task| {
                 matches!(task.as_ref(), crate::state::app_state_store::TaskState::LocalShell(task) if task.status == "running")

@@ -1683,6 +1683,25 @@ type PluginLoadPromise = futures::future::Shared<
 >;
 static FULL_PLUGIN_CACHE: std::sync::Mutex<Option<PluginLoadPromise>> = std::sync::Mutex::new(None);
 static READ_PLUGIN_CACHE: std::sync::Mutex<Option<PluginLoadPromise>> = std::sync::Mutex::new(None);
+
+fn spawn_plugin_load_promise(promise: PluginLoadPromise) {
+    match crate::utils::process_runtime::runtime_handle_for_detached_work() {
+        Some(handle) => {
+            handle.spawn(async move {
+                let _ = promise.await;
+            });
+        }
+        #[cfg(test)]
+        None => {
+            // The caller awaits the shared future directly when a test has no
+            // published process runtime; production keeps the process-lifetime
+            // runtime contract fail-closed below.
+        }
+        #[cfg(not(test))]
+        None => panic!("plugin loading requires process lifetime runtime"),
+    }
+}
+
 /// Maps to: CC pluginLoader.ts:3096-3108#loadAllPlugins.
 pub fn load_all_plugins()
 -> impl std::future::Future<Output = anyhow::Result<crate::types::plugin::PluginLoadResult>> + Send
@@ -1702,12 +1721,7 @@ pub fn load_all_plugins()
                 }
                 .boxed()
                 .shared();
-                let worker = promise.clone();
-                crate::utils::process_runtime::runtime_handle_for_detached_work()
-                    .expect("plugin loading requires process lifetime runtime")
-                    .spawn(async move {
-                        let _ = worker.await;
-                    });
+                spawn_plugin_load_promise(promise.clone());
                 promise
             })
             .clone()
@@ -1731,12 +1745,7 @@ pub fn load_all_plugins_cache_only()
                 let promise = async { assemble_plugin_load_result(true).await }
                     .boxed()
                     .shared();
-                let worker = promise.clone();
-                crate::utils::process_runtime::runtime_handle_for_detached_work()
-                    .expect("plugin loading requires process lifetime runtime")
-                    .spawn(async move {
-                        let _ = worker.await;
-                    });
+                spawn_plugin_load_promise(promise.clone());
                 promise
             })
             .clone()

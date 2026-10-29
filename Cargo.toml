@@ -73,6 +73,12 @@ serde_yaml = "0.9"
 # Draft 7 meta-schema/runtime validation for CC/Ajv-compatible StructuredOutput.
 # Remote/file resolution stays disabled: caller-provided schemas must be self-contained.
 jsonschema = { version = "0.45.1", default-features = false }
+# @nyan: tool I/O encoding detection (docs/nyan/tool-io.md T5).
+# `encoding_rs` was already in the tree transitively; it becomes direct
+# because `utils/text_decode.rs` decodes with it. `chardetng` only nominates a
+# candidate; adoption still requires a strict decode/encode round trip.
+encoding_rs = "0.8.41"
+chardetng = "1.0.0"
 
 chrono = { version = "0.4.45", features = ["serde"] }
 

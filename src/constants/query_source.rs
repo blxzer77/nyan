@@ -80,6 +80,10 @@ pub enum QuerySource {
     AgentSummary,
     /// Maps to CC `side_question` (`/btw` forked agent).
     SideQuestion,
+    /// @nyan: prompt-cache warming fork (compaction C12). It replays the main
+    /// thread's request verbatim to extend the cache TTL, so it must never
+    /// change the request prefix — see `is_cache_sharing_fork`.
+    CacheWarm,
     /// Maps to CC execAgentHook.ts querySource.
     HookAgent,
     Unknown,
@@ -171,6 +175,8 @@ impl QuerySource {
             QuerySource::Speculation => "speculation",
             QuerySource::AgentSummary => "agent_summary",
             QuerySource::SideQuestion => "side_question",
+            // @nyan: nyan-only source; no CC string to mirror.
+            QuerySource::CacheWarm => "cache_warm",
             QuerySource::HookAgent => "hook_agent",
             QuerySource::Unknown => "unknown",
         }
@@ -206,6 +212,12 @@ mod tests {
         );
         assert_eq!(QuerySource::Speculation.as_api_source(), "speculation");
         assert_eq!(QuerySource::AgentSummary.as_api_source(), "agent_summary");
+    }
+
+    #[test]
+    fn cache_warm_source_serializes_for_the_warming_fork() {
+        assert_eq!(QuerySource::CacheWarm.as_api_source(), "cache_warm");
+        assert!(!QuerySource::CacheWarm.is_agent());
     }
 
     /// CC `utils/promptCategory.ts:20-27` — the three strings

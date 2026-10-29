@@ -263,7 +263,7 @@ mod runtime {
                 ("Connection", "Upgrade"),
                 ("Upgrade", "websocket"),
                 ("Sec-WebSocket-Version", "13"),
-                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
+                ("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="), // gitleaks:allow -- RFC 6455 sample key
                 ("Sec-WebSocket-Protocol", "mcp"),
                 ("Authorization", "Bearer token"),
             ] {

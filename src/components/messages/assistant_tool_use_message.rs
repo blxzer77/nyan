@@ -2033,7 +2033,7 @@ mod tests {
 
         assert_eq!(
             canvas.to_string(),
-            "⏺ Edit Notebook(nb_dir/\n               demo.ipyn\n               b@cell-a)\n"
+            format!("{BLACK_CIRCLE} Edit Notebook(nb_dir/\n               demo.ipyn\n               b@cell-a)\n")
         );
         let url = crate::components::file_path_link::file_path_to_file_url(&notebook_path);
         assert_eq!(hyperlink_text(&canvas, &url), "nb_dir/demo.ipynb");
@@ -2064,7 +2064,10 @@ mod tests {
             false,
             24,
         );
-        assert_eq!(read.to_string(), "⏺ Read(manual.pdf ·\n      pages 2-4)\n");
+        assert_eq!(
+            read.to_string(),
+            format!("{BLACK_CIRCLE} Read(manual.pdf ·\n      pages 2-4)\n")
+        );
         let read_url = crate::components::file_path_link::file_path_to_file_url(&read_path);
         assert_eq!(hyperlink_text(&read, &read_url), "manual.pdf");
 
@@ -2074,7 +2077,10 @@ mod tests {
             false,
             80,
         );
-        assert_eq!(read_plain.to_string(), "⏺ Read(manual.pdf)\n");
+        assert_eq!(
+            read_plain.to_string(),
+            format!("{BLACK_CIRCLE} Read(manual.pdf)\n")
+        );
         assert_eq!(hyperlink_text(&read_plain, &read_url), "manual.pdf");
 
         let range_path = cwd.join("manual.txt").display().to_string();
@@ -2086,7 +2092,7 @@ mod tests {
         );
         assert_eq!(
             read_range.to_string(),
-            format!("⏺ Read({range_path} · lines 10-12)\n")
+            format!("{BLACK_CIRCLE} Read({range_path} · lines 10-12)\n")
         );
         let range_url = crate::components::file_path_link::file_path_to_file_url(&range_path);
         assert_eq!(hyperlink_text(&read_range, &range_url), range_path);
@@ -2099,7 +2105,7 @@ mod tests {
         );
         assert_eq!(
             read_from.to_string(),
-            format!("⏺ Read({range_path} · from line 10)\n")
+            format!("{BLACK_CIRCLE} Read({range_path} · from line 10)\n")
         );
         assert_eq!(hyperlink_text(&read_from, &range_url), range_path);
 
@@ -2114,7 +2120,10 @@ mod tests {
             false,
             24,
         );
-        assert_eq!(edit.to_string(), "⏺ Update(src/main.rs)\n");
+        assert_eq!(
+            edit.to_string(),
+            format!("{BLACK_CIRCLE} Update(src/main.rs)\n")
+        );
         let edit_url = crate::components::file_path_link::file_path_to_file_url(&edit_path);
         assert_eq!(hyperlink_text(&edit, &edit_url), "src/main.rs");
 
@@ -2131,7 +2140,7 @@ mod tests {
         );
         assert_eq!(
             narrow_edit.to_string(),
-            "⏺ Update(src/\n        very_long_\n        name.rs)\n"
+            format!("{BLACK_CIRCLE} Update(src/\n        very_long_\n        name.rs)\n")
         );
         let narrow_edit_url =
             crate::components::file_path_link::file_path_to_file_url(&narrow_edit_path);
@@ -2147,7 +2156,10 @@ mod tests {
             false,
             24,
         );
-        assert_eq!(write.to_string(), "⏺ Write(src/output.rs)\n");
+        assert_eq!(
+            write.to_string(),
+            format!("{BLACK_CIRCLE} Write(src/output.rs)\n")
+        );
         let write_url = crate::components::file_path_link::file_path_to_file_url(&write_path);
         assert_eq!(hyperlink_text(&write, &write_url), "src/output.rs");
 
@@ -2160,7 +2172,7 @@ mod tests {
         );
         assert_eq!(
             narrow_write.to_string(),
-            "⏺ Write(src/\n       very_long_o\n       utput.rs)\n"
+            format!("{BLACK_CIRCLE} Write(src/\n       very_long_o\n       utput.rs)\n")
         );
         let narrow_write_url =
             crate::components::file_path_link::file_path_to_file_url(&narrow_write_path);
@@ -2214,7 +2226,7 @@ mod tests {
         assert_eq!(
             verbose_wide.to_string(),
             format!(
-                "⏺ Edit Notebook({notebook_path}@cell-a, content: print('a deliberately long not…, cell_type: code, edit_mode: insert)\n"
+                "{BLACK_CIRCLE} Edit Notebook({notebook_path}@cell-a, content: print('a deliberately long not…, cell_type: code, edit_mode: insert)\n"
             )
         );
         assert_eq!(hyperlink_text(&verbose_wide, &notebook_url), notebook_path);
@@ -2232,7 +2244,7 @@ mod tests {
         assert_eq!(
             defaults.to_string(),
             format!(
-                "⏺ Edit Notebook({notebook_path}@undefined, content: print('short')…, cell_type: code, edit_mode: replace)\n"
+                "{BLACK_CIRCLE} Edit Notebook({notebook_path}@undefined, content: print('short')…, cell_type: code, edit_mode: replace)\n"
             )
         );
         assert_eq!(hyperlink_text(&defaults, &notebook_url), notebook_path);
@@ -2257,7 +2269,10 @@ mod tests {
             ),
         ] {
             let plan = render_tool_header_canvas(tool_name, input, false, 80);
-            assert_eq!(plan.to_string(), "⏺ Updated plan\n");
+            assert_eq!(
+                plan.to_string(),
+                format!("{BLACK_CIRCLE} Updated plan\n")
+            );
             assert_eq!(hyperlink_text(&plan, &plan_url), "");
         }
     }
@@ -2474,7 +2489,11 @@ mod tests {
 
         // Gated, and the gate has teeth.
         assert!(parses("Read", serde_json::json!({ "file_path": "/a" })));
-        assert!(!parses("Read", serde_json::json!({})));
+        assert!(!parses("Read", serde_json::json!({ "file_path": 5 })));
+        // T4 makes the carrier schema accept an empty object because `files`
+        // is an alternative to `file_path`; FileReadTool::call owns the
+        // exactly-one path check after this schema gate.
+        assert!(parses("Read", serde_json::json!({})));
         assert!(!parses(
             "Agent",
             serde_json::json!({ "description": "d", "prompt": "p", "model": "gpt" })

@@ -1,0 +1,31 @@
+# gitleaks config for the repository snapshot scan (CI `supply-chain`).
+#
+# The default rule set is kept as-is; this file adds only the allow entries
+# for the nine findings measured on master (docs/nyan/cicd.md §4.5). Each
+# entry names why the value is not a credential, and synthetic fixtures carry
+# an inline `gitleaks:allow` at the hit instead of a broad path allow -- a
+# path allow would also hide a real secret added to that file later.
+#
+# No `.gitleaksignore` file: its entries are fingerprint hashes tied to a
+# commit, and CI scans `git archive HEAD` (no history), so they would churn.
+[extend]
+useDefault = true
+
+# Checked-in test certificate keys for `tests/fixtures/tls`. They are
+# self-signed fixtures the mTLS tests read; no server trusts them.
+[[allowlists]]
+description = "self-signed TLS key fixtures"
+paths = [
+    '''(^|/)tests/fixtures/tls/[^/]+\.key$''',
+]
+
+# `UPSTREAM.json` is the vendored-path provenance table: every value is the
+# SHA-256 of a copied file, so the generic-api-key rule reads the hashes as
+# keys. The AND with the digest shape keeps this from hiding a real key added
+# to that file.
+[[allowlists]]
+description = "SHA-256 digests of vendored files, not keys"
+condition = "AND"
+paths = ['''(^|/)src/utils/fs_operations/path/UPSTREAM\.json$''']
+regexTarget = "match"
+regexes = ['''\b[0-9a-f]{64}\b''']

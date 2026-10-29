@@ -16,7 +16,11 @@ pub struct ExtractedGlobBaseDirectory {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GlobResult {
     pub files: Vec<PathBuf>,
+    /// @nyan: total matches before the result cap, for T1's completion note.
+    pub total_files: usize,
     pub truncated: bool,
+    /// @nyan: rg traversal diagnostics (T8).
+    pub unreachable_paths: Vec<String>,
 }
 
 #[cfg(not(windows))]
@@ -318,8 +322,25 @@ pub fn glob(
         arguments.push(exclusion);
     }
 
-    let paths = crate::utils::ripgrep::rip_grep(&arguments, &search_dir, abort_controller)?;
-    let absolute_paths = paths
+    // @nyan: a search root that cannot be traversed is an error, not an
+    // empty glob result (T8). This check also makes the root failure explicit
+    // before rg's partial stdout can be mistaken for a complete search.
+    if search_dir.is_dir() {
+        std::fs::read_dir(&search_dir).map_err(|error| {
+            format!(
+                "Cannot read glob search root '{}': {error}",
+                search_dir.display()
+            )
+        })?;
+    }
+    let run = crate::utils::ripgrep::rip_grep_detailed(&arguments, &search_dir, abort_controller)?;
+    let unreachable_paths = if crate::utils::tool_io::config().report_unreachable {
+        crate::utils::tool_io::unreachable_paths(&run.stderr)
+    } else {
+        Vec::new()
+    };
+    let absolute_paths = run
+        .lines
         .into_iter()
         .map(PathBuf::from)
         .map(|path| {
@@ -330,14 +351,20 @@ pub fn glob(
             }
         })
         .collect::<Vec<_>>();
-    let truncated = absolute_paths.len() > offset.saturating_add(limit);
+    let total_files = absolute_paths.len();
+    let truncated = total_files > offset.saturating_add(limit);
     let files = absolute_paths
         .into_iter()
         .skip(offset)
         .take(limit)
         .collect();
 
-    Ok(GlobResult { files, truncated })
+    Ok(GlobResult {
+        files,
+        total_files,
+        truncated,
+        unreachable_paths,
+    })
 }
 
 #[cfg(test)]

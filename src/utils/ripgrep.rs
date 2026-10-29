@@ -233,13 +233,44 @@ fn default_timeout() -> Duration {
     Duration::from_secs(platform_default_timeout_seconds())
 }
 
-fn lines_from_stdout(stdout: &str) -> Vec<String> {
-    stdout
-        .trim()
-        .split('\n')
-        .map(|line| line.trim_end_matches('\r').to_string())
+/// @nyan: one decoded+raw line pair set from rg stdout. `drop_tail` removes
+/// the last line because it may be torn (buffer cap, kill, timeout).
+fn run_from_stdout(stdout: &[u8], stderr: &str, drop_tail: bool) -> RipgrepRun {
+    let mut raw_lines = raw_lines_from_stdout(stdout);
+    if drop_tail && !raw_lines.is_empty() {
+        raw_lines.pop();
+    }
+    let lines = raw_lines
+        .iter()
+        .map(|line| String::from_utf8_lossy(line).into_owned())
+        .collect();
+    RipgrepRun {
+        lines,
+        raw_lines,
+        stderr: stderr.to_string(),
+    }
+}
+
+fn raw_lines_from_stdout(stdout: &[u8]) -> Vec<Vec<u8>> {
+    let trimmed = trim_ascii_whitespace(stdout);
+    trimmed
+        .split(|byte| *byte == b'\n')
+        .map(|line| line.strip_suffix(b"\r").unwrap_or(line).to_vec())
         .filter(|line| !line.is_empty())
         .collect()
+}
+
+fn trim_ascii_whitespace(bytes: &[u8]) -> &[u8] {
+    let is_trim = |byte: &u8| byte.is_ascii_whitespace();
+    let start = bytes
+        .iter()
+        .position(|byte| !is_trim(byte))
+        .unwrap_or(bytes.len());
+    let end = bytes
+        .iter()
+        .rposition(|byte| !is_trim(byte))
+        .map_or(start, |index| index + 1);
+    &bytes[start..end]
 }
 
 fn drain_ripgrep_pipe<R: Read>(
@@ -271,12 +302,11 @@ fn drain_ripgrep_pipe<R: Read>(
 fn join_ripgrep_pipe(
     reader: std::thread::JoinHandle<std::io::Result<(Vec<u8>, bool)>>,
     stream: &str,
-) -> Result<(String, bool), String> {
-    let (bytes, truncated) = reader
+) -> Result<(Vec<u8>, bool), String> {
+    reader
         .join()
         .map_err(|_| format!("ripgrep {stream} reader panicked"))?
-        .map_err(|error| format!("Error reading ripgrep {stream}: {error}"))?;
-    Ok((String::from_utf8_lossy(&bytes).into_owned(), truncated))
+        .map_err(|error| format!("Error reading ripgrep {stream}: {error}"))
 }
 
 fn is_egain_error(stderr: &str) -> bool {
@@ -646,18 +676,47 @@ fn store_count_cache(key: &str, value: Option<u64>) {
     }
 }
 
+/// @nyan: one rg run with the diagnostics CC throws away (docs/nyan/tool-io.md
+/// T8). `lines` are the decoded stdout lines; `stderr` is kept verbatim so
+/// callers can report unreadable paths instead of presenting a partial result
+/// as complete.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RipgrepRun {
+    pub lines: Vec<String>,
+    /// @nyan: the same stdout lines before lossy decoding, so Grep content
+    /// mode can decode each line with `utils/text_decode` (T5).
+    pub raw_lines: Vec<Vec<u8>>,
+    pub stderr: String,
+}
+
+impl RipgrepRun {
+    pub fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
+}
+
 /// Maps to CC `ripGrep(args, target, abortSignal)`.
 pub fn rip_grep(
     args: &[String],
     target: &Path,
     abort: &AbortController,
 ) -> Result<Vec<String>, String> {
+    rip_grep_detailed(args, target, abort).map(|run| run.lines)
+}
+
+/// @nyan: [`rip_grep`] plus rg's stderr (T8). Same retry/abort semantics; the
+/// only difference is that diagnostics survive.
+pub fn rip_grep_detailed(
+    args: &[String],
+    target: &Path,
+    abort: &AbortController,
+) -> Result<RipgrepRun, String> {
     codesign_ripgrep_if_necessary();
     // Fire-and-forget first-use probe (CC `void testRipgrepOnFirstUse()`).
     test_ripgrep_on_first_use();
 
     match rip_grep_inner(args, target, abort, false) {
-        Ok(lines) => Ok(lines),
+        Ok(run) => Ok(run),
         Err(error) if error.starts_with(EAGAIN_STDERR_RETRY_PREFIX) => {
             rip_grep_inner(args, target, abort, true)
         }
@@ -670,7 +729,7 @@ fn rip_grep_inner(
     target: &Path,
     abort: &AbortController,
     single_thread: bool,
-) -> Result<Vec<String>, String> {
+) -> Result<RipgrepRun, String> {
     rip_grep_inner_with_config(
         &get_ripgrep_config(),
         args,
@@ -690,7 +749,7 @@ fn rip_grep_inner_with_config(
     single_thread: bool,
     max_buffer_size: usize,
     timeout_override: Option<Duration>,
-) -> Result<Vec<String>, String> {
+) -> Result<RipgrepRun, String> {
     let command = resolve_spawn_command(config);
     let mut full_args = config.args.clone();
     if single_thread {
@@ -723,7 +782,7 @@ fn rip_grep_inner_with_config(
             // stderr. Other noncritical spawn failures have no partial stdout
             // and resolve as an empty result.
             log_for_debugging(&format!("Noncritical ripgrep spawn error: {error}"));
-            return Ok(Vec::new());
+            return Ok(RipgrepRun::default());
         }
     };
 
@@ -754,17 +813,15 @@ fn rip_grep_inner_with_config(
             let _ = child.wait();
             let (stdout, _) = join_ripgrep_pipe(stdout_reader, "stdout")?;
             let (stderr, _) = join_ripgrep_pipe(stderr_reader, "stderr")?;
+            let stderr = String::from_utf8_lossy(&stderr).into_owned();
             if !single_thread && is_egain_error(&stderr) {
                 return Err(format!("{EAGAIN_STDERR_RETRY_PREFIX}{stderr}"));
             }
-            let mut lines = lines_from_stdout(&stdout);
-            if !lines.is_empty() {
-                // CC classifies ABORT_ERR with timeout/buffer termination and
-                // drops the potentially torn final line.
-                lines.pop();
-            }
-            if !lines.is_empty() {
-                return Ok(lines);
+            // CC classifies ABORT_ERR with timeout/buffer termination and
+            // drops the potentially torn final line.
+            let run = run_from_stdout(&stdout, &stderr, true);
+            if !run.lines.is_empty() {
+                return Ok(run);
             }
             return Err(format!(
                 "Ripgrep search timed out after {} seconds. The search may have matched files but did not complete in time. Try searching a more specific path or pattern.",
@@ -776,56 +833,49 @@ fn rip_grep_inner_with_config(
             let _ = child.wait();
             let (stdout, _) = join_ripgrep_pipe(stdout_reader, "stdout")?;
             let (stderr, _) = join_ripgrep_pipe(stderr_reader, "stderr")?;
+            let stderr = String::from_utf8_lossy(&stderr).into_owned();
             if !single_thread && is_egain_error(&stderr) {
                 return Err(format!("{EAGAIN_STDERR_RETRY_PREFIX}{stderr}"));
             }
-            let mut lines = lines_from_stdout(&stdout);
-            if !lines.is_empty() {
-                // Node execFile reports ERR_CHILD_PROCESS_STDIO_MAXBUFFER;
-                // CC drops its potentially torn final retained line.
-                lines.pop();
-            }
-            return Ok(lines);
+            // Node execFile reports ERR_CHILD_PROCESS_STDIO_MAXBUFFER; CC
+            // drops its potentially torn final retained line.
+            return Ok(run_from_stdout(&stdout, &stderr, true));
         }
         match child.try_wait() {
             Ok(Some(status)) => {
                 let (stdout, stdout_truncated) = join_ripgrep_pipe(stdout_reader, "stdout")?;
                 let (stderr, _) = join_ripgrep_pipe(stderr_reader, "stderr")?;
+                let stderr = String::from_utf8_lossy(&stderr).into_owned();
 
                 let buffer_was_truncated =
                     stdout_truncated || buffer_overflow.load(Ordering::Acquire);
                 if status.success()
                     || (config.mode == RipgrepMode::Embedded && status.code() == Some(1))
                 {
-                    let mut lines = lines_from_stdout(&stdout);
-                    if config.mode != RipgrepMode::Embedded
-                        && buffer_was_truncated
-                        && !lines.is_empty()
-                    {
-                        // Non-embedded CC uses execFile/maxBuffer and drops the
-                        // retained tail. Embedded CC reports code 0/1 success
-                        // and parses its capped output without this error path.
-                        lines.pop();
-                    }
-                    return Ok(lines);
+                    // Non-embedded CC uses execFile/maxBuffer and drops the
+                    // retained tail. Embedded CC reports code 0/1 success and
+                    // parses its capped output without this error path.
+                    let drop_tail = config.mode != RipgrepMode::Embedded && buffer_was_truncated;
+                    return Ok(run_from_stdout(&stdout, &stderr, drop_tail));
                 }
 
                 // In execFile mode code 1 arrives as an error and CC resolves
                 // [] before inspecting stdout. Embedded mode handled it above.
                 if status.code() == Some(1) {
-                    return Ok(Vec::new());
+                    return Ok(RipgrepRun {
+                        raw_lines: Vec::new(),
+                        lines: Vec::new(),
+                        stderr,
+                    });
                 }
 
                 if !single_thread && is_egain_error(&stderr) {
                     return Err(format!("{EAGAIN_STDERR_RETRY_PREFIX}{stderr}"));
                 }
 
-                let mut lines = lines_from_stdout(&stdout);
                 let was_killed = status.code().is_none();
-                if !lines.is_empty() && was_killed {
-                    lines.pop();
-                }
-                if was_killed && lines.is_empty() {
+                let run = run_from_stdout(&stdout, &stderr, was_killed);
+                if was_killed && run.lines.is_empty() {
                     return Err(format!(
                         "Ripgrep search timed out after {} seconds. The search may have matched files but did not complete in time. Try searching a more specific path or pattern.",
                         platform_default_timeout_seconds()
@@ -834,7 +884,7 @@ fn rip_grep_inner_with_config(
                 // Maps to CC handleResult: noncritical nonzero exits (including
                 // ripgrep usage code 2) resolve whatever complete stdout was
                 // accumulated, even when that list is empty.
-                return Ok(lines);
+                return Ok(run);
             }
             Ok(None) => {
                 if start.elapsed() >= timeout {
@@ -842,17 +892,15 @@ fn rip_grep_inner_with_config(
                     let _ = child.wait();
                     let (stdout, _) = join_ripgrep_pipe(stdout_reader, "stdout")?;
                     let (stderr, _) = join_ripgrep_pipe(stderr_reader, "stderr")?;
+                    let stderr = String::from_utf8_lossy(&stderr).into_owned();
                     if !single_thread && is_egain_error(&stderr) {
                         return Err(format!("{EAGAIN_STDERR_RETRY_PREFIX}{stderr}"));
                     }
-                    let mut lines = lines_from_stdout(&stdout);
-                    if !lines.is_empty() {
-                        // CC drops the potentially torn final line and returns
-                        // completed partial results on timeout.
-                        lines.pop();
-                    }
-                    if !lines.is_empty() {
-                        return Ok(lines);
+                    // CC drops the potentially torn final line and returns
+                    // completed partial results on timeout.
+                    let run = run_from_stdout(&stdout, &stderr, true);
+                    if !run.lines.is_empty() {
+                        return Ok(run);
                     }
                     return Err(format!(
                         "Ripgrep search timed out after {} seconds. The search may have matched files but did not complete in time. Try searching a more specific path or pattern.",
@@ -1105,6 +1153,7 @@ mod tests {
                 None,
             )
             .unwrap()
+            .lines
             .is_empty()
         );
 
@@ -1124,7 +1173,8 @@ mod tests {
                 MAX_BUFFER_SIZE,
                 None,
             )
-            .unwrap(),
+            .unwrap()
+            .lines,
             vec!["unexpected".to_string()]
         );
     }
@@ -1184,6 +1234,7 @@ mod tests {
             None,
         )
         .expect("buffer overflow remains a noncritical partial result");
+        let lines = lines.lines;
         assert!(started.elapsed() < Duration::from_secs(5));
         assert!(!lines.is_empty());
         assert!(lines.iter().all(|line| line == "complete-line"));

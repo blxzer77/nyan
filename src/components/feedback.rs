@@ -468,13 +468,13 @@ mod tests {
     fn feedback_redacts_sensitive_values_like_official() {
         let gcp_key = format!("AIza{}", "A".repeat(35));
         let input = format!(
-            "api sk-ant-api03_abcdefghijklmnop x-api-key: secret authorization: Bearer token AWS_SECRET_ACCESS_KEY=abc GOOGLE_TOKEN=def AKIAABCDEFGHIJKLMNOP {gcp_key} service@test.iam.gserviceaccount.com password=hunter2"
+            "api sk-ant-api03_abcdefghijklmnop x-api-key: secret authorization: Bearer token AWS_SECRET_ACCESS_KEY=abc GOOGLE_TOKEN=def AKIAABCDEFGHIJKLMNOP {gcp_key} service@test.iam.gserviceaccount.com password=hunter2" // gitleaks:allow -- synthetic redaction fixture
         );
         let redacted = redact_sensitive_info(&input);
         assert!(!redacted.contains("sk-ant-api03"), "{redacted}");
         assert!(!redacted.contains("secret"), "{redacted}");
         assert!(!redacted.contains("Bearer token"), "{redacted}");
-        assert!(!redacted.contains("AKIAABCDEFGHIJKLMNOP"), "{redacted}");
+        assert!(!redacted.contains("AKIAABCDEFGHIJKLMNOP"), "{redacted}"); // gitleaks:allow -- synthetic redaction fixture
         assert!(!redacted.contains(&gcp_key), "{redacted}");
         assert!(
             !redacted.contains("service@test.iam.gserviceaccount.com"),

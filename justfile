@@ -56,50 +56,20 @@
 
 home    := justfile_directory() / "target/test-home"
 project := justfile_directory() / "tests/fixtures/isolated-project"
+test_runner := justfile_directory() / "scripts/ci/test.sh"
 
-# A fixed mock identity in the scratch home. Credentials are a FILE
-# (`.credentials.json` under get_config_home, i.e. under CLAUDE_CONFIG_DIR), and
-# on macOS the keychain backend is `#[cfg(all(target_os = "macos", not(test)))]`
-# — it does not even compile into the test binary, so `fallback_storage` always
-# lands on the plain-text file. One mock file therefore gives every test a
-# deterministic logged-in identity on every platform, instead of reading
-# whatever the developer happens to be logged into.
+# The pinning layers (scratch config home, project-settings fixture, host
+# model/gateway variables) live in `scripts/ci/test.sh` so CI runs the exact
+# same harness. The recipes below are thin wrappers; the script's header is
+# the reference for what each layer protects against. `home` and `project`
+# stay declared because other recipes and docs reference them.
 #
-# Tests that need the LOGGED-OUT case must clear it themselves; that is their
-# state to establish, not the harness's default.
-#
-# The identity is a checked-in synthetic fixture rather than a heredoc, so it
-# is visible and reviewable. COMETIX_TEST_PROJECT_DIR closes the projectSettings
-# hole described above: `${cwd}/.claude/settings.json` resolves inside the
-# tracked hook-free fixture instead of this repository.
-iso  := 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC= DISABLE_TELEMETRY= NODE_ENV= CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR= COMETIX_TEST_PROJECT_DIR=' + quote(project)
-# Third pinning layer: model/endpoint/auth variables the HOST Claude Code
-# session injects via its --settings env block (verified 2026-08-19: a host
-# profile sets ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN /
-# ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL / CLAUDE_CLASSIFIER_MODEL, which
-# 26 `_like_official` model/auth assertions then read instead of the built-in
-# defaults — task #49/#50). These need `env -u`, NOT the `VAR=` empty-string
-# form the privacy vars use: the model resolvers take `env::var(..)` without
-# an is-empty filter (utils/model/model.rs:24-26), so an empty string would be
-# adopted as a model NAME. Tests that need one of these set establish it
-# themselves with EnvVarGuard.
-unhost := 'env -u ANTHROPIC_MODEL -u ANTHROPIC_SMALL_FAST_MODEL -u ANTHROPIC_DEFAULT_OPUS_MODEL -u ANTHROPIC_DEFAULT_SONNET_MODEL -u ANTHROPIC_DEFAULT_HAIKU_MODEL -u CLAUDE_CODE_MODEL -u CLAUDE_CODE_SMALL_FAST_MODEL -u CLAUDE_CODE_SUBAGENT_MODEL -u CLAUDE_CODE_DEFAULT_OPUS_MODEL -u CLAUDE_CODE_DEFAULT_SONNET_MODEL -u CLAUDE_CODE_DEFAULT_HAIKU_MODEL -u CLAUDE_CLASSIFIER_MODEL -u COMETIX_MODEL -u ANTHROPIC_CUSTOM_MODEL_OPTION -u ANTHROPIC_CUSTOM_MODEL_OPTION_NAME -u ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY'
-nt := 'cargo nextest run --lib --no-fail-fast'
-
-# Rebuild generated state and serialize the one trusted project through a JSON
-# encoder; path text is never interpolated into JSON syntax.
+# Rebuild generated state; the script does this on every run, and keeping a
+# standalone recipe means `just _prep` still works for callers that only want
+# the scratch home rebuilt.
 [private]
 _prep:
-    #!/usr/bin/env python3
-    import json, pathlib, shutil
-    root = pathlib.Path.cwd()
-    home = root / "target/test-home"
-    project = (root / "tests/fixtures/isolated-project").resolve(strict=True)
-    shutil.rmtree(home, ignore_errors=True)
-    home.mkdir(parents=True)
-    shutil.copyfile(root / "tests/fixtures/credentials.mock.json", home / ".credentials.json")
-    payload = {"projects": {str(project): {"hasTrustDialogAccepted": True}}}
-    (home / ".claude.json").write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+    python3 {{quote(justfile_directory() / "scripts/ci/prepare-test-home.py")}} --root {{quote(justfile_directory())}}
 
 default:
     @just --list
@@ -120,18 +90,15 @@ check-release *args:
 # Full suite — the gate. Trustworthy, so batches no longer scope themselves to
 # the directly-touched modules.
 test *args:
-    @just _prep
-    CLAUDE_CONFIG_DIR={{quote(home)}} {{iso}} {{unhost}} {{nt}} {{args}}
+    {{quote(test_runner)}} {{args}}
 
 # Quick substring filter: `just t state::store`
 t pattern:
-    @just _prep
-    CLAUDE_CONFIG_DIR={{quote(home)}} {{iso}} {{unhost}} {{nt}} -E {{quote("test(/" + pattern + "/)")}}
+    {{quote(test_runner)}} -E {{quote("test(/" + pattern + "/)")}}
 
 # Full nextest filterset: `just test-one 'binary(cometix-code) and test(foo)'`
 test-one filter:
-    @just _prep
-    CLAUDE_CONFIG_DIR={{quote(home)}} {{iso}} {{unhost}} {{nt}} -E {{quote(filter)}}
+    {{quote(test_runner)}} -E {{quote(filter)}}
 
 # nextest does not run doctests.
 test-doc:
@@ -160,14 +127,12 @@ check-ant *args:
     cargo check --lib --tests --features anthropic_internal {{args}}
 
 test-ant *args:
-    @just _prep
-    CLAUDE_CONFIG_DIR={{quote(home)}} {{iso}} {{unhost}} {{nt}} --features anthropic_internal {{args}}
+    {{quote(test_runner)}} --features anthropic_internal {{args}}
 
 # Substring filter under the internal build: `just t-ant sandbox_permission`.
 # `test-ant *args` word-splits, so a filterset containing `(` needs this form.
 t-ant pattern:
-    @just _prep
-    CLAUDE_CONFIG_DIR={{quote(home)}} {{iso}} {{unhost}} {{nt}} --features anthropic_internal -E {{quote("test(/" + pattern + "/)")}}
+    {{quote(test_runner)}} --features anthropic_internal -E {{quote("test(/" + pattern + "/)")}}
 
 # Both audiences, for a release-shaped gate. Runs BOTH even when the first
 # fails — a bare `just test; just test-ant` aborts on the first non-zero exit,
@@ -200,8 +165,8 @@ test-all-audiences:
 #     product bug for as long as the note stood.
 #   foreground_shell_reports_persistent_physical_cwd
 #     CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR leaked from the developer's
-#     shell and short-circuits reset_cwd_if_outside_project. Now cleared in
-#     `iso`.
+#     shell and short-circuits reset_cwd_if_outside_project. Cleared by the
+#     test harness (scripts/ci/test.sh).
 #   status_notice_context_uses_official_api_key_approval_for_conflict_source
 #     `api_key_source` resolves through `load_global_config()` and the process
 #     environment (auth.rs:534), not the arguments the test passed. The sibling

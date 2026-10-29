@@ -146,8 +146,7 @@ pub fn powershell_tool_has_permission(
     }
 
     if !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK").as_deref(),
     ) {
         if let PermissionResult::Ask {
             decision_reason: Some(PermissionDecisionReason::SafetyCheck { reason, .. }),
@@ -864,9 +863,17 @@ mod tests {
                 ..
             } if reason.starts_with("Command writes to a git-internal path")
         ));
+        // Only the git-safety ask must be absent here. When pwsh is available
+        // the AST is valid and ordinary write-approval asks (or passthrough)
+        // are legitimate; on a host without pwsh the parse fails and the whole
+        // check passes through. Asserting "never Ask" pinned the
+        // pwsh-unavailable result and failed on runners that ship pwsh.
         assert!(!matches!(
             powershell_tool_has_permission("Set-Content ./src/main.rs 'x'", &context),
-            PermissionResult::Ask { .. }
+            PermissionResult::Ask {
+                decision_reason: Some(PermissionDecisionReason::SafetyCheck { reason, .. }),
+                ..
+            } if reason.starts_with("Command writes to")
         ));
     }
 

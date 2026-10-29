@@ -4530,6 +4530,7 @@ mod tests {
 
     #[test]
     fn prompt_input_arrows_matches_official_cursor_before_history() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
         // CC useTextInput.ts:269-315 and Cursor.ts:353-407,511-551.
         // Use the real PromptInput + default keybinding runtime: the old
         // top-level history registration intercepted Up before this edit.
@@ -4601,6 +4602,7 @@ mod tests {
 
     #[test]
     fn prompt_input_vim_delete_operator_removes_logical_line() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let text = prompt_with_initial_after_events(
             Some("one\ntwo".to_string()),
             None,
@@ -4944,27 +4946,45 @@ mod tests {
     #[test]
     fn prompt_input_renders_live_swarm_banner_projection() {
         let current_theme = *theme::current();
-        let canvas = element! {
-            ContextProvider(value: Context::owned(current_theme)) {
-                crate::state::app_state::AppStateProvider(
-                    children: crate::state::app_state::ProviderChildren::new(|| element! {
-                        View(width: 80u32) {
-                            PromptInput(
-                                on_submit: move |_| {},
-                                on_exit: move |_| {},
-                                swarm_banner_input: use_swarm_banner::SwarmBannerInput {
-                                    standalone_name: Some("reviewer".to_string()),
-                                    standalone_color: Some("purple".to_string()),
-                                    ..Default::default()
-                                },
-                            )
-                        }
-                    }.into_any()),
-                )
+        // `use_terminal_size` reads the OS terminal during a plain render;
+        // drive the mock loop so the fixture's 80-column size is applied.
+        let text = futures::executor::block_on(async move {
+            let mut app = element! {
+                ContextProvider(value: Context::owned(current_theme)) {
+                    crate::state::app_state::AppStateProvider(
+                        children: crate::state::app_state::ProviderChildren::new(|| element! {
+                            View(width: 80u32) {
+                                PromptInput(
+                                    on_submit: move |_| {},
+                                    on_exit: move |_| {},
+                                    swarm_banner_input: use_swarm_banner::SwarmBannerInput {
+                                        standalone_name: Some("reviewer".to_string()),
+                                        standalone_color: Some("purple".to_string()),
+                                        ..Default::default()
+                                    },
+                                )
+                            }
+                        }.into_any()),
+                    )
+                }
+            };
+            let mut render_loop = Box::pin(app.mock_terminal_render_loop(
+                MockTerminalConfig::default().with_size(80, 24),
+            ));
+            let mut last = None;
+            for _ in 0..4 {
+                let Some(canvas) = crate::utils::race(render_loop.next(), async {
+                    futures_timer::Delay::new(Duration::from_millis(100)).await;
+                    None
+                })
+                .await
+                else {
+                    break;
+                };
+                last = Some(canvas);
             }
-        }
-        .render(Some(80));
-        let text = canvas.to_string();
+            last.expect("render loop yields a canvas").to_string()
+        });
         assert!(text.contains(" reviewer "), "canvas=\n{text}");
         assert!(text.lines().filter(|line| line.contains('─')).count() >= 2);
     }
@@ -4976,24 +4996,41 @@ mod tests {
         // A whitespace name is truthy in JS and must retain its padded tag.
         for name in [None, Some(""), Some("reviewer"), Some(" ")] {
             let current_theme = *theme::current();
-            let canvas = element! {
-                ContextProvider(value: Context::owned(current_theme)) {
-                    crate::state::app_state::AppStateProvider(
-                        children: crate::state::app_state::ProviderChildren::new(move || element! {
-                            View(width: 80u32) {
-                                PromptInput(
-                                    swarm_banner_input: use_swarm_banner::SwarmBannerInput {
-                                        standalone_name: name.map(str::to_string),
-                                        standalone_color: Some("pink".to_string()),
-                                        ..Default::default()
-                                    },
-                                )
-                            }
-                        }.into_any()),
-                    )
+            let canvas = futures::executor::block_on(async move {
+                let mut app = element! {
+                    ContextProvider(value: Context::owned(current_theme)) {
+                        crate::state::app_state::AppStateProvider(
+                            children: crate::state::app_state::ProviderChildren::new(move || element! {
+                                View(width: 80u32) {
+                                    PromptInput(
+                                        swarm_banner_input: use_swarm_banner::SwarmBannerInput {
+                                            standalone_name: name.map(str::to_string),
+                                            standalone_color: Some("pink".to_string()),
+                                            ..Default::default()
+                                        },
+                                    )
+                                }
+                            }.into_any()),
+                        )
+                    }
+                };
+                let mut render_loop = Box::pin(app.mock_terminal_render_loop(
+                    MockTerminalConfig::default().with_size(80, 24),
+                ));
+                let mut last = None;
+                for _ in 0..4 {
+                    let Some(frame) = crate::utils::race(render_loop.next(), async {
+                        futures_timer::Delay::new(Duration::from_millis(100)).await;
+                        None
+                    })
+                    .await
+                    else {
+                        break;
+                    };
+                    last = Some(frame);
                 }
-            }
-            .render(Some(80));
+                last.expect("render loop yields a canvas")
+            });
             let text = canvas.to_string();
             let borders = text
                 .lines()

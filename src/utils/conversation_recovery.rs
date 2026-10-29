@@ -436,6 +436,7 @@ fn system_level(entry: &serde_json::Value, subtype: &str) -> SystemMessageLevel 
 mod tests {
     use super::*;
     use crate::components::messages::user_tool_result_message::utils::ToolRenderOptions;
+    use crate::constants::figures::BLACK_CIRCLE;
     use crate::types::message::{
         ReadResultKind, RenderableMessageKind, SearchResultMode, ToolResultStatus, ToolUseStatus,
     };
@@ -1918,7 +1919,7 @@ mod tests {
         assert_eq!(result.content, "Your questions have been answered");
         assert_eq!(
             rendered_tool_result_text(&all_rows, result),
-            "⏺ User answered Claude's questions:\n· Proceed? → Yes"
+            format!("{BLACK_CIRCLE} User answered Claude's questions:\n· Proceed? → Yes")
         );
     }
 
@@ -1992,14 +1993,14 @@ mod tests {
         assert_eq!(results[0].content, "Entered plan mode");
         assert_eq!(
             rendered_tool_result_text(&all_rows, results[0]),
-            "⏺ Entered plan mode\nClaude is now exploring and designing an implementation approach."
+            format!("{BLACK_CIRCLE} Entered plan mode\nClaude is now exploring and designing an implementation approach.")
         );
         assert_eq!(results[1].content, "User has approved your plan");
         // CC ExitPlanModeTool/UI.tsx:58-64 leads with the mode-colored
         // BLACK_CIRCLE, exactly like the EnterPlanMode line above.
         assert!(
             rendered_tool_result_text(&all_rows, results[1])
-                .starts_with("⏺ User approved Claude's plan")
+                .starts_with(&format!("{BLACK_CIRCLE} User approved Claude's plan"))
         );
         assert!(rendered_tool_result_text(&all_rows, results[1]).contains("Plan saved to:"));
     }

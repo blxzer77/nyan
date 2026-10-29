@@ -1538,7 +1538,28 @@ pub fn use_typeahead(
                 ),
                 SuggestionRequestKind::ResumeTitle => {
                     let query = request.query.clone();
-                    let rows = tokio::task::spawn_blocking(move || {
+                    let rows = if let Some(runtime) =
+                        crate::utils::process_runtime::runtime_handle_for_detached_work()
+                    {
+                        runtime
+                            .spawn_blocking(move || {
+                                crate::utils::session_storage::search_sessions_by_custom_title(
+                                    &query,
+                                    Some(
+                                        crate::utils::session_storage::SearchSessionsByCustomTitleOptions {
+                                            limit: Some(10),
+                                            exact: false,
+                                        },
+                                    ),
+                                )
+                            })
+                            .await
+                            .unwrap_or_default()
+                    } else {
+                        // Embedded callers can drive typeahead from a
+                        // non-tokio executor. There is no blocking pool to
+                        // borrow in that case, so keep the sync fallback
+                        // rather than panicking on `spawn_blocking`.
                         crate::utils::session_storage::search_sessions_by_custom_title(
                             &query,
                             Some(
@@ -1548,9 +1569,7 @@ pub fn use_typeahead(
                                 },
                             ),
                         )
-                    })
-                    .await
-                    .unwrap_or_default();
+                    };
                     (
                         rows.iter().filter_map(resume_title_item).collect(),
                         SuggestionKind::CustomTitle,

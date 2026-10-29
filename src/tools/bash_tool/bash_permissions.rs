@@ -893,8 +893,7 @@ fn check_command_and_suggest_rules(
     }
 
     if !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK").as_deref(),
     ) {
         let safety_result = super::bash_security::bash_command_is_safe_deprecated(command);
         if !matches!(safety_result, PermissionResult::Passthrough { .. }) {
@@ -1292,8 +1291,7 @@ pub fn bash_tool_has_permission(
     }
 
     if !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK").as_deref(),
     ) {
         let safety_result = super::bash_security::bash_command_is_safe_deprecated(command);
         if let PermissionResult::Ask {

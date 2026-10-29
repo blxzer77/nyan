@@ -4612,15 +4612,17 @@ mod tests {
             error.formatted,
             "Read failed due to the following issues:\nAn unexpected parameter `extra` was provided\nThe parameter `file_path` type is expected as `string` but provided as `number`\nThe parameter `offset` type is expected as `int` but provided as `number`\nThe parameter `pages` type is expected as `string` but provided as `boolean`"
         );
-        let missing = carrier_parsed_input(
-            "Read",
-            crate::tools::file_read_tool::input_schema(),
-            &serde_json::json!({}),
-        )
-        .expect_err("missing path");
+        // T4 makes `file_path` optional at the carrier-schema layer because
+        // `files` is its mutually exclusive alternative. The concrete Read
+        // call still rejects an object with neither path form.
         assert_eq!(
-            missing.formatted,
-            "Read failed due to the following issue:\nThe required parameter `file_path` is missing"
+            carrier_parsed_input(
+                "Read",
+                crate::tools::file_read_tool::input_schema(),
+                &serde_json::json!({}),
+            )
+            .expect("empty Read carrier input is schema-valid"),
+            serde_json::json!({})
         );
     }
 
@@ -8100,6 +8102,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_hook_updated_input_executes_directly_and_respects_hook_permission() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let root = std::env::temp_dir().join(format!(
             "cometix-read-hook-revalidate-{}",
             uuid::Uuid::new_v4().simple()
@@ -8223,6 +8226,7 @@ mod tests {
             panic!("expected semantic Read result")
         };
         let expected_numbered = "02\tsecond-content\n12\t";
+        let completion_note = crate::utils::tool_io::read_note(2, 2, 2);
         // The reminder is MODEL-gated, not audience-gated: CC
         // `FileReadTool.ts:734-738` exempts `claude-opus-4-6`. But the default
         // main loop model IS audience-gated (`model.rs:52-63` — ants default to
@@ -8233,10 +8237,10 @@ mod tests {
         let resolved = crate::utils::model::model::get_main_loop_model();
         let expected =
             if crate::utils::model::model::get_canonical_name(&resolved) == "claude-opus-4-6" {
-                expected_numbered.to_string()
+                format!("{expected_numbered}\n{completion_note}")
             } else {
                 format!(
-                    "{expected_numbered}{}",
+                    "{expected_numbered}{}{completion_note}",
                     crate::tools::file_read_tool::CYBER_RISK_MITIGATION_REMINDER
                 )
             };
@@ -10982,7 +10986,12 @@ rl.on('line', line => {
             "toolu_task_output".to_string(),
             "TaskOutput".to_string(),
             task_id.clone(),
-            serde_json::json!({"task_id": task_id, "block": true, "timeout": 1000}),
+            // `block: true` waits for the task to finish; the timeout is a
+            // ceiling, not an expectation. 1 s was tight enough that a loaded
+            // runner could time the poll out before the background shell
+            // reached a terminal state, so give it the same 10 s the retry
+            // budget elsewhere uses.
+            serde_json::json!({"task_id": task_id, "block": true, "timeout": 10_000}),
             PermissionMode::Default,
         );
         let output = LocalToolExecutor
@@ -11120,6 +11129,7 @@ rl.on('line', line => {
 
     #[tokio::test]
     async fn local_tool_executor_reads_file_after_permission() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _model = EnvVarGuard::set("ANTHROPIC_MODEL", "claude-sonnet-4-6");
         let path =
@@ -11154,8 +11164,9 @@ rl.on('line', line => {
                 assert_eq!(
                     block.content,
                     format!(
-                        "1\tline one\n2\tline two\n3\t{}",
-                        crate::tools::file_read_tool::CYBER_RISK_MITIGATION_REMINDER
+                        "1\tline one\n2\tline two\n3\t{}{}",
+                        crate::tools::file_read_tool::CYBER_RISK_MITIGATION_REMINDER,
+                        crate::utils::tool_io::read_note(1, 3, 2),
                     )
                 );
                 // The row carries the raw `toolUseResult` (CC's shape);
@@ -11273,6 +11284,7 @@ rl.on('line', line => {
 
     #[tokio::test]
     async fn read_listener_runs_only_after_token_validation_succeeds() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _api_key = EnvVarGuard::unset("ANTHROPIC_API_KEY");
         let _auth_token = EnvVarGuard::unset("ANTHROPIC_AUTH_TOKEN");
@@ -11324,14 +11336,18 @@ rl.on('line', line => {
         else {
             panic!("expected token rejection")
         };
-        assert!(rejected_result.is_error);
+        // T3's default policy returns the largest prefix that fits instead
+        // of turning a token overflow into a tool error. The listener observes
+        // that successful, budget-trimmed read after its state is committed.
+        assert!(!rejected_result.is_error);
         assert!(
-            rejected_result
-                .content
-                .contains("exceeds maximum allowed tokens")
+            rejected_result.content.starts_with("1\t")
+                && rejected_result.content.contains("[line truncated:"),
+            "partial content={:?}",
+            rejected_result.content
         );
-        assert!(notifications.lock().unwrap().is_empty());
-        assert!(rejected.new_context.read_file_state.is_empty());
+        assert_eq!(notifications.lock().unwrap().len(), 1);
+        assert_eq!(rejected.new_context.read_file_state.len(), 1);
 
         let mut accepted_context = ToolUseContext::default();
         accepted_context.file_reading_limits = Some(crate::tool::FileReadingLimitsOverride {
@@ -11356,9 +11372,11 @@ rl.on('line', line => {
         );
         assert_eq!(accepted.new_context.read_file_state.len(), 1);
         let notifications = notifications.lock().unwrap();
-        assert_eq!(notifications.len(), 1);
+        assert_eq!(notifications.len(), 2);
         assert_eq!(notifications[0].0, path.display().to_string());
-        assert!(notifications[0].1.starts_with("listener-content-"));
+        assert!(!notifications[0].1.is_empty());
+        assert_eq!(notifications[1].0, path.display().to_string());
+        assert!(!notifications[1].1.is_empty());
         drop(notifications);
         unsubscribe();
         let _ = std::fs::remove_file(path);
@@ -11780,6 +11798,7 @@ rl.on('line', line => {
 
     #[tokio::test]
     async fn local_tool_executor_read_honors_structured_offset_and_limit_input() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _model = EnvVarGuard::set("ANTHROPIC_MODEL", "claude-sonnet-4-6");
         let path =
@@ -11814,8 +11833,9 @@ rl.on('line', line => {
                 assert_eq!(
                     block.content,
                     format!(
-                        "2\ttwo\n3\tthree{}",
-                        crate::tools::file_read_tool::CYBER_RISK_MITIGATION_REMINDER
+                        "2\ttwo\n3\tthree{}{}",
+                        crate::tools::file_read_tool::CYBER_RISK_MITIGATION_REMINDER,
+                        crate::utils::tool_io::read_note(2, 2, 4),
                     )
                 );
             }

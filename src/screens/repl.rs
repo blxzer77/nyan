@@ -16974,30 +16974,30 @@ mod tests {
     fn model_command_selection_appends_local_command_output_and_restores_prompt() {
         // Mirror the process runtime published by the production entrypoint.
         crate::utils::process_runtime::initialize_test_process_runtime();
-        let mut timed_events = text_input_events("/model")
-            .into_iter()
-            .map(|event| (event, 0))
-            .collect::<Vec<_>>();
-        // 300ms gaps + explicit settle: same load-sensitivity class as the
-        // permissions/workspace tests (silence windows and tight event clocks
-        // both truncate under a saturated suite).
-        timed_events.push((key(KeyCode::Down), 300));
-        timed_events.push((key(KeyCode::Enter), 300));
-        let event_stream = stream::unfold(timed_events.into_iter(), |mut events| async move {
-            let (event, delay_ms) = events.next()?;
-            if delay_ms > 0 {
-                futures_timer::Delay::new(Duration::from_millis(delay_ms)).await;
-            }
-            Some((event, events))
-        });
-        let text = last_repl_text_waiting_for(event_stream, "Set model to", 10_000);
+        // Do not send Down on a fixed timer: the picker is mounted by an
+        // async command path, so a loaded machine can consume Down before it
+        // owns the event and Enter then selects the initial Opus row. Gate
+        // each event on the UI state that is supposed to consume it.
+        let canvases = run_repl_script(
+            element!(ReplHarness).into_any(),
+            vec![
+                script_step(&[], text_input_events("/model")),
+                script_step(&["Select model"], vec![key(KeyCode::Down)]),
+                script_step(&["Select model"], vec![key(KeyCode::Enter)]),
+                script_step(&["Set model to"], Vec::new()),
+            ],
+        );
+        let text = canvases
+            .last()
+            .map(|canvas| canvas_lines(canvas).join("\n"))
+            .expect("model command should render a final canvas");
 
         assert!(
             text.contains("/model"),
             "model selection should append the local command row; canvas=\n{text}"
         );
         assert!(
-            text.contains("Set model to Sonnet 4.6"),
+            text.contains("Set model to Opus 4.6 1M"),
             "model selection should append the official local command output row; canvas=\n{text}"
         );
         assert!(
@@ -17760,6 +17760,7 @@ mod tests {
         // Mirror the process runtime published by the production entrypoint.
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
+        let _single_worktree = EnvVarGuard::set("COMETIX_TEST_SINGLE_WORKTREE", "1");
         let config_home = std::env::temp_dir().join(format!(
             "cometix-repl-resume-select-error-{}",
             Uuid::new_v4()
@@ -18013,8 +18014,10 @@ mod tests {
             text.contains("Found 2 sessions matching"),
             "ambiguous title error should use official multiple-match copy; canvas=\n{text}"
         );
+        let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
-            text.contains("Please use /resume to pick a specific") && text.contains("session."),
+            normalized.contains("Please use /resume to pick a specific")
+                && normalized.contains("session."),
             "ambiguous title error should guide back to the picker across normal terminal wrapping; canvas=\n{text}"
         );
         assert!(
@@ -18216,6 +18219,7 @@ mod tests {
         }
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         crate::utils::process_runtime::initialize_test_process_runtime();
+        let _single_worktree = EnvVarGuard::set("COMETIX_TEST_SINGLE_WORKTREE", "1");
         let config_home =
             std::env::temp_dir().join(format!("cometix-repl-resume-cross-{}", Uuid::new_v4()));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
@@ -18442,6 +18446,7 @@ mod tests {
             return;
         }
         let _guard = env_lock().lock().unwrap();
+        let _single_worktree = EnvVarGuard::set("COMETIX_TEST_SINGLE_WORKTREE", "1");
         let _project = PinnedProjectDir::at_manifest_root();
         crate::utils::process_runtime::initialize_test_process_runtime();
         for fail_restore in [false, true] {
@@ -18903,6 +18908,12 @@ mod tests {
     fn logo_header_hot_path_avoids_uncached_auth_io_during_idle_input_and_suggestions() {
         // Mirror the process runtime published by the production entrypoint.
         crate::utils::process_runtime::initialize_test_process_runtime();
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
+        // The hot-path assertion is about avoiding file/helper IO after the
+        // first frame. A deterministic env token makes auth resolution stop at
+        // its first source instead of consulting the configured helper.
+        let _auth_token = EnvVarGuard::set("ANTHROPIC_AUTH_TOKEN", "synthetic-hot-path-token");
+        let _node_env = EnvVarGuard::set("NODE_ENV", "test");
         crate::components::messages_list::reset_logo_header_render_count();
         crate::components::logo_v2::logo_v2::reset_logo_display_data_current_call_count();
         crate::utils::auth::reset_auth_io_probe();
@@ -18921,9 +18932,21 @@ mod tests {
             .expect("initial REPL frame");
             assert!(first.to_string().contains("Cometix Code"));
 
-            // The first frame may read startup/cached display inputs. From this
-            // point onward idle parent updates, prompt input, and suggestion
-            // navigation must not re-enter Logo or uncached auth boundaries.
+            // ReplLogoHotPathHarness deliberately schedules two parent-only
+            // idle updates. Drain those startup frames before resetting the
+            // probes; otherwise the second update can be mistaken for a hot
+            // path settings read.
+            for _ in 0..4 {
+                let _ = crate::utils::race(render_loop.next(), async {
+                    futures_timer::Delay::new(Duration::from_millis(100)).await;
+                    None
+                })
+                .await;
+            }
+
+            // From this point onward idle parent updates, prompt input, and
+            // suggestion navigation must not re-enter Logo or uncached auth
+            // boundaries.
             crate::components::messages_list::reset_logo_header_render_count();
             crate::components::logo_v2::logo_v2::reset_logo_display_data_current_call_count();
             crate::utils::suggestions::command_suggestions::reset_command_suggestion_probe();

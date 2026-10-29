@@ -1,0 +1,276 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  policy:
+    name: policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.impact.outputs.docs_only }}
+      windows_required: ${{ steps.impact.outputs.windows_required }}
+      test_matrix: ${{ steps.impact.outputs.test_matrix }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Check CI helper syntax
+        shell: bash
+        run: |
+          for script in scripts/ci/*.mjs; do
+            node --check "$script"
+          done
+          node -e 'JSON.parse(require("fs").readFileSync(".github/quality/policy.json"))'
+          node -e 'JSON.parse(require("fs").readFileSync(".github/quality/tools.lock.json"))'
+      - name: Calculate impact
+        id: impact
+        run: node scripts/ci/impact.mjs
+
+  build:
+    name: build
+    needs: policy
+    if: needs.policy.result == 'success' && needs.policy.outputs.docs_only != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Set up Rust
+        id: rust
+        uses: ./.github/actions/setup-rust
+      - name: Install nextest
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/nyan-tools/nextest"
+          nextest="$(node scripts/ci/fetch-tool.mjs nextest --dest "$RUNNER_TEMP/nyan-tools/nextest")"
+          dirname "$nextest" >> "$GITHUB_PATH"
+      - name: Build nextest archive
+        shell: bash
+        run: cargo nextest archive --locked --lib --archive-file "$RUNNER_TEMP/nyan-tests.tar.zst"
+      - name: Save Cargo cache on master
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master' && steps.rust.outputs.cache-hit != 'true'
+        uses: actions/cache/save@d4323d4df104b026a6aa633fdb11d772146be0bf
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.rust.outputs.cache-primary-key }}
+      - name: Upload nextest archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: nyan-tests
+          path: ${{ runner.temp }}/nyan-tests.tar.zst
+          if-no-files-found: error
+          retention-days: 3
+          overwrite: true
+
+  static:
+    name: static
+    needs: policy
+    if: needs.policy.result == 'success' && needs.policy.outputs.docs_only != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
+      - name: Install actionlint
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/nyan-tools/actionlint"
+          actionlint="$(node scripts/ci/fetch-tool.mjs actionlint --dest "$RUNNER_TEMP/nyan-tools/actionlint")"
+          dirname "$actionlint" >> "$GITHUB_PATH"
+      - name: Check default and internal builds
+        run: |
+          cargo check --locked --lib --tests
+          cargo check --locked --lib --tests --features anthropic_internal
+      - name: Run clippy gates
+        run: |
+          cargo clippy --locked --lib --bins -- -D clippy::correctness -D clippy::disallowed_methods
+          cargo clippy --locked --lib --tests -- -D clippy::correctness
+      - name: Lint workflows
+        run: actionlint
+
+  tests:
+    name: tests (${{ matrix.name }})
+    needs: [policy, build]
+    if: needs.policy.result == 'success' && needs.build.result == 'success' && needs.policy.outputs.docs_only != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.policy.outputs.test_matrix) }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
+      - name: Install nextest
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/nyan-tools/nextest"
+          nextest="$(node scripts/ci/fetch-tool.mjs nextest --dest "$RUNNER_TEMP/nyan-tools/nextest")"
+          dirname "$nextest" >> "$GITHUB_PATH"
+      - name: Install ripgrep
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/nyan-tools/ripgrep"
+          ripgrep="$(node scripts/ci/fetch-tool.mjs ripgrep --dest "$RUNNER_TEMP/nyan-tools/ripgrep")"
+          dirname "$ripgrep" >> "$GITHUB_PATH"
+      - name: Install sandbox bridge dependency
+        shell: bash
+        run: |
+          # `utils/sandbox/network_proxy.rs` starts the Linux proxy bridges
+          # through `socat`; the unit tests exercise that path directly.
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends socat
+      - name: Download nextest archive
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: nyan-tests
+          path: ${{ runner.temp }}/nyan-tests
+      - name: Run test shard
+        shell: bash
+        run: |
+          CI=true scripts/ci/test.sh \
+            --archive "$RUNNER_TEMP/nyan-tests/nyan-tests.tar.zst" \
+            --partition "${{ matrix.partition }}"
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: junit-${{ matrix.name }}
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: warn
+          retention-days: 3
+          overwrite: true
+
+  supply_chain:
+    name: supply-chain
+    needs: policy
+    if: needs.policy.result == 'success' && needs.policy.outputs.docs_only != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Install supply-chain tools
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/nyan-tools/gitleaks" "$RUNNER_TEMP/nyan-tools/cargo-deny"
+          gitleaks="$(node scripts/ci/fetch-tool.mjs gitleaks --dest "$RUNNER_TEMP/nyan-tools/gitleaks")"
+          cargo_deny="$(node scripts/ci/fetch-tool.mjs cargo-deny --dest "$RUNNER_TEMP/nyan-tools/cargo-deny")"
+          dirname "$gitleaks" >> "$GITHUB_PATH"
+          dirname "$cargo_deny" >> "$GITHUB_PATH"
+      - name: Scan repository snapshot for secrets
+        shell: bash
+        run: |
+          snapshot="$RUNNER_TEMP/nyan-snapshot"
+          mkdir -p "$snapshot"
+          git archive HEAD | tar -x -C "$snapshot"
+          gitleaks detect --no-git --source "$snapshot" --config "$snapshot/.gitleaks.toml"
+      - name: Check dependency policy
+        run: cargo-deny --locked check
+
+  windows_check:
+    name: windows-check
+    needs: policy
+    if: needs.policy.result == 'success' && needs.policy.outputs.docs_only != 'true' && needs.policy.outputs.windows_required == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
+      - name: Check Windows GNU target
+        shell: bash
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          cargo check --locked --lib --tests --target x86_64-pc-windows-gnu
+
+  gate:
+    name: Merge gate
+    needs: [policy, build, static, tests, supply_chain, windows_check]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Evaluate merge gate
+        env:
+          CI_GATE_RESULTS: >-
+            {"policy":"${{ needs.policy.result }}","build":"${{ needs.build.result }}",
+            "static":"${{ needs.static.result }}","tests":"${{ needs.tests.result }}",
+            "supply-chain":"${{ needs.supply_chain.result }}",
+            "windows-check":"${{ needs.windows_check.result }}"}
+          CI_GATE_IMPACT: >-
+            {"docs_only":"${{ needs.policy.outputs.docs_only }}",
+            "windows_required":"${{ needs.policy.outputs.windows_required }}"}
+        run: node scripts/ci/gate.mjs

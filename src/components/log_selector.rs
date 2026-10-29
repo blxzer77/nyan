@@ -1904,8 +1904,16 @@ mod tests {
         summary
     }
 
+    fn pin_single_worktree() -> EnvVarGuard {
+        // These fixtures use synthetic project paths. A developer checkout
+        // may have auxiliary worktrees, which would make LogSelector hide the
+        // synthetic rows behind its current-worktree filter.
+        EnvVarGuard::set("COMETIX_TEST_SINGLE_WORKTREE", "1")
+    }
+
     #[test]
     fn progressive_load_more_triggers_once_near_end_and_shows_loading_footer() {
+        let _worktree = pin_single_worktree();
         let requested = Arc::new(AtomicUsize::new(0));
         let call_count = Arc::new(AtomicUsize::new(0));
         let requested_for_handler = requested.clone();
@@ -2378,6 +2386,7 @@ mod tests {
 
     #[test]
     fn rename_submit_persists_selected_full_path_and_notifies_parent() {
+        let _worktree = pin_single_worktree();
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
         let path = std::env::temp_dir().join(format!(
@@ -2467,6 +2476,7 @@ mod tests {
 
     #[test]
     fn preview_escape_restores_selector_without_selecting() {
+        let _worktree = pin_single_worktree();
         let path = std::env::temp_dir().join(format!(
             "cometix-log-selector-preview-{}.jsonl",
             uuid::Uuid::new_v4()
@@ -2920,6 +2930,7 @@ mod tests {
 
     #[tokio::test]
     async fn log_search_matches_official_empty_meta_backspace_paste_and_ctrl_c() {
+        let _worktree = pin_single_worktree();
         // Actual source LogSelector.tsx:231-250 useSearchInput options plus
         // complete hook are executed in consumer-search-peer-oracle.json.
         // Alt+Backspace on empty remains in search; a paste inserts the entire

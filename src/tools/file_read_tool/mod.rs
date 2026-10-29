@@ -5,6 +5,7 @@
 
 pub mod limits;
 pub mod prompt;
+pub(crate) mod text_io;
 pub mod ui;
 
 /// Maps to: CC `FileReadTool.ts:227-243` `inputSchema` — the carrier schema,
@@ -15,10 +16,38 @@ pub fn input_schema() -> &'static crate::utils::zod::Schema {
     SCHEMA.get_or_init(|| {
         use crate::utils::semantic_number::semantic_number;
         use crate::utils::zod as zod;
-        zod::strict_object(vec![
+        // @nyan: T4/T5/T6 — batch `files`, explicit `encoding`, and the hex
+        // `view`. `file_path` becomes optional because it is one half of a
+        // mutually exclusive pair; validate_input enforces "exactly one".
+        let files_item = zod::object(vec![
+            (
+                "path",
+                zod::string().describe("The absolute path to the file to read"),
+            ),
+            (
+                "offset",
+                semantic_number(zod::number().int().nonnegative().optional()).describe(
+                    "The line number to start reading from (1-based).",
+                ),
+            ),
+            (
+                "limit",
+                semantic_number(zod::number().int().positive().optional())
+                    .describe("The number of lines to read."),
+            ),
+            (
+                "encoding",
+                zod::string().optional().describe(
+                    "WHATWG encoding label for this file (e.g. \"gbk\"). Only needed when detection is ambiguous.",
+                ),
+            ),
+        ]);
+        let mut shape = vec![
             (
                 "file_path",
-                zod::string().describe("The absolute path to the file to read"),
+                zod::string()
+                    .optional()
+                    .describe("The absolute path to the file to read"),
             ),
             (
                 "offset",
@@ -39,7 +68,35 @@ pub fn input_schema() -> &'static crate::utils::zod::Schema {
                     crate::constants::api_limits::PDF_MAX_PAGES_PER_READ,
                 )),
             ),
-        ])
+            (
+                "encoding",
+                zod::string().optional().describe(
+                    "WHATWG encoding label (e.g. \"gbk\", \"big5\", \"utf-16le\"). Use it when a read reports an ambiguous encoding.",
+                ),
+            ),
+        ];
+        // The wire schema is fixed for the process (the prompt-cache prefix
+        // must not depend on settings): `files` is always declared, and
+        // validate_input enforces `nyan.toolIo.readBatchMax` (0 rejects batch
+        // reads with an explicit message).
+        shape.push((
+            "files",
+            zod::array(files_item)
+                .max(16)
+                .optional()
+                .describe(
+                    "Read up to 16 text files in one call (mutually exclusive with file_path). Each entry may carry its own offset, limit and encoding.",
+                ),
+        ));
+        shape.push((
+            "view",
+            zod::enumeration(vec!["text", "hex"])
+                .optional()
+                .describe(
+                    "Output form. \"hex\" renders the bytes as 16-byte rows with an ASCII column; use it for binary files.",
+                ),
+        ));
+        zod::strict_object(shape)
     })
 }
 
@@ -134,11 +191,19 @@ pub(crate) fn api_prompt() -> String {
     } else {
         prompt::OFFSET_INSTRUCTION_DEFAULT
     };
+    // @nyan: the extra usage paragraphs follow the `nyan.toolIo` switches.
+    let tool_io = crate::utils::tool_io::config();
     prompt::render_prompt_template(
         prompt::LINE_FORMAT_INSTRUCTION,
         &max_size_instruction,
         offset_instruction,
         crate::utils::pdf_utils::is_pdf_supported(),
+        prompt::NyanPromptExtras {
+            completion_notes: tool_io.completion_notes,
+            batch: tool_io.read_batch_max > 0,
+            encoding: tool_io.encoding_detection,
+            hex_view: true,
+        },
     )
 }
 
@@ -165,6 +230,20 @@ pub(crate) struct ReadTextOutput {
     /// decides later whether terminal UI may render it.
     pub(crate) start_line: serde_json::Value,
     pub(crate) total_lines: usize,
+    /// @nyan: T1 tail line, rendered after the content. Kept off the output
+    /// schema, like CC's `memoryFileMtimes` side channel.
+    pub(crate) completion_note: Option<String>,
+    /// @nyan: T5 `(Note: decoded from gbk; output is UTF-8.)`, rendered as the
+    /// first (unnumbered) line.
+    pub(crate) encoding_note: Option<String>,
+    /// @nyan: T4 — this member was cut because the shared batch budget ran
+    /// out, so the batch stops after it.
+    pub(crate) budget_truncated: bool,
+    /// @nyan: T4 — `content` already carries segment headers and numbering;
+    /// the mapper must not add line numbers a second time.
+    pub(crate) preformatted: bool,
+    /// @nyan: T1 — real line count (CC counts a trailing empty fragment).
+    pub(crate) actual_total_lines: usize,
 }
 
 /// Maps to: CC `FileReadTool.ts:270-301` outputSchema `image` variant.
@@ -814,6 +893,48 @@ struct FileReadInput {
     limit: Option<serde_json::Value>,
     /// `None` represents JavaScript `undefined` (field absent).
     pages: Option<serde_json::Value>,
+    /// @nyan: T5 explicit encoding label.
+    encoding: Option<String>,
+    /// @nyan: T6 `view: "hex"`.
+    hex_view: bool,
+    /// @nyan: T4 batch members; `Some` means `file_path` is the first path.
+    files: Option<Vec<FileReadBatchMember>>,
+}
+
+/// @nyan: one `files[]` entry (T4).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FileReadBatchMember {
+    path: String,
+    offset: serde_json::Value,
+    limit: Option<serde_json::Value>,
+    encoding: Option<String>,
+}
+
+impl FileReadBatchMember {
+    fn from_value(value: &serde_json::Value) -> Result<Self, String> {
+        let object = value
+            .as_object()
+            .ok_or_else(|| "Invalid Read tool input".to_string())?;
+        let path = object
+            .get("path")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "Invalid Read tool input".to_string())?
+            .to_string();
+        let encoding = object
+            .get("encoding")
+            .and_then(serde_json::Value::as_str)
+            .filter(|encoding| !encoding.is_empty())
+            .map(str::to_string);
+        Ok(Self {
+            path,
+            offset: object
+                .get("offset")
+                .map(javascript_runtime_value)
+                .unwrap_or_else(|| serde_json::json!(1)),
+            limit: object.get("limit").map(javascript_runtime_value),
+            encoding,
+        })
+    }
 }
 
 impl FileReadInput {
@@ -826,22 +947,65 @@ impl FileReadInput {
         let object = args
             .as_object()
             .ok_or_else(|| "Cannot destructure Read input".to_string())?;
-        // Deliberate task contract: the Rust execution boundary retains this
-        // established exact error for a raw non-string replacement while still
-        // failing at the source-equivalent pre-I/O call boundary.
-        let file_path = object
+        // @nyan: T4 — `files` is an alternative to `file_path`. The batch's
+        // first member supplies the single-file fields (path/offset/limit)
+        // so the dedup, skill-discovery and permission seams keep one shape.
+        let files = match object.get("files") {
+            Some(value) if !value.is_null() => {
+                let entries = value
+                    .as_array()
+                    .ok_or_else(|| "Invalid Read tool input".to_string())?;
+                Some(
+                    entries
+                        .iter()
+                        .map(FileReadBatchMember::from_value)
+                        .collect::<Result<Vec<_>, _>>()?,
+                )
+            }
+            _ => None,
+        };
+        // An EMPTY `file_path` stays authoritative when `files` is absent:
+        // CC hands it to path resolution, which fails at I/O time. Only a
+        // missing key lets `files` supply the path.
+        let explicit_path = object
             .get("file_path")
             .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| "Invalid Read tool input".to_string())?
-            .to_string();
+            .map(str::to_string);
+        let (file_path, offset, limit) = match (explicit_path.clone(), files.as_ref()) {
+            (Some(path), _) => (
+                path,
+                object
+                    .get("offset")
+                    .map(javascript_runtime_value)
+                    .unwrap_or_else(|| serde_json::json!(1)),
+                object.get("limit").map(javascript_runtime_value),
+            ),
+            (None, Some(members)) if !members.is_empty() => {
+                let first = &members[0];
+                (
+                    first.path.clone(),
+                    first.offset.clone(),
+                    first.limit.clone(),
+                )
+            }
+            // Fail here so the error copy stays the historical one.
+            _ => return Err("Invalid Read tool input".to_string()),
+        };
         Ok(Self {
             file_path,
-            offset: object
-                .get("offset")
-                .map(javascript_runtime_value)
-                .unwrap_or_else(|| serde_json::json!(1)),
-            limit: object.get("limit").map(javascript_runtime_value),
+            offset,
+            limit,
             pages: object.get("pages").map(javascript_runtime_value),
+            encoding: object
+                .get("encoding")
+                .and_then(serde_json::Value::as_str)
+                .filter(|encoding| !encoding.is_empty())
+                .map(str::to_string),
+            hex_view: object
+                .get("view")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|view| view == "hex"),
+            files,
         })
     }
 }
@@ -1024,6 +1188,21 @@ impl FileReadTool {
             include_max_size_in_prompt: default_limits.include_max_size_in_prompt,
             targeted_range_nudge: default_limits.targeted_range_nudge,
         };
+        // @nyan: T4 — a batch of text files takes the shared-budget path; the
+        // single-file pipeline below is unchanged.
+        if let Some(members) = input.files.clone() {
+            return self.call_batch(&members, limits, context).await;
+        }
+        self.call_single(input, limits, context).await
+    }
+
+    /// The unchanged CC single-file pipeline.
+    async fn call_single(
+        &self,
+        input: FileReadInput,
+        limits: FileReadingLimits,
+        context: &crate::tool::ToolUseContext,
+    ) -> Result<FileReadToolResult, FileReadCallFailure> {
         let full_file_path =
             crate::utils::path::expand_path(&input.file_path, context.cwd_override.as_deref())
                 .map_err(|error| FileReadCallFailure::new(anyhow::Error::msg(error)))?;
@@ -1137,6 +1316,297 @@ impl FileReadTool {
         }
     }
 
+    /// @nyan: T4 — batch Read. Every member goes through its own permission
+    /// check and ReadFileState record; the token budget is shared and filled
+    /// in order. A member that fails reports inside its own segment and does
+    /// not affect the rest.
+    async fn call_batch(
+        &self,
+        members: &[FileReadBatchMember],
+        limits: FileReadingLimits,
+        context: &crate::tool::ToolUseContext,
+    ) -> Result<FileReadToolResult, FileReadCallFailure> {
+        let tool_io = crate::utils::tool_io::config();
+        if tool_io.read_batch_max == 0 {
+            return Err(FileReadCallFailure::new(anyhow::anyhow!(
+                "Invalid Read tool input"
+            )));
+        }
+        let members = &members[..members.len().min(tool_io.read_batch_max.max(1))];
+        let total = members.len();
+        let cwd = context.effective_cwd();
+        let mut remaining_tokens = limits.max_tokens;
+        let mut segments: Vec<String> = Vec::new();
+        let mut notes: Vec<String> = Vec::new();
+        let mut processed = 0usize;
+        let mut failed = 0usize;
+        let mut continuation = Vec::new();
+
+        for (index, member) in members.iter().enumerate() {
+            processed = index;
+            if index > 0 && remaining_tokens <= 0.0 {
+                // The shared budget is spent: everything from here on belongs
+                // to the continuation.
+                for later in &members[index..] {
+                    let mut later_entry = serde_json::Map::new();
+                    later_entry.insert("path".to_string(), serde_json::json!(later.path));
+                    later_entry.insert("offset".to_string(), later.offset.clone());
+                    if let Some(limit) = &later.limit {
+                        later_entry.insert("limit".to_string(), limit.clone());
+                    }
+                    if let Some(encoding) = &later.encoding {
+                        later_entry.insert("encoding".to_string(), serde_json::json!(encoding));
+                    }
+                    continuation.push(serde_json::Value::Object(later_entry));
+                }
+                break;
+            }
+            let full_path = crate::utils::path::expand_path(&member.path, Some(&cwd))
+                .map_err(|error| FileReadCallFailure::new(anyhow::Error::msg(error)))?;
+            // T4: each member honors the same deny rules a single Read does.
+            // The ask/allow decision was already resolved for the tool use
+            // (`check_permissions` asks for all members at once), so only an
+            // explicit deny can fail a member here.
+            if crate::utils::permissions::filesystem::matching_rule_for_input(
+                &full_path.display().to_string(),
+                &context.tool_permission_context,
+                crate::utils::permissions::filesystem::FilePermissionType::Read,
+                crate::types::permissions::PermissionBehavior::Deny,
+                &cwd,
+            )
+            .is_some()
+            {
+                failed += 1;
+                segments.push(format!(
+                    "=== {} ===\nError: File is in a directory that is denied by your permission settings.",
+                    member.path
+                ));
+                continue;
+            }
+            // T4: images, PDFs and notebooks stay single-file calls.
+            let ext = full_path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if IMAGE_EXTENSIONS.contains(ext.as_str())
+                || ext == "ipynb"
+                || crate::utils::pdf_utils::is_pdf_extension(&format!(".{ext}"))
+            {
+                failed += 1;
+                segments.push(format!(
+                    "=== {} ===\nError: images, PDFs and notebooks cannot be read in a batch; read this file on its own.",
+                    member.path
+                ));
+                continue;
+            }
+            let single = FileReadInput {
+                file_path: member.path.clone(),
+                offset: member.offset.clone(),
+                limit: member.limit.clone(),
+                pages: None,
+                encoding: member.encoding.clone(),
+                hex_view: false,
+                files: None,
+            };
+            // Per-member dedup, exactly like an independent Read call.
+            let dedup_killswitch = crate::utils::feature_flags::feature_enabled(
+                crate::utils::feature_flags::FeatureFlag::ReadDedupKillswitch,
+            );
+            if !dedup_killswitch
+                && let Some(existing) = context.read_file_state.get(&full_path)
+                && !existing.is_partial_view
+                && existing.offset.is_some()
+            {
+                let range_match = existing
+                    .offset
+                    .as_ref()
+                    .is_some_and(|offset| javascript_strict_equal(offset, &single.offset))
+                    && match (&existing.limit, &single.limit) {
+                        (None, None) => true,
+                        (Some(existing), Some(input)) => javascript_strict_equal(existing, input),
+                        _ => false,
+                    };
+                let unchanged = range_match
+                    && crate::utils::file::get_file_modification_time_result(&full_path)
+                        .ok()
+                        .is_some_and(|mtime| existing.timestamp_ms == Some(mtime));
+                if unchanged {
+                    processed = index + 1;
+                    segments.push(format!(
+                        "=== {} ===\n{}",
+                        member.path,
+                        prompt::FILE_UNCHANGED_STUB
+                    ));
+                    continue;
+                }
+            }
+            // T4: the member is trimmed against the SHARED remainder, so one
+            // large file cannot consume the whole batch's allowance.
+            let member_limits = FileReadingLimits {
+                max_tokens: remaining_tokens,
+                ..limits
+            };
+            match self
+                .call_inner(&single, &full_path, &full_path, member_limits, context)
+                .await
+            {
+                Ok(result) => {
+                    let ReadOutput::Text(output) = result.data else {
+                        failed += 1;
+                        segments.push(format!(
+                            "=== {} ===\nError: this file cannot be read in a batch.",
+                            member.path
+                        ));
+                        continue;
+                    };
+                    let extension = ext.clone();
+                    // CC's line splitter keeps the empty fragment after a
+                    // trailing newline; a batch segment does not show it.
+                    let mut content = output.content.clone();
+                    let mut shown_lines = output.num_lines;
+                    if content.ends_with('\n') && shown_lines == output.actual_total_lines + 1 {
+                        content.pop();
+                        shown_lines = output.actual_total_lines;
+                    }
+                    // T3 trimmed this member against the shared remainder; a
+                    // member cut inside call_inner is exactly what continues.
+                    let mut truncated = output.budget_truncated;
+                    let estimate = crate::services::token_estimation::rough_token_count_estimation_for_file_type(
+                        &content,
+                        &extension,
+                    ) as f64;
+                    if estimate > remaining_tokens {
+                        match crate::tools::file_read_tool::text_io::trim_to_token_budget(
+                            &content,
+                            &extension,
+                            remaining_tokens,
+                        ) {
+                            Some((kept, kept_lines)) => {
+                                content = kept;
+                                shown_lines = kept_lines;
+                                truncated = true;
+                            }
+                            None => {}
+                        }
+                    }
+                    // Charge the budget for what was actually returned, not
+                    // for the full member.
+                    let kept_estimate = crate::services::token_estimation::rough_token_count_estimation_for_file_type(
+                        &content,
+                        &extension,
+                    ) as f64;
+                    remaining_tokens = (remaining_tokens - kept_estimate).max(0.0);
+                    let start_line = if matches!(
+                        &member.offset,
+                        serde_json::Value::Number(number) if number.as_f64() == Some(0.0)
+                    ) {
+                        1usize
+                    } else {
+                        javascript_to_number(&member.offset).max(1.0) as usize
+                    };
+                    let segment = crate::tools::file_read_tool::text_io::BatchSegment {
+                        path: member.path.clone(),
+                        start_line,
+                        line_count: shown_lines,
+                        total_lines: output.actual_total_lines,
+                    };
+                    let mut segment_text = format!(
+                        "{}\n{}",
+                        segment.header(),
+                        crate::utils::file::add_line_numbers(
+                            &content,
+                            &serde_json::json!(start_line)
+                        )
+                    );
+                    if truncated {
+                        let next_offset = start_line + shown_lines;
+                        let mut resume = serde_json::Map::new();
+                        resume.insert("path".to_string(), serde_json::json!(member.path));
+                        resume.insert("offset".to_string(), serde_json::json!(next_offset));
+                        if let Some(encoding) = &member.encoding {
+                            resume.insert("encoding".to_string(), serde_json::json!(encoding));
+                        }
+                        continuation.push(serde_json::Value::Object(resume));
+                        for later in &members[index + 1..] {
+                            let mut later_entry = serde_json::Map::new();
+                            later_entry.insert("path".to_string(), serde_json::json!(later.path));
+                            // Every member keeps its own range so the copied
+                            // continuation reproduces the same segments.
+                            later_entry.insert("offset".to_string(), later.offset.clone());
+                            if let Some(limit) = &later.limit {
+                                later_entry.insert("limit".to_string(), limit.clone());
+                            }
+                            if let Some(encoding) = &later.encoding {
+                                later_entry
+                                    .insert("encoding".to_string(), serde_json::json!(encoding));
+                            }
+                            continuation.push(serde_json::Value::Object(later_entry));
+                        }
+                        segment_text.push_str(&format!(
+                            "\n(Partial: lines {start_line}-{} of {} shown. Continue with files=[{}].)",
+                            start_line + shown_lines - 1,
+                            output.actual_total_lines,
+                            continuation
+                                .iter()
+                                .map(serde_json::Value::to_string)
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        ));
+                    }
+                    segments.push(segment_text);
+                    if truncated {
+                        processed = index + 1;
+                        break;
+                    }
+                    processed = index + 1;
+                }
+                Err(error) => {
+                    failed += 1;
+                    segments.push(format!("=== {} ===\n{}", member.path, error.message()));
+                    processed = index + 1;
+                }
+            }
+        }
+
+        let continuation_value =
+            (!continuation.is_empty()).then(|| serde_json::Value::Array(continuation.clone()));
+        if tool_io.completion_notes {
+            notes.push(crate::utils::tool_io::batch_note(
+                processed.min(total),
+                total,
+                failed,
+                continuation_value.as_ref(),
+            ));
+        }
+        let mut content = segments.join("\n\n");
+        if !notes.is_empty() {
+            if !content.is_empty() {
+                content.push('\n');
+            }
+            content.push_str(&notes.join("\n"));
+        }
+        Ok(FileReadToolResult {
+            data: ReadOutput::Text(ReadTextOutput {
+                file_path: members
+                    .first()
+                    .map(|member| member.path.clone())
+                    .unwrap_or_default(),
+                content,
+                num_lines: segments.len(),
+                start_line: serde_json::json!(1),
+                total_lines: segments.len(),
+                completion_note: None,
+                encoding_note: None,
+                budget_truncated: false,
+                preformatted: true,
+                actual_total_lines: total,
+            }),
+            new_messages: Vec::new(),
+            memory_file_mtime_ms: None,
+        })
+    }
+
     /// Maps to: CC `tools/FileReadTool/FileReadTool.ts:804-1086`
     /// `callInner`, with Rust's required blocking-I/O task boundary.
     async fn call_inner(
@@ -1162,6 +1632,65 @@ impl FileReadTool {
                 .unwrap_or_default()
                 .to_ascii_lowercase();
             let nested_path = full_file_path.display().to_string();
+            let tool_io = crate::utils::tool_io::config();
+
+            // @nyan: T6 hex view. It works on any file, including ones the
+            // text path rejects as binary.
+            if input.hex_view {
+                let bytes = crate::utils::fs_operations::read_file_bytes(
+                    resolved_file_path,
+                    Some(limits.max_size_bytes),
+                )?;
+                let start_row = if matches!(
+                    &input.offset,
+                    serde_json::Value::Number(number) if number.as_f64() == Some(0.0)
+                ) {
+                    0usize
+                } else {
+                    javascript_to_number(&input.offset).max(1.0) as usize - 1
+                };
+                let max_rows = input
+                    .limit
+                    .as_ref()
+                    .map(javascript_to_number)
+                    .filter(|limit| *limit > 0.0)
+                    .map(|limit| limit as usize)
+                    .unwrap_or(crate::tools::file_read_tool::prompt::MAX_LINES_TO_READ)
+                    .min(crate::tools::file_read_tool::prompt::MAX_LINES_TO_READ);
+                let (rendered, shown, total_rows) =
+                    crate::tools::file_read_tool::text_io::hex_view(&bytes, start_row, max_rows);
+                let completion_note = tool_io.completion_notes.then(|| {
+                    crate::utils::tool_io::hex_note(start_row + 1, shown, total_rows)
+                });
+                let output = ReadTextOutput {
+                    file_path: input.file_path.clone(),
+                    content: rendered,
+                    num_lines: shown,
+                    start_line: serde_json::json!(start_row + 1),
+                    total_lines: total_rows,
+                    completion_note,
+                    encoding_note: None,
+                    budget_truncated: false,
+                    preformatted: false,
+                    actual_total_lines: total_rows,
+                };
+                let cache_entry = crate::utils::query_helpers::ReadFileStateEntry {
+                    path: nested_path.clone(),
+                    content: Some(output.content.clone()),
+                    timestamp_ms: None,
+                    offset: Some(input.offset.clone()),
+                    limit: input.limit.clone(),
+                    is_partial_view: false,
+                    source: crate::utils::query_helpers::ReadFileStateSource::Read,
+                };
+                return Ok(PreparedReadOutput::Text {
+                    output,
+                    resolved_file_path: resolved_file_path.to_path_buf(),
+                    nested_path,
+                    cache_entry,
+                    memory_mtime_ms: None,
+                });
+            }
 
             if ext == "ipynb" {
                 let cells = crate::utils::notebook::read_notebook(resolved_file_path, None)?;
@@ -1299,23 +1828,78 @@ impl FileReadTool {
             } else {
                 javascript_to_number(&input.offset) - 1.0
             };
-            let result = crate::utils::read_file_in_range::read_file_in_range(
+            let mut result = crate::utils::read_file_in_range::read_file_in_range(
                 resolved_file_path,
                 line_offset,
                 input.limit.clone(),
                 input.limit.is_none().then_some(limits.max_size_bytes),
                 Some(&context.abort_controller),
-                crate::utils::read_file_in_range::ReadFileRangeOptions::default(),
+                crate::utils::read_file_in_range::ReadFileRangeOptions {
+                    truncate_on_byte_limit: false,
+                    encoding: input.encoding.clone(),
+                    encoding_detection: tool_io.encoding_detection,
+                    content_binary_check: tool_io.content_binary_check,
+                },
             )?;
             let memory_mtime_ms =
                 crate::utils::memory_file_detection::is_auto_mem_file(resolved_file_path)
                     .then_some(result.mtime_ms);
+            // @nyan: T6 — cap absurdly long lines before they eat the budget.
+            result.content =
+                crate::tools::file_read_tool::text_io::truncate_long_lines(
+                    &result.content,
+                    tool_io.max_line_chars_read,
+                );
+            // @nyan: T3 — return the longest line prefix that fits instead of
+            // raising MaxFileReadTokenExceededError.
+            let mut budget_truncated = false;
+            if tool_io.read_partial_on_overflow
+                && let Some((kept, kept_lines)) =
+                    crate::tools::file_read_tool::text_io::trim_to_token_budget(
+                        &result.content,
+                        &ext,
+                        limits.max_tokens,
+                    )
+            {
+                budget_truncated = true;
+                result.content = kept;
+                result.line_count = kept_lines;
+                result.truncated_by_bytes = true;
+            }
+            let start_line_number = if matches!(
+                &input.offset,
+                serde_json::Value::Number(number) if number.as_f64() == Some(0.0)
+            ) {
+                1usize
+            } else {
+                javascript_to_number(&input.offset).max(1.0) as usize
+            };
+            let completion_note = tool_io.completion_notes.then(|| {
+                if budget_truncated {
+                    crate::utils::tool_io::read_budget_note(
+                        start_line_number,
+                        result.line_count,
+                        result.actual_total_lines,
+                    )
+                } else {
+                    crate::utils::tool_io::read_note(
+                        start_line_number,
+                        result.line_count,
+                        result.actual_total_lines,
+                    )
+                }
+            });
             let output = ReadTextOutput {
                 file_path: input.file_path.clone(),
                 content: result.content,
                 num_lines: result.line_count,
                 start_line: input.offset.clone(),
                 total_lines: result.total_lines,
+                completion_note,
+                encoding_note: result.encoding_note,
+                budget_truncated,
+                preformatted: false,
+                actual_total_lines: result.actual_total_lines,
             };
             let read_timestamp_ms = result.mtime_ms.floor() as i64;
             Ok(PreparedReadOutput::Text {
@@ -1324,7 +1908,11 @@ impl FileReadTool {
                     content: Some(output.content.clone()),
                     timestamp_ms: Some(read_timestamp_ms),
                     offset: Some(input.offset.clone()),
-                    limit: input.limit.clone(),
+                    limit: if budget_truncated {
+                        Some(serde_json::json!(output.num_lines))
+                    } else {
+                        input.limit.clone()
+                    },
                     is_partial_view: false,
                     source: crate::utils::query_helpers::ReadFileStateSource::Read,
                 },
@@ -1343,7 +1931,16 @@ impl FileReadTool {
             PreparedReadOutput::Notebook { cache_entry, .. } => cache_entry.content.as_deref(),
             _ => None,
         };
-        if let Some(content) = token_content {
+        // @nyan: a budget-trimmed result was already cut to the rough
+        // estimate the design specifies; re-counting it through the API would
+        // reject content we deliberately produced.
+        let budget_trimmed = matches!(
+            &prepared,
+            PreparedReadOutput::Text { output, .. } if output.budget_truncated
+        );
+        if let Some(content) = token_content
+            && !budget_trimmed
+        {
             let extension = std::path::Path::new(&input.file_path)
                 .extension()
                 .and_then(|extension| extension.to_str())
@@ -1590,10 +2187,20 @@ impl FileReadTool {
                     let mut rendered = memory_mtime_ms
                         .map(crate::memdir::memory_age::memory_freshness_note)
                         .unwrap_or_default();
-                    rendered.push_str(&crate::utils::file::add_line_numbers(
-                        &output.content,
-                        &output.start_line,
-                    ));
+                    // @nyan: T5 — name the detected source encoding before the
+                    // numbered body.
+                    if let Some(note) = &output.encoding_note {
+                        rendered.push_str(note);
+                        rendered.push('\n');
+                    }
+                    if output.preformatted {
+                        rendered.push_str(&output.content);
+                    } else {
+                        rendered.push_str(&crate::utils::file::add_line_numbers(
+                            &output.content,
+                            &output.start_line,
+                        ));
+                    }
                     let resolved_model;
                     let model = if let Some(model) = request_model {
                         model
@@ -1603,6 +2210,16 @@ impl FileReadTool {
                     };
                     if crate::utils::model::model::get_canonical_name(model) != "claude-opus-4-6" {
                         rendered.push_str(CYBER_RISK_MITIGATION_REMINDER);
+                    }
+                    // @nyan: T1 — the tail line is the genuine last line, so
+                    // the model finds it where the design promises. Appending
+                    // after the CC text also makes the off switch a pure
+                    // omission (byte-identical output).
+                    if let Some(note) = &output.completion_note {
+                        if !rendered.ends_with('\n') {
+                            rendered.push('\n');
+                        }
+                        rendered.push_str(note);
                     }
                     rendered
                 } else if output.total_lines == 0 {
@@ -1671,6 +2288,17 @@ impl crate::tool::ToolCall for FileReadTool {
         for field in ["offset", "limit"] {
             crate::utils::semantic_number::preprocess_object_field(&mut parsed, field);
         }
+        // @nyan: T4 — the same semantic-number tolerance applies per member.
+        if let Some(files) = parsed
+            .get_mut("files")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            for member in files {
+                for field in ["offset", "limit"] {
+                    crate::utils::semantic_number::preprocess_object_field(member, field);
+                }
+            }
+        }
         parsed
     }
 
@@ -1684,12 +2312,30 @@ impl crate::tool::ToolCall for FileReadTool {
         context: &crate::tool::ToolUseContext,
     ) -> serde_json::Value {
         let mut observable = args.clone();
+        let cwd = context.effective_cwd();
+        // @nyan: T4 — batch members receive the same absolute-path backfill.
+        if let Some(files) = observable
+            .get_mut("files")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            for member in files {
+                let Some(path) = member.get("path").and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                if let Ok(expanded) = crate::utils::path::expand_path(path, Some(&cwd))
+                    && let Some(object) = member.as_object_mut()
+                {
+                    object.insert(
+                        "path".to_string(),
+                        serde_json::Value::String(expanded.display().to_string()),
+                    );
+                }
+            }
+        }
         let Some(file_path) = args.get("file_path").and_then(serde_json::Value::as_str) else {
             return observable;
         };
-        let Ok(expanded) =
-            crate::utils::path::expand_path(file_path, Some(&context.effective_cwd()))
-        else {
+        let Ok(expanded) = crate::utils::path::expand_path(file_path, Some(&cwd)) else {
             // Execution validates the parsed input before this observable
             // clone is exposed. Do not fabricate a cwd-relative fallback.
             return observable;
@@ -1732,11 +2378,21 @@ impl crate::tool::ToolCall for FileReadTool {
     /// Maps to CC `FileReadTool.getPath(...)` (:371-374), including the
     /// falsey-path cwd fallback used by permission summaries.
     fn get_path(&self, args: &serde_json::Value) -> Option<String> {
+        let first_batch_path = || {
+            args.get("files")?
+                .as_array()?
+                .first()?
+                .get("path")?
+                .as_str()
+                .filter(|path| !path.is_empty())
+                .map(str::to_string)
+        };
         Some(
             args.get("file_path")
                 .and_then(serde_json::Value::as_str)
                 .filter(|path| !path.is_empty())
                 .map(str::to_string)
+                .or_else(first_batch_path)
                 .unwrap_or_else(|| {
                     crate::bootstrap::state::get_original_cwd()
                         .display()
@@ -1747,10 +2403,20 @@ impl crate::tool::ToolCall for FileReadTool {
 
     /// Maps to CC `FileReadTool.toAutoClassifierInput(...)` (:364-366).
     fn to_auto_classifier_input(&self, args: &serde_json::Value) -> String {
+        let first_batch_path = || -> String {
+            args.get("files")
+                .and_then(serde_json::Value::as_array)
+                .and_then(|files| files.first())
+                .and_then(|member| member.get("path"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
         args.get("file_path")
             .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_string()
+            .map(str::to_string)
+            .filter(|path| !path.is_empty())
+            .unwrap_or_else(first_batch_path)
     }
 
     /// Maps to CC `FileReadTool.preparePermissionMatcher(...)` (:383-385).
@@ -1758,7 +2424,19 @@ impl crate::tool::ToolCall for FileReadTool {
         &self,
         args: &serde_json::Value,
     ) -> Option<crate::tool::PermissionPatternMatcher> {
-        let file_path = args.get("file_path")?.as_str()?.to_string();
+        let file_path = args
+            .get("file_path")
+            .and_then(serde_json::Value::as_str)
+            .filter(|path| !path.is_empty())
+            .map(str::to_string)
+            .or_else(|| {
+                args.get("files")?
+                    .as_array()?
+                    .first()?
+                    .get("path")?
+                    .as_str()
+                    .map(str::to_string)
+            })?;
         Some(Box::new(move |pattern| {
             crate::utils::permissions::shell_rule_matching::match_wildcard_pattern(
                 pattern, &file_path, false,
@@ -1776,13 +2454,52 @@ impl crate::tool::ToolCall for FileReadTool {
         use crate::constants::api_limits::PDF_MAX_PAGES_PER_READ;
         use crate::types::permissions::PermissionBehavior;
         use crate::utils::pdf_utils::parse_pdf_page_range;
-        use crate::utils::permissions::filesystem::{
-            FilePermissionType, matching_rule_for_input,
-        };
+        use crate::utils::permissions::filesystem::{FilePermissionType, matching_rule_for_input};
 
+        // @nyan: T4 — `file_path` and `files` are mutually exclusive, and the
+        // batch is bounded by `nyan.toolIo.readBatchMax`. These checks run
+        // before the input projection because an empty `files` array is not a
+        // valid projection but deserves its own message.
+        let has_file_path = args
+            .get("file_path")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|path| !path.is_empty());
+        if let Some(files) = args.get("files").filter(|files| !files.is_null()) {
+            let Some(entries) = files.as_array() else {
+                return crate::tool::ValidationResult::fatal("Invalid Read tool input");
+            };
+            if has_file_path {
+                return crate::tool::ValidationResult::error(
+                    "Provide either file_path or files, not both.",
+                    10,
+                );
+            }
+            if entries.is_empty() {
+                return crate::tool::ValidationResult::error(
+                    "files must contain at least one file entry.",
+                    11,
+                );
+            }
+            let batch_max = crate::utils::tool_io::config().read_batch_max;
+            if batch_max == 0 {
+                return crate::tool::ValidationResult::error(
+                    "Batch reads are disabled (nyan.toolIo.readBatchMax = 0). Read one file_path at a time.",
+                    11,
+                );
+            }
+            if entries.len() > batch_max {
+                return crate::tool::ValidationResult::error(
+                    format!("files accepts at most {batch_max} entries."),
+                    11,
+                );
+            }
+        }
         let Ok(input) = FileReadInput::from_args(args) else {
             return crate::tool::ValidationResult::fatal("Invalid Read tool input");
         };
+        // @nyan: T6 — `view: "hex"` is exactly the tool for a binary file, so
+        // the binary-extension gate below does not apply to it.
+        let hex_view = input.hex_view;
         if let Some(pages) = input.pages.as_ref().and_then(serde_json::Value::as_str) {
             let Some(parsed) = parse_pdf_page_range(pages) else {
                 return crate::tool::ValidationResult::error(
@@ -1838,13 +2555,14 @@ impl crate::tool::ToolCall for FileReadTool {
             .unwrap_or("")
             .to_ascii_lowercase();
         let ext_with_dot = format!(".{ext}");
-        if crate::constants::files::has_binary_extension(&full_file_path_str)
+        if !hex_view
+            && crate::constants::files::has_binary_extension(&full_file_path_str)
             && !crate::utils::pdf_utils::is_pdf_extension(&ext_with_dot)
             && !IMAGE_EXTENSIONS.contains(ext.as_str())
         {
             return crate::tool::ValidationResult::error(
                 format!(
-                    "This tool cannot read binary files. The file appears to be a binary {ext_with_dot} file. Please use appropriate tools for binary file analysis."
+                    "This tool cannot read binary files. The file appears to be a binary {ext_with_dot} file. Please use appropriate tools for binary file analysis, or view=\"hex\" to inspect the bytes."
                 ),
                 4,
             );
@@ -1870,6 +2588,49 @@ impl crate::tool::ToolCall for FileReadTool {
     ) -> crate::utils::permissions::permission_result::PermissionResult {
         let parsed = self.normalize_input(args);
         let cwd = context.effective_cwd();
+        // @nyan: T4 — a batch asks about every member at once. Deny wins over
+        // Ask wins over Allow, so one denied member blocks the call before
+        // execution (and the per-member deny check inside `call_batch` covers
+        // hook-rewritten inputs that arrive after this prompt).
+        if let Some(files) = parsed.get("files").and_then(serde_json::Value::as_array) {
+            let mut pending_ask = None;
+            for member in files {
+                let Some(path) = member.get("path").and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                let result = crate::utils::permissions::filesystem::check_read_permission_for_tool(
+                    path,
+                    member,
+                    &context.tool_permission_context,
+                    &cwd,
+                );
+                match result {
+                    crate::utils::permissions::permission_result::PermissionResult::Deny {
+                        ..
+                    } => return result,
+                    crate::utils::permissions::permission_result::PermissionResult::Ask {
+                        ..
+                    } => {
+                        pending_ask.get_or_insert(result);
+                    }
+                    crate::utils::permissions::permission_result::PermissionResult::Allow {
+                        ..
+                    } => {}
+                    _ => {}
+                }
+            }
+            if let Some(ask) = pending_ask {
+                return ask;
+            }
+            return crate::utils::permissions::permission_result::PermissionResult::Allow {
+                updated_input: Some(args.clone()),
+                user_modified: None,
+                decision_reason: None,
+                tool_use_id: None,
+                accept_feedback: None,
+                content_blocks: Vec::new(),
+            };
+        }
         let file_path = parsed
             .get("file_path")
             .and_then(serde_json::Value::as_str)
@@ -2168,6 +2929,382 @@ mod tests {
         unsubscribe_later();
     }
 
+    /// @nyan: T5 — a GBK file decodes with a note instead of mojibake.
+    #[tokio::test]
+    async fn gbk_file_decodes_with_a_note() {
+        let dir = std::env::temp_dir().join(format!(
+            "cometix-read-gbk-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("gbk.txt");
+        let text =
+            "你好，世界。这是一段用于检测编码的测试文本，需要足够的非 ASCII 字节。\nsecond line\n";
+        std::fs::write(&path, encoding_rs::GBK.encode(text).0.as_ref()).unwrap();
+        let context = crate::tool::ToolUseContext::default();
+        let result = FileReadTool
+            .call(
+                &serde_json::json!({"file_path": path.display().to_string()}),
+                &context,
+                None,
+            )
+            .await
+            .expect("gbk read succeeds");
+        let ReadOutput::Text(output) = result.data else {
+            panic!("expected text");
+        };
+        assert!(output.content.contains("你好，世界"));
+        assert_eq!(
+            output.encoding_note.as_deref(),
+            Some("(Note: decoded from gbk; output is UTF-8.)")
+        );
+        let mapped = FileReadTool::map_tool_result_to_tool_result_block_param(
+            &ReadOutput::Text(output),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            mapped
+                .content
+                .starts_with("(Note: decoded from gbk; output is UTF-8.)\n1\t你好")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// @nyan: T5 — an explicit label is strict; wrong input fails instead of
+    /// being decoded lossily.
+    #[tokio::test]
+    async fn explicit_encoding_failure_is_an_error() {
+        let dir = std::env::temp_dir().join(format!(
+            "cometix-read-bad-encoding-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("gbk.txt");
+        std::fs::write(
+            &path,
+            encoding_rs::GBK
+                .encode("你好，世界，这是一段测试文本。")
+                .0
+                .as_ref(),
+        )
+        .unwrap();
+        let context = crate::tool::ToolUseContext::default();
+        let error = FileReadTool
+            .call(
+                &serde_json::json!({
+                    "file_path": path.display().to_string(),
+                    "encoding": "utf-8",
+                }),
+                &context,
+                None,
+            )
+            .await
+            .expect_err("utf-8 cannot decode gbk bytes");
+        assert!(error.message().contains("Cannot decode"));
+        assert!(error.message().contains("view=\"hex\""));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// @nyan: T6 — an extensionless binary file is caught by content, and
+    /// `view: "hex"` renders it.
+    #[tokio::test]
+    async fn content_binary_check_and_hex_view() {
+        let dir = std::env::temp_dir().join(format!(
+            "cometix-read-binary-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("payload");
+        std::fs::write(&path, b"\x7fELF\x02\x01\x01\x00binary trailing data").unwrap();
+        let context = crate::tool::ToolUseContext::default();
+        let error = FileReadTool
+            .call(
+                &serde_json::json!({"file_path": path.display().to_string()}),
+                &context,
+                None,
+            )
+            .await
+            .expect_err("ELF header is binary");
+        assert!(
+            error.message().contains("ELF executable"),
+            "{}",
+            error.message()
+        );
+        assert!(error.message().contains("view=\"hex\""));
+
+        let result = FileReadTool
+            .call(
+                &serde_json::json!({
+                    "file_path": path.display().to_string(),
+                    "view": "hex",
+                }),
+                &context,
+                None,
+            )
+            .await
+            .expect("hex view reads the bytes");
+        let ReadOutput::Text(output) = result.data else {
+            panic!("expected text");
+        };
+        assert!(output.content.starts_with("00000000  7f 45 4c 46"));
+        assert!(output.content.contains("|.ELF"));
+        let note = output.completion_note.expect("hex tail");
+        assert!(note.starts_with("(Complete:"), "{note}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// @nyan: T6 — a single huge line is cut at the configured width.
+    #[tokio::test]
+    async fn overlong_lines_are_cut() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let root = std::env::temp_dir().join(format!(
+            "cometix-read-long-line-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("settings.json"),
+            r#"{"nyan": {"toolIo": {"maxLineChars": {"read": 100}}}}"#,
+        )
+        .unwrap();
+        let _home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.to_str().unwrap());
+        let path = root.join("min.js");
+        std::fs::write(&path, format!("{}\nnext\n", "x".repeat(5_000))).unwrap();
+        let context = crate::tool::ToolUseContext::default();
+        let result = FileReadTool
+            .call(
+                &serde_json::json!({"file_path": path.display().to_string()}),
+                &context,
+                None,
+            )
+            .await
+            .expect("read");
+        let ReadOutput::Text(output) = result.data else {
+            panic!("expected text");
+        };
+        let first = output.content.split('\n').next().unwrap();
+        assert!(first.starts_with(&"x".repeat(100)));
+        assert!(first.ends_with("… [line truncated: 5000 chars total]"));
+        assert_eq!(output.content.split('\n').nth(1), Some("next"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// @nyan: T4 — batch Read keeps members independent and shares one budget.
+    #[tokio::test]
+    async fn batch_read_reports_each_member_and_shares_the_budget() {
+        let dir = std::env::temp_dir().join(format!(
+            "cometix-read-batch-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = dir.join("a.txt");
+        let second = dir.join("b.txt");
+        std::fs::write(&first, "alpha\nbeta\n").unwrap();
+        std::fs::write(&second, "gamma\ndelta\n").unwrap();
+        let missing = dir.join("missing.txt");
+        let context = crate::tool::ToolUseContext::default();
+        let result = FileReadTool
+            .call(
+                &serde_json::json!({
+                    "files": [
+                        {"path": first.display().to_string()},
+                        {"path": missing.display().to_string()},
+                        {"path": second.display().to_string()},
+                    ],
+                }),
+                &context,
+                None,
+            )
+            .await
+            .expect("batch read");
+        let ReadOutput::Text(output) = result.data else {
+            panic!("expected text");
+        };
+        assert!(output.preformatted, "content: {:?}", output.content);
+        assert!(
+            output.content.contains("=== ") && output.content.contains("a.txt"),
+            "content: {:?}",
+            output.content
+        );
+        assert!(
+            output.content.contains("1\talpha"),
+            "content: {:?}",
+            output.content
+        );
+        assert!(output.content.contains("b.txt"));
+        assert!(
+            output.content.contains("1\tgamma"),
+            "content: {:?}",
+            output.content
+        );
+        assert!(
+            output.content.contains("2\tdelta"),
+            "content: {:?}",
+            output.content
+        );
+        // The missing member reports inside its own section, and the tail
+        // counts it without hiding the other two.
+        assert!(output.content.contains("missing.txt"));
+        assert!(output.content.contains("no such file"));
+        let tail = output.content.lines().last().unwrap();
+        assert_eq!(tail, "(Complete: all 3 files shown; 1 failed.)");
+        // Each successful member committed its own ReadFileState entry.
+        assert!(context.read_file_state.get(&first).is_some());
+        assert!(context.read_file_state.get(&second).is_some());
+        assert!(context.read_file_state.get(&missing).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// @nyan: T4 — budget exhaustion truncates one member and names the exact
+    /// continuation parameters for the rest.
+    #[tokio::test]
+    async fn batch_budget_truncation_continues_with_copied_parameters() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = std::env::temp_dir().join(format!(
+            "cometix-read-batch-budget-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = dir.join("a.txt");
+        let second = dir.join("b.txt");
+        let body = (1..=200)
+            .map(|line| format!("line {line} with some payload"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&first, &body).unwrap();
+        std::fs::write(&second, "short\n").unwrap();
+        let mut context = crate::tool::ToolUseContext::default();
+        context.file_reading_limits = Some(crate::tool::FileReadingLimitsOverride {
+            max_tokens: Some(60.0),
+            max_size_bytes: None,
+        });
+        let result = FileReadTool
+            .call(
+                &serde_json::json!({
+                    "files": [
+                        {"path": first.display().to_string()},
+                        {"path": second.display().to_string()},
+                    ],
+                }),
+                &context,
+                None,
+            )
+            .await
+            .expect("batch read");
+        let ReadOutput::Text(output) = result.data else {
+            panic!("expected text");
+        };
+        assert!(
+            output.content.contains("(Partial: lines 1-"),
+            "content: {:?}",
+            output.content
+        );
+        let tail = output.content.lines().last().unwrap();
+        assert!(
+            tail.starts_with("(Partial: 1 of 2 files processed"),
+            "{tail}"
+        );
+        assert!(tail.contains("\"path\":\""), "{tail}");
+        assert!(tail.contains("\"offset\":"), "{tail}");
+        assert!(tail.contains("b.txt"), "{tail}");
+        assert!(tail.contains("Continue with files=["), "{tail}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// @nyan: T4 — the switch rejects the batch form and keeps the single-file
+    /// path intact.
+    #[tokio::test]
+    async fn batch_is_rejected_when_the_switch_is_off() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let root = std::env::temp_dir().join(format!(
+            "cometix-read-batch-off-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("settings.json"),
+            r#"{"nyan": {"toolIo": {"readBatchMax": 0}}}"#,
+        )
+        .unwrap();
+        let _home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.to_str().unwrap());
+        let file = root.join("a.txt");
+        std::fs::write(&file, "alpha\n").unwrap();
+        let context = crate::tool::ToolUseContext::default();
+        let validation = crate::tool::ToolCall::validate_input(
+            &FileReadTool,
+            &serde_json::json!({"files": [{"path": file.display().to_string()}]}),
+            &context,
+        );
+        assert!(
+            matches!(
+                validation,
+                crate::tool::ValidationResult::Error { error_code: 11, .. }
+            ),
+            "{validation:?}"
+        );
+        let single = FileReadTool
+            .call(
+                &serde_json::json!({"file_path": file.display().to_string()}),
+                &context,
+                None,
+            )
+            .await
+            .expect("single-file read still works");
+        assert!(matches!(single.data, ReadOutput::Text(_)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// @nyan: T1 — the completion switch removes the tail line entirely.
+    #[tokio::test]
+    async fn completion_notes_switch_off_restores_the_cc_output() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let root = std::env::temp_dir().join(format!(
+            "cometix-read-notes-off-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("settings.json"),
+            r#"{"nyan": {"toolIo": {"completionNotes": false}}}"#,
+        )
+        .unwrap();
+        let _home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.to_str().unwrap());
+        let file = root.join("a.txt");
+        std::fs::write(&file, "alpha\n").unwrap();
+        let context = crate::tool::ToolUseContext::default();
+        let result = FileReadTool
+            .call(
+                &serde_json::json!({"file_path": file.display().to_string()}),
+                &context,
+                None,
+            )
+            .await
+            .expect("read");
+        let ReadOutput::Text(output) = result.data else {
+            panic!("expected text");
+        };
+        assert!(output.completion_note.is_none());
+        let mapped = FileReadTool::map_tool_result_to_tool_result_block_param(
+            &ReadOutput::Text(output),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(!mapped.content.contains("(Complete:"));
+        assert!(!mapped.content.contains("(Partial:"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn read_number_stringification_delegates_full_ecmascript_domain_to_ryu_js() {
         for (value, expected) in [
@@ -2197,11 +3334,19 @@ mod tests {
         let schema = file_read_tool_schema();
         assert_eq!(schema.name, "Read");
         assert!(schema.strict.unwrap());
-        assert_eq!(
-            schema.input_schema["required"],
-            serde_json::json!(["file_path"])
-        );
-        for key in ["file_path", "offset", "limit", "pages"] {
+        // @nyan: T4 makes `file_path` one half of a mutually exclusive pair,
+        // so nothing is required at the schema level; validate_input enforces
+        // "exactly one of file_path / files".
+        assert!(schema.input_schema.get("required").is_none());
+        for key in [
+            "file_path",
+            "offset",
+            "limit",
+            "pages",
+            "encoding",
+            "view",
+            "files",
+        ] {
             assert!(
                 schema
                     .input_schema
@@ -2260,6 +3405,9 @@ mod tests {
             offset: serde_json::json!(2),
             limit: Some(serde_json::json!(2)),
             pages: None,
+            encoding: None,
+            hex_view: false,
+            files: None,
         };
         let context = crate::tool::ToolUseContext::default();
         let result = FileReadTool
@@ -2325,6 +3473,11 @@ mod tests {
             num_lines: 1,
             start_line: serde_json::json!(1),
             total_lines: 1,
+            completion_note: None,
+            encoding_note: None,
+            budget_truncated: false,
+            preformatted: false,
+            actual_total_lines: 1,
         });
         let exempt = FileReadTool::map_tool_result_to_tool_result_block_param(
             &output,
@@ -2361,6 +3514,9 @@ mod tests {
             offset: serde_json::json!(1),
             limit: None,
             pages: None,
+            encoding: None,
+            hex_view: false,
+            files: None,
         };
         let context = crate::tool::ToolUseContext::default();
         let mut limits = get_default_file_reading_limits();
@@ -2409,12 +3565,73 @@ mod tests {
         );
     }
 
+    /// @nyan: T3 — over-budget content returns a prefix plus a Partial tail
+    /// instead of the CC error, and still commits the normal success effects.
     #[tokio::test]
-    async fn max_token_failure_has_typed_identity_and_commits_no_success_effects() {
+    async fn over_budget_read_returns_a_prefix_and_a_partial_note() {
+        // Reads `nyan.toolIo` from process-global settings state.
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = std::env::temp_dir().join(format!(
             "cometix-read-max-token-{}",
             uuid::Uuid::new_v4().simple()
         ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("large.txt");
+        std::fs::write(&path, "token ".repeat(1_000)).unwrap();
+        let mut context = crate::tool::ToolUseContext::default();
+        context.file_reading_limits = Some(crate::tool::FileReadingLimitsOverride {
+            max_tokens: Some(8.0),
+            max_size_bytes: None,
+        });
+
+        let result = FileReadTool
+            .call(
+                &serde_json::json!({"file_path": path.display().to_string()}),
+                &context,
+                None,
+            )
+            .await
+            .expect("over-budget read returns a prefix");
+        let ReadOutput::Text(output) = result.data else {
+            panic!("expected text");
+        };
+        assert!(output.content.len() < "token ".repeat(1_000).len());
+        assert!(output.budget_truncated);
+        let note = output.completion_note.expect("partial note");
+        assert!(note.starts_with("(Partial: lines 1-"), "{note}");
+        assert!(note.ends_with(".)"), "{note}");
+        // The truncated read is still a successful read: its returned range is
+        // what ReadFileState records (compaction C5).
+        let state = context
+            .read_file_state
+            .get(&path)
+            .expect("successful read commits state");
+        assert_eq!(state.offset, Some(serde_json::json!(1)));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// @nyan: the switch restores CC's typed token-limit error.
+    #[tokio::test]
+    async fn max_token_failure_is_restored_when_partial_overflow_is_off() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let root = std::env::temp_dir().join(format!(
+            "cometix-read-max-token-off-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(root.join(".cometix")).unwrap();
+        // Project settings are the only source this test can point at without
+        // touching the real user settings root.
+        std::fs::write(
+            root.join("settings.json"),
+            r#"{"nyan": {"toolIo": {"readPartialOnOverflow": false}}}"#,
+        )
+        .unwrap();
+        let _home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.to_str().unwrap());
+        let dir = root.join("work");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("large.txt");
         std::fs::write(&path, "token ".repeat(1_000)).unwrap();
@@ -2439,14 +3656,7 @@ mod tests {
                 .is_some()
         );
         assert!(context.read_file_state.is_empty());
-        assert!(
-            context
-                .nested_memory_attachment_triggers
-                .as_ref()
-                .unwrap()
-                .is_empty()
-        );
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[tokio::test]
@@ -2598,6 +3808,11 @@ mod tests {
             num_lines: 1,
             start_line: serde_json::json!(1),
             total_lines: 1,
+            completion_note: None,
+            encoding_note: None,
+            budget_truncated: false,
+            preformatted: false,
+            actual_total_lines: 1,
         })
         .to_output_schema_value();
         assert_eq!(
@@ -2856,10 +4071,23 @@ mod tests {
             )
             .unwrap_or_else(|error| panic!("{} mapper: {}", case.name, error.message()));
             if let Some(numbered) = case.expected_numbered {
-                let mapped_content = mapped
+                // @nyan: T1 — the tail line is the genuine last line, after
+                // the CC content and the malware notice. Strip it, then the
+                // notice, to compare the CC-owned prefix.
+                let without_note = mapped
                     .content
-                    .strip_suffix(CYBER_RISK_MITIGATION_REMINDER)
+                    .rsplit_once('\n')
+                    .filter(|(_, last)| {
+                        last.starts_with("(Complete:") || last.starts_with("(Partial:")
+                    })
+                    .map(|(body, _)| body)
                     .unwrap_or(&mapped.content);
+                let mapped_content = without_note
+                    .strip_suffix(CYBER_RISK_MITIGATION_REMINDER)
+                    .or_else(|| {
+                        without_note.strip_suffix(CYBER_RISK_MITIGATION_REMINDER.trim_end())
+                    })
+                    .unwrap_or(without_note);
                 assert_eq!(mapped_content, numbered, "{} model prefixes", case.name);
             } else {
                 assert_eq!(
