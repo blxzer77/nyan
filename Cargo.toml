@@ -110,6 +110,19 @@ indexmap = { version = "2.14.0", features = ["serde"] }
 # native and deterministic rather than approximating shell syntax with regexes.
 tree-sitter = "0.25.10"
 tree-sitter-bash = "0.25.1"
+# @nyan: retrieval symbol index (docs/nyan/retrieval.md 4.5). First-batch
+# grammars only; they share the tree-sitter-language ABI shim with the Bash
+# grammar above. JavaScript/JSX parse with the TSX grammar, C/C headers with
+# the C++ grammar.
+tree-sitter-rust = "0.24.2"
+tree-sitter-typescript = "0.23.2"
+tree-sitter-python = "0.25.0"
+tree-sitter-go = "0.25.0"
+tree-sitter-java = "0.23.5"
+tree-sitter-cpp = "0.23.4"
+tree-sitter-md = "0.5.4"
+# @nyan: in-process BM25 text index (retrieval 4.3/4.5, slice E).
+tantivy = { version = "0.27.0", default-features = false, features = ["mmap", "lz4-compression"] }
 sha2 = "0.11.0"
 md5 = "0.8.0"
 base64 = "0.22.1"

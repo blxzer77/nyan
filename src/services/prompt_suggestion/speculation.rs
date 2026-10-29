@@ -19,6 +19,9 @@ const SAFE_READ_ONLY_TOOLS: &[&str] = &[
     "Read",
     "Glob",
     "Grep",
+    // @nyan: CodeSearch is read-only and Inspect-verified, so a speculated
+    // turn may call it like Grep (retrieval 4.2 / tool-io §1).
+    "CodeSearch",
     "ToolSearch",
     "LSP",
     "TaskGet",

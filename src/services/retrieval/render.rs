@@ -24,8 +24,12 @@ pub fn render_outcome(outcome: &SearchOutcome, max_results: usize) -> String {
             .no_symbol_check
             .then_some(" (no symbol check)")
             .unwrap_or("");
+        let answers = candidate
+            .answers_query
+            .then_some(" (answers query)")
+            .unwrap_or("");
         lines.push(format!(
-            "{}:{}-{}{}  ({sources}){symbol_check}",
+            "{}:{}-{}{}  ({sources}){symbol_check}{answers}",
             candidate.path, candidate.start_line, candidate.end_line, symbol
         ));
         if let Some(snippet) = candidate.snippet.as_deref().filter(|text| !text.is_empty()) {
@@ -34,11 +38,15 @@ pub fn render_outcome(outcome: &SearchOutcome, max_results: usize) -> String {
     }
 
     if lines.is_empty() {
-        if outcome.all_deterministic_succeeded()
-            && !outcome.has_problem()
-            && outcome.dropped.is_empty()
-        {
-            lines.push("No matches found".to_string());
+        if outcome.all_deterministic_succeeded() && !outcome.has_problem() {
+            if outcome.dropped.is_empty() {
+                lines.push("No matches found".to_string());
+            } else {
+                lines.push(
+                    "No matches found in the current worktree (all candidates failed verification)."
+                        .to_string(),
+                );
+            }
         } else {
             let failed = outcome
                 .branches
@@ -79,6 +87,9 @@ pub fn render_outcome(outcome: &SearchOutcome, max_results: usize) -> String {
         format!("[searched: {searched} — {}]", notes.join(", "))
     };
     lines.push(searched_note);
+    if outcome.extra_round {
+        lines.push("[retrieval: one extra round ran because the first results were judged insufficient]".to_string());
+    }
     if !outcome.dropped.is_empty() {
         let mut reasons = std::collections::BTreeMap::<String, usize>::new();
         for candidate in &outcome.dropped {
@@ -108,13 +119,19 @@ pub fn render_outcome(outcome: &SearchOutcome, max_results: usize) -> String {
             "(Complete: all {} results shown.)",
             outcome.candidates.len()
         ));
-    } else {
-        let next = shown.len();
+    } else if shown.len() < outcome.candidates.len() {
+        // More verified results exist than the caller asked to see.
         lines.push(format!(
             "(Partial: {} of {} results shown. Continue with max_results={}.)",
             shown.len(),
             outcome.candidates.len(),
-            next.saturating_add(1).max(1)
+            shown.len().saturating_add(1).max(1)
+        ));
+    } else {
+        // Nothing further to page through; the shortfall is named above.
+        lines.push(format!(
+            "(Partial: all {} verified results shown; some branches or candidates failed — see the notes above.)",
+            shown.len()
         ));
     }
     lines.join("\n")

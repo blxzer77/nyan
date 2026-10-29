@@ -120,6 +120,10 @@ pub struct Candidate {
     pub latency_ms: u64,
     pub snippet: Option<String>,
     pub no_symbol_check: bool,
+    /// @nyan: `retrieval.answers` marked this candidate as answering the
+    /// query. Annotation only; it never removes a candidate.
+    #[serde(default)]
+    pub answers_query: bool,
 }
 
 impl Candidate {
@@ -153,6 +157,23 @@ pub struct SearchOutcome {
     pub rrf_k: u32,
     pub reranked: bool,
     pub truncated: bool,
+    /// @nyan: decision receipts (point, outcome, fallback reason) recorded for
+    /// replay. Structured data only — never rendered to the model.
+    #[serde(default)]
+    pub decisions: Vec<DecisionRecord>,
+    /// Whether `retrieval.sufficient` triggered the one extra round.
+    #[serde(default)]
+    pub extra_round: bool,
+}
+
+/// @nyan: one Decision Provider call made during a search (decision-provider
+/// §3 "可复算": replays reuse these instead of re-asking).
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct DecisionRecord {
+    pub point: String,
+    pub outcome: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<String>,
 }
 
 impl SearchOutcome {

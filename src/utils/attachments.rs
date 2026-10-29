@@ -1849,6 +1849,22 @@ pub async fn get_attachments(
         }
     });
 
+    // @nyan: memory M6 producer. Library-based memory retrieval (retrieval
+    // §5, memory.md M6) runs beside the other attachment producers, but only
+    // on a user turn of the main prompt thread and only once the memory index
+    // has outgrown the MEMORY.md injection budget.
+    let memory_query_source = query_source.clone();
+    let memory_messages = messages.to_vec();
+    workers.spawn(async move {
+        let attachments =
+            get_relevant_memory_attachments(&memory_messages, &memory_query_source).await;
+        WorkerResult {
+            index: 4,
+            attachments,
+            loaded_nested_paths: Vec::new(),
+        }
+    });
+
     let mut completed = Vec::new();
     while let Some(result) = workers.join_next().await {
         if let Ok(result) = result {
@@ -1864,6 +1880,7 @@ pub async fn get_attachments(
     let nested_memory = completed.next().map(|(_, value)| value).unwrap_or_default();
     let dynamic_skills = completed.next().map(|(_, value)| value).unwrap_or_default();
     let ide_diagnostics = completed.next().map(|(_, value)| value).unwrap_or_default();
+    let relevant_memory = completed.next().map(|(_, value)| value).unwrap_or_default();
 
     let mut attachments = Vec::new();
     attachments.extend(get_queued_command_attachments(&queued_commands));
@@ -1890,6 +1907,7 @@ pub async fn get_attachments(
     attachments.extend(changed_files);
     attachments.extend(nested_memory);
     attachments.extend(dynamic_skills);
+    attachments.extend(relevant_memory);
     attachments.extend(get_skill_listing_attachments(tool_use_context));
     attachments.extend(get_plan_mode_attachments(messages, tool_use_context));
     attachments.extend(get_plan_mode_exit_attachment(tool_use_context));
@@ -1905,6 +1923,34 @@ pub async fn get_attachments(
         query_source,
     ));
     attachments
+}
+
+/// @nyan: M6 producer — retrieve relevant memories for the current user turn.
+/// Runs off the caller thread (the attachment pass awaits the join set).
+async fn get_relevant_memory_attachments(
+    messages: &[Message],
+    query_source: &QuerySource,
+) -> Vec<AttachmentContinuation> {
+    if !matches!(query_source, QuerySource::Prompt) {
+        return Vec::new();
+    }
+    let Some(query) = crate::services::retrieval::memory::last_user_prompt(messages) else {
+        return Vec::new();
+    };
+    let settings = crate::utils::settings::get_settings_with_errors().settings;
+    let Some(nyan) = settings.nyan.as_ref() else {
+        return Vec::new();
+    };
+    let memory_settings = nyan.memory();
+    let memories = tokio::task::spawn_blocking(move || {
+        crate::services::retrieval::memory::search_memory_directory(&query, 8, &memory_settings)
+    })
+    .await
+    .unwrap_or_default();
+    match relevant_memories_attachment(memories) {
+        Some(attachment) => vec![attachment_continuation(attachment)],
+        None => Vec::new(),
+    }
 }
 
 /// Maps to: CC `utils/attachments.ts:2854-2882`
