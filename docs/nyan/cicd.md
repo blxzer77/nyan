@@ -130,7 +130,9 @@ mutation/fuzz/coverage、merge queue、缓存清理工作流、代码签名/nota
 固定具体 label 而不是 `-latest`：`ubuntu-latest` 将在 2026 年 11 月切到 26.04（runner-images 公告），工具链和
 系统库会跟着漂移；Rust 构建对链接器和 glibc 敏感。`ubuntu-24.04` 的 apt 列表里没有 `ripgrep`、`zsh`——测试 job
 需要 `rg` 在 PATH 上（与开发机一致），由 setup action 安装固定版本；`zsh` 缺失时测试自己跳过（`src/utils/shell/mod.rs:658`），
-与开发机一致，不安装。镜像自带的 Node 是 22.23.3，开发机是 24.3.0；MCP / LSP 测试会启动 `node` 假服务器，
+与开发机一致，不安装。`socat` 在镜像里也没有，但 `utils/sandbox/network_proxy.rs` 的单元测试直接启动它，
+所以测试 job 用 apt 装 `socat`（`bubblewrap` 不装：没有测试真的启动 bwrap）。
+镜像自带的 Node 是 22.23.3，开发机是 24.3.0；MCP / LSP 测试会启动 `node` 假服务器，
 所以测试 job 用 `actions/setup-node` 钉到 24，不为版本差异留悬念。
 
 ### 3.3 作业图
@@ -285,6 +287,8 @@ tests:
     - uses: actions/setup-node@<sha>       # Node 24：与开发机一致；MCP/LSP 的假服务器由 `node` 启动
       with: { node-version: '24' }
     - uses: ./.github/actions/setup-tools  # rg（Grep / GlobalSearch 的测试子进程要用），校验 sha256
+    - run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends socat
+      # network_proxy 的单元测试会启动 socat 桥；镜像没有预装
     - uses: actions/download-artifact@<sha>
       with: { name: 'nyan-tests-${{ github.sha }}' }
     - run: scripts/ci/test.sh --archive nyan-tests.tar.zst --partition '${{ matrix.partition }}'
@@ -300,7 +304,9 @@ tests:
 
 ```sh
 python3 scripts/ci/prepare-test-home.py            # 替代 justfile 的 _prep
-mkdir -p .ci-extract
+export TERM=xterm-256color COLUMNS=80 LINES=24     # hosted runner 无 TTY/TERM，否则尺寸为 0
+unset CI                                           # 产品代码会读 CI；profile 已在上一步选定
+rm -rf .ci-extract && mkdir -p .ci-extract         # nextest 不创建目录，也不肯覆盖已存在的目录
 cargo nextest run --profile ci \
   --archive-file nyan-tests.tar.zst \
   --workspace-remap . --extract-to .ci-extract \
@@ -438,10 +444,12 @@ master 的 docs-only 提交同样只产生 policy+gate 的绿 run；release 前�
 | 项目设置 | `COMETIX_TEST_PROJECT_DIR=tests/fixtures/isolated-project` | 补掉 `projectSettings` 读本仓库 `.claude/settings.json` 的洞 |
 | 宿主模型/网关 | `env -u` 掉 19 个 `ANTHROPIC_*` / `CLAUDE_*` 变量 | 空字符串会被当成模型名（justfile:86） |
 | 身份 | `tests/fixtures/credentials.mock.json` | 合成 token，固定登录态 |
+| 终端尺寸 | `TERM=xterm-256color`、`COLUMNS=80`、`LINES=24` | **CI 新增**：hosted runner 没有 TTY 也没有 `TERM`，crossterm 的 `window_size()` 失败后退到 `tput`，`tput` 因缺 `TERM` 再失败，`terminal::size()` 变成 `(0,0)`——Pane 分隔线、logo、spinner 计时、picker 描述宽度全部塌成 0。钉成开发机实测值 |
+| CI 标志 | 进测试进程前 `unset CI` | 产品代码本身会读 `CI`（`auth.rs:1016` 跳过 API key 审批，`env.rs:87` 记录 `is_ci`）；hosted runner 全程 `CI=true`，会让 auth/state 断言走另一条分支。nextest profile 在 unset 前已决定 |
 | locale/TZ | `LANG=C.UTF-8`、`TZ=UTC` | **CI 新增**，让排序和时间断言确定；首跑若出现 locale 敏感失败，修测试（显式 locale）而不是改 CI 变量 |
 
-不在 CI 里设 `TERM`：`TERM=linux` 会让 `is_unicode_supported()` 返回 false（figures.rs:961-963），改变整套字形；
-runner 默认值即可。也不装 `zsh`：测试在缺失时自行跳过。
+`TERM` 只钉 `xterm-256color`：`TERM=linux` 会让 `is_unicode_supported()` 返回 false（figures.rs:961-963），
+改变整套字形。也不装 `zsh`：测试在缺失时自行跳过。
 
 ### 5.3 分片与执行
 
