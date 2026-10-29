@@ -1,6 +1,6 @@
 # CI/CD 设计（GitHub Actions）
 
-状态：设计稿，未实现（2026-10-27）。
+状态：Phase 0/1 已实现并合并（2026-10-29）；Phase 2（nightly）/Phase 3（release）仍是设计。
 
 设计来源：nyan-legacy 的 CI/CD——`.github/workflows/{ci,native,nightly,release,cache-prune,npm-audit,pr-describe,ocr-review}.yml`、
 `.github/quality/policy.json`、`scripts/ci-{impact,shards,gate}.mjs`，以及两份 process note
@@ -28,7 +28,8 @@ crate）。本设计的中心是**一个门禁、一次构建、零 secret、不
 | 依赖 | 469 个锁定包；7 条直接 git 依赖，来自 3 个仓库（CometixTUI ×2、anthropic-sdk-rs ×4、marked-rs ×1；`Cargo.lock` 里 8 个 git 包），锁文件固定 rev |
 | 工具链 | `rust-version = 1.88`（edition 2024）；本机 1.89.0；仓库里没有 `rust-toolchain.toml` |
 | 需要 C 工具链的依赖 | `onig_sys`、`ring`、`tree-sitter`、`tree-sitter-bash`（README.md:76） |
-| 现有 CI | 无 `.github/`。origin 无 tag；master 未保护；SHA pinning 未强制；0 secret、0 variable、cache 使用 0 |
+| CI 起点（设计时） | 无 `.github/`。origin 无 tag；master 未保护；SHA pinning 未强制；0 secret、0 variable、cache 使用 0 |
+| CI 现状（2026-10-29） | `ci.yml` + quality policy 已合并；master 要求 PR 与 `Merge gate`；SHA pinning 已强制；0 secret |
 | 上游 | `Haleclipse/CometixCode` 也没有 `.github/`（API 404），没有可继承的流水线 |
 
 测试必须走 nextest，理由已写在 justfile 头部：`cargo test` 把 6600+ 个测试当一个进程里的线程跑，164 个文件调用
@@ -147,6 +148,31 @@ policy ─┬─ build ──────── tests (hash:1/4 … 4/4)
 
 `build` 与 `static` 并行，二者都不依赖对方；`tests` 只依赖 `build`；`gate` 等全部。docs-only 时只有 `policy` 与
 `gate` 真正执行，其余被 `if` 跳过，`gate` 按 `docs_only` 放行。
+
+### 3.5 分支模型与合并策略
+
+面向“单人 + 多 AI 并行分支”的形态，规则刻意少而硬：
+
+| 规则 | 设置 | 理由 |
+|---|---|---|
+| 唯一长分支 | `master` | 没有 develop/release 分支：单人项目多一条长期分支只会多一次同步 |
+| 主题分支短命 | `<type>/<topic>`（feat/fix/refactor/chore/docs） | 一个分支一个可合并单元；合并即删 |
+| 所有改动走 PR | branch protection 要求 PR，0 审批 | 门禁替代人审；PR 是“这次改动的 CI 结果”的载体 |
+| 只允许 squash 合并 | 关闭 merge commit 与 rebase 合并 | master 每个 PR 一个提交，历史线性、可 bisect |
+| 自动合并 | 仓库开启 auto-merge | 开完 PR 立刻 `gh pr merge --auto --squash`，绿了自动落地，不用守着 |
+| 合并即删分支 | `delete_branch_on_merge` | 并行分支多，残留分支会让 `git branch` 和 Actions 列表变噪音 |
+| 允许 update branch | `allow_update_branch` | master 前进后一键把分支更新到最新，避免本地 rebase 冲突处理 |
+| admin 可绕过 | `enforce_admins=false` | 单人的紧急出口；日常仍走 PR（绕过会留痕在 branch protection 之外） |
+| 本地并行 | 每个分支一个 worktree（`~/Projects/.worktrees/nyan-<task>`） | 已在用；同一 checkout 不能同时开两个 AI 会话 |
+
+配套的工作流行为：`concurrency` 按 PR 号分组、`cancel-in-progress`——同一 PR 连续 push 只保留最新一次，不同 PR
+互不干扰。分支上可以随意 force push（保护只在 master）。
+
+快节奏下的实用约定：
+
+- PR 开出来就跑 CI，不攒大 PR；文档类改动走 docs-only 快速通道（只有 policy+gate）。
+- 失败先看 JUnit artifact（`junit-shard-N`），不要重跑碰运气——重试关掉了，红的都是真红。
+- 合并前把 PR body 的 Validation 段按实际结果更新（AI 会话之间的交接凭据）。
 
 ### 3.4 与 legacy 的取舍
 
@@ -480,8 +506,8 @@ nightly 会跑全量，隔离期也能看到进展。
 
 ### 6.2 action 与工具的固定
 
-- 所有 `uses:` 固定到完整 commit SHA；在 repository settings 打开 “Require actions to be pinned to a full-length
-  commit SHA”（当前是关闭的）。
+- 所有 `uses:` 固定到完整 commit SHA；repository settings 的 “Require actions to be pinned to a full-length
+  commit SHA” 已打开（2026-10-29）。
 - 第三方 action 沿用 legacy 已验证的版本（checkout v7.0.1、setup-node v7.1.0、upload/download-artifact v7、
   attest-build-provenance v4.2.2、cache v4.2.2）。**设计不编造 SHA**，实施时从各自 release 取。
 - 非 action 工具（nextest、actionlint、gitleaks、cargo-deny、ripgrep）用 `.github/quality/tools.lock.json` 固定
@@ -490,18 +516,26 @@ nightly 会跑全量，隔离期也能看到进展。
   BurntSushi/ripgrep 的官方 release，Linux 用 musl 静态构建。
 - Dependabot：`cargo` 与 `github-actions` 每周。git 依赖 Dependabot 不管，`cargo update` 由 owner 手动做。
 
-### 6.3 需要 owner 操作的仓库设置
+### 6.3 仓库设置（已在 2026-10-29 落地）
 
-| 设置 | 值 | 时机 |
+| 设置 | 值 | 状态 |
 |---|---|---|
-| Branch protection（master） | require `Merge gate`；禁止 force push | 连续 3 个 PR 绿之后 |
-| Actions SHA pinning | required | Phase 1 之前 |
-| Workflow 默认权限 | read-only | Phase 1 之前 |
+| Branch protection（master） | 要求 PR；require `Merge gate`；禁止 force push / 删除；admin 可绕过 | 已开（提交 `71f574c` 后） |
+| 合并方式 | 只允许 squash；开启 auto-merge；合并后删分支；允许 update branch | 已开 |
+| Actions SHA pinning | required（`sha_pinning_required=true`） | 已开；下次改 workflow 才会真正校验 |
+| Workflow 默认权限 | read-only；不允许 Actions 批准 PR | 已开 |
+| Dependabot alerts / security updates | 开启 | 已开 |
 | Environment `release` | 只允许 `nyan-v*` tag 部署 | Phase 3 |
-| Dependabot alerts / security updates | 开启 | Phase 1 之前 |
-| 禁止 Actions 创建/批准 PR | 开启 | Phase 1 之前 |
+| Dependabot 版本更新 | `cargo` + `github-actions` 每周 | Phase 2 |
 
-这些都是仓库设置改动，按项目约定需要 owner 明确授权后执行。
+SHA pinning 的取舍（单人项目的成本收益）：
+
+- **开**：它挡的是“tag 被重新指向别的 commit”这一类供应链攻击，开关是零维护的一次性设置；本设计的 `uses:`
+  本来就全部写完整 SHA，开启只是让规则可执行，不会有迁移成本。已经用一次 dispatch（run 40848825058）验证
+  开启后全绿。
+- **不开的理由不成立**：唯一的实际代价是升级 action 时要手工换 SHA，而 Dependabot 的 `github-actions` 更新会
+  直接把 SHA 版本写好，这个代价也被消掉了。
+- **仍需人工判断的**：Dependabot 提的 action 升级要读一眼 release notes；`cargo` 的更新按测试结果决定。
 
 ## 七、Nightly
 
@@ -657,7 +691,10 @@ Done when：干净环境下 `6633 tests run: … 0 failed`；两处 clippy 修�
 
 1. 加 `.github/workflows/ci.yml` 与 `.github/actions/setup-rust`。
 2. 在一个 PR 上跑通；记录每个 job 的真实耗时，更新 9.2 与 policy 的 `targetP95Minutes`。
-3. 连续 3 个 PR 绿后，owner 打开 branch protection（只 require `Merge gate`）和 SHA pinning。
+3. 打开 branch protection（要求 PR、只 require `Merge gate`）、squash-only 合并、auto-merge 和 SHA pinning。
+
+已完成（2026-10-29）：PR [#2](https://github.com/blxzer77/nyan/pull/2) 合并为 `71f574c`；首跑 8m51s，第二次
+8m36s，均全绿。设置项见 6.3。
 
 Done when：docs-only PR 只跑 policy+gate 并绿；普通 PR 的 gate 在 20 分钟内给出结论；失败注入（改坏一个测试、
   改坏一个 workflow）分别被 tests 与 actionlint 抓到。
