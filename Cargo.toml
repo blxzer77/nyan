@@ -2,7 +2,7 @@
 name = "cometix-code"
 version = "0.2.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.99"
 description = "A terminal-based AI coding assistant — 1:1 TUI clone of Claude Code"
 license = "AGPL-3.0-only"
 
