@@ -753,6 +753,27 @@ pub fn validate_agent_memory_index_update(previous: &str, updated: &str) -> Resu
     Ok(())
 }
 
+/// Post-run gate for extraction/consolidation forks. The write-time check
+/// cannot see an index line whose target file does not exist yet, so an agent
+/// could index first and write the `type: user` file afterwards. After the fork
+/// ends, re-validate the final index against the pre-run one; on violation the
+/// index is restored (the topic files stay as unindexed candidates).
+pub fn enforce_agent_index_policy(previous_index: &str) -> Result<(), String> {
+    let index_path = crate::memdir::paths::get_auto_mem_entrypoint();
+    let current = std::fs::read_to_string(&index_path).unwrap_or_default();
+    if current == previous_index {
+        return Ok(());
+    }
+    match validate_agent_memory_index_update(previous_index, &current) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            std::fs::write(&index_path, previous_index)
+                .map_err(|io| format!("{error}; index restore failed: {io}"))?;
+            Err(error)
+        }
+    }
+}
+
 /// Remove an unindexed candidate after explicit user confirmation.
 pub fn delete_memory_candidate(path: &Path) -> Result<(), String> {
     let (path, memory_dir) = candidate_path(path)?;

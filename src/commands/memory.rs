@@ -39,6 +39,17 @@ pub fn MemoryCommandPanel<'a>(
         .map(|runtime| *runtime);
     let editor_channel = hooks.use_const(|| Arc::new(async_channel::unbounded::<PathBuf>()));
     let editor_receiver = editor_channel.1.clone();
+    // @nyan: manual consolidation results come back on their own channel; the
+    // fork runs detached on the process runtime, not in the render loop.
+    let consolidate_channel =
+        hooks.use_const(|| Arc::new(async_channel::unbounded::<Result<String, String>>()));
+    let consolidate_receiver = consolidate_channel.1.clone();
+    let app_store = hooks.try_use_context::<crate::state::store::AppStore>().map(|store| store.clone());
+    hooks.use_future(async move {
+        while let Ok(result) = consolidate_receiver.recv().await {
+            completed_selection.set(Some(result));
+        }
+    });
     hooks.use_future(async move {
         while let Ok(memory_path) = editor_receiver.recv().await {
             let result = async {
@@ -114,9 +125,49 @@ pub fn MemoryCommandPanel<'a>(
                 });
             completed_selection.set(Some(result));
         } else if selection == CONSOLIDATE_MEMORY_VALUE {
-            completed_selection.set(Some(Err(
-                "Memory consolidation is not wired into the command driver yet.".to_string(),
-            )));
+            let sender = consolidate_channel.0.clone();
+            match crate::utils::process_runtime::runtime_handle_for_detached_work() {
+                Some(handle) => {
+                    let store = app_store.clone();
+                    handle.spawn(async move {
+                        let result = crate::services::auto_dream::run_manual_consolidation(
+                            store.clone(),
+                        )
+                        .await;
+                        // The panel closes right after "started", so the real
+                        // outcome has to surface as a notification (success
+                        // and every named failure alike).
+                        if let Some(store) = store {
+                            use crate::context::notifications::{
+                                Notification, NotificationColor, NotificationPriority,
+                                NotificationsWriter,
+                            };
+                            let (text, color) = match &result {
+                                Ok(text) => (text.clone(), NotificationColor::Success),
+                                Err(error) => (error.clone(), NotificationColor::Error),
+                            };
+                            NotificationsWriter::new(store).add_notification(
+                                Notification::text(
+                                    "memory-consolidate-result",
+                                    text,
+                                    NotificationPriority::High,
+                                )
+                                .with_color(color)
+                                .with_timeout_ms(30_000),
+                            );
+                        }
+                        let _ = sender.send(result).await;
+                    });
+                    completed_selection.set(Some(Ok(
+                        "Memory consolidation started; progress shows in the background task list."
+                            .to_string(),
+                    )));
+                }
+                None => completed_selection.set(Some(Err(
+                    "Memory consolidation cannot start: no process runtime is available."
+                        .to_string(),
+                ))),
+            }
         } else {
             let _ = editor_channel.0.try_send(PathBuf::from(selection));
         }
@@ -126,7 +177,7 @@ pub fn MemoryCommandPanel<'a>(
         completed_selection.set(None);
         match result {
             Ok(message) => (props.on_result)(message),
-            Err(error) => (props.on_result)(format!("Error opening memory file: {error}")),
+            Err(error) => (props.on_result)(format!("Memory action failed: {error}")),
         }
     }
 

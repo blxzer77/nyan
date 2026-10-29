@@ -1,23 +1,27 @@
 //! Background memory extraction service.
 //!
-//! @nyan: this directory is intentionally a standalone service seam. The
-//! compaction owner must call [`extract_before_compact`] before it replaces
-//! history; the stop-hook owner must call [`extract_if_due`] at turn end.
-//! Top-level registration is left to the coordinator because `services/mod.rs`
-//! is owned by the integration slice.
+//! @nyan: production entry points live in [`driver`] — the stop hook calls
+//! [`driver::extract_if_due`] at turn end, and both compaction paths call
+//! [`driver::extract_before_compact_for_summary`] before a summary replaces
+//! history. The functions here run one fork and report a typed outcome; they
+//! never persist the cursor themselves.
+
+pub mod driver;
 
 use crate::constants::query_source::QuerySource;
 use crate::tool::{CanUseToolCallback, ToolUseContext};
 use crate::types::message::{Message, UserContent, UserMessage};
 use crate::types::permissions::{PermissionDecision, PermissionDecisionReason};
-use crate::utils::forked_agent::{
-    CacheSafeParams, ForkedAgentParams, SubagentContextOverrides, run_forked_agent,
-};
-use std::path::{Path, PathBuf};
+use crate::utils::forked_agent::{CacheSafeParams, ForkedAgentParams, SubagentContextOverrides};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
 pub const CURSOR_METADATA_TYPE: &str = "memory-extract-cursor";
+
+/// M2 path 2 (dedicated `extractModel`): the fork does not share the main
+/// session's prefix, so it gets one purpose-built system prompt instead.
+const EXTRACTION_SYSTEM_PROMPT: &str = "You extract durable memories from conversation excerpts. Use the Read/Glob/Grep/Write/Edit tools only inside the auto-memory directory. Never save secrets, prompts, transcripts, or temporary task state. Report what you wrote.";
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExtractCursor {
@@ -48,6 +52,8 @@ pub struct ExtractionProgress {
 pub enum ExtractSkipReason {
     Disabled,
     NotDue,
+    /// Another extraction holds the process-wide gate.
+    Busy,
     NoCacheSafeParams,
     NoNewMessages,
     MemoryGuardBlocked,
@@ -107,10 +113,18 @@ pub fn cursor_from_metadata(entries: &[serde_json::Value]) -> ExtractCursor {
 }
 
 pub fn messages_after_cursor(messages: &[Message], cursor: &ExtractCursor) -> Vec<Message> {
+    // M2.2: no cursor = from the start of what is visible.
     let Some(uuid) = cursor.message_uuid.as_deref() else {
         return messages.to_vec();
     };
     let Some(index) = messages.iter().position(|message| message.uuid() == uuid) else {
+        // M2.2 resume: a cursor that was summarized away sits at the compact
+        // boundary, so only the boundary and later are unextracted.
+        if let Some(boundary) =
+            crate::utils::messages::find_last_compact_boundary_index(messages)
+        {
+            return messages.iter().skip(boundary).cloned().collect();
+        }
         return messages.to_vec();
     };
     messages.iter().skip(index + 1).cloned().collect()
@@ -147,14 +161,20 @@ fn bounded_new_message_context(messages: &[Message]) -> String {
         .join("\n\n")
 }
 
-fn extraction_prompt(new_context: &str, memory_index: &str, dedicated_model: bool) -> String {
+fn extraction_prompt(
+    new_context: &str,
+    memory_index: &str,
+    dedicated_model: bool,
+    memory_dir: &Path,
+) -> String {
     let context = if dedicated_model {
         new_context
     } else {
         "The complete cache-safe conversation history is already available to you. Use the cursor and index below to avoid duplicating existing memories."
     };
     format!(
-        "[MEMORY EXTRACTION]\nExtract only durable facts that cannot be derived from the current repository or git history. Use only the four memory types user, feedback, project, and reference. Prefer updating an existing topic over creating a duplicate. `type: user` files are candidates and must not be added to MEMORY.md automatically. Never save prompts, transcripts, temporary task state, secrets, or credentials.\n\n{context}\n\nCurrent MEMORY.md index:\n{memory_index}\n\nWrite candidate/topic files only under the auto-memory directory. Add an index entry only for low-risk, non-user memories you are confident about. Report what you wrote and which files remain candidates.",
+        "[MEMORY EXTRACTION]\nExtract only durable facts that cannot be derived from the current repository or git history. Use only the four memory types user, feedback, project, and reference. Prefer updating an existing topic over creating a duplicate. `type: user` files are candidates and must not be added to MEMORY.md automatically. Never save prompts, transcripts, temporary task state, secrets, or credentials.\n\n{context}\n\nCurrent MEMORY.md index:\n{memory_index}\n\nWrite candidate/topic files only under the auto-memory directory `{dir}`. Always pass absolute paths inside it to every tool call (Glob/Grep need an explicit `path`). Add `source: extract` to the frontmatter of every file you create. Add an index entry only for low-risk, non-user memories you are confident about. You cannot delete files. Report what you wrote and which files remain candidates.",
+        dir = memory_dir.display(),
     )
 }
 
@@ -214,7 +234,10 @@ fn tool_path_allowed(
             .all(|path| path_is_in_memory(path, context, memory_dir))
 }
 
-fn extraction_tool_callback(context: &ToolUseContext, memory_dir: &Path) -> CanUseToolCallback {
+/// @nyan: the single tool allowlist shared by extraction and consolidation.
+/// Read/Glob/Grep/Write/Edit only, every path inside auto-memory; no Bash and
+/// no delete-capable tool exist in this set.
+pub(crate) fn memory_tool_callback(context: &ToolUseContext, memory_dir: &Path) -> CanUseToolCallback {
     let context = context.clone();
     let memory_dir = memory_dir.to_path_buf();
     CanUseToolCallback::new(
@@ -226,14 +249,14 @@ fn extraction_tool_callback(context: &ToolUseContext, memory_dir: &Path) -> CanU
             if !allowed_name {
                 return deny(
                     &tool.name,
-                    "memory extraction has no shell or unrelated tool access",
+                    "memory agents have no shell or unrelated tool access",
                     tool_use_id,
                 );
             }
             if !tool_path_allowed(&tool.name, input, &context, &memory_dir) {
                 return deny(
                     &tool.name,
-                    "memory extraction paths must stay inside auto-memory",
+                    "memory agent paths must stay inside auto-memory",
                     tool_use_id,
                 );
             }
@@ -251,10 +274,11 @@ fn extraction_tool_callback(context: &ToolUseContext, memory_dir: &Path) -> CanU
     )
 }
 
-fn token_total(usage: &crate::services::api::claude::NonNullableUsage) -> u64 {
+/// Input side of a fork's usage: cache reads/creations are input tokens too
+/// and dominate a cache-sharing fork's bill.
+fn input_total(usage: &crate::services::api::claude::NonNullableUsage) -> u64 {
     usage
         .input_tokens
-        .saturating_add(usage.output_tokens)
         .saturating_add(usage.cache_creation_input_tokens)
         .saturating_add(usage.cache_read_input_tokens)
 }
@@ -284,6 +308,31 @@ pub async fn run_extract_memories(
     extract_model: Option<String>,
     max_turns: u32,
     timeout: Duration,
+) -> ExtractOutcome {
+    run_extract_memories_with_deps(
+        context,
+        cache_safe_params,
+        messages,
+        cursor,
+        memory_index,
+        extract_model,
+        max_turns,
+        timeout,
+        crate::query::deps::production_deps(),
+    )
+    .await
+}
+
+pub(crate) async fn run_extract_memories_with_deps<D: crate::query::deps::QueryDeps>(
+    context: ToolUseContext,
+    cache_safe_params: Option<Arc<CacheSafeParams>>,
+    messages: Vec<Message>,
+    cursor: ExtractCursor,
+    memory_index: String,
+    extract_model: Option<String>,
+    max_turns: u32,
+    timeout: Duration,
+    deps: D,
 ) -> ExtractOutcome {
     let Some(cache_safe_params) = cache_safe_params else {
         return ExtractOutcome::skipped(ExtractSkipReason::NoCacheSafeParams, cursor);
@@ -316,6 +365,7 @@ pub async fn run_extract_memories(
         &bounded_new_message_context(&new_messages),
         &memory_index,
         dedicated_model,
+        &memory_dir,
     );
     let prompt_message = Message::User(UserMessage {
         uuid: uuid::Uuid::new_v4().to_string(),
@@ -332,23 +382,29 @@ pub async fn run_extract_memories(
         summarize_metadata: None,
     });
 
+    // @nyan: the fork gets its own child controller so a timeout can stop it
+    // without aborting the main session; a main-session abort still cascades.
+    let fork_abort = crate::tool::AbortController::child_of(context.abort_controller.clone());
     let mut fork_context = (*cache_safe_params).clone();
     let overrides = if dedicated_model {
+        // M2 path 2 is an ordinary fork: no shared history and no main-thread
+        // system prompt to preserve, so it gets the extraction prompt alone.
         fork_context.fork_context_messages = Arc::new(Vec::new());
+        fork_context.system_prompt = vec![EXTRACTION_SYSTEM_PROMPT.to_string()];
         let mut options = context.options();
         options.main_loop_model = extract_model;
         Some(SubagentContextOverrides {
             options: Some(options),
-            abort_controller: Some(context.abort_controller.clone()),
+            abort_controller: Some(fork_abort.clone()),
             ..Default::default()
         })
     } else {
         Some(SubagentContextOverrides {
-            abort_controller: Some(context.abort_controller.clone()),
+            abort_controller: Some(fork_abort.clone()),
             ..Default::default()
         })
     };
-    let callback = extraction_tool_callback(&context, &memory_dir);
+    let callback = memory_tool_callback(&context, &memory_dir);
     let params = ForkedAgentParams {
         prompt_messages: vec![prompt_message],
         cache_safe_params: fork_context,
@@ -364,7 +420,14 @@ pub async fn run_extract_memories(
         skip_transcript: true,
     };
 
-    let result = match tokio::time::timeout(timeout, run_forked_agent(params)).await {
+    let index_before = std::fs::read_to_string(crate::memdir::paths::get_auto_mem_entrypoint())
+        .unwrap_or_default();
+    let result = match tokio::time::timeout(
+        timeout,
+        crate::utils::forked_agent::run_forked_agent_with_deps(params, deps),
+    )
+    .await
+    {
         Ok(Ok(result)) => result,
         Ok(Err(error)) => {
             let status = if crate::utils::errors::is_abort_error(&error) {
@@ -380,6 +443,10 @@ pub async fn run_extract_memories(
             };
         }
         Err(_) => {
+            // Dropping the timed-out future does not stop the fork's query
+            // thread; abort it explicitly.
+            fork_abort.abort();
+            let _ = crate::memdir::memdir::enforce_agent_index_policy(&index_before);
             return ExtractOutcome {
                 status: ExtractStatus::Failed(ExtractFailure::TimedOut),
                 cursor,
@@ -390,13 +457,32 @@ pub async fn run_extract_memories(
     };
     let usage = result.total_usage;
     crate::cost_tracker::add_to_total_tokens(usage.input_tokens, usage.output_tokens);
+    // `run_forked_agent` returns Ok on an aborted query; abort must not look
+    // like success or the cursor would advance over unextracted messages.
+    if fork_abort.is_aborted() {
+        let _ = crate::memdir::memdir::enforce_agent_index_policy(&index_before);
+        return ExtractOutcome {
+            status: ExtractStatus::Failed(ExtractFailure::Aborted),
+            cursor,
+            input_tokens: input_total(&usage),
+            output_tokens: usage.output_tokens,
+        };
+    }
+    if let Err(error) = crate::memdir::memdir::enforce_agent_index_policy(&index_before) {
+        return ExtractOutcome {
+            status: ExtractStatus::Failed(ExtractFailure::Agent(error)),
+            cursor,
+            input_tokens: input_total(&usage),
+            output_tokens: usage.output_tokens,
+        };
+    }
     if !result.api_errors.is_empty() {
         return ExtractOutcome {
             status: ExtractStatus::Failed(ExtractFailure::Agent(
                 "extraction fork returned API errors".to_string(),
             )),
             cursor,
-            input_tokens: token_total(&usage),
+            input_tokens: input_total(&usage),
             output_tokens: usage.output_tokens,
         };
     }
@@ -410,7 +496,7 @@ pub async fn run_extract_memories(
     ExtractOutcome {
         status: ExtractStatus::Success,
         cursor: next_cursor,
-        input_tokens: token_total(&usage),
+        input_tokens: input_total(&usage),
         output_tokens: usage.output_tokens,
     }
 }
@@ -451,18 +537,22 @@ mod tests {
             tokens_at_last_extract: 100,
             ..Default::default()
         };
+        // No message yet: never due, whatever the counters say.
         assert!(!extraction_is_due(&progress, 0, 30_000, 8, 30_000));
-        assert!(extraction_is_due(&progress, 1, 30_000, 8, 30_000));
+        // 7 turns and a 29_900-token delta are both below their thresholds.
+        assert!(!extraction_is_due(&progress, 1, 30_000, 8, 30_000));
+        // Turns threshold reached.
         assert!(extraction_is_due(
             &ExtractionProgress {
                 turns_since_extract: 8,
-                ..progress
+                ..progress.clone()
             },
             1,
             100,
             8,
             30_000
         ));
+        // Token threshold reached (delta exactly 30_000).
         assert!(extraction_is_due(&progress, 1, 30_100, 8, 30_000));
     }
 
@@ -485,5 +575,271 @@ mod tests {
             messages_after_cursor(&messages, &ExtractCursor::default()).len(),
             2
         );
+        // A cursor whose message was summarized away stops at the boundary.
+        let mut compacted = vec![Message::System(
+            crate::types::message::SystemMessage::compact_boundary(None),
+        )];
+        compacted.extend(messages.clone());
+        let stale = ExtractCursor {
+            message_uuid: Some("summarized-away".to_string()),
+            at_ms: None,
+        };
+        assert_eq!(
+            messages_after_cursor(&compacted, &stale).len(),
+            3,
+            "boundary itself + the two visible messages"
+        );
+    }
+
+    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+
+    /// One scripted model turn: optional index edit (simulating what a Write
+    /// tool would have done), then a final text answer with usage.
+    #[derive(Clone)]
+    struct ScriptedDeps {
+        before_answer: Arc<dyn Fn() + Send + Sync>,
+        abort_on_call: Option<crate::tool::AbortController>,
+    }
+
+    impl crate::query::deps::QueryDeps for ScriptedDeps {
+        fn call_model(
+            &self,
+            _request: crate::query::deps::CallModelRequest,
+        ) -> crate::query::deps::CallModelStreamFuture {
+            let before_answer = self.before_answer.clone();
+            let abort = self.abort_on_call.clone();
+            Box::pin(async move {
+                (before_answer)();
+                if let Some(abort) = abort {
+                    abort.abort();
+                }
+                let (tx, rx) = tokio::sync::mpsc::channel(8);
+                tx.send(crate::services::api::claude::QueryModelStreamItem::Stream(
+                    crate::types::message::StreamEvent::ApiEvent {
+                        event: serde_json::json!({
+                            "type": "message_delta",
+                            "usage": {"input_tokens": 5, "output_tokens": 3}
+                        }),
+                        ttft_ms: Some(1),
+                    },
+                ))
+                .await
+                .unwrap();
+                tx.send(
+                    crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::types::message::AssistantMessage {
+                            uuid: uuid::Uuid::new_v4().to_string(),
+                            timestamp: chrono::Utc::now(),
+                            content: vec![crate::types::message::AssistantContent::Text(
+                                "done".to_string(),
+                            )],
+                            model: Some("m".to_string()),
+                            stop_reason: Some(crate::types::message::StopReason::EndTurn),
+                            usage: None,
+                        },
+                    ),
+                )
+                .await
+                .unwrap();
+                Ok(rx)
+            })
+        }
+    }
+
+    struct Fixture {
+        root: std::path::PathBuf,
+        _lock: crate::utils::test_env::TestEnvGuard<'static>,
+        _env: EnvVarGuard,
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn fixture() -> Fixture {
+        let lock = TEST_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let root = std::env::temp_dir().join(format!("nyan-extract-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let env = EnvVarGuard::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", &root);
+        Fixture {
+            root,
+            _lock: lock,
+            _env: env,
+        }
+    }
+
+    fn cache_params(context: &ToolUseContext) -> Option<Arc<CacheSafeParams>> {
+        Some(Arc::new(CacheSafeParams {
+            system_prompt: vec!["system".to_string()],
+            user_context: Default::default(),
+            system_context: Default::default(),
+            tool_use_context: context.clone(),
+            fork_context_messages: Arc::new(Vec::new()),
+        }))
+    }
+
+    fn history() -> Vec<Message> {
+        vec![
+            Message::User(crate::utils::messages::create_user_message("one".to_string())),
+            Message::User(crate::utils::messages::create_user_message("two".to_string())),
+        ]
+    }
+
+    async fn run(
+        context: ToolUseContext,
+        messages: Vec<Message>,
+        deps: ScriptedDeps,
+    ) -> ExtractOutcome {
+        run_extract_memories_with_deps(
+            context.clone(),
+            cache_params(&context),
+            messages,
+            ExtractCursor::default(),
+            String::new(),
+            None,
+            2,
+            Duration::from_secs(20),
+            deps,
+        )
+        .await
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn successful_fork_advances_cursor_to_last_message_and_reports_usage() {
+        let _fixture = fixture();
+        let context = ToolUseContext::default().with_main_loop_model("m");
+        let messages = history();
+        let last = messages.last().unwrap().uuid().to_string();
+        let outcome = run(
+            context,
+            messages,
+            ScriptedDeps {
+                before_answer: Arc::new(|| {}),
+                abort_on_call: None,
+            },
+        )
+        .await;
+        assert_eq!(outcome.status, ExtractStatus::Success);
+        assert_eq!(outcome.cursor.message_uuid.as_deref(), Some(last.as_str()));
+        assert_eq!(outcome.input_tokens, 5);
+        assert_eq!(outcome.output_tokens, 3);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn aborted_fork_fails_and_keeps_the_cursor() {
+        let _fixture = fixture();
+        let context = ToolUseContext::default().with_main_loop_model("m");
+        // Aborting the session controller cascades into the fork's child.
+        let session_abort = context.abort_controller.clone();
+        let outcome = run(
+            context,
+            history(),
+            ScriptedDeps {
+                before_answer: Arc::new(|| {}),
+                abort_on_call: Some(session_abort),
+            },
+        )
+        .await;
+        assert_eq!(
+            outcome.status,
+            ExtractStatus::Failed(ExtractFailure::Aborted)
+        );
+        assert_eq!(outcome.cursor, ExtractCursor::default());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn indexing_a_user_memory_before_its_file_exists_is_rolled_back() {
+        let fixture = fixture();
+        let index = crate::memdir::paths::get_auto_mem_entrypoint();
+        std::fs::write(&index, "- [kept](kept.md) — kept\n").unwrap();
+        let root = fixture.root.clone();
+        let context = ToolUseContext::default().with_main_loop_model("m");
+        let outcome = run(
+            context,
+            history(),
+            ScriptedDeps {
+                // Index first (target missing -> the write-time check cannot
+                // see its type), file second: the order that bypasses it.
+                before_answer: Arc::new(move || {
+                    let index = root.join("MEMORY.md");
+                    let mut text = std::fs::read_to_string(&index).unwrap();
+                    text.push_str("- [me](me.md) — about me\n");
+                    std::fs::write(&index, text).unwrap();
+                    std::fs::write(
+                        root.join("me.md"),
+                        "---\nname: me\ndescription: d\ntype: user\n---\nbody\n",
+                    )
+                    .unwrap();
+                }),
+                abort_on_call: None,
+            },
+        )
+        .await;
+        assert!(matches!(
+            outcome.status,
+            ExtractStatus::Failed(ExtractFailure::Agent(_))
+        ));
+        assert_eq!(outcome.cursor, ExtractCursor::default());
+        assert_eq!(
+            std::fs::read_to_string(&index).unwrap(),
+            "- [kept](kept.md) — kept\n"
+        );
+        assert!(fixture.root.join("me.md").exists(), "file stays a candidate");
+    }
+
+    #[test]
+    fn tool_allowlist_denies_shell_delete_and_outside_paths() {
+        let _fixture = fixture();
+        let memory_dir = crate::memdir::paths::get_auto_mem_path();
+        let context = ToolUseContext::default();
+        let callback = memory_tool_callback(&context, &memory_dir);
+        let assistant = crate::types::message::AssistantMessage {
+            uuid: uuid::Uuid::new_v4().to_string(),
+            timestamp: chrono::Utc::now(),
+            content: Vec::new(),
+            model: None,
+            stop_reason: None,
+            usage: None,
+        };
+        let decide = |tool: crate::types::tools::Tool, input: serde_json::Value| {
+            callback
+                .decide(&tool, &input, &context, &assistant, "toolu", None)
+                .unwrap()
+                .unwrap()
+        };
+        let inside = memory_dir.join("a.md").display().to_string();
+        assert!(matches!(
+            decide(
+                crate::tools::file_write_tool::file_write_tool_schema(),
+                serde_json::json!({"file_path": inside, "content": "x"})
+            ),
+            PermissionDecision::Allow { .. }
+        ));
+        assert!(matches!(
+            decide(
+                crate::tools::file_write_tool::file_write_tool_schema(),
+                serde_json::json!({"file_path": "/etc/passwd", "content": "x"})
+            ),
+            PermissionDecision::Deny { .. }
+        ));
+        assert!(matches!(
+            decide(
+                crate::tools::file_read_tool::file_read_tool_schema(),
+                serde_json::json!({"files": [
+                    {"file_path": inside},
+                    {"file_path": "/etc/passwd"}
+                ]})
+            ),
+            PermissionDecision::Deny { .. }
+        ));
+        assert!(matches!(
+            decide(
+                crate::tools::bash_tool::bash_tool_schema(),
+                serde_json::json!({"command": format!("rm {}", memory_dir.join("a.md").display())})
+            ),
+            PermissionDecision::Deny { .. }
+        ));
     }
 }

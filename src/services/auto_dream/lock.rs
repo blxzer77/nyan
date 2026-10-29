@@ -180,19 +180,55 @@ impl ConsolidationLock {
     }
 
     /// Restore the pre-run mtime and clear/remove the lease for retry.
+    ///
+    /// Idempotent and lease-checked: a lease now held by someone else (a newer
+    /// run acquired after a kill already rolled this one back) is left alone.
     pub fn rollback(&mut self) -> io::Result<()> {
-        if let Some(prior_mtime_ms) = self.prior_mtime_ms {
-            fs::write(&self.path, "")?;
-            set_mtime_ms(&self.path, prior_mtime_ms)?;
-        } else {
-            match fs::remove_file(&self.path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error),
-            }
-        }
+        restore_lease(&self.path, self.prior_mtime_ms, self.start_mtime_ms)?;
         self.settled = true;
         Ok(())
+    }
+
+    /// Rollback by lease identity, for the kill path that does not hold the
+    /// `ConsolidationLock` value. `Ok(false)` means the lease was not ours.
+    pub fn rollback_lease(
+        memory_dir: &Path,
+        prior_mtime_ms: Option<u64>,
+        start_mtime_ms: u64,
+    ) -> io::Result<bool> {
+        restore_lease(&Self::path(memory_dir), prior_mtime_ms, start_mtime_ms)
+    }
+}
+
+fn restore_lease(
+    path: &Path,
+    prior_mtime_ms: Option<u64>,
+    start_mtime_ms: u64,
+) -> io::Result<bool> {
+    let exists = path.exists();
+    match existing_lease(path)? {
+        // A newer run holds the lease.
+        Some((pid, started_at_ms))
+            if pid != std::process::id() || started_at_ms != start_mtime_ms =>
+        {
+            Ok(false)
+        }
+        // An EMPTY lock is a settled ("completed") marker: the run finished
+        // even if its task was killed afterwards, so `last ran` must stay.
+        None if exists => Ok(false),
+        _ => {
+            if let Some(prior_mtime_ms) = prior_mtime_ms {
+                fs::write(path, "")?;
+                set_mtime_ms(path, prior_mtime_ms)?;
+            } else {
+                match fs::remove_file(path) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            Ok(true)
+        }
     }
 }
 
@@ -232,6 +268,33 @@ mod tests {
             mtime_ms(&ConsolidationLock::path(&dir)).unwrap(),
             Some(start)
         );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rollback_restores_prior_mtime_and_ignores_a_newer_lease() {
+        let dir = temp_dir();
+        let path = ConsolidationLock::path(&dir);
+        fs::write(&path, "").unwrap();
+        set_mtime_ms(&path, 1_000_000).unwrap();
+
+        let mut lock = ConsolidationLock::acquire(&dir).unwrap();
+        let start = lock.start_mtime_ms();
+        assert_eq!(lock.prior_mtime_ms(), Some(1_000_000));
+        // Kill path rolls back by identity; owner path rolls back again.
+        assert!(ConsolidationLock::rollback_lease(&dir, Some(1_000_000), start).unwrap());
+        assert_eq!(mtime_ms(&path).unwrap(), Some(1_000_000));
+
+        // A newer run takes the lease; the stale owner must not clobber it.
+        // The lease identity is (pid, start ms), so make the starts differ.
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let mut newer = ConsolidationLock::acquire(&dir).unwrap();
+        lock.rollback().unwrap();
+        assert!(matches!(
+            ConsolidationLock::acquire(&dir),
+            Err(LockAcquireError::Busy { .. })
+        ));
+        newer.complete().unwrap();
         let _ = fs::remove_dir_all(dir);
     }
 

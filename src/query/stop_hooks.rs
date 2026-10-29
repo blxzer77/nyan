@@ -4,8 +4,9 @@
 //! The upstream function performs several side-effecting actions at turn end:
 //! stop hooks, task/teammate hooks, prompt suggestions, memory extraction,
 //! auto-dream, and cache-safe parameter writes. Cometix executes the official
-//! Stop hook seam when configured, while keeping unrelated side-effecting
-//! background systems as explicit TODO seams.
+//! Stop hook seam when configured. @nyan: memory extraction and idle
+//! auto-dream are wired here (`spawn_memory_work`); teammate/task hooks stay
+//! explicit TODO seams.
 
 use crate::constants::query_source::QuerySource;
 use crate::services::hooks::RegisteredHooks;
@@ -83,9 +84,8 @@ pub struct StopHookParams {
 ///
 /// Production loads the merged hooks settings and executes configured Stop
 /// hooks through `services::hooks::lifecycle::execute_stop_hooks(...)`. The
-/// remaining upstream side effects (prompt suggestions, extract memories,
-/// auto-dream, and teammate/task hooks) intentionally stay TODO seams here
-/// rather than being folded into `query.rs`.
+/// remaining upstream side effects (teammate/task hooks) intentionally stay
+/// TODO seams here rather than being folded into `query.rs`.
 /// Maps to: CC `handleStopHooks` saving `CacheSafeParams` for `/btw` and
 /// side_question SDK control requests. Only main-session sources overwrite.
 fn maybe_save_cache_safe_params(
@@ -136,6 +136,48 @@ fn stop_hooks_config(tool_use_context: &ToolUseContext) -> RegisteredHooks {
     crate::services::hooks::load_hooks_config_with_session_hooks(&session_id)
 }
 
+/// @nyan: memory extraction (M2) and idle consolidation (M5), both detached.
+///
+/// They run on the process runtime: the per-query runtime that executes this
+/// function is torn down the moment the turn's actor resolves, which would
+/// silently kill a plain `tokio::spawn`ed fork. Gating (main thread,
+/// auto-memory, non-bare, `nyan.memory.extract`) lives in the driver.
+/// Unit tests keep `handle_stop_hooks` side-effect free, so this is only
+/// compiled for the production entry point.
+#[cfg(not(test))]
+fn spawn_memory_work(params: &StopHookParams, cache_safe_params: Option<std::sync::Arc<CacheSafeParams>>) {
+    use crate::services::extract_memories::driver;
+    if !matches!(params.query_source, QuerySource::Prompt)
+        // An aborted turn has nothing final to extract; the fork would be
+        // cancelled on its first await.
+        || params.tool_use_context.abort_controller.is_aborted()
+    {
+        return;
+    }
+    crate::services::auto_dream::spawn_idle_consolidation_if_due(
+        &params.tool_use_context,
+        cache_safe_params.clone(),
+        &params.query_source,
+    );
+    if !driver::extraction_enabled(&params.query_source) {
+        return;
+    }
+    let Some(handle) = crate::utils::process_runtime::runtime_handle_for_detached_work() else {
+        tracing::warn!(
+            target: "cometix::memory",
+            "memory_extract_skipped: no process runtime available for detached work"
+        );
+        return;
+    };
+    let mut messages = params.messages_for_query.clone();
+    messages.extend(params.assistant_messages.iter().cloned().map(Message::Assistant));
+    let context = params.tool_use_context.clone();
+    let query_source = params.query_source.clone();
+    handle.spawn(async move {
+        let _ = driver::extract_if_due(context, cache_safe_params, messages, &query_source).await;
+    });
+}
+
 #[cfg(not(test))]
 pub async fn handle_stop_hooks(params: StopHookParams) -> StopHookResult {
     let cache_safe_params = maybe_save_cache_safe_params(&params);
@@ -146,7 +188,7 @@ pub async fn handle_stop_hooks(params: StopHookParams) -> StopHookResult {
         && !prompt_suggestion_env_disabled
         && !crate::utils::env_utils::is_bare_mode()
     {
-        if let Some(cache_safe_params) = cache_safe_params {
+        if let Some(cache_safe_params) = cache_safe_params.clone() {
             tokio::spawn(async move {
                 crate::services::prompt_suggestion::prompt_suggestion::execute_prompt_suggestion(
                     std::sync::Arc::unwrap_or_clone(cache_safe_params),
@@ -156,8 +198,13 @@ pub async fn handle_stop_hooks(params: StopHookParams) -> StopHookResult {
         }
     }
     if params.stop_hook_active.unwrap_or(false) {
+        // A blocked stop hook continues the same turn; extracting now would
+        // read a half-finished turn and then advance the cursor past it.
         return StopHookResult::default();
     }
+    // One extraction/idle-consolidation attempt per finished turn, independent
+    // of whether any shell Stop hook is configured.
+    spawn_memory_work(&params, cache_safe_params);
 
     let config = stop_hooks_config(&params.tool_use_context);
     // The emptiness guard has to read the MERGED table: CC has no early return
