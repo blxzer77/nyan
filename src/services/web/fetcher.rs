@@ -289,9 +289,17 @@ async fn build_client(
             builder = builder.proxy(proxy);
         }
         FetchVia::Direct => {
-            let addresses = resolve_public_addresses(validated).await?;
             builder = builder.no_proxy();
-            builder = builder.resolve_to_addrs(&validated.host, &addresses);
+            // @nyan: the mock is on loopback, which the resolver check rejects
+            // by design. Test builds skip pinning for it; production never does.
+            #[cfg(test)]
+            let pin = !config.allow_private_for_tests;
+            #[cfg(not(test))]
+            let pin = true;
+            if pin {
+                let addresses = resolve_public_addresses(validated).await?;
+                builder = builder.resolve_to_addrs(&validated.host, &addresses);
+            }
         }
     }
 
@@ -393,7 +401,14 @@ async fn convert_body(content_type: &str, body: &[u8]) -> Result<String, FetchEr
 }
 
 fn html_to_markdown(html: &str) -> String {
+    // @nyan: the converter keeps script/style text by default; a snapshot must
+    // hold page content only (external-search 4.3).
     let options = supermarkdown::Options::new()
+        .exclude_selectors(
+            ["script", "style", "noscript", "template"]
+                .map(str::to_string)
+                .to_vec(),
+        )
         .heading_style(supermarkdown::HeadingStyle::Setext)
         .bullet_marker('*')
         .link_style(supermarkdown::LinkStyle::Inline);
@@ -482,5 +497,289 @@ mod tests {
     fn pdf_conversion_uses_private_temp_path_helper() {
         let path = PathBuf::from("/tmp/nyan-web-fetch-test.pdf");
         set_private_permissions(&path);
+    }
+}
+
+#[cfg(test)]
+mod network_tests {
+    use super::*;
+    use crate::services::web::test_support::{Route, serve};
+    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+
+    fn config() -> FetchConfig {
+        let mut config = FetchConfig::for_local_mock();
+        config.timeout = Duration::from_secs(5);
+        config
+    }
+
+    async fn fetch(url: &str, config: &FetchConfig) -> Result<FetchedPage, FetchError> {
+        fetch_url(url, &AbortController::default(), config).await
+    }
+
+    #[tokio::test]
+    async fn html_is_converted_and_the_raw_bytes_are_kept() {
+        let html = "<html><body><h1>Title</h1><p>Hello <b>world</b></p><script>evil()</script></body></html>";
+        let server = serve(vec![("/page", Route::html(html))]).await;
+        let page = fetch(&server.url("/page"), &config()).await.unwrap();
+        assert_eq!(page.status, 200);
+        assert_eq!(page.content_type, "text/html");
+        assert_eq!(page.raw_body, html.as_bytes());
+        assert!(page.text.contains("Title"), "{}", page.text);
+        assert!(page.text.contains("**world**") || page.text.contains("world"));
+        assert!(!page.text.contains("evil()"), "{}", page.text);
+        assert!(page.redirects.is_empty());
+        let seen = &server.seen()[0];
+        assert!(seen.header("accept").unwrap().contains("text/markdown"));
+        assert!(seen.header("user-agent").unwrap().starts_with("Claude-User"));
+    }
+
+    #[tokio::test]
+    async fn redirects_are_followed_across_paths_and_recorded() {
+        let server = serve(vec![
+            ("/a", Route::redirect(301, "/b")),
+            ("/b", Route::redirect(302, "/c")),
+            ("/c", Route::text("final body")),
+        ])
+        .await;
+        let page = fetch(&server.url("/a"), &config()).await.unwrap();
+        assert_eq!(page.text, "final body");
+        assert_eq!(page.final_url, server.url("/c"));
+        assert_eq!(page.original_url, server.url("/a"));
+        assert_eq!(
+            page.redirects
+                .iter()
+                .map(|hop| (hop.status, hop.to.as_str()))
+                .collect::<Vec<_>>(),
+            vec![(301, server.url("/b").as_str()), (302, server.url("/c").as_str())]
+        );
+    }
+
+    #[tokio::test]
+    async fn the_sixth_redirect_is_too_many() {
+        let routes = vec![
+            ("/0", Route::redirect(302, "/1")),
+            ("/1", Route::redirect(302, "/2")),
+            ("/2", Route::redirect(302, "/3")),
+            ("/3", Route::redirect(302, "/4")),
+            ("/4", Route::redirect(302, "/5")),
+            ("/5", Route::redirect(302, "/6")),
+            ("/6", Route::text("unreachable")),
+        ];
+        let server = serve(routes).await;
+        let mut limited = config();
+        limited.max_redirects = 5;
+        assert_eq!(
+            fetch(&server.url("/0"), &limited).await.unwrap_err(),
+            FetchError::TooManyRedirects
+        );
+        assert_eq!(server.hits("/6"), 0);
+        // Exactly five hops still succeed.
+        assert_eq!(
+            fetch(&server.url("/1"), &limited).await.unwrap().text,
+            "unreachable"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_redirect_into_a_private_network_is_denied_on_that_hop() {
+        // The production guard (no test seam) rejects each private spelling.
+        let production = FetchConfig::from_settings(&WebSettings::default());
+        for target in [
+            "https://127.0.0.1/admin",
+            "https://[::ffff:127.0.0.1]/",
+            "https://169.254.169.254/latest/meta-data",
+            "https://100.80.19.12:443/",
+            "https://printer.local/",
+        ] {
+            assert_eq!(
+                validate_target(target, &production).unwrap_err(),
+                FetchError::DeniedPrivateNetwork,
+                "{target}"
+            );
+        }
+        // The loop applies the same validation to `Location`: a hop to a denied
+        // host is rejected even though the start URL was fine.
+        let server = serve(vec![(
+            "/start",
+            Route::redirect(302, "https://denied.example/secret"),
+        )])
+        .await;
+        let mut guarded = config();
+        guarded.host_guard.deny_hosts = vec!["denied.example".to_string()];
+        assert_eq!(
+            fetch(&server.url("/start"), &guarded).await.unwrap_err(),
+            FetchError::DeniedHost
+        );
+    }
+
+    #[tokio::test]
+    async fn a_redirect_without_a_location_is_invalid() {
+        let mut route = Route::new(302, "text/plain", "");
+        route.headers.retain(|(name, _)| name != "location");
+        let server = serve(vec![("/x", route)]).await;
+        assert_eq!(
+            fetch(&server.url("/x"), &config()).await.unwrap_err(),
+            FetchError::InvalidResponse
+        );
+    }
+
+    #[tokio::test]
+    async fn http_errors_and_content_types_are_named() {
+        let server = serve(vec![
+            ("/forbidden", Route::new(403, "text/html", "no")),
+            ("/limited", Route::new(429, "text/html", "slow down")),
+            ("/gone", Route::new(404, "text/html", "gone")),
+            ("/image", Route::new(200, "image/png", vec![0x89, b'P', b'N', b'G'])),
+            ("/blob", Route::new(200, "application/octet-stream", "x")),
+            ("/none", Route::new(200, "", "x")),
+            ("/json", Route::new(200, "application/json; charset=utf-8", r#"{"a":1}"#)),
+        ])
+        .await;
+        let cfg = config();
+        assert_eq!(fetch(&server.url("/forbidden"), &cfg).await.unwrap_err(), FetchError::HttpStatus(403));
+        assert_eq!(fetch(&server.url("/limited"), &cfg).await.unwrap_err(), FetchError::HttpStatus(429));
+        assert_eq!(fetch(&server.url("/gone"), &cfg).await.unwrap_err(), FetchError::HttpStatus(404));
+        assert!(matches!(
+            fetch(&server.url("/image"), &cfg).await.unwrap_err(),
+            FetchError::ContentTypeDenied(kind) if kind == "image/png"
+        ));
+        assert!(matches!(
+            fetch(&server.url("/blob"), &cfg).await.unwrap_err(),
+            FetchError::ContentTypeDenied(_)
+        ));
+        assert!(matches!(
+            fetch(&server.url("/none"), &cfg).await.unwrap_err(),
+            FetchError::ContentTypeDenied(_)
+        ));
+        assert_eq!(fetch(&server.url("/json"), &cfg).await.unwrap().text, r#"{"a":1}"#);
+    }
+
+    #[tokio::test]
+    async fn oversized_bodies_are_rejected_not_truncated() {
+        let server = serve(vec![("/big", Route::text(&"x".repeat(2048)))]).await;
+        let mut small = config();
+        small.max_bytes = 1024;
+        assert_eq!(
+            fetch(&server.url("/big"), &small).await.unwrap_err(),
+            FetchError::TooLarge
+        );
+        small.max_bytes = 4096;
+        assert_eq!(fetch(&server.url("/big"), &small).await.unwrap().raw_body.len(), 2048);
+    }
+
+    #[tokio::test]
+    async fn a_slow_response_times_out_by_name() {
+        let server = serve(vec![(
+            "/slow",
+            Route::text("late").delayed(Duration::from_millis(700)),
+        )])
+        .await;
+        let mut quick = config();
+        quick.timeout = Duration::from_millis(150);
+        assert_eq!(
+            fetch(&server.url("/slow"), &quick).await.unwrap_err(),
+            FetchError::Timeout
+        );
+    }
+
+    #[tokio::test]
+    async fn an_aborted_fetch_is_cancelled_before_any_request() {
+        let server = serve(vec![("/x", Route::text("body"))]).await;
+        let abort = AbortController::default();
+        abort.abort();
+        assert_eq!(
+            fetch_url(&server.url("/x"), &abort, &config()).await.unwrap_err(),
+            FetchError::Cancelled
+        );
+        assert!(server.seen().is_empty());
+    }
+
+    #[tokio::test]
+    async fn pdf_is_converted_by_pdftotext_and_leaves_no_temp_file() {
+        let pdf = tiny_pdf("Hello from the PDF fixture");
+        let home = std::env::temp_dir().join(format!("nyan-pdf-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&home).unwrap();
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &home);
+        let server = serve(vec![("/doc.pdf", Route::new(200, "application/pdf", pdf.clone()))]).await;
+        let result = fetch(&server.url("/doc.pdf"), &config()).await;
+        let leftovers = std::fs::read_dir(home.join("web-snapshots/tmp"))
+            .map(|entries| entries.count())
+            .unwrap_or(0);
+        let _ = std::fs::remove_dir_all(&home);
+        match result {
+            Ok(page) => {
+                assert_eq!(page.content_type, "application/pdf");
+                assert_eq!(page.raw_body, pdf);
+                assert!(page.text.contains("Hello from the PDF fixture"), "{}", page.text);
+            }
+            Err(FetchError::PdfConversionUnavailable) => {
+                eprintln!("skipped: pdftotext is not installed");
+            }
+            Err(error) => panic!("unexpected pdf failure: {error}"),
+        }
+        assert_eq!(leftovers, 0, "temporary PDF was not removed");
+    }
+
+    /// A one-page PDF with a single text string, offsets computed in place.
+    fn tiny_pdf(text: &str) -> Vec<u8> {
+        let stream = format!("BT /F1 18 Tf 20 100 Td ({text}) Tj ET");
+        let objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>".to_string(),
+            format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+        ];
+        let mut out = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::new();
+        for (index, object) in objects.iter().enumerate() {
+            offsets.push(out.len());
+            out.extend_from_slice(format!("{} 0 obj\n{object}\nendobj\n", index + 1).as_bytes());
+        }
+        let xref = out.len();
+        out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes());
+        for offset in offsets {
+            out.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+        }
+        out.extend_from_slice(
+            format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objects.len() + 1)
+                .as_bytes(),
+        );
+        out
+    }
+
+    #[tokio::test]
+    async fn proxy_mode_ignores_no_proxy_and_sends_the_request_to_the_proxy() {
+        let proxy = serve(vec![("/via-proxy", Route::text("served by the proxy"))]).await;
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _http = EnvVarGuard::set("http_proxy", &proxy.origin);
+        let _https = EnvVarGuard::set("https_proxy", &proxy.origin);
+        let _http_upper = EnvVarGuard::unset("HTTP_PROXY");
+        let _https_upper = EnvVarGuard::unset("HTTPS_PROXY");
+        // NO_PROXY names the target; a direct client would skip the proxy.
+        let _no_proxy = EnvVarGuard::set("no_proxy", "example.test,127.0.0.1");
+        let _no_proxy_upper = EnvVarGuard::set("NO_PROXY", "example.test,127.0.0.1");
+        let mut proxied = config();
+        proxied.via = FetchVia::Proxy;
+        let page = fetch("http://example.test/via-proxy", &proxied).await.unwrap();
+        assert_eq!(page.text, "served by the proxy");
+        let seen = proxy.seen();
+        assert_eq!(seen.len(), 1, "the proxy must have received the request");
+        assert!(seen[0].target.contains("example.test"), "{}", seen[0].target);
+    }
+
+    #[tokio::test]
+    async fn direct_mode_does_not_use_a_configured_proxy() {
+        let proxy = serve(vec![("/x", Route::text("proxy"))]).await;
+        let origin = serve(vec![("/x", Route::text("origin"))]).await;
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _http = EnvVarGuard::set("http_proxy", &proxy.origin);
+        let _https = EnvVarGuard::set("https_proxy", &proxy.origin);
+        let direct = config();
+        assert_eq!(direct.via, FetchVia::Direct);
+        let page = fetch(&origin.url("/x"), &direct).await.unwrap();
+        assert_eq!(page.text, "origin");
+        assert!(proxy.seen().is_empty());
     }
 }

@@ -5,6 +5,7 @@
 //! drift between the two tools.
 
 pub mod budget;
+pub mod decision;
 pub mod extract;
 pub mod fallback;
 pub mod fetcher;
@@ -13,6 +14,8 @@ pub mod providers;
 pub mod redact;
 pub mod search;
 pub mod snapshot;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 pub use fetcher::{FetchConfig, FetchError, FetchedPage, RedirectHop, fetch_url};
 

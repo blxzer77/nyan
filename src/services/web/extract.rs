@@ -101,6 +101,11 @@ pub async fn extract_prompt(
     if abort_controller.is_aborted() {
         anyhow::bail!("Operation aborted");
     }
+    // @nyan: tests answer with a fixed reply instead of calling a model.
+    #[cfg(test)]
+    if let Some(reply) = test_reply::take() {
+        return Ok(excerpts_from_reply(&reply, page));
+    }
 
     let model = model
         .filter(|model| !model.is_empty())
@@ -148,10 +153,27 @@ pub async fn extract_prompt(
         })
         .collect::<Vec<_>>()
         .join("");
-    Ok(validate_excerpts(
-        parse_candidates(&response).iter().map(String::as_str),
-        page,
-    ))
+    Ok(excerpts_from_reply(&response, page))
+}
+
+/// The model's reply, reduced to the excerpts that occur verbatim in `page`.
+pub fn excerpts_from_reply(reply: &str, page: &str) -> ExtractedExcerpts {
+    validate_excerpts(parse_candidates(reply).iter().map(String::as_str), page)
+}
+
+#[cfg(test)]
+pub(crate) mod test_reply {
+    use std::sync::Mutex;
+
+    static REPLY: Mutex<Option<String>> = Mutex::new(None);
+
+    pub fn set(reply: &str) {
+        *REPLY.lock().unwrap() = Some(reply.to_string());
+    }
+
+    pub fn take() -> Option<String> {
+        REPLY.lock().unwrap().take()
+    }
 }
 
 #[cfg(test)]

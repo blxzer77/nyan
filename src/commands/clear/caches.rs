@@ -69,9 +69,13 @@ pub fn clear_session_caches(preserved_agent_ids: &HashSet<String>) {
     // conversation.
     crate::utils::session_env_vars::clear_session_env_vars();
     crate::tools::web_fetch_tool::utils::clear_web_fetch_cache();
-    // @nyan: `/clear` also resets provider/fetch budgets and the snapshot URL index.
+    // @nyan: `/clear` also resets provider/fetch budgets, the snapshot URL
+    // index and the decision-provider session budget (external-search 3.5,
+    // decision-provider 5.3).
     crate::services::web::budget::reset();
     crate::services::web::snapshot::clear_index();
+    crate::services::web::search::clear_candidates();
+    crate::services::decision::reset_session_budget();
 }
 
 #[cfg(test)]
@@ -113,6 +117,50 @@ mod tests {
 
         assert!(!has_permission_callback("perm-clear"));
         assert!(!has_sandbox_permission_callback("sandbox-clear"));
+    }
+
+    /// @nyan: the web and decision session counters are cleared too, so a new
+    /// conversation starts from zero.
+    #[tokio::test]
+    async fn clear_session_caches_resets_web_and_decision_session_budgets() {
+        use crate::utils::settings::nyan::{WebFetchSettings, WebSearchSettings};
+        let _env_lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let _skills = crate::skills::load_skills_dir::DynamicSkillsTestSnapshot::capture();
+        clear_pending_callbacks_for_test();
+
+        crate::services::web::budget::reset();
+        let permit = crate::services::web::budget::begin_search(
+            &WebSearchSettings::default(),
+            std::time::Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        drop(permit);
+        crate::services::web::budget::begin_fetch(&WebFetchSettings::default()).unwrap();
+        crate::services::web::budget::add_fetch_bytes(&WebFetchSettings::default(), 10).unwrap();
+        crate::services::web::budget::reserve_provider("exa", Some(3)).unwrap();
+        crate::services::web::search::remember_candidates(vec!["https://example.com/a".to_string()]);
+        crate::services::decision::charge_session_budget_for_tests(10);
+        assert_eq!(
+            crate::services::web::budget::snapshot().0, 1,
+            "precondition: a search was counted"
+        );
+        assert_eq!(crate::services::decision::session_budget_used().0, 1);
+
+        clear_session_caches(&HashSet::new());
+
+        assert_eq!(
+            crate::services::web::budget::snapshot(),
+            (0, 0, 0, Default::default())
+        );
+        assert_eq!(crate::services::decision::session_budget_used(), (0, 0));
+        assert_eq!(
+            crate::services::web::search::next_candidate("https://example.com/other"),
+            None,
+            "the previous conversation's candidates are forgotten"
+        );
     }
 
     #[test]

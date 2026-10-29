@@ -264,8 +264,18 @@ const GATE_DEPENDENT_ORACLE_PATCHES: &[OraclePatch] = &[
 /// when a behavior is off, and only `files` disappears when `readBatchMax=0`.
 ///
 /// `(tool, added properties, file_path is no longer required)`.
-const NYAN_SCHEMA_EXTENSIONS: &[(&str, &[&str], bool)] =
-    &[("FileReadTool", &["encoding", "view", "files"], true)];
+///
+/// `WebFetchTool` also repurposes `prompt` (optional, verbatim excerpts) and
+/// `WebSearchTool` adds `max_results`; [`strip_nyan_extensions`] restores CC's
+/// description and `required` list for WebFetch as well.
+const NYAN_SCHEMA_EXTENSIONS: &[(&str, &[&str], bool)] = &[
+    ("FileReadTool", &["encoding", "view", "files"], true),
+    ("WebFetchTool", &["range"], false),
+    ("WebSearchTool", &["max_results"], false),
+];
+
+/// CC's WebFetch `prompt` description, replaced by nyan's excerpt wording.
+const CC_WEB_FETCH_PROMPT_DESCRIPTION: &str = "The prompt to run on the fetched content";
 
 fn strip_nyan_extensions(tool_dir: &str, mut schema: Value) -> Value {
     let Some((_, added, relaxes_file_path)) = NYAN_SCHEMA_EXTENSIONS
@@ -284,6 +294,15 @@ fn strip_nyan_extensions(tool_dir: &str, mut schema: Value) -> Value {
         && schema.pointer("/properties/file_path").is_some()
     {
         schema["required"] = serde_json::json!(["file_path"]);
+    }
+    // @nyan: WebFetch makes `prompt` optional and rewrites its description for
+    // verbatim excerpts. Both are deliberate deviations, not schema drift, so
+    // the oracle's values are restored before the diff.
+    if tool_dir == "WebFetchTool" {
+        if let Some(prompt) = schema.pointer_mut("/properties/prompt") {
+            prompt["description"] = serde_json::json!(CC_WEB_FETCH_PROMPT_DESCRIPTION);
+        }
+        schema["required"] = serde_json::json!(["url", "prompt"]);
     }
     schema
 }
@@ -526,6 +545,32 @@ fn gate_dependent_patches_name_a_real_oracle_pointer() {
             ),
         }
     }
+}
+
+/// @nyan: the WebFetch / WebSearch extensions are explicit, not incidental.
+/// This pins each one so a future edit cannot silently widen the projection and
+/// hide a real divergence from CC on the properties both tools share.
+#[test]
+fn web_tools_keep_exactly_the_documented_nyan_projections() {
+    let _environment = OracleEnvironment::pin();
+
+    let fetch = crate::tools::web_fetch_tool::web_fetch_tool_schema().input_schema;
+    assert_eq!(fetch["required"], serde_json::json!(["url"]));
+    assert_eq!(
+        fetch["properties"]["prompt"]["description"],
+        "Optional request for verbatim excerpts from the fetched content"
+    );
+    assert!(fetch["properties"]["range"].is_object());
+    let stripped = strip_nyan_extensions("WebFetchTool", fetch.clone());
+    assert_eq!(stripped, oracle_schema("WebFetchTool"));
+
+    let search = crate::tools::web_search_tool::web_search_tool_schema().input_schema;
+    assert_eq!(search["properties"]["max_results"]["maximum"], 20);
+    assert!(search["required"]
+        .as_array()
+        .is_some_and(|required| !required.iter().any(|key| key == "max_results")));
+    let stripped = strip_nyan_extensions("WebSearchTool", search.clone());
+    assert_eq!(stripped, oracle_schema("WebSearchTool"));
 }
 
 /// Content equality, reported as the JSON pointer of every leaf that disagrees

@@ -72,6 +72,12 @@ pub fn validate_url(raw: &str, config: &HostGuardConfig) -> Result<ValidatedUrl,
     if !url.username().is_empty() || url.password().is_some() {
         return Err(HostGuardError::Credentials);
     }
+    // @nyan: the local mock servers are plaintext on random ports. This branch
+    // is compiled only into tests; it cannot exist in a production build.
+    #[cfg(test)]
+    if config.allow_private_for_tests {
+        return validate_local_mock(url, config);
+    }
     if url.scheme() == "http" {
         url.set_scheme("https")
             .map_err(|_| HostGuardError::DeniedScheme)?;
@@ -106,6 +112,29 @@ pub fn validate_url(raw: &str, config: &HostGuardConfig) -> Result<ValidatedUrl,
         return Err(HostGuardError::DeniedHost);
     }
 
+    Ok(ValidatedUrl {
+        url,
+        host,
+        port,
+        ip,
+    })
+}
+
+#[cfg(test)]
+fn validate_local_mock(url: Url, config: &HostGuardConfig) -> Result<ValidatedUrl, HostGuardError> {
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(HostGuardError::DeniedScheme);
+    }
+    let host = url
+        .host_str()
+        .ok_or(HostGuardError::InvalidUrl)?
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if matches_host_list(&config.deny_hosts, &host) {
+        return Err(HostGuardError::DeniedHost);
+    }
+    let port = url.port_or_known_default().unwrap_or(443);
+    let ip = parse_ip_literal(&host);
     Ok(ValidatedUrl {
         url,
         host,

@@ -3,7 +3,10 @@
 pub const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
 
 pub fn get_web_search_prompt() -> String {
-    if crate::services::web::has_search_provider() {
+    // @nyan: once `nyan.web` is configured the nested Anthropic search tool is
+    // never used, so the prompt must not describe it — even when no provider is
+    // enabled, where the tool simply reports that none is configured.
+    if crate::services::web::is_configured() {
         return "\n- Searches configured web providers and merges their results deterministically\n- Results are leads, not sources: fetch a page with WebFetch before citing it\n- Include a Sources section at the end of the response, listing only pages actually fetched with WebFetch\n- Domain filtering is supported; max_results defaults to 8 and is capped at 20\n- Provider errors and partial results are reported in the tool result\n".to_string();
     }
     // CC imports `getLocalMonthYear` from `constants/common.ts`.

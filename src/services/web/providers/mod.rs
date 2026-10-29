@@ -4,17 +4,33 @@
 //! requested URL. Keys are read from configured files, never from settings JSON
 //! or request input. Provider response bodies are parsed into neutral types and
 //! raw error bodies never cross this boundary.
+//!
+//! Layout: `client` owns the wire (request bodies, auth, deadlines, health),
+//! `parse` owns response shapes, `errors` owns status → [`ProviderError`].
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::BoxFuture;
-use serde_json::Value;
 
-use crate::services::service_health::{self, CallPermit, FailureKind, ServiceHealth, ServiceKind};
-use crate::utils::settings::nyan::{ResolvedProvider, WebSettings};
+use crate::utils::settings::nyan::WebSettings;
 
 use client::ProviderClient;
+
+mod client;
+mod errors;
+mod parse;
+#[cfg(test)]
+mod tests;
+
+/// Query classification from `web.query_kind` (decision-provider 4.2). It only
+/// adds per-provider parameters; every enabled provider is still queried.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QueryKind {
+    Chinese,
+    TechDocs,
+    News,
+    General,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SearchRequest {
@@ -22,6 +38,8 @@ pub struct SearchRequest {
     pub max_results: usize,
     pub allowed_domains: Vec<String>,
     pub blocked_domains: Vec<String>,
+    /// `None` until the Decision Provider answers with enough confidence.
+    pub query_kind: Option<QueryKind>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -138,13 +156,26 @@ impl ProviderKind {
             Self::Searxng => "https://nyan-ops.tail6334e5.ts.net:8454",
         }
     }
+
+    /// Per-request result ceiling (external-search 2.3).
+    fn max_results(self) -> usize {
+        match self {
+            Self::AnySearch => 10,
+            Self::Brave | Self::Tavily | Self::Searxng => 20,
+            Self::DeepSeek => 50,
+            Self::Exa | Self::Firecrawl => 100,
+        }
+    }
+
+    fn requires_key(self) -> bool {
+        self != Self::Searxng
+    }
 }
 
 #[derive(Clone)]
 struct GenericProvider {
     kind: ProviderKind,
     client: ProviderClient,
-    max_results: usize,
 }
 
 impl GenericProvider {
@@ -158,8 +189,10 @@ impl GenericProvider {
         deadline: Duration,
     ) -> BoxFuture<'a, Result<Vec<Hit>, ProviderError>> {
         Box::pin(async move {
-            let value = self.client.search(self.kind, &request, deadline).await?;
-            parse_hits(self.kind, &value)
+            let value = self.client.search(&request, deadline).await?;
+            let mut hits = parse::parse_hits(self.kind, &value)?;
+            hits.truncate(request.max_results.min(self.kind.max_results()));
+            Ok(hits)
         })
     }
 
@@ -169,14 +202,14 @@ impl GenericProvider {
         deadline: Duration,
     ) -> BoxFuture<'a, Result<ProviderPage, ProviderError>> {
         Box::pin(async move {
-            let value = self.client.fetch(self.kind, &url, deadline).await?;
-            parse_page(self.kind, &url, value)
+            let value = self.client.fetch(&url, deadline).await?;
+            parse::parse_page(self.kind, &url, value)
         })
     }
 }
 
 macro_rules! provider_type {
-    ($name:ident, $kind:ident, $max:expr) => {
+    ($name:ident, $kind:ident) => {
         #[derive(Clone)]
         pub struct $name {
             inner: GenericProvider,
@@ -189,7 +222,6 @@ macro_rules! provider_type {
                     inner: GenericProvider {
                         kind: ProviderKind::$kind,
                         client: ProviderClient::from_resolved(ProviderKind::$kind, &resolved)?,
-                        max_results: $max,
                     },
                 })
             }
@@ -206,7 +238,6 @@ macro_rules! provider_type {
                             base_url.into(),
                             api_key,
                         )?,
-                        max_results: $max,
                     },
                 })
             }
@@ -217,7 +248,7 @@ macro_rules! provider_type {
                 self.inner.name()
             }
             fn max_results(&self) -> usize {
-                self.inner.max_results
+                self.inner.kind.max_results()
             }
             fn search<'a>(
                 &'a self,
@@ -230,13 +261,13 @@ macro_rules! provider_type {
     };
 }
 
-provider_type!(AnySearchProvider, AnySearch, 10);
-provider_type!(BraveProvider, Brave, 20);
-provider_type!(DeepSeekProvider, DeepSeek, 50);
-provider_type!(ExaProvider, Exa, 100);
-provider_type!(FirecrawlProvider, Firecrawl, 100);
-provider_type!(TavilyProvider, Tavily, 20);
-provider_type!(SearxngProvider, Searxng, 20);
+provider_type!(AnySearchProvider, AnySearch);
+provider_type!(BraveProvider, Brave);
+provider_type!(DeepSeekProvider, DeepSeek);
+provider_type!(ExaProvider, Exa);
+provider_type!(FirecrawlProvider, Firecrawl);
+provider_type!(TavilyProvider, Tavily);
+provider_type!(SearxngProvider, Searxng);
 
 macro_rules! fetch_impl {
     ($name:ident) => {
@@ -296,27 +327,45 @@ impl ConfiguredSearchProvider {
     }
 }
 
+/// An enabled provider that could not be constructed (for example an
+/// unreadable key file). It is reported as a named failure, never dropped.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProviderBuildFailure {
+    pub provider: String,
+    pub error: ProviderError,
+}
+
+const PROVIDER_ORDER: [&str; 7] = [
+    "anysearch",
+    "brave",
+    "deepseek",
+    "exa",
+    "firecrawl",
+    "tavily",
+    "searxng",
+];
+
 pub fn configured_search_providers(web: &WebSettings) -> Vec<ConfiguredSearchProvider> {
+    configured_providers(web).0
+}
+
+/// Every enabled provider, plus the ones that were enabled but failed to build.
+pub fn configured_providers(
+    web: &WebSettings,
+) -> (Vec<ConfiguredSearchProvider>, Vec<ProviderBuildFailure>) {
     let Some(configured) = web.providers.as_ref() else {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     };
     let mut providers = Vec::new();
-    for name in [
-        "anysearch",
-        "brave",
-        "deepseek",
-        "exa",
-        "firecrawl",
-        "tavily",
-        "searxng",
-    ] {
+    let mut failures = Vec::new();
+    for name in PROVIDER_ORDER {
         let Some(config) = configured.get(name) else {
             continue;
         };
         if config.enabled == Some(false) {
             continue;
         }
-        let provider = match name {
+        let built = match name {
             "anysearch" => {
                 AnySearchProvider::from_settings(web).map(ConfiguredSearchProvider::AnySearch)
             }
@@ -332,134 +381,19 @@ pub fn configured_search_providers(web: &WebSettings) -> Vec<ConfiguredSearchPro
             "searxng" => SearxngProvider::from_settings(web).map(ConfiguredSearchProvider::Searxng),
             _ => continue,
         };
-        if let Ok(provider) = provider {
-            providers.push(provider);
+        match built {
+            Ok(provider) => providers.push(provider),
+            Err(error) => failures.push(ProviderBuildFailure {
+                provider: name.to_string(),
+                error,
+            }),
         }
     }
-    providers
+    (providers, failures)
 }
 
-fn parse_hits(kind: ProviderKind, value: &Value) -> Result<Vec<Hit>, ProviderError> {
-    let items = match kind {
-        ProviderKind::Brave => value.pointer("/web/results").and_then(Value::as_array),
-        ProviderKind::Firecrawl => value.get("data").and_then(Value::as_array),
-        _ => value
-            .get("results")
-            .or_else(|| value.get("data"))
-            .and_then(Value::as_array),
-    }
-    .ok_or(ProviderError::Invalid)?;
-    let mut hits = Vec::new();
-    for (index, item) in items.iter().enumerate() {
-        let Some(url) = item.get("url").and_then(Value::as_str) else {
-            continue;
-        };
-        let title = item
-            .get("title")
-            .and_then(Value::as_str)
-            .unwrap_or(url)
-            .to_string();
-        let snippet = item
-            .get("snippet")
-            .or_else(|| item.get("description"))
-            .or_else(|| item.get("content"))
-            .or_else(|| item.get("summary"))
-            .or_else(|| item.get("text"))
-            .or_else(|| item.get("highlights"))
-            .map(value_text)
-            .unwrap_or_default();
-        let published_at = item
-            .get("publishedDate")
-            .or_else(|| item.get("published_date"))
-            .or_else(|| item.get("date"))
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        hits.push(Hit {
-            title,
-            url: url.to_string(),
-            snippet,
-            published_at,
-            provider_rank: index + 1,
-        });
-    }
-    Ok(hits)
-}
-
-fn value_text(value: &Value) -> String {
-    match value {
-        Value::String(value) => value.clone(),
-        Value::Array(values) => values.iter().map(value_text).collect::<Vec<_>>().join(" "),
-        _ => value.to_string(),
-    }
-}
-
-fn parse_page(kind: ProviderKind, url: &str, value: Value) -> Result<ProviderPage, ProviderError> {
-    let (content, title, format) = match kind {
-        ProviderKind::Firecrawl => {
-            let data = value.get("data").unwrap_or(&value);
-            (
-                data.get("markdown")
-                    .or_else(|| data.get("content"))
-                    .and_then(Value::as_str)
-                    .ok_or(ProviderError::Invalid)?
-                    .to_string(),
-                data.pointer("/metadata/title")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-                "markdown",
-            )
-        }
-        ProviderKind::Exa => {
-            let item = value
-                .get("results")
-                .and_then(Value::as_array)
-                .and_then(|items| items.first())
-                .ok_or(ProviderError::Invalid)?;
-            (
-                item.get("text")
-                    .or_else(|| item.get("content"))
-                    .and_then(Value::as_str)
-                    .ok_or(ProviderError::Invalid)?
-                    .to_string(),
-                item.get("title")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-                "text",
-            )
-        }
-        _ => {
-            let item = value
-                .get("content")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .or_else(|| {
-                    value
-                        .get("results")
-                        .and_then(Value::as_array)
-                        .and_then(|items| items.first())
-                        .and_then(|item| item.get("content").or_else(|| item.get("raw_content")))
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                })
-                .ok_or(ProviderError::Invalid)?;
-            (item, None, "markdown")
-        }
-    };
-    if content.is_empty() {
-        return Err(ProviderError::Invalid);
-    }
-    Ok(ProviderPage {
-        url: url.to_string(),
-        final_url: url.to_string(),
-        title,
-        content,
-        status: 200,
-        content_type: "text/markdown".to_string(),
-        format: format.to_string(),
-        freshness: None,
-    })
-}
-
+/// `Ok(None)` when no key file is configured or the file does not exist; an
+/// unreadable or empty file is an auth failure.
 fn read_key(path: Option<&str>) -> Result<Option<String>, ProviderError> {
     let Some(path) = path else {
         return Ok(None);
@@ -482,299 +416,5 @@ fn expand_path(path: &str) -> std::path::PathBuf {
         crate::utils::node_os::homedir().join(rest)
     } else {
         std::path::PathBuf::from(path)
-    }
-}
-
-mod client {
-    use super::*;
-    use crate::services::web::redact::redact_error;
-
-    #[derive(Clone)]
-    pub struct ProviderClient {
-        kind: ProviderKind,
-        base_url: String,
-        api_key: Option<String>,
-        http: reqwest::Client,
-        health: Option<Arc<ServiceHealth>>,
-    }
-
-    impl ProviderClient {
-        pub fn from_resolved(
-            kind: ProviderKind,
-            resolved: &ResolvedProvider,
-        ) -> Result<Self, ProviderError> {
-            let base_url = resolved
-                .base_url
-                .as_deref()
-                .or(resolved.url.as_deref())
-                .unwrap_or(kind.default_base_url())
-                .to_string();
-            let api_key = read_key(resolved.api_key_file.as_deref())?;
-            Self::new(kind, base_url, api_key)
-        }
-
-        pub fn with_base_url(
-            kind: ProviderKind,
-            base_url: String,
-            api_key: Option<String>,
-        ) -> Result<Self, ProviderError> {
-            Self::new(kind, base_url, api_key)
-        }
-
-        fn new(
-            kind: ProviderKind,
-            base_url: String,
-            api_key: Option<String>,
-        ) -> Result<Self, ProviderError> {
-            crate::utils::tls_provider::install_crypto_provider();
-            let builder = if kind == ProviderKind::Searxng {
-                crate::utils::proxy::client_builder().no_proxy()
-            } else {
-                crate::utils::proxy::create_axios_instance().map_err(|_| ProviderError::Network)?
-            };
-            let http = builder.build().map_err(|_| ProviderError::Network)?;
-            let health = (kind == ProviderKind::Searxng)
-                .then(|| service_health::shared(ServiceKind::Searxng));
-            Ok(Self {
-                kind,
-                base_url,
-                api_key,
-                http,
-                health,
-            })
-        }
-
-        pub async fn search(
-            &self,
-            kind: ProviderKind,
-            request: &SearchRequest,
-            deadline: Duration,
-        ) -> Result<Value, ProviderError> {
-            let path = if kind == ProviderKind::Searxng {
-                "search"
-            } else {
-                "search"
-            };
-            if let Some(health) = &self.health {
-                match health.call_permit() {
-                    CallPermit::Skipped => return Err(ProviderError::Unavailable),
-                    CallPermit::Probe => {
-                        health.spawn_probe();
-                        return Err(ProviderError::Unavailable);
-                    }
-                    CallPermit::Allowed => {}
-                }
-            }
-            let result = if kind == ProviderKind::Brave || kind == ProviderKind::Searxng {
-                let mut url = self.endpoint(path).map_err(|_| ProviderError::Invalid)?;
-                url.query_pairs_mut()
-                    .append_pair("q", &request.query)
-                    .append_pair("format", "json");
-                let limit = request.max_results.min(self.max_results(kind));
-                url.query_pairs_mut()
-                    .append_pair("count", &limit.to_string());
-                self.send(reqwest::Method::GET, url, None, deadline).await
-            } else {
-                let body = search_body(kind, request, self.max_results(kind));
-                let url = self.endpoint(path).map_err(|_| ProviderError::Invalid)?;
-                self.send(reqwest::Method::POST, url, Some(body), deadline)
-                    .await
-            };
-            if let Some(health) = &self.health {
-                match &result {
-                    Ok(_) => health.record_success(),
-                    Err(error) => health.record_failure(failure_kind(error)),
-                }
-            }
-            result
-        }
-
-        pub async fn fetch(
-            &self,
-            kind: ProviderKind,
-            url: &str,
-            deadline: Duration,
-        ) -> Result<Value, ProviderError> {
-            let path = match kind {
-                ProviderKind::AnySearch => "extract",
-                ProviderKind::DeepSeek => "fetch",
-                ProviderKind::Exa => "contents",
-                ProviderKind::Firecrawl => "scrape",
-                ProviderKind::Tavily => "extract",
-                ProviderKind::Brave | ProviderKind::Searxng => {
-                    return Err(ProviderError::Unsupported);
-                }
-            };
-            let endpoint = self.endpoint(path).map_err(|_| ProviderError::Invalid)?;
-            let body = fetch_body(kind, url);
-            self.send(reqwest::Method::POST, endpoint, Some(body), deadline)
-                .await
-        }
-
-        fn endpoint(&self, path: &str) -> Result<reqwest::Url, ProviderError> {
-            let base = self.base_url.trim_end_matches('/');
-            reqwest::Url::parse(&format!("{base}/{path}")).map_err(|_| ProviderError::Invalid)
-        }
-
-        fn max_results(&self, kind: ProviderKind) -> usize {
-            match kind {
-                ProviderKind::AnySearch => 10,
-                ProviderKind::Brave => 20,
-                ProviderKind::DeepSeek => 50,
-                ProviderKind::Exa | ProviderKind::Firecrawl => 100,
-                ProviderKind::Tavily | ProviderKind::Searxng => 20,
-            }
-        }
-
-        async fn send(
-            &self,
-            method: reqwest::Method,
-            url: reqwest::Url,
-            body: Option<Value>,
-            deadline: Duration,
-        ) -> Result<Value, ProviderError> {
-            let mut request = self.http.request(method, url);
-            if let Some(key) = self.api_key.as_deref() {
-                request = match self.kind {
-                    ProviderKind::Brave => request.header("X-Subscription-Token", key),
-                    ProviderKind::Exa => request.header("x-api-key", key),
-                    ProviderKind::Searxng => request,
-                    _ => request.bearer_auth(key),
-                };
-            }
-            if let Some(body) = body {
-                request = request.json(&body);
-            }
-            let response = tokio::time::timeout(deadline, request.send())
-                .await
-                .map_err(|_| ProviderError::Timeout)?
-                .map_err(|error| {
-                    if error.is_timeout() {
-                        ProviderError::Timeout
-                    } else {
-                        ProviderError::Network
-                    }
-                })?;
-            let status = response.status();
-            let brave_quota = self.kind == ProviderKind::Brave
-                && response
-                    .headers()
-                    .get("x-ratelimit-remaining")
-                    .and_then(|value| value.to_str().ok())
-                    .is_some_and(|value| value.trim() == "0");
-            let bytes = response.bytes().await.map_err(|_| ProviderError::Network)?;
-            if brave_quota {
-                return Err(ProviderError::QuotaExhausted);
-            }
-            if !status.is_success() {
-                return Err(classify_status(
-                    status.as_u16(),
-                    &bytes,
-                    self.api_key.as_deref(),
-                ));
-            }
-            serde_json::from_slice(&bytes).map_err(|error| {
-                let _ = redact_error(
-                    &error.to_string(),
-                    &self.api_key.iter().cloned().collect::<Vec<_>>(),
-                );
-                ProviderError::Invalid
-            })
-        }
-    }
-
-    fn classify_status(status: u16, body: &[u8], key: Option<&str>) -> ProviderError {
-        let _safe_debug = redact_error(
-            &String::from_utf8_lossy(body),
-            &key.into_iter().map(str::to_string).collect::<Vec<_>>(),
-        );
-        match status {
-            401 | 403 => ProviderError::Auth,
-            402 | 432 => ProviderError::QuotaExhausted,
-            429 => ProviderError::RateLimited,
-            status => ProviderError::Http(status),
-        }
-    }
-
-    fn failure_kind(error: &ProviderError) -> FailureKind {
-        match error {
-            ProviderError::Timeout => FailureKind::Timeout,
-            ProviderError::RateLimited => FailureKind::RateLimited,
-            ProviderError::Auth => FailureKind::Auth,
-            ProviderError::QuotaExhausted => FailureKind::Budget,
-            ProviderError::Invalid => FailureKind::InvalidResponse,
-            _ => FailureKind::Unreachable,
-        }
-    }
-
-    fn search_body(kind: ProviderKind, request: &SearchRequest, max: usize) -> Value {
-        let count = request.max_results.min(max);
-        match kind {
-            ProviderKind::AnySearch => {
-                serde_json::json!({"query": &request.query, "max_results": count})
-            }
-            ProviderKind::DeepSeek => serde_json::json!({"query": &request.query, "count": count}),
-            ProviderKind::Exa => {
-                serde_json::json!({"query": &request.query, "numResults": count, "contents": {"highlights": {"maxCharacters": 300}}})
-            }
-            ProviderKind::Firecrawl => serde_json::json!({"query": &request.query, "limit": count}),
-            ProviderKind::Tavily => {
-                serde_json::json!({"query": &request.query, "max_results": count, "include_answer": false})
-            }
-            ProviderKind::Brave | ProviderKind::Searxng => serde_json::Value::Null,
-        }
-    }
-
-    fn fetch_body(kind: ProviderKind, url: &str) -> Value {
-        match kind {
-            ProviderKind::AnySearch | ProviderKind::Tavily => serde_json::json!({"urls": [url]}),
-            ProviderKind::DeepSeek => serde_json::json!({"url": url}),
-            ProviderKind::Exa => serde_json::json!({"urls": [url], "text": true}),
-            ProviderKind::Firecrawl => serde_json::json!({"url": url, "maxAge": 0}),
-            ProviderKind::Brave | ProviderKind::Searxng => serde_json::Value::Null,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn provider_errors_are_named_without_response_bodies() {
-        assert_eq!(ProviderError::QuotaExhausted.code(), "quota_exhausted");
-        assert_eq!(ProviderError::Http(503).code(), "http_503");
-        assert!(!ProviderError::Auth.to_string().contains("secret"));
-    }
-
-    #[test]
-    fn parse_hits_supports_each_response_shape() {
-        let cases = [
-            (
-                ProviderKind::AnySearch,
-                serde_json::json!({"results":[{"title":"A","url":"https://a","snippet":"s"}]}),
-            ),
-            (
-                ProviderKind::Brave,
-                serde_json::json!({"web":{"results":[{"title":"A","url":"https://a","description":"s"}]}}),
-            ),
-            (
-                ProviderKind::Firecrawl,
-                serde_json::json!({"data":[{"title":"A","url":"https://a","description":"s"}]}),
-            ),
-        ];
-        for (kind, value) in cases {
-            let hits = parse_hits(kind, &value).unwrap();
-            assert_eq!(hits[0].url, "https://a");
-        }
-    }
-
-    #[test]
-    fn brave_and_searxng_explicitly_do_not_implement_fetch() {
-        let web = WebSettings::default();
-        let brave = BraveProvider::from_settings(&web);
-        assert!(brave.is_ok());
-        let searxng = SearxngProvider::from_settings(&web);
-        assert!(searxng.is_ok());
     }
 }

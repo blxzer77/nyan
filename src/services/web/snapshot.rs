@@ -182,6 +182,7 @@ fn save(
     })
 }
 
+/// Latest snapshot for a URL, only while the 15-minute index entry is fresh.
 pub fn lookup_latest(url: &str) -> Option<Snapshot> {
     let key = normalize_index_url(url);
     let entry = index().lock().ok()?.get(&key).cloned()?;
@@ -190,6 +191,72 @@ pub fn lookup_latest(url: &str) -> Option<Snapshot> {
         return None;
     }
     read(&entry.hash).ok()
+}
+
+/// Latest snapshot for a URL regardless of age (external-search 4.3: a `range`
+/// continuation reads the snapshot for as long as the file exists, and does not
+/// count against the fetch budget).
+///
+/// The index is process memory, so after a restart there is no entry; the scan
+/// fallback finds the newest snapshot whose header names the URL.
+pub fn lookup_any(url: &str) -> Option<Snapshot> {
+    let key = normalize_index_url(url);
+    let cached = index()
+        .lock()
+        .ok()
+        .and_then(|entries| entries.get(&key).cloned());
+    match cached.and_then(|entry| read(&entry.hash).ok()) {
+        Some(snapshot) => Some(snapshot),
+        None => find_latest_on_disk(&key),
+    }
+}
+
+fn find_latest_on_disk(normalized: &str) -> Option<Snapshot> {
+    let root = snapshots_root();
+    let mut newest: Option<(std::time::SystemTime, String)> = None;
+    for prefix in std::fs::read_dir(root).ok()? {
+        let prefix = prefix.ok()?;
+        if !prefix.file_type().ok()?.is_dir() || prefix.file_name() == "tmp" {
+            continue;
+        }
+        for file in std::fs::read_dir(prefix.path()).ok()? {
+            let file = file.ok()?;
+            let name = file.file_name();
+            let Some(hash) = name.to_str().and_then(|name| name.strip_suffix(".md")) else {
+                continue;
+            };
+            let Ok(content) = std::fs::read_to_string(file.path()) else {
+                continue;
+            };
+            let Some((metadata, _)) = parse_snapshot(&content) else {
+                continue;
+            };
+            if normalize_index_url(&metadata.url) != normalized
+                && normalize_index_url(&metadata.final_url) != normalized
+            {
+                continue;
+            }
+            let modified = file
+                .metadata()
+                .and_then(|metadata| metadata.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            if newest.as_ref().is_none_or(|(best, _)| modified > *best) {
+                newest = Some((modified, hash.to_string()));
+            }
+        }
+    }
+    let (_, hash) = newest?;
+    read(&hash).ok()
+}
+
+/// Test seam: make an index entry look `age` old.
+#[cfg(test)]
+pub fn age_index_entry_for_tests(url: &str, age: chrono::Duration) {
+    if let Ok(mut entries) = index().lock() {
+        if let Some(entry) = entries.get_mut(&normalize_index_url(url)) {
+            entry.fetched_at = Utc::now() - age;
+        }
+    }
 }
 
 pub fn read(hash: &str) -> Result<Snapshot, std::io::Error> {
@@ -506,6 +573,138 @@ mod tests {
         assert!(
             matches!(error, RangeError::SectionNotFound { headings, .. } if headings.len() == 30)
         );
+    }
+
+    fn with_config_home<T>(name: &str, run: impl FnOnce(&std::path::Path) -> T) -> T {
+        let _lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!("nyan-snapshot-{name}-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let guard = crate::utils::test_env::EnvVarGuard::set("CLAUDE_CONFIG_DIR", &dir);
+        clear_index();
+        let result = run(&dir);
+        drop(guard);
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    fn page(body: &str) -> FetchedPage {
+        FetchedPage {
+            original_url: "https://example.com/doc".to_string(),
+            final_url: "https://example.com/doc".to_string(),
+            redirects: Vec::new(),
+            status: 200,
+            content_type: "text/html".to_string(),
+            fetched_at: Utc::now(),
+            raw_body: body.as_bytes().to_vec(),
+            text: body.to_string(),
+        }
+    }
+
+    #[test]
+    fn snapshots_are_content_addressed_and_change_creates_a_new_version() {
+        with_config_home("versions", |root| {
+            let first = save_nyan(&page("version one")).unwrap();
+            let same = save_nyan(&page("version one")).unwrap();
+            let second = save_nyan(&page("version two")).unwrap();
+            assert_eq!(first.hash, same.hash, "same bytes, same snapshot");
+            assert_ne!(first.hash, second.hash);
+            assert!(first.path.exists() && second.path.exists(), "old versions stay readable");
+            let reread = read(&first.hash).unwrap();
+            assert_eq!(reread.text, "version one");
+            assert_eq!(reread.metadata.fetched_by, "nyan");
+            assert_eq!(reread.metadata.sha256, first.hash);
+
+            let hash_dir = root.join("web-snapshots").join(&first.hash[..2]);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let dir_mode = std::fs::metadata(root.join("web-snapshots")).unwrap().permissions().mode();
+                assert_eq!(dir_mode & 0o777, 0o700, "snapshot root must be private");
+                let file_mode = std::fs::metadata(&hash_dir.join(format!("{}.md", first.hash)))
+                    .unwrap()
+                    .permissions()
+                    .mode();
+                assert_eq!(file_mode & 0o777, 0o600, "snapshot files must be private");
+            }
+        });
+    }
+
+    #[test]
+    fn the_url_index_expires_after_fifteen_minutes_but_range_reads_do_not() {
+        with_config_home("ttl", |_root| {
+            let snapshot = save_nyan(&page("body")).unwrap();
+            assert_eq!(lookup_latest("https://example.com/doc").unwrap().hash, snapshot.hash);
+            age_index_entry_for_tests("https://example.com/doc", chrono::Duration::minutes(16));
+            assert!(lookup_latest("https://example.com/doc").is_none(), "the fast cache expires");
+            assert_eq!(
+                lookup_any("https://example.com/doc").unwrap().hash,
+                snapshot.hash,
+                "a range continuation still finds the snapshot"
+            );
+        });
+    }
+
+    #[test]
+    fn a_range_read_finds_the_snapshot_after_the_index_is_gone() {
+        with_config_home("restart", |_root| {
+            let snapshot = save_nyan(&page("persisted body")).unwrap();
+            clear_index();
+            let found = lookup_any("https://example.com/doc").expect("disk scan finds the file");
+            assert_eq!(found.hash, snapshot.hash);
+            assert_eq!(found.text, "persisted body");
+            assert!(lookup_any("https://example.com/other").is_none());
+        });
+    }
+
+    #[test]
+    fn provider_snapshots_record_fetched_by_and_freshness() {
+        with_config_home("provider", |_root| {
+            let snapshot = save_provider(ProviderSnapshotInput {
+                url: "https://example.com/doc".to_string(),
+                final_url: "https://example.com/final".to_string(),
+                status: 403,
+                content_type: "text/markdown".to_string(),
+                fetched_at: Utc::now(),
+                fetched_by: "firecrawl".to_string(),
+                text: "# Firecrawl body".to_string(),
+                provider_format: "markdown".to_string(),
+                freshness: Some("live".to_string()),
+            })
+            .unwrap();
+            let reread = read(&snapshot.hash).unwrap();
+            assert_eq!(reread.metadata.fetched_by, "firecrawl");
+            assert_eq!(reread.metadata.final_url, "https://example.com/final");
+            assert_eq!(reread.metadata.status, 403);
+            assert_eq!(reread.metadata.provider_format.as_deref(), Some("markdown"));
+            assert_eq!(reread.metadata.freshness.as_deref(), Some("live"));
+            assert_eq!(reread.text, "# Firecrawl body");
+        });
+    }
+
+    #[test]
+    fn retention_removes_files_older_than_the_window_only() {
+        with_config_home("retention", |root| {
+            let snapshot = save_nyan(&page("old")).unwrap();
+            let old = std::time::SystemTime::now() - Duration::from_secs(40 * 24 * 60 * 60);
+            let file = std::fs::File::options().write(true).open(&snapshot.path).unwrap();
+            file.set_modified(old).unwrap();
+            drop(file);
+            let fresh = save_nyan(&page("new")).unwrap();
+            assert_eq!(cleanup_retention(30).unwrap(), 1);
+            assert!(!snapshot.path.exists());
+            assert!(fresh.path.exists());
+            assert_eq!(cleanup_retention(30).unwrap(), 0, "nothing else is old");
+            let _ = root;
+        });
+    }
+
+    #[test]
+    fn invalid_hashes_are_rejected_before_any_path_is_built() {
+        with_config_home("hash", |_root| {
+            for hash in ["", "a", "../etc/passwd", "zz", "ab/cd"] {
+                assert!(read(hash).is_err(), "{hash}");
+            }
+        });
     }
 
     #[test]

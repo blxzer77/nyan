@@ -126,6 +126,47 @@ async fn run_nyan_web_fetch(
     args: &serde_json::Value,
     context: &crate::tool::ToolUseContext,
 ) -> Result<Output, String> {
+    run_nyan_web_fetch_with(args, context, None).await
+}
+
+/// One direct-fetch + provider-fallback chain, with the mock seam when a test
+/// supplies its own fetcher configuration.
+async fn fetch_once(
+    url: &str,
+    context: &crate::tool::ToolUseContext,
+    web: &crate::utils::settings::nyan::WebSettings,
+    config: Option<&crate::services::web::fetcher::FetchConfig>,
+) -> Result<
+    crate::services::web::fallback::FetchChainResult,
+    crate::services::web::fallback::FetchChainFailure,
+> {
+    let config = match config {
+        Some(config) => config.clone(),
+        None => crate::services::web::fetcher::FetchConfig::from_settings(web),
+    };
+    // @nyan: `web.fetch_fallback` runs on the same decision seam as the tool's
+    // page check, so a scripted provider in tests reaches both.
+    let provider = crate::services::web::decision::provider();
+    let decisions = provider
+        .as_ref()
+        .map(|provider| crate::services::web::decision::WebDecisions::new(provider, &context.abort_controller));
+    crate::services::web::fallback::fetch_chain(
+        url,
+        &context.abort_controller,
+        web,
+        &config,
+        decisions.as_ref(),
+    )
+    .await
+}
+
+/// `test_config` is the loopback-mock seam: only `#[cfg(test)]` callers pass it,
+/// so a production build cannot loosen the host guard.
+async fn run_nyan_web_fetch_with(
+    args: &serde_json::Value,
+    context: &crate::tool::ToolUseContext,
+    test_config: Option<crate::services::web::fetcher::FetchConfig>,
+) -> Result<Output, String> {
     let started = std::time::Instant::now();
     let url = args
         .get("url")
@@ -142,32 +183,64 @@ async fn run_nyan_web_fetch(
     let web = crate::services::web::settings()
         .ok_or_else(|| "Error: nyan.web is not configured".to_string())?;
     let _ = crate::services::web::snapshot::cleanup_retention(web.snapshot_retention_days());
-    let fetch_config = crate::services::web::fetcher::FetchConfig::from_settings(&web);
+    let fetch_config = match &test_config {
+        Some(config) => config.clone(),
+        None => crate::services::web::fetcher::FetchConfig::from_settings(&web),
+    };
     let normalized_url = crate::services::web::fetcher::validate_target(url, &fetch_config)
         .map_err(|error| error.to_string())?
         .url
         .to_string();
 
-    let (snapshot, direct_reason) =
-        if let Some(snapshot) = crate::services::web::snapshot::lookup_latest(&normalized_url) {
-            (snapshot, None)
-        } else {
-            crate::services::web::budget::begin_fetch(&web.fetch())
+    // @nyan: a `range` continuation reads an existing snapshot for as long as
+    // the file exists and counts against neither the call nor the byte budget
+    // (external-search 3.5 / 4.3). Only a fresh fetch is budgeted.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Origin {
+        Cached,
+        Continuation,
+        Fresh,
+    }
+    let fresh = |fetched: crate::services::web::fallback::FetchChainResult| {
+        (
+            fetched.snapshot,
+            fetched.direct_reason,
+            Origin::Fresh,
+            fetched.challenge_fallback_failed,
+        )
+    };
+    let (snapshot, direct_reason, origin, challenge_fallback_failed) = if range.is_some() {
+        match crate::services::web::snapshot::lookup_any(&normalized_url) {
+            Some(snapshot) => (snapshot, None, Origin::Continuation, false),
+            None => {
+                crate::services::web::budget::begin_fetch(&web.fetch())
+                    .map_err(|error| error.to_string())?;
+                let fetched = fetch_once(url, context, &web, test_config.as_ref())
+                    .await
+                    .map_err(|error| error.to_string())?;
+                crate::services::web::budget::add_fetch_bytes(
+                    &web.fetch(),
+                    fetched.snapshot.metadata.bytes as u64,
+                )
                 .map_err(|error| error.to_string())?;
-            let fetched = crate::services::web::fallback::fetch_with_fallback(
-                url,
-                &context.abort_controller,
-                &web,
-            )
+                fresh(fetched)
+            }
+        }
+    } else if let Some(snapshot) = crate::services::web::snapshot::lookup_latest(&normalized_url) {
+        (snapshot, None, Origin::Cached, false)
+    } else {
+        crate::services::web::budget::begin_fetch(&web.fetch())
+            .map_err(|error| error.to_string())?;
+        let fetched = fetch_once(url, context, &web, test_config.as_ref())
             .await
             .map_err(|error| error.to_string())?;
-            crate::services::web::budget::add_fetch_bytes(
-                &web.fetch(),
-                fetched.snapshot.metadata.bytes as u64,
-            )
-            .map_err(|error| error.to_string())?;
-            (fetched.snapshot, fetched.direct_reason)
-        };
+        crate::services::web::budget::add_fetch_bytes(
+            &web.fetch(),
+            fetched.snapshot.metadata.bytes as u64,
+        )
+        .map_err(|error| error.to_string())?;
+        fresh(fetched)
+    };
 
     let selected = crate::services::web::snapshot::select_range(
         &snapshot.text,
@@ -195,25 +268,53 @@ async fn run_nyan_web_fetch(
         .collect::<String>();
     let fetched_at = snapshot.metadata.fetched_at.to_rfc3339();
     let source = &snapshot.metadata.final_url;
-    let origin_note = match direct_reason {
-        Some(reason) => format!(
-            "(fetched via {}, {fetched_at}, {} chars; direct fetch failed: {reason})",
-            snapshot.metadata.fetched_by,
-            snapshot.text.chars().count()
-        ),
-        None => format!(
-            "(fetched {fetched_at}, {} chars; source: {})",
-            snapshot.text.chars().count(),
+    let total = snapshot.text.chars().count();
+    let origin_note = match (&direct_reason, origin) {
+        (Some(reason), _) => format!(
+            "(fetched via {}, {fetched_at}, {total} chars; direct fetch failed: {reason})",
             snapshot.metadata.fetched_by
         ),
+        (None, Origin::Fresh) => format!(
+            "(fetched {fetched_at}, {total} chars; source: {})",
+            snapshot.metadata.fetched_by
+        ),
+        (None, Origin::Cached | Origin::Continuation) => format!(
+            "(snapshot fetched {fetched_at}, {total} chars; source: {}; not refetched)",
+            snapshot.metadata.fetched_by
+        ),
+    };
+    // @nyan: web.fetch_fallback asked for a provider, every provider failed, and
+    // the direct page was already accepted by the rules — say so, do not hide it.
+    let origin_note = if challenge_fallback_failed {
+        format!("{origin_note} [provider fallback failed; serving the direct fetch]")
+    } else {
+        origin_note
     };
     let continuation = if selected.end < selected.total {
         format!(". Continue with range=chars:{}-", selected.end)
     } else {
         String::new()
     };
+
+    // @nyan: web.page_answers only appends a hint; the body is never rewritten.
+    // The tool input's prompt is the only query this tool has (decision-provider 4.2).
+    let mut hint = String::new();
+    if !prompt.trim().is_empty() {
+        if let Some(provider) = crate::services::web::decision::provider() {
+            let decisions =
+                crate::services::web::decision::WebDecisions::new(&provider, &context.abort_controller);
+            if decisions.page_lacks_answer(prompt, &selected.text).await {
+                let next = crate::services::web::search::next_candidate(source);
+                hint.push_str(&format!(
+                    "\n[page may not answer the query — consider fetching: {}]",
+                    next.unwrap_or_else(|| "another search result".to_string())
+                ));
+            }
+        }
+    }
+
     let result = format!(
-        "{source}  {origin_note}\n\n<web_content source=\"{source}\">\n{body}\n</web_content>\n\n[Showing chars {}–{} of {}{}]",
+        "{source}  {origin_note}\n\n<web_content source=\"{source}\">\n{body}\n</web_content>\n\n[Showing chars {}–{} of {}{}]{hint}",
         selected.start, selected.end, selected.total, continuation,
     );
     let code_text = reqwest::StatusCode::from_u16(snapshot.metadata.status)
@@ -591,6 +692,8 @@ mod tests {
 
     #[test]
     fn web_fetch_tool_schema_matches_official_input_shape() {
+        // The prompt switches to the nyan wording once `nyan.web` exists.
+        let _guard = crate::services::web::test_support::WebSettingsGuard::none();
         let schema = web_fetch_tool_schema();
         assert_eq!(schema.name, "WebFetch");
         assert_eq!(schema.input_schema["required"], serde_json::json!(["url"]));
@@ -730,6 +833,379 @@ mod tests {
             crate::utils::permissions::permission_result::PermissionResult::Deny { message, .. }
             if message == "WebFetch denied access to domain:example.com."
         ));
+    }
+
+    // ════════════════════════════════════════════════════════
+    // @nyan: the configured web-fetch path, against a local mock.
+    // ════════════════════════════════════════════════════════
+
+    mod nyan_fetch {
+        use std::collections::BTreeMap;
+        use std::time::Duration;
+
+        use serde_json::{Value, json};
+
+        use super::super::{run_nyan_web_fetch_with, web_fetch_tool_schema};
+        use crate::services::decision::Answer;
+        use crate::services::web::test_support::{
+            DecisionOverrideGuard, Route, ScriptedBackend, WebSettingsGuard, key_file, serve,
+        };
+        use crate::services::web::{budget, extract, fetcher::FetchConfig, search};
+        use crate::tool::ToolUseContext;
+        use crate::utils::settings::nyan::WebSettings;
+        use crate::utils::test_env::EnvVarGuard;
+
+        fn settings(json: Value) -> WebSettings {
+            serde_json::from_value(json).unwrap()
+        }
+
+        fn config_dir(name: &str) -> (std::path::PathBuf, EnvVarGuard) {
+            let dir = std::env::temp_dir().join(format!("nyan-webfetch-{name}-{}", uuid::Uuid::new_v4().simple()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &dir);
+            (dir, guard)
+        }
+
+        fn mock_config() -> FetchConfig {
+            FetchConfig::for_local_mock()
+        }
+
+        /// The `web` argument is unused by the implementation (settings are the
+        /// process settings installed by [`WebSettingsGuard`]); it stays in the
+        /// signature so a test cannot forget that it must install one.
+        async fn fetch(
+            args: Value,
+            _web: WebSettings,
+            config: Option<FetchConfig>,
+        ) -> Result<super::super::Output, String> {
+            let context = ToolUseContext::default();
+            run_nyan_web_fetch_with(&args, &context, config).await
+        }
+
+        fn long_html() -> String {
+            format!("<html><body><h1>Doc</h1><p>{}</p></body></html>", "body text ".repeat(40))
+        }
+
+        /// The fallback chain treats < 200 chars as a JS shell, so fixture
+        /// pages that must be served directly carry filler.
+        fn padded(text: &str) -> String {
+            format!("{text}\n{}", "filler line. ".repeat(30))
+        }
+
+        #[tokio::test]
+        async fn a_fresh_fetch_returns_the_original_text_and_a_second_read_uses_the_snapshot() {
+            budget::reset();
+            let _settings_guard =
+                WebSettingsGuard::install(settings(json!({"maxReturnChars": 20000})));
+            let (home, _home_guard) = config_dir("fresh");
+            let server = serve(vec![("/doc", Route::html(&long_html()))]).await;
+            let url = server.url("/doc");
+
+            let first = fetch(json!({"url": url}), settings(json!({})), Some(mock_config()))
+                .await
+                .unwrap();
+            assert!(first.result.starts_with(&url), "{}", first.result);
+            assert!(first.result.contains("<web_content source=\""), "{}", first.result);
+            assert!(first.result.contains("fetched "), "{}", first.result);
+
+            let second = fetch(json!({"url": url}), settings(json!({})), Some(mock_config()))
+                .await
+                .unwrap();
+            assert!(second.result.contains("not refetched"), "{}", second.result);
+            assert_eq!(server.hits("/doc"), 1, "the cached read must not refetch");
+            let _ = std::fs::remove_dir_all(home);
+        }
+
+        #[tokio::test]
+        async fn range_continues_read_the_snapshot_without_refetching_or_counting() {
+            budget::reset();
+            let _settings_guard = WebSettingsGuard::install(settings(json!({})));
+            let (home, _home_guard) = config_dir("range");
+            let body = padded(&"0123456789".repeat(10));
+            let server = serve(vec![("/page", Route::text(&body))]).await;
+            let url = server.url("/page");
+            let _ = fetch(json!({"url": url}), settings(json!({})), Some(mock_config()))
+                .await
+                .unwrap();
+            let after_first = budget::snapshot();
+
+            let page = fetch(
+                json!({"url": url, "range": "chars:10-25"}),
+                settings(json!({})),
+                Some(mock_config()),
+            )
+            .await
+            .unwrap();
+            let total = body.chars().count();
+            assert!(page.result.contains("0123456789"), "{}", page.result);
+            assert!(page.result.contains(&format!("[Showing chars 10–25 of {total}")), "{}", page.result);
+            assert!(page.result.contains("not refetched"));
+            assert_eq!(server.hits("/page"), 1);
+            assert_eq!(budget::snapshot(), after_first, "continuations are not counted");
+
+            let tail = fetch(
+                json!({"url": url, "range": &format!("chars:{}-", total - 5)}),
+                settings(json!({})),
+                Some(mock_config()),
+            )
+            .await
+            .unwrap();
+            assert!(tail.result.contains(&format!("[Showing chars {}–{total} of {total}]", total - 5)));
+
+            let over = fetch(
+                json!({"url": url, "range": &format!("chars:{}-", total + 1)}),
+                settings(json!({})),
+                Some(mock_config()),
+            )
+            .await
+            .unwrap_err();
+            assert!(over.contains(&format!("range_out_of_bounds: page has {total} chars")), "{over}");
+            let _ = std::fs::remove_dir_all(home);
+        }
+
+        #[tokio::test]
+        async fn a_section_range_returns_that_heading_and_lists_headings_when_missing() {
+            budget::reset();
+            let _settings_guard = WebSettingsGuard::install(settings(json!({})));
+            let (home, _home_guard) = config_dir("section");
+            let markdown = padded("# Intro\nintro body\n## Usage\nuse it like this\n## Other\nother body");
+            let server = serve(vec![("/md", Route::new(200, "text/markdown", markdown))]).await;
+            let url = server.url("/md");
+            let page = fetch(json!({"url": url, "range": "#usage"}), settings(json!({})), Some(mock_config()))
+                .await
+                .unwrap();
+            assert!(page.result.contains("## Usage\nuse it like this\n"), "{}", page.result);
+            assert!(!page.result.contains("other body"), "{}", page.result);
+            let missing = fetch(json!({"url": url, "range": "#missing"}), settings(json!({})), Some(mock_config()))
+                .await
+                .unwrap_err();
+            assert!(missing.starts_with("section_not_found"), "{missing}");
+            assert!(missing.contains("Intro"), "{missing}");
+            let _ = std::fs::remove_dir_all(home);
+        }
+
+        #[tokio::test]
+        async fn prompt_extraction_returns_only_verbatim_excerpts_and_counts_the_rest() {
+            budget::reset();
+            let _settings_guard = WebSettingsGuard::install(settings(json!({})));
+            let (home, _home_guard) = config_dir("extract");
+            let page_text = padded("The exact answer is here. Unrelated sentence.");
+            let server = serve(vec![("/p", Route::text(&page_text))]).await;
+            let url = server.url("/p");
+            // The extraction model replies with one real excerpt and one invented.
+            extract::test_reply::set(r#"["The exact answer is here.", "An invented sentence."]"#);
+            let page = fetch(
+                json!({"url": url, "prompt": "what is the answer?"}),
+                settings(json!({})),
+                Some(mock_config()),
+            )
+            .await
+            .unwrap();
+            assert!(page.result.contains("The exact answer is here."), "{}", page.result);
+            assert!(!page.result.contains("An invented sentence."), "{}", page.result);
+            assert!(page.result.contains("1 excerpts discarded (not found in page)"), "{}", page.result);
+            let _ = std::fs::remove_dir_all(home);
+        }
+
+        #[tokio::test]
+        async fn page_answers_adds_a_hint_and_keeps_the_body_verbatim() {
+            budget::reset();
+            let _settings_guard = WebSettingsGuard::install(settings(json!({})));
+            let (home, _home_guard) = config_dir("hint");
+            let page_text = padded("A page about something else entirely.");
+            let server = serve(vec![("/p", Route::text(&page_text))]).await;
+            let url = server.url("/p");
+            search::remember_candidates(vec!["https://example.com/next".to_string()]);
+            // The extraction model returns one real excerpt; the hint is added
+            // around the excerpt body, never by rewriting it.
+            extract::test_reply::set(r#"["A page about something else entirely."]"#);
+            let (provider, backend) = ScriptedBackend::provider(|request| match request.point {
+                // Not a challenge page; keep the direct fetch.
+                crate::services::decision::DecisionPoint::WebFetchFallback => {
+                    [("challenge".to_string(), Answer::Noul { probability: 0.02 })]
+                        .into_iter()
+                        .collect::<BTreeMap<_, _>>()
+                }
+                crate::services::decision::DecisionPoint::WebPageAnswers => {
+                    [("answers".to_string(), Answer::Noul { probability: 0.02 })]
+                        .into_iter()
+                        .collect::<BTreeMap<_, _>>()
+                }
+                other => panic!("unexpected decision point {other:?}"),
+            });
+            let _decision = DecisionOverrideGuard::install(provider);
+            let page = fetch(
+                json!({"url": url, "prompt": "what is the answer?"}),
+                settings(json!({})),
+                Some(mock_config()),
+            )
+            .await
+            .unwrap();
+            assert!(
+                page.result.contains("A page about something else entirely."),
+                "the verbatim excerpt is in the body: {}",
+                page.result
+            );
+            assert!(page.result.contains("[page may not answer the query — consider fetching:"), "{}", page.result);
+            // The exact candidate can be whatever the most recent search
+            // remembered (tests run concurrently); the hint must name one.
+            assert!(
+                page.result.contains("consider fetching: https://"),
+                "the hint names a candidate URL: {}",
+                page.result
+            );
+            let sent = backend.requests();
+            let page_answers = sent
+                .iter()
+                .filter(|request| {
+                    request.point == crate::services::decision::DecisionPoint::WebPageAnswers
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(page_answers.len(), 1);
+            assert_eq!(page_answers[0].state["query"], "what is the answer?");
+            assert!(
+                sent.iter().any(|request| request.point
+                    == crate::services::decision::DecisionPoint::WebFetchFallback),
+                "the fallback point is also consulted"
+            );
+            let _ = std::fs::remove_dir_all(home);
+        }
+
+        #[tokio::test]
+        async fn page_answers_cannot_alter_the_body_when_it_says_yes() {
+            budget::reset();
+            let _settings_guard = WebSettingsGuard::install(settings(json!({})));
+            let (home, _home_guard) = config_dir("hint-no");
+            let server = serve(vec![("/p", Route::text(&padded("The answer is 42.")))]).await;
+            extract::test_reply::set("[]");
+            let (provider, _) = ScriptedBackend::provider(|request| {
+                let (question, probability) = match request.point {
+                    crate::services::decision::DecisionPoint::WebFetchFallback => {
+                        ("challenge", 0.02)
+                    }
+                    _ => ("answers", 0.99),
+                };
+                [(question.to_string(), Answer::Noul { probability })]
+                    .into_iter()
+                    .collect::<BTreeMap<_, _>>()
+            });
+            let _decision = DecisionOverrideGuard::install(provider);
+            let page = fetch(
+                json!({"url": server.url("/p"), "prompt": "answer?"}),
+                settings(json!({})),
+                Some(mock_config()),
+            )
+            .await
+            .unwrap();
+            assert!(!page.result.contains("may not answer"));
+            let _ = std::fs::remove_dir_all(home);
+        }
+
+        #[tokio::test]
+        async fn a_403_is_served_by_the_configured_fetch_provider() {
+            budget::reset();
+            let provider = serve(vec![("/scrape", Route::new(200, "application/json",
+                json!({"data":{"markdown": format!("# Provider page\n{}", "text ".repeat(40))}}).to_string()))]).await;
+            let _settings_guard = WebSettingsGuard::install(settings(json!({
+                "providers": {"firecrawl": {"enabled": true, "baseUrl": provider.origin, "apiKeyFile": key_file()}},
+                "fetchFallback": ["firecrawl"],
+            })));
+            let (home, _home_guard) = config_dir("fallback");
+            let site = serve(vec![("/blocked", Route::new(403, "text/html", "denied"))]).await;
+            let page = fetch(json!({"url": site.url("/blocked")}), settings(json!({})), Some(mock_config()))
+                .await
+                .unwrap();
+            assert!(page.result.contains("(fetched via firecrawl"), "{}", page.result);
+            assert!(page.result.contains("direct fetch failed: http_403"), "{}", page.result);
+            assert!(page.result.contains("# Provider page"));
+            assert_eq!(provider.hits("/scrape"), 1);
+            let _ = std::fs::remove_dir_all(home);
+        }
+
+        #[tokio::test]
+        async fn ssrf_and_config_denials_surface_by_name_and_send_nothing() {
+            budget::reset();
+            let provider = serve(vec![("/scrape", Route::new(200, "application/json", "{}"))]).await;
+            let web = settings(json!({
+                "providers": {"firecrawl": {"enabled": true, "baseUrl": provider.origin, "apiKeyFile": key_file()}},
+                "fetchFallback": ["firecrawl"],
+                "denyHosts": ["blocked.example"],
+            }));
+            let _settings_guard = WebSettingsGuard::install(web.clone());
+            let (home, _home_guard) = config_dir("ssrf");
+            // Production configuration: no mock seam.
+            let production = FetchConfig::from_settings(&web);
+            for (target, expected) in [
+                ("https://127.0.0.1/x", "denied_private_network"),
+                ("https://[::1]/", "denied_private_network"),
+                ("https://localhost./", "denied_private_network"),
+                ("https://169.254.169.254/latest", "denied_private_network"),
+                ("https://100.80.19.12/", "denied_private_network"),
+                ("https://intranet/", "denied_private_network"),
+                ("https://example.com:8443/", "denied_port"),
+                ("ftp://example.com/", "denied_scheme"),
+                ("https://blocked.example/", "denied_host"),
+            ] {
+                let error = fetch(json!({"url": target}), web.clone(), Some(production.clone()))
+                    .await
+                    .unwrap_err();
+                assert!(error.starts_with(expected), "{target}: {error}");
+            }
+            assert!(provider.seen().is_empty(), "no denied URL may reach a provider");
+            let _ = std::fs::remove_dir_all(home);
+        }
+
+        #[tokio::test]
+        async fn fetch_calls_and_bytes_are_budgeted_with_named_errors() {
+            budget::reset();
+            let server = serve(vec![
+                ("/a", Route::text(&"a".repeat(400))),
+                ("/b", Route::text(&"b".repeat(400))),
+            ])
+            .await;
+            let home;
+            {
+                let _settings_guard = WebSettingsGuard::install(settings(json!({
+                    "fetch": {"maxPerSession": 1, "maxBytesPerSession": 1048576},
+                })));
+                let (dir, _home_guard) = config_dir("budget-calls");
+                home = dir;
+                let _ = fetch(json!({"url": server.url("/a")}), settings(json!({})), Some(mock_config()))
+                    .await
+                    .unwrap();
+                let error =
+                    fetch(json!({"url": server.url("/b")}), settings(json!({})), Some(mock_config()))
+                        .await
+                        .unwrap_err();
+                assert_eq!(error, "budget_exhausted: web fetch limit (1 per session) reached");
+                assert_eq!(server.hits("/b"), 0);
+            }
+            let _ = std::fs::remove_dir_all(&home);
+
+            budget::reset();
+            {
+                let _settings_guard = WebSettingsGuard::install(settings(json!({
+                    "fetch": {"maxBytesPerSession": 300},
+                })));
+                let (dir, _home_guard) = config_dir("budget-bytes");
+                let error =
+                    fetch(json!({"url": server.url("/a")}), settings(json!({})), Some(mock_config()))
+                        .await
+                        .unwrap_err();
+                assert!(error.starts_with("budget_exhausted: web fetch byte limit"), "{error}");
+                let _ = std::fs::remove_dir_all(dir);
+            }
+            let _ = std::fs::remove_dir_all(home);
+        }
+
+        #[tokio::test]
+        async fn the_tool_schema_keeps_prompt_optional_and_range_available() {
+            let _settings_guard = WebSettingsGuard::install(settings(json!({})));
+            let schema = web_fetch_tool_schema();
+            assert_eq!(schema.input_schema["required"], json!(["url"]));
+            assert!(schema.input_schema["properties"]["range"].is_object());
+            assert!(schema.description.contains("<web_content>"));
+        }
     }
 
     #[tokio::test]
