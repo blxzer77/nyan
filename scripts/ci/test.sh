@@ -62,7 +62,10 @@ unset ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL \
     ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY \
     BAT_THEME
 
-args=(cargo nextest run --lib --no-fail-fast)
+args=(cargo nextest run --no-fail-fast)
+if [[ -z "$archive" ]]; then
+    args+=(--lib)
+fi
 if [[ -n "${CI:-}" ]]; then
     args+=(--profile ci)
 fi
