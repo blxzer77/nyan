@@ -1,0 +1,273 @@
+# OCR review — batch AI code review of what landed on master, reported as one issue per run.
+#
+# Runs on self-hosted runners to reach the private OCR dispatch service.
+#
+# Two invocation shapes:
+#   - nightly (schedule): range from last successful scheduled review run to master tip.
+#   - on demand (workflow_dispatch): `since-last-review`, `since-last-tag`, or `custom`.
+#
+# The review is advisory. It opens an issue; it does not block pull requests or release gates.
+#
+# Secrets / Vars:
+#   OCR_DISPATCH_URL    default http://10.144.0.3:50007/ocr (or from vars/secrets)
+#   OCR_DISPATCH_TOKEN  bearer token for ocr-dispatch service
+
+name: OCR review
+
+on:
+  schedule:
+    - cron: '30 18 * * *'
+  workflow_dispatch:
+    inputs:
+      range:
+        description: What to review
+        type: choice
+        default: since-last-review
+        options:
+          - since-last-review
+          - since-last-tag
+          - custom
+      base:
+        description: Base commit, used only when range is custom (reviews base..HEAD)
+        type: string
+        default: ''
+
+concurrency:
+  group: ocr-review
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+env:
+  OCR_MODEL: review.deep
+  OCR_EFFORT: high
+  OCR_SHARDS: '4'
+  OCR_TIMEOUT_MINUTES: '60'
+
+jobs:
+  review:
+    name: AI code review (OCR)
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 360
+    steps:
+      - name: Checkout with full history and tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the range
+        id: range
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REQUESTED: ${{ inputs.range }}
+          CUSTOM_BASE: ${{ inputs.base }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          kind="${REQUESTED:-since-last-review}"
+          if [ "$EVENT" = schedule ]; then kind=since-last-review; fi
+
+          base=""
+          case "$kind" in
+            since-last-review)
+              base="$(gh api "repos/$REPO/actions/workflows/ocr-review.yml/runs?event=schedule&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // empty' 2>/dev/null || true)"
+              ;;
+            since-last-tag)
+              tag="$(git describe --tags --abbrev=0 --match 'nyan-v*' "$head" 2>/dev/null || true)"
+              if [ -n "$tag" ]; then base="$(git rev-list -n 1 "$tag")"; fi
+              ;;
+            custom)
+              if [ -z "$CUSTOM_BASE" ]; then
+                echo "::error::range=custom needs a base commit"
+                exit 1
+              fi
+              base="$(git rev-parse --verify "$CUSTOM_BASE^{commit}")"
+              ;;
+            *)
+              echo "::error::unknown range: $kind"
+              exit 1
+              ;;
+          esac
+
+          note=""
+          if [ -n "$base" ] && ! git merge-base --is-ancestor "$base" "$head"; then
+            if [ "$kind" = custom ]; then
+              echo "::error::$base is not an ancestor of $head, so there is no range between them"
+              exit 1
+            fi
+            echo "::warning::$base is not an ancestor of $head; falling back to the last 24 hours"
+            note="The previous review point ${base:0:9} is not in this history, so this range starts 24 hours back. Commits before that were not reviewed."
+            base=""
+          fi
+          if [ -z "$base" ]; then
+            base="$(git rev-list -1 --before='24 hours ago' "$head" || true)"
+            echo "No earlier review to continue from: reviewing the last 24 hours (base ${base:-none})."
+          fi
+
+          {
+            echo "kind=$kind"
+            echo "head=$head"
+            echo "base=$base"
+            echo "note=$note"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build the diff
+        id: diff
+        if: steps.range.outputs.base != ''
+        env:
+          BASE: ${{ steps.range.outputs.base }}
+          HEAD: ${{ steps.range.outputs.head }}
+        run: |
+          set -euo pipefail
+          DIFF="$RUNNER_TEMP/range.diff"
+          # Exclude lockfile and build artifacts
+          git diff "$BASE" "$HEAD" -- . ':(exclude)Cargo.lock' ':(exclude)target/**' > "$DIFF"
+          {
+            echo "lines=$(wc -l < "$DIFF")"
+            echo "commits=$(git rev-list --count "$BASE..$HEAD")"
+            echo "files=$(git diff --name-only "$BASE" "$HEAD" -- . ':(exclude)Cargo.lock' ':(exclude)target/**' | wc -l)"
+          } >> "$GITHUB_OUTPUT"
+          [ -s "$DIFF" ] || echo "empty=true" >> "$GITHUB_OUTPUT"
+
+      - name: Nothing to review
+        if: steps.range.outputs.base == '' || steps.diff.outputs.empty == 'true'
+        run: echo "::notice::The range is empty, so there is nothing to review."
+
+      - name: Request review from ocr-dispatch
+        if: steps.range.outputs.base != '' && steps.diff.outputs.empty != 'true'
+        env:
+          URL: ${{ vars.OCR_DISPATCH_URL || secrets.OCR_DISPATCH_URL || 'http://10.144.0.3:50007/ocr' }}
+          TOKEN: ${{ secrets.OCR_DISPATCH_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.range.outputs.head }}
+          BASE: ${{ steps.range.outputs.base }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, urllib.error, urllib.request
+
+          token = os.environ.get("TOKEN", "").strip()
+          if not token:
+              print("::warning::OCR_DISPATCH_TOKEN is not set; skipping OCR review.")
+              sys.exit(0)
+
+          diff = open(os.path.join(os.environ["RUNNER_TEMP"], "range.diff"), encoding="utf-8").read()
+          payload_data = {
+              "repo": os.environ["REPO"],
+              "sha": os.environ["SHA"],
+              "base_sha": os.environ["BASE"],
+              "diff": diff,
+              "model": os.environ["OCR_MODEL"],
+              "effort": os.environ["OCR_EFFORT"],
+              "timeout_minutes": int(os.environ["OCR_TIMEOUT_MINUTES"]),
+              "shards": int(os.environ["OCR_SHARDS"]),
+          }
+          payload = json.dumps(payload_data).encode()
+          req = urllib.request.Request(
+              os.environ["URL"].rstrip("/") + "/review",
+              data=payload,
+              headers={
+                  "Content-Type": "application/json",
+                  "Authorization": "Bearer " + token,
+              },
+              method="POST")
+          try:
+              with urllib.request.urlopen(req, timeout=None) as resp:
+                  data = json.load(resp)
+          except urllib.error.HTTPError as exc:
+              data = {"ok": False, "error": "HTTP %s: %s" % (exc.code, exc.read(300)[:300])}
+          except Exception as exc:
+              data = {"ok": False, "error": "dispatch unreachable: %s" % exc}
+
+          print("dispatch ok=%s status=%s error=%s" % (data.get("ok"), data.get("status"), data.get("error")))
+          if not data.get("ok"):
+              print("::error::OCR review did not complete: %s" % data.get("error", "unknown"))
+              sys.exit(1)
+          open(os.path.join(os.environ["RUNNER_TEMP"], "ocr_comment.md"), "w", encoding="utf-8").write(data.get("comment") or "")
+          PY
+
+      - name: Keep the full review
+        if: steps.range.outputs.base != '' && steps.diff.outputs.empty != 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ocr-review
+          path: ${{ runner.temp }}/ocr_comment.md
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Report the review
+        if: steps.range.outputs.base != '' && steps.diff.outputs.empty != 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          KIND: ${{ steps.range.outputs.kind }}
+          BASE: ${{ steps.range.outputs.base }}
+          HEAD: ${{ steps.range.outputs.head }}
+          COMMITS: ${{ steps.diff.outputs.commits }}
+          FILES: ${{ steps.diff.outputs.files }}
+          LINES: ${{ steps.diff.outputs.lines }}
+          NOTE: ${{ steps.range.outputs.note }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const commentPath = path.join(process.env.RUNNER_TEMP, 'ocr_comment.md');
+            if (!fs.existsSync(commentPath)) {
+              core.info('No ocr_comment.md produced (e.g. review was skipped); nothing to report.');
+              return;
+            }
+            const { owner, repo } = context.repo;
+            const review = fs.readFileSync(commentPath, 'utf8');
+            if (!review.includes('<!-- ocr-review -->')) {
+              core.setFailed('the rendered review lacks its marker; refusing to report it');
+              return;
+            }
+            const { KIND, BASE, HEAD, COMMITS, FILES, LINES, NOTE, OCR_MODEL, OCR_EFFORT } = process.env;
+            const range = `${BASE.slice(0, 9)}..${HEAD.slice(0, 9)}`;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const header = [
+              `**Range:** \`${range}\` (${KIND}), ${COMMITS} commits, ${FILES} files, ${LINES} diff lines`,
+              `**Review:** \`${OCR_MODEL}\`, OCR planning effort \`${OCR_EFFORT}\`. Advisory: nothing here blocks a merge or a release until a reproduction or a rule confirms it.`,
+              `**Compare:** ${context.serverUrl}/${owner}/${repo}/compare/${BASE}...${HEAD}`,
+              `**Run:** ${runUrl}`,
+              ...(NOTE ? ['', `> **Note:** ${NOTE}`] : []),
+              '',
+            ].join('\n');
+
+            try {
+              const summary = header + '\n' + review;
+              await core.summary.addRaw(summary.length > 900000 ? summary.slice(0, 900000) + '\n\n> Cut: the full text is the `ocr-review` artifact.\n' : summary).write();
+            } catch (error) {
+              core.warning(`could not write the run summary: ${error.message}`);
+            }
+
+            const limit = 60000;
+            let text = review;
+            if (header.length + text.length > limit) {
+              text = text.slice(0, limit - header.length - 400) +
+                `\n\n> The review was cut to fit an issue. The full text is the \`ocr-review\` artifact of [this run](${runUrl}).\n`;
+            }
+            try {
+              try {
+                await github.rest.issues.createLabel({ owner, repo, name: 'ocr-review', color: '5319e7', description: 'Batch AI review result' });
+              } catch (error) {
+                if (error.status !== 422) throw error;
+              }
+              const { data: issue } = await github.rest.issues.create({
+                owner, repo,
+                title: `OCR review: ${range} (${KIND})`,
+                body: header + '\n' + text,
+                labels: ['ocr-review'],
+              });
+              core.info(`opened issue #${issue.number}: ${issue.html_url}`);
+            } catch (error) {
+              if (error.status === 410) {
+                core.warning('Issues are disabled in this repository, so this review is only in the run summary and artifact.');
+                return;
+              }
+              throw error;
+            }
