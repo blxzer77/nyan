@@ -7,6 +7,7 @@
 pub mod analytics;
 pub mod api;
 pub mod claude_ai_limits;
+pub mod cache_warmer;
 pub mod compact;
 pub mod context_collapse;
 /// @nyan: quick classification backend for the four modules and host-runtime

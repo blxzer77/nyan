@@ -194,6 +194,48 @@ pub fn should_auto_compact_with_config(
         .is_above_auto_compact_threshold
 }
 
+/// A valid tail start: an assistant message, or a user message that carries no
+/// tool result. A tool-result user message is never a candidate, so an
+/// assistant `tool_use` and its result always land on the same side (C7).
+fn is_keep_cut_candidate(message: &Message) -> bool {
+    match message {
+        Message::Assistant(_) => true,
+        Message::User(user) => !user
+            .content
+            .iter()
+            .any(|content| matches!(content, crate::types::message::UserContent::ToolResult(_))),
+        _ => false,
+    }
+}
+
+/// @nyan (compaction C7): choose where the preserved tail starts. Accumulate
+/// estimated tokens from newest to oldest; at the message where the sum reaches
+/// `keep_recent_tokens`, cut at the first candidate at or after it. `None`
+/// means there is nothing to cut (too short, or no candidate in the tail) and
+/// the caller falls back to the full summary.
+pub fn keep_recent_pivot(messages: &[Message], keep_recent_tokens: u32) -> Option<usize> {
+    if messages.is_empty() || keep_recent_tokens == 0 {
+        return None;
+    }
+    let keep = i64::from(keep_recent_tokens);
+    let mut accumulated = 0i64;
+    let mut reached = None;
+    for index in (0..messages.len()).rev() {
+        accumulated = accumulated.saturating_add(
+            crate::services::token_estimation::rough_token_count_estimation_for_messages(
+                &messages[index..=index],
+            ),
+        );
+        if accumulated >= keep {
+            reached = Some(index);
+            break;
+        }
+    }
+    let reached = reached?;
+    let pivot = (reached..messages.len()).find(|&index| is_keep_cut_candidate(&messages[index]))?;
+    (pivot > 0).then_some(pivot)
+}
+
 /// Maps to: CC `services/compact/autoCompact.ts` `autoCompactIfNeeded(...)`.
 pub async fn auto_compact_if_needed(
     messages_for_query: Vec<Message>,
@@ -238,16 +280,37 @@ pub async fn auto_compact_if_needed(
 
     if should_attempt {
         let original_messages = messages_for_query.clone();
-        return match crate::services::compact::compact::compact_conversation(
-            messages_for_query,
-            tool_use_context,
-            &cache_safe_params,
-            true,
-            None,
-            true,
-        )
-        .await
+        let compaction_result = if crate::services::compact::micro_compact::content_mask_enabled()
+            && let Some(pivot_index) = keep_recent_pivot(
+                &messages_for_query,
+                crate::utils::settings::get_initial_settings()
+                    .nyan
+                    .map(|settings| settings.compaction().keep_recent_tokens())
+                    .unwrap_or(20_000),
+            )
         {
+            crate::services::compact::compact::partial_compact_conversation_with_trigger(
+                messages_for_query,
+                pivot_index,
+                tool_use_context,
+                &cache_safe_params,
+                None,
+                crate::types::message::PartialCompactDirection::UpTo,
+                "auto",
+            )
+            .await
+        } else {
+            crate::services::compact::compact::compact_conversation(
+                messages_for_query,
+                tool_use_context,
+                &cache_safe_params,
+                true,
+                None,
+                true,
+            )
+            .await
+        };
+        return match compaction_result {
             Ok(compaction_result) => {
                 crate::services::compact::post_compact_cleanup::run_post_compact_cleanup(Some(
                     query_source,
@@ -576,5 +639,80 @@ mod tests {
         assert_eq!(result.messages, messages);
         assert!(!result.compacted);
         assert_eq!(result.consecutive_failures, Some(1));
+    }
+
+    fn pivot_text_user(text: &str) -> Message {
+        Message::User(crate::utils::messages::create_user_message(text.to_string()))
+    }
+
+    fn pivot_assistant_text(text: &str) -> Message {
+        Message::Assistant(crate::utils::messages::create_assistant_message(
+            text.to_string(),
+        ))
+    }
+
+    fn pivot_tool_call(id: &str) -> Message {
+        Message::Assistant(crate::types::message::AssistantMessage {
+            content: vec![crate::types::message::AssistantContent::ToolUse(
+                crate::types::message::ToolUseBlock {
+                    id: crate::types::ids::ToolUseId(id.to_string()),
+                    name: "Bash".to_string(),
+                    input: serde_json::json!({"command": "true"}),
+                },
+            )],
+            ..crate::utils::messages::create_assistant_message(String::new())
+        })
+    }
+
+    fn pivot_tool_result(id: &str, body: &str) -> Message {
+        let mut message = crate::utils::messages::create_user_message(String::new());
+        message.content = vec![crate::types::message::UserContent::ToolResult(
+            crate::types::message::ToolResult {
+                tool_use_id: crate::types::ids::ToolUseId(id.to_string()),
+                content: body.to_string(),
+                is_error: false,
+                content_blocks: Vec::new(),
+                tool_use_result: None,
+            },
+        )];
+        Message::User(message)
+    }
+
+    #[test]
+    fn keep_recent_pivot_never_separates_tool_use_from_its_result() {
+        let big = "x".repeat(40_000);
+        let messages = vec![
+            pivot_text_user("task"),
+            pivot_assistant_text("older answer"),
+            pivot_tool_call("toolu_a"),
+            pivot_tool_result("toolu_a", &big),
+            pivot_assistant_text("done"),
+        ];
+        // The budget is reached inside the tool result; the cut must move
+        // forward to the next candidate instead of landing on the result.
+        let pivot = keep_recent_pivot(&messages, 5_000).expect("pivot");
+        assert_eq!(pivot, 4);
+        assert!(matches!(messages[pivot], Message::Assistant(_)));
+    }
+
+    #[test]
+    fn keep_recent_pivot_keeps_the_assistant_that_owns_the_budget_message() {
+        let messages = vec![
+            pivot_text_user("task"),
+            pivot_assistant_text(&"a".repeat(8_000)),
+            pivot_text_user("follow up"),
+            pivot_assistant_text(&"b".repeat(8_000)),
+        ];
+        let pivot = keep_recent_pivot(&messages, 1_000).expect("pivot");
+        assert_eq!(pivot, 3);
+    }
+
+    #[test]
+    fn keep_recent_pivot_falls_back_when_nothing_precedes_the_tail() {
+        let messages = vec![pivot_text_user("short"), pivot_assistant_text("reply")];
+        assert_eq!(keep_recent_pivot(&messages, 20_000), None);
+        assert_eq!(keep_recent_pivot(&messages, 0), None);
+        let only_tail = vec![pivot_assistant_text(&"z".repeat(100_000))];
+        assert_eq!(keep_recent_pivot(&only_tail, 1_000), None);
     }
 }
