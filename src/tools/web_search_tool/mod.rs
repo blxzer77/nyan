@@ -12,6 +12,15 @@ pub mod ui;
 
 /// Maps to CC `tools/WebSearchTool/WebSearchTool.ts` `isEnabled(...)`.
 pub fn is_web_search_tool_enabled() -> bool {
+    if crate::services::web::has_search_provider() {
+        return true;
+    }
+    // @nyan: nyan.web configured without a single provider means the tool must
+    // not appear (external-search 5) — the nested Anthropic server tool is not
+    // available on a gateway, so offering WebSearch would only produce errors.
+    if crate::services::web::is_configured() {
+        return false;
+    }
     match crate::utils::model::providers::get_api_provider() {
         crate::utils::model::providers::ApiProvider::FirstParty => true,
         crate::utils::model::providers::ApiProvider::Foundry => true,
@@ -86,6 +95,16 @@ pub fn input_schema() -> &'static crate::utils::zod::Schema {
                 zod::array(zod::string())
                     .optional()
                     .describe("Never include search results from these domains"),
+            ),
+            // @nyan: provider aggregation exposes an explicit deterministic result cap.
+            (
+                "max_results",
+                zod::number()
+                    .int()
+                    .positive()
+                    .max(20)
+                    .optional()
+                    .describe("Maximum number of search results (default 8, maximum 20)"),
             ),
         ])
     })
@@ -301,6 +320,45 @@ fn emit_web_search_progress(
     if let Some(on_progress) = on_progress {
         on_progress(progress);
     }
+}
+
+async fn run_nyan_web_search(
+    args: &serde_json::Value,
+    context: &crate::tool::ToolUseContext,
+) -> Result<Output, String> {
+    let started = std::time::Instant::now();
+    let query = args
+        .get("query")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "Error: Missing query".to_string())?;
+    let web = crate::services::web::settings()
+        .ok_or_else(|| "Error: nyan.web is not configured".to_string())?;
+    let allowed = optional_string_array(args, "allowed_domains").unwrap_or_default();
+    let blocked = optional_string_array(args, "blocked_domains").unwrap_or_default();
+    let max_results = args
+        .get("max_results")
+        .and_then(|value| value.as_u64())
+        .map(|value| value as usize)
+        .unwrap_or(8);
+    let rerank = crate::services::web::rerank_client(&web);
+    let outcome = crate::services::web::search::search(
+        query,
+        &allowed,
+        &blocked,
+        max_results,
+        &web,
+        rerank.as_ref(),
+        &context.abort_controller,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    Ok(Output {
+        query: query.to_string(),
+        results: vec![WebSearchResultItem::Text(
+            crate::services::web::search::render_outcome(&outcome),
+        )],
+        duration_seconds: started.elapsed().as_secs_f64(),
+    })
 }
 
 /// Maps to CC `tools/WebSearchTool/WebSearchTool.ts` `call(...)` progress
@@ -607,6 +665,21 @@ impl crate::tool::ToolCall for WebSearchTool {
                 };
             };
 
+            // @nyan: configured providers replace CC's nested Anthropic web tool.
+            // Once `nyan.web` exists the server tool is never used — with no
+            // provider enabled the honest answer is a named error, not a
+            // request to Anthropic that a gateway cannot serve.
+            if crate::services::web::is_configured() {
+                let data = match run_nyan_web_search(args, context).await {
+                    Ok(output) => crate::tool::ToolOutput::WebSearch(output),
+                    Err(error) => web_search_error_output(error),
+                };
+                return crate::tool::ToolResult {
+                    data,
+                    new_messages: Vec::new(),
+                };
+            }
+
             let start = std::time::Instant::now();
             let user_message =
                 crate::types::message::Message::User(crate::types::message::UserMessage {
@@ -717,9 +790,15 @@ impl crate::tool::ToolCall for WebSearchTool {
                         }
                     }
                 }
-                formatted_output.push_str(
-                    "\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.",
-                );
+                if crate::services::web::is_configured() {
+                    formatted_output.push_str(
+                        "\nREMINDER: Search results are leads, not sources. Only cite pages you fetched with WebFetch.",
+                    );
+                } else {
+                    formatted_output.push_str(
+                        "\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.",
+                    );
+                }
                 (
                     formatted_output.trim().to_string(),
                     crate::types::message::ToolResultStatus::Success,
@@ -772,6 +851,9 @@ mod tests {
 
     #[test]
     fn web_search_tool_schema_matches_official_input_shape() {
+        // The prompt switches to the nyan wording once `nyan.web` exists, so
+        // pin the CC configuration (and serialise with tests that install one).
+        let _guard = crate::services::web::test_support::WebSettingsGuard::none();
         let schema = web_search_tool_schema();
         assert_eq!(schema.name, "WebSearch");
         assert_eq!(
@@ -816,6 +898,220 @@ mod tests {
         assert!(is_web_search_tool_enabled());
         crate::utils::process_env::remove("CLAUDE_CODE_USE_FOUNDRY");
         crate::utils::process_env::remove("ANTHROPIC_MODEL");
+    }
+
+    // ════════════════════════════════════════════════════════
+    // @nyan: configured providers replace the Anthropic server tool.
+    // ════════════════════════════════════════════════════════
+
+    mod nyan_search {
+        use serde_json::{Value, json};
+
+        use super::super::{WebSearchTool, is_web_search_tool_enabled, run_nyan_web_search};
+        use crate::services::web::budget;
+        use crate::services::web::test_support::{Route, WebSettingsGuard, key_file, serve};
+        use crate::tool::{ToolCall, ToolUseContext};
+        use crate::utils::settings::nyan::WebSettings;
+
+        fn settings(json: Value) -> WebSettings {
+            serde_json::from_value(json).unwrap()
+        }
+
+        fn provider(origin: &str) -> Value {
+            json!({"enabled": true, "baseUrl": origin, "apiKeyFile": key_file()})
+        }
+
+        fn results() -> Route {
+            Route::new(
+                200,
+                "application/json",
+                json!({"results": [
+                    {"title": "Rust Book", "url": "https://doc.rust-lang.org/book/", "content": "chapter 1"},
+                    {"title": "Reference", "url": "https://doc.rust-lang.org/reference/", "content": "reference"}
+                ]})
+                .to_string(),
+            )
+        }
+
+        #[test]
+        fn configured_nyan_web_without_providers_hides_the_tool() {
+            let _guard = WebSettingsGuard::install(settings(json!({})));
+            assert!(!is_web_search_tool_enabled(), "no provider → no WebSearch tool");
+        }
+
+        #[tokio::test]
+        async fn a_call_without_providers_is_named_and_makes_no_request() {
+            budget::reset();
+            let _guard = WebSettingsGuard::install(settings(json!({})));
+            let args = json!({"query": "rust"});
+            let request = crate::utils::permissions::permissions::mock_permission_request_with_input(
+                "perm-no-provider".to_string(),
+                "toolu_no_provider".to_string(),
+                "WebSearch".to_string(),
+                String::new(),
+                args.clone(),
+                crate::types::permissions::PermissionMode::Default,
+            );
+            let result = WebSearchTool
+                .call(&args, &request, &ToolUseContext::default(), None, None, None)
+                .await;
+            let (content, status) = WebSearchTool
+                .map_tool_result_to_tool_result_block_param(&result.data, "toolu_no_provider");
+            assert_eq!(status, crate::types::message::ToolResultStatus::Error);
+            assert!(
+                content.contains("unavailable: no web search providers configured"),
+                "{content}"
+            );
+            assert!(
+                !content.contains("web_search_20250305"),
+                "the server tool must never be requested: {content}"
+            );
+        }
+
+        #[test]
+        fn the_prompt_switches_to_the_provider_wording_with_nyan_web() {
+            {
+                let _guard = WebSettingsGuard::none();
+                let prompt = super::super::prompt::get_web_search_prompt();
+                assert!(prompt.contains("Searches are performed automatically within a single API call"));
+                assert!(!prompt.contains("configured web providers"));
+            }
+            {
+                let _guard = WebSettingsGuard::install(settings(json!({})));
+                let prompt = super::super::prompt::get_web_search_prompt();
+                assert!(prompt.contains("configured web providers"));
+                assert!(!prompt.contains("web_search"));
+                assert!(!prompt.contains("within a single API call"));
+            }
+        }
+
+        #[test]
+        fn configured_providers_show_the_tool_even_on_gateway_models() {
+            // The guard already holds TEST_ENV_LOCK; the env write is safe.
+            let _guard = WebSettingsGuard::install(settings(json!({
+                "providers": {"exa": {"enabled": true, "baseUrl": "http://127.0.0.1:1", "apiKeyFile": key_file()}},
+            })));
+            let _bedrock = crate::utils::test_env::EnvVarGuard::set("CLAUDE_CODE_USE_BEDROCK", "1");
+            assert!(is_web_search_tool_enabled());
+        }
+
+        #[tokio::test]
+        async fn search_returns_provider_hits_and_never_builds_the_server_tool() {
+            budget::reset();
+            let server = serve(vec![("/search", results())]).await;
+            let _guard = WebSettingsGuard::install(settings(json!({
+                "providers": {"exa": provider(&server.origin)},
+            })));
+            let context = ToolUseContext::default();
+            let output = run_nyan_web_search(
+                &json!({"query": "rust ownership", "max_results": 5}),
+                &context,
+            )
+            .await
+            .unwrap();
+            let text = match &output.results[0] {
+                super::super::WebSearchResultItem::Text(text) => text.clone(),
+                other => panic!("expected rendered text, got {other:?}"),
+            };
+            assert!(text.contains("1. Rust Book"), "{text}");
+            assert!(text.contains("https://doc.rust-lang.org/book/"), "{text}");
+            assert!(text.contains("(1 sources: exa"), "{text}");
+            assert!(text.contains("[searched: exa]"), "{text}");
+            assert!(text.contains("leads, not sources"), "{text}");
+            // Only the provider saw a request; the Anthropic tool request was
+            // never constructed (there is no network to Anthropic in tests).
+            assert_eq!(server.hits("/search"), 1);
+            let body: Value = serde_json::from_str(&server.seen()[0].body).unwrap();
+            // Recall depth (20) is what providers are asked for; max_results
+            // only caps what the model receives (external-search 3.3).
+            assert_eq!(body["numResults"], 20);
+            budget::reset();
+        }
+
+        #[tokio::test]
+        async fn partial_failure_is_named_in_the_tool_result() {
+            budget::reset();
+            let ok = serve(vec![("/search", results())]).await;
+            let broken = serve(vec![("/search", Route::new(402, "application/json", "{}"))]).await;
+            let _guard = WebSettingsGuard::install(settings(json!({
+                "providers": {"exa": provider(&ok.origin), "firecrawl": provider(&broken.origin)},
+            })));
+            let output = run_nyan_web_search(
+                &json!({"query": "q"}),
+                &ToolUseContext::default(),
+            )
+            .await
+            .unwrap();
+            let super::super::WebSearchResultItem::Text(text) = &output.results[0] else {
+                panic!("expected text");
+            };
+            assert!(text.contains("[searched: exa — firecrawl quota_exhausted]"), "{text}");
+            assert!(text.contains("Rust Book"), "{text}");
+            budget::reset();
+        }
+
+        #[tokio::test]
+        async fn all_providers_failing_is_an_error_not_no_results() {
+            budget::reset();
+            let down = serve(vec![("/search", Route::new(500, "application/json", "{}"))]).await;
+            let _guard = WebSettingsGuard::install(settings(json!({
+                "providers": {"exa": provider(&down.origin)},
+            })));
+            let error = run_nyan_web_search(&json!({"query": "q"}), &ToolUseContext::default())
+                .await
+                .unwrap_err();
+            assert_eq!(error, "unavailable: exa http_500");
+            budget::reset();
+        }
+
+        #[tokio::test]
+        async fn the_tool_call_dispatches_to_nyan_and_returns_success() {
+            budget::reset();
+            let server = serve(vec![("/search", results())]).await;
+            let _guard = WebSettingsGuard::install(settings(json!({
+                "providers": {"exa": provider(&server.origin)},
+            })));
+            let args = json!({"query": "rust ownership", "max_results": 3});
+            let request = crate::utils::permissions::permissions::mock_permission_request_with_input(
+                "perm-nyan-search".to_string(),
+                "toolu_nyan_search".to_string(),
+                "WebSearch".to_string(),
+                String::new(),
+                args.clone(),
+                crate::types::permissions::PermissionMode::Default,
+            );
+            let result = WebSearchTool
+                .call(
+                    &args,
+                    &request,
+                    &ToolUseContext::default(),
+                    None,
+                    None,
+                    None,
+                )
+                .await;
+            let (content, status) = WebSearchTool
+                .map_tool_result_to_tool_result_block_param(&result.data, "toolu_nyan_search");
+            assert_eq!(status, crate::types::message::ToolResultStatus::Success);
+            assert!(content.contains("Rust Book"), "{content}");
+            assert!(content.contains("REMINDER: Search results are leads, not sources"), "{content}");
+            budget::reset();
+        }
+
+        #[tokio::test]
+        async fn missing_query_is_an_error_before_any_provider_call() {
+            budget::reset();
+            let server = serve(vec![("/search", results())]).await;
+            let _guard = WebSettingsGuard::install(settings(json!({
+                "providers": {"exa": provider(&server.origin)},
+            })));
+            let error = run_nyan_web_search(&json!({}), &ToolUseContext::default())
+                .await
+                .unwrap_err();
+            assert_eq!(error, "Error: Missing query");
+            assert!(server.seen().is_empty());
+            budget::reset();
+        }
     }
 
     #[test]

@@ -40,5 +40,7 @@ pub mod tips;
 pub mod token_estimation;
 pub mod tool_use_summary;
 pub mod tools;
+/// @nyan: deterministic provider-backed web search and SSRF-safe fetch.
+pub mod web;
 
 pub mod plugins;
