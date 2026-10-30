@@ -64,6 +64,9 @@ struct QdrantClient {
     api_key: Option<String>,
     client: reqwest::Client,
     health: Arc<service_health::ServiceHealth>,
+    /// Query-side request budget (`budget.qdrantTimeoutMs`). Sync batches pass
+    /// their own, larger `sync.qdrantBatchTimeoutMs` per call.
+    query_timeout: Duration,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -139,7 +142,11 @@ impl SemanticClient {
         let qdrant_client = reqwest::Client::builder()
             .no_proxy()
             .connect_timeout(connect_timeout)
-            .timeout(qdrant_timeout)
+            // No client-wide timeout: the query path caps at
+            // `budget.qdrantTimeoutMs` (1.5 s) while a sync batch gets
+            // `sync.qdrantBatchTimeoutMs` (15 s); a shared cap would truncate
+            // the larger one (a 128-point upsert measured 0.8–2.1 s).
+            //
             // nyan-ops sits behind a ~260 ms path; idle pooled sockets go
             // stale between searches, so keep the window short and retry.
             .pool_idle_timeout(Duration::from_secs(4))
@@ -158,6 +165,7 @@ impl SemanticClient {
             api_key: read_key(qdrant_settings.api_key_file())?,
             client: qdrant_client,
             health: qdrant_health,
+            query_timeout: qdrant_timeout,
         };
         embedding.install_probe();
         qdrant.install_probe();
@@ -329,7 +337,8 @@ impl SemanticClient {
             // no longer be pending deletion.
             deleted.retain(|entry| entry.path != *path);
             let before = entries.len();
-            entries.retain(|entry| entry.path != *path || entry.file_hash_raw == file.file_hash_raw);
+            entries
+                .retain(|entry| entry.path != *path || entry.file_hash_raw == file.file_hash_raw);
             if entries.len() == before
                 && !known.insert((file.path.clone(), file.file_hash_raw.clone()))
             {
@@ -385,10 +394,19 @@ impl SemanticClient {
         Ok(entries.len())
     }
 
-    /// Synchronize pending files in text order. Every chunk of one file is
-    /// embedded and upserted; a file leaves the queue only after all of its
-    /// batches succeed. Batch failures leave entries in place and count toward
-    /// the service health circuit breaker.
+    /// Synchronize pending files in text order.
+    ///
+    /// Chunks from every file in a window are pooled into batches of
+    /// `sync.batchSize` and the batches are embedded and upserted with
+    /// `sync.concurrency` in flight. Batching per file instead would pay one
+    /// Qdrant round trip (~0.7–0.9 s from nyan-pc) for a median of 11 chunks
+    /// and make the first full sync take minutes longer than the bytes
+    /// justify.
+    ///
+    /// A file leaves the queue only after every chunk it contributed has been
+    /// embedded and upserted; a failed batch keeps its files queued and counts
+    /// toward the service health circuit breaker, which stops the run instead
+    /// of spinning through the rest of a dead service.
     pub async fn sync_pending(
         &self,
         index: &LocalIndex,
@@ -420,7 +438,28 @@ impl SemanticClient {
                 },
             };
         };
-        if let Err(reason) = self.qdrant.ensure_collection(&self.collection, self.embedding.dim).await
+        let queue_path = index.storage().join("semantic-pending.jsonl");
+        let delete_path = index.storage().join("semantic-deleted.jsonl");
+        let entries = read_queue(&queue_path);
+        let batch_size = settings.batch_size().max(1) as usize;
+        let embed_timeout = Duration::from_millis(settings.embed_batch_timeout_ms().max(1_000));
+        let qdrant_timeout = Duration::from_millis(settings.qdrant_batch_timeout_ms().max(1_000));
+        let max_failures = settings.max_batch_failures().max(1);
+        // Batches in flight, not files: one batch is one embedding request
+        // plus one Qdrant upsert.
+        let concurrency = settings.concurrency().max(1) as usize;
+        // Files prepared per window: enough to fill several batches without
+        // holding the whole worktree's text in memory.
+        let window_files = (concurrency * 8).max(8);
+        let mut remaining = Vec::new();
+        let mut synced_chunks = 0;
+        let mut consecutive_failures = 0u32;
+        let mut failure: Option<String> = None;
+        let started = std::time::Instant::now();
+        if let Err(reason) = self
+            .qdrant
+            .ensure_collection(&self.collection, self.embedding.dim, qdrant_timeout)
+            .await
         {
             return SyncReport {
                 synced_chunks: 0,
@@ -428,23 +467,17 @@ impl SemanticClient {
                 status: BranchStatus::Unavailable { reason },
             };
         }
-        let queue_path = index.storage().join("semantic-pending.jsonl");
-        let delete_path = index.storage().join("semantic-deleted.jsonl");
-        let entries = read_queue(&queue_path);
-        let batch_size = settings.batch_size().max(1) as usize;
-        let batch_timeout = Duration::from_millis(settings.embed_batch_timeout_ms().max(1_000));
-        let max_failures = settings.max_batch_failures().max(1);
-        let mut remaining = Vec::new();
-        let mut synced_chunks = 0;
-        let mut consecutive_failures = 0u32;
-        let mut failure: Option<String> = None;
 
         // Deleted-file cleanup first: those payloads must not survive a sync.
         let deleted = read_queue(&delete_path);
         if !deleted.is_empty() {
             let mut still_deleted = Vec::new();
             for entry in deleted {
-                match self.qdrant.delete_path(&self.collection, &entry.path).await {
+                match self
+                    .qdrant
+                    .delete_path(&self.collection, &entry.path, qdrant_timeout)
+                    .await
+                {
                     Ok(()) => {}
                     Err(error) => {
                         failure = Some(error);
@@ -466,19 +499,13 @@ impl SemanticClient {
             write_queue(&delete_path, &still_deleted).ok();
         }
 
-        // `sync.concurrency` bounds the files in flight. Each file is one or
-        // more embedding→upsert round trips, and every upsert pays a full RTT
-        // (≈260 ms to nyan-ops), so a serial pass over the first index takes
-        // tens of minutes. Files inside a window are independent; the queue is
-        // still written in entry order afterwards.
-        let concurrency = settings.concurrency().max(1) as usize;
         let mut iter = entries.into_iter();
         'windows: loop {
-            let window: Vec<PendingEntry> = iter.by_ref().take(concurrency).collect();
+            let window: Vec<PendingEntry> = iter.by_ref().take(window_files).collect();
             if window.is_empty() {
                 break;
             }
-            let mut work = Vec::with_capacity(window.len());
+            let mut files: Vec<FileWork> = Vec::with_capacity(window.len());
             for entry in window {
                 let prepared = match index.file_chunks(&entry.path) {
                     Some((file, texts)) if file.file_hash_raw == entry.file_hash_raw => {
@@ -504,28 +531,160 @@ impl SemanticClient {
                     }
                 };
                 if let Some((file, texts)) = prepared {
-                    work.push((entry, file, texts));
+                    files.push(FileWork {
+                        entry,
+                        file,
+                        remaining_chunks: texts.len(),
+                        chunks: texts,
+                        failed: false,
+                    });
                 }
             }
-            let futures = work.iter().map(|(_, file, texts)| {
-                self.upsert_file(file, texts, batch_size, batch_timeout)
-            });
-            let results = futures::future::join_all(futures).await;
+
+            // Flatten the window into batches of `batch_size` chunks,
+            // preserving file order inside each batch. A batch owns its
+            // documents and point payloads so its future borrows nothing from
+            // this window.
+            let mut tasks: Vec<BatchTask> = Vec::new();
+            // Batch membership for bookkeeping; the tasks themselves own the
+            // documents.
+            let mut batch_refs: Vec<Vec<FileChunks>> = Vec::new();
+            let mut texts = Vec::with_capacity(batch_size);
+            let mut points = Vec::with_capacity(batch_size);
+            let mut refs: Vec<FileChunks> = Vec::with_capacity(batch_size);
+            for (file_index, work) in files.iter().enumerate() {
+                let mut chunks_in_batch = 0usize;
+                for (chunk, text) in &work.chunks {
+                    let id = chunk_id(&work.file.path, chunk.start_line, chunk.end_line);
+                    points.push((
+                        id,
+                        json!({
+                            "path": work.file.path,
+                            "startLine": chunk.start_line,
+                            "endLine": chunk.end_line,
+                            "chunkId": id.to_string(),
+                            "fileHashRaw": work.file.file_hash_raw,
+                            "symbol": chunk.symbol,
+                        }),
+                    ));
+                    texts.push(text.clone());
+                    chunks_in_batch += 1;
+                    if texts.len() == batch_size {
+                        refs.push(FileChunks {
+                            file: file_index,
+                            chunks: chunks_in_batch,
+                        });
+                        tasks.push(BatchTask {
+                            texts: std::mem::take(&mut texts),
+                            points: std::mem::take(&mut points),
+                        });
+                        batch_refs.push(std::mem::take(&mut refs));
+                        texts.reserve(batch_size);
+                        points.reserve(batch_size);
+                        refs.reserve(batch_size);
+                        chunks_in_batch = 0;
+                    }
+                }
+                if chunks_in_batch > 0 {
+                    refs.push(FileChunks {
+                        file: file_index,
+                        chunks: chunks_in_batch,
+                    });
+                }
+            }
+            if !texts.is_empty() {
+                tasks.push(BatchTask { texts, points });
+                batch_refs.push(refs);
+            }
+
+            let results = {
+                use futures::StreamExt as _;
+                let client = self;
+                let collection = self.collection.clone();
+                let futures = tasks
+                    .into_iter()
+                    .enumerate()
+                    .map(move |(batch_index, task)| {
+                        let documents = task.texts;
+                        let points = task.points;
+                        let collection = collection.clone();
+                        async move {
+                            let batch_len = documents.len();
+                            let vectors = match client
+                                .embedding
+                                .embed_batch(&documents, embed_timeout)
+                                .await
+                            {
+                                Ok(vectors) if vectors.len() == batch_len => vectors,
+                                Ok(_) => {
+                                    client
+                                        .embedding
+                                        .health
+                                        .record_failure(FailureKind::InvalidResponse);
+                                    return (
+                                        batch_index,
+                                        batch_len,
+                                        Err("embedding count mismatch".to_string()),
+                                    );
+                                }
+                                Err(error) => return (batch_index, batch_len, Err(error)),
+                            };
+                            let points = vectors
+                            .into_iter()
+                            .zip(points)
+                            .map(|(vector, (id, payload))| {
+                                json!({"id": id, "vector": vector, "payload": payload})
+                            })
+                            .collect::<Vec<_>>();
+                            let result = client
+                                .qdrant
+                                .upsert(&collection, points, qdrant_timeout)
+                                .await;
+                            (batch_index, batch_len, result)
+                        }
+                    });
+                futures::stream::iter(futures)
+                    .buffer_unordered(concurrency)
+                    .collect::<Vec<_>>()
+                    .await
+            };
+
             let mut window_failures = 0u32;
-            for ((entry, _file, texts), result) in work.into_iter().zip(results) {
+            for (batch_index, batch_len, result) in results {
                 match result {
                     Ok(()) => {
-                        synced_chunks += texts.len();
                         consecutive_failures = 0;
+                        for file_chunks in &batch_refs[batch_index] {
+                            files[file_chunks.file].remaining_chunks -= file_chunks.chunks;
+                        }
+                        synced_chunks += batch_len;
                     }
                     Err(error) => {
                         failure.get_or_insert(error);
-                        remaining.push(entry);
+                        for file_chunks in &batch_refs[batch_index] {
+                            files[file_chunks.file].failed = true;
+                        }
                         consecutive_failures += 1;
                         window_failures += 1;
                     }
                 }
             }
+            for work in files {
+                if !work.failed && work.remaining_chunks == 0 {
+                    continue;
+                }
+                remaining.push(work.entry);
+            }
+            // The queue is the progress record: persist it after every window
+            // so an interrupted sync resumes at a file boundary instead of
+            // re-embedding the whole run.
+            write_queue(&queue_path, &remaining).ok();
+            crate::utils::debug::log_for_debugging(&format!(
+                "retrieval semantic sync: synced_chunks={} pending_files={} elapsed_ms={}",
+                synced_chunks,
+                remaining.len(),
+                started.elapsed().as_millis()
+            ));
             if window_failures > 0 && consecutive_failures >= max_failures {
                 // The circuit breaker stops this run, but the tail was never
                 // attempted: keep it queued instead of dropping it.
@@ -565,14 +724,22 @@ impl SemanticClient {
     /// Delete collections this machine created for an older generation once
     /// the new one has synced. Only names recorded in this index's ledger and
     /// matching this machine's prefix are ever touched.
-    pub async fn prune_replaced_collections(&self, index: &LocalIndex) -> Result<Vec<String>, String> {
+    pub async fn prune_replaced_collections(
+        &self,
+        index: &LocalIndex,
+    ) -> Result<Vec<String>, String> {
         let mut ledger = read_ledger(index.storage());
         let mut deleted = Vec::new();
         let mut kept = Vec::new();
         for entry in ledger.collections.iter() {
             if entry.collection == self.collection {
                 kept.push(entry.clone());
-            } else if self.qdrant.delete_collection(&entry.collection).await.is_ok() {
+            } else if self
+                .qdrant
+                .delete_collection(&entry.collection, self.qdrant.query_timeout)
+                .await
+                .is_ok()
+            {
                 deleted.push(entry.collection.clone());
             } else {
                 kept.push(entry.clone());
@@ -595,6 +762,7 @@ impl SemanticClient {
         let mut ledger = read_ledger(index.storage());
         let now = unix_now_ms();
         let max_age_ms = u128::from(settings.prune_after_days()) * 86_400_000;
+        let qdrant_timeout = Duration::from_millis(settings.qdrant_batch_timeout_ms().max(1_000));
         let current = ledger
             .collections
             .iter()
@@ -611,7 +779,12 @@ impl SemanticClient {
                 if dry_run {
                     deleted.push(entry.collection.clone());
                     next.push(entry);
-                } else if self.qdrant.delete_collection(&entry.collection).await.is_ok() {
+                } else if self
+                    .qdrant
+                    .delete_collection(&entry.collection, qdrant_timeout)
+                    .await
+                    .is_ok()
+                {
                     deleted.push(entry.collection.clone());
                 } else {
                     kept.push(entry.collection.clone());
@@ -675,7 +848,11 @@ fn write_queue(path: &Path, entries: &[PendingEntry]) -> Result<(), String> {
         .filter_map(|entry| serde_json::to_string(entry).ok())
         .collect::<Vec<_>>()
         .join("\n");
-    let body = if body.is_empty() { String::new() } else { format!("{body}\n") };
+    let body = if body.is_empty() {
+        String::new()
+    } else {
+        format!("{body}\n")
+    };
     std::fs::write(&temporary, body).map_err(|error| error.to_string())?;
     std::fs::rename(temporary, path).map_err(|error| error.to_string())
 }
@@ -713,57 +890,28 @@ fn chunk_id(path: &str, start: usize, end: usize) -> u64 {
     hash
 }
 
-impl SemanticClient {
-    /// Embed and upsert one file's chunks in order. Returns the number of
-    /// chunks queued by the caller; a batch failure aborts the file so a
-    /// retry re-sends every chunk with the same ids (idempotent upsert).
-    async fn upsert_file(
-        &self,
-        file: &super::index::IndexedFile,
-        chunk_texts: &[String],
-        batch_size: usize,
-        batch_timeout: Duration,
-    ) -> Result<(), String> {
-        for (batch_index, batch) in chunk_texts.chunks(batch_size).enumerate() {
-            let documents = batch.to_vec();
-            let vectors = match self.embedding.embed_batch(&documents, batch_timeout).await {
-                Ok(vectors) if vectors.len() == batch.len() => vectors,
-                Ok(_) => {
-                    self.embedding
-                        .health
-                        .record_failure(FailureKind::InvalidResponse);
-                    return Err("embedding count mismatch".to_string());
-                }
-                Err(error) => return Err(error),
-            };
-            let first_chunk = batch_index * batch_size;
-            let points = vectors
-                .into_iter()
-                .enumerate()
-                .map(|(offset, vector)| {
-                    let chunk = &file.chunks[first_chunk + offset];
-                    let id = chunk_id(&file.path, chunk.start_line, chunk.end_line);
-                    json!({
-                        // Qdrant accepts a point id as an unsigned integer or
-                        // a UUID, never a numeric string (live 400: "not a
-                        // valid point ID").
-                        "id": id,
-                        "vector": vector,
-                        "payload": {
-                            "path": file.path,
-                            "startLine": chunk.start_line,
-                            "endLine": chunk.end_line,
-                            "chunkId": id.to_string(),
-                            "fileHashRaw": file.file_hash_raw,
-                            "symbol": chunk.symbol,
-                        }
-                    })
-                })
-                .collect::<Vec<_>>();
-            self.qdrant.upsert(&self.collection, points).await?;
-        }
-        Ok(())
-    }
+/// One queued file prepared for this sync run: the chunk texts read from the
+/// worktree plus how many of them still need a successful batch.
+struct FileWork {
+    entry: PendingEntry,
+    file: super::index::IndexedFile,
+    chunks: Vec<(super::index::ChunkRecord, String)>,
+    remaining_chunks: usize,
+    failed: bool,
+}
+
+/// How many chunks of one file a batch contains. Batches are built across
+/// files so a median file (11 chunks) does not pay its own Qdrant RTT.
+struct FileChunks {
+    file: usize,
+    chunks: usize,
+}
+
+/// One embedding→upsert round trip. It owns its documents and point payloads
+/// so the concurrent futures do not borrow the window state.
+struct BatchTask {
+    texts: Vec<String>,
+    points: Vec<(u64, Value)>,
 }
 
 fn unix_now_ms() -> u128 {
@@ -856,9 +1004,9 @@ impl EmbeddingClient {
             .get("data")
             .and_then(Value::as_array)
             .is_some_and(|models| {
-                models
-                    .iter()
-                    .any(|entry| entry.get("id").and_then(Value::as_str) == Some(self.model.as_str()))
+                models.iter().any(|entry| {
+                    entry.get("id").and_then(Value::as_str) == Some(self.model.as_str())
+                })
             });
         if !served {
             self.health.record_failure(FailureKind::InvalidResponse);
@@ -897,26 +1045,26 @@ impl EmbeddingClient {
         // once; HTTP status errors and timeouts are not.
         let mut attempt = 0;
         let response = tokio::time::timeout(timeout, async {
-        loop {
-            attempt += 1;
-            let request = self
-                .client
-                .post(format!("{}/v1/embeddings", self.url))
-                .json(&json!({
-                    "model": self.model,
-                    "input": inputs,
-                    "encoding_format": "base64",
-                }));
-            let request = match self.api_key.as_deref() {
-                Some(key) => request.bearer_auth(key),
-                None => request,
-            };
-            match request.send().await {
-                Ok(response) => break Ok(response),
-                Err(error) if attempt == 1 && !error.is_timeout() => continue,
-                Err(error) => break Err(error),
+            loop {
+                attempt += 1;
+                let request = self
+                    .client
+                    .post(format!("{}/v1/embeddings", self.url))
+                    .json(&json!({
+                        "model": self.model,
+                        "input": inputs,
+                        "encoding_format": "base64",
+                    }));
+                let request = match self.api_key.as_deref() {
+                    Some(key) => request.bearer_auth(key),
+                    None => request,
+                };
+                match request.send().await {
+                    Ok(response) => break Ok(response),
+                    Err(error) if attempt == 1 && !error.is_timeout() => continue,
+                    Err(error) => break Err(error),
+                }
             }
-        }
         })
         .await;
         let response = match response {
@@ -935,11 +1083,12 @@ impl EmbeddingClient {
             }
         };
         if !response.status().is_success() {
-            self.health.record_failure(if response.status().as_u16() == 429 {
-                FailureKind::RateLimited
-            } else {
-                FailureKind::Unreachable
-            });
+            self.health
+                .record_failure(if response.status().as_u16() == 429 {
+                    FailureKind::RateLimited
+                } else {
+                    FailureKind::Unreachable
+                });
             return Err(format!("embedding HTTP {}", response.status()));
         }
         let body: Value = response.json().await.map_err(|error| {
@@ -1043,19 +1192,32 @@ impl QdrantClient {
     /// Send a request, retrying one transport-level failure. Every Qdrant call
     /// nyan makes is idempotent (ensure/upsert/delete/search), and a stale
     /// pooled socket otherwise fails a whole sync pass as "error sending
-    /// request" (live 2026-10-30 through EasyTier).
+    /// request" (live 2026-10-30 through EasyTier). The timeout is per call:
+    /// the query path keeps the short budget while sync batches pass their own.
     async fn send_with_retry(
         &self,
+        timeout: Duration,
         build: impl Fn() -> reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, String> {
-        match build().send().await {
-            Ok(response) => Ok(response),
-            Err(error) if !error.is_timeout() => build().send().await.map_err(|error| error.to_string()),
-            Err(error) => Err(error.to_string()),
+        match tokio::time::timeout(timeout, build().send()).await {
+            Ok(Ok(response)) => Ok(response),
+            Ok(Err(error)) if !error.is_timeout() => {
+                match tokio::time::timeout(timeout, build().send()).await {
+                    Ok(result) => result.map_err(|error| error.to_string()),
+                    Err(_) => Err("Qdrant request timed out".to_string()),
+                }
+            }
+            Ok(Err(error)) => Err(error.to_string()),
+            Err(_) => Err("Qdrant request timed out".to_string()),
         }
     }
 
-    async fn upsert(&self, collection: &str, points: Vec<Value>) -> Result<(), String> {
+    async fn upsert(
+        &self,
+        collection: &str,
+        points: Vec<Value>,
+        timeout: Duration,
+    ) -> Result<(), String> {
         match self.health.call_permit() {
             CallPermit::Skipped => return Err("Qdrant service unreachable".to_string()),
             CallPermit::Probe => {
@@ -1069,7 +1231,7 @@ impl QdrantClient {
         // The points move into the closure; `send_with_retry` may build twice.
         let points = std::sync::Arc::new(points);
         let response = self
-            .send_with_retry(|| {
+            .send_with_retry(timeout, || {
                 self.request(
                     reqwest::Method::PUT,
                     &format!("/collections/{collection}/points?wait=false"),
@@ -1089,9 +1251,14 @@ impl QdrantClient {
         Ok(())
     }
 
-    async fn ensure_collection(&self, collection: &str, dimension: usize) -> Result<(), String> {
+    async fn ensure_collection(
+        &self,
+        collection: &str,
+        dimension: usize,
+        timeout: Duration,
+    ) -> Result<(), String> {
         let response = self
-            .send_with_retry(|| {
+            .send_with_retry(timeout, || {
                 self.request(reqwest::Method::PUT, &format!("/collections/{collection}"))
                     .json(&json!({
                         "vectors": {"size": dimension, "distance": "Cosine"}
@@ -1111,10 +1278,13 @@ impl QdrantClient {
         }
     }
 
-    async fn delete_collection(&self, collection: &str) -> Result<(), String> {
+    async fn delete_collection(&self, collection: &str, timeout: Duration) -> Result<(), String> {
         let response = self
-            .send_with_retry(|| {
-                self.request(reqwest::Method::DELETE, &format!("/collections/{collection}"))
+            .send_with_retry(timeout, || {
+                self.request(
+                    reqwest::Method::DELETE,
+                    &format!("/collections/{collection}"),
+                )
             })
             .await?;
         if response.status().is_success() || response.status().as_u16() == 404 {
@@ -1124,9 +1294,14 @@ impl QdrantClient {
         }
     }
 
-    async fn delete_path(&self, collection: &str, path: &str) -> Result<(), String> {
+    async fn delete_path(
+        &self,
+        collection: &str,
+        path: &str,
+        timeout: Duration,
+    ) -> Result<(), String> {
         let response = self
-            .send_with_retry(|| {
+            .send_with_retry(timeout, || {
                 self.request(
                     reqwest::Method::POST,
                     &format!("/collections/{collection}/points/delete?wait=true"),
@@ -1158,7 +1333,7 @@ impl QdrantClient {
             CallPermit::Allowed => {}
         }
         let response = self
-            .send_with_retry(|| {
+            .send_with_retry(self.query_timeout, || {
                 self.request(
                     reqwest::Method::POST,
                     &format!("/collections/{collection}/points/search"),
@@ -1452,7 +1627,11 @@ mod tests {
         )
         .unwrap();
         let result = client
-            .search(&index, &SearchRequest::new("needle"), Duration::from_secs(5))
+            .search(
+                &index,
+                &SearchRequest::new("needle"),
+                Duration::from_secs(5),
+            )
             .await;
         assert_eq!(result.status, BranchStatus::Ok);
         assert_eq!(result.candidates.len(), 1);
@@ -1492,11 +1671,14 @@ mod tests {
         let wrong_model = MockServices::start(4, "some-other-model", payload.clone()).await;
         wrong_model.reset_health();
         let mut settings = wrong_model.settings();
-        settings.embedding.as_mut().unwrap().model =
-            Some("jina-code-embeddings-1.5b".to_string());
+        settings.embedding.as_mut().unwrap().model = Some("jina-code-embeddings-1.5b".to_string());
         let client = SemanticClient::from_settings(&settings, &project, &budget).unwrap();
         let result = client
-            .search(&index, &SearchRequest::new("needle"), Duration::from_secs(5))
+            .search(
+                &index,
+                &SearchRequest::new("needle"),
+                Duration::from_secs(5),
+            )
             .await;
         assert!(
             matches!(&result.status, BranchStatus::Unavailable { reason } if reason.contains("not served")),
@@ -1514,7 +1696,11 @@ mod tests {
         settings.embedding.as_mut().unwrap().dim = Some(4);
         let client = SemanticClient::from_settings(&settings, &project, &budget).unwrap();
         let result = client
-            .search(&index, &SearchRequest::new("needle"), Duration::from_secs(5))
+            .search(
+                &index,
+                &SearchRequest::new("needle"),
+                Duration::from_secs(5),
+            )
             .await;
         assert!(
             matches!(&result.status, BranchStatus::Unavailable { reason } if reason.contains("dimension mismatch")),
@@ -1531,6 +1717,7 @@ mod tests {
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config);
         let secret_free = "fn needle() {\n    let marker_value = 1;\n}\n";
         std::fs::write(project.join("src/a.rs"), secret_free).unwrap();
+        std::fs::write(project.join("src/b.rs"), "fn second() { let other = 2; }\n").unwrap();
         let index = open_index(&project);
         let services = MockServices::start(
             4,
@@ -1547,19 +1734,37 @@ mod tests {
         .unwrap();
         client.queue_changed(&index).unwrap();
         client.ensure_initial_pending(&index).unwrap();
-        assert_eq!(SemanticClient::pending_count(&index), 1);
+        assert_eq!(SemanticClient::pending_count(&index), 2);
         let report = client
-            .sync_pending(&index, &crate::utils::settings::nyan::RetrievalSyncSettings::default())
+            .sync_pending(
+                &index,
+                &crate::utils::settings::nyan::RetrievalSyncSettings::default(),
+            )
             .await;
         assert_eq!(report.status, BranchStatus::Ok, "{report:?}");
         assert_eq!(report.pending_files, 0);
         assert_eq!(SemanticClient::pending_count(&index), 0);
         let requests = services.requests();
+        let embeddings = requests
+            .iter()
+            .filter(|(line, _)| line.starts_with("POST /v1/embeddings"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            embeddings.len(),
+            1,
+            "small files should share one embedding batch: {requests:?}"
+        );
+        let embedding_body: serde_json::Value = serde_json::from_str(&embeddings[0].1).unwrap();
+        assert_eq!(embedding_body["input"].as_array().unwrap().len(), 2);
         let upserts = requests
             .iter()
             .filter(|(line, _)| line.starts_with("PUT /collections/") && line.contains("/points"))
             .collect::<Vec<_>>();
-        assert!(!upserts.is_empty(), "upsert expected: {requests:?}");
+        assert_eq!(
+            upserts.len(),
+            1,
+            "small files should share one Qdrant upsert: {requests:?}"
+        );
         for (_, body) in upserts {
             assert!(!body.contains("marker_value"), "source text leaked: {body}");
             assert!(body.contains("fileHashRaw"));
@@ -1615,8 +1820,12 @@ mod tests {
             .await
             .expect("prune");
         assert_eq!(deleted, vec!["nyan_old_0000000000000000".to_string()]);
-        assert!(services.requests().iter().any(|(line, _)| line
-            .starts_with("DELETE /collections/nyan_old_0000000000000000")));
+        assert!(
+            services
+                .requests()
+                .iter()
+                .any(|(line, _)| line.starts_with("DELETE /collections/nyan_old_0000000000000000"))
+        );
         let remaining = read_ledger(index.storage());
         assert_eq!(remaining.collections.len(), 1);
         assert_eq!(remaining.collections[0].collection, client.collection());
@@ -1640,7 +1849,8 @@ mod tests {
 
     #[test]
     fn queue_round_trips_and_deduplicates() {
-        let root = std::env::temp_dir().join(format!("nyan-queue-{}", uuid::Uuid::new_v4().simple()));
+        let root =
+            std::env::temp_dir().join(format!("nyan-queue-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("semantic-pending.jsonl");
         let entries = vec![
@@ -1670,7 +1880,8 @@ mod tests {
 
     #[test]
     fn ledger_round_trips() {
-        let root = std::env::temp_dir().join(format!("nyan-ledger-{}", uuid::Uuid::new_v4().simple()));
+        let root =
+            std::env::temp_dir().join(format!("nyan-ledger-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&root).unwrap();
         let mut ledger = read_ledger(&root);
         assert!(ledger.collections.is_empty());

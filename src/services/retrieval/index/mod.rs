@@ -670,8 +670,10 @@ impl LocalIndex {
 
     /// Chunk text for embedding, read from the current worktree. Files are
     /// re-hashed against the indexed record so a changed file never syncs
-    /// stale text.
-    pub fn file_chunks(&self, path: &str) -> Option<(IndexedFile, Vec<String>)> {
+    /// stale text. Each text is paired with the chunk record it was cut from:
+    /// a chunk that yields no text must not shift the line ranges of the
+    /// chunks after it.
+    pub fn file_chunks(&self, path: &str) -> Option<(IndexedFile, Vec<(ChunkRecord, String)>)> {
         let file = self.file(path)?.clone();
         let bytes = std::fs::read(self.root.join(path)).ok()?;
         if hex_hash(&bytes) != file.file_hash_raw {
@@ -679,15 +681,14 @@ impl LocalIndex {
         }
         let text = decode_bytes(&bytes, None, path).ok()?.text;
         let lines = text.lines().collect::<Vec<_>>();
-        let contents = file
-            .chunks
-            .iter()
-            .filter_map(|chunk| {
-                let start = chunk.start_line.saturating_sub(1);
-                let end = chunk.end_line.min(lines.len());
-                (start < end).then(|| lines[start..end].join("\n"))
-            })
-            .collect();
+        let mut contents = Vec::with_capacity(file.chunks.len());
+        for chunk in &file.chunks {
+            let start = chunk.start_line.saturating_sub(1);
+            let end = chunk.end_line.min(lines.len());
+            if start < end {
+                contents.push((chunk.clone(), lines[start..end].join("\n")));
+            }
+        }
         Some((file, contents))
     }
 

@@ -355,11 +355,10 @@ SemanticSyncState = Synced
 
 - 本仓库 `git ls-files` 中 Rust 1438 个文件、约 68 万行（首批语言合计约 68 万行，几乎全是 Rust）。按 4.5 的切分规则
   （符号边界，超过 60 行再按窗口切）粗估 **约 3.3 万个 chunk**，平均约 200 token / chunk。
-- **corp-pc**：本机实测批量 32 条（~200 token / 条，base64）p50 0.15 s ⇒ 约 210 chunk/s（单并发，高于部署 README 的
-  40.5 chunk/s——那是 ~400 token 的单条请求）。embedding 约 **2.5–3 分钟**；Qdrant upsert 走 EasyTier 直连，每批一次
-  往返（~0.5–1.2 s），约 1040 批、4 个并发批次计约 **2–5 分钟**（与 embedding 流水线重叠）。总计约 5 分钟量级。
-- **nyan-pc**：embedding 经 EasyTier 到 corp-pc，每批一次往返：请求体约 32 × 800 B ≈ 26 KB，base64 响应约
-  260 KB / 批（实测 257 KB）。约 1040 批，单并发受 RTT 限制；upsert 再走一次 EasyTier 到 nyan-ops。**实现后实测**。
+- **corp-pc**：本机 embedding 是快路径；同步默认把跨文件 chunk 合并为 128 条一批、8 批并发，避免小文件各自支付一次 Qdrant 往返。
+- **nyan-pc**：embedding 经 EasyTier 到 corp-pc，Qdrant upsert 再走一次 EasyTier 到 nyan-ops。2026-10-31 实测 Qdrant `/healthz`
+  约 0.72 s、128 点 upsert 约 1.7–2.5 s；同步使用独立 15 s 批次超时，不再受查询侧 1.5 s 超时截断。当前仓库约 32919
+  chunks，按 128 点批约 258 次 upsert，8 并发后瓶颈从请求次数降为 Qdrant 链路吞吐，预计数分钟内完成。
 - **取舍（决定）**：接受耗时，不限制只在直连时同步——首次同步在后台进行，期间 semantic 对已同步部分照常可用、
   其余分支不受影响，模型看到 `[semantic index syncing: N files pending]`；中断（退出、关机、网络断）后重启从队列续传，
   已完成的批次不重做。若实测 nyan-pc 上超过 30 分钟，再考虑由 corp-pc 代为计算向量（需 corp-pc 上有相同 worktree，
@@ -370,10 +369,10 @@ SemanticSyncState = Synced
 - 触发：本机索引首次构建完成后（symbol / text 已就绪），且 semantic 已配置；把全部可索引文件入队，`reason = InitialSync`。
 - **前提**：embedding 与 Qdrant 均为 `Ready`（第一次使用时探测）；任一 `Down` 则首次同步不开始，队列保持，
   状态 `Pending { reason: ServiceDown }`，等服务恢复由下一次使用触发。
-- 并发度：同时在途 4 个批次（`syncConcurrency`，默认 4；corp-pc 本机 GPU 服务的 `--max-num-seqs=16`，4 × 32 = 128 条
-  在途不会压垮它）；每批 32 条；embedding 同步请求超时 15 s（与查询侧 2.5 s 分开，见 3.2）。
-- 后台任务：不阻塞会话，不阻塞 CodeSearch；用户按 Esc 只取消当前工具调用，不取消后台同步。nyan 退出时等在途批次
-  最多 2 s，未完成的批次留在队列。
+- 并发度：默认同时在途 8 个批次；每批 128 条。embedding 同步请求超时 15 s，Qdrant 同步批次超时 15 s，
+  两者都与查询侧 2.5 s / 1.5 s 分开。批次跨文件合并，但只有该文件贡献的所有批次成功后才会从队列移除。
+- 后台任务：不阻塞会话，不阻塞 CodeSearch；用户按 Esc 只取消当前工具调用，不取消后台同步。同步队列在每个文件窗口完成后
+  原子 checkpoint；进程退出后从最近窗口继续。需要等待整轮完成时使用 `/retrieval sync --wait`，否则 `/retrieval sync` 只启动后台任务。
 - 单写者：同步持有 4.8 的文件锁；第二个进程只读查询，不同步。
 
 ### 4.9 rerank（可开关，交给评测决定）
@@ -470,8 +469,8 @@ Decision Provider 时完全相同。
   "rerank": { "enabled": false, "url": "http://10.144.0.11:8091", "model": "qwen3-reranker-0.6b", "topN": 20 },
   "budget": { "deadlineMs": 8000, "semanticDeadlineMs": 4500, "rrfK": 60,
               "connectTimeoutMs": 1500, "embedTimeoutMs": 2500, "qdrantTimeoutMs": 1500, "rerankTimeoutMs": 2000 },
-  "sync": { "batchSize": 32, "concurrency": 4, "embedBatchTimeoutMs": 15000, "maxBatchFailures": 3,
-            "pruneAfterDays": 90 }
+  "sync": { "batchSize": 128, "concurrency": 8, "embedBatchTimeoutMs": 15000,
+            "qdrantBatchTimeoutMs": 15000, "maxBatchFailures": 3, "pruneAfterDays": 90 }
 }
 ```
 

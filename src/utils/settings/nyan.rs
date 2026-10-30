@@ -301,6 +301,8 @@ pub struct RetrievalSyncSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embed_batch_timeout_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub qdrant_batch_timeout_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_batch_failures: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prune_after_days: Option<u32>,
@@ -411,13 +413,22 @@ impl RetrievalBudgetSettings {
 
 impl RetrievalSyncSettings {
     pub fn batch_size(&self) -> u32 {
-        self.batch_size.unwrap_or(32)
+        self.batch_size.unwrap_or(128)
     }
+    /// Files in flight during sync. Each one is an embed→upsert pipeline that
+    /// waits ~0.7 s on the Qdrant round trip from nyan-pc, so the window has
+    /// to be wide enough to hide that RTT.
     pub fn concurrency(&self) -> u32 {
-        self.concurrency.unwrap_or(4)
+        self.concurrency.unwrap_or(8)
     }
     pub fn embed_batch_timeout_ms(&self) -> u64 {
         self.embed_batch_timeout_ms.unwrap_or(15_000)
+    }
+    /// Sync-batch Qdrant timeout. The query path keeps `budget.qdrantTimeoutMs`
+    /// (1.5 s); a 128-point upsert to nyan-ops measured 0.8–2.1 s, so the
+    /// query-side cap would abort healthy batches.
+    pub fn qdrant_batch_timeout_ms(&self) -> u64 {
+        self.qdrant_batch_timeout_ms.unwrap_or(15_000)
     }
     pub fn max_batch_failures(&self) -> u32 {
         self.max_batch_failures.unwrap_or(3)
@@ -1399,6 +1410,10 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
             zod::number().int().positive().optional(),
         ),
         (
+            "qdrantBatchTimeoutMs",
+            zod::number().int().positive().optional(),
+        ),
+        (
             "maxBatchFailures",
             zod::number().int().nonnegative().optional(),
         ),
@@ -1637,19 +1652,17 @@ mod tests {
         assert_eq!(retrieval.budget().embed_timeout_ms(), 2_500);
         assert_eq!(retrieval.budget().qdrant_timeout_ms(), 1_500);
         assert_eq!(retrieval.budget().rerank_timeout_ms(), 2_000);
-        assert_eq!(retrieval.sync().batch_size(), 32);
-        assert_eq!(retrieval.sync().concurrency(), 4);
+        assert_eq!(retrieval.sync().batch_size(), 128);
+        assert_eq!(retrieval.sync().concurrency(), 8);
         assert_eq!(retrieval.sync().embed_batch_timeout_ms(), 15_000);
+        assert_eq!(retrieval.sync().qdrant_batch_timeout_ms(), 15_000);
         assert_eq!(retrieval.sync().max_batch_failures(), 3);
         assert_eq!(retrieval.sync().prune_after_days(), 90);
 
         let web = settings.web();
         let searxng = web.provider("searxng");
         assert!(searxng.enabled);
-        assert_eq!(
-            searxng.url.as_deref(),
-            Some("http://10.144.0.3:8454")
-        );
+        assert_eq!(searxng.url.as_deref(), Some("http://10.144.0.3:8454"));
         let exa = web.provider("exa");
         assert!(exa.enabled);
         assert_eq!(exa.api_key_file.as_deref(), Some("~/.cometix/keys/exa"));

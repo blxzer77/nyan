@@ -9,17 +9,20 @@
 //!
 //! `/retrieval status` prints the index generation, semantic generation,
 //! collection name and pending-file count without contacting any service.
+//!
+//! `/retrieval sync` starts a resumable semantic sync in the process runtime;
+//! add `--wait` when a caller needs the final report before returning.
 
 use crate::commands::Command;
 use crate::utils::process_user_input::ProcessUserInputBaseResult;
 use crate::utils::process_user_input::process_slash_command::local_command_result;
 
 pub const NAME: &str = "retrieval";
-pub const DESCRIPTION: &str = "Inspect or prune the local and remote retrieval indexes";
+pub const DESCRIPTION: &str = "Inspect, sync, or prune the local and remote retrieval indexes";
 
 pub fn command() -> Command {
     Command::local(NAME, DESCRIPTION)
-        .argument_hint("<status|prune [--dry-run]>")
+        .argument_hint("<status|sync [--wait]|prune [--dry-run]>")
         .supports_non_interactive()
         .executable(call)
 }
@@ -48,12 +51,13 @@ pub fn call(
 fn run(args: &str, context: &crate::tool::ToolUseContext) -> Result<String, String> {
     let mut parts = args.split_whitespace();
     let subcommand = parts.next().unwrap_or("status");
-    let dry_run = parts.any(|flag| flag == "--dry-run");
+    let flags = parts.collect::<Vec<_>>();
     match subcommand {
         "status" => status(context),
-        "prune" => prune(context, dry_run),
+        "sync" => sync(context, flags.iter().any(|flag| *flag == "--wait")),
+        "prune" => prune(context, flags.iter().any(|flag| *flag == "--dry-run")),
         other => Err(format!(
-            "unknown /retrieval subcommand {other}; use status or prune"
+            "unknown /retrieval subcommand {other}; use status, sync [--wait], or prune"
         )),
     }
 }
@@ -99,11 +103,10 @@ fn status(context: &crate::tool::ToolUseContext) -> Result<String, String> {
     match retrieval.semantic() {
         Some(semantic) => {
             let budget = retrieval.budget();
-            let client =
-                crate::services::retrieval::semantic::SemanticClient::from_settings(
-                    &semantic, &root, &budget,
-                )
-                .map_err(|error| error.to_string())?;
+            let client = crate::services::retrieval::semantic::SemanticClient::from_settings(
+                &semantic, &root, &budget,
+            )
+            .map_err(|error| error.to_string())?;
             lines.push(format!("semantic generation: {}", client.generation()));
             lines.push(format!("collection: {}", client.collection()));
             lines.push(format!(
@@ -114,6 +117,69 @@ fn status(context: &crate::tool::ToolUseContext) -> Result<String, String> {
         None => lines.push("semantic: not configured".to_string()),
     }
     Ok(lines.join("\n"))
+}
+
+fn sync(context: &crate::tool::ToolUseContext, wait: bool) -> Result<String, String> {
+    let root = context
+        .effective_cwd()
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let settings = crate::utils::settings::get_settings_with_errors().settings;
+    let retrieval = settings
+        .nyan
+        .as_ref()
+        .map(|nyan| nyan.retrieval())
+        .unwrap_or_default();
+    let Some(semantic) = retrieval.semantic() else {
+        return Err("semantic retrieval is not configured; nothing to sync".to_string());
+    };
+    let budget = retrieval.budget();
+    let sync_settings = retrieval.sync();
+    let client = crate::services::retrieval::semantic::SemanticClient::from_settings(
+        &semantic, &root, &budget,
+    )
+    .map_err(|error| error.to_string())?;
+    let index = crate::services::retrieval::index::LocalIndex::open(
+        &root,
+        retrieval.index().max_file_bytes(),
+        &context.tool_permission_context,
+    )?;
+    client.queue_changed(&index)?;
+    client.ensure_initial_pending(&index)?;
+    let pending = crate::services::retrieval::semantic::SemanticClient::pending_count(&index);
+    if pending == 0 {
+        return Ok("Semantic index is already synchronized.".to_string());
+    }
+
+    if wait {
+        let report = crate::utils::process_runtime::block_on_from_sync(async move {
+            client.sync_pending(&index, &sync_settings).await
+        })
+        .ok_or_else(|| "no runtime available to run semantic sync".to_string())?;
+        return Ok(format_sync_report(report));
+    }
+
+    let handle =
+        crate::utils::process_runtime::runtime_handle_for_detached_work().ok_or_else(|| {
+            "no process runtime available for background semantic sync; use --wait".to_string()
+        })?;
+    handle.spawn(async move {
+        let report = client.sync_pending(&index, &sync_settings).await;
+        crate::utils::debug::log_for_debugging(&format!(
+            "retrieval semantic sync command: synced_chunks={} pending_files={} status={:?}",
+            report.synced_chunks, report.pending_files, report.status
+        ));
+    });
+    Ok(format!(
+        "Semantic sync started in the background ({pending} files pending). Use /retrieval status to inspect progress."
+    ))
+}
+
+fn format_sync_report(report: crate::services::retrieval::semantic::SyncReport) -> String {
+    format!(
+        "Semantic sync finished: {} chunks synced, {} files pending, status {:?}.",
+        report.synced_chunks, report.pending_files, report.status
+    )
 }
 
 fn prune(context: &crate::tool::ToolUseContext, dry_run: bool) -> Result<String, String> {
@@ -175,6 +241,14 @@ mod tests {
         let context = crate::tool::ToolUseContext::default();
         let error = run("explode", &context).unwrap_err();
         assert!(error.contains("unknown /retrieval subcommand"));
+        assert!(error.contains("sync [--wait]"));
+    }
+
+    #[test]
+    fn sync_without_semantic_configuration_says_so() {
+        let context = crate::tool::ToolUseContext::default();
+        let error = run("sync --wait", &context).unwrap_err();
+        assert!(error.contains("not configured"));
     }
 
     #[test]
