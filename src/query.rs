@@ -485,7 +485,15 @@ where
     // teardown is logged because "which runtime did this task land on" is the
     // failure mode that silently strands background agents.
     let runtime_trace_id = id.clone();
-    std::thread::spawn(move || {
+    // @nyan: the actor polls the whole tool pipeline on this thread, and the
+    // default 2 MiB main-thread stack overflows once WebFetch's extraction or
+    // the retrieval pipeline polls a large composed future (reproduced live:
+    // `-p` + WebFetch prompt -> stack overflow abort). Give it the same 8 MiB
+    // the REPL already reserves for engine work.
+    std::thread::Builder::new()
+        .name("query-actor".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
         let terminal = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
