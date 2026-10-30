@@ -126,7 +126,10 @@ impl SemanticClient {
             .no_proxy()
             .connect_timeout(connect_timeout)
             .timeout(embed_timeout)
-            .pool_idle_timeout(Duration::from_secs(90))
+            // vLLM sits behind uvicorn, whose default keep-alive is 5 s; a
+            // longer pool window reuses sockets the server already closed and
+            // surfaces as "error sending request" on a sync burst.
+            .pool_idle_timeout(Duration::from_secs(4))
             .build()?;
         let qdrant_client = reqwest::Client::builder()
             .no_proxy()
@@ -877,26 +880,38 @@ impl EmbeddingClient {
             }
             CallPermit::Allowed => {}
         }
-        let mut request = self
-            .client
-            .post(format!("{}/v1/embeddings", self.url))
-            .json(&json!({
-                "model": self.model,
-                "input": inputs,
-                // 3.1: one base64 wire format for loopback and tailnet alike.
-                "encoding_format": "base64",
-            }));
-        if let Some(key) = self.api_key.as_deref() {
-            request = request.bearer_auth(key);
-        }
-        let response = request.send().await.map_err(|error| {
-            self.health.record_failure(if error.is_timeout() {
-                FailureKind::Timeout
-            } else {
-                FailureKind::Unreachable
-            });
-            error.to_string()
-        })?;
+        // 3.1: one base64 wire format for every machine.
+        // Embedding is a pure function of the input, so a transport-level
+        // failure (a pooled socket the server closed, a reset) is retried
+        // once; HTTP status errors and timeouts are not.
+        let mut attempt = 0;
+        let response = loop {
+            attempt += 1;
+            let request = self
+                .client
+                .post(format!("{}/v1/embeddings", self.url))
+                .json(&json!({
+                    "model": self.model,
+                    "input": inputs,
+                    "encoding_format": "base64",
+                }));
+            let request = match self.api_key.as_deref() {
+                Some(key) => request.bearer_auth(key),
+                None => request,
+            };
+            match request.send().await {
+                Ok(response) => break response,
+                Err(error) if attempt == 1 && !error.is_timeout() => continue,
+                Err(error) => {
+                    self.health.record_failure(if error.is_timeout() {
+                        FailureKind::Timeout
+                    } else {
+                        FailureKind::Unreachable
+                    });
+                    return Err(error.to_string());
+                }
+            }
+        };
         if !response.status().is_success() {
             self.health.record_failure(if response.status().as_u16() == 429 {
                 FailureKind::RateLimited
