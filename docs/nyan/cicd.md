@@ -26,7 +26,7 @@ crate）。本设计的中心是**一个门禁、一次构建、零 secret、不
 | 规模 | 1438 个 `.rs`、约 67.8 万行、`src/` 32 MB |
 | 测试 | 6633 个 nextest 测试，全部在 lib 的 `#[cfg(test)]` 模块里；`tests/` 只有 39 个 fixture 文件，没有集成测试 |
 | 依赖 | 469 个锁定包；7 条直接 git 依赖，来自 3 个仓库（CometixTUI ×2、anthropic-sdk-rs ×4、marked-rs ×1；`Cargo.lock` 里 8 个 git 包），锁文件固定 rev |
-| 工具链 | `rust-version = 1.88`（edition 2024）；本机 1.89.0；仓库里没有 `rust-toolchain.toml` |
+| 工具链 | `rust-toolchain.toml` 钉 1.99.1（`rustfmt` + `clippy`，minimal）；`rust-version = "1.99"`（edition 2024）。设计时是 1.89.0 / MSRV 1.88，2026-10-29 统一升级 |
 | 需要 C 工具链的依赖 | `onig_sys`、`ring`、`tree-sitter`、`tree-sitter-bash`（README.md:76） |
 | CI 起点（设计时） | 无 `.github/`。origin 无 tag；master 未保护；SHA pinning 未强制；0 secret、0 variable、cache 使用 0 |
 | CI 现状（2026-10-29） | `ci.yml` + quality policy 已合并；master 要求 PR 与 `Merge gate`；SHA pinning 已强制；0 secret |
@@ -677,7 +677,7 @@ build 是唯一值得继续优化的点：减少 debuginfo 已经做了；下一
    `src/services/rerank.rs:130`（`reqwest::Client::builder`，必须改走 `utils::proxy`）。
 3. 写 `.gitleaks.toml`，按 4.5 的 9 条实测命中逐条 allow（合成值加行内 `gitleaks:allow`，测试证书按路径），
    直到 `gitleaks detect --no-git` 对 `git archive HEAD` 返回 0。
-4. 加 `rust-toolchain.toml`（1.89.0，与实测一致）；加 `scripts/ci/{prepare-test-home.py,test.sh}`，justfile 改为委托；
+4. 加 `rust-toolchain.toml`（设计时 1.89.0，2026-10-29 升到 1.99.1）；加 `scripts/ci/{prepare-test-home.py,test.sh}`，justfile 改为委托；
    本地 `just test` 行为不变。
 5. 加 `.config/nextest.toml`（`profile.ci` + junit）、`deny.toml`；本地跑通
    `cargo clippy` 两条门禁命令、`gitleaks`、`cargo deny check`、`actionlint`。
@@ -786,7 +786,7 @@ Phase 0 要把“依赖时序”本身修掉（等待条件而不是 sleep/固�
     "conditionalRequired": { "windows-check": "windows_required" },
     "docsOnlyFastPath": true
   },
-  "toolchain": { "rust": "1.89.0", "nextest": "0.9.150", "ripgrep": "15.2.0" },
+  "toolchain": { "rust": "1.99.1", "nextest": "0.9.150", "ripgrep": "15.2.0" },
   "runners": {
     "ubuntu": "ubuntu-24.04",
     "ubuntuArm": "ubuntu-24.04-arm",
