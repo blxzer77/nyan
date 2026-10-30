@@ -1567,6 +1567,17 @@ pub fn run(config: crate::cli::CliConfig) {
     }
 
     let startup_settings = Arc::new(get_settings_with_errors());
+    // @nyan: warm the EMRank connection once at startup so the first
+    // retrieval/web decision does not pay the handshake inside its 800 ms
+    // budget. No-op when the decision provider is disabled or not configured.
+    crate::services::decision::DecisionProvider::from_nyan(
+        &startup_settings
+            .settings
+            .nyan
+            .clone()
+            .unwrap_or_default(),
+    )
+    .prewarm();
     let (mcp_startup, mcp_warnings) = match resolve_mcp_startup_config(&config) {
         Ok(result) => result,
         Err(error) => {
