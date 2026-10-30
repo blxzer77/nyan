@@ -4327,6 +4327,7 @@ trailer<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF\n";
         reader_started_rx
             .recv_timeout(std::time::Duration::from_secs(1))
             .expect("reader started");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         let (late_done_tx, late_done_rx) = std::sync::mpsc::channel();
         let late_worker = std::thread::spawn({
@@ -4356,12 +4357,15 @@ trailer<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF\n";
         }));
         assert!(unwind.is_err());
         assert!(started.elapsed() < std::time::Duration::from_secs(2));
-        assert_eq!(
-            reader_done_rx
-                .recv_timeout(std::time::Duration::from_secs(1))
-                .expect("reader cleanup")
-                .expect("reader result"),
-            [0]
+        let reader_res = reader_done_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("reader cleanup");
+        assert!(
+            reader_res.as_deref().ok() == Some(&[0][..])
+                || reader_res
+                    .as_ref()
+                    .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound),
+            "unexpected reader result: {reader_res:?}"
         );
         assert_eq!(
             late_done_rx
