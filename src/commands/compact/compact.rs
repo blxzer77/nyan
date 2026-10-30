@@ -75,6 +75,13 @@ where
         fork_context_messages: compact_messages.clone(),
     };
     let instructions = (!custom_instructions.is_empty()).then_some(custom_instructions);
+    // @nyan: memory M2.1 — extract before the summary replaces history.
+    // Failure or timeout is logged by the driver and never blocks `/compact`.
+    crate::services::extract_memories::driver::extract_before_compact_for_summary(
+        context,
+        &cache_safe_params,
+    )
+    .await;
     // @nyan (compaction C7): manual compaction keeps the same recent tail as
     // autocompact; with no usable cut point it falls back to the full summary.
     let keep_pivot = crate::services::compact::micro_compact::content_mask_enabled()

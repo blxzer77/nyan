@@ -280,6 +280,13 @@ pub async fn auto_compact_if_needed(
 
     if should_attempt {
         let original_messages = messages_for_query.clone();
+        // @nyan: memory M2.1 — extract unextracted history before the summary
+        // replaces it. Bounded by its own timeout; never blocks compaction.
+        crate::services::extract_memories::driver::extract_before_compact_for_summary(
+            tool_use_context,
+            &cache_safe_params,
+        )
+        .await;
         let compaction_result = if crate::services::compact::micro_compact::content_mask_enabled()
             && let Some(pivot_index) = keep_recent_pivot(
                 &messages_for_query,

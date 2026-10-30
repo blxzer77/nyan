@@ -6,6 +6,8 @@
 
 pub mod analytics;
 pub mod api;
+/// @nyan: idle memory consolidation (memory 4.4 / auto-dream).
+pub mod auto_dream;
 pub mod claude_ai_limits;
 pub mod cache_warmer;
 pub mod compact;
@@ -14,6 +16,8 @@ pub mod context_collapse;
 /// decision points (docs/nyan/decision-provider.md).
 pub mod decision;
 pub mod diagnostic_tracking;
+/// @nyan: turn-end and pre-compact memory extraction (memory 4.3).
+pub mod extract_memories;
 pub mod hooks;
 pub mod lsp;
 pub mod mcp;
