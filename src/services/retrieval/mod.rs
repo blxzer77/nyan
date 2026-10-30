@@ -102,7 +102,15 @@ pub async fn search(
     abort: &AbortController,
     permission_context: &crate::tool::ToolPermissionContext,
 ) -> SearchOutcome {
-    search_with_provider(request, cwd, abort, permission_context, None).await
+    // The decision provider is configured in `settings.nyan.decision`; without
+    // this the retrieval.intent/answers/sufficient points never ran in
+    // production (they only ran in tests that inject one).
+    let provider = crate::services::decision::DecisionProvider::from_nyan(
+        &crate::utils::settings::get_initial_settings()
+            .nyan
+            .unwrap_or_default(),
+    );
+    search_with_provider(request, cwd, abort, permission_context, Some(&provider)).await
 }
 
 /// Variant used by tests and future callers that hold a provider instance.
