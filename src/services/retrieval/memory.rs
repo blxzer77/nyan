@@ -110,35 +110,16 @@ pub fn search_memory_directory(
     memories
 }
 
-/// Read-time secret guard, equivalent to memory.md M3's
-/// `check_memory_content` for the paths retrieval can return.
-///
-/// The memory branch owns the write-time half and compiles the scanner for
-/// every build (`memdir/write_guard.rs`). Until both branches merge, this
-/// branch can only use the scanner in the internal build; the merge replaces
-/// this function body with `check_memory_content(path, content)` unchanged.
+/// Read-time secret guard, shared verbatim with the memory module's
+/// `check_memory_content` (memory.md M3). A hit returns rule identifiers only;
+/// the caller logs and skips the file without modifying it.
 fn blocked_rule(path: &Path, content: &str, memory_settings: &MemorySettings) -> Option<String> {
     if !memory_settings.secret_scan() || !crate::memdir::paths::is_auto_mem_path(path) {
         return None;
     }
-    #[cfg(feature = "anthropic_internal")]
-    {
-        let matches = crate::services::team_memory_sync::secret_scanner::scan_for_secrets(content);
-        if !matches.is_empty() {
-            return Some(
-                matches
-                    .iter()
-                    .map(|secret| secret.rule_id.clone())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            );
-        }
-    }
-    #[cfg(not(feature = "anthropic_internal"))]
-    {
-        let _ = (path, content);
-    }
-    None
+    crate::memdir::write_guard::check_memory_content(path, content)
+        .err()
+        .map(|error| error.rule_ids.join(", "))
 }
 
 /// The last user text in the history, if the newest message is a user turn.
