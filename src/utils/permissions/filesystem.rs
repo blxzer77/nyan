@@ -373,6 +373,38 @@ pub fn normalize_patterns_to_path(
     result.into_iter().collect()
 }
 
+/// Shared Read-deny glob expansion for Grep and retrieval exact/index walks.
+/// The search root is included in the normalization so directory symlinks do
+/// not create a second spelling that bypasses the same deny rules.
+pub fn read_deny_rg_globs(
+    permission_context: &ToolPermissionContext,
+    project_cwd: &Path,
+    search_root: &Path,
+) -> Vec<String> {
+    let patterns_by_root = get_file_read_ignore_patterns(permission_context);
+    let mut normalized = indexmap::IndexSet::new();
+    let mut roots = indexmap::IndexSet::new();
+    roots.insert(project_cwd.display().to_string());
+    roots.extend(paths_to_check(
+        &search_root.display().to_string(),
+        project_cwd,
+    ));
+    for root in roots {
+        normalized.extend(normalize_patterns_to_path(&patterns_by_root, &root));
+    }
+    normalized
+        .into_iter()
+        .map(|pattern| {
+            let pattern = if pattern.starts_with('/') {
+                pattern
+            } else {
+                format!("**/{pattern}")
+            };
+            crate::utils::glob::ripgrep_read_deny_pattern(&pattern, search_root)
+        })
+        .collect()
+}
+
 /// Maps to CC `matchingRuleForInput(...)`, including npm `ignore` semantics.
 pub(crate) fn matching_rule_for_input(
     path: &str,

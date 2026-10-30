@@ -251,6 +251,21 @@ query → 选分支（4.3 的规则）
   写进切片 commit message。阈值：二进制增量 > 15 MB 或冷编译时间增量 > 25%，则该部分改为 cargo feature
   （`retrieval-grammars` / `retrieval-text`，默认开启，可在构建时关掉），对应分支在关闭时按"未启用"处理（4.10）。
 
+  **实测（2026-10-29，切片 C + E 完成时）**：`cargo build --release --bin cometix`，`RUSTC_WRAPPER=`（关 sccache）、
+  独立空 `CARGO_TARGET_DIR`，同一台机器背靠背跑。基线 = `git archive HEAD` 原 Cargo.lock `--locked`。未引用的 crate
+  会被链接器丢掉，所以测量时全部语法 crate 已从 `grammar_for` 引用、tantivy 从 text index 引用。
+
+  | 指标 | 基线 | 语法 + tantivy | 增量 |
+  |---|---|---|---|
+  | 二进制 | 56,511,240 B | 70,145,624 B | +13.6 MB（+24.1%） |
+  | 冷编译 wall | 306 s | 341 s | +11.3% |
+  | 冷编译 user CPU | 2385 s | 2813 s | +18.0% |
+  | 二进制拆分 | — | 语法 +10.2 MB（7 个 crate，+18.1%）；tantivy +3.4 MB | |
+
+  两项阈值均未触发（二进制 ≤ 15 MB、冷编译 ≤ 25%），**不引入 cargo feature**。二进制距阈值仅剩约 1.4 MB，
+  再加语法（例如更多语言）前需重新测量。带 sccache 或未引用语法 crate 的构建数字不可比（未引用时二进制只多 1,920 B），
+  不采用。
+
 ### 4.6 Inspect：候选进入结果前重读当前文件
 
 legacy 的核心要求只有一句：**结果里的每一行内容都必须是此刻工作树里的真实内容**。在本项目里它就是结果渲染前的

@@ -8,6 +8,7 @@ pub mod agent_tool;
 pub mod ask_user_question_tool;
 pub mod bash_tool;
 pub mod brief_tool;
+pub mod code_search_tool;
 pub mod config_tool;
 pub mod enter_plan_mode_tool;
 pub mod enter_worktree_tool;
@@ -214,6 +215,15 @@ pub fn get_all_base_tools() -> Vec<Tool> {
             crate::tools::glob_tool::glob_tool_schema(),
             crate::tools::grep_tool::grep_tool_schema(),
         ]);
+        let retrieval_enabled = crate::utils::settings::get_settings_with_errors()
+            .settings
+            .nyan
+            .as_ref()
+            .map(|nyan| nyan.retrieval().enabled())
+            .unwrap_or(true);
+        if retrieval_enabled {
+            tools.push(crate::tools::code_search_tool::code_search_tool_schema());
+        }
     }
     tools.extend([
         crate::tools::exit_plan_mode_tool::exit_plan_mode_tool_schema(),
@@ -567,7 +577,7 @@ mod tests {
             .position(|name| name == "ExitPlanMode")
             .unwrap();
         assert_eq!((glob, grep), (bash + 1, bash + 2));
-        assert_eq!(exit_plan, grep + 1);
+        assert_eq!(exit_plan, grep + 2);
         let enter_plan = ordered
             .iter()
             .position(|name| name == "EnterPlanMode")
@@ -578,6 +588,7 @@ mod tests {
             "Bash",
             "Glob",
             "Grep",
+            "CodeSearch",
             "ExitPlanMode",
             "Read",
             "Edit",

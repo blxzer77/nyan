@@ -30,6 +30,8 @@ pub mod rate_limit_messages;
 pub mod rate_limit_mocking;
 /// @nyan: shared Qwen3-Reranker client (retrieval 4.9, slice G0).
 pub mod rerank;
+/// @nyan: deterministic-first code retrieval library and optional semantic branch.
+pub mod retrieval;
 /// @nyan: shared Ready ⇄ Down(until) state machine for self-hosted services
 /// and the Decision Provider backend (README §1.9).
 pub mod service_health;
