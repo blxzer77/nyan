@@ -146,7 +146,7 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 
 | 模块 | 原待定 | 结论 | 文档 |
 |---|---|---|---|
-| 检索 | corp-pc embedding / rerank 的访问方式 | 两机都用：corp-pc 回环、nyan-pc 经 `tailscale serve`；不走代理、不鉴权；corp-pc 关机时快速判定 Down 并退回 exact / symbol / text | 检索 3.1、3.2 |
+| 检索 | corp-pc embedding / rerank 的访问方式 | 两机都用：经 EasyTier 固定地址 `10.144.0.11:8090/8091`；Qdrant `10.144.0.3:6333`；不走代理、无 TLS/token；corp-pc 关机时快速判定 Down 并退回 exact / symbol / text | 检索 3.1、3.2 |
 | 外部搜索 | `fetchVia` 默认 `proxy` 与残余 SSRF 风险 | 默认 `proxy`；实测代理会连回环与 LAN、本地 DNS 有污染，改为"拒绝私网字面量与私网名字 + 不做本地解析"；残余风险与缓解已写明 | 外部搜索 4.2 |
 | 外部搜索 | WebFetch 默认返回 20000 字符 | 保留（≈5k token，低于 50k 持久化阈值、高于掩码 1% 下限），新增 `maxReturnChars` | 外部搜索 4.4 |
 | 外部搜索 | provider 选择、召回与候选 | AnySearch、Brave、DeepSeek、Exa、Firecrawl、Tavily、SearXNG（自建）全部接入，search 与 fetch 都接；每家召回 20 → RRF 30 → Qwen3-Reranker 精排 → 8；fetch 由 nyan 先抓、失败按序回退 provider | 外部搜索 2.2、3.2–3.4、4.6 |

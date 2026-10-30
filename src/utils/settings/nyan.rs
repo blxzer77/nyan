@@ -349,7 +349,7 @@ impl SemanticSettings {
 
 impl EmbeddingSettings {
     pub fn url(&self) -> &str {
-        self.url.as_deref().unwrap_or("http://127.0.0.1:8090")
+        self.url.as_deref().unwrap_or("http://10.144.0.11:8090")
     }
     pub fn model(&self) -> &str {
         self.model.as_deref().unwrap_or("jina-code-embeddings-1.5b")
@@ -361,7 +361,7 @@ impl EmbeddingSettings {
 
 impl QdrantSettings {
     pub fn url(&self) -> &str {
-        self.url.as_deref().unwrap_or("http://100.80.19.12:6333")
+        self.url.as_deref().unwrap_or("http://10.144.0.3:6333")
     }
     pub fn api_key_file(&self) -> Option<&str> {
         self.api_key_file
@@ -375,7 +375,7 @@ impl RerankSettings {
         self.enabled.unwrap_or(false)
     }
     pub fn url(&self) -> &str {
-        self.url.as_deref().unwrap_or("http://127.0.0.1:8091")
+        self.url.as_deref().unwrap_or("http://10.144.0.11:8091")
     }
     pub fn model(&self) -> &str {
         self.model.as_deref().unwrap_or("qwen3-reranker-0.6b")
@@ -593,7 +593,7 @@ pub const BUILTIN_PROVIDERS: &[ProviderDefaults] = &[
         name: "searxng",
         api_key_file: None,
         max_calls_per_session: None,
-        url: Some("https://nyan-ops.tail6334e5.ts.net:8454"),
+        url: Some("http://10.144.0.3:8454"),
     },
 ];
 
@@ -1627,7 +1627,7 @@ mod tests {
         assert_eq!(retrieval.index().languages(), "auto");
         assert!(retrieval.semantic().is_none(), "unconfigured means off");
         assert!(!retrieval.rerank().enabled(), "code rerank is opt-in");
-        assert_eq!(retrieval.rerank().url(), "http://127.0.0.1:8091");
+        assert_eq!(retrieval.rerank().url(), "http://10.144.0.11:8091");
         assert_eq!(retrieval.rerank().model(), "qwen3-reranker-0.6b");
         assert_eq!(retrieval.rerank().top_n(), 20);
         assert_eq!(retrieval.budget().deadline_ms(), 8_000);
@@ -1648,7 +1648,7 @@ mod tests {
         assert!(searxng.enabled);
         assert_eq!(
             searxng.url.as_deref(),
-            Some("https://nyan-ops.tail6334e5.ts.net:8454")
+            Some("http://10.144.0.3:8454")
         );
         let exa = web.provider("exa");
         assert!(exa.enabled);
@@ -1812,10 +1812,10 @@ mod tests {
             .retrieval()
             .semantic()
             .expect("empty section still opts in");
-        assert_eq!(semantic.embedding().url(), "http://127.0.0.1:8090");
+        assert_eq!(semantic.embedding().url(), "http://10.144.0.11:8090");
         assert_eq!(semantic.embedding().model(), "jina-code-embeddings-1.5b");
         assert_eq!(semantic.embedding().dim(), 1536);
-        assert_eq!(semantic.qdrant().url(), "http://100.80.19.12:6333");
+        assert_eq!(semantic.qdrant().url(), "http://10.144.0.3:6333");
         assert_eq!(
             semantic.qdrant().api_key_file(),
             Some("~/.cometix/keys/qdrant")
@@ -1856,7 +1856,7 @@ mod tests {
         let value = json!({
             "compaction": {"mask": false, "summaryStyle": "cc"},
             "retrieval": {
-                "semantic": {"embedding": {"url": "http://127.0.0.1:8090"}},
+                "semantic": {"embedding": {"url": "http://10.144.0.11:8090"}},
                 "rerank": {"enabled": true, "topN": 10}
             },
             "web": {"providers": {"searxng": {"enabled": true}}},

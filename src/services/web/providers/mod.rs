@@ -153,7 +153,7 @@ impl ProviderKind {
             Self::Exa => "https://api.exa.ai",
             Self::Firecrawl => "https://api.firecrawl.dev/v2",
             Self::Tavily => "https://api.tavily.com",
-            Self::Searxng => "https://nyan-ops.tail6334e5.ts.net:8454",
+            Self::Searxng => "http://10.144.0.3:8454",
         }
     }
 

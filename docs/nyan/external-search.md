@@ -135,16 +135,16 @@
 | 位置 | nyan-ops `/opt/stacks/searxng/compose.yaml`，按本机约定（`/opt/CONTRACT.md`）：stack 变更经用户批准、走 `nyan-stack`；镜像用 digest 固定（与 `retrieval` stack 的 Qdrant 相同写法）；设资源限制（1C / 1G / 256 PIDs，参照同机 stack） |
 | 镜像 | `docker.io/searxng/searxng@sha256:<部署时取>`，注释写明对应日期标签（2026-10-27 最新为 `2026.10.27-cb74e7f81`） |
 | 绑定 | 容器只绑 `127.0.0.1:8092`（8092 空闲，实测） |
-| 入口 | `tailscale serve --bg --https=8454 http://127.0.0.1:8092` → `https://nyan-ops.tail6334e5.ts.net:8454`（tailnet only；本机 Serve 已用 `:443`、`:8443`–`:8453`）；同步更新 `/opt/stacks/README.md` 与集群的 `service-urls.md` |
+| 入口 | 经 EasyTier 以固定地址 `http://10.144.0.3:8454` 提供（2026-10-30 更新；原 tailscale serve 方案已废弃）；同步更新 `/opt/stacks/README.md` 与集群的 `service-urls.md` |
 | 出站 | **直连**，不经代理（nyan-ops 在境外，无 DNS 污染）。2026-10-27 从 nyan-ops 实测：Google 200（0.08 s）、Bing 200、Mojeek 200、Startpage 200、DuckDuckGo 200、Qwant 200、Wikipedia 200、Sogou 200（2.9 s）；**Brave 429** |
 | 引擎 | 启用 google、bing、duckduckgo、mojeek、startpage、qwant、wikipedia；中文查询加 sogou。**关闭 brave**（直连被限流，且 Brave 已作为独立 provider 接入，SearXNG 再查一次只是重复） |
-| 设置 | `search.formats: [html, json]`（默认不开 json）；`server.limiter: false`（只有 tailnet 内访问）；`server.secret_key` 随机生成，存 `/opt/stacks/searxng/keys/`（0600，与 `retrieval/keys` 相同做法）；`outgoing.request_timeout: 3.0`、`max_request_timeout: 6.0` |
+| 设置 | `search.formats: [html, json]`（默认不开 json）；`server.limiter: false`（只有 EasyTier 内网访问）；`server.secret_key` 随机生成，存 `/opt/stacks/searxng/keys/`（0600，与 `retrieval/keys` 相同做法）；`outgoing.request_timeout: 3.0`、`max_request_timeout: 6.0` |
 | 限流缓存 | limiter 关闭，不需要 Valkey，不额外部署 |
 | 监控 | Uptime Kuma 加一项 `GET /search?q=test&format=json` 返回 ≥ 1 条结果（同机已有 Kuma，异常经 ntfy 推送） |
 
-nyan 侧（两台机器相同）：`settings.nyan.web.providers.searxng = { "enabled": true, "url": "https://nyan-ops.tail6334e5.ts.net:8454" }`。
-SearXNG 客户端**不走代理**（tailnet 地址，与检索客户端相同）。可用性由服务健康状态机管理（README 第一节第 9 条，
-公共切片 H）：nyan-ops 或 tailnet 不可用时判 Down，退避期间不发请求，其余六家照常。
+nyan 侧（两台机器相同）：`settings.nyan.web.providers.searxng = { "enabled": true, "url": "http://10.144.0.3:8454" }`。
+SearXNG 客户端**不走代理**（EasyTier 内网地址，与检索客户端相同）。可用性由服务健康状态机管理（README 第一节第 9 条，
+公共切片 H）：nyan-ops 或 EasyTier 不可用时判 Down，退避期间不发请求，其余六家照常。
 
 ### 3.3 召回 → 融合 → 精排
 
@@ -337,9 +337,9 @@ legacy 的 6 条 OWASP 控制，结合本机"所有流量经本地代理"的事�
 | `http://127.0.0.1:8090/…` | 200（代理替客户端连回环） | 502 |
 | `0x7f.1`、`2130706433`、`127.1`、`[::ffff:127.0.0.1]`、`0.0.0.0`、`localhost.`（:8090） | 均 200 | 均 502 |
 | `http://192.168.1.2/` | 302（`GEOIP,LAN,DIRECT`） | 502 |
-| `http://100.80.19.12:6333/healthz` | 200（`IP-CIDR,100.64.0.0/10,DIRECT`） | 502 |
+| `http://10.144.0.3:6333/healthz`（EasyTier 私网） | 200（DIRECT） | 502 |
 | `*.nip.io` 等公网名字解析到私网 | 502 | 502 |
-| `https://nyan-ops.tail6334e5.ts.net/` | 连接失败 | 拒绝（显式 REJECT） |
+| `https://nyan-ops.tail6334e5.ts.net/` | 连接失败 | 拒绝（显式 REJECT；该地址已随 tailscale 停用） |
 | `https://www.gstatic.com/generate_204`、`https://www.baidu.com/` | 204 / 200 | 204 / 200（不受影响） |
 
 FlClash 侧已由负责方修复（两台机器）：代理端口 7897 入站、目标为回环 / RFC1918 / 链路本地 / CGNAT（tailnet）/ IPv6 私网段 /
@@ -510,7 +510,7 @@ nyan 抓取器（4.2 全部 SSRF 检查）
     "exa":       { "enabled": true, "apiKeyFile": "~/.cometix/keys/exa",       "maxCallsPerSession": 30 },
     "firecrawl": { "enabled": true, "apiKeyFile": "~/.cometix/keys/firecrawl", "maxCallsPerSession": 20 },
     "tavily":    { "enabled": true, "apiKeyFile": "~/.cometix/keys/tavily",    "maxCallsPerSession": 20 },
-    "searxng":   { "enabled": true, "url": "https://nyan-ops.tail6334e5.ts.net:8454" }   // 不限次数
+    "searxng":   { "enabled": true, "url": "http://10.144.0.3:8454" }   // 不限次数
   },
   "search": {
     "recallDepth": 20, "fusionKeep": 30, "domainCap": 3, "rrfK": 60,
@@ -568,7 +568,7 @@ nyan 抓取器（4.2 全部 SSRF 检查）
 | G | 配置与 `is_enabled` | `utils/settings/types.rs`、`tools/web_search_tool/mod.rs` | — |
 | H | FetchProvider 回退：触发条件、顺序、`fetched_by` 快照、返回注明、回退链 30 s | `services/web/fetcher.rs`、`services/web/snapshot.rs` | B、D、I |
 | I | 预算：会话级计数（搜索 / fetch 次数与字节、单 provider 调用）、并发上限、`budget_exhausted` 渲染 | 新 `services/web/budget.rs` | — |
-| — | 部署：SearXNG stack、`tailscale serve :8454`、Kuma 监控（独立于代码，可先做；按 nyan-ops 契约经用户批准） | nyan-ops `/opt/stacks/searxng/` | — |
+| — | 部署：SearXNG stack、EasyTier 内网发布、Kuma 监控（已就绪，地址见 3.2.1） | nyan-ops `/opt/stacks/searxng/` | — |
 
 A、D、G、I 可并行；B 在 A 后；C 在 B 后；E 在 D、I、公共 H 后；F 在 E、检索 G0、公共 H 后；H 在 B、D、I 后。
 "公共 H"是 README 第一节第 9 条的服务健康状态机（SearXNG、rerank 的 Ready / Down），与本文切片 H 不同。
@@ -582,7 +582,7 @@ A、D、G、I 可并行；B 在 A 后；C 在 B 后；E 在 D、I、公共 H 后
 2. **[离线]** 一家 provider 超时（mock 延迟 > deadline）、401、402、432、429 时，其余结果照常返回，失败在结果中具名列出
    （`timeout` / `auth_failed` / `quota_exhausted` / `rate_limited`）；全部失败时报 `unavailable`（`is_error`）。
 3. **[离线]** WebFetch 拒绝并具名：`http://127.0.0.1`、`0x7f.1`、`2130706433`、`127.1`、`0.0.0.0`、`[::1]`、`[::ffff:127.0.0.1]`、
-   `[64:ff9b::7f00:1]`、`[2002:7f00:1::]`、`169.254.169.254`、`100.80.19.12`、`[fd7a:115c:a1e0::1]`、`localhost`、`localhost.`、
+   `[64:ff9b::7f00:1]`、`[2002:7f00:1::]`、`169.254.169.254`、`10.144.0.3`、`[fd7a:115c:a1e0::1]`、`localhost`、`localhost.`、
    `foo.local.`、`x.ts.net`、单标签主机名（`denied_private_network`）；`https://example.com:8443`（`denied_port`）；
    非白名单内容类型（`content_type_denied`）。纯函数测试，不发请求。
 4. **[离线]** 跨 host 重定向自动跟随且逐跳校验；重定向到私网被拒；第 6 跳 `too_many_redirects`（mock 服务器返回 30x 链）。
