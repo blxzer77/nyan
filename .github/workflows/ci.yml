@@ -50,6 +50,9 @@ jobs:
       - name: Calculate impact
         id: impact
         run: node scripts/ci/impact.mjs
+      - name: Check quality drift
+        shell: bash
+        run: node scripts/ci/check-quality-drift.mjs
 
   build:
     name: build

@@ -1,0 +1,98 @@
+#!/usr/bin/env node
+// Quality drift check for PRs.
+//
+// Prevents AI agents and contributors from weakening tests or test gates:
+// 1. Prohibits introducing new `#[ignore]` attributes in code or tests.
+//    (Bypassing failing tests by ignoring them is forbidden; fix the defect instead.)
+//
+// Usage (CI):   node scripts/ci/check-quality-drift.mjs
+// Usage (local): node scripts/ci/check-quality-drift.mjs --base master --head HEAD
+
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+function arg(name) {
+  const index = process.argv.indexOf(`--${name}`);
+  return index === -1 ? undefined : process.argv[index + 1];
+}
+
+function endpoints() {
+  const event = process.env.GITHUB_EVENT_NAME ?? "";
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  const payload = eventPath ? JSON.parse(readFileSync(eventPath, "utf8")) : {};
+
+  const fromArgs = { base: arg("base"), head: arg("head") };
+  if (fromArgs.base && fromArgs.head) return fromArgs;
+
+  switch (event) {
+    case "pull_request":
+      return {
+        base: payload.pull_request?.base?.sha,
+        head: payload.pull_request?.head?.sha,
+      };
+    case "push":
+      return { base: payload.before, head: payload.after };
+    case "merge_group":
+      return { base: payload.merge_group?.base_sha, head: payload.merge_group?.head_sha };
+    default:
+      return {};
+  }
+}
+
+const zero = /^0+$/;
+
+function diffLines() {
+  const { base, head } = endpoints();
+  if (!base || !head || zero.test(base) || zero.test(head)) return null;
+  try {
+    return execFileSync("git", ["diff", "--unified=0", `${base}...${head}`, "--", "src", "tests"], {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch (error) {
+    console.error(`quality-drift: git diff failed: ${error.message}`);
+    return null;
+  }
+}
+
+function main() {
+  const diff = diffLines();
+  if (!diff) {
+    console.log("quality-drift: no comparative diff to analyze, skipping.");
+    return;
+  }
+
+  const violations = [];
+  const lines = diff.split("\n");
+
+  for (const line of lines) {
+    // Only check added lines; ignore file diff header `+++`
+    if (!line.startsWith("+") || line.startsWith("+++")) continue;
+
+    const content = line.slice(1).trim();
+    if (content.startsWith("//") || content.startsWith("/*")) continue;
+
+    // Detect new #[ignore]
+    if (/^#\s*\[\s*ignore\b/.test(content)) {
+      violations.push(`Adding '#[ignore]' attribute is forbidden: "${content}"`);
+    }
+  }
+
+  if (violations.length > 0) {
+    console.error("quality-drift: FAILED — test gate weakening detected:");
+    for (const v of violations) {
+      console.error(`  - ${v}`);
+    }
+    console.error("\nResolution: fix the failing test or underlying defect instead of ignoring it.");
+    process.exit(1);
+  }
+
+  console.log("quality-drift: passed (no test gate weakening detected).");
+}
+
+main();

@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # Check GitHub Actions dependencies weekly.
+  # Action updates will automatically adopt full commit SHAs, satisfying the
+  # repository SHA-pinning requirement.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Check Cargo dependencies weekly.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
