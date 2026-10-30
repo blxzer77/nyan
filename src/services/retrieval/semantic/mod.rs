@@ -140,7 +140,9 @@ impl SemanticClient {
             .no_proxy()
             .connect_timeout(connect_timeout)
             .timeout(qdrant_timeout)
-            .pool_idle_timeout(Duration::from_secs(90))
+            // nyan-ops sits behind a ~260 ms path; idle pooled sockets go
+            // stale between searches, so keep the window short and retry.
+            .pool_idle_timeout(Duration::from_secs(4))
             .build()?;
         let embedding = EmbeddingClient {
             url: embedding_settings.url().trim_end_matches('/').to_string(),
@@ -914,27 +916,21 @@ impl EmbeddingClient {
             match request.send().await {
                 Ok(response) => break Ok(response),
                 Err(error) if attempt == 1 && !error.is_timeout() => continue,
-                Err(error) => {
-                    self.health.record_failure(if error.is_timeout() {
-                        FailureKind::Timeout
-                    } else {
-                        FailureKind::Unreachable
-                    });
-                    let mut chain = error.to_string();
-                    let mut source = std::error::Error::source(&error);
-                    while let Some(cause) = source {
-                        chain.push_str(&format!(": {cause}"));
-                        source = cause.source();
-                    }
-                    break Err(chain);
-                }
+                Err(error) => break Err(error),
             }
         }
         })
         .await;
         let response = match response {
             Ok(Ok(response)) => response,
-            Ok(Err(error)) => return Err(error),
+            Ok(Err(error)) => {
+                self.health.record_failure(if error.is_timeout() {
+                    FailureKind::Timeout
+                } else {
+                    FailureKind::Unreachable
+                });
+                return Err(error.to_string());
+            }
             Err(_) => {
                 self.health.record_failure(FailureKind::Timeout);
                 return Err("embedding request timed out".to_string());
@@ -1046,6 +1042,21 @@ impl QdrantClient {
         request
     }
 
+    /// Send a request, retrying one transport-level failure. Every Qdrant call
+    /// nyan makes is idempotent (ensure/upsert/delete/search), and a stale
+    /// pooled socket otherwise fails a whole sync pass as "error sending
+    /// request" (live 2026-10-30 through EasyTier).
+    async fn send_with_retry(
+        &self,
+        build: impl Fn() -> reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, String> {
+        match build().send().await {
+            Ok(response) => Ok(response),
+            Err(error) if !error.is_timeout() => build().send().await.map_err(|error| error.to_string()),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
     async fn upsert(
         &self,
         collection: &str,
@@ -1062,21 +1073,20 @@ impl QdrantClient {
         }
         // The collection is created once at sync entry and by the first
         // upsert; re-checking it per batch would add a full RTT (§4.8.1).
+        // The points move into the closure; `send_with_retry` may build twice.
+        let points = std::sync::Arc::new(points);
         let response = self
-            .request(
-                reqwest::Method::PUT,
-                &format!("/collections/{collection}/points?wait=false"),
-            )
-            .json(&json!({"points": points}))
-            .send()
+            .send_with_retry(|| {
+                self.request(
+                    reqwest::Method::PUT,
+                    &format!("/collections/{collection}/points?wait=false"),
+                )
+                .json(&json!({"points": points.as_ref()}))
+            })
             .await
             .map_err(|error| {
-                self.health.record_failure(if error.is_timeout() {
-                    FailureKind::Timeout
-                } else {
-                    FailureKind::Unreachable
-                });
-                error.to_string()
+                self.health.record_failure(FailureKind::Unreachable);
+                error
             })?;
         if !response.status().is_success() {
             self.health.record_failure(FailureKind::Unreachable);
@@ -1088,13 +1098,13 @@ impl QdrantClient {
 
     async fn ensure_collection(&self, collection: &str, dimension: usize) -> Result<(), String> {
         let response = self
-            .request(reqwest::Method::PUT, &format!("/collections/{collection}"))
-            .json(&json!({
-                "vectors": {"size": dimension, "distance": "Cosine"}
-            }))
-            .send()
-            .await
-            .map_err(|error| error.to_string())?;
+            .send_with_retry(|| {
+                self.request(reqwest::Method::PUT, &format!("/collections/{collection}"))
+                    .json(&json!({
+                        "vectors": {"size": dimension, "distance": "Cosine"}
+                    }))
+            })
+            .await?;
         if response.status().is_success() || response.status().as_u16() == 409 {
             Ok(())
         } else if response.status().as_u16() == 400 {
@@ -1110,10 +1120,10 @@ impl QdrantClient {
 
     async fn delete_collection(&self, collection: &str) -> Result<(), String> {
         let response = self
-            .request(reqwest::Method::DELETE, &format!("/collections/{collection}"))
-            .send()
-            .await
-            .map_err(|error| error.to_string())?;
+            .send_with_retry(|| {
+                self.request(reqwest::Method::DELETE, &format!("/collections/{collection}"))
+            })
+            .await?;
         if response.status().is_success() || response.status().as_u16() == 404 {
             Ok(())
         } else {
@@ -1123,16 +1133,16 @@ impl QdrantClient {
 
     async fn delete_path(&self, collection: &str, path: &str) -> Result<(), String> {
         let response = self
-            .request(
-                reqwest::Method::POST,
-                &format!("/collections/{collection}/points/delete?wait=true"),
-            )
-            .json(&json!({
-                "filter": {"must": [{"key": "path", "match": {"value": path}}]}
-            }))
-            .send()
-            .await
-            .map_err(|error| error.to_string())?;
+            .send_with_retry(|| {
+                self.request(
+                    reqwest::Method::POST,
+                    &format!("/collections/{collection}/points/delete?wait=true"),
+                )
+                .json(&json!({
+                    "filter": {"must": [{"key": "path", "match": {"value": path}}]}
+                }))
+            })
+            .await?;
         if response.status().is_success() {
             Ok(())
         } else {
@@ -1155,24 +1165,21 @@ impl QdrantClient {
             CallPermit::Allowed => {}
         }
         let response = self
-            .request(
-                reqwest::Method::POST,
-                &format!("/collections/{collection}/points/search"),
-            )
-            .json(&json!({
-                "vector": vector,
-                "limit": limit,
-                "with_payload": true,
-            }))
-            .send()
+            .send_with_retry(|| {
+                self.request(
+                    reqwest::Method::POST,
+                    &format!("/collections/{collection}/points/search"),
+                )
+                .json(&json!({
+                    "vector": vector,
+                    "limit": limit,
+                    "with_payload": true,
+                }))
+            })
             .await
             .map_err(|error| {
-                self.health.record_failure(if error.is_timeout() {
-                    FailureKind::Timeout
-                } else {
-                    FailureKind::Unreachable
-                });
-                error.to_string()
+                self.health.record_failure(FailureKind::Unreachable);
+                error
             })?;
         if response.status().as_u16() == 404 {
             // The collection does not exist yet: first sync has not finished.
