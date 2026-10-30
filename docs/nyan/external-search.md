@@ -60,7 +60,7 @@
 
 | provider | 端点 · 鉴权 | 状态 · 条数 · 耗时 | 字段（→ nyan `Hit`） | 条数上限 · 过滤 |
 |---|---|---|---|---|
-| AnySearch | `POST api.anysearch.com/v1/search` · Bearer | 200 · 10 · 4.7 / 5.8 s | title, url, snippet（content 与 snippet 相同，130–160 字符） | `max_results` ≤ **10**；`zone` cn / intl、`language`、`tag`（垂直领域，如 `code.doc`） |
+| AnySearch | `POST api.anysearch.com/v1/search` · Bearer | 200 · 10 · 4.7 / 5.8 s；响应包在 `data.results`（2026-10-30 复测） | title, url, snippet（content 与 snippet 相同，130–160 字符） | `max_results` ≤ **10**；`zone` cn / intl、`language`；`tag`（如 `code.doc`）需配套 `library`，缺省 400，不采用 |
 | Brave | `GET api.search.brave.com/res/v1/web/search` · `X-Subscription-Token` | 200 · 18 / 19 · 3.3 / 2.3 s | title, url, description, extra_snippets, age | `count` ≤ 20；`country`、`search_lang`、`freshness`、查询运算符 |
 | DeepSeek | `POST api.deepseek.com/v1/tools/search` · Bearer | 200 · 10 · **0.40 s** | title, url, snippet, summary（200–4.5k 字符）, date, authority, rerank_score, site_name；`content` 实测为空 | `count` ≤ 50；查询内 `site:` / `-site:` / `lang:` / `after:` / `before:` |
 | Exa | `POST api.exa.ai/search` · `x-api-key` | 200 · 10 · 6.0 / 2.7 s（`type: auto` 1.8 s） | id, title, url；**默认无 snippet、无 publishedDate**，要 `contents.highlights` 才有 | `numResults`；域名 / 日期过滤 |
@@ -71,7 +71,7 @@
 
 | provider | 端点 | 状态 · 耗时 | 返回 | 原始字节 / hash / 最终 URL / 抓取时间 |
 |---|---|---|---|---|
-| AnySearch | `POST /v1/extract` | 200 · 2.7 s | Markdown 约 49.6k 字符 + url、title | 无（url 为请求值） |
+| AnySearch | `POST /v1/extract`（单个 `url`；`urls[]` 会 400） | 200 · 2.7 s | Markdown 约 49.6k 字符 + url、title，包在 `data` 下 | 无（url 为请求值） |
 | DeepSeek | `POST /v1/tools/fetch` | 200 · 6.0 s | `{title, content}`，Markdown 约 41k（转义较多） | 无 |
 | Exa | `POST /contents` | 200 · 2.7 s | 纯文本约 41k；`statuses.source = cached` | 只有 url |
 | Firecrawl | `POST /v2/scrape` | 200 · 5.8 s | Markdown 约 124k；可选 `rawHtml`（231 KB） | `metadata`：statusCode、contentType、sourceURL、`cacheState: hit`、`cachedAt`（前一天）；rawHtml 与直抓的 hash 不同 |
