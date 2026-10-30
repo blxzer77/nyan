@@ -53,6 +53,9 @@ struct EmbeddingClient {
     api_key: Option<String>,
     client: reqwest::Client,
     health: Arc<service_health::ServiceHealth>,
+    /// Query-side budget. Sync batches pass their own (larger) deadline to
+    /// [`Self::embed_batch`] instead of inheriting this one.
+    request_timeout: Duration,
 }
 
 #[derive(Clone)]
@@ -125,10 +128,12 @@ impl SemanticClient {
         let embedding_client = reqwest::Client::builder()
             .no_proxy()
             .connect_timeout(connect_timeout)
-            .timeout(embed_timeout)
-            // vLLM sits behind uvicorn, whose default keep-alive is 5 s; a
-            // longer pool window reuses sockets the server already closed and
-            // surfaces as "error sending request" on a sync burst.
+            // No client-wide request timeout: the query path uses the short
+            // budget while sync batches use `embedBatchTimeoutMs`, and a
+            // shared cap would silently truncate the larger one.
+            //
+            // vLLM sits behind uvicorn, whose keep-alive is 5 s; the pool
+            // window stays under it, and a stale socket is retried once.
             .pool_idle_timeout(Duration::from_secs(4))
             .build()?;
         let qdrant_client = reqwest::Client::builder()
@@ -144,6 +149,7 @@ impl SemanticClient {
             api_key: read_key(embedding_settings.api_key_file.as_deref())?,
             client: embedding_client,
             health: embedding_health,
+            request_timeout: embed_timeout,
         };
         let qdrant = QdrantClient {
             url: qdrant_settings.url().trim_end_matches('/').to_string(),
@@ -718,21 +724,15 @@ impl SemanticClient {
     ) -> Result<(), String> {
         for (batch_index, batch) in chunk_texts.chunks(batch_size).enumerate() {
             let documents = batch.to_vec();
-            let vectors = match tokio::time::timeout(batch_timeout, self.embedding.embed(&documents))
-                .await
-            {
-                Ok(Ok(vectors)) if vectors.len() == batch.len() => vectors,
-                Ok(Ok(_)) => {
+            let vectors = match self.embedding.embed_batch(&documents, batch_timeout).await {
+                Ok(vectors) if vectors.len() == batch.len() => vectors,
+                Ok(_) => {
                     self.embedding
                         .health
                         .record_failure(FailureKind::InvalidResponse);
                     return Err("embedding count mismatch".to_string());
                 }
-                Ok(Err(error)) => return Err(error),
-                Err(_) => {
-                    self.embedding.health.record_failure(FailureKind::Timeout);
-                    return Err("embedding batch timed out".to_string());
-                }
+                Err(error) => return Err(error),
             };
             let first_chunk = batch_index * batch_size;
             let points = vectors
@@ -872,6 +872,17 @@ impl EmbeddingClient {
     }
 
     async fn embed(&self, inputs: &[String]) -> Result<Vec<Vec<f32>>, String> {
+        self.embed_batch(inputs, self.request_timeout).await
+    }
+
+    /// Embed with an explicit deadline. Sync callers pass
+    /// `sync.embedBatchTimeoutMs`; the transport-level retry below applies to
+    /// both paths.
+    async fn embed_batch(
+        &self,
+        inputs: &[String],
+        timeout: Duration,
+    ) -> Result<Vec<Vec<f32>>, String> {
         match self.health.call_permit() {
             CallPermit::Skipped => return Err("embedding service unreachable".to_string()),
             CallPermit::Probe => {
@@ -885,7 +896,8 @@ impl EmbeddingClient {
         // failure (a pooled socket the server closed, a reset) is retried
         // once; HTTP status errors and timeouts are not.
         let mut attempt = 0;
-        let response = loop {
+        let response = tokio::time::timeout(timeout, async {
+        loop {
             attempt += 1;
             let request = self
                 .client
@@ -900,7 +912,7 @@ impl EmbeddingClient {
                 None => request,
             };
             match request.send().await {
-                Ok(response) => break response,
+                Ok(response) => break Ok(response),
                 Err(error) if attempt == 1 && !error.is_timeout() => continue,
                 Err(error) => {
                     self.health.record_failure(if error.is_timeout() {
@@ -908,8 +920,24 @@ impl EmbeddingClient {
                     } else {
                         FailureKind::Unreachable
                     });
-                    return Err(error.to_string());
+                    let mut chain = error.to_string();
+                    let mut source = std::error::Error::source(&error);
+                    while let Some(cause) = source {
+                        chain.push_str(&format!(": {cause}"));
+                        source = cause.source();
+                    }
+                    break Err(chain);
                 }
+            }
+        }
+        })
+        .await;
+        let response = match response {
+            Ok(Ok(response)) => response,
+            Ok(Err(error)) => return Err(error),
+            Err(_) => {
+                self.health.record_failure(FailureKind::Timeout);
+                return Err("embedding request timed out".to_string());
             }
         };
         if !response.status().is_success() {
