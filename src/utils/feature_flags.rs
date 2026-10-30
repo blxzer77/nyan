@@ -585,7 +585,6 @@ mod tests {
             "tengu_harbor_permissions",
             "tengu_kairos_cron",
             "tengu_kairos_cron_durable",
-            "tengu_slate_heron",
             "tengu_surreal_dali",
             "tengu_glacier_2xr",
             "tengu_streaming_tool_execution2",
