@@ -285,10 +285,12 @@ pub(super) fn search_call(
     Ok(match kind {
         ProviderKind::AnySearch => {
             let mut body = json!({"query": request.query, "max_results": count});
-            match query_kind {
-                Some(QueryKind::Chinese) => body["zone"] = json!("cn"),
-                Some(QueryKind::TechDocs) => body["tag"] = json!("code.doc"),
-                _ => {}
+            // `tag=code.doc` alone is rejected with 400 ("Missing required
+            // params for tag 'code.doc': library", live check 2026-10-30), and
+            // the design only allows query_kind to *add* options. Keep the
+            // safe `zone` hint and leave the vertical tag off.
+            if query_kind == Some(QueryKind::Chinese) {
+                body["zone"] = json!("cn");
             }
             Call::Post(url, body)
         }

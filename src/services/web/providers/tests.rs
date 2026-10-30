@@ -306,7 +306,9 @@ fn query_kind_adds_parameters_without_removing_any() {
     let mut docs = request("tokio select", 10);
     docs.query_kind = Some(QueryKind::TechDocs);
     let (_, any) = post_body(search_call(ProviderKind::AnySearch, "https://a.test", &docs, today()).unwrap());
-    assert_eq!(any["tag"], "code.doc");
+    // AnySearch rejects `tag` without its `library` companion (400), so the
+    // tech-doc hint must not be forwarded as a tag.
+    assert!(any.get("tag").is_none());
     assert!(any.get("zone").is_none());
 
     let mut news = request("rust release", 10);
