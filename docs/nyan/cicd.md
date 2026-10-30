@@ -110,11 +110,13 @@ mutation/fuzz/coverage、merge queue、缓存清理工作流、代码签名/nota
 
 ## 三、总体形态
 
-### 3.1 三个 workflow
+### 3.1 工作流清单
 
 | 文件 | 触发 | 内容 | 阻塞 PR |
 |---|---|---|---|
 | `ci.yml` | `pull_request`、`push: master`、`merge_group`、dispatch | policy、build、static、tests×4、supply-chain、windows-check、Merge gate | 是 |
+| `pr-describe.yml` | `pull_request`、dispatch | PR-Agent `/describe` 生成结构化变更摘要（sticky comment） | 否（建议性） |
+| `ocr-review.yml` | `schedule`（18:30 UTC）、dispatch | 批量 AI 代码深度审查（OCR），对 master 提交进行阶段性巡检并开 Issue | 否（建议性） |
 | `nightly.yml` | `schedule`（02:17 UTC）、dispatch | 全量 + internal feature + doctest、Windows/macOS check、fmt 漂移报告、全量安全扫描 | 否（失败要修） |
 | `release.yml` | tag `nyan-v*.*.*`、dispatch（仅 dry run） | 前置校验、按平台构建、vendored ripgrep、冒烟、attest、GitHub Release | —— |
 
@@ -122,11 +124,11 @@ mutation/fuzz/coverage、merge queue、缓存清理工作流、代码签名/nota
 
 | 用途 | label | 理由 |
 |---|---|---|
-| PR / push 全部作业 | `ubuntu-24.04` | public repo 免费且不限量；4 vCPU / 16 GB / 14 GB SSD |
+| PR / push 全部门禁作业 | `ubuntu-24.04` | public repo 免费且不限量；4 vCPU / 16 GB / 14 GB SSD |
 | Linux arm64 发布构建 | `ubuntu-24.04-arm` | 原生构建，不交叉 |
 | Windows 冒烟 | `windows-2025` | 只跑 `--version`；构建在 Linux 上交叉（8.2） |
 | macOS 发布构建 | `macos-15`（arm64）、`macos-15-intel`（x64） | 原生；release 才用，避开 macOS 5 并发上限 |
-| 自托管 | 无 | 公共仓库 + fork PR 的信任问题；本机/公司机器会关机；hosted 免费 |
+| AI 审查与摘要（PR-Agent / OCR） | `[self-hosted, Linux, X64, repo-nyan]` | 需要连通内网模型网关/OCR 调度器；严格限制 fork PR 不执行 |
 
 固定具体 label 而不是 `-latest`：`ubuntu-latest` 将在 2026 年 11 月切到 26.04（runner-images 公告），工具链和
 系统库会跟着漂移；Rust 构建对链接器和 glibc 敏感。`ubuntu-24.04` 的 apt 列表里没有 `ripgrep`、`zsh`——测试 job

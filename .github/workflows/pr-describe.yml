@@ -1,0 +1,66 @@
+name: PR summary
+
+# PR-Agent `/describe` only: one structured summary of the change as a sticky comment.
+# No review, no code suggestions — deep review is handled by `ocr-review.yml`.
+#
+# Runs on self-hosted runners to reach the model gateway in the private network.
+# Fork guard ensures fork PRs cannot execute on self-hosted runners.
+#
+# `PR_DESCRIPTION__PUBLISH_DESCRIPTION_AS_COMMENT`: comment instead of rewriting
+# the PR description, so the author's description is preserved.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number
+        required: true
+        type: string
+
+concurrency:
+  group: pr-summary-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  GATEWAY_URL: ${{ vars.GATEWAY_URL || 'http://10.144.0.3:8449/v1' }}
+  PR_AGENT_IMAGE: codiumai/pr-agent:latest
+
+jobs:
+  describe:
+    name: Describe
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, repo-nyan]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Describe the pull request
+        env:
+          GITHUB_TOKEN_IN: ${{ github.token }}
+          GATEWAY_TOKEN_IN: ${{ secrets.GATEWAY_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url || format('https://github.com/{0}/pull/{1}', github.repository, inputs.pr) }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GATEWAY_TOKEN_IN}" ]; then
+            echo "::warning::GATEWAY_TOKEN is not set; skipping PR summary generation."
+            exit 0
+          fi
+          docker run --rm \
+            --network host \
+            -e GITHUB__USER_TOKEN="$GITHUB_TOKEN_IN" \
+            -e OPENAI__KEY="$GATEWAY_TOKEN_IN" \
+            -e OPENAI__API_BASE="$GATEWAY_URL" \
+            -e CONFIG__MODEL="openai/review.fast" \
+            -e CONFIG__FALLBACK_MODELS="[]" \
+            -e CONFIG__CUSTOM_MODEL_MAX_TOKENS=200000 \
+            -e PR_DESCRIPTION__PUBLISH_DESCRIPTION_AS_COMMENT=true \
+            "$PR_AGENT_IMAGE" --pr_url="$PR_URL" describe
