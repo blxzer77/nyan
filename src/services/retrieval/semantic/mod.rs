@@ -455,95 +455,71 @@ impl SemanticClient {
             write_queue(&delete_path, &still_deleted).ok();
         }
 
-        for entry in entries {
-            let Some((file, chunk_texts)) = index.file_chunks(&entry.path) else {
-                // Changed since indexing: a newer queue entry owns the file;
-                // a vanished file has a delete-queue entry.
-                if index.file(&entry.path).is_none() {
-                    continue;
-                }
-                if index
-                    .file(&entry.path)
-                    .is_some_and(|file| file.file_hash_raw != entry.file_hash_raw)
-                {
-                    continue;
-                }
-                remaining.push(entry);
-                continue;
-            };
-            if file.file_hash_raw != entry.file_hash_raw {
-                continue;
+        // `sync.concurrency` bounds the files in flight. Each file is one or
+        // more embedding→upsert round trips, and every upsert pays a full RTT
+        // (≈260 ms to nyan-ops), so a serial pass over the first index takes
+        // tens of minutes. Files inside a window are independent; the queue is
+        // still written in entry order afterwards.
+        let concurrency = settings.concurrency().max(1) as usize;
+        let mut iter = entries.into_iter();
+        'windows: loop {
+            let window: Vec<PendingEntry> = iter.by_ref().take(concurrency).collect();
+            if window.is_empty() {
+                break;
             }
-            let mut file_ok = true;
-            for (batch_index, batch) in chunk_texts.chunks(batch_size).enumerate() {
-                let documents = batch.to_vec();
-                let vectors = match tokio::time::timeout(
-                    batch_timeout,
-                    self.embedding.embed(&documents),
-                )
-                .await
-                {
-                    Ok(Ok(vectors)) if vectors.len() == batch.len() => vectors,
-                    Ok(Ok(_)) => {
-                        failure = Some("embedding count mismatch".to_string());
-                        self.embedding
-                            .health
-                            .record_failure(FailureKind::InvalidResponse);
-                        file_ok = false;
-                        break;
+            let mut work = Vec::with_capacity(window.len());
+            for entry in window {
+                let prepared = match index.file_chunks(&entry.path) {
+                    Some((file, texts)) if file.file_hash_raw == entry.file_hash_raw => {
+                        Some((file, texts))
                     }
-                    Ok(Err(error)) => {
-                        failure = Some(error);
-                        file_ok = false;
-                        break;
-                    }
-                    Err(_) => {
-                        failure = Some("embedding batch timed out".to_string());
-                        self.embedding.health.record_failure(FailureKind::Timeout);
-                        file_ok = false;
-                        break;
+                    // Changed since indexing: a newer queue entry owns the file;
+                    // a vanished file has a delete-queue entry. Either way this
+                    // entry is done.
+                    Some(_) => None,
+                    None => {
+                        if index
+                            .file(&entry.path)
+                            .is_some_and(|file| file.file_hash_raw != entry.file_hash_raw)
+                        {
+                            None
+                        } else if index.file(&entry.path).is_none() {
+                            None
+                        } else {
+                            // Unreadable right now (transient I/O): retry later.
+                            remaining.push(entry);
+                            continue;
+                        }
                     }
                 };
-                let first_chunk = batch_index * batch_size;
-                let points = vectors
-                    .into_iter()
-                    .enumerate()
-                    .map(|(offset, vector)| {
-                        let chunk = &file.chunks[first_chunk + offset];
-                        let id = chunk_id(&file.path, chunk.start_line, chunk.end_line);
-                        json!({
-                            "id": id,
-                            "vector": vector,
-                            "payload": {
-                                "path": file.path,
-                                "startLine": chunk.start_line,
-                                "endLine": chunk.end_line,
-                                "chunkId": id,
-                                "fileHashRaw": file.file_hash_raw,
-                                "symbol": chunk.symbol,
-                            }
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                if let Err(error) = self
-                    .qdrant
-                    .upsert(&self.collection, points, self.embedding.dim)
-                    .await
-                {
-                    failure = Some(error);
-                    file_ok = false;
-                    break;
+                if let Some((file, texts)) = prepared {
+                    work.push((entry, file, texts));
                 }
             }
-            if file_ok {
-                synced_chunks += chunk_texts.len();
-                consecutive_failures = 0;
-            } else {
-                remaining.push(entry);
-                consecutive_failures += 1;
-                if consecutive_failures >= max_failures {
-                    break;
+            let futures = work.iter().map(|(_, file, texts)| {
+                self.upsert_file(file, texts, batch_size, batch_timeout)
+            });
+            let results = futures::future::join_all(futures).await;
+            let mut window_failures = 0u32;
+            for ((entry, _file, texts), result) in work.into_iter().zip(results) {
+                match result {
+                    Ok(()) => {
+                        synced_chunks += texts.len();
+                        consecutive_failures = 0;
+                    }
+                    Err(error) => {
+                        failure.get_or_insert(error);
+                        remaining.push(entry);
+                        consecutive_failures += 1;
+                        window_failures += 1;
+                    }
                 }
+            }
+            if window_failures > 0 && consecutive_failures >= max_failures {
+                // The circuit breaker stops this run, but the tail was never
+                // attempted: keep it queued instead of dropping it.
+                remaining.extend(iter);
+                break 'windows;
             }
         }
         write_queue(&queue_path, &remaining).ok();
@@ -715,7 +691,7 @@ fn write_ledger(storage: &Path, ledger: &CollectionLedger) -> Result<(), String>
     std::fs::rename(temporary, path).map_err(|error| error.to_string())
 }
 
-fn chunk_id(path: &str, start: usize, end: usize) -> String {
+fn chunk_id(path: &str, start: usize, end: usize) -> u64 {
     // Qdrant point ids accept u64 or UUID. Derive a stable u64 from the
     // chunk coordinates so re-sync of the same chunk overwrites in place.
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
@@ -723,7 +699,68 @@ fn chunk_id(path: &str, start: usize, end: usize) -> String {
         hash ^= u64::from(byte);
         hash = hash.wrapping_mul(0x100_0000_01b3);
     }
-    hash.to_string()
+    hash
+}
+
+impl SemanticClient {
+    /// Embed and upsert one file's chunks in order. Returns the number of
+    /// chunks queued by the caller; a batch failure aborts the file so a
+    /// retry re-sends every chunk with the same ids (idempotent upsert).
+    async fn upsert_file(
+        &self,
+        file: &super::index::IndexedFile,
+        chunk_texts: &[String],
+        batch_size: usize,
+        batch_timeout: Duration,
+    ) -> Result<(), String> {
+        for (batch_index, batch) in chunk_texts.chunks(batch_size).enumerate() {
+            let documents = batch.to_vec();
+            let vectors = match tokio::time::timeout(batch_timeout, self.embedding.embed(&documents))
+                .await
+            {
+                Ok(Ok(vectors)) if vectors.len() == batch.len() => vectors,
+                Ok(Ok(_)) => {
+                    self.embedding
+                        .health
+                        .record_failure(FailureKind::InvalidResponse);
+                    return Err("embedding count mismatch".to_string());
+                }
+                Ok(Err(error)) => return Err(error),
+                Err(_) => {
+                    self.embedding.health.record_failure(FailureKind::Timeout);
+                    return Err("embedding batch timed out".to_string());
+                }
+            };
+            let first_chunk = batch_index * batch_size;
+            let points = vectors
+                .into_iter()
+                .enumerate()
+                .map(|(offset, vector)| {
+                    let chunk = &file.chunks[first_chunk + offset];
+                    let id = chunk_id(&file.path, chunk.start_line, chunk.end_line);
+                    json!({
+                        // Qdrant accepts a point id as an unsigned integer or
+                        // a UUID, never a numeric string (live 400: "not a
+                        // valid point ID").
+                        "id": id,
+                        "vector": vector,
+                        "payload": {
+                            "path": file.path,
+                            "startLine": chunk.start_line,
+                            "endLine": chunk.end_line,
+                            "chunkId": id.to_string(),
+                            "fileHashRaw": file.file_hash_raw,
+                            "symbol": chunk.symbol,
+                        }
+                    })
+                })
+                .collect::<Vec<_>>();
+            self.qdrant
+                .upsert(&self.collection, points, self.embedding.dim)
+                .await?;
+        }
+        Ok(())
+    }
 }
 
 fn unix_now_ms() -> u128 {
@@ -980,11 +1017,12 @@ impl QdrantClient {
             }
             CallPermit::Allowed => {}
         }
-        self.ensure_collection(collection, dimension).await?;
+        // The collection is created once at sync entry and by the first
+        // upsert; re-checking it per batch would add a full RTT (§4.8.1).
         let response = self
             .request(
                 reqwest::Method::PUT,
-                &format!("/collections/{collection}/points?wait=true"),
+                &format!("/collections/{collection}/points?wait=false"),
             )
             .json(&json!({"points": points}))
             .send()

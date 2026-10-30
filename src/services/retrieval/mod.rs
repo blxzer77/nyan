@@ -360,9 +360,16 @@ pub async fn search_with_provider(
                     let background_index = index.clone();
                     let background_client = client.clone();
                     let future = async move {
-                        let _ = background_client
+                        let report = background_client
                             .sync_pending(&background_index, &sync_settings)
                             .await;
+                        // Named, never silent: a stopped circuit breaker or a
+                        // Down service must be visible in the log even though
+                        // the tool result only carries the pending count.
+                        crate::utils::debug::log_for_debugging(&format!(
+                            "retrieval semantic sync: synced_chunks={} pending_files={} status={:?}",
+                            report.synced_chunks, report.pending_files, report.status
+                        ));
                     };
                     if let Some(handle) =
                         crate::utils::process_runtime::runtime_handle_for_detached_work()
