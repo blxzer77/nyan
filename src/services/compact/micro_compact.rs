@@ -228,7 +228,7 @@ struct MaskCandidate {
 /// from cached microcompact: this changes the model projection and therefore
 /// owns the persistent ContentReplacementState decision.
 pub fn mask_tool_results_if_needed(
-    mut messages: Vec<Message>,
+    messages: Vec<Message>,
     state: &mut crate::utils::tool_result_storage::ContentReplacementState,
     context: &ToolUseContext,
     query_source: &QuerySource,

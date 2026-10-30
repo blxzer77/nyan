@@ -5,8 +5,8 @@
 //! gating, single-flight and cursor rules live in exactly one place.
 
 use super::{
-    ExtractCursor, ExtractFailure, ExtractOutcome, ExtractSkipReason, ExtractStatus,
-    ExtractionProgress, extraction_is_due,
+    ExtractFailure, ExtractOutcome, ExtractSkipReason, ExtractStatus, ExtractionProgress,
+    extraction_is_due,
 };
 use crate::constants::query_source::QuerySource;
 use crate::tool::ToolUseContext;
@@ -353,6 +353,7 @@ pub(crate) fn test_gate_guard() -> Option<tokio::sync::MutexGuard<'static, ()>> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::extract_memories::ExtractCursor;
     use crate::utils::settings::types::SettingsJson;
     use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
 

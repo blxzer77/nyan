@@ -760,9 +760,7 @@ impl SemanticClient {
                     })
                 })
                 .collect::<Vec<_>>();
-            self.qdrant
-                .upsert(&self.collection, points, self.embedding.dim)
-                .await?;
+            self.qdrant.upsert(&self.collection, points).await?;
         }
         Ok(())
     }
@@ -1057,12 +1055,7 @@ impl QdrantClient {
         }
     }
 
-    async fn upsert(
-        &self,
-        collection: &str,
-        points: Vec<Value>,
-        dimension: usize,
-    ) -> Result<(), String> {
+    async fn upsert(&self, collection: &str, points: Vec<Value>) -> Result<(), String> {
         match self.health.call_permit() {
             CallPermit::Skipped => return Err("Qdrant service unreachable".to_string()),
             CallPermit::Probe => {

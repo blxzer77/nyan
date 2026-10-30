@@ -490,7 +490,8 @@ where
     // the retrieval pipeline polls a large composed future (reproduced live:
     // `-p` + WebFetch prompt -> stack overflow abort). Give it the same 8 MiB
     // the REPL already reserves for engine work.
-    std::thread::Builder::new()
+    let spawn_failure_tx = event_tx.clone();
+    let spawn_result = std::thread::Builder::new()
         .name("query-actor".to_string())
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
@@ -550,6 +551,13 @@ where
         };
         let _ = event_tx.try_send(QueryEvent::Terminal(terminal));
     });
+    if let Err(error) = spawn_result {
+        // The UI waits on `events`; a spawn failure must resolve the stream
+        // instead of leaving it pending forever.
+        let mut terminal = transitions::Terminal::new("model_error");
+        terminal.exception = Some(format!("query actor thread failed to start: {error}"));
+        let _ = spawn_failure_tx.try_send(QueryEvent::Terminal(terminal));
+    }
 
     QueryHandle {
         id,
