@@ -431,7 +431,9 @@ pub(super) fn fetch_call(
     // Live fetch is always requested: Firecrawl and Exa serve cached pages by
     // default (measured: a day old).
     let (path, body) = match kind {
-        ProviderKind::AnySearch => ("extract", json!({"urls": [target]})),
+        // AnySearch `/v1/extract` takes a single `url`; `urls[]` is rejected
+        // with 400 `invalid_extract_url` (live check 2026-10-30).
+        ProviderKind::AnySearch => ("extract", json!({"url": target})),
         ProviderKind::Tavily => ("extract", json!({"urls": [target]})),
         ProviderKind::DeepSeek => ("fetch", json!({"url": target})),
         ProviderKind::Exa => (

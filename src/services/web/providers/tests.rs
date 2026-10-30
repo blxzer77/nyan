@@ -367,7 +367,7 @@ fn domain_filters_use_native_fields_or_site_operators() {
 fn fetch_bodies_request_live_pages() {
     let target = "https://doc.rust-lang.org/std/collections/struct.HashMap.html";
     let cases = [
-        (ProviderKind::AnySearch, "extract", json!({"urls": [target]})),
+        (ProviderKind::AnySearch, "extract", json!({"url": target})),
         (ProviderKind::Tavily, "extract", json!({"urls": [target]})),
         (ProviderKind::DeepSeek, "fetch", json!({"url": target})),
         (

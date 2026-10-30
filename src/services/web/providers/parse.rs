@@ -46,6 +46,12 @@ fn result_items(kind: ProviderKind, value: &Value) -> Option<&Vec<Value>> {
             let data = value.get("data")?;
             data.as_array().or_else(|| data.get("web")?.as_array())
         }
+        // AnySearch wraps the payload in `{code, message, data: {results}}`
+        // (verified live 2026-10-30); accept the unwrapped shape too.
+        ProviderKind::AnySearch => value
+            .pointer("/data/results")
+            .or_else(|| value.get("results"))?
+            .as_array(),
         _ => value.get("results")?.as_array(),
     }
 }
@@ -237,6 +243,9 @@ fn tavily_page(url: &str, value: &Value) -> Result<ProviderPage, ProviderError> 
 /// AnySearch and DeepSeek both answer `{title?, content}`; AnySearch may wrap
 /// it in `results[0]`.
 fn any_page(url: &str, value: &Value, _provider: &str) -> Result<ProviderPage, ProviderError> {
+    // AnySearch answers `{data: {url, title, content}}`; DeepSeek answers
+    // `{title, content}` and older AnySearch shapes used `results[0]`.
+    let value = value.get("data").filter(|data| data.get("content").is_some()).unwrap_or(value);
     let node = if value.get("content").is_some() {
         value
     } else {
@@ -328,6 +337,32 @@ mod tests {
             assert_eq!(hits[0].published_at.as_deref(), published, "{kind:?}");
             assert_eq!(hits[0].provider_rank, 1, "{kind:?}");
         }
+    }
+
+    #[test]
+    fn anysearch_envelope_is_the_live_data_wrapper() {
+        // Live shape (2026-10-30): `{code, message, request_id, data:{results}}`.
+        let value = json!({
+            "code": 0,
+            "message": "ok",
+            "data": {"results": [
+                {"title": "A", "url": "https://a", "snippet": "a-snip"},
+                {"title": "B", "url": "https://b", "content": "b-content"},
+            ], "metadata": {}}
+        });
+        let hits = parse_hits(ProviderKind::AnySearch, &value).unwrap();
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].snippet, "a-snip");
+        assert_eq!(hits[1].snippet, "b-content");
+
+        let page = parse_page(
+            ProviderKind::AnySearch,
+            "https://a",
+            json!({"code": 0, "data": {"url": "https://a", "title": "A", "content": "body"}}),
+        )
+        .unwrap();
+        assert_eq!(page.content, "body");
+        assert_eq!(page.title.as_deref(), Some("A"));
     }
 
     #[test]
