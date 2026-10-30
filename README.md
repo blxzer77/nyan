@@ -54,7 +54,7 @@ permissions, MCP and slash commands are implemented; other areas are partial.
 
 ### Prerequisites
 
-**Rust 1.88+** (edition 2024). Nothing else — no system libraries, no
+**Rust 1.99+** (edition 2024). Nothing else — no system libraries, no
 `pkg-config`.
 
 ### Build and run

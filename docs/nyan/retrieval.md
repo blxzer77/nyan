@@ -243,7 +243,7 @@ query → 选分支（4.3 的规则）
 - **首次建索引**：后台任务；未就绪时 symbol / text 跳过，exact 照常返回（legacy bootstrap 规则，见 4.10）。
 - **依赖核实（2026-10-26，crates.io）**：语法 crate（`tree-sitter-rust` 0.24.2、`-typescript` 0.23.2、`-python` 0.25.0、
   `-go` 0.25.0、`-java` 0.23.5、`-cpp` 0.23.4、`-md` 0.5.4）只依赖 `tree-sitter-language ^0.1`（本仓库已有 0.1.7），
-  与已链接的 tree-sitter 0.25 ABI 兼容；`tantivy` 0.27.0，MIT，`rust-version` 1.88，与本 crate 的 `rust-version = 1.88` 一致。
+  与已链接的 tree-sitter 0.25 ABI 兼容；`tantivy` 0.27.0，MIT，`rust-version` 1.88，低于本 crate 的 1.99，兼容。
   许可均与 AGPL-3.0 兼容。
 - **构建代价（决定）**：语法 crate 每个是 0.4–1.0 MB 的生成 C 源码（crates.io 包体：rust 0.4 MB、typescript 0.8 MB、
   cpp 1.0 MB），编译成静态对象并链接进二进制；`tantivy` 0.27 有 42 个非可选的普通依赖。本机尚无构建产物，**不预估数字**：
