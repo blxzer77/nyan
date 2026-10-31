@@ -28,9 +28,11 @@ use super::outcome::{Branch, Candidate, SearchRequest};
 use self::text::{ChunkDocument, TextHit, TextIndex};
 
 const INDEX_SCHEMA_VERSION: &str = "nyan-retrieval-index-v2";
-pub const CHUNKER_VERSION: &str = "symbol-v2";
+pub const CHUNKER_VERSION: &str = "symbol-v4";
 const MAX_CHUNK_LINES: usize = 60;
-const MAX_CHUNK_TOKENS: usize = 400;
+/// Keep embedding inputs below the deployed model's context limit even when a
+/// file has unusually dense lines (for example generated JSON fixtures).
+const MAX_CHUNK_BYTES: usize = 2_000;
 const MAX_REFERENCES_PER_FILE: usize = 2_000;
 /// Design cap: at most 3 results per file (retrieval 4.4).
 const MAX_PER_FILE: usize = 3;
@@ -686,7 +688,15 @@ impl LocalIndex {
             let start = chunk.start_line.saturating_sub(1);
             let end = chunk.end_line.min(lines.len());
             if start < end {
-                contents.push((chunk.clone(), lines[start..end].join("\n")));
+                let mut content = lines[start..end].join("\n");
+                if content.len() > MAX_CHUNK_BYTES {
+                    let mut limit = MAX_CHUNK_BYTES;
+                    while !content.is_char_boundary(limit) {
+                        limit -= 1;
+                    }
+                    content.truncate(limit);
+                }
+                contents.push((chunk.clone(), content));
             }
         }
         Some((file, contents))
@@ -1135,11 +1145,9 @@ fn make_chunks(text: &str, symbols: &[SymbolRecord], symbol_checked: bool) -> Ve
         }
         let mut cursor = start;
         while cursor <= end {
-            let sub_end = (cursor + MAX_CHUNK_LINES - 1).min(end);
-            let content = lines[cursor - 1..sub_end].join("\n");
-            let mut tokens = natural_tokens(&content);
-            if tokens.len() > MAX_CHUNK_TOKENS {
-                tokens.truncate(MAX_CHUNK_TOKENS);
+            let mut sub_end = (cursor + MAX_CHUNK_LINES - 1).min(end);
+            while sub_end > cursor && lines[cursor - 1..sub_end].join("\n").len() > MAX_CHUNK_BYTES {
+                sub_end -= 1;
             }
             chunks.push(ChunkRecord {
                 start_line: cursor,
@@ -1293,6 +1301,23 @@ mod tests {
         assert!(sensitive_path("keys/id_rsa"));
         assert!(sensitive_path("config/credentials.json"));
         assert!(!sensitive_path("src/main.rs"));
+    }
+
+    #[test]
+    fn dense_line_chunks_stay_within_embedding_input_limit() {
+        let text = (0..60)
+            .map(|_| "x".repeat(200))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let lines = text.lines().collect::<Vec<_>>();
+        let chunks = make_chunks(&text, &[], false);
+        assert!(chunks.len() > 1);
+        assert!(chunks.iter().all(|chunk| {
+            lines[chunk.start_line - 1..chunk.end_line.min(lines.len())]
+                .join("\n")
+                .len()
+                <= MAX_CHUNK_BYTES
+        }));
     }
 
     #[test]

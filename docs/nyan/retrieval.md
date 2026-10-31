@@ -81,7 +81,7 @@ semantic 与 rerank 是**可选增强**：不可用时，CodeSearch 退回 exact
 
 | 服务 | 连接超时 | 请求超时 | 探测（`Down` 到期后的一次后台请求） |
 |---|---|---|---|
-| embedding | 1.5 s | 查询侧 2.5 s；同步批次 15 s（4.8.1） | `GET /v1/models`，核对模型 id |
+| embedding | 1.5 s | 查询侧 2.5 s；同步批次 60 s（4.8.1） | `GET /v1/models`，核对模型 id |
 | Qdrant | 1.5 s | 1.5 s | `GET /healthz` |
 | rerank | 1.5 s | 2 s | `GET /v1/models`，核对模型 id |
 
@@ -212,7 +212,7 @@ query → 选分支（4.3 的规则）
   worktree 根 = `git rev-parse --show-toplevel`，非 git 目录用 cwd。
 - **内容**：每文件 `{path, fileHashRaw(sha256), size, mtime, language}`；tree-sitter 符号表（名称、类型、
   定义行范围、父作用域）；chunk 表（按符号边界切分，带 breadcrumb：`path › impl Foo › fn bar`）；tantivy 索引目录。
-- **chunker**：tree-sitter 符号边界优先（函数 / 方法 / impl / class），超过 ~60 行或 ~400 token 再按行窗口切分；
+- **chunker**：tree-sitter 符号边界优先（函数 / 方法 / impl / class），超过 ~60 行或 2 KiB 正文再按行窗口切分；2 KiB 上限避免生成式 JSON 等密集长行超过 embedding 模型上下文。
   不跨文件（03 CH-2）。语言：Rust、TypeScript/JavaScript、Python、Go、Java、C/C++、Bash、Markdown（标题切分）
   ——首批以本仓库与 nyan-legacy 用到的为准，其余语言退化为行窗口 chunk + 无符号表（这些文件只参与 text / semantic，
   结果标注 `(no symbol check)`）。
@@ -357,8 +357,8 @@ SemanticSyncState = Synced
   （符号边界，超过 60 行再按窗口切）粗估 **约 3.3 万个 chunk**，平均约 200 token / chunk。
 - **corp-pc**：本机 embedding 是快路径；同步默认把跨文件 chunk 合并为 128 条一批、8 批并发，避免小文件各自支付一次 Qdrant 往返。
 - **nyan-pc**：embedding 经 EasyTier 到 corp-pc，Qdrant upsert 再走一次 EasyTier 到 nyan-ops。2026-10-31 实测 Qdrant `/healthz`
-  约 0.72 s、128 点 upsert 约 1.7–2.5 s；同步使用独立 15 s 批次超时，不再受查询侧 1.5 s 超时截断。当前仓库约 32919
-  chunks，按 128 点批约 258 次 upsert，8 并发后瓶颈从请求次数降为 Qdrant 链路吞吐，预计数分钟内完成。
+  约 0.72 s、128 点 upsert 约 1.7–2.5 s；同步 embedding 批次使用独立 60 s 超时，Qdrant 批次使用独立 15 s 超时，不再受查询侧 1.5 s 超时截断。当前仓库约 32919
+  chunks；本次按 2 KiB chunk 上限实际生成 36122 chunks，按 128 点批约 283 次 upsert。8 并发后瓶颈从请求次数降为 embedding 服务吞吐，实际同步可跨多个 checkpoint 窗口完成。
 - **取舍（决定）**：接受耗时，不限制只在直连时同步——首次同步在后台进行，期间 semantic 对已同步部分照常可用、
   其余分支不受影响，模型看到 `[semantic index syncing: N files pending]`；中断（退出、关机、网络断）后重启从队列续传，
   已完成的批次不重做。若实测 nyan-pc 上超过 30 分钟，再考虑由 corp-pc 代为计算向量（需 corp-pc 上有相同 worktree，
@@ -369,7 +369,7 @@ SemanticSyncState = Synced
 - 触发：本机索引首次构建完成后（symbol / text 已就绪），且 semantic 已配置；把全部可索引文件入队，`reason = InitialSync`。
 - **前提**：embedding 与 Qdrant 均为 `Ready`（第一次使用时探测）；任一 `Down` 则首次同步不开始，队列保持，
   状态 `Pending { reason: ServiceDown }`，等服务恢复由下一次使用触发。
-- 并发度：默认同时在途 8 个批次；每批 128 条。embedding 同步请求超时 15 s，Qdrant 同步批次超时 15 s，
+- 并发度：默认同时在途 8 个批次；每批 128 条。embedding 同步请求超时 60 s，Qdrant 同步批次超时 15 s，
   两者都与查询侧 2.5 s / 1.5 s 分开。批次跨文件合并，但只有该文件贡献的所有批次成功后才会从队列移除。
 - 后台任务：不阻塞会话，不阻塞 CodeSearch；用户按 Esc 只取消当前工具调用，不取消后台同步。同步队列在每个文件窗口完成后
   原子 checkpoint；进程退出后从最近窗口继续。需要等待整轮完成时使用 `/retrieval sync --wait`，否则 `/retrieval sync` 只启动后台任务。
@@ -469,7 +469,7 @@ Decision Provider 时完全相同。
   "rerank": { "enabled": false, "url": "http://10.144.0.11:8091", "model": "qwen3-reranker-0.6b", "topN": 20 },
   "budget": { "deadlineMs": 8000, "semanticDeadlineMs": 4500, "rrfK": 60,
               "connectTimeoutMs": 1500, "embedTimeoutMs": 2500, "qdrantTimeoutMs": 1500, "rerankTimeoutMs": 2000 },
-  "sync": { "batchSize": 128, "concurrency": 8, "embedBatchTimeoutMs": 15000,
+  "sync": { "batchSize": 128, "concurrency": 8, "embedBatchTimeoutMs": 60000,
             "qdrantBatchTimeoutMs": 15000, "maxBatchFailures": 3, "pruneAfterDays": 90 }
 }
 ```

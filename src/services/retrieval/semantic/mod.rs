@@ -499,12 +499,13 @@ impl SemanticClient {
             write_queue(&delete_path, &still_deleted).ok();
         }
 
-        let mut iter = entries.into_iter();
+        let mut pending_entries = entries;
         'windows: loop {
-            let window: Vec<PendingEntry> = iter.by_ref().take(window_files).collect();
-            if window.is_empty() {
+            if pending_entries.is_empty() {
                 break;
             }
+            let window_size = pending_entries.len().min(window_files);
+            let window: Vec<PendingEntry> = pending_entries.drain(..window_size).collect();
             let mut files: Vec<FileWork> = Vec::with_capacity(window.len());
             for entry in window {
                 let prepared = match index.file_chunks(&entry.path) {
@@ -675,10 +676,12 @@ impl SemanticClient {
                 }
                 remaining.push(work.entry);
             }
-            // The queue is the progress record: persist it after every window
-            // so an interrupted sync resumes at a file boundary instead of
-            // re-embedding the whole run.
-            write_queue(&queue_path, &remaining).ok();
+            // The queue is the progress record: persist failed files plus the
+            // untouched tail after every window. An interrupted sync must not
+            // lose entries that have not reached a worker yet.
+            let mut checkpoint = remaining.clone();
+            checkpoint.extend(pending_entries.iter().cloned());
+            write_queue(&queue_path, &checkpoint).ok();
             crate::utils::debug::log_for_debugging(&format!(
                 "retrieval semantic sync: synced_chunks={} pending_files={} elapsed_ms={}",
                 synced_chunks,
@@ -688,7 +691,7 @@ impl SemanticClient {
             if window_failures > 0 && consecutive_failures >= max_failures {
                 // The circuit breaker stops this run, but the tail was never
                 // attempted: keep it queued instead of dropping it.
-                remaining.extend(iter);
+                remaining.extend(pending_entries);
                 break 'windows;
             }
         }

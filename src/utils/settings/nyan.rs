@@ -422,7 +422,7 @@ impl RetrievalSyncSettings {
         self.concurrency.unwrap_or(8)
     }
     pub fn embed_batch_timeout_ms(&self) -> u64 {
-        self.embed_batch_timeout_ms.unwrap_or(15_000)
+        self.embed_batch_timeout_ms.unwrap_or(60_000)
     }
     /// Sync-batch Qdrant timeout. The query path keeps `budget.qdrantTimeoutMs`
     /// (1.5 s); a 128-point upsert to nyan-ops measured 0.8–2.1 s, so the
@@ -1654,7 +1654,7 @@ mod tests {
         assert_eq!(retrieval.budget().rerank_timeout_ms(), 2_000);
         assert_eq!(retrieval.sync().batch_size(), 128);
         assert_eq!(retrieval.sync().concurrency(), 8);
-        assert_eq!(retrieval.sync().embed_batch_timeout_ms(), 15_000);
+        assert_eq!(retrieval.sync().embed_batch_timeout_ms(), 60_000);
         assert_eq!(retrieval.sync().qdrant_batch_timeout_ms(), 15_000);
         assert_eq!(retrieval.sync().max_batch_failures(), 3);
         assert_eq!(retrieval.sync().prune_after_days(), 90);
