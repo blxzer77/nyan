@@ -128,7 +128,7 @@ impl SemanticClient {
         let qdrant_timeout = Duration::from_millis(budget.qdrant_timeout_ms());
         let embedding_health = service_health::shared(ServiceKind::Embedding);
         let qdrant_health = service_health::shared(ServiceKind::Qdrant);
-        let embedding_client = reqwest::Client::builder()
+        let embedding_client = crate::utils::proxy::client_builder()
             .no_proxy()
             .connect_timeout(connect_timeout)
             // No client-wide request timeout: the query path uses the short
@@ -139,7 +139,7 @@ impl SemanticClient {
             // window stays under it, and a stale socket is retried once.
             .pool_idle_timeout(Duration::from_secs(4))
             .build()?;
-        let qdrant_client = reqwest::Client::builder()
+        let qdrant_client = crate::utils::proxy::client_builder()
             .no_proxy()
             .connect_timeout(connect_timeout)
             // No client-wide timeout: the query path caps at
@@ -1390,7 +1390,7 @@ pub fn worktree_id(root: &Path) -> String {
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-        .or_else(|| std::env::var("HOSTNAME").ok())
+        .or_else(|| crate::utils::process_env::var("HOSTNAME"))
         .unwrap_or_else(|| "unknown-machine".to_string());
     let machine = short_hash(machine_source.as_bytes(), 12);
     let path = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
