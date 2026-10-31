@@ -45,7 +45,8 @@ pub fn build_display_text(
 
 /// Maps to CC `commands/compact/compact.ts:40-127` `call(...)`, excluding the
 /// still-explicit SessionMemory/reactive alternatives. This is the traditional
-/// model-backed branch: boundary projection → microcompact → compact → cleanup.
+/// model-backed branch: boundary projection → replacement replay → compact →
+/// cleanup.
 pub async fn call<F>(
     messages: Vec<Message>,
     context: &crate::tool::ToolUseContext,
@@ -60,12 +61,12 @@ where
         return Err("No messages to compact".to_string());
     }
 
-    let compact_messages = crate::services::compact::micro_compact::microcompact_messages(
+    // @nyan: `/compact` projects existing replacements only. The compaction
+    // request itself is the single owner allowed to add new mask decisions.
+    let compact_messages = crate::services::compact::micro_compact::project_content_replacements(
         messages,
-        context,
-        &crate::constants::query_source::QuerySource::Compact,
-    )
-    .messages;
+        context.content_replacement_state.as_ref(),
+    );
     let cache_context = cache_context();
     let cache_safe_params = AutoCompactCacheSafeParams {
         system_prompt: cache_context.system_prompt,
@@ -74,15 +75,47 @@ where
         fork_context_messages: compact_messages.clone(),
     };
     let instructions = (!custom_instructions.is_empty()).then_some(custom_instructions);
-    let compaction_result = crate::services::compact::compact::compact_conversation(
-        compact_messages,
+    // @nyan: memory M2.1 — extract before the summary replaces history.
+    // Failure or timeout is logged by the driver and never blocks `/compact`.
+    crate::services::extract_memories::driver::extract_before_compact_for_summary(
         context,
         &cache_safe_params,
-        false,
-        instructions,
-        false,
     )
-    .await?;
+    .await;
+    // @nyan (compaction C7): manual compaction keeps the same recent tail as
+    // autocompact; with no usable cut point it falls back to the full summary.
+    let keep_pivot = crate::services::compact::micro_compact::content_mask_enabled()
+        .then(|| {
+            crate::services::compact::auto_compact::keep_recent_pivot(
+                &compact_messages,
+                crate::utils::settings::get_initial_settings()
+                    .nyan
+                    .map(|settings| settings.compaction().keep_recent_tokens())
+                    .unwrap_or(20_000),
+            )
+        })
+        .flatten();
+    let compaction_result = if let Some(pivot_index) = keep_pivot {
+        crate::services::compact::compact::partial_compact_conversation(
+            compact_messages,
+            pivot_index,
+            context,
+            &cache_safe_params,
+            instructions,
+            crate::types::message::PartialCompactDirection::UpTo,
+        )
+        .await?
+    } else {
+        crate::services::compact::compact::compact_conversation(
+            compact_messages,
+            context,
+            &cache_safe_params,
+            false,
+            instructions,
+            false,
+        )
+        .await?
+    };
 
     crate::services::compact::post_compact_cleanup::run_post_compact_cleanup(None);
     let shortcut = crate::keybindings::shortcut_format::get_shortcut_display(
@@ -90,12 +123,23 @@ where
         &crate::keybindings::types::ContextName::Global,
         "ctrl+o",
     );
-    let display_text = build_display_text(
+    let mut display_text = build_display_text(
         context.verbose,
         &shortcut,
         compaction_result.user_display_message.as_deref(),
         None,
     );
+    // @nyan (compaction C10): a summary model without the main cache pays full
+    // input price, so surface whether this run actually read the cache.
+    let cache_read = compaction_result
+        .compaction_usage
+        .as_ref()
+        .map_or(0, |usage| usage.cache_read_input_tokens);
+    display_text.push_str(&if cache_read > 0 {
+        format!("\n(cache hit: {cache_read} tokens)")
+    } else {
+        "\n(cache miss: full input price)".to_string()
+    });
     Ok(CompactCommandResult {
         compaction_result,
         display_text,

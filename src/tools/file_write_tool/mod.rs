@@ -161,6 +161,19 @@ fn validate_write_input(input: &FileWriteInput, context: &ToolUseContext) -> Val
     {
         return validation_error(error, 0);
     }
+    // @nyan: check the complete replacement, not only a tool fragment.
+    if let Err(error) = crate::memdir::write_guard::check_memory_content(&full_path, &input.content)
+    {
+        return validation_error(error.to_string(), 0);
+    }
+    if context.agent_id.is_some() && full_path == crate::memdir::paths::get_auto_mem_entrypoint() {
+        let previous = std::fs::read_to_string(&full_path).unwrap_or_default();
+        if let Err(error) =
+            crate::memdir::memdir::validate_agent_memory_index_update(&previous, &input.content)
+        {
+            return validation_error(error, 0);
+        }
+    }
 
     if crate::utils::permissions::filesystem::matching_rule_for_input(
         &full_path.display().to_string(),
@@ -597,6 +610,22 @@ impl ToolCall for FileWriteTool {
                 }
             }
 
+            if context.agent_id.is_some()
+                && full_path == crate::memdir::paths::get_auto_mem_entrypoint()
+            {
+                if let Err(error) = crate::memdir::memdir::validate_agent_memory_index_update(
+                    old_content.as_deref().unwrap_or_default(),
+                    &input.content,
+                ) {
+                    return make_error_after_discovery(error, dynamic_skill_dirs);
+                }
+            }
+            if let Err(error) = crate::memdir::write_guard::check_memory_content(
+                &full_path,
+                &input.content,
+            ) {
+                return make_error_after_discovery(error.to_string(), dynamic_skill_dirs);
+            }
             if let Err(error) = crate::utils::file::write_text_content_to_target(
                 &write_target,
                 &input.content,

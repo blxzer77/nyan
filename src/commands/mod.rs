@@ -45,6 +45,7 @@ pub mod plugin;
 pub mod reload_plugins;
 pub mod rename;
 pub mod resume;
+pub mod retrieval;
 pub mod review;
 pub mod sandbox;
 pub mod skills;
@@ -773,6 +774,7 @@ fn commands() -> Vec<Command> {
             .prompt_metadata("fetching PR comments", 0),
         Command::local("release-notes", "View release notes").supports_non_interactive(),
         reload_plugins::command(),
+        retrieval::command(),
         Command::local_ui("rename", "Rename the current conversation")
             .argument_hint("[name]")
             .immediate()
@@ -1491,11 +1493,12 @@ mod tests {
         let _demo = EnvVarGuard::unset("IS_DEMO");
 
         let catalog = commands();
-        // 71 direct descriptors + provider-conditioned logout/login + internal /version.
+        // 71 direct descriptors + provider-conditioned logout/login + internal /version,
+        // plus @nyan `/retrieval`.
         let base_len = if crate::utils::build_profile::build_audience().is_internal() {
-            72
+            73
         } else {
-            71
+            72
         };
         assert!(catalog.len() == base_len || catalog.len() == base_len + 2);
         assert_eq!(

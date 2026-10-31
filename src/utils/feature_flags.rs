@@ -27,8 +27,6 @@ pub enum FeatureFlag {
     KairosCron,
     /// Maps to CC GrowthBook `tengu_kairos_cron_durable`.
     DurableCron,
-    /// Maps to CC GrowthBook `tengu_slate_heron`.
-    TimeBasedMicrocompact,
     /// Maps to CC GrowthBook `tengu_surreal_dali`.
     RemoteTrigger,
     /// Maps to CC GrowthBook `tengu_glacier_2xr`.
@@ -218,12 +216,6 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         cc_growthbook_name: "tengu_kairos_cron_durable",
         enabled: true,
         note: "Official default true; durable store, polling scheduler, and lease lock are wired.",
-    },
-    FeatureSwitch {
-        flag: FeatureFlag::TimeBasedMicrocompact,
-        cc_growthbook_name: "tengu_slate_heron",
-        enabled: false,
-        note: "Time-based microcompact default remains disabled unless a local seam opts in explicitly.",
     },
     FeatureSwitch {
         flag: FeatureFlag::RemoteTrigger,
@@ -469,8 +461,10 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
     FeatureSwitch {
         flag: FeatureFlag::ToolResultContentReplacement,
         cc_growthbook_name: "tengu_hawthorn_steeple",
-        enabled: false,
-        note: "Official default false: provisionContentReplacementState returns None, so the aggregate per-message budget pass never runs and tool results are delivered unreplaced.",
+        // @nyan: content replacement is the durable carrier for compaction
+        // masking, so the fork enables it by default.
+        enabled: true,
+        note: "nyan default: replacement decisions are frozen and persisted so compaction can mask old tool results without changing transcript bytes.",
     },
     FeatureSwitch {
         flag: FeatureFlag::PerMessageBudgetLimitOverride,
@@ -591,7 +585,6 @@ mod tests {
             "tengu_harbor_permissions",
             "tengu_kairos_cron",
             "tengu_kairos_cron_durable",
-            "tengu_slate_heron",
             "tengu_surreal_dali",
             "tengu_glacier_2xr",
             "tengu_streaming_tool_execution2",

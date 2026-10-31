@@ -117,6 +117,27 @@ pub fn add_to_total_tokens(input: u64, output: u64) {
     });
 }
 
+/// @nyan: per-model token accounting for requests that never enter the model
+/// context (cache warming). Prices are unknown for gateway models, so only
+/// token counts are recorded and `cost_usd` is left untouched.
+pub fn add_to_model_usage(
+    model: &str,
+    input: u64,
+    output: u64,
+    cache_read: u64,
+    cache_creation: u64,
+) {
+    with_state(|state| {
+        let entry = state.model_usage.entry(model.to_string()).or_default();
+        entry.input_tokens = entry.input_tokens.saturating_add(input);
+        entry.output_tokens = entry.output_tokens.saturating_add(output);
+        entry.cache_read_input_tokens = entry.cache_read_input_tokens.saturating_add(cache_read);
+        entry.cache_creation_input_tokens = entry
+            .cache_creation_input_tokens
+            .saturating_add(cache_creation);
+    });
+}
+
 /// Maps to: CC `cost-tracker.ts` `StoredCostState`.
 #[derive(Clone, Debug)]
 pub struct StoredCostState {

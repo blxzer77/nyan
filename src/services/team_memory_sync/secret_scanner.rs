@@ -1,12 +1,12 @@
-//! Curated team-memory secret scanner.
+//! Curated memory secret scanner.
 //!
 //! Maps to: CC `services/teamMemorySync/secretScanner.ts`.
-//! The rules are internal-build-only, matching Bun's `feature('TEAMMEM')`
-//! elimination boundary.
+//!
+//! @nyan: The scanner is compiled for every build because auto-memory is a
+//! local feature, not an internal-only team-memory feature. Team-memory
+//! callers still apply their own path gate.
 
-#[cfg(feature = "anthropic_internal")]
 use regex::{Captures, Regex, RegexBuilder};
-#[cfg(feature = "anthropic_internal")]
 use std::sync::LazyLock;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -15,13 +15,11 @@ pub struct SecretMatch {
     pub label: String,
 }
 
-#[cfg(feature = "anthropic_internal")]
 struct SecretRule {
     id: &'static str,
     regex: Regex,
 }
 
-#[cfg(feature = "anthropic_internal")]
 fn rule(id: &'static str, source: &str, case_insensitive: bool) -> SecretRule {
     SecretRule {
         id,
@@ -36,7 +34,6 @@ fn rule(id: &'static str, source: &str, case_insensitive: bool) -> SecretRule {
     }
 }
 
-#[cfg(feature = "anthropic_internal")]
 static SECRET_RULES: LazyLock<Vec<SecretRule>> = LazyLock::new(|| {
     let ant_key_prefix = ["sk", "ant", "api"].join("-");
     vec![
@@ -178,6 +175,29 @@ static SECRET_RULES: LazyLock<Vec<SecretRule>> = LazyLock::new(|| {
             r"-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----(?s:.{64,}?)-----END[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----",
             true,
         ),
+        // @nyan: These text heuristics cover credentials that do not have a
+        // provider-specific prefix. They intentionally reject the whole
+        // memory entry; the scanner never returns the matched value.
+        rule(
+            "private-key-marker",
+            r"(?i)-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----",
+            true,
+        ),
+        rule(
+            "authorization-header",
+            r"(?i)\bauthorization\s*:\s*(?:basic|bearer)\s+[A-Za-z0-9._~+/=-]{4,}",
+            false,
+        ),
+        rule(
+            "bearer-token",
+            r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}",
+            false,
+        ),
+        rule(
+            "sensitive-assignment",
+            r#"(?i)\b(?:api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*[\"']?[A-Za-z0-9._~+/=-]{4,}"#,
+            false,
+        ),
     ]
 });
 
@@ -219,7 +239,6 @@ pub fn get_secret_label(rule_id: &str) -> String {
 
 /// Maps to CC `scanForSecrets(content)` — one match per rule, with no secret
 /// value returned.
-#[cfg(feature = "anthropic_internal")]
 pub fn scan_for_secrets(content: &str) -> Vec<SecretMatch> {
     SECRET_RULES
         .iter()
@@ -231,14 +250,8 @@ pub fn scan_for_secrets(content: &str) -> Vec<SecretMatch> {
         .collect()
 }
 
-#[cfg(not(feature = "anthropic_internal"))]
-pub fn scan_for_secrets(_content: &str) -> Vec<SecretMatch> {
-    Vec::new()
-}
-
 /// Maps to CC `redactSecrets(content)`. Only capture group 1 is replaced when
 /// present so boundary characters survive.
-#[cfg(feature = "anthropic_internal")]
 pub fn redact_secrets(content: &str) -> String {
     let mut redacted = content.to_string();
     for rule in SECRET_RULES.iter() {
@@ -259,12 +272,7 @@ pub fn redact_secrets(content: &str) -> String {
     redacted
 }
 
-#[cfg(not(feature = "anthropic_internal"))]
-pub fn redact_secrets(content: &str) -> String {
-    content.to_string()
-}
-
-#[cfg(all(test, feature = "anthropic_internal"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -290,5 +298,28 @@ mod tests {
     #[test]
     fn unknown_label_falls_back_to_title_case() {
         assert_eq!(get_secret_label("custom-secret"), "Custom Secret");
+    }
+
+    #[test]
+    fn public_build_scans_text_credential_heuristics_without_returning_values() {
+        let matches = scan_for_secrets(
+            "authorization: Bearer abcdefgh\napi_key = \"not-a-real-provider-key\"\n",
+        );
+        assert_eq!(
+            matches
+                .iter()
+                .map(|secret| secret.rule_id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "authorization-header",
+                "bearer-token",
+                "sensitive-assignment"
+            ]
+        );
+        assert!(
+            matches
+                .iter()
+                .all(|secret| !secret.label.contains("abcdefgh"))
+        );
     }
 }

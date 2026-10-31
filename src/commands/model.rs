@@ -99,6 +99,9 @@ fn apply_wrapper_model_state(store: &AppStore, model: Option<String>, is_fast_mo
     if is_fast_mode_enabled() {
         clear_fast_mode_cooldown();
     }
+    // @nyan (compaction C12): prompt cache is per-model, so a model change must
+    // stop a warmer that is still refreshing the previous model's prefix.
+    crate::services::cache_warmer::invalidate();
     store.replace_with(|state| {
         state.main_loop_model = model.clone();
         state.main_loop_model_for_session = None;

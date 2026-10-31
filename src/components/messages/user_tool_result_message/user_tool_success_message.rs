@@ -140,7 +140,8 @@ pub fn UserToolSuccessMessage(
     // SearchResultSummary wrap behavior keys on the tool name, as CC's
     // per-tool render does (Glob reuses Grep's renderer, GlobTool/UI.tsx:56).
     let search_result_gutter = props.tool_name.eq_ignore_ascii_case("Grep")
-        || props.tool_name.eq_ignore_ascii_case("Glob");
+        || props.tool_name.eq_ignore_ascii_case("Glob")
+        || props.tool_name.eq_ignore_ascii_case("CodeSearch");
     let lines = render_tool_result_lines_for_result(
         &props.tool_name,
         ToolResultStatus::Success,

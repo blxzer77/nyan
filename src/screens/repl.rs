@@ -9654,6 +9654,9 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                                                     },
                                                 )]),
                                             );
+                                            // @nyan (compaction C12): a fast-mode
+                                            // model swap changes the cache key.
+                                            crate::services::cache_warmer::invalidate();
                                             store_for_fast.replace_with(|state| {
                                                 if enabled
                                                     && !crate::utils::fast_mode::is_fast_mode_supported_by_model(
@@ -9935,6 +9938,9 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                                                     },
                                                 )]),
                                             );
+                                            // @nyan (compaction C12): a fast-mode
+                                            // model swap changes the cache key.
+                                            crate::services::cache_warmer::invalidate();
                                             store_for_fast.replace_with(|state| {
                                                 if enabled
                                                     && !crate::utils::fast_mode::is_fast_mode_supported_by_model(

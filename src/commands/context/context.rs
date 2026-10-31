@@ -2,23 +2,21 @@
 
 use super::ContextCommandRequest;
 use crate::components::context_visualization::ContextVisualization;
-use crate::constants::query_source::QuerySource;
 use crate::utils::analyze_context::{AnalyzeContextUsageInput, ContextData, analyze_context_usage};
 use iocraft::prelude::*;
 
 /// Maps to: CC `commands/context/context.tsx#toApiView` followed by
-/// `microcompactMessages(apiView)` and `analyzeContextUsage(...)`.
+/// `microcompactMessages(apiView)` and `analyzeContextUsage(...)`; nyan narrows
+/// the microcompact step to a read-only replacement projection.
 pub fn collect_context_data(request: &ContextCommandRequest) -> ContextData {
     let api_view =
         crate::utils::messages::get_messages_after_compact_boundary(&request.context.messages);
-    // CONTEXT_COLLAPSE `projectView` remains an explicit service seam: the
-    // rebuild feature has no local projection operation yet.
-    let compacted = crate::services::compact::micro_compact::microcompact_messages(
+    // @nyan: `/context` is a projection only. It may replay frozen
+    // replacements, but it must not make or persist a new decision.
+    let compacted = crate::services::compact::micro_compact::project_content_replacements(
         api_view.clone(),
-        &request.context,
-        &QuerySource::Prompt,
-    )
-    .messages;
+        request.context.content_replacement_state.as_ref(),
+    );
 
     let app_state = request
         .context

@@ -530,6 +530,18 @@ pub fn reset_session_budget() {
     session_budget().reset();
 }
 
+/// `(calls, input tokens)` spent by the process-wide decision budget.
+pub fn session_budget_used() -> (u32, u64) {
+    (session_budget().calls(), session_budget().input_tokens())
+}
+
+/// Charge one call against the process-wide budget, for tests that need a
+/// non-zero counter before a reset.
+#[cfg(test)]
+pub fn charge_session_budget_for_tests(max_calls: u32) -> bool {
+    session_budget().charge_call(max_calls)
+}
+
 // ════════════════════════════════════════════════════════════
 // Backends
 // ════════════════════════════════════════════════════════════

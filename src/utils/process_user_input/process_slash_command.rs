@@ -542,7 +542,9 @@ pub(crate) fn system_display_local_command_result(
     }
 }
 
-fn local_command_result(
+/// @nyan: `pub(crate)` so `/retrieval` builds the same command/output rows as
+/// every other local text command instead of re-formatting the envelopes.
+pub(crate) fn local_command_result(
     uuid: Option<String>,
     command: impl Into<String>,
     args: impl Into<String>,

@@ -40,45 +40,35 @@ Pactile `design/context-governance/retrieval/00–13`（以 01 provider 契约�
 
 | 组件 | 位置 | 接口 | 实测 |
 |---|---|---|---|
-| Embedding `jinaai/jina-code-embeddings-1.5b` | corp-pc，vLLM pooling，fp16（user unit `retrieval-vllm-embed`） | OpenAI 兼容 `POST /v1/embeddings`，`127.0.0.1:8090` | 1536 维、L2 归一、8192 ctx；40.5 chunks/s（1 并发）、91.8（8 并发）；每小时探测全通过 |
-| Rerank `Qwen/Qwen3-Reranker-0.6B` | corp-pc，vLLM（`retrieval-vllm-rerank`） | `POST /score`，`127.0.0.1:8091`，返回 [0,1] | 在线；20 候选 p50 350 ms |
-| Qdrant 1.19.2 | nyan-ops | `:6333`，需 API key | corp-pc 经 tailnet 直连约 0.5 s/请求（首次建连约 1.3 s）；nyan-pc 走 DERP 中继 |
+| Embedding `jinaai/jina-code-embeddings-1.5b` | corp-pc，vLLM pooling，fp16（user unit `retrieval-vllm-embed`） | OpenAI 兼容 `POST /v1/embeddings`，`10.144.0.11:8090` | 1536 维、L2 归一、8192 ctx；40.5 chunks/s（1 并发）、91.8（8 并发）；每小时探测全通过 |
+| Rerank `Qwen/Qwen3-Reranker-0.6B` | corp-pc，vLLM（`retrieval-vllm-rerank`） | `POST /score`，`10.144.0.11:8091`，返回 [0,1] | 在线；20 候选 p50 350 ms |
+| Qdrant 1.19.2 | nyan-ops | `http://10.144.0.3:6333`，需 API key | corp-pc 经 EasyTier 约 0.5 s/请求（首次建连约 1.3 s）；nyan-pc 同网段 |
 
 部署说明与探测脚本在 corp-pc 的 `~/Projects/work/internal/retrieval/`（仅 corp-pc 上有；`probe.sh`、
 `retrieval-probes.timer` 每小时一次）。
 `retrieval-llama-embed.container` 是保留的 llama.cpp 回退单元，镜像未拉取，处于 failed 状态，不影响 vLLM 服务。
 
-### 3.1 两台机器的访问方式（已定，2026-10-27）
+### 3.1 两台机器的访问方式（2026-10-30 更新：EasyTier 固定地址）
 
 nyan 在 **nyan-pc** 与 **corp-pc** 上都要能用 semantic 与 rerank；GPU 服务只在 corp-pc，且 corp-pc 可能关机。
+两台机器经 **EasyTier** 互通（不再使用 tailscale），服务以固定内网地址发布：
 
-| 机器 | embedding / rerank 地址 | 路径 | 实测 |
-|---|---|---|---|
-| corp-pc | `http://127.0.0.1:8090` / `:8091` | 同机回环 | 查询 embedding 约 20 ms |
-| nyan-pc | `https://corp-pc.tail6334e5.ts.net:8090` / `:8091` | tailnet；当前两机之间只有 DERP(hkg) 中继，无直连 | tailscale ping 约 0.7 s |
+| 服务 | 地址 | 说明 |
+|---|---|---|
+| embedding（jina-code-embeddings-1.5b） | `http://10.144.0.11:8090` | corp-pc 上的 vLLM，两机同一地址 |
+| rerank（qwen3-reranker-0.6b） | `http://10.144.0.11:8091` | corp-pc 上的 vLLM，两机同一地址 |
+| Qdrant 1.19.2 | `http://10.144.0.3:6333` | nyan-ops；`apiKeyFile = ~/.cometix/keys/qdrant` |
 
-**corp-pc 侧用 `tailscale serve` 发布，不改 Quadlet、不改防火墙**：
-
-```
-tailscale serve --bg --https=8090 http://127.0.0.1:8090
-tailscale serve --bg --https=8091 http://127.0.0.1:8091
-```
-
-- corp-pc 的 tailscale `OperatorUser` 是 `blxze`，serve 不需要 sudo；`--bg` 配置持久化在 tailscaled 里，重启后仍生效。
-- 服务本身仍只绑 `127.0.0.1`，不暴露到 LAN（firewalld 默认区对 Wi-Fi 网卡生效，tailscale0 不在任何区）。
-- TLS 证书由 tailscale 签发（MagicDNS 名），访问范围是 tailnet。tailnet 内的设备都是用户自己的，所以**不加 token**。
-  若以后 tailnet 加入他人的设备，再开 vLLM `--api-key`，`apiKeyFile` 字段为此保留。
-- 原 R-D1（改 `PublishPort` 绑 tailnet 地址 + token）、R-D2（SSH 转发）不采用：前者要改两个单元并处理 tailnet 地址在
-  tailscaled 起来之前不存在的启动顺序问题；后者 nyan-pc 到 corp-pc 的 SSH 实测超时，且不适合常驻。
+- 全部为 **http、无 TLS、无 vLLM token**；Qdrant 仍要 API key（`~/.cometix/keys/qdrant`，两机各一份、0600）。
+- 服务只绑定 EasyTier 虚拟网卡地址 / 回环，不暴露到 LAN。
+- 两台机器的 settings 用同一组地址（`~/.cometix/settings.json` 仍各机一份、不同步）；nyan 不做自动发现。
 
 **客户端**：
 
 - 检索的三个客户端（embedding、rerank、Qdrant）**一律不走代理**（`reqwest::Client::builder().no_proxy()`），不依赖
-  `NO_PROXY` 是否设对。代理会照常替客户端连回环与 tailnet（实测经代理访问 `127.0.0.1:8090` 返回 200），绕一圈只是
-  多一跳、多一个故障点。
-- 远端 embedding 用 `encoding_format: "base64"`（vLLM 0.32 支持）：单条 1536 维响应从约 33 KB 降到约 8.5 KB，
-  中继链路上差别明显；本机回环也用同一格式，不分两套。
-- 每台机器的 settings 各自配置 URL（`~/.cometix/settings.json` 不同步），nyan 不做"自动发现 corp-pc"。
+  `NO_PROXY` 是否设对。代理会照常替客户端连回环与 EasyTier 地址，绕一圈只是多一跳、多一个故障点。
+- 远端 embedding 用 `encoding_format: "base64"`（vLLM 0.32 支持）：单条 1536 维响应从约 33 KB 降到约 8.5 KB。
+- 10.144.0.0/24 是 EasyTier 的私有网段，`WebFetch` 的主机判定会拒绝把它当作抓取目标（与检索客户端无关）。
 
 ### 3.2 corp-pc 不可用时的回退（已定，2026-10-27）
 
@@ -91,11 +81,11 @@ semantic 与 rerank 是**可选增强**：不可用时，CodeSearch 退回 exact
 
 | 服务 | 连接超时 | 请求超时 | 探测（`Down` 到期后的一次后台请求） |
 |---|---|---|---|
-| embedding | 1.5 s | 查询侧 2.5 s；同步批次 15 s（4.8.1） | `GET /v1/models`，核对模型 id |
+| embedding | 1.5 s | 查询侧 2.5 s；同步批次 60 s（4.8.1） | `GET /v1/models`，核对模型 id |
 | Qdrant | 1.5 s | 1.5 s | `GET /healthz` |
 | rerank | 1.5 s | 2 s | `GET /v1/models`，核对模型 id |
 
-- 连接 1.5 s 覆盖 DERP 中继下的建连（实测 corp-pc → nyan-ops 首次建连约 1.3 s）。超时即判 `Down`。
+- 连接 1.5 s 覆盖 EasyTier 下首次建连。超时即判 `Down`。
 - **Down 期间不发请求**：直接跳过该分支，渲染 `[semantic unavailable (corp-pc unreachable)]`，不计入 deadline。
 - 探测只判断"在不在"；readiness 的完整检查（维度、范数等）见 4.8。
 - embedding 与 Qdrant 任一 Down，semantic 整体跳过；rerank Down 只跳过重排（排序退回 RRF 融合顺序，不提示）。
@@ -202,13 +192,12 @@ query → 选分支（4.3 的规则）
 
 | 机器 | embedding（查询，1 条） | Qdrant 检索 | semantic 典型耗时 |
 |---|---|---|---|
-| corp-pc | ~20 ms（回环） | ~0.5 s（tailnet 直连 nyan-ops，热连接；首次建连 ~1.2 s） | ~0.5 s |
-| nyan-pc | ~0.7–1 s（DERP 中继到 corp-pc，HTTPS 热连接） | 0.5 s 以上（DERP 中继到 nyan-ops，未实测） | ~1.5–2.5 s |
+| corp-pc | ~20 ms（同机） | ~0.5 s（EasyTier 直连 nyan-ops，热连接） | ~0.5 s |
+| nyan-pc | 经 EasyTier 到 corp-pc（实现时实测） | 经 EasyTier 到 nyan-ops（实现时实测） | 待实测 |
 
-- 两步共用连接池（keep-alive），中继下 TLS 建连只在首次付出。
+- 两步共用连接池（keep-alive），首次建连只在首查询付出。
 - semantic 与其余分支并行，总 deadline 8 s 不变；semantic 超时不影响 exact / symbol / text 的结果。
-- nyan-pc 上的数字是按 RTT 推算（tailscale ping ~0.7 s），实现时实测；若 p90 超过 4.5 s，只调大 `semanticDeadlineMs`，
-  不改结构。
+- nyan-pc 上的数字需实测；若 p90 超过 4.5 s，只调大 `semanticDeadlineMs`，不改结构。
 
 - 用户按 Esc：沿用 CC 工具的 abort 语义（整个工具调用取消），不另造状态。
 - 某分支超时：该分支结果丢弃，其余照常，渲染为 `[semantic timed out]`；超时与取消在内部枚举里是两个值，
@@ -223,7 +212,7 @@ query → 选分支（4.3 的规则）
   worktree 根 = `git rev-parse --show-toplevel`，非 git 目录用 cwd。
 - **内容**：每文件 `{path, fileHashRaw(sha256), size, mtime, language}`；tree-sitter 符号表（名称、类型、
   定义行范围、父作用域）；chunk 表（按符号边界切分，带 breadcrumb：`path › impl Foo › fn bar`）；tantivy 索引目录。
-- **chunker**：tree-sitter 符号边界优先（函数 / 方法 / impl / class），超过 ~60 行或 ~400 token 再按行窗口切分；
+- **chunker**：tree-sitter 符号边界优先（函数 / 方法 / impl / class），超过 ~60 行或 2 KiB 正文再按行窗口切分；2 KiB 上限避免生成式 JSON 等密集长行超过 embedding 模型上下文。
   不跨文件（03 CH-2）。语言：Rust、TypeScript/JavaScript、Python、Go、Java、C/C++、Bash、Markdown（标题切分）
   ——首批以本仓库与 nyan-legacy 用到的为准，其余语言退化为行窗口 chunk + 无符号表（这些文件只参与 text / semantic，
   结果标注 `(no symbol check)`）。
@@ -250,6 +239,21 @@ query → 选分支（4.3 的规则）
   切片 C 与 E 的第一步各自测量 release 构建的增量（二进制体积、`cargo build --release` 冷编译时间，与改动前对比），
   写进切片 commit message。阈值：二进制增量 > 15 MB 或冷编译时间增量 > 25%，则该部分改为 cargo feature
   （`retrieval-grammars` / `retrieval-text`，默认开启，可在构建时关掉），对应分支在关闭时按"未启用"处理（4.10）。
+
+  **实测（2026-10-29，切片 C + E 完成时）**：`cargo build --release --bin cometix`，`RUSTC_WRAPPER=`（关 sccache）、
+  独立空 `CARGO_TARGET_DIR`，同一台机器背靠背跑。基线 = `git archive HEAD` 原 Cargo.lock `--locked`。未引用的 crate
+  会被链接器丢掉，所以测量时全部语法 crate 已从 `grammar_for` 引用、tantivy 从 text index 引用。
+
+  | 指标 | 基线 | 语法 + tantivy | 增量 |
+  |---|---|---|---|
+  | 二进制 | 56,511,240 B | 70,145,624 B | +13.6 MB（+24.1%） |
+  | 冷编译 wall | 306 s | 341 s | +11.3% |
+  | 冷编译 user CPU | 2385 s | 2813 s | +18.0% |
+  | 二进制拆分 | — | 语法 +10.2 MB（7 个 crate，+18.1%）；tantivy +3.4 MB | |
+
+  两项阈值均未触发（二进制 ≤ 15 MB、冷编译 ≤ 25%），**不引入 cargo feature**。二进制距阈值仅剩约 1.4 MB，
+  再加语法（例如更多语言）前需重新测量。带 sccache 或未引用语法 crate 的构建数字不可比（未引用时二进制只多 1,920 B），
+  不采用。
 
 ### 4.6 Inspect：候选进入结果前重读当前文件
 
@@ -302,8 +306,8 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
   worktreeId = machineId + "-" + sha256(worktree 根的规范路径，realpath + NFC)[..16]
   ```
 
-  - 机器标识取 `/etc/machine-id` 而不是 tailscale 主机名：前者由 systemd 生成、全局唯一、机器在线离线与 tailscale 改名
-    都不影响，读取不需要 tailscale 运行；只取 hash，不把原值发往 nyan-ops（`machine-id` 本身视为不应外发的标识）。
+  - 机器标识取 `/etc/machine-id` 而不是主机名：前者由 systemd 生成、全局唯一、机器在线离线与改名都不影响；
+    只取 hash，不把原值发往 nyan-ops（`machine-id` 本身视为不应外发的标识）。
     非 Linux 或读取失败时退回 `sha256(hostname)` 并在索引元数据里标注 `machineIdSource = "hostname"`。
   - worktree 根取 `git rev-parse --show-toplevel` 的 realpath（4.5），同一机器上不同 worktree 必然不同。
 - **collection 名**：`nyan_<worktreeId>_<semanticGeneration 的前 16 位 hex>`，例：
@@ -319,8 +323,8 @@ semanticGeneration = "semgen-" + sha256(canonical_json({
     确认后删除。另一台机器的 collection 只能在那台机器上清理。
 - **同步**：本机索引增量扫描产生变更 chunk → 批量（32）embedding → upsert / delete；同步状态、失败处理与首次全量同步
   见 4.8.1。
-- **egress**：源码 chunk 正文只发往用户自己的 embedding 服务（corp-pc 上为本机回环；nyan-pc 上经 tailnet 的 WireGuard
-  加密链路到 corp-pc，不经第三方）；发往 nyan-ops 的是向量 + 路径/行号/hash。按 legacy
+- **egress**：源码 chunk 正文只发往用户自己的 embedding 服务（两机都经 EasyTier 虚拟网络到 corp-pc，
+  不经第三方）；发往 nyan-ops 的是向量 + 路径/行号/hash。按 legacy
   Decision #8"配置即授权"：在 `settings.nyan.retrieval.semantic` 里配置了服务即视为授权；未配置不发任何请求。
   `.env`、私钥、凭据类路径在索引阶段就跳过（4.5），永不外发。
 - **单写者**：多个 nyan 进程同时打开同一项目时，用索引目录下的文件锁保证只有一个进程做同步；其它进程只读查询。
@@ -351,12 +355,10 @@ SemanticSyncState = Synced
 
 - 本仓库 `git ls-files` 中 Rust 1438 个文件、约 68 万行（首批语言合计约 68 万行，几乎全是 Rust）。按 4.5 的切分规则
   （符号边界，超过 60 行再按窗口切）粗估 **约 3.3 万个 chunk**，平均约 200 token / chunk。
-- **corp-pc**：本机实测批量 32 条（~200 token / 条，base64）p50 0.15 s ⇒ 约 210 chunk/s（单并发，高于部署 README 的
-  40.5 chunk/s——那是 ~400 token 的单条请求）。embedding 约 **2.5–3 分钟**；Qdrant upsert 走 tailnet 直连，每批一次
-  往返（~0.5–1.2 s），约 1040 批、4 个并发批次计约 **2–5 分钟**（与 embedding 流水线重叠）。总计约 5 分钟量级。
-- **nyan-pc**：embedding 走 DERP 中继到 corp-pc，每批一次往返 ≥ 0.7 s RTT + 传输：请求体约 32 × 800 B ≈ 26 KB，
-  base64 响应约 260 KB / 批（实测 257 KB）。约 1040 批：单并发 ≥ 12 分钟（只计 RTT），加上中继带宽（未实测，按
-  1–2 MB/s 估，260 MB 响应需 2–4 分钟）；upsert 再走一次中继到 nyan-ops。**4 并发时估计 10–20 分钟**。
+- **corp-pc**：本机 embedding 是快路径；同步默认把跨文件 chunk 合并为 128 条一批、8 批并发，避免小文件各自支付一次 Qdrant 往返。
+- **nyan-pc**：embedding 经 EasyTier 到 corp-pc，Qdrant upsert 再走一次 EasyTier 到 nyan-ops。2026-10-31 实测 Qdrant `/healthz`
+  约 0.72 s、128 点 upsert 约 1.7–2.5 s；同步 embedding 批次使用独立 60 s 超时，Qdrant 批次使用独立 15 s 超时，不再受查询侧 1.5 s 超时截断。当前仓库约 32919
+  chunks；本次按 2 KiB chunk 上限实际生成 36122 chunks，按 128 点批约 283 次 upsert。8 并发后瓶颈从请求次数降为 embedding 服务吞吐，实际同步可跨多个 checkpoint 窗口完成。
 - **取舍（决定）**：接受耗时，不限制只在直连时同步——首次同步在后台进行，期间 semantic 对已同步部分照常可用、
   其余分支不受影响，模型看到 `[semantic index syncing: N files pending]`；中断（退出、关机、网络断）后重启从队列续传，
   已完成的批次不重做。若实测 nyan-pc 上超过 30 分钟，再考虑由 corp-pc 代为计算向量（需 corp-pc 上有相同 worktree，
@@ -367,10 +369,10 @@ SemanticSyncState = Synced
 - 触发：本机索引首次构建完成后（symbol / text 已就绪），且 semantic 已配置；把全部可索引文件入队，`reason = InitialSync`。
 - **前提**：embedding 与 Qdrant 均为 `Ready`（第一次使用时探测）；任一 `Down` 则首次同步不开始，队列保持，
   状态 `Pending { reason: ServiceDown }`，等服务恢复由下一次使用触发。
-- 并发度：同时在途 4 个批次（`syncConcurrency`，默认 4；corp-pc 本机 GPU 服务的 `--max-num-seqs=16`，4 × 32 = 128 条
-  在途不会压垮它）；每批 32 条；embedding 同步请求超时 15 s（与查询侧 2.5 s 分开，见 3.2）。
-- 后台任务：不阻塞会话，不阻塞 CodeSearch；用户按 Esc 只取消当前工具调用，不取消后台同步。nyan 退出时等在途批次
-  最多 2 s，未完成的批次留在队列。
+- 并发度：默认同时在途 8 个批次；每批 128 条。embedding 同步请求超时 60 s，Qdrant 同步批次超时 15 s，
+  两者都与查询侧 2.5 s / 1.5 s 分开。批次跨文件合并，但只有该文件贡献的所有批次成功后才会从队列移除。
+- 后台任务：不阻塞会话，不阻塞 CodeSearch；用户按 Esc 只取消当前工具调用，不取消后台同步。同步队列在每个文件窗口完成后
+  原子 checkpoint；进程退出后从最近窗口继续。需要等待整轮完成时使用 `/retrieval sync --wait`，否则 `/retrieval sync` 只启动后台任务。
 - 单写者：同步持有 4.8 的文件锁；第二个进程只读查询，不同步。
 
 ### 4.9 rerank（可开关，交给评测决定）
@@ -459,24 +461,23 @@ Decision Provider 时完全相同。
   "enabled": true,
   "index": { "maxFileBytes": 1048576, "languages": "auto" },
   "semantic": {
-    // corp-pc: "http://127.0.0.1:8090"；nyan-pc: "https://corp-pc.tail6334e5.ts.net:8090"（3.1）
-    "embedding": { "url": "http://127.0.0.1:8090", "model": "jina-code-embeddings-1.5b",
+    // 两台机器相同，经 EasyTier（3.1）
+    "embedding": { "url": "http://10.144.0.11:8090", "model": "jina-code-embeddings-1.5b",
                    "dim": 1536, "apiKeyFile": null },
-    "qdrant":    { "url": "http://100.80.19.12:6333", "apiKeyFile": "~/.cometix/keys/qdrant" }
+    "qdrant":    { "url": "http://10.144.0.3:6333", "apiKeyFile": "~/.cometix/keys/qdrant" }
   },
-  // corp-pc: "http://127.0.0.1:8091"；nyan-pc: "https://corp-pc.tail6334e5.ts.net:8091"
-  "rerank": { "enabled": false, "url": "http://127.0.0.1:8091", "model": "qwen3-reranker-0.6b", "topN": 20 },
+  "rerank": { "enabled": false, "url": "http://10.144.0.11:8091", "model": "qwen3-reranker-0.6b", "topN": 20 },
   "budget": { "deadlineMs": 8000, "semanticDeadlineMs": 4500, "rrfK": 60,
               "connectTimeoutMs": 1500, "embedTimeoutMs": 2500, "qdrantTimeoutMs": 1500, "rerankTimeoutMs": 2000 },
-  "sync": { "batchSize": 32, "concurrency": 4, "embedBatchTimeoutMs": 15000, "maxBatchFailures": 3,
-            "pruneAfterDays": 90 }
+  "sync": { "batchSize": 128, "concurrency": 8, "embedBatchTimeoutMs": 60000,
+            "qdrantBatchTimeoutMs": 15000, "maxBatchFailures": 3, "pruneAfterDays": 90 }
 }
 ```
 
 退避参数（30 s 起、上限 5 min）属于公共状态机（README 第一节第 9 条），不在本模块配置。
 
 凭据只按文件引用（legacy Decision #4），不写进 settings 正文；未配置 `semantic` = 该分支不启用、不发请求。
-`apiKeyFile` 为 `null` 时不发 `Authorization` 头（回环与 tailnet serve 都不鉴权，见 3.1）。Qdrant 的 key 首次配置时从
+`apiKeyFile` 为 `null` 时不发 `Authorization` 头（EasyTier 内网不鉴权，见 3.1）。Qdrant 的 key 首次配置时从
 corp-pc 的 `~/Projects/work/internal/retrieval/keys/qdrant-api-key` 复制到各机的 `~/.cometix/keys/qdrant`（0600；
 两台机器各一份，README 第一节第 7 条）。
 
@@ -497,7 +498,7 @@ corp-pc 的 `~/Projects/work/internal/retrieval/keys/qdrant-api-key` 复制到�
 
 "公共 H" 是 README 第一节第 9 条的服务健康状态机（`services/service_health.rs`），不属于本模块的写集。
 
-部署：corp-pc 上执行 3.1 的两条 `tailscale serve` 命令即可（独立于代码，可先做）；服务本身不改。
+部署：两机 EasyTier 已就绪，服务地址见 3.1；不再需要额外的发布步骤。
 
 ## 八、评测（后续单独安排）
 
@@ -525,8 +526,9 @@ corp-pc 的 `~/Projects/work/internal/retrieval/keys/qdrant-api-key` 复制到�
 ## 十、待定与已定
 
 - 已定：首批语言为 Rust、TS/JS、Python、Go、Java、C/C++、Bash、Markdown，后续按需添加；评测后续单独安排。
-- 已定（2026-10-27）：nyan-pc 与 corp-pc 都用 semantic / rerank——corp-pc 走回环，nyan-pc 经 `tailscale serve` 发布的
-  tailnet HTTPS；客户端不走代理、不鉴权；corp-pc 不可用时快速判定并退回 exact / symbol / text（3.1、3.2）。
+- 已定（2026-10-30 更新）：nyan-pc 与 corp-pc 都用 semantic / rerank，经 EasyTier 固定地址（`10.144.0.11:8090/8091`）；
+  Qdrant 在 `10.144.0.3:6333`；客户端不走代理、无 TLS/vLLM token，Qdrant 用 key 文件；corp-pc 不可用时快速判定并退回
+  exact / symbol / text（3.1、3.2）。
 - 已定（2026-10-27 审查修订）：服务状态机用公共组件（3.2）；`worktreeId` 含机器标识，collection 命名与清理（4.8）；
   同步状态由待同步队列推导、首次全量同步后台续传（4.8.1）；semantic deadline 4.5 s 截断子请求（4.4）；文件清单用
   `ignore::WalkBuilder`（4.5）；exact 复用 Grep 的 Read deny 拼接（4.3）；构建代价在切片 C / E 第一步实测（4.5）。

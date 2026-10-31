@@ -31,13 +31,6 @@ const MAX_CACHE_SIZE_BYTES: usize = 50 * 1024 * 1024;
 pub const MAX_MARKDOWN_LENGTH: usize = 100_000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RedirectInfo {
-    pub(crate) original_url: String,
-    pub(crate) redirect_url: String,
-    pub(crate) status_code: u16,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct FetchedContent {
     pub(crate) content: String,
     pub(crate) bytes: usize,
@@ -53,7 +46,6 @@ pub(crate) struct FetchedContent {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum UrlMarkdownContent {
     Fetched(FetchedContent),
-    Redirect(RedirectInfo),
 }
 
 #[derive(Clone, Debug)]
@@ -253,33 +245,6 @@ where
     }
 }
 
-fn redirect_status_text(status_code: u16) -> &'static str {
-    // Maps to CC `WebFetchTool.call` redirect status copy.
-    match status_code {
-        301 => "Moved Permanently",
-        308 => "Permanent Redirect",
-        307 => "Temporary Redirect",
-        _ => "Found",
-    }
-}
-
-pub(crate) fn redirect_message(response: &RedirectInfo, prompt: &str) -> String {
-    // Maps to CC `WebFetchTool.call` redirect response body.
-    format!(
-        "REDIRECT DETECTED: The URL redirects to a different host.\n\nOriginal URL: {}\nRedirect URL: {}\nStatus: {} {}\n\nTo complete your request, I need to fetch content from the redirected URL. Please use WebFetch again with these parameters:\n- url: \"{}\"\n- prompt: \"{}\"",
-        response.original_url,
-        response.redirect_url,
-        response.status_code,
-        redirect_status_text(response.status_code),
-        response.redirect_url,
-        prompt
-    )
-}
-
-pub(crate) fn redirect_code_text(status_code: u16) -> String {
-    redirect_status_text(status_code).to_string()
-}
-
 /// Maps to CC `getURLMarkdownContent(...)`.
 pub(crate) async fn get_url_markdown_content(
     url: &str,
@@ -330,10 +295,7 @@ pub(crate) async fn get_url_markdown_content(
         .build()?;
     let response =
         get_with_permitted_redirects(&client, &upgraded_url, abort_controller, 0).await?;
-    let fetched = match response {
-        HttpFetchResult::Redirect(info) => return Ok(UrlMarkdownContent::Redirect(info)),
-        HttpFetchResult::Response(response) => response,
-    };
+    let HttpFetchResult::Response(fetched) = response;
 
     let content_type = fetched.content_type;
     let status_text = fetched.status_text;
@@ -463,7 +425,6 @@ struct HttpResponseBody {
 
 enum HttpFetchResult {
     Response(HttpResponseBody),
-    Redirect(RedirectInfo),
 }
 
 /// Maps to CC `getWithPermittedRedirects(...)`.
@@ -511,11 +472,8 @@ async fn get_with_permitted_redirects(
             ))
             .await;
         }
-        return Ok(HttpFetchResult::Redirect(RedirectInfo {
-            original_url: url.to_string(),
-            redirect_url,
-            status_code: status.as_u16(),
-        }));
+        // @nyan: never ask the model to issue a second fetch for a redirect.
+        anyhow::bail!("Redirect to a different host is not supported")
     }
 
     if status == reqwest::StatusCode::FORBIDDEN
@@ -682,22 +640,6 @@ mod tests {
             "https://example.com/docs",
             "https://user:pass@example.com/guide"
         ));
-    }
-
-    #[test]
-    fn redirect_message_matches_official_retry_instruction_shape() {
-        let info = RedirectInfo {
-            original_url: "https://example.com/a".to_string(),
-            redirect_url: "https://other.example/b".to_string(),
-            status_code: 302,
-        };
-        let message = redirect_message(&info, "summarize");
-        assert!(message.contains("REDIRECT DETECTED"));
-        assert!(message.contains("Original URL: https://example.com/a"));
-        assert!(message.contains("Redirect URL: https://other.example/b"));
-        assert!(message.contains("Status: 302 Found"));
-        assert!(message.contains("- url: \"https://other.example/b\""));
-        assert!(message.contains("- prompt: \"summarize\""));
     }
 
     fn cache_entry(label: &str, cache_size: usize) -> CacheEntry {

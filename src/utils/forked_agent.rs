@@ -36,6 +36,29 @@ pub fn is_cache_sharing_fork(source: &QuerySource) -> bool {
     )
 }
 
+/// API adapters receive the serialized source rather than the enum. Keep this
+/// boundary projection beside the enum predicate so callers do not grow a
+/// second cache-sharing allowlist.
+pub fn is_cache_sharing_api_source(source: &str) -> bool {
+    matches!(
+        source,
+        "compact"
+            | "side_question"
+            | "prompt_suggestion"
+            | "speculation"
+            | "extract_memories"
+            | "auto_dream"
+            | "cache_warm"
+    )
+}
+
+pub fn is_agent_api_source(source: &str) -> bool {
+    // `hook_agent` is the hook-launched agent loop: an independent context with
+    // its own prefix, so it must not share the main thread's gateway cache key
+    // (compaction C13-3).
+    source == "agent" || source.starts_with("agent:") || source == "hook_agent"
+}
+
 /// Maps to: CC `SubagentContextOverrides` (`utils/forkedAgent.ts:260-306`).
 #[derive(Clone, Debug, Default)]
 pub struct SubagentContextOverrides {

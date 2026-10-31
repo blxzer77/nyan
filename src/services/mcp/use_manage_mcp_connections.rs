@@ -3178,21 +3178,24 @@ mod tests {
             let logs = record_mcp_debug_logs();
 
             // The server holds the first connection it gets until the test
-            // lets go, and drops every later one: the first attempt fails only
-            // once the server has been disabled, whatever the load.
+            // lets go, then returns a deterministic non-auth failure. Later
+            // connections are dropped; the first attempt fails only once the
+            // server has been disabled, whatever the load or socket platform.
             let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
             let port = listener.local_addr().unwrap().port();
             let (accepted, first_accepted) = std::sync::mpsc::channel();
             let (release, released) = std::sync::mpsc::channel::<()>();
             std::thread::spawn(move || {
+                use std::io::Write as _;
                 let mut first = true;
-                for stream in listener.incoming() {
-                    let Ok(stream) = stream else { break };
+                for mut stream in listener.incoming().flatten() {
                     if std::mem::take(&mut first) {
                         let _ = accepted.send(());
                         let _ = released.recv();
+                        let _ = stream.write_all(
+                            b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                        );
                     }
-                    drop(stream);
                 }
             });
 

@@ -616,6 +616,42 @@ pub fn record_content_replacement(
     )
 }
 
+/// @nyan: append the `memory-extract-cursor` metadata entry (memory M2.2). Only
+/// the main thread calls this, and only after an extraction succeeded.
+pub fn record_memory_extract_cursor(uuid: &str, at_ms: i64) -> anyhow::Result<()> {
+    if !is_session_write_enabled() {
+        return Ok(());
+    }
+    let session_id = crate::bootstrap::state::get_session_id();
+    let entry = serde_json::json!({
+        "type": "memory-extract-cursor",
+        "sessionId": session_id,
+        "uuid": uuid,
+        "at": at_ms,
+    });
+    append_entry(
+        &crate::bootstrap::state::get_original_cwd().to_string_lossy(),
+        &session_id,
+        &entry,
+    )
+}
+
+/// @nyan: last `memory-extract-cursor` entry of the current session transcript.
+/// Scans the whole file (not only the tail) so a cursor written before a large
+/// compact boundary is still found on resume.
+pub fn read_memory_extract_cursor() -> crate::services::extract_memories::ExtractCursor {
+    let path = get_transcript_path(None);
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return Default::default();
+    };
+    let entries = content
+        .lines()
+        .filter(|line| line.contains("\"type\":\"memory-extract-cursor\""))
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .collect::<Vec<_>>();
+    crate::services::extract_memories::cursor_from_metadata(&entries)
+}
+
 const LITE_READ_BUF_SIZE: u64 = 65536;
 const SKIP_PRECOMPACT_THRESHOLD: u64 = 5 * 1024 * 1024;
 const TRANSCRIPT_READ_CHUNK_SIZE: usize = 1024 * 1024;
@@ -5734,6 +5770,11 @@ const METADATA_MARKERS: &[&[u8]] = &[
     b"\"type\":\"mode\"",
     b"\"type\":\"worktree-state\"",
     b"\"type\":\"pr-link\"",
+    // @nyan: large-transcript resume must retain replacement receipts before
+    // the compact boundary, or frozen tool results can reappear as raw output.
+    b"\"type\":\"content-replacement\"",
+    // @nyan: the extraction cursor is session metadata, not a model message.
+    b"\"type\":\"memory-extract-cursor\"",
 ];
 
 const MAX_CARRY_SIZE: usize = 64 * 1024;
@@ -6551,6 +6592,79 @@ mod tests {
         crate::bootstrap::state::set_session_persistence_disabled(true);
         assert!(!is_session_write_enabled());
         crate::bootstrap::state::set_session_persistence_disabled(false);
+    }
+
+    #[test]
+    fn memory_extract_cursor_round_trips_and_survives_pre_boundary_scan() {
+        struct Restore {
+            session_id: String,
+            project_dir: Option<PathBuf>,
+            meta: CurrentSessionMeta,
+            root: PathBuf,
+        }
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                *get_project().current_session_meta.write().unwrap() = self.meta.clone();
+                crate::bootstrap::state::switch_session(&self.session_id, self.project_dir.clone());
+                let _ = fs::remove_dir_all(&self.root);
+            }
+        }
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        crate::bootstrap::state::set_session_persistence_disabled(false);
+        let restore = Restore {
+            session_id: crate::bootstrap::state::get_session_id(),
+            project_dir: crate::bootstrap::state::get_session_project_dir(),
+            meta: get_project().current_session_meta.read().unwrap().clone(),
+            root: std::env::temp_dir().join(format!("cometix-cursor-{}", Uuid::new_v4())),
+        };
+        let path = restore.root.join("cursor-active.jsonl");
+        fs::create_dir_all(&restore.root).unwrap();
+        fs::write(
+            &path,
+            concat!(
+                "{\"type\":\"user\",\"uuid\":\"u1\",\"message\":{}}\n",
+                "{\"type\":\"memory-extract-cursor\",\"uuid\":\"u1\",\"at\":100}\n",
+            ),
+        )
+        .unwrap();
+        crate::bootstrap::state::switch_session("cursor-active", Some(restore.root.clone()));
+        get_project()
+            .current_session_meta
+            .write()
+            .unwrap()
+            .session_file = Some(path.clone());
+
+        assert_eq!(
+            read_memory_extract_cursor().message_uuid.as_deref(),
+            Some("u1")
+        );
+
+        record_memory_extract_cursor("u2", 200).unwrap();
+        let flushed = std::thread::spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(flush_session_storage())
+        })
+        .join()
+        .unwrap();
+        flushed.unwrap();
+        let cursor = read_memory_extract_cursor();
+        assert_eq!(cursor.message_uuid.as_deref(), Some("u2"));
+        assert_eq!(cursor.at_ms, Some(200));
+
+        // A resume-time pre-boundary scan keeps the cursor entry (M2.2).
+        let metadata = scan_pre_boundary_metadata(&path, fs::metadata(&path).unwrap().len());
+        assert!(
+            metadata
+                .iter()
+                .any(|line| line.contains("\"type\":\"memory-extract-cursor\"")
+                    && line.contains("\"uuid\":\"u1\"")),
+            "cursor must survive the pre-boundary scan: {metadata:?}"
+        );
     }
 
     #[test]

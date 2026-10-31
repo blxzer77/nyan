@@ -3,24 +3,21 @@
 //!
 //! The upstream implementation performs cache/content microcompaction before
 //! the main model call and may yield a microcompact boundary message. Cometix
-//! keeps the service in the official file boundary, preserves the same disabled
-//! default, and implements the time-based content-clearing path without moving
-//! compact logic into `query/deps.rs`.
+//! keeps the service in the official file boundary and preserves the cached
+//! microcompact path without moving compact logic into `query/deps.rs`.
+//!
+//! @nyan: CC's time-based content clearing is removed (elapsed time must never
+//! invalidate a prompt-cache prefix). nyan's masking lives here too
+//! (`mask_tool_results_if_needed`), but it is threshold-driven and records
+//! frozen decisions in `ContentReplacementState` instead of rewriting messages.
 
 use crate::constants::query_source::QuerySource;
-use crate::services::compact::time_based_mc_config::{
-    TimeBasedMicrocompactConfig, time_based_microcompact_config_from_env,
-};
 use crate::tool::ToolUseContext;
 use crate::types::message::{AssistantContent, Message, UserContent};
 #[cfg(test)]
 use crate::utils::test_env::TestStateLock;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
-
-/// Maps to CC `services/compact/microCompact.ts` `TIME_BASED_MC_CLEARED_MESSAGE`.
-pub const TIME_BASED_MC_CLEARED_MESSAGE: &str =
-    crate::utils::tool_result_storage::TOOL_RESULT_CLEARED_MESSAGE;
 
 /// Maps to CC `services/compact/microCompact.ts` `PendingCacheEdits`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,7 +104,7 @@ pub static TEST_CACHED_MC_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStat
 pub struct MicrocompactResult {
     /// Maps to: CC `microcompactMessages(...).messages`.
     pub messages: Vec<Message>,
-    /// Maps to: CC microcompact boundary/system messages yielded by `query.ts`
+    /// Maps to CC microcompact boundary/system messages yielded by `query.ts`
     /// (`query.ts:884` `yield createMicrocompactBoundaryMessage(...)`) — whole
     /// `Message` values, like every other query yield.
     pub boundary_messages: Vec<Message>,
@@ -115,6 +112,18 @@ pub struct MicrocompactResult {
     /// leaves message content unchanged and defers the boundary row until after
     /// the API returns authoritative `cache_deleted_input_tokens`.
     pub compaction_info: Option<MicrocompactCompactionInfo>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MaskResult {
+    pub messages: Vec<Message>,
+    pub newly_replaced: Vec<crate::utils::tool_result_storage::ContentReplacementRecord>,
+    pub masked_count: usize,
+    pub masked_tokens: i64,
+    /// Net tokens removed from content that the last API `usage` already
+    /// counted. `token_count_with_estimation` cannot see this reduction, so the
+    /// caller threads it through the `snip_tokens_freed` channel.
+    pub anchor_tokens_freed: i64,
 }
 
 /// Maps to CC `cachedMicrocompact.ts#isCachedMicrocompactEnabled` and
@@ -195,6 +204,197 @@ pub fn cached_microcompact_state_for_test() -> CachedMicrocompactState {
     CACHED_MC_STATE.lock().unwrap().clone()
 }
 
+fn compaction_settings() -> crate::utils::settings::nyan::CompactionSettings {
+    crate::utils::settings::get_initial_settings()
+        .nyan
+        .map(|settings| settings.compaction())
+        .unwrap_or_default()
+}
+
+pub fn content_mask_enabled() -> bool {
+    compaction_settings().mask()
+}
+
+#[derive(Clone)]
+struct MaskCandidate {
+    message_index: usize,
+    tool_use_id: String,
+    tool_name: String,
+    tokens: i64,
+    bytes: usize,
+}
+
+/// @nyan: deterministic pre-compaction masking. It is deliberately separate
+/// from cached microcompact: this changes the model projection and therefore
+/// owns the persistent ContentReplacementState decision.
+pub fn mask_tool_results_if_needed(
+    messages: Vec<Message>,
+    state: &mut crate::utils::tool_result_storage::ContentReplacementState,
+    context: &ToolUseContext,
+    query_source: &QuerySource,
+) -> MaskResult {
+    let measured_before = crate::utils::tokens::token_count_with_estimation(&messages);
+    let mut result = MaskResult {
+        messages: messages.clone(),
+        ..Default::default()
+    };
+    if !content_mask_enabled()
+        || crate::utils::forked_agent::is_cache_sharing_fork(query_source)
+    {
+        result.messages = crate::utils::tool_result_storage::apply_tool_result_replacements_only(
+            messages, state,
+        );
+        return result;
+    }
+
+    let model = context
+        .main_loop_model
+        .clone()
+        .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
+    let effective_window = crate::services::compact::auto_compact::get_effective_context_window_size(&model)
+        .max(1);
+    let threshold = crate::services::compact::auto_compact::get_auto_compact_threshold(&model)
+        .max(0);
+    if measured_before <= threshold {
+        result.messages = crate::utils::tool_result_storage::apply_tool_result_replacements_only(
+            messages, state,
+        );
+        return result;
+    }
+
+    let settings = compaction_settings();
+    let minimum_tokens = ((effective_window as f64) * settings.mask_min_fraction().clamp(0.0, 1.0))
+        .ceil() as i64;
+    let headroom = ((effective_window as f64) * settings.mask_headroom().clamp(0.0, 1.0))
+        .round() as i64;
+    let target = threshold.saturating_sub(headroom);
+    let current_round_boundary = messages
+        .iter()
+        .rposition(|message| {
+            matches!(
+                message,
+                Message::User(user)
+                    if user.content.iter().any(|content| {
+                        !matches!(content, UserContent::ToolResult(_))
+                    })
+            )
+        })
+        .unwrap_or(messages.len());
+
+    let mut tool_names = HashMap::<String, String>::new();
+    for message in &messages {
+        let Message::Assistant(assistant) = message else {
+            continue;
+        };
+        for content in &assistant.content {
+            if let AssistantContent::ToolUse(tool_use) = content {
+                tool_names.insert(tool_use.id.0.clone(), tool_use.name.clone());
+            }
+        }
+    }
+
+    let mut candidates = Vec::new();
+    for (message_index, message) in messages.iter().enumerate() {
+        if message_index >= current_round_boundary {
+            continue;
+        }
+        let Message::User(user) = message else {
+            continue;
+        };
+        for content in &user.content {
+            let UserContent::ToolResult(tool_result) = content else {
+                continue;
+            };
+            let Some(tool_name) = tool_names.get(&tool_result.tool_use_id.0) else {
+                continue;
+            };
+            if !is_compactable_tool_name(tool_name)
+                || state.replacements.contains_key(&tool_result.tool_use_id.0)
+                || crate::utils::tool_result_storage::is_tool_result_cleared(&tool_result.content)
+            {
+                continue;
+            }
+            let tokens = calculate_tool_result_tokens(tool_result);
+            if tokens < minimum_tokens || tokens <= 0 {
+                continue;
+            }
+            candidates.push(MaskCandidate {
+                message_index,
+                tool_use_id: tool_result.tool_use_id.0.clone(),
+                tool_name: tool_name.clone(),
+                tokens,
+                bytes: tool_result.content.as_bytes().len(),
+            });
+        }
+    }
+
+    if candidates.is_empty() {
+        result.messages = crate::utils::tool_result_storage::apply_tool_result_replacements_only(
+            messages, state,
+        );
+        return result;
+    }
+
+    // C2: accumulate oldest-first until `target` (threshold minus headroom) is
+    // reachable. `measured > threshold >= target` means at least one candidate
+    // is always picked, so the earliest cleared position is the oldest
+    // candidate; the prompt-cache prefix is lost from there anyway, hence every
+    // later candidate is cleared in the same pass.
+    let required = measured_before.saturating_sub(target).max(1);
+    let mut saved = 0_i64;
+    let mut first_selected = 0usize;
+    for (index, candidate) in candidates.iter().enumerate() {
+        if saved >= required {
+            break;
+        }
+        saved = saved.saturating_add(candidate.tokens);
+        first_selected = index;
+    }
+    let anchor = crate::utils::tokens::usage_anchor_index(&messages);
+    for candidate in candidates.into_iter().skip(first_selected) {
+        let replacement = crate::utils::tool_result_storage::cleared_tool_result_message(
+            &candidate.tool_name,
+            candidate.bytes,
+            &candidate.tool_use_id,
+        );
+        let placeholder_tokens =
+            crate::services::token_estimation::rough_token_count_estimation(&replacement);
+        if anchor.is_some_and(|anchor| candidate.message_index <= anchor) {
+            result.anchor_tokens_freed = result
+                .anchor_tokens_freed
+                .saturating_add((candidate.tokens - placeholder_tokens).max(0));
+        }
+        state.seen_ids.insert(candidate.tool_use_id.clone());
+        state
+            .replacements
+            .insert(candidate.tool_use_id.clone(), replacement.clone());
+        result.masked_count += 1;
+        result.masked_tokens = result.masked_tokens.saturating_add(candidate.tokens);
+        result.newly_replaced.push(
+            crate::utils::tool_result_storage::ContentReplacementRecord::tool_result(
+                candidate.tool_use_id,
+                replacement,
+            ),
+        );
+    }
+    result.messages = crate::utils::tool_result_storage::apply_tool_result_replacements_only(
+        messages, state,
+    );
+    result
+}
+
+pub fn project_content_replacements(
+    messages: Vec<Message>,
+    state: Option<&crate::utils::tool_result_storage::ContentReplacementState>,
+) -> Vec<Message> {
+    match state {
+        Some(state) => {
+            crate::utils::tool_result_storage::apply_tool_result_replacements_only(messages, state)
+        }
+        None => messages,
+    }
+}
+
 pub fn microcompact_messages(
     messages_for_query: Vec<Message>,
     tool_use_context: &ToolUseContext,
@@ -204,27 +404,7 @@ pub fn microcompact_messages(
         messages_for_query,
         tool_use_context,
         query_source,
-        time_based_microcompact_config_from_env(),
         cached_microcompact_config_from_env(),
-    )
-}
-
-/// Testable implementation of CC `maybeTimeBasedMicrocompact(...)`.
-///
-/// The official config comes from GrowthBook (`tengu_slate_heron`) and defaults
-/// disabled. Cometix reads the hardcoded `utils::feature_flags` switch instead
-/// of GrowthBook cache/config, with local env override seams kept for tests.
-pub fn microcompact_messages_with_time_config(
-    messages_for_query: Vec<Message>,
-    query_source: &QuerySource,
-    config: TimeBasedMicrocompactConfig,
-) -> MicrocompactResult {
-    microcompact_messages_with_configs(
-        messages_for_query,
-        &ToolUseContext::default(),
-        query_source,
-        config,
-        CachedMicrocompactConfig::default(),
     )
 }
 
@@ -232,19 +412,8 @@ pub fn microcompact_messages_with_configs(
     messages_for_query: Vec<Message>,
     tool_use_context: &ToolUseContext,
     query_source: &QuerySource,
-    time_config: TimeBasedMicrocompactConfig,
     cached_config: CachedMicrocompactConfig,
 ) -> MicrocompactResult {
-    if let Some(messages) =
-        maybe_time_based_microcompact(messages_for_query.clone(), query_source, &time_config)
-    {
-        return MicrocompactResult {
-            messages,
-            boundary_messages: Vec::new(),
-            compaction_info: None,
-        };
-    }
-
     let model = tool_use_context
         .main_loop_model
         .as_deref()
@@ -376,67 +545,6 @@ fn create_cache_edits_block(tools_to_delete: &[String]) -> CacheEditsBlock {
     block
 }
 
-fn maybe_time_based_microcompact(
-    messages: Vec<Message>,
-    query_source: &QuerySource,
-    config: &TimeBasedMicrocompactConfig,
-) -> Option<Vec<Message>> {
-    if !evaluate_time_based_trigger(&messages, query_source, config) {
-        return None;
-    }
-
-    let compactable_ids = collect_compactable_tool_ids(&messages);
-    let keep_recent = config.keep_recent.max(1);
-    let keep_set = compactable_ids
-        .iter()
-        .rev()
-        .take(keep_recent)
-        .cloned()
-        .collect::<HashSet<_>>();
-    let clear_set = compactable_ids
-        .into_iter()
-        .filter(|id| !keep_set.contains(id))
-        .collect::<HashSet<_>>();
-    if clear_set.is_empty() {
-        return None;
-    }
-
-    let mut tokens_saved = 0_i64;
-    let mut result = messages;
-    for message in &mut result {
-        let Message::User(user) = message else {
-            continue;
-        };
-        for content in &mut user.content {
-            let UserContent::ToolResult(tool_result) = content else {
-                continue;
-            };
-            if clear_set.contains(&tool_result.tool_use_id.0)
-                && tool_result.content != TIME_BASED_MC_CLEARED_MESSAGE
-            {
-                // Official `maybeTimeBasedMicrocompact(...)` replaces every
-                // clear-set block before checking the aggregate `tokensSaved`.
-                // Zero-token blocks are therefore cleared when any sibling
-                // saves tokens, but the whole projection is discarded when the
-                // total saved count is zero.
-                let estimate = calculate_tool_result_tokens(tool_result);
-                tokens_saved = tokens_saved.saturating_add(estimate);
-                tool_result.content = TIME_BASED_MC_CLEARED_MESSAGE.to_string();
-            }
-        }
-    }
-
-    if tokens_saved == 0 {
-        return None;
-    }
-
-    // Maps to CC `microCompact.ts#maybeTimeBasedMicrocompact`, which resets
-    // cached-MC state after mutating prompt content because server cache edits
-    // can no longer target the previously-cached tool results.
-    reset_microcompact_state();
-    Some(result)
-}
-
 /// Maps to CC `microCompact.ts` `calculateToolResultTokens(...)` for Rust's
 /// current typed `ToolResultBlockParam` subset. Tool-reference-only content
 /// blocks do not count toward saved prompt tokens, matching CC's fallthrough
@@ -462,24 +570,6 @@ fn calculate_tool_result_tokens(tool_result: &crate::types::message::ToolResult)
         return 0;
     }
     crate::services::token_estimation::rough_token_count_estimation(&tool_result.content)
-}
-
-fn evaluate_time_based_trigger(
-    messages: &[Message],
-    query_source: &QuerySource,
-    config: &TimeBasedMicrocompactConfig,
-) -> bool {
-    if !config.enabled || !is_main_thread_source(query_source) {
-        return false;
-    }
-    let Some(last_assistant_timestamp) = messages.iter().rev().find_map(|message| match message {
-        Message::Assistant(assistant) => Some(assistant.timestamp),
-        _ => None,
-    }) else {
-        return false;
-    };
-    let gap_minutes = (chrono::Utc::now() - last_assistant_timestamp).num_seconds() as f64 / 60.0;
-    gap_minutes.is_finite() && gap_minutes >= config.gap_threshold_minutes
 }
 
 fn is_main_thread_source(query_source: &QuerySource) -> bool {
@@ -512,6 +602,7 @@ fn is_compactable_tool_name(tool_name: &str) -> bool {
             | "PowerShell"
             | "Grep"
             | "Glob"
+            | "CodeSearch"
             | "WebSearch"
             | "WebFetch"
             | "Edit"
@@ -524,6 +615,7 @@ fn is_compactable_tool_name(tool_name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::test_env::TEST_ENV_LOCK;
 
     fn lock_cached_mc_state_for_test() -> std::sync::MutexGuard<'static, ()> {
         let guard = TEST_CACHED_MC_LOCK.lock().unwrap();
@@ -613,377 +705,6 @@ mod tests {
     }
 
     #[test]
-    fn time_based_microcompact_skips_zero_token_tool_results_like_official() {
-        let _state_guard = lock_cached_mc_state_for_test();
-        let old_timestamp = chrono::Utc::now() - chrono::Duration::minutes(120);
-        let messages = vec![
-            Message::Assistant(crate::types::message::AssistantMessage {
-                uuid: uuid::Uuid::new_v4().to_string(),
-                timestamp: old_timestamp,
-                content: vec![
-                    crate::types::message::AssistantContent::ToolUse(
-                        crate::types::message::ToolUseBlock {
-                            id: crate::types::ids::ToolUseId("toolu_empty".to_string()),
-                            name: "Bash".to_string(),
-                            input: serde_json::json!({"command": "true"}),
-                        },
-                    ),
-                    crate::types::message::AssistantContent::ToolUse(
-                        crate::types::message::ToolUseBlock {
-                            id: crate::types::ids::ToolUseId("toolu_recent".to_string()),
-                            name: "Read".to_string(),
-                            input: serde_json::json!({"file_path": "Cargo.toml"}),
-                        },
-                    ),
-                ],
-                model: None,
-                stop_reason: Some(crate::types::message::StopReason::ToolUse),
-                usage: None,
-            }),
-            Message::User(crate::types::message::UserMessage {
-                uuid: uuid::Uuid::new_v4().to_string(),
-                timestamp: chrono::Utc::now(),
-                content: vec![
-                    crate::types::message::UserContent::ToolResult(
-                        crate::types::message::ToolResult {
-                            tool_use_id: crate::types::ids::ToolUseId("toolu_empty".to_string()),
-                            content: String::new(),
-                            is_error: false,
-                            content_blocks: Vec::new(),
-                            tool_use_result: None,
-                        },
-                    ),
-                    crate::types::message::UserContent::ToolResult(
-                        crate::types::message::ToolResult {
-                            tool_use_id: crate::types::ids::ToolUseId("toolu_recent".to_string()),
-                            content: "recent output".to_string(),
-                            is_error: false,
-                            content_blocks: Vec::new(),
-                            tool_use_result: None,
-                        },
-                    ),
-                ],
-                is_compact_summary: false,
-                plan_content: None,
-                image_paste_ids: None,
-                is_visible_in_transcript_only: false,
-                mcp_meta: None,
-                source_tool_assistant_uuid: None,
-                permission_mode: None,
-                origin: None,
-                summarize_metadata: None,
-            }),
-        ];
-
-        let result = microcompact_messages_with_time_config(
-            messages.clone(),
-            &QuerySource::Prompt,
-            TimeBasedMicrocompactConfig {
-                enabled: true,
-                gap_threshold_minutes: 60.0,
-                keep_recent: 1,
-            },
-        );
-
-        assert_eq!(result.messages, messages);
-    }
-
-    #[test]
-    fn time_based_microcompact_keeps_tool_reference_only_results_when_projection_saves_zero_tokens()
-    {
-        let _state_guard = lock_cached_mc_state_for_test();
-        let old_timestamp = chrono::Utc::now() - chrono::Duration::minutes(120);
-        let original_ref_content = "tool references are stored out of band".repeat(100);
-        let messages = vec![
-            Message::Assistant(crate::types::message::AssistantMessage {
-                uuid: uuid::Uuid::new_v4().to_string(),
-                timestamp: old_timestamp,
-                content: vec![
-                    crate::types::message::AssistantContent::ToolUse(
-                        crate::types::message::ToolUseBlock {
-                            id: crate::types::ids::ToolUseId("toolu_ref".to_string()),
-                            name: "Read".to_string(),
-                            input: serde_json::json!({"file_path": "Cargo.toml"}),
-                        },
-                    ),
-                    crate::types::message::AssistantContent::ToolUse(
-                        crate::types::message::ToolUseBlock {
-                            id: crate::types::ids::ToolUseId("toolu_recent".to_string()),
-                            name: "Read".to_string(),
-                            input: serde_json::json!({"file_path": "src/main.rs"}),
-                        },
-                    ),
-                ],
-                model: None,
-                stop_reason: Some(crate::types::message::StopReason::ToolUse),
-                usage: None,
-            }),
-            Message::User(crate::types::message::UserMessage {
-                uuid: uuid::Uuid::new_v4().to_string(),
-                timestamp: chrono::Utc::now(),
-                content: vec![
-                    crate::types::message::UserContent::ToolResult(
-                        crate::types::message::ToolResult {
-                            tool_use_id: crate::types::ids::ToolUseId("toolu_ref".to_string()),
-                            content: original_ref_content.clone(),
-                            is_error: false,
-                            content_blocks: vec![
-                                crate::types::message::ToolResultContentBlock::ToolReference {
-                                    tool_name: "Read".to_string(),
-                                },
-                            ],
-                            tool_use_result: None,
-                        },
-                    ),
-                    crate::types::message::UserContent::ToolResult(
-                        crate::types::message::ToolResult {
-                            tool_use_id: crate::types::ids::ToolUseId("toolu_recent".to_string()),
-                            content: "recent output".to_string(),
-                            is_error: false,
-                            content_blocks: Vec::new(),
-                            tool_use_result: None,
-                        },
-                    ),
-                ],
-                is_compact_summary: false,
-                plan_content: None,
-                image_paste_ids: None,
-                is_visible_in_transcript_only: false,
-                mcp_meta: None,
-                source_tool_assistant_uuid: None,
-                permission_mode: None,
-                origin: None,
-                summarize_metadata: None,
-            }),
-        ];
-
-        let result = microcompact_messages_with_time_config(
-            messages,
-            &QuerySource::Prompt,
-            TimeBasedMicrocompactConfig {
-                enabled: true,
-                gap_threshold_minutes: 60.0,
-                keep_recent: 1,
-            },
-        );
-
-        let Message::User(user) = &result.messages[1] else {
-            panic!("expected user message")
-        };
-        assert!(user.content.iter().any(|content| matches!(
-            content,
-            crate::types::message::UserContent::ToolResult(result)
-                if result.tool_use_id.0 == "toolu_ref"
-                    && result.content == original_ref_content
-                    && matches!(
-                        result.content_blocks.as_slice(),
-                        [crate::types::message::ToolResultContentBlock::ToolReference { tool_name }]
-                            if tool_name == "Read"
-                    )
-        )));
-    }
-
-    #[test]
-    fn time_based_microcompact_clears_zero_token_siblings_when_any_tokens_saved_like_official() {
-        let _state_guard = lock_cached_mc_state_for_test();
-        let old_timestamp = chrono::Utc::now() - chrono::Duration::minutes(120);
-        let messages = vec![
-            Message::Assistant(crate::types::message::AssistantMessage {
-                uuid: uuid::Uuid::new_v4().to_string(),
-                timestamp: old_timestamp,
-                content: vec![
-                    crate::types::message::AssistantContent::ToolUse(
-                        crate::types::message::ToolUseBlock {
-                            id: crate::types::ids::ToolUseId("toolu_empty".to_string()),
-                            name: "Bash".to_string(),
-                            input: serde_json::json!({"command": "true"}),
-                        },
-                    ),
-                    crate::types::message::AssistantContent::ToolUse(
-                        crate::types::message::ToolUseBlock {
-                            id: crate::types::ids::ToolUseId("toolu_old".to_string()),
-                            name: "Bash".to_string(),
-                            input: serde_json::json!({"command": "echo old"}),
-                        },
-                    ),
-                    crate::types::message::AssistantContent::ToolUse(
-                        crate::types::message::ToolUseBlock {
-                            id: crate::types::ids::ToolUseId("toolu_recent".to_string()),
-                            name: "Read".to_string(),
-                            input: serde_json::json!({"file_path": "Cargo.toml"}),
-                        },
-                    ),
-                ],
-                model: None,
-                stop_reason: Some(crate::types::message::StopReason::ToolUse),
-                usage: None,
-            }),
-            Message::User(crate::types::message::UserMessage {
-                uuid: uuid::Uuid::new_v4().to_string(),
-                timestamp: chrono::Utc::now(),
-                content: vec![
-                    crate::types::message::UserContent::ToolResult(
-                        crate::types::message::ToolResult {
-                            tool_use_id: crate::types::ids::ToolUseId("toolu_empty".to_string()),
-                            content: String::new(),
-                            is_error: false,
-                            content_blocks: Vec::new(),
-                            tool_use_result: None,
-                        },
-                    ),
-                    crate::types::message::UserContent::ToolResult(
-                        crate::types::message::ToolResult {
-                            tool_use_id: crate::types::ids::ToolUseId("toolu_old".to_string()),
-                            content: "old output".repeat(100),
-                            is_error: false,
-                            content_blocks: Vec::new(),
-                            tool_use_result: None,
-                        },
-                    ),
-                    crate::types::message::UserContent::ToolResult(
-                        crate::types::message::ToolResult {
-                            tool_use_id: crate::types::ids::ToolUseId("toolu_recent".to_string()),
-                            content: "recent output".to_string(),
-                            is_error: false,
-                            content_blocks: Vec::new(),
-                            tool_use_result: None,
-                        },
-                    ),
-                ],
-                is_compact_summary: false,
-                plan_content: None,
-                image_paste_ids: None,
-                is_visible_in_transcript_only: false,
-                mcp_meta: None,
-                source_tool_assistant_uuid: None,
-                permission_mode: None,
-                origin: None,
-                summarize_metadata: None,
-            }),
-        ];
-
-        let result = microcompact_messages_with_time_config(
-            messages,
-            &QuerySource::Prompt,
-            TimeBasedMicrocompactConfig {
-                enabled: true,
-                gap_threshold_minutes: 60.0,
-                keep_recent: 1,
-            },
-        );
-
-        let Message::User(user) = &result.messages[1] else {
-            panic!("expected user message")
-        };
-        assert!(user.content.iter().any(|content| matches!(
-            content,
-            crate::types::message::UserContent::ToolResult(result)
-                if result.tool_use_id.0 == "toolu_empty"
-                    && result.content == crate::utils::tool_result_storage::TOOL_RESULT_CLEARED_MESSAGE
-        )));
-        assert!(user.content.iter().any(|content| matches!(
-            content,
-            crate::types::message::UserContent::ToolResult(result)
-                if result.tool_use_id.0 == "toolu_old"
-                    && result.content == crate::utils::tool_result_storage::TOOL_RESULT_CLEARED_MESSAGE
-        )));
-        assert!(user.content.iter().any(|content| matches!(
-            content,
-            crate::types::message::UserContent::ToolResult(result)
-                if result.tool_use_id.0 == "toolu_recent" && result.content == "recent output"
-        )));
-    }
-
-    #[test]
-    fn time_based_microcompact_clears_old_compactable_tool_results_and_keeps_recent() {
-        let _state_guard = lock_cached_mc_state_for_test();
-        let old_timestamp = chrono::Utc::now() - chrono::Duration::minutes(120);
-        let messages = vec![
-            Message::Assistant(crate::types::message::AssistantMessage {
-                uuid: uuid::Uuid::new_v4().to_string(),
-                timestamp: old_timestamp,
-                content: vec![
-                    crate::types::message::AssistantContent::ToolUse(
-                        crate::types::message::ToolUseBlock {
-                            id: crate::types::ids::ToolUseId("toolu_old".to_string()),
-                            name: "Bash".to_string(),
-                            input: serde_json::json!({"command": "echo old"}),
-                        },
-                    ),
-                    crate::types::message::AssistantContent::ToolUse(
-                        crate::types::message::ToolUseBlock {
-                            id: crate::types::ids::ToolUseId("toolu_recent".to_string()),
-                            name: "Read".to_string(),
-                            input: serde_json::json!({"file_path": "Cargo.toml"}),
-                        },
-                    ),
-                ],
-                model: None,
-                stop_reason: Some(crate::types::message::StopReason::ToolUse),
-                usage: None,
-            }),
-            Message::User(crate::types::message::UserMessage {
-                uuid: uuid::Uuid::new_v4().to_string(),
-                timestamp: chrono::Utc::now(),
-                content: vec![
-                    crate::types::message::UserContent::ToolResult(
-                        crate::types::message::ToolResult {
-                            tool_use_id: crate::types::ids::ToolUseId("toolu_old".to_string()),
-                            content: "old output".repeat(100),
-                            is_error: false,
-                            content_blocks: Vec::new(),
-                            tool_use_result: None,
-                        },
-                    ),
-                    crate::types::message::UserContent::ToolResult(
-                        crate::types::message::ToolResult {
-                            tool_use_id: crate::types::ids::ToolUseId("toolu_recent".to_string()),
-                            content: "recent output".to_string(),
-                            is_error: false,
-                            content_blocks: Vec::new(),
-                            tool_use_result: None,
-                        },
-                    ),
-                ],
-                is_compact_summary: false,
-                plan_content: None,
-                image_paste_ids: None,
-                is_visible_in_transcript_only: false,
-                mcp_meta: None,
-                source_tool_assistant_uuid: None,
-                permission_mode: None,
-                origin: None,
-                summarize_metadata: None,
-            }),
-        ];
-
-        let result = microcompact_messages_with_time_config(
-            messages,
-            &QuerySource::Prompt,
-            TimeBasedMicrocompactConfig {
-                enabled: true,
-                gap_threshold_minutes: 60.0,
-                keep_recent: 1,
-            },
-        );
-
-        let Message::User(user) = &result.messages[1] else {
-            panic!("expected user message")
-        };
-        assert!(user.content.iter().any(|content| matches!(
-            content,
-            crate::types::message::UserContent::ToolResult(result)
-                if result.tool_use_id.0 == "toolu_old"
-                    && result.content == crate::utils::tool_result_storage::TOOL_RESULT_CLEARED_MESSAGE
-        )));
-        assert!(user.content.iter().any(|content| matches!(
-            content,
-            crate::types::message::UserContent::ToolResult(result)
-                if result.tool_use_id.0 == "toolu_recent" && result.content == "recent output"
-        )));
-    }
-
-    #[test]
     fn cached_microcompact_queues_deletes_and_preserves_messages_like_official() {
         let _state_guard = lock_cached_mc_state_for_test();
         let messages = vec![
@@ -999,11 +720,6 @@ mod tests {
             messages.clone(),
             &context,
             &QuerySource::Prompt,
-            TimeBasedMicrocompactConfig {
-                enabled: false,
-                gap_threshold_minutes: 60.0,
-                keep_recent: 1,
-            },
             CachedMicrocompactConfig {
                 enabled: true,
                 trigger_threshold: 2,
@@ -1090,44 +806,103 @@ mod tests {
     }
 
     #[test]
-    fn time_based_microcompact_resets_cached_state_after_prompt_mutation_like_official() {
-        let _state_guard = lock_cached_mc_state_for_test();
-        pin_cache_edits(
-            1,
-            CacheEditsBlock::delete_refs(vec!["toolu_stale".to_string()]),
-        );
-        {
-            let mut state = CACHED_MC_STATE.lock().unwrap();
-            state.registered_tools.insert("toolu_stale".to_string());
-            state.deleted_refs.insert("toolu_stale".to_string());
-        }
-        let messages = vec![
-            assistant_tool_message(&["toolu_stale", "toolu_recent"], 0),
-            user_tool_result_message(&["toolu_stale", "toolu_recent"]),
+    fn threshold_mask_clears_old_results_but_not_the_current_user_round() {
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
+        let mut messages = vec![
+            assistant_tool_message(&["toolu_old"], 0),
+            user_tool_result_message(&["toolu_old"]),
+            Message::User(crate::utils::messages::create_user_message(
+                "current task".to_string(),
+            )),
         ];
-
-        let result = microcompact_messages_with_time_config(
+        if let Message::User(user) = &mut messages[1] {
+            if let Some(UserContent::ToolResult(result)) = user.content.first_mut() {
+                result.content = "x".repeat(100_000);
+            }
+        }
+        let context = ToolUseContext {
+            main_loop_model: Some("claude-sonnet-4-6".to_string()),
+            ..Default::default()
+        };
+        let mut state = crate::utils::tool_result_storage::ContentReplacementState::new();
+        let result = mask_tool_results_if_needed(
             messages,
+            &mut state,
+            &context,
             &QuerySource::Prompt,
-            TimeBasedMicrocompactConfig {
-                enabled: true,
-                gap_threshold_minutes: 60.0,
-                keep_recent: 1,
-            },
         );
-
+        assert_eq!(result.masked_count, 1);
+        assert!(result.masked_tokens > 0);
+        assert!(state.replacements.contains_key("toolu_old"));
+        assert!(matches!(
+            result.messages.last(),
+            Some(Message::User(user))
+                if user.content.iter().any(|content| matches!(
+                    content,
+                    UserContent::Text(text) if text == "current task"
+                ))
+        ));
         assert!(matches!(
             &result.messages[1],
             Message::User(user) if user.content.iter().any(|content| matches!(
                 content,
-                crate::types::message::UserContent::ToolResult(result)
-                    if result.tool_use_id.0 == "toolu_stale"
-                        && result.content == crate::utils::tool_result_storage::TOOL_RESULT_CLEARED_MESSAGE
+                UserContent::ToolResult(result)
+                    if crate::utils::tool_result_storage::is_tool_result_cleared(&result.content)
             ))
         ));
-        assert_eq!(
-            cached_microcompact_state_for_test(),
-            CachedMicrocompactState::default()
+        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+    }
+
+    #[test]
+    fn idle_time_never_clears_tool_results() {
+        let _state_guard = lock_cached_mc_state_for_test();
+        // `assistant_tool_message` stamps its message two hours in the past, so
+        // this is a long idle gap by any threshold CC's time-based path used.
+        let messages = vec![
+            assistant_tool_message(&["toolu_old", "toolu_recent"], 0),
+            user_tool_result_message(&["toolu_old", "toolu_recent"]),
+        ];
+        let result = microcompact_messages_with_configs(
+            messages.clone(),
+            &ToolUseContext::default(),
+            &QuerySource::Prompt,
+            CachedMicrocompactConfig::default(),
         );
+        assert_eq!(result.messages, messages);
+        assert!(result.boundary_messages.is_empty());
+    }
+
+    #[test]
+    fn cache_sharing_forks_replay_but_never_decide() {
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
+        let mut messages = vec![
+            assistant_tool_message(&["toolu_old"], 0),
+            user_tool_result_message(&["toolu_old"]),
+            Message::User(crate::utils::messages::create_user_message(
+                "current task".to_string(),
+            )),
+        ];
+        if let Message::User(user) = &mut messages[1] {
+            if let Some(UserContent::ToolResult(result)) = user.content.first_mut() {
+                result.content = "x".repeat(100_000);
+            }
+        }
+        let context = ToolUseContext {
+            main_loop_model: Some("claude-sonnet-4-6".to_string()),
+            ..Default::default()
+        };
+        let mut state = crate::utils::tool_result_storage::ContentReplacementState::new();
+        let result = mask_tool_results_if_needed(
+            messages,
+            &mut state,
+            &context,
+            &QuerySource::Compact,
+        );
+        assert_eq!(result.masked_count, 0);
+        assert!(result.newly_replaced.is_empty());
+        assert!(state.replacements.is_empty());
+        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
     }
 }

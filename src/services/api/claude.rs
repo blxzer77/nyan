@@ -169,6 +169,71 @@ pub const EMPTY_USAGE: NonNullableUsage = NonNullableUsage {
     speed: None,
 };
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CacheTtlUsage {
+    pub ephemeral_1h_input_tokens: u64,
+    pub ephemeral_5m_input_tokens: u64,
+}
+
+impl CacheTtlUsage {
+    pub fn is_known(self) -> bool {
+        self.ephemeral_1h_input_tokens > 0 || self.ephemeral_5m_input_tokens > 0
+    }
+}
+
+/// Last cache TTL breakdown advertised by a main-thread request, keyed by the
+/// model it belongs to: prompt caches are per-model, so a model change must not
+/// inherit the previous model's TTL. The value is sticky because Anthropic only
+/// reports the `ephemeral_*` split on requests that write cache; a later
+/// all-hits turn reports the cache read but no breakdown, and the cache that
+/// turn read was written with the recorded TTL.
+static LAST_CACHE_TTL_USAGE: std::sync::LazyLock<
+    std::sync::Mutex<Option<(String, CacheTtlUsage)>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+
+pub fn last_cache_ttl_usage_for(model: &str) -> Option<CacheTtlUsage> {
+    let canonical = crate::utils::model::model::get_canonical_name(model);
+    LAST_CACHE_TTL_USAGE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .as_ref()
+        .filter(|(recorded_model, ttl)| *recorded_model == canonical && ttl.is_known())
+        .map(|(_, ttl)| *ttl)
+}
+
+fn record_cache_ttl_usage<T: serde::Serialize>(options: &Options, usage: &T) {
+    // Only the main thread's own requests describe the cache the warmer will
+    // refresh; sub-agents and forks must not overwrite it.
+    if !matches!(options.query_source.as_str(), "repl_main_thread" | "sdk") {
+        return;
+    }
+    let Ok(raw) = serde_json::to_value(usage) else {
+        return;
+    };
+    let Some(cache_creation) = raw.get("cache_creation").filter(|value| value.is_object()) else {
+        return;
+    };
+    let field = |name: &str| -> u64 {
+        cache_creation
+            .get(name)
+            .and_then(serde_json::Value::as_i64)
+            .map_or(0, |value| value.max(0) as u64)
+    };
+    let ttl = CacheTtlUsage {
+        ephemeral_1h_input_tokens: field("ephemeral_1h_input_tokens"),
+        ephemeral_5m_input_tokens: field("ephemeral_5m_input_tokens"),
+    };
+    if !ttl.is_known() {
+        return;
+    }
+    *LAST_CACHE_TTL_USAGE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some((
+        crate::utils::model::model::get_canonical_name(&options.model),
+        ttl,
+    ));
+}
+
 /// Maps to: CC services/api/logging.ts:GlobalCacheStrategy
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GlobalCacheStrategy {
@@ -2497,6 +2562,19 @@ fn build_sdk_message_request_options(
         base.headers = Some(headers);
     }
 
+    // @nyan (compaction C13-3): gateways derive the prompt-cache identity from
+    // this header. Independent sub-agents get their own; the main thread and
+    // cache-sharing forks omit it so they hit the main thread's cache.
+    if crate::utils::forked_agent::is_agent_api_source(&options.query_source)
+        && !crate::utils::forked_agent::is_cache_sharing_api_source(&options.query_source)
+    {
+        if let Some(agent_id) = options.agent_id.as_ref() {
+            base.headers
+                .get_or_insert_with(Default::default)
+                .insert("X-Claude-Code-Agent-Id".to_string(), Some(agent_id.0.clone()));
+        }
+    }
+
     for (key, value) in plan.extra_body_params {
         base.json_body_patches
             .push(anthropic_sdk::JsonBodyPatch::set(key, value));
@@ -3974,6 +4052,7 @@ async fn drain_sdk_message_stream_to_channel(
                 response_request_id = message.request_id.clone();
                 response_api_message_id = Some(message.id.clone());
                 response_model = Some(message.model);
+                record_cache_ttl_usage(options, &message.usage);
                 usage = Some(sdk_usage_to_token_usage(&message.usage));
             }
             anthropic_sdk::resources::messages::MessageStreamEvent::MessageDelta {
@@ -3995,6 +4074,7 @@ async fn drain_sdk_message_stream_to_channel(
                         max_output_tokens,
                     ));
                 }
+                record_cache_ttl_usage(options, &delta_usage);
                 usage = Some(merge_sdk_delta_usage(usage, &delta_usage));
                 if tx
                     .send(QueryModelStreamItem::AssistantDelta {
@@ -5052,6 +5132,48 @@ mod tests {
 
     use super::*;
     use crate::utils::test_env::{EnvVarGuard, PinnedProjectDir, TEST_ENV_LOCK};
+
+    #[test]
+    fn agent_identity_header_follows_query_source_not_agent_id_presence() {
+        let mut ordinary = Options::new("claude-sonnet-4-6".into(), "agent:custom".into());
+        ordinary.agent_id = Some(crate::types::ids::AgentId("agent-ordinary".into()));
+        let capture = sdk_request_beta_capture_for_testing(&[], &ordinary);
+        let request = build_sdk_message_request_options(
+            &[],
+            &ThinkingConfig::Disabled,
+            &ordinary,
+            &capture,
+            None,
+            anthropic_sdk::RequestOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            request
+                .headers
+                .as_ref()
+                .and_then(|headers| headers.get("X-Claude-Code-Agent-Id"))
+                .and_then(|value| value.as_deref()),
+            Some("agent-ordinary")
+        );
+
+        for source in ["repl_main_thread", "compact", "side_question", "cache_warm"] {
+            let mut sharing = Options::new("claude-sonnet-4-6".into(), source.into());
+            sharing.agent_id = Some(crate::types::ids::AgentId("must-not-leak".into()));
+            let capture = sdk_request_beta_capture_for_testing(&[], &sharing);
+            let request = build_sdk_message_request_options(
+                &[],
+                &ThinkingConfig::Disabled,
+                &sharing,
+                &capture,
+                None,
+                anthropic_sdk::RequestOptions::default(),
+            )
+            .unwrap();
+            assert!(!request.headers.as_ref().is_some_and(|headers| {
+                headers.contains_key("X-Claude-Code-Agent-Id")
+            }), "source {source} must share the main cache identity");
+        }
+    }
 
     fn wire_test_user_message(text: &str) -> Message {
         Message::User(UserMessage {

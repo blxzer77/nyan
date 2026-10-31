@@ -599,7 +599,7 @@ mod tests {
             2_000,
         )
         .unwrap();
-        assert_eq!(client.url(), "http://127.0.0.1:8091");
+        assert_eq!(client.url(), "http://10.144.0.11:8091");
         assert_eq!(client.model(), "qwen3-reranker-0.6b");
         assert_eq!(client.connect_timeout, Duration::from_millis(1_500));
         assert_eq!(client.request_timeout, Duration::from_millis(2_000));

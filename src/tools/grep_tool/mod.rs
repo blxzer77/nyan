@@ -379,46 +379,6 @@ fn append_completion_note(mut content: String, output: &Output) -> String {
     content
 }
 
-fn read_deny_globs(
-    permission_context: &crate::tool::ToolPermissionContext,
-    project_cwd: &std::path::Path,
-    search_root: &std::path::Path,
-) -> Vec<String> {
-    use crate::utils::permissions::filesystem::{
-        get_file_read_ignore_patterns, normalize_patterns_to_path, paths_to_check,
-    };
-
-    let patterns_by_root = get_file_read_ignore_patterns(permission_context);
-    let mut normalized = indexmap::IndexSet::new();
-    let mut roots = indexmap::IndexSet::new();
-    roots.insert(project_cwd.display().to_string());
-    // DEVIATION(SECURITY): CC normalizes against `getCwd()` only
-    // (`GrepTool.ts:413`). Also anchor the logical and resolved traversal roots
-    // so a directory symlink cannot expose Read-denied files.
-    roots.extend(paths_to_check(
-        &search_root.display().to_string(),
-        project_cwd,
-    ));
-    for root in roots {
-        normalized.extend(normalize_patterns_to_path(&patterns_by_root, &root));
-    }
-    normalized
-        .into_iter()
-        .map(|pattern| {
-            let pattern = if pattern.starts_with('/') {
-                pattern
-            } else {
-                format!("**/{pattern}")
-            };
-            // DEVIATION(SECURITY): CC pushes the normalized spelling verbatim
-            // (`GrepTool.ts:423`). For a search root outside the process cwd
-            // ripgrep matches a root-prefixed spelling instead, so the anchored
-            // rewrite is what actually excludes the Read-denied file.
-            crate::utils::glob::ripgrep_read_deny_pattern(&pattern, search_root)
-        })
-        .collect()
-}
-
 /// Maps to CC `GrepTool.ts:529-540`: start every async stat before awaiting
 /// settlement, including filename-only test mode. A failed stat contributes 0.
 pub(crate) async fn file_match_mtimes(results: &[String]) -> Vec<f64> {
@@ -708,7 +668,11 @@ fn grep_output_with_context(
         }
     }
 
-    for ignore_pattern in read_deny_globs(permission_context, &project_cwd, &absolute_path) {
+    for ignore_pattern in crate::utils::permissions::filesystem::read_deny_rg_globs(
+        permission_context,
+        &project_cwd,
+        &absolute_path,
+    ) {
         rg_args.push("--glob".to_string());
         rg_args.push(format!("!{ignore_pattern}"));
     }

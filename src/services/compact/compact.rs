@@ -195,6 +195,67 @@ pub struct CompactionResult {
     pub rebuilt_read_file_state: Vec<crate::utils::query_helpers::ReadFileStateEntry>,
 }
 
+/// Count of tool results the model-visible view already shows as cleared, and
+/// the tokens their original content would have cost (placeholders record the
+/// original byte length). This is what the compact receipt reports.
+fn masked_view_stats(messages: &[Message]) -> (usize, i64) {
+    let mut count = 0usize;
+    let mut bytes = 0usize;
+    for message in messages {
+        let Message::User(user) = message else {
+            continue;
+        };
+        for content in &user.content {
+            if let crate::types::message::UserContent::ToolResult(result) = content
+                && let Some(original) =
+                    crate::utils::tool_result_storage::tool_result_cleared_bytes(&result.content)
+            {
+                count += 1;
+                bytes = bytes.saturating_add(original);
+            }
+        }
+    }
+    (count, i64::try_from(bytes / 4).unwrap_or(i64::MAX))
+}
+
+/// @nyan (compaction C9): receipt written into the compact boundary metadata.
+/// `Option` keeps boundaries from older transcripts parsing unchanged.
+pub fn attach_nyan_receipt(
+    result: &mut CompactionResult,
+    context: &crate::tool::ToolUseContext,
+    masked_count: usize,
+    masked_tokens: i64,
+) {
+    let settings = crate::utils::settings::get_initial_settings()
+        .nyan
+        .map(|settings| settings.compaction())
+        .unwrap_or_default();
+    let summary_model = compact_summary_model(context);
+    let summary_style = match settings.summary_style() {
+        crate::utils::settings::nyan::SummaryStyle::Legacy => "legacy",
+        crate::utils::settings::nyan::SummaryStyle::Cc => "cc",
+    };
+    let tokens_after_estimate = crate::utils::tokens::token_count_with_estimation(
+        &build_post_compact_messages(result),
+    );
+    if let SystemMessage::CompactBoundary {
+        compact_metadata, ..
+    } = &mut result.boundary_marker
+    {
+        compact_metadata
+            .get_or_insert_default()
+            .nyan = Some(crate::types::message::NyanCompactReceipt {
+            masked_count,
+            masked_tokens,
+            summary_model: Some(summary_model),
+            summary_style: Some(summary_style.to_string()),
+            keep_recent_tokens: settings.keep_recent_tokens(),
+            tokens_after_estimate,
+            usage: result.compaction_usage.clone(),
+        });
+    }
+}
+
 /// Maps to CC `services/compact/compact.ts` `buildPostCompactMessages(...)`.
 pub fn build_post_compact_messages(result: &CompactionResult) -> Vec<Message> {
     let mut messages = Vec::with_capacity(
@@ -593,6 +654,11 @@ pub async fn compact_conversation(
     if context.abort_controller.is_aborted() {
         return Err(ERROR_MESSAGE_USER_ABORT.to_string());
     }
+    // @nyan (compaction C12): a summary rewrites the cached prefix — but only
+    // the main thread's summary touches the prefix the warmer refreshes.
+    if context.agent_id.is_none() {
+        crate::services::cache_warmer::invalidate();
+    }
 
     let pre_compact_token_count = crate::utils::tokens::token_count_with_estimation(&messages);
     let trigger = if is_auto_compact { "auto" } else { "manual" };
@@ -641,13 +707,7 @@ pub async fn compact_conversation(
         if context.abort_controller.is_aborted() {
             return Err(ERROR_MESSAGE_USER_ABORT.to_string());
         }
-        let summary = crate::utils::messages::get_assistant_message_text(&Message::Assistant(
-            response.assistant.clone(),
-        ))
-        .ok_or_else(|| {
-            "Failed to generate conversation summary - response did not contain valid text content"
-                .to_string()
-        })?;
+        let summary = validate_compact_summary_assistant(&response.assistant)?;
         if !summary.starts_with(crate::services::api::errors::PROMPT_TOO_LONG_ERROR_MESSAGE) {
             break (response, summary);
         }
@@ -726,7 +786,7 @@ pub async fn compact_conversation(
     .join("\n");
 
     let transcript_path = hook_context.transcript_path;
-    Ok(finalize_compaction_result(
+    let mut result = finalize_compaction_result(
         &messages,
         &summary,
         suppress_follow_up_questions,
@@ -739,7 +799,10 @@ pub async fn compact_conversation(
         rebuilt_read_file_state,
         hook_messages,
         (!user_display_message.is_empty()).then_some(user_display_message),
-    ))
+    );
+    let (masked_count, masked_tokens) = masked_view_stats(&messages);
+    attach_nyan_receipt(&mut result, context, masked_count, masked_tokens);
+    Ok(result)
 }
 
 /// Maps to CC compact.ts#annotateBoundaryWithPreservedSegment.
@@ -770,7 +833,35 @@ pub async fn partial_compact_conversation(
     user_feedback: Option<&str>,
     direction: crate::types::message::PartialCompactDirection,
 ) -> Result<CompactionResult, String> {
+    partial_compact_conversation_with_trigger(
+        all_messages,
+        pivot_index,
+        context,
+        cache_safe_params,
+        user_feedback,
+        direction,
+        "manual",
+    )
+    .await
+}
+
+/// @nyan: `trigger` is "auto" when autocompact keeps a recent tail through the
+/// UpTo path (compaction C7); every CC caller stays "manual".
+pub async fn partial_compact_conversation_with_trigger(
+    all_messages: Vec<Message>,
+    pivot_index: usize,
+    context: &crate::tool::ToolUseContext,
+    cache_safe_params: &crate::services::compact::auto_compact::AutoCompactCacheSafeParams,
+    user_feedback: Option<&str>,
+    direction: crate::types::message::PartialCompactDirection,
+    trigger: &str,
+) -> Result<CompactionResult, String> {
     use crate::types::message::{CompactMetadata, PartialCompactDirection};
+    // @nyan (compaction C12): a summary rewrites the cached prefix — but only
+    // the main thread's summary touches the prefix the warmer refreshes.
+    if context.agent_id.is_none() {
+        crate::services::cache_warmer::invalidate();
+    }
     let pivot = pivot_index.min(all_messages.len());
     let (summarized, kept) = match direction {
         PartialCompactDirection::From => (&all_messages[pivot..], &all_messages[..pivot]),
@@ -800,7 +891,7 @@ pub async fn partial_compact_conversation(
     let hook_context = compact_hook_context(context);
     let pre_hook = crate::services::hooks::compaction::execute_pre_compact_hooks(
         &hooks_config,
-        "manual",
+        trigger,
         None,
         &hook_context,
         &context.abort_controller,
@@ -841,13 +932,7 @@ pub async fn partial_compact_conversation(
         if context.abort_controller.is_aborted() {
             return Err(ERROR_MESSAGE_USER_ABORT.to_string());
         }
-        let summary = crate::utils::messages::get_assistant_message_text(&Message::Assistant(
-            response.assistant.clone(),
-        ))
-        .ok_or_else(|| {
-            "Failed to generate conversation summary - response did not contain valid text content"
-                .to_string()
-        })?;
+        let summary = validate_compact_summary_assistant(&response.assistant)?;
         if !summary.starts_with(crate::services::api::errors::PROMPT_TOO_LONG_ERROR_MESSAGE) {
             break (response, summary);
         }
@@ -903,7 +988,7 @@ pub async fn partial_compact_conversation(
         .collect::<Vec<_>>();
     discovered.sort();
     let mut boundary = SystemMessage::compact_boundary(Some(CompactMetadata {
-        trigger: Some("manual".to_string()),
+        trigger: Some(trigger.to_string()),
         pre_tokens: Some(pre_compact_token_count),
         user_context: user_feedback.map(str::to_string),
         messages_summarized: Some(summarized.len()),
@@ -944,7 +1029,7 @@ pub async fn partial_compact_conversation(
     }
     let post_hook = crate::services::hooks::compaction::execute_post_compact_hooks(
         &hooks_config,
-        "manual",
+        trigger,
         &summary,
         &hook_context,
         &context.abort_controller,
@@ -955,7 +1040,7 @@ pub async fn partial_compact_conversation(
     } else {
         boundary.base().uuid.clone()
     };
-    Ok(CompactionResult {
+    let mut result = CompactionResult {
         boundary_marker: annotate_boundary_with_preserved_segment(
             boundary,
             &anchor,
@@ -978,13 +1063,72 @@ pub async fn partial_compact_conversation(
         true_post_compact_token_count: None,
         compaction_usage: summary_response.assistant.usage,
         rebuilt_read_file_state: post_context.read_file_state.snapshot(),
-    })
+    };
+    let (masked_count, masked_tokens) = masked_view_stats(&all_messages);
+    attach_nyan_receipt(&mut result, context, masked_count, masked_tokens);
+    Ok(result)
 }
 
 #[derive(Debug)]
 struct CompactSummaryResponse {
     assistant: crate::types::message::AssistantMessage,
     compaction_call_tokens: i64,
+}
+
+fn validate_compact_summary_assistant(
+    assistant: &crate::types::message::AssistantMessage,
+) -> Result<String, String> {
+    // The synthetic prompt-too-long reply carries no stop_reason; hand it to
+    // the caller's head-truncation retry instead of failing it here.
+    if let Some(text) = crate::utils::messages::get_assistant_message_text(&Message::Assistant(
+        assistant.clone(),
+    )) && text.starts_with(crate::services::api::errors::PROMPT_TOO_LONG_ERROR_MESSAGE)
+    {
+        return Ok(text);
+    }
+    match assistant.stop_reason {
+        Some(crate::types::message::StopReason::EndTurn)
+        | Some(crate::types::message::StopReason::StopSequence) => {}
+        Some(crate::types::message::StopReason::MaxTokens) => {
+            return Err("summary_truncated".to_string());
+        }
+        Some(crate::types::message::StopReason::ToolUse) => {
+            return Err("summary_contains_tool_call".to_string());
+        }
+        Some(crate::types::message::StopReason::Refusal)
+        | Some(crate::types::message::StopReason::PauseTurn)
+        | None => return Err("model_error".to_string()),
+    }
+    if assistant.content.iter().any(|content| {
+        matches!(
+            content,
+            crate::types::message::AssistantContent::ToolUse(_)
+                | crate::types::message::AssistantContent::ServerToolUse(_)
+        )
+    }) {
+        return Err("summary_contains_tool_call".to_string());
+    }
+    let summary = crate::utils::messages::get_assistant_message_text(&Message::Assistant(
+        assistant.clone(),
+    ))
+    .filter(|summary| !summary.trim().is_empty())
+    .ok_or_else(|| "summary_empty".to_string())?;
+    if summary.trim_start().starts_with("API Error:") {
+        return Err(summary);
+    }
+    Ok(summary)
+}
+
+fn compact_summary_model(context: &crate::tool::ToolUseContext) -> String {
+    crate::utils::settings::get_initial_settings()
+        .nyan
+        .and_then(|settings| settings.compaction().model)
+        .or_else(|| context.main_loop_model.clone())
+        .unwrap_or_else(crate::utils::model::model::get_main_loop_model)
+}
+
+fn compact_summary_max_output_tokens(model: &str) -> u32 {
+    (13_107u32).min(crate::services::api::claude::get_max_output_tokens_for_model(model))
 }
 
 fn compact_fork_params(
@@ -1007,13 +1151,16 @@ fn compact_fork_params(
             }
         },
     );
+    let summary_model = compact_summary_model(context);
+    let mut summary_context = context.clone();
+    summary_context.main_loop_model = Some(summary_model.clone());
     crate::utils::forked_agent::ForkedAgentParams {
         prompt_messages: vec![Message::User(summary_request)],
         cache_safe_params: crate::utils::forked_agent::CacheSafeParams {
             system_prompt: cache_safe_params.system_prompt.clone(),
             user_context: cache_safe_params.user_context.clone(),
             system_context: cache_safe_params.system_context.clone(),
-            tool_use_context: context.clone(),
+            tool_use_context: summary_context,
             fork_context_messages: std::sync::Arc::new(
                 cache_safe_params.fork_context_messages.clone(),
             ),
@@ -1022,7 +1169,7 @@ fn compact_fork_params(
         query_source: crate::constants::query_source::QuerySource::Compact,
         fork_label: "compact".to_string(),
         max_turns: Some(1),
-        max_output_tokens: None,
+        max_output_tokens: Some(compact_summary_max_output_tokens(&summary_model)),
         skip_cache_write: true,
         overrides: Some(crate::utils::forked_agent::SubagentContextOverrides {
             abort_controller: Some(context.abort_controller.clone()),
@@ -1043,32 +1190,25 @@ async fn stream_compact_summary(
     let options = compact_fork_params(summary_request.clone(), context, cache_safe_params);
     match crate::utils::forked_agent::run_forked_agent(options).await {
         Ok(result) if result.api_errors.is_empty() => {
-            if let Some(assistant) =
-                result
-                    .messages
-                    .iter()
-                    .rev()
-                    .find_map(|message| match message {
-                        Message::Assistant(assistant)
-                            if crate::utils::messages::get_assistant_message_text(message)
-                                .is_some() =>
-                        {
-                            Some(assistant.clone())
-                        }
-                        _ => None,
-                    })
-            {
-                let usage = &result.total_usage;
-                let total = usage
-                    .input_tokens
-                    .saturating_add(usage.output_tokens)
-                    .saturating_add(usage.cache_creation_input_tokens)
-                    .saturating_add(usage.cache_read_input_tokens);
-                return Ok(CompactSummaryResponse {
-                    assistant,
-                    compaction_call_tokens: i64::try_from(total).unwrap_or(i64::MAX),
-                });
-            }
+            let Some(assistant) = result.messages.iter().rev().find_map(|message| {
+                matches!(message, Message::Assistant(_)).then(|| match message {
+                    Message::Assistant(assistant) => assistant.clone(),
+                    _ => unreachable!(),
+                })
+            }) else {
+                return Err("model_error".to_string());
+            };
+            validate_compact_summary_assistant(&assistant)?;
+            let usage = &result.total_usage;
+            let total = usage
+                .input_tokens
+                .saturating_add(usage.output_tokens)
+                .saturating_add(usage.cache_creation_input_tokens)
+                .saturating_add(usage.cache_read_input_tokens);
+            return Ok(CompactSummaryResponse {
+                assistant,
+                compaction_call_tokens: i64::try_from(total).unwrap_or(i64::MAX),
+            });
         }
         Ok(_) => {}
         Err(error) if crate::utils::errors::is_abort_error(&error) => {
@@ -1094,10 +1234,7 @@ async fn stream_compact_summary_fallback(
         strip_reinjected_attachments(strip_images_from_messages(&after_boundary));
     api_messages.push(Message::User(summary_request));
     let app_state = context.get_app_state();
-    let model = context
-        .main_loop_model
-        .clone()
-        .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
+    let model = compact_summary_model(context);
     let mut options = crate::services::api::claude::Options::new(
         model.clone(),
         crate::constants::query_source::QuerySource::Compact
@@ -1106,10 +1243,7 @@ async fn stream_compact_summary_fallback(
     );
     options.is_non_interactive_session = context.is_non_interactive_session;
     options.has_append_system_prompt = context.append_system_prompt.is_some();
-    options.max_output_tokens_override = Some(
-        (crate::utils::context::COMPACT_MAX_OUTPUT_TOKENS as u32)
-            .min(crate::services::api::claude::get_max_output_tokens_for_model(&model)),
-    );
+    options.max_output_tokens_override = Some(compact_summary_max_output_tokens(&model));
     options.effort_value = app_state.and_then(|state| state.effort_value.clone());
     // API request descriptors are narrower than ToolUseContext agent
     // definitions. The text-only compact fallback exposes no agent tools.
@@ -1180,6 +1314,7 @@ async fn stream_compact_summary_fallback(
         }
     }
     let assistant = response.ok_or_else(|| ERROR_MESSAGE_INCOMPLETE_RESPONSE.to_string())?;
+    validate_compact_summary_assistant(&assistant)?;
     let total = assistant.usage.as_ref().map_or(0, |usage| {
         usage
             .input_tokens
@@ -1452,7 +1587,7 @@ mod tests {
         );
         assert_eq!(params.fork_label, "compact");
         assert_eq!(params.max_turns, Some(1));
-        assert_eq!(params.max_output_tokens, None);
+        assert!(params.max_output_tokens.is_some());
         assert!(params.skip_cache_write);
         assert!(!params.skip_transcript);
         assert_eq!(params.cache_safe_params.system_prompt, vec!["system"]);
@@ -2139,5 +2274,96 @@ mod tests {
                     .contains("User context: KEEP_CONTEXT")
             );
         }
+    }
+
+    fn summary_assistant(
+        content: Vec<crate::types::message::AssistantContent>,
+        stop_reason: Option<crate::types::message::StopReason>,
+    ) -> crate::types::message::AssistantMessage {
+        crate::types::message::AssistantMessage {
+            content,
+            stop_reason,
+            ..crate::utils::messages::create_assistant_message(String::new())
+        }
+    }
+
+    fn summary_text(text: &str) -> crate::types::message::AssistantContent {
+        crate::types::message::AssistantContent::Text(text.to_string())
+    }
+
+    fn summary_tool_use() -> crate::types::message::AssistantContent {
+        crate::types::message::AssistantContent::ToolUse(crate::types::message::ToolUseBlock {
+            id: crate::types::ids::ToolUseId("toolu_x".to_string()),
+            name: "Read".to_string(),
+            input: serde_json::json!({}),
+        })
+    }
+
+    #[test]
+    fn summary_validation_follows_the_stop_reason_table() {
+        use crate::types::message::StopReason;
+        let ok = summary_assistant(vec![summary_text("Goal: ship")], Some(StopReason::EndTurn));
+        assert_eq!(validate_compact_summary_assistant(&ok).unwrap(), "Goal: ship");
+        let stop_sequence = summary_assistant(
+            vec![summary_text("Goal: ship")],
+            Some(StopReason::StopSequence),
+        );
+        assert!(validate_compact_summary_assistant(&stop_sequence).is_ok());
+
+        for (reason, expected) in [
+            (Some(StopReason::MaxTokens), "summary_truncated"),
+            (Some(StopReason::ToolUse), "summary_contains_tool_call"),
+            (Some(StopReason::Refusal), "model_error"),
+            (Some(StopReason::PauseTurn), "model_error"),
+            (None, "model_error"),
+        ] {
+            let assistant = summary_assistant(vec![summary_text("partial")], reason);
+            assert_eq!(
+                validate_compact_summary_assistant(&assistant).unwrap_err(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn summary_with_leading_text_and_a_tool_call_is_rejected() {
+        use crate::types::message::StopReason;
+        let assistant = summary_assistant(
+            vec![summary_text("I will read the file first."), summary_tool_use()],
+            Some(StopReason::EndTurn),
+        );
+        assert_eq!(
+            validate_compact_summary_assistant(&assistant).unwrap_err(),
+            "summary_contains_tool_call"
+        );
+    }
+
+    #[test]
+    fn empty_and_api_error_summaries_fail() {
+        use crate::types::message::StopReason;
+        let empty = summary_assistant(vec![summary_text("   \n")], Some(StopReason::EndTurn));
+        assert_eq!(
+            validate_compact_summary_assistant(&empty).unwrap_err(),
+            "summary_empty"
+        );
+        let api_error = summary_assistant(
+            vec![summary_text("API Error: 529 overloaded")],
+            Some(StopReason::EndTurn),
+        );
+        assert!(validate_compact_summary_assistant(&api_error)
+            .unwrap_err()
+            .starts_with("API Error:"));
+    }
+
+    #[test]
+    fn prompt_too_long_reply_reaches_the_head_truncation_retry() {
+        let assistant = summary_assistant(
+            vec![summary_text(
+                crate::services::api::errors::PROMPT_TOO_LONG_ERROR_MESSAGE,
+            )],
+            None,
+        );
+        let text = validate_compact_summary_assistant(&assistant).unwrap();
+        assert!(text.starts_with(crate::services::api::errors::PROMPT_TOO_LONG_ERROR_MESSAGE));
     }
 }

@@ -228,6 +228,7 @@ fn is_async_agent_allowed_tool(name: &str) -> bool {
             | crate::tools::web_search_tool::prompt::WEB_SEARCH_TOOL_NAME
             | crate::tools::todo_write_tool::constants::TODO_WRITE_TOOL_NAME
             | crate::tools::grep_tool::prompt::GREP_TOOL_NAME
+            | crate::tools::code_search_tool::prompt::CODE_SEARCH_TOOL_NAME
             | crate::tools::web_fetch_tool::prompt::WEB_FETCH_TOOL_NAME
             | crate::tools::glob_tool::prompt::GLOB_TOOL_NAME
             | crate::tools::bash_tool::tool_name::BASH_TOOL_NAME

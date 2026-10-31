@@ -156,7 +156,7 @@ pub trait DecisionBackend: Send + Sync {
 | `web.answers` | 每个候选（title + snippet）：是否值得抓取 / 可能回答查询（noul，批量 30） | RRF / rerank 顺序 | **只排序与标注**：可能回答的提到最前、标 `(likely answers)`；不删 | 增 | **active** | fast |
 | `web.page_answers` | 抓到的页面正文是否含答案（noul；查询 + 正文前 8000 字符） | 无 | 判"不含"时在结果末尾提示 `[page may not answer the query — consider fetching: <下一个候选 URL>]`；不改正文 | 增 | **active** | fast |
 | `web.fetch_fallback` | 直抓正文是否为挑战页 / 空壳（noul；正文前 3000 字符） | 外部搜索 4.6：403 / 429 / 451 / 超时 / 正文 < 200 字符 | 只能把规则判成功的改判为**需要回退**（多一次 provider 调用）；不能把失败改成功 | 增 | **active** | accurate |
-| `web.query_kind` | 查询类型 choice：中文 / 技术文档 / 新闻时效 / 通用 | 无 | 只用于**给 provider 加参数**（AnySearch `zone=cn`、Brave `freshness`、DeepSeek `after:`）；所有 provider 照常全量扇出 | 增 | **active** | fast |
+| `web.query_kind` | 查询类型 choice：中文 / 技术文档 / 新闻时效 / 通用 | 无 | 只用于**给 provider 加参数**（AnySearch `zone=cn`、Brave `freshness`、DeepSeek `after:`）；所有 provider 照常全量扇出。AnySearch 的 `tag` 需要配套 `library` 参数（实测缺省会 400），故不下发 | 增 | **active** | fast |
 | `web.prune` | 每个候选：是否与查询无关（复用 `web.answers`） | 不删 | 删除 P < 0.05 的候选，至少保留 5 条 | 减 | shadow | fast |
 
 - 原 `web.providers`（按查询类型**减少** provider 省钱）删除：效果优先，默认全量扇出（Decision #44）；查询类型只用来给每家加更好的参数。

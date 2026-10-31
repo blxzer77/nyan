@@ -485,7 +485,16 @@ where
     // teardown is logged because "which runtime did this task land on" is the
     // failure mode that silently strands background agents.
     let runtime_trace_id = id.clone();
-    std::thread::spawn(move || {
+    // @nyan: the actor polls the whole tool pipeline on this thread, and the
+    // default 2 MiB main-thread stack overflows once WebFetch's extraction or
+    // the retrieval pipeline polls a large composed future (reproduced live:
+    // `-p` + WebFetch prompt -> stack overflow abort). Give it the same 8 MiB
+    // the REPL already reserves for engine work.
+    let spawn_failure_tx = event_tx.clone();
+    let spawn_result = std::thread::Builder::new()
+        .name("query-actor".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
         let terminal = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -542,6 +551,13 @@ where
         };
         let _ = event_tx.try_send(QueryEvent::Terminal(terminal));
     });
+    if let Err(error) = spawn_result {
+        // The UI waits on `events`; a spawn failure must resolve the stream
+        // instead of leaving it pending forever.
+        let mut terminal = transitions::Terminal::new("model_error");
+        terminal.exception = Some(format!("query actor thread failed to start: {error}"));
+        let _ = spawn_failure_tx.try_send(QueryEvent::Terminal(terminal));
+    }
 
     QueryHandle {
         id,
@@ -890,6 +906,9 @@ where
     let mut resume_restore_stores = params.tool_use_context.resume_restore_stores.clone();
 
     'query_loop: loop {
+        // @nyan: every new real request changes the cache-safe prefix or its
+        // lifecycle, so an older warmer must stop before preparation begins.
+        crate::services::cache_warmer::invalidate_for_source(&params.query_source);
         let retrying_model_fallback = model_fallback_retry_messages.is_some();
         // Maps to CC `query.ts` `queryTracking`: every non-fallback outer
         // query iteration gets one chain id and a monotonically increasing
@@ -943,11 +962,25 @@ where
                     })
                     .map(|tool| tool.name)
                     .collect::<std::collections::HashSet<_>>();
-                let budget_result = crate::utils::tool_result_storage::apply_tool_result_budget_with_state_and_skip_tool_names_result(
-                    messages_after_compact_boundary,
-                    state,
-                    &skip_tool_names,
-                );
+                // @nyan: cache-sharing forks replay existing decisions only;
+                // every other source keeps CC's per-message budget unchanged.
+                let budget_result = if !crate::utils::forked_agent::is_cache_sharing_fork(
+                    &params.query_source,
+                ) {
+                    crate::utils::tool_result_storage::apply_tool_result_budget_with_state_and_skip_tool_names_result(
+                        messages_after_compact_boundary,
+                        state,
+                        &skip_tool_names,
+                    )
+                } else {
+                    crate::utils::tool_result_storage::ApplyToolResultBudgetResult {
+                        messages: crate::utils::tool_result_storage::apply_tool_result_replacements_only(
+                            messages_after_compact_boundary,
+                            state,
+                        ),
+                        newly_replaced: Vec::new(),
+                    }
+                };
                 // Maps to CC `query.ts` optional `recordContentReplacement(...)`
                 // callback. Query owns the official repl/agent persistence gate;
                 // accepted records enter the sessionStorage `Project` queue at
@@ -957,7 +990,7 @@ where
                 {
                     let _ = crate::utils::session_storage::record_content_replacement(
                         &budget_result.newly_replaced,
-                        None,
+                        params.tool_use_context.agent_id.as_deref(),
                     );
                 }
                 budget_result.messages
@@ -1011,14 +1044,57 @@ where
                     return Ok(transitions::Terminal::new("aborted_streaming"));
                 }
             }
-            let snip_tokens_freed = snip_result.tokens_freed;
+            let mut snip_tokens_freed = snip_result.tokens_freed;
             messages_for_query = snip_result.messages;
+
+            // @nyan: masking is the only pre-request owner allowed to add a
+            // replacement decision. Cache-sharing forks only replay state.
+            if let Some(state) = content_replacement_state.as_mut() {
+                let mask_context = loop_local_tool_use_context(
+                    &params,
+                    &permission_context,
+                    messages_for_query.clone(),
+                    Some(query_tracking.clone()),
+                    &resume_restore_stores,
+                    None,
+                    &abort_controller,
+                );
+                let mask_result =
+                    crate::services::compact::micro_compact::mask_tool_results_if_needed(
+                        messages_for_query,
+                        state,
+                        &mask_context,
+                        &params.query_source,
+                    );
+                messages_for_query = mask_result.messages;
+                // C4: the last API usage still counts the masked bytes; carry
+                // the reduction so autocompact does not re-measure pre-mask.
+                snip_tokens_freed =
+                    snip_tokens_freed.saturating_add(mask_result.anchor_tokens_freed);
+                if !mask_result.newly_replaced.is_empty() {
+                    content_replacement_state_changed = true;
+                    if should_persist_content_replacements(&params.query_source) {
+                        let _ = crate::utils::session_storage::record_content_replacement(
+                            &mask_result.newly_replaced,
+                            params.tool_use_context.agent_id.as_deref(),
+                        );
+                    }
+                    if event_tx
+                        .send(QueryEvent::ContentReplacementStateUpdate(state.clone()))
+                        .await
+                        .is_err()
+                    {
+                        return Ok(transitions::Terminal::new("aborted_streaming"));
+                    }
+                    crate::services::cache_warmer::invalidate_for_source(&params.query_source);
+                }
+            }
 
             // Maps to: CC `query.ts` `deps.microcompact(messagesForQuery,
             // toolUseContext, querySource)` before `deps.autocompact(...)`.
-            // Microcompact remains owned by `services/compact/*`; the production
-            // path preserves the official disabled default and supports the
-            // time-based content-clearing path when explicitly enabled.
+            // Microcompact remains owned by `services/compact/*`; the
+            // time-based content-clearing path is intentionally absent because
+            // elapsed time must not invalidate a prompt-cache prefix.
             let microcompact_context = loop_local_tool_use_context(
                 &params,
                 &permission_context,
@@ -2499,6 +2575,43 @@ where
             &params.tool_use_context.mcp_state,
         )
         .await;
+
+        // @nyan (compaction C12): a response that asks for tools means the agent
+        // keeps running while they execute, so warm the cache that request just
+        // wrote. The turn-ending case is started from the stop hook instead.
+        // The prefix is the request as sent: the assistant reply ends in an
+        // unanswered tool_use and was never cached.
+        if matches!(
+            params.query_source,
+            QuerySource::Prompt | QuerySource::Sdk
+        ) && assistant_messages
+            .last()
+            .is_some_and(|assistant| !assistant_tool_use_blocks(assistant).is_empty())
+        {
+            let warm_context = loop_local_tool_use_context(
+                &params,
+                &permission_context,
+                messages_for_query.clone(),
+                Some(query_tracking.clone()),
+                &resume_restore_stores,
+                content_replacement_state.clone(),
+                &abort_controller,
+            );
+            let cache = std::sync::Arc::new(crate::utils::forked_agent::create_cache_safe_params(
+                crate::utils::forked_agent::CacheSafeParamsContext {
+                    messages: messages_for_query.clone(),
+                    system_prompt: system_prompt.clone(),
+                    user_context: user_context.clone(),
+                    system_context: system_context.clone(),
+                    tool_use_context: warm_context,
+                },
+            ));
+            crate::services::cache_warmer::observe_response(
+                &params.query_source,
+                cache,
+                &assistant_messages,
+            );
+        }
 
         if let Some(summary_task) = pending_tool_use_summary.take() {
             // Maps to CC `query.ts` yielding the previous iteration's
@@ -7801,8 +7914,9 @@ mod tests {
                     content,
                     crate::types::message::UserContent::ToolResult(result)
                         if result.tool_use_id.0 == "toolu_large"
-                            && result.content
-                                == crate::utils::tool_result_storage::TOOL_RESULT_CLEARED_MESSAGE
+                            && crate::utils::tool_result_storage::is_tool_result_cleared(
+                                &result.content
+                            )
                 ))
         )));
     }

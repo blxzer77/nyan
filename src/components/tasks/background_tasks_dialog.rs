@@ -7,9 +7,9 @@
 use super::task_status_utils::TaskStatus;
 use super::{
     AsyncAgentDetailData, AsyncAgentDetailDialog, BackgroundTask, BackgroundTaskData,
-    DreamDetailData, DreamDetailDialog, InProcessTeammateDetailDialog, RemoteSessionDetailAction,
-    RemoteSessionDetailData, RemoteSessionDetailDialog, ShellDetailData, ShellDetailDialog,
-    TeammateDetailData,
+    DreamDetailData, DreamDetailDialog, DreamTurn, InProcessTeammateDetailDialog,
+    RemoteSessionDetailAction, RemoteSessionDetailData, RemoteSessionDetailDialog, ShellDetailData,
+    ShellDetailDialog, TeammateDetailData,
 };
 use crate::components::design_system::dialog::Dialog;
 use crate::keybindings::keybinding_context::KeybindingRuntime;
@@ -80,6 +80,56 @@ pub(crate) fn background_task_items(
             }
         })
         .collect();
+    // Dream tasks use the same AppState map as shell and agent tasks. Unlike
+    // local agents, their live state already carries the complete detail
+    // projection needed by the dialog.
+    for task in tasks.values().filter_map(|task| {
+        let crate::state::app_state_store::TaskState::Dream(task) = task.as_ref() else {
+            return None;
+        };
+        if !crate::tasks::types::is_background_task(
+            &crate::state::app_state_store::TaskState::Dream(task.clone()),
+        ) {
+            return None;
+        }
+        let status = task_status_from_runtime(&task.status);
+        let elapsed = crate::utils::format::format_duration(
+            crate::utils::task::framework::now_ms().saturating_sub(task.start_time),
+        );
+        Some(BackgroundTasksDialogItem {
+            id: task.id.clone(),
+            category: BackgroundTaskCategory::Dream,
+            label: task.description.clone(),
+            status,
+            start_time: task.start_time,
+            row: Some(BackgroundTaskData::Dream {
+                description: task.description.clone(),
+                phase: task.phase.as_str().to_string(),
+                files_touched: task.files_touched.len(),
+                sessions_reviewing: task.sessions_reviewing,
+                status,
+                notified: task.notified,
+            }),
+            detail: BackgroundTaskDetailData::Dream(DreamDetailData {
+                status,
+                elapsed,
+                sessions_reviewing: task.sessions_reviewing,
+                files_touched: task.files_touched.len(),
+                turns: task
+                    .turns
+                    .iter()
+                    .map(|turn| DreamTurn {
+                        text: turn.text.clone(),
+                        tool_use_count: turn.tool_use_count,
+                    })
+                    .collect(),
+            }),
+            team_name: None,
+        })
+    }) {
+        items.push(task);
+    }
+
     // Maps to: CC `tasks/types.ts:37-46` `isBackgroundTask` over the
     // local_agent entries (running|pending only; foreground agents with
     // `isBackgrounded === false` excluded) + CC
@@ -296,6 +346,15 @@ fn dispatch_action(
 ) {
     if props.tool_use_context.is_some() || props.app_store.is_some() {
         if let BackgroundTasksDialogAction::Stop(id) = &action {
+            if let Some(store) = store {
+                if matches!(
+                    store.get().tasks.get(id).map(|task| task.as_ref()),
+                    Some(crate::state::app_state_store::TaskState::Dream(_))
+                ) {
+                    crate::tasks::dream_task::kill_dream_task(id, store);
+                    return;
+                }
+            }
             if crate::tasks::local_agent_task::task_identity_snapshot(id).is_some() {
                 crate::tasks::local_agent_task::kill_async_agent(id);
             } else {
@@ -973,7 +1032,10 @@ mod tests {
             // F3's effect. The list reached via Back proves F3 landed.
             send(KeyCode::Left);
             let list = wait_probe_frame(&mut frames, "Background tasks").await;
-            assert!(list.contains("Shells (2)"), "F3 task missing from list: {list}");
+            assert!(
+                list.contains("Shells (2)"),
+                "F3 task missing from list: {list}"
+            );
             send(KeyCode::F(4));
             wait_probe_frame(&mut frames, "Shells (1)").await;
             send(KeyCode::Enter);

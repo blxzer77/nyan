@@ -236,6 +236,11 @@ pub(crate) fn validate_edit_input(
 
     let Some(file_content) = file_content else {
         if input.old_string.is_empty() {
+            if let Err(error) =
+                crate::memdir::write_guard::check_memory_content(&full_path, &input.new_string)
+            {
+                return Err(validation_error(error.to_string(), 0));
+            }
             return Ok(EditValidationOk::default());
         }
         let cwd_suggestion = crate::utils::file::suggest_path_under_cwd(&full_path, &cwd);
@@ -259,6 +264,11 @@ pub(crate) fn validate_edit_input(
                 "Cannot create new file - file already exists.",
                 3,
             ));
+        }
+        if let Err(error) =
+            crate::memdir::write_guard::check_memory_content(&full_path, &input.new_string)
+        {
+            return Err(validation_error(error.to_string(), 0));
         }
         return Ok(EditValidationOk::default());
     }
@@ -339,6 +349,19 @@ pub(crate) fn validate_edit_input(
         )
     {
         return Err(validation_error(error, 10));
+    }
+    if let Err(error) =
+        crate::memdir::write_guard::check_memory_content(&full_path, &updated_settings)
+    {
+        return Err(validation_error(error.to_string(), 0));
+    }
+    if context.agent_id.is_some() && full_path == crate::memdir::paths::get_auto_mem_entrypoint() {
+        if let Err(error) = crate::memdir::memdir::validate_agent_memory_index_update(
+            &file_content,
+            &updated_settings,
+        ) {
+            return Err(validation_error(error, 0));
+        }
     }
 
     Ok(EditValidationOk {
@@ -746,6 +769,21 @@ impl crate::tool::ToolCall for FileEditTool {
                 Err(error) => return edit_error(error, dynamic_skill_dirs),
             };
 
+            if context.agent_id.is_some()
+                && full_path == crate::memdir::paths::get_auto_mem_entrypoint()
+            {
+                if let Err(error) = crate::memdir::memdir::validate_agent_memory_index_update(
+                    &original_file,
+                    &updated_file,
+                ) {
+                    return edit_error(error, dynamic_skill_dirs);
+                }
+            }
+            if let Err(error) =
+                crate::memdir::write_guard::check_memory_content(&full_path, &updated_file)
+            {
+                return edit_error(error.to_string(), dynamic_skill_dirs);
+            }
             if let Err(error) = crate::utils::file::write_text_content_to_target(
                 &critical_target,
                 &updated_file,
