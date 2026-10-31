@@ -619,7 +619,7 @@ async fn a_closed_port_is_a_network_error() {
 
 #[tokio::test]
 async fn error_bodies_never_surface_in_the_error_value() {
-    let secret = "sk-live-0123456789abcdef";
+    let secret = "sk-live-0123456789abcdef"; // gitleaks:allow -- synthetic provider error fixture
     let body = format!(r#"{{"error":"bad key {secret}","account":"new-account-9","key":"fresh-key-1"}}"#);
     for status in [400, 401, 402, 429, 500] {
         let server = mock(vec![Reply::status(status, body.clone())]).await;
