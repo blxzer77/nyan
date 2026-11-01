@@ -186,7 +186,7 @@ mod tests {
         // CC utils/git.ts:212-216. Each case runs in a fresh process so neither
         // the zero-argument memo nor Bun-compatible startup PATH is reset by
         // a test-only production hook. A candidate is never executed.
-        const PROBE: &str = "COMETIX_GIT_EXE_MEMO_PROBE";
+        const PROBE: &str = "NYAN_GIT_EXE_MEMO_PROBE";
         if let Some(mode) = crate::utils::process_env::var(PROBE) {
             crate::utils::process_env::capture_startup();
             let directory = PathBuf::from(crate::utils::process_env::var_os("PATH").unwrap());
@@ -257,7 +257,7 @@ mod tests {
 
     impl TestDir {
         fn new() -> Self {
-            let path = std::env::temp_dir().join(format!("cometix-git-{}", uuid::Uuid::new_v4()));
+            let path = std::env::temp_dir().join(format!("nyan-git-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir(&path).expect("create isolated test directory");
             Self(path)
         }

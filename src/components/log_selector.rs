@@ -29,7 +29,7 @@ use unicode_width::UnicodeWidthStr;
 const ALL_TAG_LABEL: &str = "All";
 const AGENTIC_SEARCH_OPTION_LABEL: &str = "Search deeply using Claude →";
 const AGENTIC_SEARCH_READONLY_NOTICE: &str =
-    "Agentic search is unavailable in Cometix UI-only mode.";
+    "Agentic search is unavailable in nyan UI-only mode.";
 const DEEP_SEARCH_READ_WINDOW_BYTES: u64 = 256 * 1024;
 const DEEP_SEARCH_MAX_TEXT_LENGTH: usize = 50_000;
 const DEEP_SEARCH_SNIPPET_CONTEXT_CHARS: usize = 50;
@@ -1908,7 +1908,7 @@ mod tests {
         // These fixtures use synthetic project paths. A developer checkout
         // may have auxiliary worktrees, which would make LogSelector hide the
         // synthetic rows behind its current-worktree filter.
-        EnvVarGuard::set("COMETIX_TEST_SINGLE_WORKTREE", "1")
+        EnvVarGuard::set("NYAN_TEST_SINGLE_WORKTREE", "1")
     }
 
     #[test]
@@ -2101,7 +2101,7 @@ mod tests {
     #[test]
     fn deep_search_snippet_description_uses_official_second_line_indentation() {
         let mut log = summary("snippet", None, None, "/repo");
-        log.file_path = PathBuf::from("/tmp/cometix-snippet.jsonl");
+        log.file_path = PathBuf::from("/tmp/nyan-snippet.jsonl");
         let matches = vec![DeepSearchMatch {
             log_key: log_deep_search_key(&log),
             score: 0.0,
@@ -2121,7 +2121,7 @@ mod tests {
     #[test]
     fn deep_search_snippet_matches_transcript_only_text_without_writes() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-log-selector-deep-{}.jsonl",
+            "nyan-log-selector-deep-{}.jsonl",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -2158,7 +2158,7 @@ mod tests {
     #[test]
     fn deep_search_nucleo_query_includes_transcript_with_fuzzy_snippet() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-log-selector-fuzzy-{}.jsonl",
+            "nyan-log-selector-fuzzy-{}.jsonl",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -2388,9 +2388,9 @@ mod tests {
     fn rename_submit_persists_selected_full_path_and_notifies_parent() {
         let _worktree = pin_single_worktree();
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let path = std::env::temp_dir().join(format!(
-            "cometix-log-selector-rename-{}.jsonl",
+            "nyan-log-selector-rename-{}.jsonl",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -2478,7 +2478,7 @@ mod tests {
     fn preview_escape_restores_selector_without_selecting() {
         let _worktree = pin_single_worktree();
         let path = std::env::temp_dir().join(format!(
-            "cometix-log-selector-preview-{}.jsonl",
+            "nyan-log-selector-preview-{}.jsonl",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -2591,7 +2591,7 @@ mod tests {
     #[test]
     fn preview_enter_selects_previewed_session() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-log-selector-preview-select-{}.jsonl",
+            "nyan-log-selector-preview-select-{}.jsonl",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(

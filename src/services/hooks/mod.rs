@@ -695,7 +695,7 @@ pub(crate) mod test_support {
 
     /// Records what a hook actually received on stdin.
     ///
-    /// The hook command is `cat > "$COMETIX_TEST_HOOK_INPUT_CAPTURE"`, and the
+    /// The hook command is `cat > "$NYAN_TEST_HOOK_INPUT_CAPTURE"`, and the
     /// destination rides the callers' `base_env` channel into
     /// `exec_command_hook`, so the capture goes through the real spawn path
     /// rather than re-deriving the payload in the test.
@@ -709,7 +709,7 @@ pub(crate) mod test_support {
         pub(crate) fn new() -> Self {
             Self {
                 path: std::env::temp_dir().join(format!(
-                    "cometix-hook-input-capture-{}.json",
+                    "nyan-hook-input-capture-{}.json",
                     uuid::Uuid::new_v4().simple()
                 )),
             }
@@ -725,7 +725,7 @@ pub(crate) mod test_support {
                 vec![super::HookConfigEntry {
                     matcher: matcher.map(str::to_string),
                     hooks: vec![super::HookCommand {
-                        command: r#"cat > "$COMETIX_TEST_HOOK_INPUT_CAPTURE""#.to_string(),
+                        command: r#"cat > "$NYAN_TEST_HOOK_INPUT_CAPTURE""#.to_string(),
                         shell: None,
                         timeout: Some(10),
                         condition: None,
@@ -744,7 +744,7 @@ pub(crate) mod test_support {
 
         pub(crate) fn base_env(&self) -> Vec<(String, String)> {
             vec![(
-                "COMETIX_TEST_HOOK_INPUT_CAPTURE".to_string(),
+                "NYAN_TEST_HOOK_INPUT_CAPTURE".to_string(),
                 self.path.display().to_string(),
             )]
         }
@@ -779,7 +779,7 @@ pub(crate) mod test_support {
         /// states "no policy" without depending on the developer's machine.
         pub(crate) fn install(contents: Option<&str>) -> Self {
             let root = std::env::temp_dir().join(format!(
-                "cometix-hooks-managed-{}",
+                "nyan-hooks-managed-{}",
                 uuid::Uuid::new_v4().simple()
             ));
             std::fs::create_dir_all(&root).expect("create managed settings root");
@@ -849,7 +849,7 @@ pub(crate) mod test_support {
     /// Reaching it takes all four of these, because the port's trust answer is
     /// an OR over four inputs:
     /// - `set_is_interactive(true)` + the three `CLAUDE_CODE_NON_INTERACTIVE` /
-    ///   `COMETIX_NON_INTERACTIVE*` overrides cleared, because CC returns
+    ///   `NYAN_NON_INTERACTIVE*` overrides cleared, because CC returns
     ///   "do not skip" outright in non-interactive (SDK) mode (`:288-291`);
     /// - `set_session_trust_accepted(false)`, the memory-only home-dir accept;
     /// - the latched `TRUST_DIALOG_ACCEPTED_CACHE` reset;
@@ -870,7 +870,7 @@ pub(crate) mod test_support {
     impl WorkspaceTrustDeniedGuard {
         pub(crate) fn install() -> Self {
             let scratch = std::env::temp_dir().join(format!(
-                "cometix-hooks-untrusted-{}",
+                "nyan-hooks-untrusted-{}",
                 uuid::Uuid::new_v4().simple()
             ));
             std::fs::create_dir_all(&scratch).expect("create untrusted scratch cwd");
@@ -881,8 +881,8 @@ pub(crate) mod test_support {
                 scratch: scratch.clone(),
                 _non_interactive_env: [
                     "CLAUDE_CODE_NON_INTERACTIVE",
-                    "COMETIX_NON_INTERACTIVE",
-                    "COMETIX_NON_INTERACTIVE_SESSION",
+                    "NYAN_NON_INTERACTIVE",
+                    "NYAN_NON_INTERACTIVE_SESSION",
                 ]
                 .into_iter()
                 .map(EnvVarGuard::unset)
@@ -1359,7 +1359,7 @@ mod tests {
     /// yes because `just _prep` rebuilds mutable `target/test-home` from tracked
     /// fixtures and serializes `.claude.json` with exactly the canonical
     /// `tests/fixtures/isolated-project` trust key that
-    /// `COMETIX_TEST_PROJECT_DIR` pins as the original cwd.
+    /// `NYAN_TEST_PROJECT_DIR` pins as the original cwd.
     ///
     /// If this test fails, rerun `just _prep`; it recreates the canonical trust
     /// JSON and tracked mock credentials. Do NOT respond by adding

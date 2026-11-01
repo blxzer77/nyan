@@ -45,13 +45,13 @@ mod tests {
     #[test]
     fn expand_env_vars_handles_values_defaults_and_missing_like_official() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_MCP_ENV_PRESENT", "value");
-        crate::utils::process_env::remove("COMETIX_MCP_ENV_MISSING");
+        crate::utils::process_env::set("NYAN_MCP_ENV_PRESENT", "value");
+        crate::utils::process_env::remove("NYAN_MCP_ENV_MISSING");
         let (expanded, missing) = expand_env_vars_in_string(
-            "a=${COMETIX_MCP_ENV_PRESENT};b=${COMETIX_MCP_ENV_MISSING:-fallback};c=${COMETIX_MCP_ENV_MISSING}",
+            "a=${NYAN_MCP_ENV_PRESENT};b=${NYAN_MCP_ENV_MISSING:-fallback};c=${NYAN_MCP_ENV_MISSING}",
         );
-        assert_eq!(expanded, "a=value;b=fallback;c=${COMETIX_MCP_ENV_MISSING}");
-        assert_eq!(missing, vec!["COMETIX_MCP_ENV_MISSING".to_string()]);
-        crate::utils::process_env::remove("COMETIX_MCP_ENV_PRESENT");
+        assert_eq!(expanded, "a=value;b=fallback;c=${NYAN_MCP_ENV_MISSING}");
+        assert_eq!(missing, vec!["NYAN_MCP_ENV_MISSING".to_string()]);
+        crate::utils::process_env::remove("NYAN_MCP_ENV_PRESENT");
     }
 }

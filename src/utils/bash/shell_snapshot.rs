@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn shell_integrations_match_official_snapshot_shape_and_path_capture() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _path = EnvVarGuard::set("PATH", "/cometix/carrier-only-snapshot-path");
+        let _path = EnvVarGuard::set("PATH", "/nyan/carrier-only-snapshot-path");
         let env = crate::utils::process_env::snapshot();
         let (kind, snippet) = create_ripgrep_shell_integration();
         assert!(matches!(kind.as_str(), "alias" | "function"));
@@ -330,6 +330,6 @@ mod tests {
         let script = get_snapshot_script("/bin/bash", Path::new("/tmp/snapshot.sh"), false, &env);
         assert!(script.contains("shopt -s expand_aliases"));
         assert!(script.contains("unalias -a"));
-        assert!(script.contains("/cometix/carrier-only-snapshot-path"));
+        assert!(script.contains("/nyan/carrier-only-snapshot-path"));
     }
 }

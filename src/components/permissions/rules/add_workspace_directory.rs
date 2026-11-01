@@ -52,7 +52,7 @@ pub struct AddWorkspaceDirectorySelection {
     pub accepted: bool,
 }
 
-pub const PERMISSION_DESCRIPTION: &str = "Claude Code will be able to read files in this directory and make edits when auto-accept edits is on.";
+pub const PERMISSION_DESCRIPTION: &str = "nyan will be able to read files in this directory and make edits when auto-accept edits is on.";
 
 /// Maps to: CC `REMEMBER_DIRECTORY_OPTIONS`.
 pub fn remember_directory_options() -> Vec<SelectOptionData> {

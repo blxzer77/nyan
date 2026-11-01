@@ -225,7 +225,7 @@ mod tests {
     #[test]
     fn file_write_permission_helpers_match_official_create_overwrite_branch() {
         let temp_path =
-            std::env::temp_dir().join(format!("cometix-write-perm-{}", std::process::id()));
+            std::env::temp_dir().join(format!("nyan-write-perm-{}", std::process::id()));
         let _ = std::fs::remove_file(&temp_path);
         assert!(!file_write_permission_file_exists(
             &temp_path.display().to_string()
@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn file_write_ide_diff_support_matches_official_get_config_and_apply_changes() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-write-perm-ide-diff-{}",
+            "nyan-write-perm-ide-diff-{}",
             std::process::id()
         ));
         std::fs::write(&path, "old content").unwrap();
@@ -269,7 +269,7 @@ mod tests {
     #[test]
     fn file_write_permission_request_renders_create_copy() {
         let path =
-            std::env::temp_dir().join(format!("cometix-write-perm-render-{}", std::process::id()));
+            std::env::temp_dir().join(format!("nyan-write-perm-render-{}", std::process::id()));
         let _ = std::fs::remove_file(&path);
         // The dialog renders FileWriteToolDiff, which reads
         // `settings.syntax_highlighting_disabled` from AppState. Defaults are
@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn file_write_permission_request_renders_overwrite_diff_boundary() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-write-perm-overwrite-{}",
+            "nyan-write-perm-overwrite-{}",
             std::process::id()
         ));
         std::fs::write(&path, "old line\nline two\n").unwrap();

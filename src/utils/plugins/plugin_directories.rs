@@ -2,7 +2,7 @@
 //!
 //! Maps to: CC `utils/plugins/pluginDirectories.ts`.
 //!
-//! Cometix uses the official path construction for cache/seed/data lookups, but
+//! Nyan uses the official path construction for cache/seed/data lookups, but
 //! provides source-owned cache/seed/data paths and explicit data lifecycle helpers.
 
 use std::path::PathBuf;
@@ -195,7 +195,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _restore = EnvVarGuard::preserve("CLAUDE_CODE_PLUGIN_CACHE_DIR");
         let root = std::env::temp_dir().join(format!(
-            "cometix-plugin-data-{}",
+            "nyan-plugin-data-{}",
             uuid::Uuid::new_v4().simple()
         ));
         crate::utils::process_env::set("CLAUDE_CODE_PLUGIN_CACHE_DIR", &root);

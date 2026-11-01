@@ -1685,7 +1685,7 @@ fn blocked_path_outcome(
         Some(PermissionDecisionReason::Other { reason })
         | Some(PermissionDecisionReason::SafetyCheck { reason, .. }) => reason.clone(),
         _ => format!(
-            "{canonical} targeting '{resolved_path}' was blocked. For security, Claude Code may only access files in the allowed working directories for this session: {dir_list}."
+            "{canonical} targeting '{resolved_path}' was blocked. For security, nyan may only access files in the allowed working directories for this session: {dir_list}."
         ),
     };
 
@@ -1760,7 +1760,7 @@ fn check_redirection_target(
         Some(PermissionDecisionReason::Other { reason })
         | Some(PermissionDecisionReason::SafetyCheck { reason, .. }) => reason.clone(),
         _ => format!(
-            "Output redirection to '{resolved_path}' was blocked. For security, Claude Code may only write to files in the allowed working directories for this session: {dir_list}."
+            "Output redirection to '{resolved_path}' was blocked. For security, nyan may only write to files in the allowed working directories for this session: {dir_list}."
         ),
     };
 
@@ -1877,7 +1877,7 @@ mod tests {
     fn writes_outside_the_working_directory_are_asked_with_directory_suggestions() {
         let parsed = pipeline(vec![command(
             "Set-Content",
-            &["/etc/cometix-parity.txt"],
+            &["/etc/nyan-parity.txt"],
             &literals(1),
         )]);
         match check_path_constraints(&parsed, &ToolPermissionContext::default(), false) {
@@ -1912,7 +1912,7 @@ mod tests {
         );
         let mut parsed = pipeline(vec![command(
             "Set-Content",
-            &["/etc/cometix-parity.txt"],
+            &["/etc/nyan-parity.txt"],
             &literals(1),
         )]);
         parsed.statements.push(ParsedStatement {
@@ -2062,7 +2062,7 @@ mod tests {
         parsed.statements[0].redirections =
             vec![crate::utils::powershell::parser::ParsedRedirection {
                 operator: crate::utils::powershell::parser::RedirectionOperator::Output,
-                target: "/etc/cometix-parity.txt".to_string(),
+                target: "/etc/nyan-parity.txt".to_string(),
                 is_merging: false,
             }];
         assert!(matches!(

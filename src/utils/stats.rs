@@ -654,7 +654,7 @@ mod tests {
     #[test]
     fn stats_aggregation_counts_main_sessions_and_subagent_tokens_like_official() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let root = std::env::temp_dir().join(format!("cometix-stats-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-stats-{}", uuid::Uuid::new_v4()));
         let _override = crate::utils::session_storage::set_test_projects_dir_override(&root);
         let _cache =
             crate::utils::stats_cache::set_test_stats_cache_path(root.join("stats-cache.json"));
@@ -696,7 +696,7 @@ mod tests {
     #[test]
     fn stats_aggregation_skips_synthetic_and_malformed_timestamp_sessions() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let root = std::env::temp_dir().join(format!("cometix-stats-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-stats-{}", uuid::Uuid::new_v4()));
         let _override = crate::utils::session_storage::set_test_projects_dir_override(&root);
         let _cache =
             crate::utils::stats_cache::set_test_stats_cache_path(root.join("stats-cache.json"));
@@ -730,7 +730,7 @@ mod tests {
             }
         }
         let dir = FixtureDirectory(
-            std::env::temp_dir().join(format!("cometix-json-stats-{}", uuid::Uuid::new_v4())),
+            std::env::temp_dir().join(format!("nyan-json-stats-{}", uuid::Uuid::new_v4())),
         );
         std::fs::create_dir_all(&dir.0).unwrap();
         let path = dir.0.join("multiline.jsonl");

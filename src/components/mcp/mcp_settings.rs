@@ -279,7 +279,7 @@ pub fn MCPSettings(props: &MCPSettingsProps, mut hooks: Hooks) -> impl Into<AnyE
             let default_tab = if server.transport == Transport::ClaudeAiProxy {
                 "claude.ai".to_string()
             } else {
-                "Claude Code".to_string()
+                "nyan".to_string()
             };
             if server.transport == Transport::Stdio {
                 let mut cancel_state = view_state;

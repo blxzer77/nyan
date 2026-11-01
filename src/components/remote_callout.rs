@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: official `RemoteCallout` reads global config, bridge
 //! entitlement, and Claude.ai OAuth tokens; on mount it writes
-//! `remoteDialogSeen: true`. Cometix keeps `should_show_remote_callout` pure
+//! `remoteDialogSeen: true`. Nyan keeps `should_show_remote_callout` pure
 //! through an explicit snapshot and emits callback results only. It does not
 //! read auth/config, write settings, open bridge transports, or start network
 //! connections.

@@ -141,7 +141,7 @@ mod tests {
     fn prompt_dialog_app_interrupt_aborts_through_keybinding_runtime() {
         let abort_count = Arc::new(Mutex::new(0usize));
         let abort_for_handler = Arc::clone(&abort_count);
-        // Cometix binds Ctrl+C to app:exit; F6 stands in for a key a user
+        // Nyan binds Ctrl+C to app:exit; F6 stands in for a key a user
         // binds to app:interrupt.
         let event_stream = stream::once(async {
             futures_timer::Delay::new(Duration::from_millis(30)).await;

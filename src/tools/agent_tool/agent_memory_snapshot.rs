@@ -281,7 +281,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("cometix-agent-snap-{label}-{stamp}"));
+        let root = std::env::temp_dir().join(format!("nyan-agent-snap-{label}-{stamp}"));
         let _ = fs::create_dir_all(&root);
         root
     }

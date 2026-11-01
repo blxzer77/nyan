@@ -482,7 +482,7 @@ pub fn spawn_idle_consolidation_if_due(
     }
     let Some(handle) = crate::utils::process_runtime::runtime_handle_for_detached_work() else {
         tracing::warn!(
-            target: "cometix::memory",
+            target: "nyan::memory",
             "auto_dream_skipped: no process runtime available for detached work"
         );
         return;
@@ -501,12 +501,12 @@ pub fn spawn_idle_consolidation_if_due(
         .await
         {
             Ok(result) => tracing::info!(
-                target: "cometix::memory",
+                target: "nyan::memory",
                 suggested_deletions = result.suggested_deletions.len(),
                 "auto_dream_ok"
             ),
             Err(error) => {
-                tracing::warn!(target: "cometix::memory", ?error, "auto_dream_failed")
+                tracing::warn!(target: "nyan::memory", ?error, "auto_dream_failed")
             }
         }
     });

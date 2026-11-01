@@ -572,7 +572,7 @@ mod tests {
     }
     fn root(name: &str) -> PathBuf {
         let root =
-            std::env::temp_dir().join(format!("cometix-installed-{name}-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-installed-{name}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         root
     }

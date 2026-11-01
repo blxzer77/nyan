@@ -944,7 +944,7 @@ mod tests {
     fn compare_stats_handles_official_presence_matrix() {
         assert_eq!(compare_stats(None, None), StatComparison::Unchanged);
         let temp =
-            std::env::temp_dir().join(format!("cometix-fh-compare-{}.txt", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-fh-compare-{}.txt", uuid::Uuid::new_v4()));
         std::fs::write(&temp, "hello\n").expect("write temp");
         let stats = std::fs::metadata(&temp).expect("stat temp");
         assert_eq!(
@@ -961,7 +961,7 @@ mod tests {
         // With no backup (file absent at target), every current line counts
         // as a deletion on rewind — CC diffLines(original, '').
         let temp =
-            std::env::temp_dir().join(format!("cometix-fh-diff-{}.txt", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-fh-diff-{}.txt", uuid::Uuid::new_v4()));
         std::fs::write(&temp, "one\ntwo\nthree\n").expect("write temp");
         let stats = compute_diff_stats_for_file(&temp.to_string_lossy(), None).await;
         assert_eq!(stats.files_changed.len(), 1);
@@ -971,7 +971,7 @@ mod tests {
 
         // Both sides absent → empty stats, no filesChanged entry.
         let missing =
-            std::env::temp_dir().join(format!("cometix-fh-missing-{}.txt", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-fh-missing-{}.txt", uuid::Uuid::new_v4()));
         let stats = compute_diff_stats_for_file(&missing.to_string_lossy(), None).await;
         assert_eq!(stats, DiffStats::default());
     }

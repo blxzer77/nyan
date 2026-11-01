@@ -796,12 +796,12 @@ mod tests {
 
     /// CC `agentToolUtils.ts:471-477` — `shouldBlock` without `unavailable`
     /// yields the SECURITY WARNING carrying the classifier's reason. Driven
-    /// through the shared force rail (`COMETIX_AUTO_CLASSIFIER_FORCE=block`),
+    /// through the shared force rail (`NYAN_AUTO_CLASSIFIER_FORCE=block`),
     /// the same env the sync permission bridge honors.
     #[tokio::test]
     async fn classify_handoff_returns_the_security_warning_when_the_classifier_blocks() {
         let _env = TEST_ENV_LOCK.lock().unwrap();
-        let _force = EnvVarGuard::set("COMETIX_AUTO_CLASSIFIER_FORCE", "block");
+        let _force = EnvVarGuard::set("NYAN_AUTO_CLASSIFIER_FORCE", "block");
         let context = ToolPermissionContext {
             mode: PermissionMode::Auto,
             ..ToolPermissionContext::default()
@@ -824,7 +824,7 @@ mod tests {
     #[tokio::test]
     async fn classify_handoff_reaching_the_classifier_in_tests_degrades_to_unavailable() {
         let _env = TEST_ENV_LOCK.lock().unwrap();
-        let _force = EnvVarGuard::unset("COMETIX_AUTO_CLASSIFIER_FORCE");
+        let _force = EnvVarGuard::unset("NYAN_AUTO_CLASSIFIER_FORCE");
         let context = ToolPermissionContext {
             mode: PermissionMode::Auto,
             ..ToolPermissionContext::default()

@@ -294,12 +294,12 @@ mod tests {
     fn feed_empty_state_uses_official_empty_message_branch() {
         let config = FeedConfig {
             title: "What's new".to_string(),
-            empty_message: Some("Check the Claude Code changelog for updates".to_string()),
+            empty_message: Some("Check the nyan changelog for updates".to_string()),
             ..FeedConfig::default()
         };
 
         let text = render_feed(config, 24);
         assert!(text.contains("What's new"), "canvas=\n{text}");
-        assert!(text.contains("Check the Claude Code c…"), "canvas=\n{text}");
+        assert!(text.contains("Check the nyan changelo…"), "canvas=\n{text}");
     }
 }

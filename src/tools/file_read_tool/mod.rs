@@ -3053,7 +3053,7 @@ mod tests {
     #[tokio::test]
     async fn gbk_file_decodes_with_a_note() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-gbk-{}",
+            "nyan-read-gbk-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3097,7 +3097,7 @@ mod tests {
     #[tokio::test]
     async fn explicit_encoding_failure_is_an_error() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-bad-encoding-{}",
+            "nyan-read-bad-encoding-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3132,7 +3132,7 @@ mod tests {
     #[tokio::test]
     async fn content_binary_check_and_hex_view() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-binary-{}",
+            "nyan-read-binary-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3182,7 +3182,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-long-line-{}",
+            "nyan-read-long-line-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -3217,7 +3217,7 @@ mod tests {
     #[tokio::test]
     async fn batch_read_reports_each_member_and_shares_the_budget() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-batch-{}",
+            "nyan-read-batch-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3287,7 +3287,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-batch-budget-{}",
+            "nyan-read-batch-budget-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3345,7 +3345,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-batch-off-{}",
+            "nyan-read-batch-off-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -3389,7 +3389,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-notes-off-{}",
+            "nyan-read-notes-off-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -3514,7 +3514,7 @@ mod tests {
 
     #[tokio::test]
     async fn text_read_applies_offset_limit_window() {
-        let dir = std::env::temp_dir().join(format!("cometix-read-text-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("nyan-read-text-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let path = dir.join("sample.txt");
@@ -3554,7 +3554,7 @@ mod tests {
 
     #[tokio::test]
     async fn text_read_rejects_oversized_file_without_limit() {
-        let dir = std::env::temp_dir().join(format!("cometix-read-big-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("nyan-read-big-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let path = dir.join("big.txt");
@@ -3620,7 +3620,7 @@ mod tests {
 
     #[tokio::test]
     async fn notebook_read_returns_cells() {
-        let dir = std::env::temp_dir().join(format!("cometix-read-nb-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("nyan-read-nb-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let path = dir.join("demo.ipynb");
@@ -3694,7 +3694,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-max-token-{}",
+            "nyan-read-max-token-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3739,10 +3739,10 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-max-token-off-{}",
+            "nyan-read-max-token-off-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        std::fs::create_dir_all(root.join(".cometix")).unwrap();
+        std::fs::create_dir_all(root.join(".nyan")).unwrap();
         // Project settings are the only source this test can point at without
         // touching the real user settings root.
         std::fs::write(
@@ -3785,7 +3785,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-preabort-effects-{}",
+            "nyan-read-preabort-effects-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let skill_dir = root.join("packages/pkg/.claude/skills");
@@ -3839,7 +3839,7 @@ mod tests {
         impl std::error::Error for ListenerFailure {}
 
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-listener-failure-{}",
+            "nyan-read-listener-failure-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3876,7 +3876,7 @@ mod tests {
     #[tokio::test]
     async fn listener_enoent_identity_survives_after_text_effects() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-listener-enoent-{}",
+            "nyan-read-listener-enoent-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -4133,7 +4133,7 @@ mod tests {
         ];
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-raw-js-{}",
+            "nyan-read-raw-js-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -4412,7 +4412,7 @@ trailer<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF\n";
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-pdf-cleanup-{}",
+            "nyan-read-pdf-cleanup-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).expect("cleanup dir");
@@ -4500,7 +4500,7 @@ trailer<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF\n";
 
     #[tokio::test]
     async fn pdf_full_primary_and_document_supplement_matches_official_placement() {
-        let dir = std::env::temp_dir().join(format!("cometix-read-pdf-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("nyan-read-pdf-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let path = dir.join("doc.pdf");
@@ -4557,7 +4557,7 @@ trailer<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF\n";
             return;
         }
         let dir =
-            std::env::temp_dir().join(format!("cometix-read-pdf-pages-{}", std::process::id()));
+            std::env::temp_dir().join(format!("nyan-read-pdf-pages-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let path = dir.join("doc.pdf");
@@ -4633,7 +4633,7 @@ trailer<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF\n";
         };
 
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-pdf-order-{}",
+            "nyan-read-pdf-order-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let bin_dir = dir.join("bin");
@@ -4923,7 +4923,7 @@ PY\n\
             config,
         )));
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-dedup-killswitch-{}",
+            "nyan-read-dedup-killswitch-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -4961,7 +4961,7 @@ PY\n\
     async fn dedup_re_reads_when_prior_read_result_was_replaced() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-dedup-replacement-{}",
+            "nyan-read-dedup-replacement-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -5020,7 +5020,7 @@ PY\n\
     async fn batch_dedup_re_reads_when_prior_batch_result_was_replaced() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-batch-dedup-replacement-{}",
+            "nyan-read-batch-dedup-replacement-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -5092,7 +5092,7 @@ PY\n\
         let _restore = ConfigRestore(crate::utils::config::replace_test_global_config(Some(
             crate::utils::config::GlobalConfig::default(),
         )));
-        let dir = std::env::temp_dir().join(format!("cometix-read-dedup-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("nyan-read-dedup-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let path = dir.join("same.txt");

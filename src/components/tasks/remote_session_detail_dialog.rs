@@ -58,7 +58,7 @@ fn collapse_whitespace(value: &str) -> String {
 }
 pub fn format_tool_use_summary(name: &str, input: &serde_json::Value) -> String {
     if name == crate::tools::exit_plan_mode_tool::constants::EXIT_PLAN_MODE_V2_TOOL_NAME {
-        return "Review the plan in Claude Code on the web".to_string();
+        return "Review the plan in nyan on the web".to_string();
     }
     let Some(object) = input.as_object() else {
         return name.to_string();
@@ -250,7 +250,7 @@ pub fn RemoteSessionDetailDialog<'a>(
             ),
             RemoteDetailKind::Ultraplan { .. } => (
                 "Stop ultraplan?",
-                "This will terminate the Claude Code on the web session.",
+                "This will terminate the nyan on the web session.",
                 "Terminate session",
             ),
             RemoteDetailKind::Generic => (
@@ -381,11 +381,11 @@ fn render_review_detail(
     let can_kill = can_kill && running;
     let options = if completed {
         vec![
-            option("Open in Claude Code on the web", "open"),
+            option("Open in nyan on the web", "open"),
             option("Dismiss", "dismiss"),
         ]
     } else {
-        let mut options = vec![option("Open in Claude Code on the web", "open")];
+        let mut options = vec![option("Open in nyan on the web", "open")];
         if can_kill {
             options.push(option("Stop ultrareview", "stop"));
         }
@@ -440,7 +440,7 @@ fn render_ultraplan_detail(
         .unwrap_or("working");
     let mut menu = pending;
     let can_kill = can_kill && running;
-    let mut options = vec![option("Review in Claude Code on the web", "open")];
+    let mut options = vec![option("Review in nyan on the web", "open")];
     if can_kill {
         options.push(option("Stop ultraplan", "stop"));
     }
@@ -463,7 +463,7 @@ mod tests {
     fn tool_summary_prefers_plan_question_and_first_string() {
         assert_eq!(
             format_tool_use_summary("ExitPlanMode", &serde_json::json!({})),
-            "Review the plan in Claude Code on the web"
+            "Review the plan in nyan on the web"
         );
         assert_eq!(
             format_tool_use_summary(

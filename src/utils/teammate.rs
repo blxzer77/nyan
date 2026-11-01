@@ -6,7 +6,7 @@
 //! 1. in-process teammate context (`utils/teammateContext.ts` AsyncLocalStorage),
 //! 2. process-local dynamic team context populated from hidden teammate CLI args.
 //!
-//! CometixCode already ports the in-process context shape in
+//! nyan already ports the in-process context shape in
 //! `utils/teammate_context.rs`; this module ports the dynamic process teammate
 //! context used by tmux-pane teammates. It intentionally does not invent an
 //! alternate global environment contract: pane teammates are identified through

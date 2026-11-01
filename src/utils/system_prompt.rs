@@ -16,7 +16,7 @@ pub struct BuildEffectiveSystemPromptArgs<'a> {
     /// Maps to CC `mainThreadAgentDefinition`.
     pub main_thread_agent_definition: Option<&'a AgentDefinition>,
     /// Maps to CC `toolUseContext` (`Pick<ToolUseContext, 'options'>`).
-    /// Built-in agent prompts in Cometix are precomputed on the definition, so
+    /// Built-in agent prompts in Nyan are precomputed on the definition, so
     /// this is retained for API parity and future dynamic built-in prompts.
     pub tool_use_context_options: Option<&'a ToolUseContextOptions>,
     /// Maps to CC `customSystemPrompt` (`--system-prompt`).
@@ -57,7 +57,7 @@ fn resolve_agent_system_prompt(
 ) -> Option<String> {
     // CC built-in: `getSystemPrompt({ toolUseContext: { options } })`
     // CC custom/plugin: `getSystemPrompt()`
-    // Cometix stores the resolved prompt text on `AgentDefinition.system_prompt`
+    // Nyan stores the resolved prompt text on `AgentDefinition.system_prompt`
     // for both (built-ins are hydrated at load time).
     let _ = is_built_in_agent(agent);
     agent.system_prompt.clone()
@@ -350,9 +350,9 @@ mod tests {
             .unwrap()
             .as_nanos();
         let custom_path =
-            std::env::temp_dir().join(format!("cometix-sysprompt-custom-{stamp}.txt"));
+            std::env::temp_dir().join(format!("nyan-sysprompt-custom-{stamp}.txt"));
         let append_path =
-            std::env::temp_dir().join(format!("cometix-sysprompt-append-{stamp}.txt"));
+            std::env::temp_dir().join(format!("nyan-sysprompt-append-{stamp}.txt"));
         std::fs::write(&custom_path, "FROM_FILE").unwrap();
         std::fs::write(&append_path, "APPEND_FILE").unwrap();
 

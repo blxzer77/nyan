@@ -140,7 +140,7 @@ pub fn apply_pending_worker_request_from_outcome(
 }
 
 /// Maps to: CC `handleSwarmWorkerPermission` send + `setAppState(pendingWorkerRequest)`
-/// + `registerPermissionCallback` wait (Cometix: sync until timeout/abort).
+/// + `registerPermissionCallback` wait (Nyan: sync until timeout/abort).
 ///
 /// Returns `Some(decision)` when swarm handling resolved the ask; `None` means
 /// fall through to local interactive handling (CC `return null`).
@@ -518,12 +518,12 @@ mod tests {
         // `readTeamFileAsync`). A memory-only seed would be a no-op fixture, so
         // pin a scratch config root and enable the team-file/mailbox disk paths.
         let scratch_root = std::env::temp_dir().join(format!(
-            "cometix-swarm-worker-handler-{}",
+            "nyan-swarm-worker-handler-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &scratch_root);
-        let _io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
-        let _write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
+        let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::utils::swarm::team_helpers::clear_team_tool_state_for_test();
         let record = crate::utils::swarm::team_helpers::create_team_record(
             "alpha".into(),

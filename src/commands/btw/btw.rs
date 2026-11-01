@@ -562,7 +562,7 @@ mod tests {
     #[test]
     fn btw_call_carries_the_exact_current_context_snapshot() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _no_write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _no_write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let command = Command::local_ui(super::super::NAME, super::super::DESCRIPTION);
         let context = crate::tool::ToolUseContext::default()
             .with_main_loop_model("current-model")

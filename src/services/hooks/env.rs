@@ -615,16 +615,16 @@ mod tests {
     async fn config_change_hook_receives_the_official_input_and_matches_on_source() {
         let _trust_guard = SessionTrustGuard::accepted();
         let capture = std::env::temp_dir().join(format!(
-            "cometix-config-change-hook-{}.json",
+            "nyan-config-change-hook-{}.json",
             uuid::Uuid::new_v4().simple()
         ));
         let results = execute_config_change_hooks_with_config(
-            &config_change_config(r#"cat > "$COMETIX_TEST_CONFIG_CHANGE_CAPTURE""#),
+            &config_change_config(r#"cat > "$NYAN_TEST_CONFIG_CHANGE_CAPTURE""#),
             ConfigChangeSource::ProjectSettings,
             Some("/repo/.claude/settings.json"),
             create_base_hook_input(&HookContext::default()),
             vec![(
-                "COMETIX_TEST_CONFIG_CHANGE_CAPTURE".to_string(),
+                "NYAN_TEST_CONFIG_CHANGE_CAPTURE".to_string(),
                 capture.display().to_string(),
             )],
             5_000,
@@ -648,16 +648,16 @@ mod tests {
     async fn config_change_omits_file_path_when_the_caller_had_none() {
         let _trust_guard = SessionTrustGuard::accepted();
         let capture = std::env::temp_dir().join(format!(
-            "cometix-config-change-nopath-{}.json",
+            "nyan-config-change-nopath-{}.json",
             uuid::Uuid::new_v4().simple()
         ));
         execute_config_change_hooks_with_config(
-            &config_change_config(r#"cat > "$COMETIX_TEST_CONFIG_CHANGE_CAPTURE""#),
+            &config_change_config(r#"cat > "$NYAN_TEST_CONFIG_CHANGE_CAPTURE""#),
             ConfigChangeSource::Skills,
             None,
             create_base_hook_input(&HookContext::default()),
             vec![(
-                "COMETIX_TEST_CONFIG_CHANGE_CAPTURE".to_string(),
+                "NYAN_TEST_CONFIG_CHANGE_CAPTURE".to_string(),
                 capture.display().to_string(),
             )],
             5_000,

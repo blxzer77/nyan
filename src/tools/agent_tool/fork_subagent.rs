@@ -90,8 +90,8 @@ pub(crate) fn fork_gate_environment() -> [EnvVarGuard; 4] {
     [
         EnvVarGuard::unset("CLAUDE_CODE_COORDINATOR_MODE"),
         EnvVarGuard::unset("CLAUDE_CODE_NON_INTERACTIVE"),
-        EnvVarGuard::unset("COMETIX_NON_INTERACTIVE"),
-        EnvVarGuard::unset("COMETIX_NON_INTERACTIVE_SESSION"),
+        EnvVarGuard::unset("NYAN_NON_INTERACTIVE"),
+        EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION"),
     ]
 }
 

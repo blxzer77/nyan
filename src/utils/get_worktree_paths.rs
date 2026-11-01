@@ -17,7 +17,7 @@ pub fn get_worktree_paths(cwd: &str) -> Vec<String> {
     // process-local probe keeps UI tests independent of the checkout topology;
     // production never sets this variable.
     #[cfg(test)]
-    if crate::utils::process_env::var("COMETIX_TEST_SINGLE_WORKTREE").as_deref() == Some("1") {
+    if crate::utils::process_env::var("NYAN_TEST_SINGLE_WORKTREE").as_deref() == Some("1") {
         return vec![cwd.to_string()];
     }
 

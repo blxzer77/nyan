@@ -637,7 +637,7 @@ mod tests {
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-plugin-mcp-{label}-{}",
+            "nyan-plugin-mcp-{label}-{}",
             uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&dir).expect("temp dir");
@@ -880,8 +880,8 @@ mod tests {
     #[test]
     fn plugin_mcp_env_variables_expand_defaults_and_report_missing_without_dropping_server() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("COMETIX_PLUGIN_MCP_URL");
-        crate::utils::process_env::remove("COMETIX_PLUGIN_MCP_TOKEN");
+        crate::utils::process_env::remove("NYAN_PLUGIN_MCP_URL");
+        crate::utils::process_env::remove("NYAN_PLUGIN_MCP_TOKEN");
         let root = temp_dir("env-expansion");
         write_file(
             &root.join(".claude-plugin/plugin.json"),
@@ -890,8 +890,8 @@ mod tests {
               "mcpServers": {
                 "remote": {
                   "type":"http",
-                  "url":"${COMETIX_PLUGIN_MCP_URL:-https://fallback.test/mcp}",
-                  "headers":{"Authorization":"Bearer ${COMETIX_PLUGIN_MCP_TOKEN}"}
+                  "url":"${NYAN_PLUGIN_MCP_URL:-https://fallback.test/mcp}",
+                  "headers":{"Authorization":"Bearer ${NYAN_PLUGIN_MCP_TOKEN}"}
                 }
               }
             }"#,
@@ -905,7 +905,7 @@ mod tests {
         assert_eq!(remote.url.as_deref(), Some("https://fallback.test/mcp"));
         assert_eq!(
             remote.headers.get("Authorization").map(String::as_str),
-            Some("Bearer ${COMETIX_PLUGIN_MCP_TOKEN}")
+            Some("Bearer ${NYAN_PLUGIN_MCP_TOKEN}")
         );
         assert_eq!(
             errors,
@@ -913,12 +913,12 @@ mod tests {
                 source: "plugin:toolbox".into(),
                 plugin: "toolbox".into(),
                 server_name: "remote".into(),
-                validation_error: "Missing environment variables: COMETIX_PLUGIN_MCP_TOKEN".into(),
+                validation_error: "Missing environment variables: NYAN_PLUGIN_MCP_TOKEN".into(),
             }]
         );
         assert_eq!(
             get_plugin_error_message(&errors[0]),
-            "MCP server remote invalid: Missing environment variables: COMETIX_PLUGIN_MCP_TOKEN"
+            "MCP server remote invalid: Missing environment variables: NYAN_PLUGIN_MCP_TOKEN"
         );
         let _ = std::fs::remove_dir_all(root);
     }

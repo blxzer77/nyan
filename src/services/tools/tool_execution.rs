@@ -234,7 +234,7 @@ pub fn run_tool_use_permission_gate(
         tool_result: None,
         forced_choice: None,
     };
-    // Cometix-only entry: CC runs the permission gate once inside `runToolUse`,
+    // Nyan-only entry: CC runs the permission gate once inside `runToolUse`,
     // before the tool starts, and never re-gates a transcript row. This entry
     // takes a `RenderableMessage`, so it can be handed a tool use that already
     // ran — re-prompting for it would be wrong.
@@ -675,7 +675,7 @@ fn run_tool_use_permission_gate_for_request_with_assistant(
     }
     if tool_definition
         .is_some_and(|tool| tool.name == crate::tools::file_edit_tool::FILE_EDIT_TOOL_NAME)
-        && !crate::utils::env_utils::is_cometix_write_enabled()
+        && !crate::utils::env_utils::is_nyan_write_enabled()
     {
         let content = crate::tools::shared::write_gate::FILE_EDIT_DISABLED_ERROR.to_string();
         // CC's internal `toolUseResult: "Error: ..."` string rides the
@@ -1257,7 +1257,7 @@ fn permission_input_summary(tool_name: &str, input: &serde_json::Value) -> Strin
 /// Maps to the zod `tool.inputSchema.safeParse(input)` gate at the start of
 /// CC `services/tools/toolExecution.ts#checkPermissionsAndCallTool`. Rust tool
 /// metadata already stores API JSON schema; this validates the subset used by
-/// Cometix built-ins before permission prompts or tool execution.
+/// Nyan built-ins before permission prompts or tool execution.
 fn is_legacy_summary_only_tool_input(tool_use: &ToolUsePermissionRequest) -> bool {
     tool_use.input.as_object().is_some_and(|object| {
         object.len() == 1
@@ -2261,7 +2261,7 @@ async fn prepare_permission_prompt_hooks_with_config(
         if let Err(error) = crate::utils::permissions::permission_update::persist_permission_updates(
             &result.permission_updates,
         ) {
-            // L2 retained COMETIX_WRITE_ENABLED=0 policy: the canonical entry's
+            // L2 retained NYAN_WRITE_ENABLED=0 policy: the canonical entry's
             // only propagated error blocks this grant without disk/live updates.
             // Carry a system deny message so it cannot become a user cancel.
             let message = error.to_string();
@@ -2797,7 +2797,7 @@ fn mutation_disabled_result(
     context: &ToolUseContext,
     choice: PermissionPromptChoice,
 ) -> Option<ToolExecutionResult> {
-    if crate::utils::env_utils::is_cometix_write_enabled() {
+    if crate::utils::env_utils::is_nyan_write_enabled() {
         return None;
     }
     if request.tool_name == crate::tools::file_edit_tool::FILE_EDIT_TOOL_NAME {
@@ -3816,8 +3816,8 @@ pub struct MissingToolResultBlock {
 /// interruption results and the `toolExecution.ts` yields (:407, :449, :486,
 /// :676, :729, :857, :1069, :1465, :1733). Rust's assistant envelope uuid is
 /// the `AssistantMessage.uuid` field; empty = pre-C3a data, left
-/// unstamped. Cometix-only branches with no CC counterpart (the
-/// COMETIX_WRITE_ENABLED mutation gates) keep `None`.
+/// unstamped. Nyan-only branches with no CC counterpart (the
+/// NYAN_WRITE_ENABLED mutation gates) keep `None`.
 fn stamp_source_tool_assistant_uuid(
     tool_result: &mut Option<UserMessage>,
     assistant_message: Option<&AssistantMessage>,
@@ -4124,7 +4124,7 @@ mod tests {
     #[test]
     fn permission_denied_hooks_match_official_auto_mode_classifier_reason() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
 
         let with_reason = |reason: Option<
             crate::utils::permissions::permission_result::PermissionDecisionReason,
@@ -4155,7 +4155,7 @@ mod tests {
         let mut prefixed = with_reason(None);
         prefixed.description = "[ClassifierBlocked] blocked".to_string();
 
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
 
         assert!(permission_denied_hook_is_applicable(
             &auto_mode_denied,
@@ -4186,7 +4186,7 @@ mod tests {
     /// whole path (five-source settings merge, session-hook merge, the
     /// managed-only gate, HookContext/env construction) ran in no test build.
     /// This is its first direct execution: the pinned harness environment
-    /// (CLAUDE_CONFIG_DIR + COMETIX_TEST_PROJECT_DIR) has no hooks, so the
+    /// (CLAUDE_CONFIG_DIR + NYAN_TEST_PROJECT_DIR) has no hooks, so the
     /// loader returns None; registering a session hook makes the merge leg
     /// produce a config, exactly as CC merges `getSessionHooks` into the
     /// loaded settings (hooks.ts session merge the doc comment cites).
@@ -4255,11 +4255,11 @@ mod tests {
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
 
         let input_capture = std::env::temp_dir().join(format!(
-            "cometix-tool-hook-input-{}.json",
+            "nyan-tool-hook-input-{}.json",
             uuid::Uuid::new_v4().simple()
         ));
         let env_capture = std::env::temp_dir().join(format!(
-            "cometix-tool-hook-env-{}.txt",
+            "nyan-tool-hook-env-{}.txt",
             uuid::Uuid::new_v4().simple()
         ));
 
@@ -4700,7 +4700,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let config = std::env::temp_dir().join(format!(
-            "cometix-glob-persist-{}",
+            "nyan-glob-persist-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&config).unwrap();
@@ -4745,7 +4745,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let config = std::env::temp_dir().join(format!(
-            "cometix-grep-persist-{}",
+            "nyan-grep-persist-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&config).unwrap();
@@ -4788,7 +4788,7 @@ mod tests {
     #[test]
     fn glob_semantic_validation_preserves_error_tool_use_result_before_permission() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-glob-validation-executor-{}",
+            "nyan-glob-validation-executor-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -4912,7 +4912,7 @@ mod tests {
     #[test]
     fn grep_validation_errors_keep_string_tool_use_results_before_permission() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-grep-validation-executor-{}",
+            "nyan-grep-validation-executor-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -5606,11 +5606,11 @@ mod tests {
     #[test]
     fn glob_outside_cwd_queues_read_permission_instead_of_auto_rejecting() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-glob-gate-root-{}",
+            "nyan-glob-gate-root-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let outside = std::env::temp_dir().join(format!(
-            "cometix-glob-gate-outside-{}",
+            "nyan-glob-gate-outside-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -5653,11 +5653,11 @@ mod tests {
     #[test]
     fn grep_outside_cwd_prompts_normally_but_bypass_mode_runs_without_queueing() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-grep-gate-root-{}",
+            "nyan-grep-gate-root-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let outside = std::env::temp_dir().join(format!(
-            "cometix-grep-gate-outside-{}",
+            "nyan-grep-gate-outside-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -5807,7 +5807,7 @@ mod tests {
             stop_reason: Some(crate::types::message::StopReason::ToolUse),
             usage: None,
         };
-        let root = std::env::temp_dir().join("cometix-write-observable-root");
+        let root = std::env::temp_dir().join("nyan-write-observable-root");
         let mut context = ToolUseContext::with_permission_context(ToolPermissionContext::default());
         context.cwd_override = Some(root.clone());
         let mut queue = Vec::new();
@@ -5846,9 +5846,9 @@ mod tests {
         use std::os::unix::fs::symlink;
 
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-retarget-{}",
+            "nyan-write-retarget-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -5911,10 +5911,10 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-edit-pinned-destination-{}",
+            "nyan-edit-pinned-destination-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -6010,9 +6010,9 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-notebook-pinned-destination-{}",
+            "nyan-notebook-pinned-destination-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -6142,9 +6142,9 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-edit-equivalence-io-{}",
+            "nyan-edit-equivalence-io-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -6203,9 +6203,9 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let root = std::env::temp_dir().join(format!(
-            "cometix-edit-disabled-hook-{}",
+            "nyan-edit-disabled-hook-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -6255,12 +6255,12 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
         let _skills = crate::skills::load_skills_dir::DynamicSkillsTestSnapshot::capture();
         crate::skills::load_skills_dir::clear_dynamic_skills();
         let root = std::env::temp_dir().join(format!(
-            "cometix-edit-hook-path-pin-{}",
+            "nyan-edit-hook-path-pin-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -6341,11 +6341,11 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skills = crate::skills::load_skills_dir::DynamicSkillsTestSnapshot::capture();
         crate::skills::load_skills_dir::clear_dynamic_skills();
         let root = std::env::temp_dir().join(format!(
-            "cometix-edit-dynamic-context-{}",
+            "nyan-edit-dynamic-context-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let skill_dir = root.join("packages/pkg/.claude/skills");
@@ -6423,10 +6423,10 @@ mod tests {
     #[tokio::test]
     async fn write_execution_projects_dynamic_skill_dir_effect_into_next_context() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::skills::load_skills_dir::clear_dynamic_skills();
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-dynamic-context-{}",
+            "nyan-write-dynamic-context-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let skill_dir = root.join("packages/pkg/.claude/skills");
@@ -6493,10 +6493,10 @@ mod tests {
     #[tokio::test]
     async fn failed_write_after_discovery_still_projects_dynamic_skill_trigger() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::skills::load_skills_dir::clear_dynamic_skills();
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-failed-dynamic-context-{}",
+            "nyan-write-failed-dynamic-context-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let skill_dir = root.join("packages/pkg/.claude/skills");
@@ -6952,7 +6952,7 @@ mod tests {
 
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-skill-context-modifier-{}",
+            "nyan-skill-context-modifier-{}",
             uuid::Uuid::new_v4()
         ));
         let skill_file = root
@@ -7173,11 +7173,11 @@ mod tests {
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
         let _managed = crate::services::hooks::test_support::ManagedSettingsGuard::install(None);
         let capture = std::env::temp_dir().join(format!(
-            "cometix-post-failure-{}.json",
+            "nyan-post-failure-{}.json",
             uuid::Uuid::new_v4().simple()
         ));
         let missing = std::env::temp_dir().join(format!(
-            "cometix-absent-{}.txt",
+            "nyan-absent-{}.txt",
             uuid::Uuid::new_v4().simple()
         ));
 
@@ -7252,7 +7252,7 @@ mod tests {
     #[tokio::test]
     async fn non_json_pre_tool_exit_two_blocks_read_body() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-hook-exit-two-{}",
+            "nyan-read-hook-exit-two-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -7361,7 +7361,7 @@ mod tests {
     #[tokio::test]
     async fn inline_skill_expansion_processes_file_mentions_and_merges_read_state() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-inline-skill-attachment-{}",
+            "nyan-inline-skill-attachment-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -7422,7 +7422,7 @@ mod tests {
     #[tokio::test]
     async fn post_read_hook_receives_raw_output_and_emits_additional_context() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-post-hook-{}",
+            "nyan-read-post-hook-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -7574,7 +7574,7 @@ mod tests {
     #[tokio::test]
     async fn pre_prompt_read_hook_input_is_authoritative_including_allow_decision() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-pre-prompt-hook-{}",
+            "nyan-read-pre-prompt-hook-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -7584,7 +7584,7 @@ mod tests {
             .parent()
             .unwrap_or(std::path::Path::new("/tmp"))
             .join(format!(
-                "cometix-read-reroute-{}.txt",
+                "nyan-read-reroute-{}.txt",
                 uuid::Uuid::new_v4().simple()
             ));
         std::fs::write(&outside, "first\nsecond\n").unwrap();
@@ -7700,9 +7700,9 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-edit-hook-order-{}",
+            "nyan-edit-hook-order-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -8019,7 +8019,7 @@ mod tests {
     #[tokio::test]
     async fn grep_pre_tool_updated_input_reparses_semantic_values_before_execution() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-grep-hook-semantic-{}",
+            "nyan-grep-hook-semantic-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -8104,7 +8104,7 @@ mod tests {
     async fn read_hook_updated_input_executes_directly_and_respects_hook_permission() {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-hook-revalidate-{}",
+            "nyan-read-hook-revalidate-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let workspace = root.join("workspace");
@@ -8514,7 +8514,7 @@ mod tests {
             // (BashTool map sets `is_error: interrupted` only), so use a
             // genuinely erroring Read to exercise PostToolUseFailure.
             name: "Read".to_string(),
-            input: serde_json::json!({ "file_path": "/nonexistent/cometix-hook-test" }),
+            input: serde_json::json!({ "file_path": "/nonexistent/nyan-hook-test" }),
         };
         let assistant_message = AssistantMessage {
             uuid: uuid::Uuid::new_v4().to_string(),
@@ -8793,7 +8793,7 @@ mod tests {
     #[tokio::test]
     async fn normal_can_use_tool_rechecks_final_hook_input_and_re_pins_edit_destination() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-final-hook-permission-{}",
+            "nyan-final-hook-permission-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let original = root.join("original.txt");
@@ -10279,8 +10279,8 @@ mod executor_tests {
             "perm-bash".to_string(),
             "toolu_bash".to_string(),
             "Bash".to_string(),
-            "printf cometix-shell-ok".to_string(),
-            serde_json::json!({"command": "printf cometix-shell-ok"}),
+            "printf nyan-shell-ok".to_string(),
+            serde_json::json!({"command": "printf nyan-shell-ok"}),
             PermissionMode::Default,
         );
 
@@ -10299,13 +10299,13 @@ mod executor_tests {
             Some(block) => {
                 assert_eq!(block.tool_use_id.0, "toolu_bash");
                 assert_eq!(block.derived_status(), ToolResultStatus::Success);
-                assert_eq!(block.content, "cometix-shell-ok");
+                assert_eq!(block.content, "nyan-shell-ok");
                 // The row carries no display shape; the raw
                 // `toolUseResult` is the render source. CC `stripEmptyLines`
                 // removes the shell's trailing empty line before both model
                 // and wire mapping.
                 let raw = block.tool_use_result.as_ref().expect("bash raw rides");
-                assert_eq!(raw["stdout"], serde_json::json!("cometix-shell-ok"));
+                assert_eq!(raw["stdout"], serde_json::json!("nyan-shell-ok"));
                 assert_eq!(raw["stderr"], serde_json::json!(""));
             }
             None => panic!("unexpected bash result: {:?}", message.kind),
@@ -10316,7 +10316,7 @@ mod executor_tests {
     fn local_tool_executor_runs_dynamic_mcp_tool_against_live_stdio_client() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let script_path = std::env::temp_dir().join(format!(
-            "cometix-dynamic-mcp-tool-{}.mjs",
+            "nyan-dynamic-mcp-tool-{}.mjs",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -10937,7 +10937,7 @@ rl.on('line', line => {
     #[tokio::test]
     async fn local_tool_executor_runs_background_bash_and_task_output() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let store = crate::state::store::AppStore::new(
             crate::state::app_state_store::AppState::default(),
             None,
@@ -11042,7 +11042,7 @@ rl.on('line', line => {
     #[tokio::test]
     async fn local_tool_executor_stops_background_bash_task() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let store = crate::state::store::AppStore::new(
             crate::state::app_state_store::AppState::default(),
             None,
@@ -11134,7 +11134,7 @@ rl.on('line', line => {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _model = EnvVarGuard::set("ANTHROPIC_MODEL", "claude-sonnet-4-6");
         let path =
-            std::env::temp_dir().join(format!("cometix-read-tool-{}.txt", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-read-tool-{}.txt", uuid::Uuid::new_v4()));
         std::fs::write(&path, "line one\nline two\n").unwrap();
         let request = mock_permission_request_with_input(
             "perm-read".to_string(),
@@ -11226,7 +11226,7 @@ rl.on('line', line => {
         );
 
         let path = std::env::temp_dir().join(format!(
-            "cometix-read-subagent-raw-{}.txt",
+            "nyan-read-subagent-raw-{}.txt",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(&path, "one line\n").unwrap();
@@ -11294,7 +11294,7 @@ rl.on('line', line => {
         let _vertex = EnvVarGuard::unset("CLAUDE_CODE_USE_VERTEX");
         let _foundry = EnvVarGuard::unset("CLAUDE_CODE_USE_FOUNDRY");
         let path = std::env::temp_dir().join(format!(
-            "cometix-read-listener-token-{}.txt",
+            "nyan-read-listener-token-{}.txt",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(&path, "listener-content-".repeat(32)).unwrap();
@@ -11394,7 +11394,7 @@ rl.on('line', line => {
             0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
         ];
         let path =
-            std::env::temp_dir().join(format!("cometix-read-image-{}.png", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-read-image-{}.png", uuid::Uuid::new_v4()));
         std::fs::write(&path, TINY_PNG).unwrap();
         let path_str = path.display().to_string();
 
@@ -11448,7 +11448,7 @@ rl.on('line', line => {
     #[tokio::test]
     async fn read_mapper_failure_retains_call_effects_without_new_messages() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-mapper-failure-{}",
+            "nyan-read-mapper-failure-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -11509,9 +11509,9 @@ rl.on('line', line => {
     #[tokio::test]
     async fn read_then_write_updates_live_read_file_state_like_official() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let path = std::env::temp_dir().join(format!(
-            "cometix-read-write-state-{}.txt",
+            "nyan-read-write-state-{}.txt",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(&path, "old\n").unwrap();
@@ -11594,7 +11594,7 @@ rl.on('line', line => {
     #[tokio::test]
     async fn local_tool_executor_runs_glob_and_grep_readonly_tools() {
         let root =
-            std::env::temp_dir().join(format!("cometix-search-tools-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-search-tools-{}", uuid::Uuid::new_v4()));
         let nested = root.join("src");
         std::fs::create_dir_all(&nested).unwrap();
         std::fs::write(
@@ -11803,7 +11803,7 @@ rl.on('line', line => {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _model = EnvVarGuard::set("ANTHROPIC_MODEL", "claude-sonnet-4-6");
         let path =
-            std::env::temp_dir().join(format!("cometix-read-window-{}.txt", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-read-window-{}.txt", uuid::Uuid::new_v4()));
         std::fs::write(&path, "one\ntwo\nthree\nfour\n").unwrap();
         let request = mock_permission_request_with_input(
             "perm-read-window".to_string(),
@@ -11849,9 +11849,9 @@ rl.on('line', line => {
     #[tokio::test]
     async fn local_tool_executor_writes_and_edits_files_after_permission() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root =
-            std::env::temp_dir().join(format!("cometix-write-edit-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-write-edit-{}", uuid::Uuid::new_v4()));
         let path = root.join("nested").join("file.txt");
         let mut context = crate::tool::ToolUseContext::default();
         let write_request = mock_permission_request_with_input(
@@ -11948,7 +11948,7 @@ rl.on('line', line => {
     async fn local_tool_executor_plan_mode_tools_return_official_tool_results() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let config_home =
-            std::env::temp_dir().join(format!("cometix-exit-plan-tool-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-exit-plan-tool-{}", uuid::Uuid::new_v4()));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
         let expected_plan_path = crate::utils::plans::get_plan_file_path(None);
 
@@ -12411,11 +12411,11 @@ rl.on('line', line => {
         let _task_lock = crate::utils::tasks::TASK_TOOL_TEST_LOCK.lock().unwrap();
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let config_root = std::env::temp_dir().join(format!(
-            "cometix-executor-team-tools-{}",
+            "nyan-executor-team-tools-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_root);
-        let _team_io_guard = EnvVarGuard::unset("COMETIX_TEST_TEAM_FILE_IO");
+        let _team_io_guard = EnvVarGuard::unset("NYAN_TEST_TEAM_FILE_IO");
         *TEAM_TOOL_STATE.lock().unwrap() = None;
         crate::utils::tasks::clear_leader_team_name();
         TASK_TOOL_STORE.lock().unwrap().clear();
@@ -12885,7 +12885,7 @@ rl.on('line', line => {
         crate::utils::worktree::restore_worktree_session(None);
 
         let repo =
-            std::env::temp_dir().join(format!("cometix-worktree-test-{}", std::process::id()));
+            std::env::temp_dir().join(format!("nyan-worktree-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&repo);
         std::fs::create_dir_all(&repo).expect("mkdir repo");
         let status = std::process::Command::new("git")
@@ -13127,7 +13127,7 @@ rl.on('line', line => {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let block = ToolUseBlock {
             id: crate::types::ids::ToolUseId("toolu-edit-disabled".to_string()),
             name: "Edit".to_string(),
@@ -13163,9 +13163,9 @@ rl.on('line', line => {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-edit-semantic-validation-{}",
+            "nyan-edit-semantic-validation-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -13229,7 +13229,7 @@ rl.on('line', line => {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let request = mock_permission_request_with_input(
             "perm-notebook-no-write",
             "toolu-notebook-no-write",
@@ -13284,9 +13284,9 @@ rl.on('line', line => {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-notebook-semantic-validation-{}",
+            "nyan-notebook-semantic-validation-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -13368,7 +13368,7 @@ rl.on('line', line => {
     #[test]
     fn edit_permission_rejection_records_bounded_diff_display_immediately() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-edit-live-rejection-{}",
+            "nyan-edit-live-rejection-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

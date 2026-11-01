@@ -3,7 +3,7 @@
 //! Safety boundary: the official component shells out to git, calls
 //! `cleanupWorktree`/`keepWorktree`/`killTmuxSession`, changes process cwd,
 //! clears the plans-directory cache, writes session worktree state, and logs
-//! analytics. Cometix preserves the official render branches, option copy,
+//! analytics. nyan preserves the official render branches, option copy,
 //! subtitle/result-message construction, and callbacks from an explicit
 //! `WorktreeSession` snapshot. Runtime cleanup/tmux/chdir/session writes remain
 //! deferred to the worktree runtime slice.
@@ -165,7 +165,7 @@ pub fn WorktreeExitDialog<'a>(
             subtitle: Some(subtitle),
             on_cancel: move |_| {
                 // Official behavior calls `onCancel` when provided; otherwise it
-                // falls back to selecting `keep`. Cometix exposes the explicit
+                // falls back to selecting `keep`. nyan exposes the explicit
                 // callback path in this safe UI boundary.
                 pending_cancel.set(true);
             },
@@ -200,11 +200,11 @@ mod tests {
             original_cwd: "/repo".to_string(),
             worktree_path: "/repo-feature".to_string(),
             worktree_name: "feature".to_string(),
-            worktree_branch: Some("cometix/feature".to_string()),
+            worktree_branch: Some("nyan/feature".to_string()),
             original_branch: Some("main".to_string()),
             original_head_commit: Some("abc123".to_string()),
             session_id: "session-1".to_string(),
-            tmux_session_name: tmux.then(|| "repo_cometix_feature".to_string()),
+            tmux_session_name: tmux.then(|| "repo_nyan_feature".to_string()),
             hook_based: None,
             creation_duration_ms: None,
             used_sparse_paths: None,
@@ -256,7 +256,7 @@ mod tests {
         .to_string();
 
         assert!(
-            text.contains("You have 2 commits on cometix/feature. The branch will be deleted if you remove the worktree."),
+            text.contains("You have 2 commits on nyan/feature. The branch will be deleted if you remove the worktree."),
             "canvas=\n{text}"
         );
         assert!(
@@ -264,7 +264,7 @@ mod tests {
             "canvas=\n{text}"
         );
         assert!(
-            text.contains("tmux attach -t repo_cometix_feature"),
+            text.contains("tmux attach -t repo_nyan_feature"),
             "canvas=\n{text}"
         );
         assert!(
@@ -381,7 +381,7 @@ mod tests {
             dones.lock().expect("dones mutex").as_slice(),
             &[WorktreeExitDone {
                 result: Some(
-                    "Worktree kept. Your work is saved at /repo-feature on branch cometix/feature"
+                    "Worktree kept. Your work is saved at /repo-feature on branch nyan/feature"
                         .to_string(),
                 ),
                 display: None,

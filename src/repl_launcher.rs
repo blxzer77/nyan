@@ -49,7 +49,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let previous_cwd = std::env::current_dir().unwrap();
         let isolated_cwd =
-            std::env::temp_dir().join(format!("cometix-repl-launcher-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-repl-launcher-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&isolated_cwd).expect("create isolated launcher cwd");
         std::env::set_current_dir(&isolated_cwd).expect("set isolated launcher cwd");
         crate::utils::config::set_test_global_config(Some(

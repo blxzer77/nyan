@@ -1,7 +1,7 @@
 //! Maps to: CC `components/LogoV2/ChannelsNotice.tsx`.
 //!
 //! The official module is conditionally required behind feature flags and reads
-//! bootstrap/auth/settings/MCP/plugin state once at mount. Cometix exposes the
+//! bootstrap/auth/settings/MCP/plugin state once at mount. nyan exposes the
 //! same snapshot, formatting, unmatched-entry, and render branches as pure data;
 //! callers own feature gating and runtime state collection.
 
@@ -240,7 +240,7 @@ pub fn ChannelsNotice(props: &ChannelsNoticeProps, hooks: Hooks) -> impl Into<An
         ]
     } else {
         vec![format!(
-            "Experimental · inbound messages will be pushed into this session, this carries prompt injection risks. Restart Claude Code without {flag} to disable."
+            "Experimental · inbound messages will be pushed into this session, this carries prompt injection risks. Restart nyan without {flag} to disable."
         )]
     };
 

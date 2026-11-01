@@ -952,7 +952,7 @@ pub(crate) fn bash_output(
         result.interrupted && context.abort_controller.reason().as_deref() == Some("interrupt");
     let mut full_stdout = result.stdout.clone();
     // Production Bash uses one file descriptor for stdout+stderr. The explicit
-    // COMETIX_WRITE_ENABLED=0 foreground fallback cannot create that artifact,
+    // NYAN_WRITE_ENABLED=0 foreground fallback cannot create that artifact,
     // so ShellCommand exposes only the raw child stderr (excluding synthetic
     // timeout/watchdog diagnostics) for bounded model-visible merging here.
     if let Some(pipe_stderr) = result.pipe_stderr.as_deref() {
@@ -1533,7 +1533,7 @@ mod tests {
         ));
 
         let outside = std::env::temp_dir().join(format!(
-            "cometix-internal-ast-redirection-{}",
+            "nyan-internal-ast-redirection-{}",
             uuid::Uuid::new_v4().simple()
         ));
         assert!(matches!(
@@ -1556,7 +1556,7 @@ mod tests {
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-bash-sandbox-permission-{}",
+            "nyan-bash-sandbox-permission-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1752,9 +1752,9 @@ mod tests {
     #[test]
     fn bash_output_applies_approved_simulated_sed_edit_without_shelling_out() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let path = std::env::temp_dir().join(format!(
-            "cometix-bash-sed-{}.txt",
+            "nyan-bash-sed-{}.txt",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::write(&path, "hello old\n").unwrap();
@@ -1792,9 +1792,9 @@ mod tests {
     #[test]
     fn bash_output_reports_missing_file_for_simulated_sed_like_official() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let path = std::env::temp_dir().join(format!(
-            "cometix-missing-sed-{}.txt",
+            "nyan-missing-sed-{}.txt",
             uuid::Uuid::new_v4().simple()
         ));
         let args = serde_json::json!({
@@ -1821,11 +1821,11 @@ mod tests {
     #[test]
     fn simulated_sed_respects_explicit_no_write_seam() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let context = crate::tool::ToolUseContext::default();
         let error = futures::executor::block_on(apply_simulated_sed_edit(
             &SimulatedSedEdit {
-                file_path: "/tmp/cometix-must-not-write".to_string(),
+                file_path: "/tmp/nyan-must-not-write".to_string(),
                 new_content: "blocked".to_string(),
             },
             "sed -i ...",
@@ -1843,7 +1843,7 @@ mod tests {
     fn map_uses_persisted_output_wrapper() {
         let big = "x".repeat(200);
         let path = std::env::temp_dir().join(format!(
-            "cometix-bash-persisted-{}",
+            "nyan-bash-persisted-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::write(&path, &big).unwrap();
@@ -1883,12 +1883,12 @@ mod tests {
     fn persisted_output_copies_verified_source_and_commits_atomically() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-bash-persist-copy-{}",
+            "nyan-bash-persist-copy-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let source = root.join("source.output");
         std::fs::write(&source, b"0123456789").unwrap();
         let task_id = format!("task-{}", uuid::Uuid::new_v4().simple());
@@ -1909,12 +1909,12 @@ mod tests {
     fn persisted_output_rename_failure_keeps_source_artifact_and_cleans_temporary() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-bash-persist-rename-failure-{}",
+            "nyan-bash-persist-rename-failure-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let source = root.join("source.output");
         std::fs::write(&source, b"retained-output").unwrap();
         let task_id = format!("task-{}", uuid::Uuid::new_v4().simple());
@@ -1947,12 +1947,12 @@ mod tests {
 
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-bash-persist-symlink-{}",
+            "nyan-bash-persist-symlink-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let victim = root.join("victim");
         let source = root.join("swapped.output");
         std::fs::write(&victim, b"victim-must-remain-intact").unwrap();
@@ -2028,12 +2028,12 @@ mod tests {
     fn file_mode_merges_stdout_stderr_and_preserves_partial_binary_tail() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-bash-file-mode-{}",
+            "nyan-bash-file-mode-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _background = EnvVarGuard::set("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1");
         let output = bash_output(
             &serde_json::json!({
@@ -2054,12 +2054,12 @@ mod tests {
     fn no_write_pipe_fallback_keeps_child_stderr_model_visible() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-bash-no-write-stderr-{}",
+            "nyan-bash-no-write-stderr-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let _background = EnvVarGuard::set("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1");
         let output = bash_output(
             &serde_json::json!({"command": "printf visible-error >&2; exit 2"}),
@@ -2085,12 +2085,12 @@ mod tests {
     fn file_mode_returns_on_shell_exit_without_waiting_for_grandchild_fd() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-bash-grandchild-fd-{}",
+            "nyan-bash-grandchild-fd-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _background = EnvVarGuard::set("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1");
         // Snapshot creation is a one-time provider cost and is outside the
         // ShellCommand `exit` versus inherited-fd contract measured here.
@@ -2134,7 +2134,7 @@ mod tests {
 
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _tasks = TaskStateGuard;
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _background = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
         crate::tasks::local_shell_task::clear_for_test();
         let store = crate::state::store::AppStore::new(
@@ -2207,7 +2207,7 @@ mod tests {
 
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _tasks = TaskStateGuard;
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _background = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
         crate::tasks::local_shell_task::clear_for_test();
         let store = crate::state::store::AppStore::new(
@@ -2257,7 +2257,7 @@ mod tests {
     #[test]
     fn large_foreground_output_is_copied_to_retained_tool_result_artifact() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _max_output = EnvVarGuard::unset("BASH_MAX_OUTPUT_LENGTH");
         let output = bash_output(
             &serde_json::json!({
@@ -2287,7 +2287,7 @@ mod tests {
     #[test]
     fn large_error_output_keeps_task_artifact_without_success_persistence_link() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _max_output = EnvVarGuard::unset("BASH_MAX_OUTPUT_LENGTH");
         let directory = crate::utils::task::disk_output::get_task_output_dir();
         std::fs::create_dir_all(&directory).unwrap();
@@ -2330,17 +2330,17 @@ mod tests {
 
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _cache = CacheGuard;
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let path = std::env::temp_dir().join(format!(
-            "cometix-parent-session-env-{}",
+            "nyan-parent-session-env-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        std::fs::write(&path, "export COMETIX_SESSION_ENV_TEST=visible").unwrap();
+        std::fs::write(&path, "export NYAN_SESSION_ENV_TEST=visible").unwrap();
         let _env_file = EnvVarGuard::set("CLAUDE_ENV_FILE", &path);
         crate::utils::session_environment::invalidate_session_env_cache();
 
         let output = bash_output(
-            &serde_json::json!({"command": "printf %s \"$COMETIX_SESSION_ENV_TEST\""}),
+            &serde_json::json!({"command": "printf %s \"$NYAN_SESSION_ENV_TEST\""}),
             &crate::tool::ToolUseContext::default(),
             None,
             None,
@@ -2353,7 +2353,7 @@ mod tests {
     #[test]
     fn bash_output_uses_cwd_override_like_official_run_with_cwd_override() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-bash-cwd-{}",
+            "nyan-bash-cwd-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -2374,7 +2374,7 @@ mod tests {
     #[test]
     fn foreground_shell_reports_persistent_physical_cwd() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-bash-persistent-cwd-{}",
+            "nyan-bash-persistent-cwd-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let child = dir.join("child");

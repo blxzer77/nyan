@@ -329,7 +329,7 @@ mod tests {
     #[test]
     fn safe_apply_writes_only_supplied_updated_file_tag() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-skill-improvement-{}",
+            "nyan-skill-improvement-{}",
             uuid::Uuid::new_v4()
         ));
         let skill_dir = dir.join(".claude/skills/daily");

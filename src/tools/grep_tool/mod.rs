@@ -1277,7 +1277,7 @@ mod tests {
     #[test]
     fn grep_output_uses_cwd_override_when_path_is_omitted() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-grep-cwd-{}",
+            "nyan-grep-cwd-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -1323,7 +1323,7 @@ mod tests {
     #[test]
     fn grep_output_applies_head_limit_and_offset_like_official() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-grep-page-{}",
+            "nyan-grep-page-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -1417,7 +1417,7 @@ mod tests {
         use crate::tool::ToolCall as _;
 
         let cwd = std::env::temp_dir().join(format!(
-            "cometix-grep-validation-{}",
+            "nyan-grep-validation-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let suggested_name = format!("suggested-dir-{}", uuid::Uuid::new_v4().simple());
@@ -1492,11 +1492,11 @@ mod tests {
 
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-grep-permission-root-{}",
+            "nyan-grep-permission-root-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let outside = std::env::temp_dir().join(format!(
-            "cometix-grep-permission-outside-{}",
+            "nyan-grep-permission-outside-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(root.join("blocked")).unwrap();
@@ -1658,7 +1658,7 @@ mod tests {
     #[test]
     fn grep_execution_covers_official_modes_filters_context_and_multiline() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-grep-modes-{}",
+            "nyan-grep-modes-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(root.join(".git")).unwrap();
@@ -1797,7 +1797,7 @@ mod tests {
     #[test]
     fn grep_content_and_count_order_is_stable_and_results_have_completion_notes() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-grep-stable-{}",
+            "nyan-grep-stable-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1838,7 +1838,7 @@ mod tests {
     #[test]
     fn grep_decodes_legacy_content_and_truncates_long_lines() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-grep-encoding-{}",
+            "nyan-grep-encoding-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1907,11 +1907,11 @@ mod tests {
     #[test]
     fn grep_read_deny_rules_filter_every_mode_and_symlink_traversal_roots() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-grep-deny-{}",
+            "nyan-grep-deny-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let outside = std::env::temp_dir().join(format!(
-            "cometix-grep-deny-target-{}",
+            "nyan-grep-deny-target-{}",
             uuid::Uuid::new_v4().simple()
         ));
         for directory in [
@@ -1994,7 +1994,7 @@ mod tests {
             }
         }
         let plugins = std::env::temp_dir().join(format!(
-            "cometix-grep-plugins-{}",
+            "nyan-grep-plugins-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let orphaned = plugins.join("cache/market/tool/1.0");
@@ -2133,7 +2133,7 @@ mod tests {
         use crate::types::message::ToolResultStatus;
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-grep-call-{}",
+            "nyan-grep-call-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

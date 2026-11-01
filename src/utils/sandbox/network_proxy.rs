@@ -174,7 +174,7 @@ fn start_http_proxy(shutdown: Arc<AtomicBool>, parent: ParentRoute) -> Result<u1
     listener.set_nonblocking(true)?;
     let port = listener.local_addr()?.port();
     std::thread::Builder::new()
-        .name("cometix-sandbox-http-proxy".to_string())
+        .name("nyan-sandbox-http-proxy".to_string())
         .spawn(move || accept_loop(listener, shutdown, parent, handle_http_connection))
         .context("Could not start the sandbox HTTP proxy")?;
     Ok(port)
@@ -186,7 +186,7 @@ fn start_socks_proxy(shutdown: Arc<AtomicBool>, parent: ParentRoute) -> Result<u
     listener.set_nonblocking(true)?;
     let port = listener.local_addr()?.port();
     std::thread::Builder::new()
-        .name("cometix-sandbox-socks-proxy".to_string())
+        .name("nyan-sandbox-socks-proxy".to_string())
         .spawn(move || accept_loop(listener, shutdown, parent, handle_socks_connection))
         .context("Could not start the sandbox SOCKS proxy")?;
     Ok(port)
@@ -732,7 +732,7 @@ fn parse_ipv4_number(value: &str) -> Option<u64> {
 
 // ── Parent proxy ────────────────────────────────────────────────────────────
 // Maps to: `@anthropic-ai/sandbox-runtime` 0.0.44 `sandbox/parent-proxy.js`
-// and its callers in `http-proxy.js`/`socks-proxy.js`. When the environment Cometix runs
+// and its callers in `http-proxy.js`/`socks-proxy.js`. When the environment Nyan runs
 // in needs an HTTP proxy for outbound traffic, the sandbox's own proxies chain
 // through it rather than dialing directly.
 //
@@ -1183,8 +1183,8 @@ fn start_linux_bridges(
 ) -> Result<(PathBuf, PathBuf, Vec<Child>)> {
     let token = uuid::Uuid::new_v4().simple().to_string();
     // sandbox-runtime `linux-sandbox-utils.js:326-327` `join(tmpdir(), …)`.
-    let http_socket = crate::utils::node_os::tmpdir().join(format!("cometix-http-{token}.sock"));
-    let socks_socket = crate::utils::node_os::tmpdir().join(format!("cometix-socks-{token}.sock"));
+    let http_socket = crate::utils::node_os::tmpdir().join(format!("nyan-http-{token}.sock"));
+    let socks_socket = crate::utils::node_os::tmpdir().join(format!("nyan-socks-{token}.sock"));
     let mut bridges = Vec::new();
     for (socket, port) in [(&http_socket, http_port), (&socks_socket, socks_port)] {
         let mut command = Command::new("socat");

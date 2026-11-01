@@ -1,6 +1,6 @@
-//! CometixCode library crate — module tree mirroring CC `src/`.
+//! nyan library crate — module tree mirroring CC `src/`.
 //!
-//! Binary glue is `src/bin/cometix.rs` (invokes [`entrypoints::cli`]).
+//! Binary glue is `src/bin/nyan.rs` (invokes [`entrypoints::cli`]).
 //! [`main`] is the port of CC `main.tsx`. `autobins = false` so Cargo does
 //! not treat `src/main.rs` as a binary crate root.
 //!

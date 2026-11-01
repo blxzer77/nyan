@@ -244,7 +244,7 @@ mod tests {
 
     fn fixture(content: &[u8]) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!(
-            "cometix-read-edit-context-{}",
+            "nyan-read-edit-context-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::write(&path, content).unwrap();
@@ -335,7 +335,7 @@ mod tests {
     fn preview_open_rejects_fifo_without_blocking() {
         use std::os::unix::ffi::OsStrExt as _;
         let path = std::env::temp_dir().join(format!(
-            "cometix-read-edit-context-fifo-{}",
+            "nyan-read-edit-context-fifo-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();

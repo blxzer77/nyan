@@ -10,7 +10,7 @@ use iocraft::prelude::*;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WorkerBadgeProps {
     pub name: String,
-    /// Maps to official `color: string`; Cometix callers that need exact color
+    /// Maps to official `color: string`; Nyan callers that need exact color
     /// conversion should resolve it before constructing the iocraft component.
     pub color: Option<Color>,
 }

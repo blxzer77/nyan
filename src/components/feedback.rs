@@ -430,7 +430,7 @@ pub fn Feedback(props: &FeedbackProps) -> impl Into<AnyElement<'static>> {
                             }))
                             Text(content: "- Current session transcript")
                         }
-                        Text(content: "We will use your feedback to debug related issues or to improve Claude Code's functionality (eg. to reduce the risk of bugs occurring in the future).", dim: true, wrap: TextWrap::Wrap)
+                        Text(content: "We will use your feedback to debug related issues or to improve nyan's functionality (eg. to reduce the risk of bugs occurring in the future).", dim: true, wrap: TextWrap::Wrap)
                         Text(content: "Press Enter to confirm and submit.")
                     }
                 }.into_any(),

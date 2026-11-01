@@ -1,7 +1,7 @@
 //! Maps to: CC `components/StatusNotices.tsx`.
 //!
 //! Safety boundary: official `StatusNotices` constructs context by reading
-//! global config, memory files, auth state, and IDE plugin state. Cometix accepts
+//! global config, memory files, auth state, and IDE plugin state. Nyan accepts
 //! a prebuilt `StatusNoticeContext` snapshot and renders active notices only.
 
 use crate::constants::figures::figures;

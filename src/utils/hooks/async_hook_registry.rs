@@ -2,7 +2,7 @@
 //! Maps to: CC `utils/hooks/AsyncHookRegistry.ts`.
 //!
 //! CC stores backgrounded `ShellCommand` objects and polls them for completed
-//! sync JSON responses. Cometix has not ported the `ShellCommand` wrapper yet,
+//! sync JSON responses. Nyan has not ported the `ShellCommand` wrapper yet,
 //! so this module stores an equivalent observable process handle (status,
 //! stdout/stderr, exit code, kill/cleanup state). Hook orchestration can replace
 //! that handle with a real process wrapper without changing the registry API.
@@ -390,7 +390,7 @@ pub async fn check_for_async_hook_responses() -> Vec<AsyncHookResponse> {
     }
 
     // CC invalidates the session env cache when a SessionStart async hook
-    // completes. Cometix has not ported sessionEnvironment yet; Cwd/File env
+    // completes. Nyan has not ported sessionEnvironment yet; Cwd/File env
     // hook support remains tracked by the fileChangedWatcher/session-env slice.
     responses
 }

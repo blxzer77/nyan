@@ -2,17 +2,17 @@
 //!
 //! Official Claude Code wires `ToolUseContext.sendOSNotification` to
 //! `services/notifier.ts` and `ink/useTerminalNotification.ts`, which may emit
-//! terminal OSC/BEL side effects. Cometix keeps the same planning boundary but
+//! terminal OSC/BEL side effects. Nyan keeps the same planning boundary but
 //! does not write any raw terminal sequences in the current UI-only phase.
 
 #![allow(dead_code)]
 
 use super::config::GlobalConfig;
 
-pub const DEFAULT_TERMINAL_NOTIFICATION_TITLE: &str = "Cometix Code";
+pub const DEFAULT_TERMINAL_NOTIFICATION_TITLE: &str = "nyan";
 pub const DEFAULT_INTERACTION_THRESHOLD_MS: u64 = 6_000;
 pub const IDLE_PROMPT_NOTIFICATION_TYPE: &str = "idle_prompt";
-pub const IDLE_PROMPT_NOTIFICATION_MESSAGE: &str = "Cometix is waiting for your input";
+pub const IDLE_PROMPT_NOTIFICATION_MESSAGE: &str = "nyan is waiting for your input";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TerminalNotificationChannel {
@@ -91,7 +91,7 @@ impl TerminalNotificationMethod {
 pub struct TerminalNotificationEnvironment<'a> {
     pub terminal: Option<&'a str>,
     /// Already-known result of official Apple Terminal bell preference probing.
-    /// Cometix does not run `osascript` or `defaults` in the UI-only path, but
+    /// Nyan does not run `osascript` or `defaults` in the UI-only path, but
     /// callers may provide a safe cached/snapshot value when one exists.
     pub apple_terminal_bell_disabled: Option<bool>,
 }
@@ -469,7 +469,7 @@ pub fn notify_after_timeout_request(
 
 /// Pure counterpart of the REPL idle-input OS notification effect. Official
 /// sends `idle_prompt` after a completed response if the user has not interacted
-/// and no loading/local-command/dialog UI is active. Cometix only returns the
+/// and no loading/local-command/dialog UI is active. Nyan only returns the
 /// planned request for an explicit future side-effect layer.
 pub fn repl_idle_prompt_notification_request(
     snapshot: &ReplIdlePromptNotificationSnapshot<'_>,
@@ -626,7 +626,7 @@ fn coerce_semver_triplet(value: &str) -> Option<(u64, u64, u64)> {
 
 /// Pure counterpart of official `useTerminalNotification().progress(...)`.
 /// It plans the OSC 9;4 action that would be emitted when terminal progress
-/// reporting is available, but never writes raw OSC/BEL bytes in Cometix.
+/// reporting is available, but never writes raw OSC/BEL bytes in Nyan.
 pub fn terminal_progress_plan(
     progress_reporting_available: bool,
     state: Option<TerminalProgressState>,
@@ -722,7 +722,7 @@ fn ghostty_notification_sequence(
 
 /// Pure encoder for official `useTerminalNotification()` notification output.
 /// The caller supplies the kitty id because official `generateKittyId()` is
-/// random. Cometix returns encoded sequences for an explicitly enabled future
+/// random. Nyan returns encoded sequences for an explicitly enabled future
 /// side-effect layer, but the default UI-only path does not write them.
 pub fn terminal_notification_escape_sequences(
     request: &TerminalNotificationRequest,
@@ -769,7 +769,7 @@ fn osc_terminator(env: &TerminalEscapeEnvironment<'_>) -> &'static str {
 
 /// Pure encoder for official `useTerminalNotification().progress(...)` OSC 9;4
 /// output. This deliberately returns the bytes that an explicitly enabled
-/// side-effect layer would write; Cometix's default main-screen path only plans
+/// side-effect layer would write; Nyan's default main-screen path only plans
 /// or captures the sequence and does not emit raw OSC/BEL bytes.
 pub fn terminal_progress_escape_sequence(
     plan: TerminalProgressPlan,
@@ -979,7 +979,7 @@ mod tests {
         };
 
         let plan = terminal_notification_service_plan_from_config(
-            TerminalNotificationOptions::new("idle_prompt", "Cometix is waiting")
+            TerminalNotificationOptions::new("idle_prompt", "Nyan is waiting")
                 .with_title("Custom"),
             &config,
             &env,
@@ -990,7 +990,7 @@ mod tests {
         assert_eq!(plan.request.channel, TerminalNotificationChannel::Ghostty);
         assert_eq!(plan.request.method, TerminalNotificationMethod::Ghostty);
         assert_eq!(plan.hook_input.hook_event_name, "Notification");
-        assert_eq!(plan.hook_input.message, "Cometix is waiting");
+        assert_eq!(plan.hook_input.message, "Nyan is waiting");
         assert_eq!(plan.hook_input.title.as_deref(), Some("Custom"));
         assert_eq!(plan.hook_input.notification_type, "idle_prompt");
     }
@@ -1380,7 +1380,7 @@ mod tests {
                 7,
             ),
             vec![
-                "\x1b]99;i=7:d=0:p=title;Cometix Code\x1b\\".to_string(),
+                "\x1b]99;i=7:d=0:p=title;nyan\x1b\\".to_string(),
                 "\x1b]99;i=7:p=body;Done\x1b\\".to_string(),
                 "\x1b]99;i=7:d=1:a=focus;\x1b\\".to_string(),
             ]

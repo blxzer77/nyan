@@ -583,7 +583,7 @@ mod tests {
                     "rust".to_string(),
                     ScopedLspServerConfig {
                         config: LspServerConfig {
-                            command: "definitely-not-a-cometix-lsp-server".to_string(),
+                            command: "definitely-not-a-nyan-lsp-server".to_string(),
                             extension_to_language,
                             ..LspServerConfig::default()
                         },
@@ -601,7 +601,7 @@ mod tests {
         let mut tasks = Vec::new();
         for index in 0..8 {
             tasks.push(tokio::spawn(async move {
-                let path = format!("/tmp/cometix-lsp-concurrency-{index}.rs");
+                let path = format!("/tmp/nyan-lsp-concurrency-{index}.rs");
                 for _ in 0..10 {
                     // The routed call fails (that binary does not exist), but it
                     // must never resolve to `Ok(None)` — that is the "no server

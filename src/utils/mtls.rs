@@ -5,7 +5,7 @@
 //! has no agent apart from its client, so [`get_mtls_agent`] holds those
 //! options parsed and [`MTLSAgent::apply`] sets them on a client builder.
 //!
-//! Cometix-specific deviations:
+//! Nyan-specific deviations:
 //! - An encrypted key cannot be used: rustls reads only plain PKCS#8, PKCS#1
 //!   and SEC1 keys, and Android's native-tls only plain PKCS#8. It is
 //!   logged, and no client certificate is sent;

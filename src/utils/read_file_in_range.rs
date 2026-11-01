@@ -854,7 +854,7 @@ mod tests {
 
     fn temp_file(name: &str, content: &[u8]) -> (std::path::PathBuf, std::path::PathBuf) {
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-range-{name}-{}",
+            "nyan-read-range-{name}-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -976,7 +976,7 @@ mod tests {
     #[test]
     fn native_stat_error_preserves_errno_operation_and_path() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-read-range-missing-{}",
+            "nyan-read-range-missing-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let error = read_file_in_range(
@@ -1023,7 +1023,7 @@ mod tests {
     fn fifo_open_blocks_until_writer_then_observes_abort() {
         use std::ffi::CString;
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-range-fifo-{}",
+            "nyan-read-range-fifo-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

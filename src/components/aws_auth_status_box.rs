@@ -1,7 +1,7 @@
 //! Maps to: CC `components/AwsAuthStatusBox.tsx`.
 //!
 //! The official component subscribes to `AwsAuthStatusManager` and re-renders
-//! when cloud-provider authentication status changes. Cometix preserves the
+//! when cloud-provider authentication status changes. Nyan preserves the
 //! component and state-manager boundaries; the component reads the current
 //! manager snapshot (or a test-provided snapshot) at render time, while caller
 //! re-render scheduling remains outside this UI boundary.

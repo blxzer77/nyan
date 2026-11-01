@@ -3195,7 +3195,7 @@ mod tests {
 
     #[test]
     fn seed_read_state_requires_client_mtime_to_be_fresh() {
-        let root = std::env::temp_dir().join(format!("cometix-seed-read-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-seed-read-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("seed.txt");
         std::fs::write(&path, "one\r\ntwo").unwrap();
@@ -3302,7 +3302,7 @@ mod sdk_mapper_tests {
     }
     #[test]
     fn sdk_initialize_cold_plugins_keeps_published_current_thread_executor_live() {
-        const CHILD: &str = "COMETIX_SDK_CURRENT_THREAD_PLUGIN_CHILD";
+        const CHILD: &str = "NYAN_SDK_CURRENT_THREAD_PLUGIN_CHILD";
         if let Some(root) = crate::utils::process_env::var_os(CHILD) {
             // Isolated test process: do not use initialize_test_process_runtime,
             // whose multithread executor would conceal the production deadlock.

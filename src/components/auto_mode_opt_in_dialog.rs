@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: official `onChange(...)` logs analytics and writes user
 //! settings (`skipAutoPermissionPrompt`, optionally `permissions.defaultMode =
-//! 'auto'`) before invoking callbacks. Cometix preserves the dialog/options and
+//! 'auto'`) before invoking callbacks. Nyan preserves the dialog/options and
 //! callback boundary only; no telemetry or settings writes are performed here.
 
 use crate::components::custom_select::{Select, SelectLayout, SelectOptionData};

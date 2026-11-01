@@ -10,12 +10,12 @@ use crate::utils::theme::ThemeName;
 use iocraft::prelude::*;
 
 const WELCOME_V2_WIDTH: usize = 58;
-const WELCOME_MESSAGE: &str = "Welcome to Claude Code";
+const WELCOME_MESSAGE: &str = "Welcome to nyan";
 
 #[derive(Default, Props)]
 pub struct WelcomeV2Props {
     /// Test/runtime override for the official theme-name branch. When omitted,
-    /// Cometix uses its current default dark theme until theme-name context is
+    /// nyan uses its current default dark theme until theme-name context is
     /// promoted alongside the existing `Theme` color context.
     pub theme_name: Option<ThemeName>,
     pub version: Option<String>,
@@ -173,13 +173,13 @@ mod tests {
     fn welcome_v2_dark_branch_matches_official_ascii_shape() {
         let text = render_welcome(ThemeName::Dark, false);
         assert!(
-            text.contains("Welcome to Claude Code v1.2.3"),
+            text.contains("Welcome to nyan v1.2.3"),
             "canvas=\n{text}"
         );
         assert!(text.contains("█████▓▓░"), "canvas=\n{text}");
         assert!(text.contains("██▄█████▄██"), "canvas=\n{text}");
         assert!(text.contains("█ █   █ █"), "canvas=\n{text}");
-        assert!(!text.contains("Cometix Code"), "canvas=\n{text}");
+        assert!(!text.contains("Cometix"), "canvas=\n{text}");
     }
 
     #[test]

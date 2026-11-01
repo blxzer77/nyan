@@ -3,7 +3,7 @@
 //! Safety boundary: official `RemoteEnvironmentDialog` fetches environments via
 //! Claude.ai OAuth (`getEnvironmentSelectionInfo`) and writes
 //! `remote.defaultEnvironmentId` with `updateSettingsForSource('localSettings',
-//! ...)` when a selection is made. Cometix preserves the official component
+//! ...)` when a selection is made. Nyan preserves the official component
 //! branches, visible copy, source suffix logic, selection callbacks, and loading
 //! states from an explicit `EnvironmentSelectionInfo` snapshot. OAuth/network
 //! calls and settings writes are deferred to the remote runtime/settings slice.

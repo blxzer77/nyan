@@ -615,7 +615,7 @@ mod tests {
     impl EnvGuard {
         fn writes(value: &str) -> Self {
             Self {
-                _env: EnvVarGuard::set("COMETIX_WRITE_ENABLED", value),
+                _env: EnvVarGuard::set("NYAN_WRITE_ENABLED", value),
             }
         }
     }

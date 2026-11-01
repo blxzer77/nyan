@@ -56,7 +56,7 @@ pub fn get_cli_sysprompt_prefix(
 /// The GrowthBook read is the source-controlled
 /// `FeatureFlag::AttributionHeader` switch, not a live GrowthBook client.
 ///
-/// @cometix offset: default `CLAUDE_CODE_ATTRIBUTION_HEADER` to `0` when unset
+/// @nyan offset: default `CLAUDE_CODE_ATTRIBUTION_HEADER` to `0` when unset
 /// so the official gate skips assembling the header on production requests.
 fn is_attribution_header_enabled() -> bool {
     let value = crate::utils::process_env::var("CLAUDE_CODE_ATTRIBUTION_HEADER")
@@ -89,7 +89,7 @@ pub fn get_attribution_header(fingerprint: &str) -> String {
     // Maps to: CC `process.env.CLAUDE_CODE_ENTRYPOINT ?? 'unknown'`
     let entrypoint =
         crate::utils::process_env::var("CLAUDE_CODE_ENTRYPOINT").unwrap_or_else(|| "unknown".to_string());
-    // cch=00000 placeholder is Bun-native attestation — omitted in Cometix.
+    // cch=00000 placeholder is Bun-native attestation — omitted in Nyan.
     format!("x-anthropic-billing-header: cc_version={version}; cc_entrypoint={entrypoint};")
 }
 

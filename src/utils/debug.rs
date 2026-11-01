@@ -5,16 +5,16 @@
 //!
 //! Developer defaults (aligned with CC):
 //! - `--debug` / `-d` → write to `~/.claude/debug/{session}.log` (TUI-safe;
-//!   Cometix uses `.log`; CC uses `.txt`)
+//!   Nyan uses `.log`; CC uses `.txt`)
 //! - `--debug-to-stderr` / `-d2e` → stderr instead of file
 //! - `--debug-file <path>` → explicit file (implies debug mode)
 //! - `--debug=api,hooks` / `-d api,hooks` → category filter
 //!
-//! Cometix-only render profilers (CC has no equivalent; see
+//! Nyan-only render profilers (CC has no equivalent; see
 //! [`ProfileSelection`]): `--debug=frame,component,query-pump` or
 //! `--debug=perf`, the argv flags `--debug-*-profile`, or the environment
-//! variable `COMETIX_DEBUG_PROFILES` with the same list syntax.
-//! `COMETIX_FRAME_TIMING_LOG` / `COMETIX_FRAME_TIMING_SAMPLE_EVERY` are the
+//! variable `NYAN_DEBUG_PROFILES` with the same list syntax.
+//! `NYAN_FRAME_TIMING_LOG` / `NYAN_FRAME_TIMING_SAMPLE_EVERY` are the
 //! twins of CC's `CLAUDE_CODE_FRAME_TIMING_LOG` / `_SAMPLE_EVERY` bench JSONL.
 
 use crate::utils::debug_filter::{DebugFilter, parse_debug_filter, should_show_debug_message};
@@ -175,13 +175,13 @@ fn update_latest_debug_log_symlink(debug_log_path: &Path) {
     }
 }
 
-/// Which render-side profilers are on. Cometix-only (CC has no equivalent of
+/// Which render-side profilers are on. Nyan-only (CC has no equivalent of
 /// these probes); each costs per frame, so all are off by default.
 ///
 /// One comma-separated list syntax selects them in three places: the
 /// `--debug=` filter (profiler names sit beside the log categories), the argv
 /// flags `--debug-frame-profile` / `--debug-component-profile` /
-/// `--debug-query-pump-profile` / `--debug-perf`, and `COMETIX_DEBUG_PROFILES`
+/// `--debug-query-pump-profile` / `--debug-perf`, and `NYAN_DEBUG_PROFILES`
 /// for launching under a profiler without touching argv (bench scripts).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ProfileSelection {
@@ -225,9 +225,9 @@ impl ProfileSelection {
         selection
     }
 
-    /// `COMETIX_DEBUG_PROFILES`: the same list, from the environment.
+    /// `NYAN_DEBUG_PROFILES`: the same list, from the environment.
     fn from_env() -> Self {
-        Self::parse(crate::utils::process_env::var("COMETIX_DEBUG_PROFILES").as_deref())
+        Self::parse(crate::utils::process_env::var("NYAN_DEBUG_PROFILES").as_deref())
     }
 
     fn or(self, other: Self) -> Self {
@@ -282,7 +282,7 @@ pub fn announce_debug_startup_if_enabled() {
         get_debug_log_path().display().to_string()
     };
     // Always print destination once before the TUI owns the terminal.
-    eprintln!("[cometix] debug logging → {sink}");
+    eprintln!("[nyan] debug logging → {sink}");
     log_for_debugging(&format!("startup: debug mode enabled → {sink}"));
     if let Some(filter) = config().filter.as_ref() {
         log_for_debugging(&format!("startup: debug filter={filter:?}"));
@@ -336,7 +336,7 @@ pub fn frame_profile_enabled() -> bool {
 /// bench-only per-frame JSONL for offline analysis. The Rust twin uses the
 /// same record shape so one analysis script can consume both sides.
 pub fn frame_timing_log_path() -> Option<std::path::PathBuf> {
-    crate::utils::process_env::var_os("COMETIX_FRAME_TIMING_LOG")
+    crate::utils::process_env::var_os("NYAN_FRAME_TIMING_LOG")
         .filter(|value| !value.is_empty())
         .map(std::path::PathBuf::from)
 }
@@ -349,7 +349,7 @@ pub fn frame_timing_sample_tick() -> bool {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     static EVERY: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
     let every = *EVERY.get_or_init(|| {
-        crate::utils::process_env::var("COMETIX_FRAME_TIMING_SAMPLE_EVERY")
+        crate::utils::process_env::var("NYAN_FRAME_TIMING_SAMPLE_EVERY")
             .and_then(|value| value.parse::<u64>().ok())
             .filter(|&value| value >= 1)
             .unwrap_or(1)
@@ -498,7 +498,7 @@ mod tests {
 
     #[test]
     fn log_ant_error_matches_official_audience_stack_and_error_level() {
-        const CHILD: &str = "COMETIX_TEST_LOG_ANT_ERROR_CHILD";
+        const CHILD: &str = "NYAN_TEST_LOG_ANT_ERROR_CHILD";
         if crate::utils::process_env::var_os(CHILD).is_some() {
             init_from_parts(false, true, None, None);
             log_ant_error("absent-stack", None);
@@ -535,7 +535,7 @@ mod tests {
     }
 
     fn argv(args: &[&str]) -> Vec<String> {
-        std::iter::once("cometix".to_string())
+        std::iter::once("nyan".to_string())
             .chain(args.iter().map(|arg| arg.to_string()))
             .collect()
     }
@@ -558,11 +558,11 @@ mod tests {
 
     #[test]
     fn debug_file_enables_debug_and_sets_path() {
-        let config = DebugConfig::from_argv(&argv(&["--debug-file", "/tmp/cometix-debug.log"]));
+        let config = DebugConfig::from_argv(&argv(&["--debug-file", "/tmp/nyan-debug.log"]));
         assert!(config.debug);
         assert_eq!(
             config.debug_file.as_deref(),
-            Some(Path::new("/tmp/cometix-debug.log"))
+            Some(Path::new("/tmp/nyan-debug.log"))
         );
     }
 
@@ -634,7 +634,7 @@ mod tests {
         );
         // Retired spellings and unknown tokens select nothing.
         assert_eq!(
-            ProfileSelection::parse(Some("frame-profile,COMETIX_FRAME_PROFILE")),
+            ProfileSelection::parse(Some("frame-profile,NYAN_FRAME_PROFILE")),
             ProfileSelection::default()
         );
     }

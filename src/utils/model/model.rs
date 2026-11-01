@@ -49,7 +49,7 @@ pub fn get_default_haiku_model() -> String {
 
 /// Maps to: CC `utils/model/model.ts` `getDefaultMainLoopModelSetting()`.
 ///
-/// Cometix does not yet port Max/Team Premium subscriber detection; preserve
+/// Nyan does not yet port Max/Team Premium subscriber detection; preserve
 /// the source-level split that affects Query fallback most: ants default to
 /// Opus with 1M context, all other users default to Sonnet.
 pub fn get_default_main_loop_model_setting_for_audience(
@@ -240,7 +240,7 @@ pub fn normalize_model_string_for_api(model: &str) -> String {
 
 /// Maps to: CC `utils/model/model.ts` `getPublicModelDisplayName(...)`.
 ///
-/// Cometix matches first-party marketing names by substring until provider
+/// Nyan matches first-party marketing names by substring until provider
 /// model-string tables are fully ported.
 pub fn get_public_model_display_name(model: &str) -> Option<String> {
     let has_1m = crate::utils::context::has_1m_context(model);
@@ -312,7 +312,7 @@ pub fn is_non_custom_opus_model(model: &str) -> bool {
     }
 
     // CC compares against provider-specific `getModelStrings().opus*` values.
-    // Cometix does not yet port provider model string profiles, so match the
+    // Nyan does not yet port provider model string profiles, so match the
     // canonical non-custom Opus 4 family names and provider IDs by substring.
     model.contains("claude-opus-4")
 }
@@ -518,7 +518,7 @@ mod tests {
         .map(EnvVarGuard::unset);
 
         let config_dir =
-            std::env::temp_dir().join(format!("cometix-opus1m-{}", uuid::Uuid::new_v4().simple()));
+            std::env::temp_dir().join(format!("nyan-opus1m-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&config_dir).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_dir);
         let write_credentials = |oauth: serde_json::Value| {
@@ -696,7 +696,7 @@ mod tests {
         let previous_override = crate::bootstrap::state::get_main_loop_model_override();
         let model = EnvVarGuard::unset("ANTHROPIC_MODEL");
         let root = std::env::temp_dir().join(format!(
-            "cometix-model-allowlist-{}",
+            "nyan-model-allowlist-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

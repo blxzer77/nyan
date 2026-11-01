@@ -140,9 +140,9 @@ fn ModeIndicator(props: &ModeIndicatorProps, hooks: Hooks) -> impl Into<AnyEleme
     let primary_item_count =
         usize::from(has_mode) + usize::from(has_tasks) + usize::from(has_teams);
     let show_mode_hint = primary_item_count < 2;
-    // Cometix-specific deviation (product requirement — skip in parity audits):
+    // Nyan-specific deviation (product requirement — skip in parity audits):
     // CC pushes hintParts ("esc to interrupt" while loading, gated only on
-    // showHint) into the same row. Cometix explicitly does NOT clone that tip
+    // showHint) into the same row. Nyan explicitly does NOT clone that tip
     // text, so the slot stays empty while loading and only the
     // "? for shortcuts" idle fallback remains (CC's empty-parts condition).
     let show_shortcuts_hint = props.show_hint && !props.is_loading && primary_item_count == 0;
@@ -239,9 +239,9 @@ fn PermissionModePart(
 
     element! {
         View(flex_direction: FlexDirection::Row, flex_shrink: 0.0f32) {
-            // Cometix-specific deviation (product requirement — skip in parity
+            // Nyan-specific deviation (product requirement — skip in parity
             // audits): CC's modePart appends " on" after the lowercased mode
-            // title (`{permissionModeTitle(mode).toLowerCase()} on`); Cometix
+            // title (`{permissionModeTitle(mode).toLowerCase()} on`); Nyan
             // renders the bare label without the " on" suffix.
             Text(content: format!("{prefix}{label}"), color: color, wrap: TextWrap::NoWrap)
             #(props.show_hint.then(|| element! {

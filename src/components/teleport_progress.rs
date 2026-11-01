@@ -1,7 +1,7 @@
 //! Maps to: CC `components/TeleportProgress.tsx`.
 //!
 //! The official file also exports `teleportWithProgress(...)`, which performs
-//! remote resume and branch checkout side effects. Cometix keeps that runtime
+//! remote resume and branch checkout side effects. Nyan keeps that runtime
 //! flow deferred to the teleport service slice; this component ports the
 //! progress UI and step model only.
 

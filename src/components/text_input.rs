@@ -2,9 +2,9 @@
 //!
 //! Official `TextInput` is the wrapper that composes `useTextInput` with
 //! `BaseTextInput`, terminal-focus/accessibility cursor gating, clipboard-image
-//! hints, and optional voice-mode cursor rendering. Cometix ports that boundary
+//! hints, and optional voice-mode cursor rendering. Nyan ports that boundary
 //! for the normal terminal text path. Current safe divergences:
-//! - `useClipboardImageHint(...)`: not executed here; Cometix has no clipboard
+//! - `useClipboardImageHint(...)`: not executed here; Nyan has no clipboard
 //!   image polling permission in this component boundary yet.
 //! - `VOICE_MODE` waveform cursor: represented only by `hide_placeholder_text`
 //!   when `voice_recording` is true; animated RGB waveform cursor needs the
@@ -329,7 +329,7 @@ mod tests {
             .join(format!("unit-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &directory);
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         crate::utils::process_runtime::initialize_test_process_runtime();
         for parent_cancel in [false, true] {

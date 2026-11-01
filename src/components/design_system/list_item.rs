@@ -22,7 +22,7 @@ pub struct ListItemProps {
     pub disabled: bool,
     /// Text label path used when callers want ListItem to apply official colors.
     pub label: Option<String>,
-    /// Maps to official `declareCursor`. Cometix defaults this off so main-screen
+    /// Maps to official `declareCursor`. Nyan defaults this off so main-screen
     /// native scrollback renders the pointer without a terminal cursor background.
     pub declare_cursor: Option<bool>,
     pub children: Vec<AnyElement<'static>>,

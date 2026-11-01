@@ -484,7 +484,7 @@ pub(crate) struct TempTaskConfig {
 impl TempTaskConfig {
     pub fn new(list_id: &str) -> Self {
         let root =
-            std::env::temp_dir().join(format!("cometix-tasks-{}", uuid::Uuid::new_v4().simple()));
+            std::env::temp_dir().join(format!("nyan-tasks-{}", uuid::Uuid::new_v4().simple()));
         let guards = vec![
             EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root),
             EnvVarGuard::set("CLAUDE_CODE_TASK_LIST_ID", list_id),
@@ -570,7 +570,7 @@ mod tests {
         let _guard = TASK_TOOL_TEST_LOCK.lock().unwrap();
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-task-claim-{}",
+            "nyan-task-claim-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
@@ -670,7 +670,7 @@ mod tests {
         let _guard = TASK_TOOL_TEST_LOCK.lock().unwrap();
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-task-reset-{}",
+            "nyan-task-reset-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
@@ -710,15 +710,15 @@ mod tests {
     fn is_todo_v2_enabled_matches_official_interactive_default_and_env_override() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::remove("CLAUDE_CODE_ENABLE_TASKS");
-        crate::utils::process_env::remove("COMETIX_NON_INTERACTIVE_SESSION");
+        crate::utils::process_env::remove("NYAN_NON_INTERACTIVE_SESSION");
         assert!(super::is_todo_v2_enabled());
 
-        crate::utils::process_env::set("COMETIX_NON_INTERACTIVE_SESSION", "1");
+        crate::utils::process_env::set("NYAN_NON_INTERACTIVE_SESSION", "1");
         assert!(!super::is_todo_v2_enabled());
 
         crate::utils::process_env::set("CLAUDE_CODE_ENABLE_TASKS", "1");
         assert!(super::is_todo_v2_enabled());
         crate::utils::process_env::remove("CLAUDE_CODE_ENABLE_TASKS");
-        crate::utils::process_env::remove("COMETIX_NON_INTERACTIVE_SESSION");
+        crate::utils::process_env::remove("NYAN_NON_INTERACTIVE_SESSION");
     }
 }

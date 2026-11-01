@@ -570,7 +570,7 @@ fn render_terminal_setup_step(
 
     element! {
         View(flex_direction: FlexDirection::Column, row_gap: 1u32, padding_left: 1u32) {
-            Text(content: "Use Claude Code's terminal setup?".to_string(), weight: Weight::Bold)
+            Text(content: "Use nyan's terminal setup?".to_string(), weight: Weight::Bold)
             View(flex_direction: FlexDirection::Column, width: 70u32, row_gap: 1u32) {
                 Text(
                     content: format!(
@@ -726,7 +726,7 @@ mod tests {
             ..OnboardingProps::default()
         });
 
-        assert!(text.contains("Welcome to Claude Code"), "canvas=\n{text}");
+        assert!(text.contains("Welcome to nyan"), "canvas=\n{text}");
         assert!(text.contains("Security notes:"), "canvas=\n{text}");
         assert!(text.contains("Claude can make mistakes"), "canvas=\n{text}");
         assert!(
@@ -910,7 +910,7 @@ mod tests {
         };
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _no_write = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _no_write = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
         let approved = run(vec![vec![KeyCode::Up], vec![KeyCode::Enter]]);
         assert!(approved.contains("Security notes:"), "{approved}");
         let rejected = run(vec![vec![KeyCode::Enter]]);
@@ -1034,7 +1034,7 @@ mod tests {
         // cancel; n still skips.
         let escaped = run_steps(OnboardingStepId::TerminalSetup, true, vec![vec![KeyCode::Esc]]);
         assert!(escaped.contains("done=0"), "{escaped}");
-        assert!(escaped.contains("Use Claude Code's terminal setup?"), "{escaped}");
+        assert!(escaped.contains("Use nyan's terminal setup?"), "{escaped}");
         let declined = run_steps(OnboardingStepId::TerminalSetup, true, vec![vec![KeyCode::Char('n')]]);
         assert!(declined.contains("done=1"), "{declined}");
     }
@@ -1047,7 +1047,7 @@ mod tests {
         // setup.
         let shown = run_steps(OnboardingStepId::Security, false, vec![vec![KeyCode::Enter, KeyCode::Enter]]);
         assert!(shown.contains("done=0"), "{shown}");
-        assert!(shown.contains("Use Claude Code's terminal setup?"), "{shown}");
+        assert!(shown.contains("Use nyan's terminal setup?"), "{shown}");
     }
 
     #[test]
@@ -1080,7 +1080,7 @@ mod tests {
         });
 
         assert!(
-            text.contains("Claude Code can be used with your Claude subscription"),
+            text.contains("nyan can be used with your Claude subscription"),
             "canvas=\n{text}"
         );
         assert!(text.contains("Select login method:"), "canvas=\n{text}");
@@ -1100,7 +1100,7 @@ mod tests {
         });
 
         assert!(
-            text.contains("Use Claude Code's terminal setup?"),
+            text.contains("Use nyan's terminal setup?"),
             "canvas=\n{text}"
         );
         assert!(
@@ -1179,7 +1179,7 @@ mod tests {
             EnvVarGuard::unset("__CFBundleIdentifier"),
             EnvVarGuard::set("XDG_CONFIG_HOME", root.join("xdg")),
             EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.join("config")),
-            EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1"),
+            EnvVarGuard::set("NYAN_WRITE_ENABLED", "1"),
         ];
         if fail_write {
             std::fs::write(root.join("xdg"), "not a directory").unwrap();

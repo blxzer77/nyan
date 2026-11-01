@@ -5,7 +5,7 @@
 //! This module ports the error handling layer that converts raw API errors
 //! (from the Anthropic SDK or third-party providers) into user-facing
 //! `AssistantMessage` values. Analytics/telemetry calls are omitted per
-//! CometixCode conventions; upstream GrowthBook gates are represented by the
+//! nyan conventions; upstream GrowthBook gates are represented by the
 //! hardcoded `utils::feature_flags` switch collection when needed.
 
 use regex::Regex;
@@ -18,7 +18,7 @@ use crate::utils::format::format_file_size;
 // ---------------------------------------------------------------------------
 
 /// Stub for CC `types/message.AssistantMessage`.
-/// TODO(port): Replace with the canonical CometixCode AssistantMessage once
+/// TODO(port): Replace with the canonical nyan AssistantMessage once
 /// `crate::types::message` gains `is_api_error_message`, `error_details`, and
 /// `error` fields matching CC `types/message.ts:38-44`.
 ///
@@ -147,7 +147,7 @@ pub const API_TIMEOUT_ERROR_MESSAGE: &str = "Request timed out";
 
 /// Maps to: CC services/api/errors.ts:197-198
 pub const OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE: &str =
-    "Your account does not have access to Claude Code. Please run /login.";
+    "Your account does not have access to nyan. Please run /login.";
 
 /// Maps to: CC bootstrap/state.ts:getIsNonInteractiveSession.
 fn get_is_non_interactive_session() -> bool {
@@ -1130,11 +1130,11 @@ pub fn get_error_message_if_refusal(
 
     let base_message = if get_is_non_interactive_session() {
         format!(
-            "{API_ERROR_MESSAGE_PREFIX}: Claude Code is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Try rephrasing the request or attempting a different approach."
+            "{API_ERROR_MESSAGE_PREFIX}: nyan is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Try rephrasing the request or attempting a different approach."
         )
     } else {
         format!(
-            "{API_ERROR_MESSAGE_PREFIX}: Claude Code is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Please double press esc to edit your last message or start a new session for Claude Code to assist with a different task."
+            "{API_ERROR_MESSAGE_PREFIX}: nyan is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Please double press esc to edit your last message or start a new session for nyan to assist with a different task."
         )
     };
 

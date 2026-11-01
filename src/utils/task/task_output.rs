@@ -322,7 +322,7 @@ impl TaskOutput {
                 String::new()
             }
             Err(error) => format!(
-                "<bash output unavailable: output file {} could not be read ({}). This usually means another Claude Code process in the same project deleted it during startup cleanup.>",
+                "<bash output unavailable: output file {} could not be read ({}). This usually means another nyan process in the same project deleted it during startup cleanup.>",
                 self.path().display(),
                 error
                     .raw_os_error()
@@ -444,7 +444,7 @@ mod tests {
         let output = TaskOutput::new(&task_id, true);
         std::fs::create_dir_all(output.path().parent().unwrap()).unwrap();
         let victim = std::env::temp_dir().join(format!(
-            "cometix-task-output-victim-{}",
+            "nyan-task-output-victim-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::write(&victim, "secret-must-not-be-read-or-changed").unwrap();

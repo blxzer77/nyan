@@ -2,7 +2,7 @@
 //! Maps to: CC `utils/hooks/fileChangedWatcher.ts`.
 //!
 //! CC uses chokidar to subscribe to matcher-derived files and dynamic
-//! `watchPaths` returned by env hooks. Cometix has not added a cross-platform
+//! `watchPaths` returned by env hooks. Nyan has not added a cross-platform
 //! file watcher dependency yet, so this module ports the official state machine
 //! (path resolution, dynamic watch updates, cwd-change hook dispatch, notifier
 //! behavior) and exposes `handle_file_event_with_config` for the future watcher

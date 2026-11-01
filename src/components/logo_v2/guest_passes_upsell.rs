@@ -1,7 +1,7 @@
 //! Maps to: CC `components/LogoV2/GuestPassesUpsell.tsx`.
 //!
 //! Official reads referral caches, resets global-config counters when passes
-//! refresh, increments impression count, and logs analytics. Cometix keeps the
+//! refresh, increments impression count, and logs analytics. nyan keeps the
 //! same predicate and condensed-row render boundary as pure inputs; callers own
 //! cache refresh, config writes, and analytics.
 
@@ -59,7 +59,7 @@ pub fn GuestPassesUpsell(
     let copy = props
         .reward_text
         .as_ref()
-        .map(|reward| format!("Share Claude Code and earn {reward} of extra usage · /passes"))
+        .map(|reward| format!("Share nyan and earn {reward} of extra usage · /passes"))
         .unwrap_or_else(|| "3 guest passes at /passes".to_string());
 
     element! {
@@ -146,7 +146,7 @@ mod tests {
         let text = render_guest(Some("$5"));
         assert!(text.contains("[✻] [✻] [✻]"), "canvas=\n{text}");
         assert!(
-            text.contains("Share Claude Code and earn $5 of extra usage · /passes"),
+            text.contains("Share nyan and earn $5 of extra usage · /passes"),
             "canvas=\n{text}"
         );
 

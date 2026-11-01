@@ -113,7 +113,7 @@ pub fn get_glob_exclusions_for_plugin_cache(search_path: Option<&Path>) -> Vec<S
 /// Fire-and-forget startup warm matching CC `main.tsx`'s session freeze.
 pub fn warm_plugin_cache_exclusions_in_background() {
     let _ = std::thread::Builder::new()
-        .name("cometix-plugin-glob-exclusions".to_string())
+        .name("nyan-plugin-glob-exclusions".to_string())
         .spawn(|| {
             let _ = get_glob_exclusions_for_plugin_cache(None);
         });
@@ -184,7 +184,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let root = std::env::temp_dir().join(format!(
-            "cometix-orphaned-plugin-{}",
+            "nyan-orphaned-plugin-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let cache = root.join("cache");

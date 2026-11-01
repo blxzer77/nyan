@@ -323,7 +323,7 @@ mod tests {
         let controller = crate::tool::AbortController::default();
         controller.abort();
         let marker = std::env::temp_dir().join(format!(
-            "cometix-pre-aborted-hook-{}",
+            "nyan-pre-aborted-hook-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let result = exec_command_hook(
@@ -402,7 +402,7 @@ mod tests {
     async fn plugin_substitution_and_environment_match_official_exec_setup() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let plugin_root = std::env::temp_dir().join(format!(
-            "cometix-hook-plugin-{}",
+            "nyan-hook-plugin-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&plugin_root).unwrap();
@@ -444,7 +444,7 @@ mod tests {
     async fn plugin_options_are_substituted_after_plugin_paths_and_override_base_env() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let config_root = std::env::temp_dir().join(format!(
-            "cometix-hook-config-{}",
+            "nyan-hook-config-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&config_root).unwrap();

@@ -2,7 +2,7 @@
 //!
 //! Maps to CC `utils/task/diskOutput.ts`.
 //!
-//! Cometix keeps the same task-output directory and output-file seam used by
+//! Nyan keeps the same task-output directory and output-file seam used by
 //! background shell/agent tasks. The official implementation uses an async
 //! write queue; this Rust owner performs bounded synchronous appends while
 //! preserving the same retained-file lifecycle and fail-closed no-write seam.
@@ -216,7 +216,7 @@ pub fn append_task_output(task_id: &str, content: &str) -> std::io::Result<()> {
     if !crate::utils::session_storage::is_session_write_enabled() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
-            "task output persistence is disabled by COMETIX_WRITE_ENABLED=0",
+            "task output persistence is disabled by NYAN_WRITE_ENABLED=0",
         ));
     }
     ensure_output_dir()?;
@@ -355,7 +355,7 @@ mod tests {
     #[test]
     fn append_and_tail_task_output_matches_official_file_boundary() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _dir = TaskOutputDirGuard::isolate();
         let task_id = format!("task-{}", uuid::Uuid::new_v4());
         let path = init_task_output(&task_id).unwrap();
@@ -369,7 +369,7 @@ mod tests {
     #[test]
     fn tail_reads_do_not_emit_partial_utf8_codepoints() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _dir = TaskOutputDirGuard::isolate();
         let task_id = format!("task-{}", uuid::Uuid::new_v4());
         let path = init_task_output(&task_id).unwrap();
@@ -384,7 +384,7 @@ mod tests {
     #[test]
     fn append_task_output_refuses_symlink_targets() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _dir = TaskOutputDirGuard::isolate();
         let task_id = format!("task-{}", uuid::Uuid::new_v4());
         let output_path = get_task_output_path(&task_id);
@@ -404,11 +404,11 @@ mod tests {
     #[test]
     fn registered_agent_symlink_remains_readable_and_appendable() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _dir = TaskOutputDirGuard::isolate();
         let task_id = format!("agent-{}", uuid::Uuid::new_v4());
         let target_dir = std::env::temp_dir().join(format!(
-            "cometix-agent-output-{}",
+            "nyan-agent-output-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&target_dir).unwrap();
@@ -428,7 +428,7 @@ mod tests {
     #[test]
     fn agent_symlink_initialization_falls_back_to_real_file_while_session_writes_disabled() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let _dir = TaskOutputDirGuard::isolate();
         let task_id = format!("agent-{}", uuid::Uuid::new_v4());
         let path =

@@ -59,7 +59,7 @@ mod tests {
     fn the_default_settings_point_at_emrank_with_pinned_models() {
         let settings = EmrankSettings::default();
         assert_eq!(settings.url(), "https://emrank.tech/v1/decisions");
-        assert_eq!(settings.api_key_file(), "~/.cometix/keys/emrank");
+        assert_eq!(settings.api_key_file(), "~/.nyan/keys/emrank");
         assert_eq!(
             settings.model_id(crate::utils::settings::nyan::DecisionModel::Fast),
             "typesafe/jev-1.14.0",

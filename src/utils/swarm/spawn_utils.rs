@@ -65,7 +65,7 @@ pub fn get_teammate_command_from_parts(
 
 /// Maps to: CC `getTeammateCommand()`.
 pub fn get_teammate_command() -> String {
-    let executable = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("cometix"));
+    let executable = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("nyan"));
     get_teammate_command_from_parts(
         crate::utils::process_env::var(TEAMMATE_COMMAND_ENV_VAR).as_deref(),
         executable,
@@ -146,7 +146,7 @@ pub fn build_inherited_cli_flags_with_options(options: BuildInheritedCliFlagsOpt
 ///
 /// Rust does not yet carry every official CLI override in `bootstrap/state.ts`
 /// (notably inline plugin dirs and chrome flag override). This function keeps
-/// the official boundary and threads the state CometixCode currently stores.
+/// the official boundary and threads the state nyan currently stores.
 pub fn build_inherited_cli_flags(
     plan_mode_required: bool,
     permission_mode: Option<PermissionMode>,
@@ -192,12 +192,12 @@ mod tests {
     #[test]
     fn get_teammate_command_prefers_override_like_official() {
         assert_eq!(
-            get_teammate_command_from_parts(Some("/custom/claude"), "/bin/cometix"),
+            get_teammate_command_from_parts(Some("/custom/claude"), "/bin/nyan"),
             "/custom/claude"
         );
         assert_eq!(
-            get_teammate_command_from_parts(None, "/bin/cometix"),
-            "/bin/cometix"
+            get_teammate_command_from_parts(None, "/bin/nyan"),
+            "/bin/nyan"
         );
     }
 

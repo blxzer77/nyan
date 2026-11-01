@@ -24,7 +24,7 @@ use unicode_width::UnicodeWidthStr;
 /// A tool use has no status of its own — it is a position in two sets. The set
 /// of live tool uses is REPL state (`REPL.tsx:1897`); `resolvedToolUseIDs` and
 /// `erroredToolUseIDs` come from `buildMessageLookups`, i.e. from whether a
-/// matching tool_result has arrived. Cometix used to store the result of this
+/// matching tool_result has arrived. Nyan used to store the result of this
 /// derivation on the row instead, which made the transcript the authority and
 /// forced the query actor to re-emit a whole row per transition.
 pub fn derive_tool_use_status(
@@ -1369,7 +1369,7 @@ fn task_output_progress_auxiliary_messages(task_description: &str) -> Vec<String
 /// `useGetToolFromMessages` returns null and `UserToolResultMessage` renders
 /// nothing (UserToolResultMessage.tsx:43-46), so CC's skill progress view shows
 /// a BLANK slot for every nested tool_result while still counting it toward the
-/// hidden total. Cometix resolves the tool here, so skill tool_result rows show
+/// hidden total. Nyan resolves the tool here, so skill tool_result rows show
 /// their typed text. Deliberate hold: it is a visible behaviour change on a
 /// path the carrier swap does not otherwise touch.
 fn skill_progress_auxiliary_messages(

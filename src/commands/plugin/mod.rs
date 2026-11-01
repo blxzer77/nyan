@@ -8,7 +8,7 @@ pub mod validate_plugin;
 
 /// Maps to: CC `commands/plugin/index.tsx:3-10` default descriptor.
 pub fn command() -> crate::commands::Command {
-    crate::commands::Command::local_ui("plugin", "Manage Claude Code plugins")
+    crate::commands::Command::local_ui("plugin", "Manage nyan plugins")
         .aliases(&["plugins", "marketplace"])
         .immediate()
         .executable(dispatch)

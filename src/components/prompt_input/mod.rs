@@ -257,7 +257,7 @@ fn should_show_fast_icon(
 }
 
 /// Maps to: PromptInput.tsx `imageRefPositions` — `[Image #N]` chip ranges as
-/// UTF-8 byte offsets (Cometix cursor unit).
+/// UTF-8 byte offsets (Nyan cursor unit).
 fn image_ref_positions(value: &str) -> Vec<(usize, usize)> {
     prompt_history::parse_references(value)
         .into_iter()
@@ -355,7 +355,7 @@ fn combined_highlights(
     // Invert the [Image #N] chip when the cursor is at chip.start (the
     // "selected" state) so backspace-to-delete is visually obvious.
     // Highlight ranges are UTF-16 for ShimmeredInput; cursor compare uses
-    // UTF-8 byte offsets like Cometix editing.
+    // UTF-8 byte offsets like Nyan editing.
     let cursor = crate::utils::cursor::clamp_cursor(value, cursor_offset);
     for &(start, end) in &image_ref_positions(value) {
         if cursor == start {
@@ -2153,7 +2153,7 @@ pub fn PromptInput<'a>(
             // While a query is running, Escape belongs to the Repl-level
             // chat:cancel handler (CC CancelRequestHandler isActive gate);
             // the input yields Escape. Ctrl+C stays with the input's clear and
-            // double-press exit even then: Cometix binds it to app:exit, 2.0.x
+            // double-press exit even then: Nyan binds it to app:exit, 2.0.x
             // semantics (default_bindings.rs).
             cancel_passthrough: props.is_loading,
         },
@@ -2607,7 +2607,7 @@ pub fn PromptInput<'a>(
                         // false (config/analytics writes stay deferred
                         // seams). The extra connected/session_active/
                         // reconnecting + footer_selection clears are the
-                        // Cometix stand-in for the unported useReplBridge
+                        // Nyan stand-in for the unported useReplBridge
                         // transport teardown, which in CC clears those flags
                         // when the poll loop stops.
                         // B3 flip-audit: CC bridge.tsx:164-171 —
@@ -4478,7 +4478,7 @@ mod tests {
         // CC PromptInput.tsx:1245-1286,1508 and useTypeahead.tsx:684-688:
         // history suppresses the suggestion state, not just the dropdown.
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skip = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         prompt_history::add_to_history("/help");
         prompt_history::add_to_history("/resume");

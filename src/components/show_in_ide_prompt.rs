@@ -1,7 +1,7 @@
 //! Maps to: CC `components/ShowInIDEPrompt.tsx`.
 //!
 //! Safety boundary: official code asks runtime IDE helpers whether the current
-//! terminal is VS Code and uses `getCwd()` for symlink display. Cometix accepts
+//! terminal is VS Code and uses `getCwd()` for symlink display. Nyan accepts
 //! explicit snapshot props and emits callback results only.
 
 use crate::components::custom_select::select::{Select, SelectLayout, SelectOptionData};

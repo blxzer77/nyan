@@ -2,7 +2,7 @@
 //!
 //! These helpers model official notification payloads for fast-mode runtime
 //! events while leaving the live event sources and settings writes out of the
-//! main-screen-safe Cometix path.
+//! main-screen-safe Nyan path.
 
 use crate::context::notifications::{Notification, NotificationColor, NotificationPriority};
 

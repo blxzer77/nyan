@@ -132,7 +132,7 @@ mod tests {
         let _trust = TrustRestore(crate::bootstrap::state::get_session_trust_accepted());
         crate::bootstrap::state::set_session_trust_accepted(true);
         let output = std::env::temp_dir().join(format!(
-            "cometix-instructions-loaded-{}.json",
+            "nyan-instructions-loaded-{}.json",
             uuid::Uuid::new_v4().simple()
         ));
         let command = format!("cat > '{}'", output.display());

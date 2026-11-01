@@ -81,7 +81,7 @@ pub fn ide_hint_row_count(
 }
 
 /// Maps to Node `path.basename(...)` in CC `IdeStatusIndicator.tsx` for the
-/// display-only footer copy. Supports both separators because Cometix can read
+/// display-only footer copy. Supports both separators because Nyan can read
 /// Windows transcript/config paths on non-Windows hosts.
 pub fn ide_selection_basename(path: &str) -> Option<&str> {
     let trimmed = path.trim().trim_end_matches(['/', '\\']);

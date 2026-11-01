@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: the official dialog reads existing MCP configs, writes
 //! selected servers with `addMcpConfig`, writes status text to stdout, then
-//! calls `gracefulShutdown`. Cometix preserves visible copy, collision labeling,
+//! calls `gracefulShutdown`. Nyan preserves visible copy, collision labeling,
 //! default non-colliding selection, final-name suffix calculation, cancel path,
 //! and emits the import result via callback. MCP config mutation/stdout/shutdown
 //! are deferred to the MCP runtime slice.

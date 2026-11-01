@@ -2,7 +2,7 @@
 //! Maps to CC `tools/AgentTool/agentMemory.ts`.
 //!
 //! Safety boundary: the official TypeScript helper fire-and-forgets directory
-//! creation from `loadAgentMemoryPrompt(...)`. Cometix keeps this prompt helper
+//! creation from `loadAgentMemoryPrompt(...)`. Nyan keeps this prompt helper
 //! read-only: it computes the same memory directory and reads `MEMORY.md` via
 //! `memdir::build_memory_prompt`, but does not create directories or write
 //! memory files in this slice.
@@ -181,7 +181,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _remote_memory = EnvVarGuard::unset("CLAUDE_CODE_REMOTE_MEMORY_DIR");
         let root = std::env::temp_dir().join(format!(
-            "cometix-agent-memory-{}",
+            "nyan-agent-memory-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(root.join(".git")).unwrap();
@@ -223,7 +223,7 @@ mod tests {
     #[test]
     fn load_agent_memory_prompt_reads_entrypoint_without_creating_dirs() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-agent-memory-prompt-{}",
+            "nyan-agent-memory-prompt-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let memory_dir = root.join(".claude/agent-memory/reviewer");

@@ -5,7 +5,7 @@
 //! (mount check + 30-minute interval), exactly like CC (`:30-89`). Like CC it
 //! never updates anything itself — it only surfaces the upgrade command. The
 //! GCS version fetch is short-circuited in [`crate::utils::auto_updater`];
-//! package-manager detection is the `COMETIX_PACKAGE_MANAGER` env seam in
+//! package-manager detection is the `NYAN_PACKAGE_MANAGER` env seam in
 //! [`crate::utils::native_installer::package_managers`].
 
 use crate::utils::auto_updater::{

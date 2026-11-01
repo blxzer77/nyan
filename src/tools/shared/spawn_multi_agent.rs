@@ -212,7 +212,7 @@ fn build_inherited_cli_flags_with_options(options: BuildInheritedCliFlagsOptions
 ///
 /// Rust does not yet carry every official CLI override in `bootstrap/state.ts`
 /// (`getSessionBypassPermissionsMode`, `getChromeFlagOverride`); this keeps the
-/// official boundary and threads the state CometixCode currently stores.
+/// official boundary and threads the state nyan currently stores.
 fn build_inherited_cli_flags(
     plan_mode_required: bool,
     permission_mode: Option<crate::types::permissions::PermissionMode>,
@@ -664,7 +664,7 @@ struct TrackTeammateInAppState {
 /// `setAppState(prev => ({ ...prev, teamContext: { … } }))` every handler runs
 /// right after spawning.
 ///
-/// This write is synchronous with the tool result in CC. Cometix previously had
+/// This write is synchronous with the tool result in CC. Nyan previously had
 /// no writer at all and relied on `use_inbox_poller.rs#current_team_context_from_team_record`
 /// rebuilding the projection from the team FILE on the next REPL poll tick —
 /// which is stale between the spawn and that tick, never runs at all in
@@ -819,7 +819,7 @@ fn register_out_of_process_teammate_task(params: RegisterOutOfProcessTeammateTas
     // CC `:821-833` — when abort is signaled, kill the pane using the backend
     // that created it. Without this the abort in
     // `kill_in_process_teammate` (the target of TaskStop and the prompt-input
-    // kill) flipped the task status while the `cometix` process kept running in
+    // kill) flipped the task status while the `nyan` process kept running in
     // an orphan pane.
     if let Some(abort_controller) = state.abort_controller {
         let _ = register_pane_kill_on_abort(
@@ -1336,7 +1336,7 @@ pub async fn spawn_teammate(
     }
 
     // CC `:343-376` — the iTerm2 setup prompt lives inside
-    // `handleSpawnSplitPane`; Cometix hoists it so the pane handler receives a
+    // `handleSpawnSplitPane`; Nyan hoists it so the pane handler receives a
     // settled detection result.
     let detection = resolve_it2_setup_if_needed(detection, context).await?;
 
@@ -1353,12 +1353,12 @@ mod tests {
     /// returned guards must stay alive for the test body.
     fn reset_team(name: &str) -> (EnvVarGuard, EnvVarGuard, EnvVarGuard) {
         let root = std::env::temp_dir().join(format!(
-            "cometix-spawn-multi-agent-{}",
+            "nyan-spawn-multi-agent-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
-        let write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
+        let write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::utils::swarm::team_helpers::clear_team_tool_state_for_test();
         crate::utils::swarm::teammate_layout_manager::clear_teammate_colors();
         let record = crate::utils::swarm::team_helpers::create_team_record(
@@ -1581,7 +1581,7 @@ mod tests {
     /// The regression: `register_out_of_process_teammate_task` took no
     /// paneId/insideTmux/backendType and attached nothing, so TaskStop and the
     /// prompt-input kill flipped the task to `killed` while the teammate
-    /// `cometix` process kept running in an orphan pane. This asserts the
+    /// `nyan` process kept running in an orphan pane. This asserts the
     /// controller has a live subscriber path — the listener body itself runs
     /// `tmux kill-pane`, which a unit test must not execute.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

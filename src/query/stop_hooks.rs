@@ -3,7 +3,7 @@
 //!
 //! The upstream function performs several side-effecting actions at turn end:
 //! stop hooks, task/teammate hooks, prompt suggestions, memory extraction,
-//! auto-dream, and cache-safe parameter writes. Cometix executes the official
+//! auto-dream, and cache-safe parameter writes. Nyan executes the official
 //! Stop hook seam when configured. @nyan: memory extraction and idle
 //! auto-dream are wired here (`spawn_memory_work`); teammate/task hooks stay
 //! explicit TODO seams.
@@ -164,7 +164,7 @@ fn spawn_memory_work(params: &StopHookParams, cache_safe_params: Option<std::syn
     }
     let Some(handle) = crate::utils::process_runtime::runtime_handle_for_detached_work() else {
         tracing::warn!(
-            target: "cometix::memory",
+            target: "nyan::memory",
             "memory_extract_skipped: no process runtime available for detached work"
         );
         return;

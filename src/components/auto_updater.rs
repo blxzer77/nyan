@@ -324,7 +324,7 @@ mod tests {
 
     /// Maps to: CC AutoUpdater.tsx:243-249 as executed — `useUpdateNotification`
     /// committed output is always null (render-phase set + React discard), so
-    /// the success copy never commits. Cometix pins the same committed canvas.
+    /// the success copy never commits. Nyan pins the same committed canvas.
     #[test]
     fn auto_updater_success_copy_never_commits_matching_official_render_discard() {
         let success = render(AutoUpdaterProps {

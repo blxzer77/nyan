@@ -141,8 +141,8 @@ pub fn build_items(config: &GlobalConfig, settings: &SettingsJson) -> Vec<Settin
             search_text: "animation motion reduce accessibility",
             visible: true,
         },
-        // @cometix offset: not an official setting. CC previews only completed
-        // lines while streaming; Cometix also offers character streaming.
+        // @nyan offset: not an official setting. CC previews only completed
+        // lines while streaming; Nyan also offers character streaming.
         // Reduce motion hides the preview regardless (CC REPL.tsx:1987).
         SettingItem {
             id: "streamingTextDisplay",

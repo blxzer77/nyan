@@ -2,7 +2,7 @@
 //!
 //! Historical aggregates use the official bounded cache shape and atomic
 //! temp-file rename. Compatible newer cache versions are consumed read-only so
-//! Cometix can coexist with another installed Claude Code without downgrading
+//! Nyan can coexist with another installed Claude Code without downgrading
 //! its cache; only the source-controlled v3 shape is written.
 
 use crate::utils::stats::{
@@ -394,7 +394,7 @@ mod tests {
     fn compatible_newer_stats_cache_is_read_without_being_downgraded() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-stats-cache-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-stats-cache-{}", uuid::Uuid::new_v4()));
         let path = root.join("stats-cache.json");
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(

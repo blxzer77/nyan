@@ -151,7 +151,7 @@ pub(crate) fn OutputStylePicker<'a>(
         ) {
             View(flex_direction: FlexDirection::Column, row_gap: 1u32) {
                 View(margin_top: 1u32) {
-                    Text(content: "This changes how Claude Code communicates with you".to_string(), color: theme.inactive)
+                    Text(content: "This changes how nyan communicates with you".to_string(), color: theme.inactive)
                 }
                 #(if is_loading {
                     element! { Text(content: "Loading output styles…".to_string(), color: theme.inactive) }.into_any()
@@ -320,7 +320,7 @@ mod tests {
 
         assert!(text.contains("Preferred output style"), "canvas=\n{text}");
         assert!(
-            text.contains("This changes how Claude Code communicates with you"),
+            text.contains("This changes how nyan communicates with you"),
             "canvas=\n{text}"
         );
         assert!(text.contains("Default"), "canvas=\n{text}");
@@ -340,7 +340,7 @@ mod tests {
     fn output_style_options_for_cwd_include_custom_markdown_styles() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-output-style-picker-{}",
+            "nyan-output-style-picker-{}",
             uuid::Uuid::new_v4()
         ));
         let cwd = root.join("repo");

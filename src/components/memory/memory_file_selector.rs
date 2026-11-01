@@ -640,7 +640,7 @@ mod tests {
     use uuid::Uuid;
 
     fn temp_path(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("cometix-memory-{label}-{}", Uuid::new_v4()))
+        std::env::temp_dir().join(format!("nyan-memory-{label}-{}", Uuid::new_v4()))
     }
 
     fn canvas_lines(canvas: &Canvas) -> Vec<String> {
@@ -866,7 +866,7 @@ mod tests {
             ..Default::default()
         };
         let user = SettingsJson {
-            auto_memory_directory: Some("/tmp/cometix-auto-memory".to_string()),
+            auto_memory_directory: Some("/tmp/nyan-auto-memory".to_string()),
             ..Default::default()
         };
         let (canvas, close_count) =
@@ -880,7 +880,7 @@ mod tests {
             &crate::bootstrap::state::get_original_cwd(),
             &crate::utils::env_utils::get_claude_config_home_dir(),
             &discover_claude_md_files(),
-            Some(Path::new("/tmp/cometix-auto-memory")),
+            Some(Path::new("/tmp/nyan-auto-memory")),
         );
         assert!(
             options

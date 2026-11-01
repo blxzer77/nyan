@@ -52,7 +52,7 @@ pub fn cache_image_path(content: &PastedImageContent) -> PathBuf {
 /// Maps to: CC `utils/imageStore.ts:51-79`.
 ///
 /// Callers must invoke this outside a retained render frame. Normal production
-/// writes by default; tests opt in and `COMETIX_WRITE_ENABLED=0` is an explicit
+/// writes by default; tests opt in and `NYAN_WRITE_ENABLED=0` is an explicit
 /// no-write seam through `is_session_write_enabled()`.
 pub fn store_image(content: &PastedImageContent) -> Option<PathBuf> {
     if !crate::utils::session_storage::is_session_write_enabled() {
@@ -179,7 +179,7 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         clear_stored_image_paths();
         let tmp =
-            std::env::temp_dir().join(format!("cometix-image-store-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-image-store-{}", uuid::Uuid::new_v4()));
         let _config_restore = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &tmp);
         let _session_restore = SessionRestore::set("session-1");
 
@@ -242,11 +242,11 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         clear_stored_image_paths();
         let tmp = std::env::temp_dir().join(format!(
-            "cometix-image-store-write-{}",
+            "nyan-image-store-write-{}",
             uuid::Uuid::new_v4()
         ));
         let _config_restore = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &tmp);
-        let _write_restore = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_restore = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _session_restore = SessionRestore::set("session-write");
         let image = PastedImageContent {
             id: 11,
@@ -275,11 +275,11 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         clear_stored_image_paths();
         let tmp = std::env::temp_dir().join(format!(
-            "cometix-image-store-nowrite-{}",
+            "nyan-image-store-nowrite-{}",
             uuid::Uuid::new_v4()
         ));
         let _config_restore = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &tmp);
-        let _write_restore = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _write_restore = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let _session_restore = SessionRestore::set("session-nowrite");
         let image = PastedImageContent {
             id: 12,

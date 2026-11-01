@@ -1,7 +1,7 @@
 //! Maps to: CC `components/permissions/PermissionExplanation.tsx`.
 //!
 //! Official React stores `{ visible, enabled, promise }` in
-//! `usePermissionExplainerUI` and resolves the promise with Suspense. Cometix
+//! `usePermissionExplainerUI` and resolves the promise with Suspense. Nyan
 //! keeps the same render states as explicit snapshots: hidden/not-requested,
 //! loading, unavailable, and ready explanation. Live generation is
 //! `utils/permissions/permission_explainer.rs` → `utils/side_query.rs`

@@ -411,7 +411,7 @@ mod tests {
         // The fetch caches hold fetches run on the process runtime.
         crate::utils::process_runtime::initialize_test_process_runtime();
         let script_path = std::env::temp_dir().join(format!(
-            "cometix-list-mcp-resources-live-{}.mjs",
+            "nyan-list-mcp-resources-live-{}.mjs",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(

@@ -17,7 +17,7 @@ use iocraft::prelude::*;
 
 pub(crate) const MODEL_NO_PREFERENCE: &str = "__NO_PREFERENCE__";
 pub(crate) const MODEL_PICKER_VISIBLE_COUNT: usize = 10;
-pub(crate) const MODEL_PICKER_HEADER_TEXT: &str = "Switch between Claude models. Applies to this session and future Claude Code sessions. For other/previous model names, specify with --model.";
+pub(crate) const MODEL_PICKER_HEADER_TEXT: &str = "Switch between Claude models. Applies to this session and future nyan sessions. For other/previous model names, specify with --model.";
 pub(crate) use crate::utils::fast_mode::FAST_MODE_MODEL_DISPLAY;
 // Maps to: CC `components/ModelPicker.tsx:20` importing `type EffortLevel`
 // from `utils/effort.js`.
@@ -54,7 +54,7 @@ fn model_option(
     }
 }
 
-/// @cometix offset: CC's ModelPicker hard-codes six Claude entries and reads no
+/// @nyan offset: CC's ModelPicker hard-codes six Claude entries and reads no
 /// settings, so a gateway's own models (`availableModels`) could not be picked
 /// from `/model` at all. Append every allowlisted model the built-in aliases do
 /// not already resolve to, labelled from `additionalModelOptionsCache` when the
@@ -116,7 +116,7 @@ fn gateway_model_options(
 
 pub(crate) fn model_picker_options(max_description_chars: usize) -> Vec<SelectOptionData> {
     let mut options = vec![
-        // @cometix offset: the official picker lists Sonnet and Opus twice, once
+        // @nyan offset: the official picker lists Sonnet and Opus twice, once
         // plain and once with 1M context. A gateway serves one model per family,
         // so only the 1M entry is kept — the plain one is the same model with a
         // smaller window.
@@ -355,7 +355,7 @@ pub(crate) fn selected_picker_effort(
 
 /// Maps to: CC ModelPicker `handleSelect` / `bt` — persist persistable
 /// levels (`w5e`) and write `AppState.effortValue` / `sessionEffort`.
-/// @cometix: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
+/// @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
 pub(crate) fn apply_model_picker_selection(
     state: &mut crate::state::app_state_store::AppState,
     model: Option<String>,
@@ -367,7 +367,7 @@ pub(crate) fn apply_model_picker_selection(
         && state.fast_mode
         && !crate::utils::fast_mode::is_fast_mode_supported_by_model(model.as_deref());
     state.main_loop_model = model.clone();
-    // @cometix offset: CC persists a picker choice to user settings `model`
+    // @nyan offset: CC persists a picker choice to user settings `model`
     // (`/model` promises "this session and future Claude Code sessions"), but
     // this port wrote only `effortLevel`, so a pick was forgotten on restart.
     // `Value::Null` deletes the key, restoring the default option.

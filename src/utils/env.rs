@@ -269,7 +269,7 @@ mod tests {
     fn global_claude_file_matches_official_legacy_and_suffix() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-global-claude-file-{}",
+            "nyan-global-claude-file-{}",
             uuid::Uuid::new_v4()
         ));
         let config = root.join("config");

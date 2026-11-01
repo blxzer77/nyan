@@ -1,6 +1,6 @@
 //! Maps to: CC `components/LogoV2/AnimatedClawd.tsx`.
 //!
-//! Official click animations require mouse tracking and timers. Cometix keeps
+//! Official click animations require mouse tracking and timers. nyan keeps
 //! the frame sequences and fixed-height render boundary, while live click/timer
 //! playback remains inactive in main-screen native scrollback mode.
 

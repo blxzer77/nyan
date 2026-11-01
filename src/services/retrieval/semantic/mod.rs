@@ -1015,7 +1015,7 @@ impl EmbeddingClient {
             self.health.record_failure(FailureKind::InvalidResponse);
             return Err(format!("embedding model {} is not served", self.model));
         }
-        tracing::info!(target: "cometix::retrieval", probe = MODELS_PROBE_LOG, "embedding model ready");
+        tracing::info!(target: "nyan::retrieval", probe = MODELS_PROBE_LOG, "embedding model ready");
         if let Ok(mut guard) = LAST_CHECK.lock() {
             *guard = Some((key, std::time::Instant::now()));
         }

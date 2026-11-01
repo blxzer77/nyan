@@ -7,7 +7,7 @@
 //! user-facing error message formatting.
 //!
 //! The original CC module operates on the Anthropic SDK's `APIError` type.
-//! In CometixCode, the equivalent intermediate representation is
+//! In nyan, the equivalent intermediate representation is
 //! `super::errors::ApiErrorInfo`, which is constructed by callers before
 //! passing into these functions.
 
@@ -67,7 +67,7 @@ fn is_ssl_error_code(code: &str) -> bool {
 /// `maxDepth=5` levels, looking for an error with a `.code` property that
 /// matches a known SSL or connection code.
 ///
-/// In CometixCode, `ApiErrorInfo::Connection` already carries an optional
+/// In nyan, `ApiErrorInfo::Connection` already carries an optional
 /// `ConnectionErrorDetails` from the SDK translation layer. For connection
 /// errors without pre-extracted details, this function probes the message
 /// string for known error codes (equivalent to the JS `.code` check).

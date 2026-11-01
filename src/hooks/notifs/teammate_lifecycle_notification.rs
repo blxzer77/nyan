@@ -1,7 +1,7 @@
 //! Maps to: CC `hooks/notifs/useTeammateShutdownNotification.ts`.
 //!
 //! The official hook watches live in-process teammate tasks and adds folded
-//! notifications such as `3 agents spawned`. Cometix does not have the live task
+//! notifications such as `3 agents spawned`. Nyan does not have the live task
 //! store wired yet, so this file exposes the same notification producer shape as
 //! pure constructors for future task-state integration.
 

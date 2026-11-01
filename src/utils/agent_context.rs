@@ -2,7 +2,7 @@
 //!
 //! Maps to: CC `utils/agentContext.ts`.
 //!
-//! Claude Code uses `AsyncLocalStorage`; Cometix uses `tokio::task_local!` so
+//! Claude Code uses `AsyncLocalStorage`; Nyan uses `tokio::task_local!` so
 //! backgrounded/concurrent agents keep isolated identity without mutating a
 //! shared AppState slot.
 

@@ -454,7 +454,7 @@ mod tests {
     fn stdio_menu_toggle_dispatches_to_mcp_connection_service() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!(
-            "cometix-stdio-menu-toggle-{}",
+            "nyan-stdio-menu-toggle-{}",
             uuid::Uuid::new_v4()
         ));
         let project_dir = temp_dir.join("project");
@@ -462,7 +462,7 @@ mod tests {
         let previous_cwd = std::env::current_dir().unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir);
         let _session_write = EnvVarGuard::set("SESSION_WRITE_ENABLED", "1");
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         std::env::set_current_dir(&project_dir).unwrap();
 
         let cancels = Arc::new(Mutex::new(0usize));

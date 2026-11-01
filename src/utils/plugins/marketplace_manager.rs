@@ -1402,7 +1402,7 @@ fn cache_marketplace_from_url(
         let mut headers=reqwest::header::HeaderMap::new();
         headers.insert(reqwest::header::ACCEPT,reqwest::header::HeaderValue::from_static("application/json, text/plain, */*"));
         if let Some(custom_headers)=custom_headers {for(key,value)in custom_headers {headers.insert(reqwest::header::HeaderName::from_bytes(key.as_bytes())?,reqwest::header::HeaderValue::from_str(value.as_str().unwrap_or(""))?);}}
-        headers.insert(reqwest::header::USER_AGENT,reqwest::header::HeaderValue::from_static("Claude-Code-Plugin-Manager"));
+        headers.insert(reqwest::header::USER_AGENT,reqwest::header::HeaderValue::from_str(&crate::utils::http::user_agent())?);
         let request=client.get(url).headers(headers);
         let response=request.send().await.map_err(|error|{let message=if error.is_connect(){format!("Could not connect to {redacted}. Please check your internet connection and verify the URL is correct.\n\nTechnical details: {error}")}else{format!("Failed to download marketplace from {redacted}: {error}")};anyhow::anyhow!(message)})?;
         let status=response.status();if !status.is_success(){anyhow::bail!("HTTP {} error while downloading marketplace from {redacted}. The marketplace file may not exist at this URL.\n\nTechnical details: Request failed with status code {}",status.as_u16(),status.as_u16());}
@@ -1827,7 +1827,7 @@ pub fn get_marketplace(
         let future=async move {let name=owned_name.as_str();
         let loaded:anyhow::Result<serde_json::Value>=async {
             let mut config=load_known_marketplaces_config().await?;let entry=config.get(name).cloned().ok_or_else(||anyhow::anyhow!("Marketplace '{name}' not found in configuration. Available marketplaces: {}",crate::utils::process_env::ecmascript_object_entries(&config).into_iter().map(|(name,_)|name).collect::<Vec<_>>().join(", ")))?;let source=&entry["source"];
-            if super::schemas::is_local_marketplace_source(source)&&!Path::new(source["path"].as_str().unwrap_or("")).is_absolute(){anyhow::bail!("Marketplace \"{name}\" has a relative source path ({}) in known_marketplaces.json — this is stale state from an older Claude Code version. Run 'claude marketplace remove {name}' and re-add it from the original project directory.",source["path"].as_str().unwrap_or(""));}
+            if super::schemas::is_local_marketplace_source(source)&&!Path::new(source["path"].as_str().unwrap_or("")).is_absolute(){anyhow::bail!("Marketplace \"{name}\" has a relative source path ({}) in known_marketplaces.json — this is stale state from an older nyan version. Run 'claude marketplace remove {name}' and re-add it from the original project directory.",source["path"].as_str().unwrap_or(""));}
             match read_cached_marketplace(Path::new(entry["installLocation"].as_str().unwrap_or(""))).await{Ok(data)=>return Ok(data),Err(error)=>crate::utils::debug::log_for_debugging_with_level(&format!("Cache corrupted or missing for marketplace {name}, re-fetching from source: {error}"),crate::utils::debug::DebugLogLevel::Warn)}
             let loaded=load_and_cache_marketplace(source,None).await.map_err(|error|anyhow::anyhow!("Failed to load marketplace \"{name}\" from source ({}): {error}",source["source"].as_str().unwrap_or("")))?;
             config.get_mut(name).unwrap()["lastUpdated"]=chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis,true).into();save_known_marketplaces_config(config).await?;Ok(loaded.marketplace)
@@ -2050,7 +2050,7 @@ mod tests {
     #[tokio::test]
     async fn resolves_plugin_metadata_from_marketplace_cache_only() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-hint-marketplace-{}",
+            "nyan-hint-marketplace-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _env = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
@@ -2596,7 +2596,7 @@ mod tests {
     async fn missing_local_marketplace_git_cache_fails_and_cleans_without_network() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-market-git-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-market-git-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let cache = root.join("cache");
         let source = root.join("missing-local-source");
@@ -2636,7 +2636,7 @@ mod tests {
         };
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-market-transitions-{}",
+            "nyan-market-transitions-{}",
             uuid::Uuid::new_v4()
         ));
         let source = root.join("source");
@@ -2882,7 +2882,7 @@ mod tests {
                 }
                 let request = String::from_utf8(request).unwrap().to_ascii_lowercase();
                 assert_eq!(request.matches("user-agent:").count(), 1);
-                assert!(request.contains("user-agent: claude-code-plugin-manager"));
+                assert!(request.contains("user-agent: nyan/"));
                 write!(stream,"HTTP/1.1 {status} Result\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
             });
             let target = root.join(format!("{status}-{valid}.json"));

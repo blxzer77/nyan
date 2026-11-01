@@ -268,7 +268,7 @@ const MEMORY_CORRECTION_HINT: &str = "\n\nNote: The user's next message may cont
 /// The GrowthBook read `getFeatureValue_CACHED_MAY_BE_STALE('tengu_amber_prism',
 /// false)` becomes the frozen source-controlled switch
 /// [`crate::utils::feature_flags::FeatureFlag::MemoryCorrectionHint`], which
-/// carries CC's own fallback (`false`). Cometix does not implement GrowthBook
+/// carries CC's own fallback (`false`). Nyan does not implement GrowthBook
 /// delivery; see `utils/feature_flags.rs`.
 pub fn with_memory_correction_hint(message: &str) -> String {
     if crate::memdir::paths::is_auto_memory_enabled()
@@ -300,7 +300,7 @@ pub fn auto_reject_message(tool_name: &str) -> String {
 /// (`utils/permissions/permissions.ts:515`).
 pub fn dont_ask_reject_message(tool_name: &str) -> String {
     format!(
-        "Permission to use {tool_name} has been denied because Claude Code is running in don't ask mode. {DENIAL_WORKAROUND_GUIDANCE}"
+        "Permission to use {tool_name} has been denied because nyan is running in don't ask mode. {DENIAL_WORKAROUND_GUIDANCE}"
     )
 }
 
@@ -818,7 +818,7 @@ pub fn is_tool_use_result_message(message: &Value) -> bool {
 /// The API-failure row is an ASSISTANT message at the source, not a system one:
 /// `query.ts:974,990` yields this from its catch block. It carries
 /// `isApiErrorMessage: true` on the envelope, which is what the renderer keys
-/// off — Cometix previously had no such field and sniffed the rendered text for
+/// off — Nyan previously had no such field and sniffed the rendered text for
 /// an `"API Error"` prefix instead.
 ///
 /// `content == ""` becomes [`NO_CONTENT_MESSAGE`], per `:450`.
@@ -1255,7 +1255,7 @@ pub fn filter_orphaned_thinking_only_messages(
 /// Maps to: CC `utils/messages.ts` `stripCallerFieldFromAssistantMessage(...)`.
 ///
 /// Tool-search-specific `caller` metadata must not be sent to models/providers
-/// where dynamic tool search is unavailable. Cometix does not yet enable tool
+/// where dynamic tool search is unavailable. Nyan does not yet enable tool
 /// search in the main loop, so strip it unconditionally on API-bound history.
 pub fn strip_caller_field_from_assistant_messages(
     messages: Vec<crate::types::message::Message>,
@@ -3679,7 +3679,7 @@ mod tests {
         assert_eq!(
             dont_ask_reject_message("Bash"),
             format!(
-                "Permission to use Bash has been denied because Claude Code is running in don't \
+                "Permission to use Bash has been denied because nyan is running in don't \
                  ask mode. {DENIAL_WORKAROUND_GUIDANCE}"
             )
         );
@@ -4739,7 +4739,7 @@ mod tests {
     /// its gate `getFeatureValue_CACHED_MAY_BE_STALE('tengu_amber_prism',
     /// false)` (`:188`).
     ///
-    /// Cometix does not implement GrowthBook delivery, so the gate is a frozen
+    /// Nyan does not implement GrowthBook delivery, so the gate is a frozen
     /// switch carrying CC's own fallback. With it off the function is the
     /// identity, which is what every rejection/cancellation string in this build
     /// observes.

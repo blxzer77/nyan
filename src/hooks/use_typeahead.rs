@@ -1237,7 +1237,7 @@ fn slack_channel_token(input: &str, cursor_offset: usize) -> Option<String> {
     Some(token.to_string())
 }
 
-/// @cometix: no CC symbol. Rust memo identity for Slack/MCP client
+/// @nyan: no CC symbol. Rust memo identity for Slack/MCP client
 /// snapshots; official `useTypeahead` re-runs from React deps instead.
 fn mcp_client_source_key(clients: &[McpServerConnection]) -> String {
     clients
@@ -1308,7 +1308,7 @@ fn direct_agent_suggestions(
             push(&teammate.name, "send message".to_string());
         }
     }
-    // CC's second source is `state.agentNameRegistry`. Cometix exposes the
+    // CC's second source is `state.agentNameRegistry`. Nyan exposes the
     // same live names through the AppState task projection; preserve its
     // status suffix while avoiding a second registry or suggestion owner.
     if let Some(active_tasks) = active_tasks {

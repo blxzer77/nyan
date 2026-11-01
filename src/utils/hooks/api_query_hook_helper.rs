@@ -3,7 +3,7 @@
 //!
 //! The official helper builds a post-sampling hook that optionally issues a
 //! non-streaming Claude query, parses its text response, and reports a typed
-//! success/error result through caller-provided callbacks. Cometix keeps the
+//! success/error result through caller-provided callbacks. Nyan keeps the
 //! same boundary and injects the query executor for tests/safety; the default
 //! executor calls `services/api/claude.rs#query_model_without_streaming`.
 
@@ -45,7 +45,7 @@ pub struct ApiQueryRequest {
 
 /// Response projection needed by the helper.
 ///
-/// CC receives `response.message.id`; Cometix's current `AssistantMessage`
+/// CC receives `response.message.id`; Nyan's current `AssistantMessage`
 /// type does not preserve provider message IDs, so injected executors can
 /// supply one and the default executor uses the hook UUID as a stable fallback.
 #[derive(Clone, Debug)]

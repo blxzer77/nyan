@@ -382,7 +382,7 @@ mod tests {
         // setSandboxSettings leaves in place whether or not the write lands;
         // Esc cancels with a skip. Writes stay off in this test.
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _no_write = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _no_write = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
         let (last, results) = drive(false, vec![KeyCode::Enter, KeyCode::Esc, KeyCode::F(12)]);
         assert!(last.contains("Configure Overrides:"), "{last}");
         assert_eq!(

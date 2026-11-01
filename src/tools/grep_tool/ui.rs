@@ -541,7 +541,7 @@ mod tests {
             }
         }
         let _guard = OriginalCwdGuard(crate::bootstrap::state::get_original_cwd());
-        let cwd = std::env::temp_dir().join("cometix-grep-tool-use-display");
+        let cwd = std::env::temp_dir().join("nyan-grep-tool-use-display");
         let _ = std::fs::create_dir_all(&cwd);
         crate::bootstrap::state::set_original_cwd(&cwd);
         let input = serde_json::json!({

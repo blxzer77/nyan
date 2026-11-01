@@ -607,7 +607,7 @@ pub fn validate_command_paths(
     {
         return PermissionResult::Ask {
             message: format!(
-                "{} with flags requires manual approval to ensure path safety. For security, Claude Code cannot automatically validate {} commands that use flags, as some flags like --target-directory=PATH can bypass path validation.",
+                "{} with flags requires manual approval to ensure path safety. For security, nyan cannot automatically validate {} commands that use flags, as some flags like --target-directory=PATH can bypass path validation.",
                 command.as_str(),
                 command.as_str()
             ),
@@ -629,7 +629,7 @@ pub fn validate_command_paths(
 
     if compound_command_has_cd && operation_type != FileOperationType::Read {
         return PermissionResult::Ask {
-            message: "Commands that change directories and perform write operations require explicit approval to ensure paths are evaluated correctly. For security, Claude Code cannot automatically determine the final working directory when 'cd' is used in compound commands."
+            message: "Commands that change directories and perform write operations require explicit approval to ensure paths are evaluated correctly. For security, nyan cannot automatically determine the final working directory when 'cd' is used in compound commands."
                 .to_string(),
             updated_input: None,
             decision_reason: Some(PermissionDecisionReason::Other {
@@ -654,7 +654,7 @@ pub fn validate_command_paths(
                 Some(PermissionDecisionReason::Other { reason })
                 | Some(PermissionDecisionReason::SafetyCheck { reason, .. }) => reason.clone(),
                 _ => format!(
-                    "{} in '{}' was blocked. For security, Claude Code may only {} the allowed working directories for this session: {}.",
+                    "{} in '{}' was blocked. For security, nyan may only {} the allowed working directories for this session: {}.",
                     command.as_str(),
                     result.resolved_path,
                     action_verb(command),
@@ -836,7 +836,7 @@ pub fn validate_output_redirections(
 ) -> PermissionResult {
     if compound_command_has_cd && !redirections.is_empty() {
         return PermissionResult::Ask {
-            message: "Commands that change directories and write via output redirection require explicit approval to ensure paths are evaluated correctly. For security, Claude Code cannot automatically determine the final working directory when 'cd' is used in compound commands."
+            message: "Commands that change directories and write via output redirection require explicit approval to ensure paths are evaluated correctly. For security, nyan cannot automatically determine the final working directory when 'cd' is used in compound commands."
                 .to_string(),
             updated_input: None,
             decision_reason: Some(PermissionDecisionReason::Other {
@@ -874,7 +874,7 @@ pub fn validate_output_redirections(
                     )
                 }
                 _ => format!(
-                    "Output redirection to '{}' was blocked. For security, Claude Code may only write to files in the allowed working directories for this session: {}.",
+                    "Output redirection to '{}' was blocked. For security, nyan may only write to files in the allowed working directories for this session: {}.",
                     result.resolved_path, dir_list
                 ),
             };
@@ -1322,7 +1322,7 @@ mod tests {
     #[test]
     fn path_constraints_pass_allowed_dir_and_block_outside_redirection() {
         let allowed =
-            std::env::temp_dir().join(format!("cometix-path-{}", uuid::Uuid::new_v4().simple()));
+            std::env::temp_dir().join(format!("nyan-path-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&allowed).unwrap();
         let context = context_with_allowed_dir(&allowed);
         let cwd = allowed.display().to_string();
@@ -1334,7 +1334,7 @@ mod tests {
         ));
 
         let outside =
-            std::env::temp_dir().join(format!("cometix-outside-{}", uuid::Uuid::new_v4().simple()));
+            std::env::temp_dir().join(format!("nyan-outside-{}", uuid::Uuid::new_v4().simple()));
         let outside_file = outside.join("out.txt");
         let result = check_path_constraints(
             &format!("echo hi > {}", outside_file.display()),
@@ -1383,11 +1383,11 @@ mod tests {
     #[test]
     fn ast_path_constraints_validate_redirects_and_wrapped_commands() {
         let allowed = std::env::temp_dir().join(format!(
-            "cometix-ast-path-{}",
+            "nyan-ast-path-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let outside = std::env::temp_dir().join(format!(
-            "cometix-ast-path-outside-{}",
+            "nyan-ast-path-outside-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&allowed).unwrap();

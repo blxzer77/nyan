@@ -2,7 +2,7 @@
 //!
 //! The official module validates SDK-host permission prompt tool results and
 //! normalizes them into `PermissionDecision`s, applying/persisting permission
-//! updates as a side effect. Cometix keeps the schema and normalization behavior
+//! updates as a side effect. Nyan keeps the schema and normalization behavior
 //! but returns parsed updates to the caller; it does not persist settings here.
 
 use super::permission_result::{PermissionDecision, PermissionDecisionReason};

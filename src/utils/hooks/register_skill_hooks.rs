@@ -1,7 +1,7 @@
 //! Register skill frontmatter hooks as session hooks.
 //! Maps to: CC `utils/hooks/registerSkillHooks.ts`.
 //!
-//! Official receives `setAppState` and mutates `AppState.sessionHooks`. Cometix
+//! Official receives `setAppState` and mutates `AppState.sessionHooks`. Nyan
 //! stores session hooks in `session_hooks.rs` until full AppState session hook
 //! parity lands, but preserves the official event/matcher/skillRoot boundary.
 
@@ -13,7 +13,7 @@ use crate::services::hooks::{HOOK_EVENTS, HookCommand, HookEvent, HooksConfig};
 pub struct RegisterSkillHooksResult {
     pub registered_count: usize,
     /// Hooks with `once: true` are registered and retain their flag. CC removes
-    /// them via an `onHookSuccess` callback after execution; Cometix exposes the
+    /// them via an `onHookSuccess` callback after execution; Nyan exposes the
     /// same removal helper below until the shared hook orchestrator wires
     /// success callbacks.
     pub one_shot_count: usize,

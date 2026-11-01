@@ -5,7 +5,7 @@
 //! `CliConfig` then dispatch (Unimplemented short-circuit or [`crate::main::run`]).
 
 use crate::cli::{dispatch, parse_cli_config};
-use crate::constants::product::VERSION;
+use crate::constants::product::{NAME, VERSION};
 use crate::utils::process_env::JsTruthy;
 
 /// Maps to: CC `entrypoints/cli.tsx:1-16` top-level env side effects, and
@@ -80,7 +80,7 @@ fn evaluate_import_time_constants() {
 /// go through [`parse_cli_config`] + [`dispatch`].
 pub fn try_version_fast_path(args: &[String]) -> Option<i32> {
     if args.len() == 1 && matches!(args[0].as_str(), "--version" | "-v" | "-V") {
-        println!("{VERSION} (Claude Code)");
+        println!("{NAME} {VERSION}");
         return Some(0);
     }
     None

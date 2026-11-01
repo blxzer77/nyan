@@ -1,7 +1,7 @@
 //! Maps to: CC `components/MCPServerMultiselectDialog.tsx`.
 //!
 //! Safety boundary: the official dialog logs analytics and writes approved /
-//! rejected server names into local settings. Cometix preserves visible copy,
+//! rejected server names into local settings. Nyan preserves visible copy,
 //! default selection, Space/Enter/Esc behavior, approval partitioning, and emits
 //! the approved/rejected lists via callback. Settings writes and analytics are
 //! deferred to the MCP settings runtime slice.

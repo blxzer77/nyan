@@ -11,7 +11,7 @@
 //! `awaitWriteFinish` stabilization (:107-112), a deletion grace window that
 //! absorbs delete-and-recreate (:330-360), internal-write suppression
 //! (:284-286), an MDM registry/plist poll (:381-418), and ConfigChange hook
-//! gating (:292-301). Cometix keeps the pre-existing 1s mtime poll as the
+//! gating (:292-301). Nyan keeps the pre-existing 1s mtime poll as the
 //! source; the difference is coarser detection latency and no
 //! ConfigChange-hook gating. Ported deliberately as a subset — the
 //! ownership shape (single fan-out, cache reset at the producer,

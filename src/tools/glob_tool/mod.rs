@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn relative_model_paths_keep_dotdot_prefixed_filenames_absolute() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-glob-relative-{}",
+            "nyan-glob-relative-{}",
             uuid::Uuid::new_v4().simple()
         ));
         assert_eq!(
@@ -564,7 +564,7 @@ mod tests {
         assert!(matcher("src/**"));
         assert!(!matcher("tests/**"));
 
-        let absolute = std::env::temp_dir().join("cometix-glob-get-path");
+        let absolute = std::env::temp_dir().join("nyan-glob-get-path");
         assert_eq!(
             tool.get_path(&serde_json::json!({
                 "pattern": "*",
@@ -579,7 +579,7 @@ mod tests {
         use crate::tool::ToolCall as _;
 
         let cwd = std::env::temp_dir().join(format!(
-            "cometix-glob-validation-{}",
+            "nyan-glob-validation-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let suggested_name = format!("suggested-dir-{}", uuid::Uuid::new_v4().simple());
@@ -653,15 +653,15 @@ mod tests {
 
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-glob-permission-root-{}",
+            "nyan-glob-permission-root-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let outside = std::env::temp_dir().join(format!(
-            "cometix-glob-permission-outside-{}",
+            "nyan-glob-permission-outside-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let traversal_outside = std::env::temp_dir().join(format!(
-            "cometix-glob-permission-traversal-{}",
+            "nyan-glob-permission-traversal-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -757,11 +757,11 @@ mod tests {
         use crate::utils::permissions::permission_result::PermissionResult;
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-glob-symlink-permission-root-{}",
+            "nyan-glob-symlink-permission-root-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let outside = std::env::temp_dir().join(format!(
-            "cometix-glob-symlink-permission-outside-{}",
+            "nyan-glob-symlink-permission-outside-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -786,7 +786,7 @@ mod tests {
     #[test]
     fn glob_read_deny_rules_hide_matching_files_before_results_are_returned() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-glob-deny-{}",
+            "nyan-glob-deny-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(root.join("secret")).unwrap();
@@ -795,7 +795,7 @@ mod tests {
         std::fs::write(root.join("secret/hidden.txt"), "hidden").unwrap();
         std::fs::write(root.join("rootless/hidden.txt"), "hidden").unwrap();
         let outside = std::env::temp_dir().join(format!(
-            "cometix-glob-deny-target-{}",
+            "nyan-glob-deny-target-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(outside.join("secret")).unwrap();
@@ -882,7 +882,7 @@ mod tests {
         use crate::types::permissions::PermissionMode;
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-glob-limit-{}",
+            "nyan-glob-limit-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1008,7 +1008,7 @@ mod tests {
     #[test]
     fn glob_output_uses_official_result_cap_and_relative_paths() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-glob-cap-{}",
+            "nyan-glob-cap-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -1055,11 +1055,11 @@ mod tests {
     #[test]
     fn glob_does_not_follow_directory_symlinks() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-glob-symlink-root-{}",
+            "nyan-glob-symlink-root-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let outside = std::env::temp_dir().join(format!(
-            "cometix-glob-symlink-outside-{}",
+            "nyan-glob-symlink-outside-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1077,7 +1077,7 @@ mod tests {
     #[test]
     fn glob_output_uses_cwd_override_when_path_is_omitted() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-glob-cwd-{}",
+            "nyan-glob-cwd-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();

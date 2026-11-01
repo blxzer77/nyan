@@ -208,13 +208,13 @@ mod tests {
     async fn get_mcp_headers_from_helper_blocks_untrusted_project_scope_like_official() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!(
-            "cometix-mcp-headers-helper-{}",
+            "nyan-mcp-headers-helper-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&temp_dir).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", temp_dir.join("config"));
         let previous_original_cwd = crate::bootstrap::state::get_original_cwd();
-        let _non_interactive = EnvVarGuard::unset("COMETIX_NON_INTERACTIVE_SESSION");
+        let _non_interactive = EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION");
         crate::bootstrap::state::set_original_cwd(temp_dir.join("workspace"));
         crate::utils::config::reset_trust_dialog_accepted_cache_for_testing();
 

@@ -3,7 +3,7 @@
 //!
 //! The React hook in CC reconciles configured MCP servers with AppState.mcp,
 //! connects clients, refreshes tools/prompts/resources, and exposes reconnect
-//! callbacks. Cometix keeps the same service boundary as async functions so the
+//! callbacks. Nyan keeps the same service boundary as async functions so the
 //! iocraft App root can drive it without putting transport logic in components
 //! or slash commands.
 
@@ -199,8 +199,8 @@ pub fn remote_authentication_result_message(
                 format!("Authentication successful. Connected to {server_name}.")
             }
         }
-        McpServerConnectionType::NeedsAuth => "Authentication successful, but server still requires authentication. You may need to manually restart Claude Code.".to_string(),
-        _ => "Authentication successful, but server reconnection failed. You may need to manually restart Claude Code for the changes to take effect.".to_string(),
+        McpServerConnectionType::NeedsAuth => "Authentication successful, but server still requires authentication. You may need to manually restart nyan.".to_string(),
+        _ => "Authentication successful, but server reconnection failed. You may need to manually restart nyan for the changes to take effect.".to_string(),
     }
 }
 
@@ -2365,7 +2365,7 @@ mod tests {
     fn with_isolated_config(test: impl FnOnce(&std::path::Path)) {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir =
-            std::env::temp_dir().join(format!("cometix-mcp-manage-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-mcp-manage-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir);
         test(&temp_dir);
@@ -2824,11 +2824,11 @@ mod tests {
         );
         assert_eq!(
             remote_authentication_result_message(McpServerConnectionType::NeedsAuth, "docs", false),
-            "Authentication successful, but server still requires authentication. You may need to manually restart Claude Code."
+            "Authentication successful, but server still requires authentication. You may need to manually restart nyan."
         );
         assert_eq!(
             remote_authentication_result_message(McpServerConnectionType::Failed, "docs", false),
-            "Authentication successful, but server reconnection failed. You may need to manually restart Claude Code for the changes to take effect."
+            "Authentication successful, but server reconnection failed. You may need to manually restart nyan for the changes to take effect."
         );
     }
 
@@ -3104,7 +3104,7 @@ mod tests {
             std::fs::create_dir_all(&project_dir).unwrap();
             let _cwd_guard = ProjectCwdGuard::enter(&project_dir);
             let _session_write = EnvVarGuard::set("SESSION_WRITE_ENABLED", "1");
-            let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+            let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
 
             let config = stdio_config("docs-mcp");
             let server = McpServerConnection::connected_for_test("docs", config.clone());
@@ -3173,7 +3173,7 @@ mod tests {
             std::fs::create_dir_all(&project_dir).unwrap();
             let _cwd_guard = ProjectCwdGuard::enter(&project_dir);
             let _session_write = EnvVarGuard::set("SESSION_WRITE_ENABLED", "1");
-            let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+            let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
             crate::utils::process_runtime::initialize_test_process_runtime();
             let logs = record_mcp_debug_logs();
 

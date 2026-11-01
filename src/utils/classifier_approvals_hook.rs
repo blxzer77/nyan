@@ -1,7 +1,7 @@
 //! Maps to: CC `utils/classifierApprovalsHook.ts`.
 //!
 //! Official Claude Code exposes a tiny React hook around the pure
-//! `classifierApprovals` external store. Cometix's iocraft rendering does not
+//! `classifierApprovals` external store. Nyan's iocraft rendering does not
 //! have React's `useSyncExternalStore`; this boundary preserves the official
 //! file/function split and reads the same process-wide checking store on each
 //! render.

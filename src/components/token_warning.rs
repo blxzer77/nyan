@@ -2,7 +2,7 @@
 //!
 //! The official component computes token warning state from `tokenUsage` and
 //! `model`, checks compact-warning suppression, optional reactive/context
-//! collapse feature gates, and renders one footer row. Cometix keeps feature
+//! collapse feature gates, and renders one footer row. Nyan keeps feature
 //! flags and context-collapse subscriptions as explicit already-known props: no
 //! GrowthBook lookup, no dynamic `require(...)`, and no context-collapse store
 //! subscription are started from this render boundary.

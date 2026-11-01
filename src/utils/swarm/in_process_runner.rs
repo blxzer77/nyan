@@ -262,7 +262,7 @@ fn teammate_leader_dialog_sink(
 /// and the `'abort'` listener (`:435-442`) both `cleanup()` (clearInterval +
 /// `unregisterPermissionCallback` + removeEventListener) and resolve
 /// `SUBAGENT_REJECT_MESSAGE`. A bounded wait used to live here
-/// (`COMETIX_SWARM_PERMISSION_WAIT_MS`, 1 s default) justified as "the same
+/// (`NYAN_SWARM_PERMISSION_WAIT_MS`, 1 s default) justified as "the same
 /// contract as `swarm_worker_handler.rs#try_resolve_swarm_worker_ask`"; that is
 /// a Rust-internal consistency argument, not a CC anchor — CC's
 /// `swarmWorkerHandler.ts:67-147` is also deadline-free, waiting on the
@@ -1520,12 +1520,12 @@ mod tests {
     /// test body.
     fn seed_team_for_permission_tests() -> (EnvVarGuard, EnvVarGuard, EnvVarGuard) {
         let root = std::env::temp_dir().join(format!(
-            "cometix-in-process-runner-{}",
+            "nyan-in-process-runner-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
-        let write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
+        let write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::utils::swarm::team_helpers::clear_team_tool_state_for_test();
         let record = crate::utils::swarm::team_helpers::create_team_record(
             "alpha".to_string(),
@@ -2391,7 +2391,7 @@ mod tests {
     /// the ask to the leader, and the ONLY non-answer exit is abort
     /// (`:388-392` interval body, `:435-442` listener), which yields `None` so
     /// the caller keeps its deny. This test used to pin a
-    /// `COMETIX_SWARM_PERMISSION_WAIT_MS` timeout; CC has no deadline on either
+    /// `NYAN_SWARM_PERMISSION_WAIT_MS` timeout; CC has no deadline on either
     /// this leg or `swarmWorkerHandler.ts:67-147`, so the bound is gone and the
     /// abort exit is what is pinned. #156: the former
     /// `create_in_process_can_use_tool` variant of this test also pinned a

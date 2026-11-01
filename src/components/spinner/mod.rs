@@ -306,7 +306,7 @@ fn format_duration_ms(ms: u64) -> String {
 }
 
 /// The animation row's clock interval; `None` freezes it. Reduced motion
-/// still ticks once a second so wall-elapsed text refreshes (Cometix keeps
+/// still ticks once a second so wall-elapsed text refreshes (Nyan keeps
 /// the timer live where CC relies on parent re-renders).
 fn spinner_row_interval(mode: SpinnerMode, reduced_motion: bool, frozen: bool) -> Option<Duration> {
     if frozen {
@@ -983,7 +983,7 @@ pub fn SpinnerWithVerb(
     // Maps to CC `SpinnerAnimationRow` progressive width gating:
     // messageWidth = glimmerMessageWidth + 2, availableSpace = columns - messageWidth - 5.
     let available_width = (columns as usize).saturating_sub(message_width + 7);
-    // Cometix Special modification:
+    // Nyan Special modification:
     // Official gates timer/tokens behind `AppState.verbose`, running teammates,
     // or `SHOW_TOKENS_AFTER_MS` (30s). We always offer them immediately; width
     // gating and `token_count > 0` still apply. Do not thread `verbose` here.
@@ -1319,7 +1319,7 @@ mod tests {
             }
         });
 
-        // Cometix Special modification: timer shows immediately (no verbose/30s gate).
+        // Nyan Special modification: timer shows immediately (no verbose/30s gate).
         assert!(
             text.contains("● Thinking…"),
             "reduced-motion glyph + verb; canvas=\n{text}"
@@ -1918,7 +1918,7 @@ mod tests {
 
     #[test]
     fn spinner_shows_timer_and_tokens_immediately_without_official_gate() {
-        // Cometix Special modification: no verbose / 30s gate.
+        // Nyan Special modification: no verbose / 30s gate.
         let with_tokens = render_text(element! {
             ContextProvider(value: Context::owned(*crate::utils::theme::current())) {
                 crate::state::app_state::AppStateProvider(

@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn base_env_matches_official_current_process_env_inheritance() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _dynamic = EnvVarGuard::set("COMETIX_SUBPROCESS_ENV_TEST_DYNAMIC", "fresh");
+        let _dynamic = EnvVarGuard::set("NYAN_SUBPROCESS_ENV_TEST_DYNAMIC", "fresh");
         let _scrub_off = EnvVarGuard::unset("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB");
 
         let mut command = std::process::Command::new("true");
@@ -156,7 +156,7 @@ mod tests {
 
         let env = child_env(&command);
         assert!(env.iter().any(|(key, value)| {
-            key == "COMETIX_SUBPROCESS_ENV_TEST_DYNAMIC" && value.as_deref() == Some("fresh")
+            key == "NYAN_SUBPROCESS_ENV_TEST_DYNAMIC" && value.as_deref() == Some("fresh")
         }));
     }
 
@@ -168,7 +168,7 @@ mod tests {
         let _scrub = EnvVarGuard::set("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "1");
         let _secret = EnvVarGuard::set("ANTHROPIC_API_KEY", "sk-test");
         let _input = EnvVarGuard::set("INPUT_ANTHROPIC_API_KEY", "sk-test");
-        let _deleted = EnvVarGuard::unset("COMETIX_SUBPROCESS_ENV_TEST_DELETED");
+        let _deleted = EnvVarGuard::unset("NYAN_SUBPROCESS_ENV_TEST_DELETED");
 
         let mut command = std::process::Command::new("true");
         super::apply_subprocess_env_std(&mut command);
@@ -191,7 +191,7 @@ mod tests {
         );
         assert!(
             !env.iter()
-                .any(|(key, value)| key == "COMETIX_SUBPROCESS_ENV_TEST_DELETED"
+                .any(|(key, value)| key == "NYAN_SUBPROCESS_ENV_TEST_DELETED"
                     && value.is_some())
         );
     }

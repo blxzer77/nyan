@@ -61,9 +61,9 @@ fn status_message(args: &str, mcp_state: &McpState) -> String {
     let has_open = args.trim() == "open";
     if clients.is_empty() {
         if has_open {
-            "No IDEs with Claude Code extension detected.".to_string()
+            "No IDEs with nyan extension detected.".to_string()
         } else {
-            "No connected IDE detected. Start an IDE with the Claude Code extension and run /ide again."
+            "No connected IDE detected. Start an IDE with the nyan extension and run /ide again."
                 .to_string()
         }
     } else if has_open {
@@ -134,11 +134,11 @@ mod tests {
         let state = McpState::default();
         assert_eq!(
             status_message("", &state),
-            "No connected IDE detected. Start an IDE with the Claude Code extension and run /ide again."
+            "No connected IDE detected. Start an IDE with the nyan extension and run /ide again."
         );
         assert_eq!(
             status_message("open", &state),
-            "No IDEs with Claude Code extension detected."
+            "No IDEs with nyan extension detected."
         );
     }
 

@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn directory_for_path_keeps_existing_directories_and_uses_file_parent() {
         let directory = std::env::temp_dir().join(format!(
-            "cometix-path-directory-{}",
+            "nyan-path-directory-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&directory).unwrap();

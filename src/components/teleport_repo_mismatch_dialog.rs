@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: the official component validates selected paths with
 //! `validateRepoAtPath(...)` and removes invalid paths from the persisted GitHub
-//! repo mapping via `removePathFromRepo(...)`. Cometix preserves the dialog,
+//! repo mapping via `removePathFromRepo(...)`. Nyan preserves the dialog,
 //! option construction, empty-state copy, invalid-path message helper, and
 //! `on_select_path`/`on_cancel` callbacks only. Filesystem/git validation and
 //! config mutation belong to the future `utils/githubRepoPathMapping` runtime
@@ -120,7 +120,7 @@ pub fn TeleportRepoMismatchDialog<'a>(
         match choice {
             TeleportRepoMismatchChoice::Path(path) => {
                 // Official path: async validateRepoAtPath; if valid, onSelectPath.
-                // Safe Cometix path: caller/runtime owns validation, this dialog
+                // Safe Nyan path: caller/runtime owns validation, this dialog
                 // only returns the selected path.
                 (props.on_select_path)(path);
             }
@@ -152,7 +152,7 @@ pub fn TeleportRepoMismatchDialog<'a>(
                 Some(element! {
                     Fragment {
                         View(flex_direction: FlexDirection::Column, row_gap: 1u32) {
-                            Text(content: format!("Open Claude Code in {}:", props.target_repo), wrap: TextWrap::Wrap)
+                            Text(content: format!("Open nyan in {}:", props.target_repo), wrap: TextWrap::Wrap)
                         }
                         Select(
                             options: options,
@@ -231,7 +231,7 @@ mod tests {
 
         assert!(text.contains("Teleport to Repo"), "canvas=\n{text}");
         assert!(
-            text.contains("Open Claude Code in anthropic/claude-code:"),
+            text.contains("Open nyan in anthropic/claude-code:"),
             "canvas=\n{text}"
         );
         assert!(text.contains("Use ~/src/claude-code"), "canvas=\n{text}");
@@ -257,7 +257,7 @@ mod tests {
             text.contains("Run claude --teleport from a checkout of anthropic/claude-code"),
             "canvas=\n{text}"
         );
-        assert!(!text.contains("Open Claude Code in"), "canvas=\n{text}");
+        assert!(!text.contains("Open nyan in"), "canvas=\n{text}");
     }
 
     #[test]

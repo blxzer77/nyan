@@ -22,7 +22,7 @@ pub struct AssistantThinkingMessageProps {
     /// CC prop shape only.
     pub verbose: bool,
     pub is_transcript_mode: bool,
-    /// Cometix extension (no CC counterpart) — user-authorized L2 (v3 ruling,
+    /// Nyan extension (no CC counterpart) — user-authorized L2 (v3 ruling,
     /// 2026-08-01). SINGLE-SOURCE expansion control REPLACING CC's
     /// `isTranscriptMode || verbose` gate (AssistantThinkingMessage.tsx:38);
     /// transcript mode stays a separate disjunct, `verbose` is excluded.
@@ -42,8 +42,8 @@ pub fn AssistantThinkingMessage(
     // AssistantThinkingMessage.tsx:38) — verbose is deliberately excluded;
     // transcript mode stays. Both AUTHORIZED deviations: this single-source
     // replacement, and the visibility gate — CC renders thinking as null when
-    // neither verbose nor transcript (Message.tsx:449-451) while Cometix always
-    // mounts this leaf and shows the collapsed hint (no Cometix visibility gate
+    // neither verbose nor transcript (Message.tsx:449-451) while Nyan always
+    // mounts this leaf and shows the collapsed hint (no Nyan visibility gate
     // reads verbose for thinking blocks; verified message.rs/messages_list.rs).
     // `expanded` is the dormant per-message seam (see props doc).
     let should_show_full = props.expanded || props.is_transcript_mode || props.expand_by_default;

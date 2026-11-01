@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: the official auto-connect dialog writes global config
 //! (`autoConnectIde`, `hasIdeAutoConnectDialogBeenShown`) and the disable
-//! dialog may write `autoConnectIde: false`. Cometix preserves the visible UI,
+//! dialog may write `autoConnectIde: false`. Nyan preserves the visible UI,
 //! option order/defaults, gate helpers (in `utils::ide`), and callbacks only;
 //! config writes remain deferred to the IDE runtime/settings slice.
 

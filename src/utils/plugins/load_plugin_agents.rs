@@ -336,7 +336,7 @@ mod tests {
     fn temp_dir(name: &str) -> PathBuf {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let dir = std::env::temp_dir().join(format!(
-            "cometix-plugin-agents-{name}-{}",
+            "nyan-plugin-agents-{name}-{}",
             uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&dir).expect("temp dir");

@@ -1,6 +1,6 @@
 //! Maps to: CC `hooks/notifs/useMcpConnectivityStatus.tsx`.
 //!
-//! Cometix keeps this as a pure producer seam. It consumes an already-known MCP
+//! Nyan keeps this as a pure producer seam. It consumes an already-known MCP
 //! connection snapshot and emits main-screen runtime notifications; it never
 //! starts MCP clients, performs auth, contacts claude.ai, or writes settings.
 

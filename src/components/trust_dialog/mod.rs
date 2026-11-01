@@ -1,7 +1,7 @@
 //! Maps to: CC `components/TrustDialog/TrustDialog.tsx`.
 //!
 //! Workspace trust approval dialog. Official accept writes project/session trust
-//! and official reject exits the process. Cometix preserves the dialog boundary,
+//! and official reject exits the process. Nyan preserves the dialog boundary,
 //! copy, option values, source/risk calculation, and callbacks, but leaves
 //! trust persistence/process exit to the caller for this safe UI slice.
 
@@ -129,7 +129,7 @@ pub struct TrustDialogProps<'a> {
     pub exit_pending: bool,
     pub exit_key_name: Option<String>,
     pub on_done: HandlerMut<'a, TrustDialogAcceptResult>,
-    /// Safe Cometix hook for the official `gracefulShutdownSync(...)` branch.
+    /// Safe Nyan hook for the official `gracefulShutdownSync(...)` branch.
     pub on_reject: HandlerMut<'a, ()>,
 }
 
@@ -202,7 +202,7 @@ pub fn TrustDialog<'a>(
             }
             TrustDialogChoice::Exit => {
                 // Official path: `gracefulShutdownSync(...)`.
-                // Safe Cometix path: no process exit from the component.
+                // Safe Nyan path: no process exit from the component.
                 (props.on_reject)(());
             }
         }
@@ -234,7 +234,7 @@ pub fn TrustDialog<'a>(
                     wrap: TextWrap::Wrap,
                 )
                 Text(
-                    content: "Claude Code'll be able to read, edit, and execute files here.".to_string(),
+                    content: "nyan'll be able to read, edit, and execute files here.".to_string(),
                     wrap: TextWrap::Wrap,
                 )
                 Text(
@@ -326,7 +326,7 @@ mod tests {
             "canvas=\n{text}"
         );
         assert!(
-            text.contains("Claude Code'll be able to read, edit, and execute files here."),
+            text.contains("nyan'll be able to read, edit, and execute files here."),
             "canvas=\n{text}"
         );
         assert!(

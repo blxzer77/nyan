@@ -35,7 +35,7 @@ pub fn status_line_should_display(settings: &SettingsJson) -> bool {
 }
 
 /// Maps to the `statusLineText ? ... : fullscreen ? ' ' : null` render gate in
-/// CC `components/StatusLine.tsx#StatusLineInner`. Cometix currently uses the
+/// CC `components/StatusLine.tsx#StatusLineInner`. Nyan currently uses the
 /// normal main-screen/native-scrollback branch, so only non-empty text renders.
 /// Maps to: CC `PromptInputFooter.tsx:176-178` — the mount condition is
 /// `!exitMessage.show && !isPasting && statusLineShouldDisplay(settings)`.
@@ -51,7 +51,7 @@ pub fn status_line_should_display(settings: &SettingsJson) -> bool {
 /// CC gets from rendering a `StatusLineInner` whose `statusLineText` is still
 /// undefined.
 ///
-/// Seam: CC also gates on `isPasting`; Cometix's footer does not track that
+/// Seam: CC also gates on `isPasting`; Nyan's footer does not track that
 /// yet.
 pub fn status_line_should_render(configured: bool, exit_hint_visible: bool) -> bool {
     !exit_hint_visible && configured
@@ -316,7 +316,7 @@ struct StatusLineTriggerState {
 /// `doUpdate` when any of the four trigger values changes, plus the 300ms
 /// debounce at `:291-304` and the `doUpdate` body at `:240-288`.
 ///
-/// Cometix previously ran `run_status_line_update` exactly once, from a
+/// Nyan previously ran `run_status_line_update` exactly once, from a
 /// `tokio::spawn` in `main.rs` over a launch-time snapshot, so the status line
 /// was computed per process and never refreshed — switching model, permission
 /// mode or vim mode, and every new assistant message, left it stale. Owning
@@ -503,14 +503,14 @@ pub fn StatusLine(props: &StatusLineProps, mut hooks: Hooks) -> impl Into<AnyEle
     //   command finishes steals a row from ScrollBox and shifts content.
     //   Reserve the row while loading.
     //
-    // Cometix returned a 0-height view instead, so between "a status line is
+    // Nyan returned a 0-height view instead, so between "a status line is
     // configured" and "its command has produced text" the footer lost the row
     // it had already suppressed the hint for, and the whole prompt box
     // collapsed. Reserving it is what the source does.
     //
     // The source gates the placeholder on `isFullscreenEnvEnabled()` because
     // only its fullscreen shell has the `flexShrink:0` footer that the shift
-    // damages. Cometix's inline main screen has the same problem for a
+    // damages. Nyan's inline main screen has the same problem for a
     // different reason — `footer_height_for` is a computed budget, so a
     // 0→1 change there is a visible reflow — so the placeholder is
     // unconditional here, and `footer_height_for` counts the row on the same

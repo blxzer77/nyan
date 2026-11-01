@@ -87,12 +87,12 @@ mod tests {
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-vim-command-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-vim-command-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join(".claude.json"), r#"{"editorMode":"normal"}"#).unwrap();
         let _restore = RestoreEnv {
             config_dir: Some(EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root)),
-            write_enabled: Some(EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1")),
+            write_enabled: Some(EnvVarGuard::set("NYAN_WRITE_ENABLED", "1")),
             root: root.clone(),
         };
         crate::utils::config::clear_global_config_cache_for_testing();

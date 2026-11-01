@@ -25,7 +25,7 @@ pub fn get_prompt_for_command(
 
 /// Maps to: CC `commands/statusline.tsx:5-29#statusline` descriptor.
 pub fn command() -> super::Command {
-    let mut command = super::Command::prompt("statusline", "Set up Claude Code's status line UI")
+    let mut command = super::Command::prompt("statusline", "Set up nyan's status line UI")
         .prompt_metadata("setting up statusLine", 0)
         .disable_non_interactive()
         .prompt_executable(get_prompt_for_command);
@@ -48,7 +48,7 @@ mod tests {
     fn descriptor_matches_official_statusline_command() {
         let command = command();
         assert_eq!(command.name, "statusline");
-        assert_eq!(command.description, "Set up Claude Code's status line UI");
+        assert_eq!(command.description, "Set up nyan's status line UI");
         assert_eq!(command.kind, super::super::CommandKind::Prompt);
         assert_eq!(command.source, super::super::CommandSource::Builtin);
         assert_eq!(command.content_length, Some(0));

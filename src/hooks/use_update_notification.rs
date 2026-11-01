@@ -5,12 +5,12 @@
 //! version; the hook records each newly seen update semver. As executed by
 //! React, the committed return value is always `null` (see
 //! [`use_update_notification`]), so the "✓ Update installed" copy it gates
-//! never commits in CC either — Cometix reproduces that committed output.
+//! never commits in CC either — Nyan reproduces that committed output.
 
 use iocraft::prelude::*;
 
 /// Maps to: CC `useUpdateNotification.ts:4-6` `getSemverPart` (loose semver
-/// major.minor.patch). CC's `semver` throws on unparseable input; Cometix
+/// major.minor.patch). CC's `semver` throws on unparseable input; Nyan
 /// returns the input unchanged so the comparison stays total.
 pub fn get_semver_part(version: &str) -> String {
     match crate::utils::auto_updater::parse_triplet(version) {
@@ -60,7 +60,7 @@ mod tests {
         assert_eq!(get_semver_part("1.2.3"), "1.2.3");
         assert_eq!(get_semver_part("1.2.3-beta.1"), "1.2.3");
         assert_eq!(get_semver_part("1.2.3+sha"), "1.2.3");
-        // CC throws here; Cometix documented deviation returns input unchanged.
+        // CC throws here; Nyan documented deviation returns input unchanged.
         assert_eq!(get_semver_part("not-a-version"), "not-a-version");
     }
 

@@ -87,7 +87,7 @@ pub fn search_memory_directory(
         };
         if let Some(rule) = blocked_rule(&path, &content, memory_settings) {
             tracing::warn!(
-                target: "cometix::memory",
+                target: "nyan::memory",
                 memory_guard_blocked = true,
                 path = %path.display(),
                 rules = %rule,

@@ -1,7 +1,7 @@
 //! Maps to: CC `components/ExitFlow.tsx`.
 //!
 //! Safety boundary: official `ExitFlow` calls `gracefulShutdown(0,
-//! 'prompt_input_exit')` after invoking `onDone`. Cometix preserves the
+//! 'prompt_input_exit')` after invoking `onDone`. nyan preserves the
 //! WorktreeExitDialog delegation, goodbye fallback, and callback shape, but it
 //! never exits the process. The App/REPL exit runtime must perform actual
 //! shutdown when that slice is explicitly allowed.
@@ -116,7 +116,7 @@ mod tests {
             original_cwd: "/repo".to_string(),
             worktree_path: "/repo-feature".to_string(),
             worktree_name: "feature".to_string(),
-            worktree_branch: Some("cometix/feature".to_string()),
+            worktree_branch: Some("nyan/feature".to_string()),
             original_branch: Some("main".to_string()),
             original_head_commit: Some("abc123".to_string()),
             session_id: "session-1".to_string(),

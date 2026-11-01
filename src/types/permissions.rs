@@ -397,7 +397,7 @@ struct PermissionResolveOnce {
 /// `createResolveOnce` guard those callbacks share
 /// ([`PermissionResolveOnce`]).
 ///
-/// Cometix only needed the per-entry form once a subagent's query could raise a
+/// Nyan only needed the per-entry form once a subagent's query could raise a
 /// dialog: `QueryCommand::PermissionDecision` addresses the REPL's own
 /// `active_query` actor, which is not the actor that asked when the request came
 /// from a subagent (`tools/AgentTool/runAgent.ts:753` hands the parent's

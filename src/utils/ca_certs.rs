@@ -7,7 +7,7 @@
 //! keeps, the platform verifier, which already trusts the system store. So
 //! this returns only the extra certificates.
 //!
-//! Cometix-specific deviation: the base store is always the platform's, as in
+//! Nyan-specific deviation: the base store is always the platform's, as in
 //! CC under `--use-system-ca`. CC's default base is its bundled Mozilla roots.
 //!
 //! Reads only `NODE_EXTRA_CA_CERTS`; `ca_certs_config.rs` populates it from
@@ -171,7 +171,7 @@ mod tests {
         assert!(get_ca_certificates().is_none());
 
         // A well-formed PEM block whose DER is not a certificate.
-        let bogus = std::env::temp_dir().join(format!("cometix-bogus-ca-{}.pem", uuid::Uuid::new_v4()));
+        let bogus = std::env::temp_dir().join(format!("nyan-bogus-ca-{}.pem", uuid::Uuid::new_v4()));
         std::fs::write(
             &bogus,
             "-----BEGIN CERTIFICATE-----\nAAECAwQFBgcICQ==\n-----END CERTIFICATE-----\n",

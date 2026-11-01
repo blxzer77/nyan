@@ -1,6 +1,6 @@
 //! Maps to: CC `hooks/notifs/useInstallMessages.tsx`.
 //!
-//! Cometix keeps native installer checks out of the main-screen path. This file
+//! Nyan keeps native installer checks out of the main-screen path. This file
 //! only maps already-known setup messages to runtime notifications, preserving
 //! official keys, priority rules, colors, and visible text without probing the
 //! installation or mutating files.

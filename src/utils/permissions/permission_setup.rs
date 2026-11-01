@@ -513,7 +513,7 @@ pub fn is_transcript_classifier_feature_enabled() -> bool {
     crate::utils::feature_flags::feature_enabled(
         crate::utils::feature_flags::FeatureFlag::TranscriptClassifier,
     ) || crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("COMETIX_TRANSCRIPT_CLASSIFIER")
+        crate::utils::process_env::var("NYAN_TRANSCRIPT_CLASSIFIER")
             .as_deref(),
     )
 }
@@ -1311,7 +1311,7 @@ mod tests {
     async fn initialize_tool_permission_context_defers_auto_transition_until_rules_are_complete() {
         crate::utils::permissions::auto_mode_state::reset_for_testing();
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
         let settings = SettingsJson {
             permissions: Some(crate::utils::settings::types::PermissionsSettings {
                 allow: Some(vec!["Bash(python:*)".to_string(), "Read".to_string()]),
@@ -1341,7 +1341,7 @@ mod tests {
                 &PermissionRuleValue::new("Read", None)
             ));
         }
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
     }
 
@@ -1349,20 +1349,20 @@ mod tests {
     fn initial_permission_mode_from_cli_auto_sets_active_when_gate_open() {
         crate::utils::permissions::auto_mode_state::reset_for_testing();
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
         if is_auto_mode_gate_enabled() {
             let (mode, _) = initial_permission_mode_from_cli(Some("auto"), false);
             assert_eq!(mode, PermissionMode::Auto);
             assert!(crate::utils::permissions::auto_mode_state::is_auto_mode_active());
         }
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
     }
 
     #[test]
     fn is_default_permission_mode_auto_reads_settings() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
         let settings = SettingsJson {
             permissions: Some(crate::utils::settings::types::PermissionsSettings {
                 default_mode: Some("auto".to_string()),
@@ -1371,7 +1371,7 @@ mod tests {
             ..SettingsJson::default()
         };
         assert!(is_default_permission_mode_auto(&settings));
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
     }
 
     #[test]
@@ -1449,7 +1449,7 @@ mod tests {
         ]
         .map(EnvVarGuard::unset);
         let root = std::env::temp_dir().join(format!(
-            "cometix-plan-auto-reload-{}",
+            "nyan-plan-auto-reload-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

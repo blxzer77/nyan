@@ -1,6 +1,6 @@
 //! Maps to: CC `hooks/notifs/useSettingsErrors.tsx`.
 //!
-//! Cometix keeps this as a pure notification producer plus a startup wiring
+//! Nyan keeps this as a pure notification producer plus a startup wiring
 //! seam. It only reports already-loaded settings validation errors and never
 //! writes settings, sessions, or filesystem state.
 

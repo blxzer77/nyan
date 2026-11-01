@@ -3,7 +3,7 @@
 //! CC keeps this in `context/`, not `state/`: the data lives in
 //! `AppState.notifications`, but the queue policy (priority ordering, the
 //! `shouldAdd` duplicate guard, fold callbacks, invalidation, the two-transition
-//! add, the mount-time promote) belongs to this owner. Cometix had absorbed the
+//! add, the mount-time promote) belongs to this owner. Nyan had absorbed the
 //! whole family into `state/mod.rs`, which is why CC's only `context/` file with
 //! real logic had no Rust counterpart at all.
 //!

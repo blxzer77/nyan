@@ -26,7 +26,7 @@ mod tests {
     #[test]
     fn is_path_gitignored_uses_git_precedence_and_fails_open_outside_repo() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-gitignore-{}",
+            "nyan-gitignore-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(root.join("ignored/nested")).unwrap();

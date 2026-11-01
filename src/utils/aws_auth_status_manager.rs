@@ -1,7 +1,7 @@
 //! Maps to: CC `utils/awsAuthStatusManager.ts`.
 //!
 //! The legacy AWS name is preserved for parity; CC uses this singleton for all
-//! cloud-provider auth refresh status (Bedrock and Vertex). Cometix keeps the
+//! cloud-provider auth refresh status (Bedrock and Vertex). Nyan keeps the
 //! same state transitions in a process-global mutex. React-style subscriptions
 //! are represented by polling `get_status()` from render boundaries for now.
 

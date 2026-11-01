@@ -123,7 +123,7 @@ impl QueryParams {
 
     /// Build the loop-local ToolUseContext for this query turn.
     /// Maps to: CC carrying `QueryParams.toolUseContext` into the query loop
-    /// (Cometix clones the seed each iteration so messages/tracking stay current).
+    /// (Nyan clones the seed each iteration so messages/tracking stay current).
     ///
     /// Options (`mainLoopModel`, tools, thinking, …) must already live on the
     /// seed — callers write them before [`crate::query::spawn_query`].
@@ -370,7 +370,7 @@ pub enum QueryEvent {
     /// `inProgressToolUseIDs`, and without this set a collapsed read group
     /// briefly finalizes mid-stream.
     /// The turn-boundary clear has no event: CC's REPL calls
-    /// `setStreamingToolUses([])` on itself (`REPL.tsx:2118,3910`), so Cometix
+    /// `setStreamingToolUses([])` on itself (`REPL.tsx:2118,3910`), so Nyan
     /// clears the set where it handles `Terminal`, next to `setStreamingText(null)`.
     StreamingToolUseStarted {
         tool_use_id: String,
@@ -396,7 +396,7 @@ pub enum QueryEvent {
     ToolUseSummary(crate::types::message::ToolUseSummaryMessage),
     /// Maps to CC `query.ts` consumption of `runTools(...)` `MessageUpdate.newContext`
     /// crossing the Rust actor boundary. Official REPL/App state is mutated
-    /// in-process by permission/tool handlers; Cometix sends the updated
+    /// in-process by permission/tool handlers; Nyan sends the updated
     /// `ToolPermissionContext` back to REPL so future top-level turns inherit
     /// hook grants, plan-mode transitions, and `AlwaysAllow` session rules.
     PermissionContextUpdate(ToolPermissionContext),
@@ -694,7 +694,7 @@ async fn maybe_make_file_history_snapshot(params: &QueryParams) {
     // the query boundary guarantees the initial snapshot exists before a fast
     // Write tool result can attempt to attach its pre-edit backup.
     if matches!(params.query_source, QuerySource::Prompt)
-        && crate::utils::env_utils::is_cometix_write_enabled()
+        && crate::utils::env_utils::is_nyan_write_enabled()
         && crate::utils::file_history::file_history_enabled()
     {
         if let Some(store) = params.tool_use_context.app_store.store.as_ref() {
@@ -6343,11 +6343,11 @@ mod tests {
         }
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _non_interactive = EnvVarGuard::unset("CLAUDE_CODE_NON_INTERACTIVE");
-        let _cometix_non_interactive = EnvVarGuard::unset("COMETIX_NON_INTERACTIVE");
-        let _cometix_non_interactive_session =
-            EnvVarGuard::unset("COMETIX_NON_INTERACTIVE_SESSION");
+        let _nyan_non_interactive = EnvVarGuard::unset("NYAN_NON_INTERACTIVE");
+        let _nyan_non_interactive_session =
+            EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION");
         let _checkpointing = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING");
         let _bootstrap = BootstrapRestore {
             interactive: crate::bootstrap::state::get_is_interactive(),
@@ -7712,7 +7712,7 @@ mod tests {
         }
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-query-at-mention-{}",
+            "nyan-query-at-mention-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -11667,7 +11667,7 @@ mod tests {
                         crate::services::api::claude::ClaudeStreamItem::ToolUse {
                             id: "srvu_search".to_string(),
                             name: "web_search".to_string(),
-                            input: serde_json::json!({"query": "cometix"}),
+                            input: serde_json::json!({"query": "nyan"}),
                             is_server: true,
                         },
                     ))
@@ -11680,7 +11680,7 @@ mod tests {
                                 {
                                     "type": "web_search_result",
                                     "encrypted_content": "encrypted",
-                                    "title": "Cometix",
+                                    "title": "Nyan",
                                     "url": "https://example.com"
                                 }
                             ]),
@@ -11751,7 +11751,7 @@ mod tests {
                 if block.id.0 == "srvu_search"
                     && block.name == "web_search"
                     && block.input.get("query").and_then(|value| value.as_str())
-                        == Some("cometix")
+                        == Some("nyan")
         )));
         assert!(assistant.content.iter().any(|content| matches!(
             content,
@@ -12727,9 +12727,9 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-query-edit-user-modified-{}",
+            "nyan-query-edit-user-modified-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -13133,7 +13133,7 @@ mod tests {
         // Current CC enables TodoWrite only when TodoV2 is off. The Rust
         // bootstrap mapping uses this flag for a non-interactive legacy-todo
         // context; force-disable the explicit Task-tool override as well.
-        let _non_interactive = EnvVarGuard::set("COMETIX_NON_INTERACTIVE_SESSION", "1");
+        let _non_interactive = EnvVarGuard::set("NYAN_NON_INTERACTIVE_SESSION", "1");
         let _tasks_override = EnvVarGuard::unset("CLAUDE_CODE_ENABLE_TASKS");
 
         #[derive(Clone, Debug)]

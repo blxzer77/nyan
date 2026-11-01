@@ -3,7 +3,7 @@
 //!
 //! Deliberately independent of iocraft: CC shares the exact same store type
 //! between the interactive React tree (`components/App.tsx`) and the headless
-//! SDK path (`main.tsx:3728`). CometixCode preserves that property so a future
+//! SDK path (`main.tsx:3728`). nyan preserves that property so a future
 //! print mode (`-p`) reuses this store without a render loop. The TUI is wired
 //! in via `state::app_state`.
 //!

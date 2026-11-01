@@ -111,20 +111,20 @@ mod tests {
     fn eager_parse_cli_flag_supports_space_separated_value() {
         let value = eager_parse_cli_flag(
             "--settings",
-            ["cometix", "--settings", "settings.test.json"],
+            ["nyan", "--settings", "settings.test.json"],
         );
         assert_eq!(value.as_deref(), Some("settings.test.json"));
     }
 
     #[test]
     fn eager_parse_cli_flag_supports_equals_value() {
-        let value = eager_parse_cli_flag("--settings", ["cometix", "--settings={}"]);
+        let value = eager_parse_cli_flag("--settings", ["nyan", "--settings={}"]);
         assert_eq!(value.as_deref(), Some("{}"));
     }
 
     #[test]
     fn eager_parse_cli_flag_returns_none_when_missing() {
-        let value = eager_parse_cli_flag("--settings", ["cometix", "--debug"]);
+        let value = eager_parse_cli_flag("--settings", ["nyan", "--debug"]);
         assert_eq!(value, None);
     }
 
@@ -133,7 +133,7 @@ mod tests {
         let values = eager_parse_cli_flag_values(
             "--add-dir",
             [
-                "cometix",
+                "nyan",
                 "--add-dir",
                 "/repo/a",
                 "/repo/b",
@@ -151,7 +151,7 @@ mod tests {
         let values = eager_parse_cli_flag_repeated(
             "--plugin-dir",
             [
-                "cometix",
+                "nyan",
                 "--plugin-dir",
                 "/repo/a",
                 "prompt",
@@ -161,7 +161,7 @@ mod tests {
         );
         assert_eq!(values, vec!["/repo/a", "/repo/b"]);
 
-        let missing = eager_parse_cli_flag_repeated("--plugin-dir", ["cometix", "--verbose"]);
+        let missing = eager_parse_cli_flag_repeated("--plugin-dir", ["nyan", "--verbose"]);
         assert!(missing.is_empty());
     }
 }

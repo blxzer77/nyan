@@ -2,7 +2,7 @@
 //! Maps to CC `utils/tokens.ts`.
 //!
 //! The official implementation prefers usage from the most recent real API
-//! response and estimates only messages added after it. Cometix's typed message
+//! response and estimates only messages added after it. Nyan's typed message
 //! model does not yet carry Anthropic response IDs for split assistant records,
 //! so this port keeps the same ownership boundary and uses the last usage-bearing
 //! assistant as the anchor.
@@ -14,7 +14,7 @@ use crate::types::message::{AssistantContent, AssistantMessage, Message, TokenUs
 
 /// Maps to CC `utils/tokens.ts` `getTokenUsage(...)`.
 ///
-/// CC filters synthetic assistant rows here. Cometix's typed model-message
+/// CC filters synthetic assistant rows here. Nyan's typed model-message
 /// layer does not carry synthetic assistant sentinels, so every usage-bearing
 /// assistant message is treated as a real API response.
 fn get_token_usage(message: &Message) -> Option<&TokenUsage> {

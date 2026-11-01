@@ -114,13 +114,18 @@ pub struct SettingsJson {
     /// completed lines, CC `REPL.tsx:1997`). `prefersReducedMotion` overrides
     /// both and hides the preview entirely, as in CC.
     ///
-    /// @cometix offset: not an official settings.json key. CC has only the
-    /// line mode; Cometix keeps character streaming as an option.
+    /// @nyan offset: not an official settings.json key. CC has only the
+    /// line mode; Nyan keeps character streaming as an option.
     pub streaming_text_display: Option<String>,
+    /// @nyan: MCP OAuth dynamic-registration `client_name`. Absent means `nyan`.
+    pub mcp_oauth_client_name: Option<String>,
+    /// @nyan: model-request headers. A name here replaces the common or
+    /// provider header of the same name. This does not add a provider.
+    pub http_headers: Option<IndexMap<String, String>>,
     pub show_thinking_summaries: Option<bool>,
     /// Official GrowthBook `tengu_prompt_cache_1h_config` payload.
     ///
-    /// @cometix offset: not an official settings.json key. GrowthBook is not
+    /// @nyan offset: not an official settings.json key. GrowthBook is not
     /// ported, so users set `promptCache1h.allowlist` here.
     pub prompt_cache_1h: Option<PromptCache1hSettings>,
 
@@ -276,7 +281,7 @@ pub struct AttributionSettings {
 
 /// Official GrowthBook `tengu_prompt_cache_1h_config` object.
 ///
-/// @cometix offset: settings-backed replacement for the remote allowlist.
+/// @nyan offset: settings-backed replacement for the remote allowlist.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptCache1hSettings {
@@ -518,7 +523,7 @@ pub fn permissions_schema() -> &'static crate::utils::zod::Schema {
                     crate::types::permissions::EXTERNAL_PERMISSION_MODES.to_vec()
                 })
                 .optional()
-                .describe("Default permission mode when Claude Code needs access"),
+                .describe("Default permission mode when nyan needs access"),
             ),
             (
                 "disableBypassPermissionsMode",
@@ -664,7 +669,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
             feature_enabled(FeatureFlag::Kairos) || feature_enabled(FeatureFlag::KairosBrief);
         // USER_TYPE is a build-time define in CC. Keep the same axis for the
         // remaining internal-only schema fields.
-        // @cometix: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
+        // @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
         let is_ant = crate::utils::build_profile::build_audience().is_internal();
         let xaa = is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_ENABLE_XAA").as_deref());
 
@@ -673,7 +678,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 "$schema",
                 zod::literal(json!(super::constants::CLAUDE_CODE_SETTINGS_SCHEMA_URL))
                     .optional()
-                    .describe("JSON Schema reference for Claude Code settings"),
+                    .describe("JSON Schema reference for nyan settings"),
             ),
             (
                 "apiKeyHelper",
@@ -715,7 +720,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                     ),
                     (
                         "clientId",
-                        zod::string().describe("Claude Code's client_id registered at the IdP"),
+                        zod::string().describe("nyan's client_id registered at the IdP"),
                     ),
                     (
                         "callbackPort",
@@ -757,7 +762,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 environment_variables_schema()
                     .clone()
                     .optional()
-                    .describe("Environment variables to set for Claude Code sessions"),
+                    .describe("Environment variables to set for nyan sessions"),
             ),
             (
                 "attribution",
@@ -777,7 +782,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 ])
                 .optional()
                 .describe(
-                    "Customize attribution text for commits and PRs. Each field defaults to the standard Claude Code attribution if not set.",
+                    "Customize attribution text for commits and PRs. Each field defaults to the standard nyan attribution if not set.",
                 ),
             ),
             (
@@ -803,7 +808,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 "model",
                 zod::string()
                     .optional()
-                    .describe("Override the default model used by Claude Code"),
+                    .describe("Override the default model used by nyan"),
             ),
             (
                 "availableModels",
@@ -1265,7 +1270,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 )])
                 .optional()
                 .describe(
-                    "1h prompt-cache TTL allowlist. Official Claude Code receives this from GrowthBook (`tengu_prompt_cache_1h_config`); Cometix reads it from settings.",
+                    "1h prompt-cache TTL allowlist. Official nyan receives this from GrowthBook (`tengu_prompt_cache_1h_config`); Nyan reads it from settings.",
                 ),
             ),
             (
@@ -1705,7 +1710,7 @@ mod zod_schema_tests {
         )
         .expect("invalid effort level swallowed");
         assert!(effort.get("effortLevel").is_none());
-        // @cometix: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
+        // @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
         let max = crate::utils::zod::safe_parse(
             settings_schema(),
             &serde_json::json!({"effortLevel": "max"}),

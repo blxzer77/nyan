@@ -321,7 +321,7 @@ mod tests {
     #[tokio::test]
     async fn sed_edit_permission_request_renders_file_edit_dialog_preview() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-sed-preview-{}.txt",
+            "nyan-sed-preview-{}.txt",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::write(&path, "hello old\n").unwrap();

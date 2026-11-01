@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: official mount effects log analytics, asynchronously probe
 //! `isChromeExtensionInstalled()`, and write
-//! `hasCompletedClaudeInChromeOnboarding` to global config. Cometix keeps the
+//! `hasCompletedClaudeInChromeOnboarding` to global config. Nyan keeps the
 //! dialog copy, links, Enter/Esc completion behavior, and installed/not-installed
 //! render branches from explicit snapshot props only. No analytics, extension
 //! probe, browser launch, or config write occurs here.
@@ -63,7 +63,7 @@ pub fn ClaudeInChromeOnboarding<'a>(
             View(flex_direction: FlexDirection::Column, gap: 1u32) {
                 View(flex_direction: FlexDirection::Column) {
                     Text(
-                        content: "Claude in Chrome works with the Chrome extension to let you control your browser directly from Claude Code. You can navigate websites, fill forms, capture screenshots, record GIFs, and debug with console logs and network requests.".to_string(),
+                        content: "Claude in Chrome works with the Chrome extension to let you control your browser directly from nyan. You can navigate websites, fill forms, capture screenshots, record GIFs, and debug with console logs and network requests.".to_string(),
                         wrap: TextWrap::Wrap,
                     )
                     #(if !installed {

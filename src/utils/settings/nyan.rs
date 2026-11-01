@@ -368,7 +368,7 @@ impl QdrantSettings {
     pub fn api_key_file(&self) -> Option<&str> {
         self.api_key_file
             .as_deref()
-            .or(Some("~/.cometix/keys/qdrant"))
+            .or(Some("~/.nyan/keys/qdrant"))
     }
 }
 
@@ -566,37 +566,37 @@ pub struct ProviderDefaults {
 pub const BUILTIN_PROVIDERS: &[ProviderDefaults] = &[
     ProviderDefaults {
         name: "anysearch",
-        api_key_file: Some("~/.cometix/keys/anysearch"),
+        api_key_file: Some("~/.nyan/keys/anysearch"),
         max_calls_per_session: Some(40),
         url: None,
     },
     ProviderDefaults {
         name: "brave",
-        api_key_file: Some("~/.cometix/keys/brave"),
+        api_key_file: Some("~/.nyan/keys/brave"),
         max_calls_per_session: Some(40),
         url: None,
     },
     ProviderDefaults {
         name: "deepseek",
-        api_key_file: Some("~/.cometix/keys/deepseek"),
+        api_key_file: Some("~/.nyan/keys/deepseek"),
         max_calls_per_session: Some(60),
         url: None,
     },
     ProviderDefaults {
         name: "exa",
-        api_key_file: Some("~/.cometix/keys/exa"),
+        api_key_file: Some("~/.nyan/keys/exa"),
         max_calls_per_session: Some(30),
         url: None,
     },
     ProviderDefaults {
         name: "firecrawl",
-        api_key_file: Some("~/.cometix/keys/firecrawl"),
+        api_key_file: Some("~/.nyan/keys/firecrawl"),
         max_calls_per_session: Some(20),
         url: None,
     },
     ProviderDefaults {
         name: "tavily",
-        api_key_file: Some("~/.cometix/keys/tavily"),
+        api_key_file: Some("~/.nyan/keys/tavily"),
         max_calls_per_session: Some(20),
         url: None,
     },
@@ -1121,7 +1121,7 @@ impl EmrankSettings {
     pub fn api_key_file(&self) -> &str {
         self.api_key_file
             .as_deref()
-            .unwrap_or("~/.cometix/keys/emrank")
+            .unwrap_or("~/.nyan/keys/emrank")
     }
     pub fn model_id(&self, alias: DecisionModel) -> String {
         let fallback = match alias {
@@ -1665,7 +1665,7 @@ mod tests {
         assert_eq!(searxng.url.as_deref(), Some("http://10.144.0.3:8454"));
         let exa = web.provider("exa");
         assert!(exa.enabled);
-        assert_eq!(exa.api_key_file.as_deref(), Some("~/.cometix/keys/exa"));
+        assert_eq!(exa.api_key_file.as_deref(), Some("~/.nyan/keys/exa"));
         assert_eq!(exa.max_calls_per_session, Some(30));
         assert_eq!(web.search().recall_depth(), 20);
         assert_eq!(web.search().fusion_keep(), 30);
@@ -1699,7 +1699,7 @@ mod tests {
         let decision = settings.decision();
         assert!(decision.enabled());
         assert_eq!(decision.emrank().url(), "https://emrank.tech/v1/decisions");
-        assert_eq!(decision.emrank().api_key_file(), "~/.cometix/keys/emrank");
+        assert_eq!(decision.emrank().api_key_file(), "~/.nyan/keys/emrank");
         assert_eq!(
             decision.emrank().model_id(DecisionModel::Fast),
             "typesafe/jev-1.14.0"
@@ -1831,7 +1831,7 @@ mod tests {
         assert_eq!(semantic.qdrant().url(), "http://10.144.0.3:6333");
         assert_eq!(
             semantic.qdrant().api_key_file(),
-            Some("~/.cometix/keys/qdrant")
+            Some("~/.nyan/keys/qdrant")
         );
     }
 
@@ -1860,7 +1860,7 @@ mod tests {
         }));
         let brave = settings.web().provider("brave");
         assert!(!brave.enabled);
-        assert_eq!(brave.api_key_file.as_deref(), Some("~/.cometix/keys/brave"));
+        assert_eq!(brave.api_key_file.as_deref(), Some("~/.nyan/keys/brave"));
         assert_eq!(brave.max_calls_per_session, Some(40));
     }
 

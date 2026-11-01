@@ -1,7 +1,7 @@
 //! Maps to: CC `hooks/renderPlaceholder.ts`.
 //!
 //! Pure placeholder rendering helper for text inputs. The official helper uses
-//! chalk.dim/chalk.inverse; Cometix emits equivalent ANSI SGR so callers can
+//! chalk.dim/chalk.inverse; Nyan emits equivalent ANSI SGR so callers can
 //! render through iocraft `Ansi` without moving placeholder logic into the
 //! input component.
 

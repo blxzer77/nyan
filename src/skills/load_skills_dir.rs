@@ -1269,7 +1269,7 @@ mod tests {
 
     fn temp_dir(name: &str) -> PathBuf {
         let dir =
-            std::env::temp_dir().join(format!("cometix-skills-{name}-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-skills-{name}-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&dir).expect("temp dir");
         dir
     }
@@ -1526,7 +1526,7 @@ mod tests {
         let _snapshot = DynamicSkillsTestSnapshot::capture();
         clear_dynamic_skills();
         let root = std::env::temp_dir().join(format!(
-            "cometix-braced-conditional-{}",
+            "nyan-braced-conditional-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let skill_dir = root.join(".claude/skills/typescript-only");
@@ -1787,7 +1787,7 @@ mod tests {
         let _snapshot = DynamicSkillsTestSnapshot::capture();
         clear_dynamic_skills();
         let root = std::env::temp_dir().join(format!(
-            "cometix-dynamic-skills-{}",
+            "nyan-dynamic-skills-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let nested_skills = root.join("packages/pkg/.claude/skills");
@@ -1891,7 +1891,7 @@ mod tests {
         let _snapshot = DynamicSkillsTestSnapshot::capture();
         clear_dynamic_skills();
         let root = std::env::temp_dir().join(format!(
-            "cometix-dynamic-skill-order-{}",
+            "nyan-dynamic-skill-order-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let first_dir = root.join("first");

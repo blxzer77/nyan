@@ -1,7 +1,7 @@
 //! Incremental port of official `TeamCreateTool`.
 //! Official `userFacingName()` is empty, so assistant tool-use chrome is hidden.
 //! Real execution writes team files, task directories, analytics, and app state;
-//! Cometix now writes the official team-file shape for pane-backed teammate
+//! Nyan now writes the official team-file shape for pane-backed teammate
 //! discovery and the leader's AppState teamContext, while analytics events
 //! (`tengu_team_created`) remain disabled repo-wide.
 
@@ -362,7 +362,7 @@ mod tests {
 
     fn unique_config_dir(prefix: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "cometix-team-create-{prefix}-{}",
+            "nyan-team-create-{prefix}-{}",
             uuid::Uuid::new_v4().simple()
         ))
     }
@@ -397,7 +397,7 @@ mod tests {
         crate::utils::tasks::clear_leader_team_name();
         let root = unique_config_dir("unique");
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
+        let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         let existing_dir = root.join("teams").join("alpha");
         std::fs::create_dir_all(&existing_dir).unwrap();
         std::fs::write(
@@ -445,7 +445,7 @@ mod tests {
         crate::utils::tasks::clear_leader_team_name();
         let root = unique_config_dir("appstate");
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
+        let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
 
         let store = crate::state::store::AppStore::new(
             crate::state::app_state_store::AppState::default(),
@@ -543,7 +543,7 @@ mod tests {
                 metadata: None,
             },
         );
-        let _io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
+        let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         let stale_dir = crate::utils::tasks::get_tasks_dir("alpha-team");
         std::fs::create_dir_all(&stale_dir).unwrap();
         std::fs::write(stale_dir.join("4.json"), "{}").unwrap();

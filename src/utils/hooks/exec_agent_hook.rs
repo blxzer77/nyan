@@ -729,7 +729,7 @@ mod tests {
     #[ignore = "requires authorized real provider settings and Kitty"]
     async fn real_provider_matches_official_agent_hook_outcomes() {
         assert_eq!(
-            crate::utils::process_env::var("COMETIX_RUN_REAL_AGENT_HOOK").as_deref(),
+            crate::utils::process_env::var("NYAN_RUN_REAL_AGENT_HOOK").as_deref(),
             Some("1")
         );
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -742,7 +742,7 @@ mod tests {
         crate::bootstrap::state::set_original_cwd(&workdir);
         let settings = crate::utils::node_os::homedir().join(".claude/settings.grok.json");
         crate::main::apply_live_startup_flags(&[
-            "cometix-code".into(),
+            "nyan".into(),
             "--settings".into(),
             settings.display().to_string(),
         ])

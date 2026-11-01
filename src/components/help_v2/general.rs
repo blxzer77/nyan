@@ -9,7 +9,7 @@ pub fn General(_hooks: Hooks) -> impl Into<AnyElement<'static>> {
     element! {
         View(flex_direction: FlexDirection::Column, padding_top: 1u32, padding_bottom: 1u32, row_gap: 1u32) {
             View {
-                Text(content: "Cometix Code understands your codebase, makes edits with your permission, and executes commands — right from your terminal.".to_string())
+                Text(content: "nyan understands your codebase, makes edits with your permission, and executes commands — right from your terminal.".to_string())
             }
             View(flex_direction: FlexDirection::Column) {
                 View {

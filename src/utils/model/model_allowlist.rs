@@ -147,7 +147,7 @@ mod tests {
     impl SettingsFixture {
         fn new(available_models: Option<&[&str]>) -> Self {
             let root = std::env::temp_dir().join(format!(
-                "cometix-allowlist-{}",
+                "nyan-allowlist-{}",
                 uuid::Uuid::new_v4().simple()
             ));
             std::fs::create_dir_all(&root).unwrap();

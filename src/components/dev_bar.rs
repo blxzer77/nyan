@@ -1,7 +1,7 @@
 //! Maps to: CC `components/DevBar.tsx`.
 //!
 //! Official `DevBar` polls `bootstrap/state.ts#getSlowOperations` every 500ms
-//! only when `shouldShowDevBar()` is true. Cometix keeps polling outside this
+//! only when `shouldShowDevBar()` is true. Nyan keeps polling outside this
 //! render boundary; callers pass the current slow-operation snapshot and the
 //! already-resolved visibility gate.
 

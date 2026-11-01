@@ -649,14 +649,14 @@ mod tests {
     #[test]
     fn file_permission_options_label_outside_directory_like_official() {
         let path = std::env::temp_dir()
-            .join("cometix-file-perm")
+            .join("nyan-file-perm")
             .join("example.txt");
         let options =
             get_file_permission_options(&path.display().to_string(), FileOperationType::Read);
         assert!(
             options[1]
                 .label
-                .contains("Yes, allow reading from cometix-file-perm/ during this session"),
+                .contains("Yes, allow reading from nyan-file-perm/ during this session"),
             "label={}",
             options[1].label
         );
@@ -665,17 +665,17 @@ mod tests {
     #[test]
     fn file_permission_options_honor_additional_working_directories_context() {
         let outside = std::env::temp_dir()
-            .join("cometix-file-perm-context")
+            .join("nyan-file-perm-context")
             .join("example.txt");
         let mut context = ToolPermissionContext::default();
         context.additional_working_directories.insert(
             std::env::temp_dir()
-                .join("cometix-file-perm-context")
+                .join("nyan-file-perm-context")
                 .display()
                 .to_string(),
             crate::types::permissions::AdditionalWorkingDirectory {
                 path: std::env::temp_dir()
-                    .join("cometix-file-perm-context")
+                    .join("nyan-file-perm-context")
                     .display()
                     .to_string(),
                 source: crate::types::permissions::PermissionRuleSource::Session,
@@ -723,7 +723,7 @@ mod tests {
         assert!(response.permission_updates_explicit);
 
         let outside = std::env::temp_dir()
-            .join("cometix-file-perm-suggestions")
+            .join("nyan-file-perm-suggestions")
             .join("example.txt");
         let outside_updates = generate_file_permission_suggestions(
             &outside.display().to_string(),

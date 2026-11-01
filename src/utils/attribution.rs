@@ -19,7 +19,7 @@ pub struct AttributionTexts {
 /// CC branches not reachable in this build, kept as documented seams:
 /// - `USER_TYPE === 'ant' && isUndercover()` → empty texts. `utils/undercover.ts`
 ///   is internal-only and unported; external builds never take this branch.
-/// - `getClientType() === 'remote'` → session URL. Cometix has no remote client
+/// - `getClientType() === 'remote'` → session URL. Nyan has no remote client
 ///   runtime (CC `remote/` is unported), so the branch is skipped.
 pub fn get_attribution_texts() -> AttributionTexts {
     // @[MODEL LAUNCH]: CC updates the hardcoded fallback model name below
@@ -36,7 +36,7 @@ pub fn get_attribution_texts() -> AttributionTexts {
         "Claude Opus 4.6".to_string()
     };
     let default_attribution = format!(
-        "🤖 Generated with [Claude Code]({})",
+        "🤖 Generated with [nyan]({})",
         crate::constants::product::PRODUCT_URL
     );
     let default_commit = format!("Co-Authored-By: {model_name} <noreply@anthropic.com>");
@@ -83,7 +83,7 @@ mod tests {
         }
         if !texts.pr.is_empty() {
             assert!(
-                texts.pr.contains("Generated with [Claude Code]"),
+                texts.pr.contains("Generated with [nyan]"),
                 "pr={}",
                 texts.pr
             );

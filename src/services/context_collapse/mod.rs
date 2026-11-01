@@ -4,7 +4,7 @@
 //! The checked-in upstream `services/contextCollapse/index.ts` is currently a
 //! generated empty stub, while `query.ts` still contains the optional
 //! `contextCollapse.applyCollapsesIfNeeded(...)` control-flow slot before
-//! autocompact. Cometix keeps this as a safe no-op seam at that official query
+//! autocompact. Nyan keeps this as a safe no-op seam at that official query
 //! position until a non-stub upstream implementation exists.
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -24,7 +24,7 @@ pub struct ContextCollapseOverflowRecovery {
 /// Maps to: CC `services/contextCollapse/index.ts` `isContextCollapseEnabled()`.
 pub fn is_context_collapse_enabled() -> bool {
     crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("COMETIX_CONTEXT_COLLAPSE").as_deref(),
+        crate::utils::process_env::var("NYAN_CONTEXT_COLLAPSE").as_deref(),
     ) || crate::utils::env_utils::is_env_truthy(
         crate::utils::process_env::var("CLAUDE_CODE_CONTEXT_COLLAPSE")
             .as_deref(),
@@ -37,7 +37,7 @@ pub fn is_context_collapse_enabled() -> bool {
 /// `services/compact/postCompactCleanup.ts:42-48`.
 ///
 /// The checked-in `services/contextCollapse/index.ts` is a generated empty
-/// stub and Cometix therefore has no process-wide collapse store to mutate.
+/// stub and Nyan therefore has no process-wide collapse store to mutate.
 /// Keep the reset boundary explicit so the real store has one owner when a
 /// source-backed implementation becomes available.
 pub fn reset_context_collapse() {}
@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn context_collapse_enabled_honors_official_env_alias() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("COMETIX_CONTEXT_COLLAPSE");
+        crate::utils::process_env::remove("NYAN_CONTEXT_COLLAPSE");
         crate::utils::process_env::remove("CLAUDE_CODE_CONTEXT_COLLAPSE");
         crate::utils::process_env::remove("CLAUDE_CONTEXT_COLLAPSE");
         assert!(!is_context_collapse_enabled());

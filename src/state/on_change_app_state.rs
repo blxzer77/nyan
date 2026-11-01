@@ -59,7 +59,7 @@ pub fn on_change_app_state(new: &AppState, old: &AppState) {
         // CC: externalize mode, notifySessionMetadataChanged (CCR) +
         // notifyPermissionModeChanged (SDK status stream). Those transport
         // channels (CCR client / SDK control stream) do not exist yet in
-        // Cometix; this seam is where they attach. The diff-driven trigger
+        // Nyan; this seam is where they attach. The diff-driven trigger
         // is in place so no mutation path needs revisiting later.
         tracing::debug!(
             from = ?prev_mode,
@@ -76,10 +76,10 @@ pub fn on_change_app_state(new: &AppState, old: &AppState) {
         // session. This in-memory update is independent of the write gate.
         crate::bootstrap::state::set_main_loop_model_override(Some(new.main_loop_model.clone()));
 
-        // Settings persistence respects COMETIX_WRITE_ENABLED like
+        // Settings persistence respects NYAN_WRITE_ENABLED like
         // save_global_config.
         if crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("COMETIX_WRITE_ENABLED").as_deref(),
+            crate::utils::process_env::var("NYAN_WRITE_ENABLED").as_deref(),
         ) {
             let mut updates = serde_json::Map::new();
             match &new.main_loop_model {
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn model_changes_update_runtime_override_matches_official_even_when_writes_are_disabled() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
         let previous_override = crate::bootstrap::state::get_main_loop_model_override();
 
         let store = AppStore::new(AppState::default(), Some(default_on_change()));
@@ -330,23 +330,23 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-env-reference-{}",
+            "nyan-env-reference-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
             root.join("settings.json"),
-            r#"{"env":{"COMETIX_ENV_REFERENCE_PROBE":"applied"}}"#,
+            r#"{"env":{"NYAN_ENV_REFERENCE_PROBE":"applied"}}"#,
         )
         .unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _probe = EnvVarGuard::unset("COMETIX_ENV_REFERENCE_PROBE");
+        let _probe = EnvVarGuard::unset("NYAN_ENV_REFERENCE_PROBE");
         crate::utils::settings::settings_cache::reset_settings_cache();
 
         let mut old = AppState::default();
         let mut settings = (*old.settings).clone();
         settings.env = Some(Arc::new(indexmap::IndexMap::from([(
-            "COMETIX_ENV_REFERENCE_PROBE".to_string(),
+            "NYAN_ENV_REFERENCE_PROBE".to_string(),
             "applied".to_string(),
         )])));
         old.settings = Arc::new(settings);
@@ -357,7 +357,7 @@ mod tests {
         spread.settings = Arc::new(settings);
         on_change_app_state(&spread, &old);
         assert_eq!(
-            crate::utils::process_env::var("COMETIX_ENV_REFERENCE_PROBE"),
+            crate::utils::process_env::var("NYAN_ENV_REFERENCE_PROBE"),
             None,
             "a spread keeps the env reference and must not re-apply"
         );
@@ -368,7 +368,7 @@ mod tests {
         reloaded.settings = Arc::new(settings);
         on_change_app_state(&reloaded, &spread);
         assert_eq!(
-            crate::utils::process_env::var("COMETIX_ENV_REFERENCE_PROBE").as_deref(),
+            crate::utils::process_env::var("NYAN_ENV_REFERENCE_PROBE").as_deref(),
             Some("applied"),
             "a reload's new env reference re-applies, even with equal values"
         );

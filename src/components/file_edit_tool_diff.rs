@@ -223,7 +223,7 @@ mod tests {
 
     fn temp_file(name: &str, content: &str) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!(
-            "cometix-file-edit-diff-{name}-{}",
+            "nyan-file-edit-diff-{name}-{}",
             std::process::id()
         ));
         std::fs::write(&path, content).unwrap();
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn load_diff_data_falls_back_to_tool_inputs_when_file_missing() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-file-edit-diff-missing-{}",
+            "nyan-file-edit-diff-missing-{}",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);

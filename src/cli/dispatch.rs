@@ -1,7 +1,7 @@
 //! Dispatch parsed [`CliConfig`] — Live continues; Unimplemented exits 1.
 
 use super::config::CliConfig;
-use crate::constants::product::VERSION;
+use crate::constants::product::{NAME, VERSION};
 
 /// Apply Live side effects that must run before interactive launch (bare env).
 pub fn apply_live_env_side_effects(config: &CliConfig) {
@@ -30,7 +30,7 @@ pub fn dispatch(config: &CliConfig) -> Option<i32> {
     apply_live_env_side_effects(config);
 
     if config.show_version {
-        println!("{VERSION} (Claude Code)");
+        println!("{NAME} {VERSION}");
         return Some(0);
     }
 
@@ -69,7 +69,7 @@ mod tests {
     use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
 
     fn argv(args: &[&str]) -> Vec<String> {
-        std::iter::once("cometix".to_string())
+        std::iter::once("nyan".to_string())
             .chain(args.iter().map(|a| (*a).to_string()))
             .collect()
     }

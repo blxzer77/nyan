@@ -35,7 +35,7 @@ use crate::keybindings::types::ContextName;
 use crate::utils::theme::Theme;
 use iocraft::prelude::*;
 
-const HELP_DISPLAY_NAME: &str = "Cometix Code";
+const HELP_DISPLAY_NAME: &str = "nyan";
 const DOCS_URL: &str = "https://code.claude.com/docs/en/overview";
 
 #[derive(Default, Props)]
@@ -308,7 +308,7 @@ mod tests {
     #[test]
     fn help_v2_uses_official_tab_shape() {
         let (text, _) = drive(Vec::new());
-        assert!(text.contains("Cometix Code v"), "canvas=\n{text}");
+        assert!(text.contains("nyan v"), "canvas=\n{text}");
         // CC :62-89: the tab titles.
         assert!(
             text.contains("general   commands   custom-commands"),

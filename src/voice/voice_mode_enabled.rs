@@ -2,7 +2,7 @@
 //!
 //! The official module combines the build-time `feature('VOICE_MODE')` guard,
 //! OAuth-token auth, and GrowthBook kill-switch `tengu_amber_quartz_disabled`.
-//! Cometix keeps the same boundary for visibility decisions only: it does not
+//! Nyan keeps the same boundary for visibility decisions only: it does not
 //! start voice streams, refresh OAuth tokens, write settings, query GrowthBook,
 //! or log analytics.
 

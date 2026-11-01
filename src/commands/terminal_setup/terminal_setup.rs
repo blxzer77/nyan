@@ -794,7 +794,7 @@ mod tests {
         assert!(output.contains("Shift+Enter is natively supported in Kitty"));
         assert!(output.contains("No configuration needed"));
         assert!(!output.contains("Esc to close"));
-        assert!(!output.contains("UI-only CometixCode build"));
+        assert!(!output.contains("UI-only nyan build"));
     }
 
     #[test]
@@ -807,7 +807,7 @@ mod tests {
         assert!(output.contains("macOS: Apple Terminal"));
         assert!(output.contains("iTerm2, WezTerm, Ghostty, Kitty, and Warp"));
         assert!(!output.contains("normally configures"));
-        assert!(!output.contains("UI-only CometixCode build"));
+        assert!(!output.contains("UI-only nyan build"));
     }
 
     #[test]
@@ -974,7 +974,7 @@ mod tests {
         fn new() -> Self {
             let lock = TEST_ENV_LOCK.lock().unwrap();
             let root = std::env::temp_dir()
-                .join(format!("cometix-terminal-setup-{}", uuid::Uuid::new_v4()));
+                .join(format!("nyan-terminal-setup-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&root).unwrap();
             let vars = vec![
                 EnvVarGuard::set("HOME", &root),

@@ -1,7 +1,7 @@
 //! Maps to CC `components/Spinner/TeammateSpinnerTree.tsx` and
 //! `TeammateSpinnerLine.tsx` for the main-screen-safe subset.
 //!
-//! Cometix does not have live in-process teammate tasks yet, so this component
+//! Nyan does not have live in-process teammate tasks yet, so this component
 //! accepts explicit task data. That keeps the official tree/line renderer seam
 //! available without introducing model, task, tool, fullscreen, or session I/O.
 

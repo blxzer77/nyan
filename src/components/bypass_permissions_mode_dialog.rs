@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: the official dialog logs analytics, writes
 //! `skipDangerousModePermissionPrompt` to user settings on accept, and calls
-//! `gracefulShutdownSync(...)` on decline/Escape. Cometix preserves the dialog,
+//! `gracefulShutdownSync(...)` on decline/Escape. Nyan preserves the dialog,
 //! option, and `onAccept` boundary only. Decline/Escape intentionally perform no
 //! process exit or settings write in this safe UI slice.
 
@@ -105,7 +105,7 @@ pub fn BypassPermissionsModeDialog<'a>(
             }
             BypassPermissionsModeChoice::Decline => {
                 // Official path: `gracefulShutdownSync(1)` from select or
-                // `gracefulShutdownSync(0)` from Escape. Safe Cometix path:
+                // `gracefulShutdownSync(0)` from Escape. Safe Nyan path:
                 // no process exit from render-only dialog slice.
             }
         }
@@ -113,7 +113,7 @@ pub fn BypassPermissionsModeDialog<'a>(
 
     element! {
         Dialog(
-            title: "WARNING: Claude Code running in Bypass Permissions mode".to_string(),
+            title: "WARNING: nyan running in Bypass Permissions mode".to_string(),
             color: Some(theme.error),
             on_cancel: move |_| {
                 pending_choice.set(Some(BypassPermissionsModeChoice::Decline));
@@ -121,7 +121,7 @@ pub fn BypassPermissionsModeDialog<'a>(
         ) {
             View(flex_direction: FlexDirection::Column, row_gap: 1u32) {
                 Text(
-                    content: "In Bypass Permissions mode, Claude Code will not ask for your approval\nbefore running potentially dangerous commands.\nThis mode should only be used in a sandboxed container/VM that has\nrestricted internet access and can easily be restored if damaged.".to_string(),
+                    content: "In Bypass Permissions mode, nyan will not ask for your approval\nbefore running potentially dangerous commands.\nThis mode should only be used in a sandboxed container/VM that has\nrestricted internet access and can easily be restored if damaged.".to_string(),
                     wrap: TextWrap::Wrap,
                 )
                 Text(
@@ -174,11 +174,11 @@ mod tests {
         .to_string();
 
         assert!(
-            text.contains("WARNING: Claude Code running in Bypass Permissions mode"),
+            text.contains("WARNING: nyan running in Bypass Permissions mode"),
             "canvas=\n{text}"
         );
         assert!(
-            text.contains("Claude Code will not ask for your approval"),
+            text.contains("nyan will not ask for your approval"),
             "canvas=\n{text}"
         );
         assert!(text.contains("sandboxed container/VM"), "canvas=\n{text}");

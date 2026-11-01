@@ -1,7 +1,7 @@
 //! Maps to: CC `utils/nativeInstaller/pidLock.ts`.
 //!
 //! Safe read-only subset of PID-based version lock diagnostics. The official
-//! module also acquires/releases locks and deletes stale lock files. Cometix's
+//! module also acquires/releases locks and deletes stale lock files. Nyan's
 //! Doctor screen must not mutate installer state, so this module only reads
 //! lock metadata and checks PID liveness. Stale cleanup/acquire paths remain
 //! deferred to the native-installer runtime slice.
@@ -35,7 +35,7 @@ pub struct LockInfo {
 ///
 /// Safety divergence: the official fallback queries GrowthBook gate
 /// `tengu_pid_based_version_locking`. Telemetry/GrowthBook is intentionally not
-/// run in Cometix; when the env override is unset or unrecognized this returns
+/// run in Nyan; when the env override is unset or unrecognized this returns
 /// false, matching the external-user default.
 pub fn is_pid_based_locking_enabled() -> bool {
     let value = crate::utils::process_env::var("ENABLE_PID_BASED_VERSION_LOCKING");
@@ -140,7 +140,7 @@ mod tests {
     impl TestDir {
         fn new() -> Self {
             let path = std::env::temp_dir()
-                .join(format!("cometix-pid-lock-test-{}", uuid::Uuid::new_v4()));
+                .join(format!("nyan-pid-lock-test-{}", uuid::Uuid::new_v4()));
             fs::create_dir_all(&path).expect("create tempdir");
             Self(path)
         }

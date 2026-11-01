@@ -72,7 +72,7 @@ mod tests {
     fn output_style_dir_styles_map_frontmatter_like_official_loader() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-output-style-dir-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-output-style-dir-{}", uuid::Uuid::new_v4()));
         let cwd = root.join("repo");
         let config_home = root.join("config");
         std::fs::create_dir_all(cwd.join(".git")).unwrap();

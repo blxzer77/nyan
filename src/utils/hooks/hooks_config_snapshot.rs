@@ -115,7 +115,7 @@ pub fn capture_hooks_config_snapshot(
 
 /// Maps to: CC `updateHooksConfigSnapshot()`.
 ///
-/// CC also resets the settings cache before recapturing. Cometix callers pass
+/// CC also resets the settings cache before recapturing. Nyan callers pass
 /// the already-reloaded settings snapshot into this service function, so no
 /// settings-loader side effect is performed here.
 pub fn update_hooks_config_snapshot(

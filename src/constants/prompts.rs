@@ -463,7 +463,7 @@ fn get_memory_prompt_section() -> Option<String> {
 /// Maps to CC `constants/prompts.ts` `getAntModelOverrideSection()`.
 ///
 /// TODO: Port the ant-only model override config if/when internal build support
-/// is added. External Cometix builds keep this section absent like upstream
+/// is added. External Nyan builds keep this section absent like upstream
 /// external bundles.
 fn get_ant_model_override_section() -> Option<String> {
     None
@@ -833,7 +833,7 @@ mod tests {
     impl TestDir {
         fn new() -> Self {
             let path =
-                std::env::temp_dir().join(format!("cometix-prompts-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("nyan-prompts-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir(&path).expect("create isolated test directory");
             Self(path)
         }
@@ -1072,7 +1072,7 @@ mod tests {
     fn default_system_prompt_includes_auto_memory_section_when_enabled() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let temp = std::env::temp_dir().join(format!(
-            "cometix-prompt-memory-{}-{}",
+            "nyan-prompt-memory-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1201,8 +1201,8 @@ mod tests {
     ) {
         let env = [
             EnvVarGuard::unset("CLAUDE_CODE_NON_INTERACTIVE"),
-            EnvVarGuard::unset("COMETIX_NON_INTERACTIVE"),
-            EnvVarGuard::unset("COMETIX_NON_INTERACTIVE_SESSION"),
+            EnvVarGuard::unset("NYAN_NON_INTERACTIVE"),
+            EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION"),
         ];
         let interactive = crate::bootstrap::state::IsInteractiveGuard::capture();
         crate::bootstrap::state::set_is_interactive(!non_interactive);

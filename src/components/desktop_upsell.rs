@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: official startup upsell reads GrowthBook/global config,
 //! increments `desktopUpsellSeenCount`, writes `desktopUpsellDismissed`, logs
-//! analytics, and can enter `DesktopHandoff`. Cometix keeps the official gate
+//! analytics, and can enter `DesktopHandoff`. Nyan keeps the official gate
 //! logic pure through `DesktopUpsellStartupSnapshot` and emits callback results
 //! describing intended writes. It does not read/write config, log analytics,
 //! open URLs, flush sessions, launch desktop, or shut down the process.
@@ -50,7 +50,7 @@ pub fn desktop_upsell_config_from_value(value: Option<&serde_json::Value>) -> De
 
 /// Maps to CC `getDynamicConfig_CACHED_MAY_BE_STALE('tengu_desktop_upsell', ...)`.
 ///
-/// Cometix resolves the dynamic-config payload from the source-controlled switch
+/// Nyan resolves the dynamic-config payload from the source-controlled switch
 /// table instead of GrowthBook, so it never initializes GrowthBook, logs
 /// exposure events, contacts the network, or writes config.
 pub fn get_desktop_upsell_config() -> DesktopUpsellConfig {
@@ -127,7 +127,7 @@ fn selection_from_value(value: &str) -> DesktopUpsellSelection {
 pub fn desktop_upsell_options() -> Vec<SelectOptionData> {
     vec![
         SelectOptionData {
-            label: "Open in Claude Code Desktop".to_string(),
+            label: "Open in nyan Desktop".to_string(),
             value: DesktopUpsellSelection::Try.value().to_string(),
             ..SelectOptionData::default()
         },
@@ -249,13 +249,13 @@ pub fn DesktopUpsellStartup<'a>(
 
     element! {
         Dialog(
-            title: "Try Claude Code Desktop".to_string(),
+            title: "Try nyan Desktop".to_string(),
             on_cancel: move |_| pending_selection.set(Some(DesktopUpsellSelection::NotNow)),
         ) {
             View(flex_direction: FlexDirection::Column, padding_x: 2u32, padding_y: 1u32) {
                 View(margin_bottom: 1u32) {
                     Text(
-                        content: "Same Claude Code with visual diffs, live app preview, parallel sessions, and more.".to_string(),
+                        content: "Same nyan with visual diffs, live app preview, parallel sessions, and more.".to_string(),
                         wrap: TextWrap::Wrap,
                     )
                 }
@@ -420,10 +420,10 @@ mod tests {
     #[test]
     fn desktop_upsell_startup_renders_official_copy_and_options() {
         let text = render_dialog();
-        assert!(text.contains("Try Claude Code Desktop"), "canvas=\n{text}");
+        assert!(text.contains("Try nyan Desktop"), "canvas=\n{text}");
         assert!(text.contains("visual diffs"), "canvas=\n{text}");
         assert!(
-            text.contains("Open in Claude Code Desktop"),
+            text.contains("Open in nyan Desktop"),
             "canvas=\n{text}"
         );
         assert!(text.contains("Not now"), "canvas=\n{text}");

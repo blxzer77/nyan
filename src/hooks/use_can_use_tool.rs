@@ -879,7 +879,7 @@ pub fn can_use_tool_or_queue_permission_for_params_with_store(
         crate::hooks::tool_permission::handlers::interactive_handler::fill_tool_description(
             &mut request,
         );
-        let wait_timeout = crate::utils::process_env::var("COMETIX_SWARM_PERMISSION_WAIT_MS")
+        let wait_timeout = crate::utils::process_env::var("NYAN_SWARM_PERMISSION_WAIT_MS")
             .and_then(|value| value.parse::<u64>().ok())
             .map(std::time::Duration::from_millis)
             .unwrap_or_else(|| std::time::Duration::from_millis(30_000));
@@ -1412,7 +1412,7 @@ mod tests {
     fn read_tools_outside_working_directory_still_prompt() {
         let mut queue = Vec::new();
         let outside =
-            std::env::temp_dir().join(format!("cometix-outside-read-{}.txt", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-outside-read-{}.txt", uuid::Uuid::new_v4()));
         let tool_use = ToolUsePermissionRequest {
             tool_use_id: "toolu_read_outside".to_string(),
             tool_name: "Read".to_string(),

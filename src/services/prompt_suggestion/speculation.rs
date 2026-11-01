@@ -94,7 +94,7 @@ fn update_active(
     //   :319-322 `hasChanges` — the updater's fields are compared against the
     //            current ones and an all-equal update returns `prev`.
     //
-    // The id check is Cometix-only and is retained here (unlike in
+    // The id check is Nyan-only and is retained here (unlike in
     // `reset_speculation_state`) because the source's updater closes over the
     // speculation it belongs to, whereas the Rust helper is reached by id from
     // detached tasks: writing an old task's boundary into a NEWER active
@@ -182,7 +182,7 @@ fn speculation_has_changes(
 ///
 /// The source's ONLY guard is `if (prev.speculation.status === 'idle') return
 /// prev` — it resets whatever is active, including when a stale async
-/// speculation finishes after a newer one has started. Cometix previously
+/// speculation finishes after a newer one has started. Nyan previously
 /// added an id match here, which turned that exact case into a `Same` and left
 /// the newer speculation running where the source would have cleared it. That
 /// deviation had no L1/L2 authorization and "safer" is not a licence to change
@@ -1323,8 +1323,8 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         // Match main/print's process runtime before the forked query loads plugins.
         crate::utils::process_runtime::initialize_test_process_runtime();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-cow-{}", uuid::Uuid::new_v4()));
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-cow-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let destination = root.join("new.txt");
         let mut state = crate::state::app_state_store::AppState::default();
@@ -1385,8 +1385,8 @@ mod tests {
     #[tokio::test]
     async fn accepting_speculation_copies_overlay_and_resets_state() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-spec-{}", uuid::Uuid::new_v4()));
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-spec-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let store = crate::state::store::AppStore::new(
             crate::state::app_state_store::AppState::default(),

@@ -632,7 +632,7 @@ mod tests {
     #[test]
     fn resolve_resumed_worktree_path_keeps_only_an_existing_directory() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-resume-worktree-{}",
+            "nyan-resume-worktree-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).expect("create temp worktree root");
@@ -664,7 +664,7 @@ mod tests {
     #[test]
     fn bump_resumed_worktree_mtime_refreshes_the_directory_timestamp() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-resume-worktree-touch-{}",
+            "nyan-resume-worktree-touch-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).expect("create temp worktree root");

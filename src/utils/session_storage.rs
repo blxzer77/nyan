@@ -142,13 +142,13 @@ impl Project {
         #[cfg(test)]
         {
             !crate::utils::env_utils::is_env_truthy(
-                crate::utils::process_env::var("COMETIX_WRITE_ENABLED").as_deref(),
+                crate::utils::process_env::var("NYAN_WRITE_ENABLED").as_deref(),
             )
         }
         #[cfg(not(test))]
         {
             crate::utils::env_utils::is_env_defined_falsy(
-                crate::utils::process_env::var("COMETIX_WRITE_ENABLED").as_deref(),
+                crate::utils::process_env::var("NYAN_WRITE_ENABLED").as_deref(),
             )
         }
     }
@@ -156,7 +156,7 @@ impl Project {
     fn new() -> Self {
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::Builder::new()
-            .name("cometix-session-writer".to_string())
+            .name("nyan-session-writer".to_string())
             .spawn(move || Project::schedule_drain(receiver))
             .expect("failed to start Project write queue");
         Self {
@@ -3806,7 +3806,7 @@ pub fn record_typed_sidechain_transcript(
         user_type: crate::utils::build_profile::build_audience()
             .as_str()
             .to_string(),
-        entrypoint: "cometix".to_string(),
+        entrypoint: "nyan".to_string(),
         slug: None,
         team_name: None,
         agent_name: None,
@@ -3960,7 +3960,7 @@ pub fn apply_assistant_delta_to_queued_record(
 /// `queryModelWithStreaming` (`query/deps.ts:23`, `:35`) — the generator
 /// defined at `claude.ts:752` that owns the `message_delta` arm.
 ///
-/// Cometix serializes at enqueue (`enqueue_write` clones the `Value`), so the
+/// Nyan serializes at enqueue (`enqueue_write` clones the `Value`), so the
 /// deferral has to be explicit: the assistant record is parked here, the
 /// `AssistantDelta` write-back patches it, and the next record — or the run's
 /// exit — materializes it. Arrival order survives because nothing else can be
@@ -5348,7 +5348,7 @@ pub fn link_session_to_pr(
     full_path: Option<&Path>,
 ) -> anyhow::Result<()> {
     if !is_session_write_enabled() {
-        anyhow::bail!("session persistence is disabled by COMETIX_WRITE_ENABLED=0");
+        anyhow::bail!("session persistence is disabled by NYAN_WRITE_ENABLED=0");
     }
     let path = full_path.map(Path::to_path_buf).unwrap_or_else(|| {
         get_session_file_path(
@@ -5881,13 +5881,13 @@ mod tests {
             }
         }
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         let restore = Restore {
             session_id: crate::bootstrap::state::get_session_id(),
             project_dir: crate::bootstrap::state::get_session_project_dir(),
             meta: get_project().current_session_meta.read().unwrap().clone(),
-            root: std::env::temp_dir().join(format!("cometix-save-color-{}", Uuid::new_v4())),
+            root: std::env::temp_dir().join(format!("nyan-save-color-{}", Uuid::new_v4())),
         };
         clear_session_metadata();
         crate::bootstrap::state::switch_session("color-active", Some(restore.root.clone()));
@@ -6001,7 +6001,7 @@ mod tests {
     /// CC stamps `teamName`/`agentName` onto every entry it writes
     /// (sessionStorage.ts:1043-1044) and the session-list reader pulls
     /// `teamName` back out of the file head (`session_lite_summary`, CC :4752)
-    /// to tell team sessions apart from plain ones. Cometix had the read side
+    /// to tell team sessions apart from plain ones. Nyan had the read side
     /// but never wrote the field.
     #[test]
     fn transcript_entry_carries_team_stamp_when_supplied() {
@@ -6460,7 +6460,7 @@ mod tests {
     }
 
     fn temp_jsonl_path(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("cometix-{label}-{}.jsonl", Uuid::new_v4()))
+        std::env::temp_dir().join(format!("nyan-{label}-{}.jsonl", Uuid::new_v4()))
     }
 
     fn write_lines(path: &Path, lines: Vec<String>) {
@@ -6498,7 +6498,7 @@ mod tests {
 
     #[test]
     fn canonicalize_path_normalizes_nfc_when_realpath_fails() {
-        let decomposed = format!("cometix-cafe\u{301}-missing-{}", Uuid::new_v4());
+        let decomposed = format!("nyan-cafe\u{301}-missing-{}", Uuid::new_v4());
         let canonical = canonicalize_path(&decomposed);
         assert!(canonical.contains("café-missing-"));
         assert!(!canonical.contains("e\u{301}"));
@@ -6506,7 +6506,7 @@ mod tests {
 
     #[test]
     fn find_project_dir_uses_prefix_fallback_only_for_long_paths() {
-        let root = std::env::temp_dir().join(format!("cometix-find-project-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-find-project-{}", Uuid::new_v4()));
         let projects = root.join("projects");
         let _guard = set_test_projects_dir_override(projects.clone());
         fs::create_dir_all(&projects).unwrap();
@@ -6533,7 +6533,7 @@ mod tests {
 
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-worktree-resolve-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-worktree-resolve-{}", Uuid::new_v4()));
         let current = root.join("current");
         let sibling = root.join("sibling");
         let bin = root.join("bin");
@@ -6580,7 +6580,7 @@ mod tests {
     #[test]
     fn should_skip_persistence_honors_bootstrap_and_prompt_history_gates() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
@@ -6610,14 +6610,14 @@ mod tests {
             }
         }
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         let restore = Restore {
             session_id: crate::bootstrap::state::get_session_id(),
             project_dir: crate::bootstrap::state::get_session_project_dir(),
             meta: get_project().current_session_meta.read().unwrap().clone(),
-            root: std::env::temp_dir().join(format!("cometix-cursor-{}", Uuid::new_v4())),
+            root: std::env::temp_dir().join(format!("nyan-cursor-{}", Uuid::new_v4())),
         };
         let path = restore.root.join("cursor-active.jsonl");
         fs::create_dir_all(&restore.root).unwrap();
@@ -6670,7 +6670,7 @@ mod tests {
     #[test]
     fn record_content_replacement_is_safe_noop_while_session_writes_disabled() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_disabled = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_disabled = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
         assert!(!is_session_write_enabled());
         let records = vec![
             crate::utils::tool_result_storage::ContentReplacementRecord::tool_result(
@@ -6687,8 +6687,8 @@ mod tests {
     #[test]
     fn project_flush_drains_per_file_queue_in_enqueue_order() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-write-queue-{}", Uuid::new_v4()));
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-write-queue-{}", Uuid::new_v4()));
         let path = root.join("queued-session.jsonl");
         let previous_session_id = crate::bootstrap::state::get_session_id();
         let previous_project_dir = crate::bootstrap::state::get_session_project_dir();
@@ -6725,9 +6725,9 @@ mod tests {
     #[test]
     fn append_entry_to_file_is_serialized_after_queued_entries() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_env = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_env = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root =
-            std::env::temp_dir().join(format!("cometix-sync-append-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-sync-append-{}", uuid::Uuid::new_v4()));
         let path = root.join("ordered.jsonl");
 
         let _ = get_project()
@@ -6753,8 +6753,8 @@ mod tests {
     #[test]
     fn remove_transcript_message_tracks_discarded_future_and_removes_queued_entry() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-tombstone-{}", Uuid::new_v4()));
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-tombstone-{}", Uuid::new_v4()));
         let path = root.join("session.jsonl");
         let previous_session_id = crate::bootstrap::state::get_session_id();
         let previous_project_dir = crate::bootstrap::state::get_session_project_dir();
@@ -6781,8 +6781,8 @@ mod tests {
     #[test]
     fn remove_message_by_uuid_fast_path_reappends_trailing_lines() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-tombstone-tail-{}", Uuid::new_v4()));
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-tombstone-tail-{}", Uuid::new_v4()));
         let path = root.join("session.jsonl");
         let previous_session_id = crate::bootstrap::state::get_session_id();
         let previous_project_dir = crate::bootstrap::state::get_session_project_dir();
@@ -6819,8 +6819,8 @@ mod tests {
     #[test]
     fn remove_message_by_uuid_slow_path_preserves_other_and_malformed_lines() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-tombstone-slow-{}", Uuid::new_v4()));
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-tombstone-slow-{}", Uuid::new_v4()));
         let path = root.join("session.jsonl");
         let previous_session_id = crate::bootstrap::state::get_session_id();
         let previous_project_dir = crate::bootstrap::state::get_session_project_dir();
@@ -6859,7 +6859,7 @@ mod tests {
     ///
     /// CC can only spell this one way — a message has one uuid, spread into the
     /// row by `insertMessageChain` (`utils/sessionStorage.ts:1048`) and used as
-    /// the chain cursor at `:1067`. Cometix briefly had two: the writer stamped
+    /// the chain cursor at `:1067`. Nyan briefly had two: the writer stamped
     /// assistant rows with `AssistantMessageIdentity.uuid` while every reader
     /// held the envelope, so this join silently matched nothing and tombstoned
     /// assistants stayed on disk to be replayed on resume (task #120).
@@ -6871,8 +6871,8 @@ mod tests {
     #[test]
     fn transcript_row_is_removable_by_its_in_memory_uuid_matches_official() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-tombstone-join-{}", Uuid::new_v4()));
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-tombstone-join-{}", Uuid::new_v4()));
         let path = root.join("session.jsonl");
         let previous_session_id = crate::bootstrap::state::get_session_id();
         let previous_project_dir = crate::bootstrap::state::get_session_project_dir();
@@ -6929,8 +6929,8 @@ mod tests {
     #[test]
     fn remove_message_by_uuid_skips_slow_rewrite_above_official_limit() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-tombstone-limit-{}", Uuid::new_v4()));
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-tombstone-limit-{}", Uuid::new_v4()));
         let path = root.join("session.jsonl");
         let previous_session_id = crate::bootstrap::state::get_session_id();
         let previous_project_dir = crate::bootstrap::state::get_session_project_dir();
@@ -6960,7 +6960,7 @@ mod tests {
     #[test]
     fn project_enqueue_write_resolves_after_drain() {
         let root =
-            std::env::temp_dir().join(format!("cometix-enqueue-resolve-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-enqueue-resolve-{}", uuid::Uuid::new_v4()));
         let path = root.join("resolved.jsonl");
         let written = get_project()
             .enqueue_write(
@@ -6977,8 +6977,8 @@ mod tests {
     #[test]
     fn project_schedule_drain_writes_after_official_batch_interval() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-schedule-drain-{}", Uuid::new_v4()));
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-schedule-drain-{}", Uuid::new_v4()));
         let path = root.join("scheduled-session.jsonl");
         let previous_session_id = crate::bootstrap::state::get_session_id();
         let previous_project_dir = crate::bootstrap::state::get_session_project_dir();
@@ -7004,8 +7004,8 @@ mod tests {
     #[test]
     fn project_pending_entries_wait_for_first_user_message_materialization() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-pending-entry-{}", Uuid::new_v4()));
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-pending-entry-{}", Uuid::new_v4()));
         let session_id = "pending-entry-session";
         let path = root.join(format!("{session_id}.jsonl"));
         let previous_session_id = crate::bootstrap::state::get_session_id();
@@ -7073,8 +7073,8 @@ mod tests {
     #[test]
     fn ai_generated_title_surfaces_until_a_user_rename_wins() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-ai-title-{}", Uuid::new_v4()));
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-ai-title-{}", Uuid::new_v4()));
         let _guard = set_test_projects_dir_override(root.join("projects"));
         let previous_cwd = crate::bootstrap::state::get_original_cwd();
         let project_path = "/tmp/ai-title-project";
@@ -7118,7 +7118,7 @@ mod tests {
     /// the /resume picker: `if (enriched.teamName) return null`.
     #[test]
     fn enrichment_filters_team_sessions_like_official() {
-        let root = std::env::temp_dir().join(format!("cometix-team-filter-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-team-filter-{}", Uuid::new_v4()));
         let _guard = set_test_projects_dir_override(root.join("projects"));
         let project_path = "/tmp/team-filter-project";
         let session_dir = get_project_dir(project_path);
@@ -7157,7 +7157,7 @@ mod tests {
     #[test]
     fn progressive_loading_enriches_fifty_then_continues_without_duplicates() {
         let root =
-            std::env::temp_dir().join(format!("cometix-progressive-sessions-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-progressive-sessions-{}", Uuid::new_v4()));
         let _guard = set_test_projects_dir_override(root.join("projects"));
         let project_path = "/tmp/progressive-project";
         // CC anchors the single-worktree list on getOriginalCwd(), not on
@@ -7210,8 +7210,8 @@ mod tests {
     #[test]
     fn rename_metadata_appends_to_the_selected_cross_project_file() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-rename-{}", Uuid::new_v4()));
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-rename-{}", Uuid::new_v4()));
         let path = root.join("other-project/session-rename.jsonl");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         write_lines(
@@ -7243,8 +7243,8 @@ mod tests {
     #[test]
     fn adopted_resume_records_new_messages_on_the_existing_parent_chain() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!("cometix-adopt-{}", Uuid::new_v4()));
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let root = std::env::temp_dir().join(format!("nyan-adopt-{}", Uuid::new_v4()));
         let project_dir = root.join("cross-project");
         let session_id = "adopted-session";
         let path = project_dir.join(format!("{session_id}.jsonl"));
@@ -7320,7 +7320,7 @@ mod tests {
     #[test]
     fn subagent_transcript_paths_and_metadata_match_official_sidecar_shape() {
         let root =
-            std::env::temp_dir().join(format!("cometix-subagent-session-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-subagent-session-{}", Uuid::new_v4()));
         let _guard = set_test_projects_dir_override(root.join("projects"));
         let project_path = "/tmp/project with spaces";
         let session_id = "session-1";
@@ -7415,13 +7415,13 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
         let root =
-            std::env::temp_dir().join(format!("cometix-agent-cwd-override-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-agent-cwd-override-{}", Uuid::new_v4()));
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let parent_cwd = root.join("parent-repo");
         let worktree_cwd = root.join("worktrees").join("agent-abc12345");
@@ -7528,13 +7528,13 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
         let root =
-            std::env::temp_dir().join(format!("cometix-resumed-subagent-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-resumed-subagent-{}", Uuid::new_v4()));
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let original_cwd = root.join("current-project");
         // What `session_restore.rs:352` passes: the directory holding the
@@ -7658,7 +7658,7 @@ mod tests {
     /// `queryModelWithStreaming` (`query/deps.ts:23`, `:35`), the generator at
     /// `claude.ts:752` that owns the `message_delta` arm.
     ///
-    /// Cometix serializes at enqueue, so before the parked record every
+    /// Nyan serializes at enqueue, so before the parked record every
     /// assistant row in every `agent-<id>.jsonl` kept the `message_start`
     /// placeholder — `output_tokens: 0` and `stop_reason: null`, always.
     ///
@@ -7673,12 +7673,12 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
-        let root = std::env::temp_dir().join(format!("cometix-sidechain-delta-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-sidechain-delta-{}", Uuid::new_v4()));
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let cwd = root.join("project");
         fs::create_dir_all(&cwd).unwrap();
@@ -7829,13 +7829,13 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         let _hook_context = EnvVarGuard::unset("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
-        let root = std::env::temp_dir().join(format!("cometix-sidechain-seed-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-sidechain-seed-{}", Uuid::new_v4()));
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let cwd = root.join("project");
         fs::create_dir_all(&cwd).unwrap();
@@ -7925,12 +7925,12 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
-        let root = std::env::temp_dir().join(format!("cometix-sidechain-park-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-sidechain-park-{}", Uuid::new_v4()));
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let cwd = root.join("project");
         fs::create_dir_all(&cwd).unwrap();
@@ -8043,13 +8043,13 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
         let root =
-            std::env::temp_dir().join(format!("cometix-sidechain-interleave-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-sidechain-interleave-{}", Uuid::new_v4()));
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let cwd = root.join("project");
         fs::create_dir_all(&cwd).unwrap();
@@ -8204,7 +8204,7 @@ mod tests {
     #[test]
     fn sidechain_record_and_metadata_write_are_safe_noops_while_writes_disabled() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_disabled = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_disabled = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
         assert!(!is_session_write_enabled());
         let stamp = SessionStamp {
             session_id: "session-sidechain".to_string(),
@@ -8228,7 +8228,7 @@ mod tests {
         )
         .expect("disabled sidechain seam");
 
-        // The read-only gate is Cometix's; CC has no such branch, so it must
+        // The read-only gate is Nyan's; CC has no such branch, so it must
         // not become visible in the chain either. The cursor is the caller's
         // `lastRecordedUuid` (`runAgent.ts:745`, `:801-803`) — assigned from
         // the message, never from the write — so it advances exactly as it
@@ -8616,7 +8616,7 @@ mod tests {
     fn load_session_structured_bridges_legacy_progress_entries_like_official() {
         let session_id = "progress-bridge-session";
         let path = std::env::temp_dir().join(format!(
-            "cometix-session-progress-bridge-{}.jsonl",
+            "nyan-session-progress-bridge-{}.jsonl",
             Uuid::new_v4()
         ));
         let entries = vec![
@@ -8691,7 +8691,7 @@ mod tests {
     fn load_session_structured_applies_snip_removals_and_relinks_survivors() {
         let session_id = "snip-removal-session";
         let path = std::env::temp_dir().join(format!(
-            "cometix-session-snip-removal-{}.jsonl",
+            "nyan-session-snip-removal-{}.jsonl",
             Uuid::new_v4()
         ));
         let entries = vec![
@@ -9217,13 +9217,13 @@ mod tests {
         // getWorktreePaths runs gitExe(), whose Bun.which lookup reads the startup
         // PATH (utils/git.ts:212-216), so the fake git must be on PATH when the
         // process starts: the parent writes it and re-runs this test as a child.
-        const PROBE: &str = "COMETIX_TITLE_SEARCH_ROOT";
+        const PROBE: &str = "NYAN_TITLE_SEARCH_ROOT";
         let cwd = crate::bootstrap::state::get_original_cwd()
             .to_string_lossy()
             .into_owned();
         let Some(root) = crate::utils::process_env::var(PROBE) else {
             let root =
-                std::env::temp_dir().join(format!("cometix-title-search-{}", Uuid::new_v4()));
+                std::env::temp_dir().join(format!("nyan-title-search-{}", Uuid::new_v4()));
             struct Cleanup(PathBuf);
             impl Drop for Cleanup {
                 fn drop(&mut self) {
@@ -9565,7 +9565,7 @@ mod tests {
     #[test]
     fn cold_sentinel_matches_official_identity_usage_and_api_roundtrip() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         struct Restore {
             session_id: String,
@@ -9590,7 +9590,7 @@ mod tests {
             session_id: crate::bootstrap::state::get_session_id(),
             project_dir: crate::bootstrap::state::get_session_project_dir(),
             meta: get_project().current_session_meta.read().unwrap().clone(),
-            root: std::env::temp_dir().join(format!("cometix-cold-sentinel-{}", Uuid::new_v4())),
+            root: std::env::temp_dir().join(format!("nyan-cold-sentinel-{}", Uuid::new_v4())),
             drained: false,
         };
         let id = Uuid::new_v4().to_string();

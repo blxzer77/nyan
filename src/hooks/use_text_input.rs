@@ -31,7 +31,7 @@ pub struct UseTextInputOptions {
     /// Maps to: CC event-order parity for `useCancelRequest`. Ink delivers
     /// events parents-first, so CC's CancelRequestHandler wins Escape and an
     /// interrupting Ctrl+C. iocraft bubbles children-first, so when set,
-    /// Escape — and Ctrl+C while it resolves to `app:interrupt`, which Cometix
+    /// Escape — and Ctrl+C while it resolves to `app:interrupt`, which Nyan
     /// only does under a user binding — is left unconsumed for the ancestor.
     pub cancel_passthrough: bool,
     /// Native BaseTextInput event transport: retain text-level Escape processing
@@ -856,7 +856,7 @@ mod tests {
 
     #[test]
     fn ctrl_c_is_the_inputs_while_a_turn_runs() {
-        // Cometix binds Ctrl+C to app:exit (2.0.x semantics), which nothing
+        // Nyan binds Ctrl+C to app:exit (2.0.x semantics), which nothing
         // above a bare input owns, so even with `cancel_passthrough` (a
         // running turn, a Select's input) the key is CC's handleCtrlC
         // (useTextInput.ts:108-120): clear, then arm the double press.

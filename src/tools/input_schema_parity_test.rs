@@ -6,8 +6,8 @@
 //! `utils/api.ts:160` ships to the API as `input_schema`. Regenerate with:
 //!
 //! ```text
-//! cd ../rebuild && bun ../CometixCode/scripts/dump_cc_tool_schemas.mjs \
-//!   > ../CometixCode/src/tools/cc_input_schemas.json
+//! cd ../rebuild && bun ../nyan/scripts/dump_cc_tool_schemas.mjs \
+//!   > ../nyan/src/tools/cc_input_schemas.json
 //! ```
 //!
 //! A tool listed in [`MIGRATED`] has had its hand-written JSON literal replaced
@@ -161,14 +161,14 @@ const OUTSIDE_THE_NET: &[(&str, &str)] = &[
         "SyntheticOutputTool",
         "CC `createSyntheticOutputTool(jsonSchema)` returns the caller's schema \
          verbatim (`SyntheticOutputTool.ts:31`); the oracle only froze the empty \
-         placeholder the dump script passed in, so there is nothing of Cometix's \
+         placeholder the dump script passed in, so there is nothing of Nyan's \
          own to compare.",
     ),
     (
         "testing",
         "CC `tools/testing/TestingPermissionTool.tsx:31` hardcodes \
          `isEnabled()` to a comparison that is false in production builds, so \
-         the tool exists only for CC's own end-to-end tests. Cometix does not \
+         the tool exists only for CC's own end-to-end tests. Nyan does not \
          port it (`docs/TOOLS_GAP_INVENTORY.md`), so there is no constructor to \
          compare.",
     ),

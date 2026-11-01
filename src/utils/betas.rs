@@ -643,7 +643,7 @@ mod tests {
         }
 
         let config_dir = std::env::temp_dir().join(format!(
-            "cometix-structured-output-model-{}",
+            "nyan-structured-output-model-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&config_dir).unwrap();

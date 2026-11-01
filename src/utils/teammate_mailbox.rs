@@ -3,7 +3,7 @@
 //! Maps to: CC `utils/teammateMailbox.ts`.
 //!
 //! Official Claude Code persists inbox JSON files under
-//! `~/.claude/teams/{team}/inboxes/{agent}.json` with file locking. Cometix
+//! `~/.claude/teams/{team}/inboxes/{agent}.json` with file locking. Nyan
 //! now mirrors that file lifecycle for pane-backed teammates while retaining an
 //! in-memory cache for the current in-process runner.
 
@@ -54,7 +54,7 @@ fn maybe_skip_disk_io_in_tests() -> bool {
     #[cfg(test)]
     {
         !crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("COMETIX_TEST_TEAM_FILE_IO").as_deref(),
+            crate::utils::process_env::var("NYAN_TEST_TEAM_FILE_IO").as_deref(),
         )
     }
     #[cfg(not(test))]
@@ -835,7 +835,7 @@ mod tests {
 
     fn unique_config_dir(prefix: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "cometix-{prefix}-{}",
+            "nyan-{prefix}-{}",
             uuid::Uuid::new_v4().simple()
         ))
     }
@@ -872,8 +872,8 @@ mod tests {
         clear_mailboxes_for_test();
         let root = unique_config_dir("mailbox");
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
-        let _write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
+        let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
 
         write_to_mailbox(
             "Reviewer One",
@@ -1012,8 +1012,8 @@ mod tests {
         let root = unique_config_dir("mailbox-invalid-root");
         std::fs::write(&root, "not a directory").unwrap();
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
-        let _write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
+        let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
 
         let error = write_to_mailbox(
             "reviewer",

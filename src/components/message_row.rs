@@ -39,9 +39,9 @@ pub struct MessageRowProps {
     pub verbose: bool,
     /// Ctrl+O transcript mode expansion gate.
     pub is_transcript_mode: bool,
-    /// Cometix: expand thinking blocks by default.
+    /// Nyan: expand thinking blocks by default.
     pub expand_thinking: bool,
-    /// Cometix: expand collapsed read/search groups by default.
+    /// Nyan: expand collapsed read/search groups by default.
     pub expand_collapsed_read_search: bool,
     /// Terminal columns, included in the row memo key because wrapping changes
     /// visible output even when message content is unchanged.
@@ -544,7 +544,7 @@ pub(crate) fn should_render_statically(
 ///
 /// `canAnimate` is the outer gate (no permission dialog, message selector or
 /// local command UI holds animation, `Messages.tsx:764-767`); which rows
-/// actually animate is a per-row question answered by the live set. Cometix passed the
+/// actually animate is a per-row question answered by the live set. Nyan passed the
 /// gate straight through, so every row spun for the duration of a turn instead
 /// of only the row whose tool was executing.
 ///
@@ -594,7 +594,7 @@ fn apply_row_runtime_state(
     // are running, always show active regardless of what else is in the message
     // list (avoids false finalization during parallel execution)".
     //
-    // Cometix had only the second disjunct, so a collapsed group whose tools
+    // Nyan had only the second disjunct, so a collapsed group whose tools
     // were still executing finalized early whenever anything followed it —
     // exactly the parallel-execution case the CC comment calls out — and it
     // showed as active while merely loading with no live tool at all.
@@ -859,7 +859,7 @@ mod tests {
         // The gate is the outer condition; which rows animate is per-row.
         assert!(!should_animate_row(&row, false, &live));
         assert!(should_animate_row(&row, true, &live));
-        // Cometix passed the gate straight through, so this used to be true:
+        // Nyan passed the gate straight through, so this used to be true:
         // every row spun for the whole turn, not just the executing one.
         assert!(!should_animate_row(&row, true, &idle));
 

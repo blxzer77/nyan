@@ -99,7 +99,7 @@ pub fn record_memory_guard_blocked(path: &Path, error: &MemoryGuardError) {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .insert(path.clone(), blocked);
     tracing::warn!(
-        target: "cometix::memory",
+        target: "nyan::memory",
         memory_guard_blocked = true,
         path = %path.display(),
         rules = ?error.rule_ids,

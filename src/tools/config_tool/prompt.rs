@@ -9,7 +9,7 @@ use super::supported_settings::{
 };
 
 /// Maps to: CC `prompt.ts:9` `DESCRIPTION`.
-pub const DESCRIPTION: &str = "Get or set Claude Code configuration settings.";
+pub const DESCRIPTION: &str = "Get or set nyan configuration settings.";
 
 /// Maps to: CC `prompt.ts:14-77` `generatePrompt`.
 pub fn generate_prompt() -> String {
@@ -53,7 +53,7 @@ pub fn generate_prompt() -> String {
     }
 
     format!(
-        "Get or set Claude Code configuration settings.\n\n  View or change Claude Code settings. Use when the user requests configuration changes, asks about current settings, or when adjusting a setting would benefit them.\n\n\n## Usage\n- **Get current value:** Omit the \"value\" parameter\n- **Set new value:** Include the \"value\" parameter\n\n## Configurable settings list\nThe following settings are available for you to change:\n\n### Global Settings (stored in ~/.claude.json)\n{}\n\n### Project Settings (stored in settings.json)\n{}\n\n{}## Examples\n- Get theme: {{ \"setting\": \"theme\" }}\n- Set dark theme: {{ \"setting\": \"theme\", \"value\": \"dark\" }}\n- Enable vim mode: {{ \"setting\": \"editorMode\", \"value\": \"vim\" }}\n- Enable verbose: {{ \"setting\": \"verbose\", \"value\": true }}\n- Change model: {{ \"setting\": \"model\", \"value\": \"opus\" }}\n- Change permission mode: {{ \"setting\": \"permissions.defaultMode\", \"value\": \"plan\" }}\n",
+        "Get or set nyan configuration settings.\n\n  View or change nyan settings. Use when the user requests configuration changes, asks about current settings, or when adjusting a setting would benefit them.\n\n\n## Usage\n- **Get current value:** Omit the \"value\" parameter\n- **Set new value:** Include the \"value\" parameter\n\n## Configurable settings list\nThe following settings are available for you to change:\n\n### Global Settings (stored in ~/.claude.json)\n{}\n\n### Project Settings (stored in settings.json)\n{}\n\n{}## Examples\n- Get theme: {{ \"setting\": \"theme\" }}\n- Set dark theme: {{ \"setting\": \"theme\", \"value\": \"dark\" }}\n- Enable vim mode: {{ \"setting\": \"editorMode\", \"value\": \"vim\" }}\n- Enable verbose: {{ \"setting\": \"verbose\", \"value\": true }}\n- Change model: {{ \"setting\": \"model\", \"value\": \"opus\" }}\n- Change permission mode: {{ \"setting\": \"permissions.defaultMode\", \"value\": \"plan\" }}\n",
         global_settings.join("\n"),
         project_settings.join("\n"),
         generate_model_section(),
@@ -113,7 +113,7 @@ pub(super) mod tests {
     impl ModelSectionFixture {
         pub(in crate::tools::config_tool) fn new() -> Self {
             let root = std::env::temp_dir().join(format!(
-                "cometix-config-prompt-{}",
+                "nyan-config-prompt-{}",
                 uuid::Uuid::new_v4().simple()
             ));
             std::fs::create_dir_all(&root).unwrap();

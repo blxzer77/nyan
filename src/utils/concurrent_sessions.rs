@@ -56,7 +56,7 @@ mod tests {
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-concurrent-session-{}",
+            "nyan-concurrent-session-{}",
             uuid::Uuid::new_v4()
         ));
         let sessions = root.join("sessions");

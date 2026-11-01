@@ -17,7 +17,7 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 const MAX_BUFFER_SIZE: usize = 20_000_000;
-const EAGAIN_STDERR_RETRY_PREFIX: &str = "\0cometix-ripgrep-stderr-eagain:";
+const EAGAIN_STDERR_RETRY_PREFIX: &str = "\0nyan-ripgrep-stderr-eagain:";
 
 /// Maps to CC `RipgrepConfig.mode`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -152,7 +152,7 @@ fn get_ripgrep_config() -> RipgrepConfig {
                 };
             }
 
-            // @cometix deviation: CC cannot reach this branch — npm ships the
+            // @nyan deviation: CC cannot reach this branch — npm ships the
             // binary inside the package, so CC surfaces a missing one as
             // ENOENT rather than silently switching to a host ripgrep with
             // possibly different semantics. A `cargo install` build has no
@@ -451,7 +451,7 @@ pub fn test_ripgrep_on_first_use() {
     }
 
     let spawn = std::thread::Builder::new()
-        .name("cometix-ripgrep-probe".to_string())
+        .name("nyan-ripgrep-probe".to_string())
         .spawn(|| {
             codesign_ripgrep_if_necessary();
             let config = get_ripgrep_config();
@@ -1001,7 +1001,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-rg-which-{}",
+            "nyan-rg-which-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let first = root.join("first");
@@ -1079,7 +1079,7 @@ mod tests {
     #[test]
     fn rip_grep_finds_matches_like_official() {
         let dir =
-            std::env::temp_dir().join(format!("cometix-rg-{}", uuid::Uuid::new_v4().simple()));
+            std::env::temp_dir().join(format!("nyan-rg-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.txt"), "hello ripgrep\n").unwrap();
         let lines = rip_grep(
@@ -1102,7 +1102,7 @@ mod tests {
     #[test]
     fn rip_grep_drains_large_stdout_while_child_is_running() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-rg-large-{}",
+            "nyan-rg-large-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -1244,7 +1244,7 @@ mod tests {
     #[test]
     fn rip_grep_stream_emits_lines() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-rg-stream-{}",
+            "nyan-rg-stream-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -1264,7 +1264,7 @@ mod tests {
     #[test]
     fn count_files_rounded_rg_rounds_like_official() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-rg-count-{}",
+            "nyan-rg-count-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();

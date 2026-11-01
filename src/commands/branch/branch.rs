@@ -311,7 +311,7 @@ mod tests {
     impl BranchFixture {
         fn new() -> Self {
             let root =
-                std::env::temp_dir().join(format!("cometix-branch-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("nyan-branch-{}", uuid::Uuid::new_v4()));
             fs::create_dir_all(root.join("working")).unwrap();
             fs::create_dir_all(root.join("active-project")).unwrap();
             let fixture = Self {
@@ -551,7 +551,7 @@ mod tests {
     #[test]
     fn call_prepares_fork_saves_explicit_title_and_only_carries_source_log_metadata() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let fixture = BranchFixture::new();
         let original_id = get_session_id();
         let user = json!({"type":"user","uuid":"u","parentUuid":"old-parent","sessionId":original_id,
@@ -658,7 +658,7 @@ mod tests {
         // emit no event; resume errors do not undo the prior creation event.
         // This native call prepares resume without switching the session.
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let fixture = BranchFixture::new();
         let original_id = get_session_id();
         let before = crate::services::analytics::queued_events_for_test().len();

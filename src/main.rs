@@ -6,7 +6,7 @@
 //! delegates direct REPL mounting to [`crate::repl_launcher::launch_repl`] or
 //! bare-resume mounting to [`crate::dialog_launchers::launch_resume_chooser`].
 //!
-//! Single file ≙ CC `main.tsx`. Process entry is `src/bin/cometix.rs`
+//! Single file ≙ CC `main.tsx`. Process entry is `src/bin/nyan.rs`
 //! (Rust-only glue → `entrypoints/cli`; `autobins = false` frees this path).
 
 use crate::bootstrap;
@@ -433,7 +433,7 @@ fn build_initial_app_state_with_thinking(
     } else {
         global_config.verbose.unwrap_or(false)
     };
-    // Cometix extension (no CC counterpart) — user-authorized L2 (v3 ruling,
+    // Nyan extension (no CC counterpart) — user-authorized L2 (v3 ruling,
     // 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
     // Unwraps mirror the authoritative factory defaults (both true); the merge
     // path fills disk-absent keys from the factory, so these are safety nets.
@@ -645,7 +645,7 @@ pub fn pending_mcpjson_approval_servers(
 // the REPL-mounted `useManageMCPConnections` reads the configs after setup
 // finishes.
 //
-// Cometix now matches that: the dialog writes local settings (and invalidates
+// Nyan now matches that: the dialog writes local settings (and invalidates
 // the settings cache — `mcp_server_approval.rs` writes the file directly, so
 // the invalidation CC gets from `updateSettingsForSource` is explicit there),
 // and `use_manage_mcp_connections` picks the result up at REPL mount.
@@ -1091,7 +1091,7 @@ fn Main(props: &MainProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 move |_| {
                     // Maps to CC `main.tsx:4050` — `initialState` (including
                     // `settings: getInitialSettings()`) is built AFTER
-                    // `await showSetupScreens()` (:3250). Cometix's retained
+                    // `await showSetupScreens()` (:3250). Nyan's retained
                     // launch phase must build the store BEFORE setup (the
                     // setup screens need an MCP writer), so the source's
                     // post-setup settings read is replayed here, at the same
@@ -1101,7 +1101,7 @@ fn Main(props: &MainProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     //
                     // The explicit cache reset is STRONGER than CC, which
                     // relies on its write path having invalidated the cache.
-                    // Cometix's setup-screen write paths have not all been
+                    // Nyan's setup-screen write paths have not all been
                     // audited against `update_settings_for_source`, so the
                     // reset makes the reconciliation independent of that
                     // audit; narrowing it is follow-up work, not a behaviour
@@ -1777,7 +1777,7 @@ pub fn run(config: crate::cli::CliConfig) {
                 .on_frame_profile(move |event| {
                     if profile_to_stderr {
                         eprintln!(
-                            "cometix-frame duration={:?} update={:?} layout={:?} draw={:?} repaint_check={:?} write={:?} canvas={}x{} changed_cells={} diff_rows={} measures={} repaint={:?}",
+                            "nyan-frame duration={:?} update={:?} layout={:?} draw={:?} repaint_check={:?} write={:?} canvas={}x{} changed_cells={} diff_rows={} measures={} repaint={:?}",
                             event.duration,
                             event.phases.update,
                             event.phases.layout,
@@ -1867,7 +1867,7 @@ pub fn run(config: crate::cli::CliConfig) {
 
         let stats = stats.lock().unwrap();
         eprintln!(
-            "cometix-frame-summary frames={} repaint_ratio={:.2} avg={:?} avg_update={:?} avg_layout={:?} avg_draw={:?} avg_write={:?} max_changed_cells={} max_diff_rows={}",
+            "nyan-frame-summary frames={} repaint_ratio={:.2} avg={:?} avg_update={:?} avg_layout={:?} avg_draw={:?} avg_write={:?} max_changed_cells={} max_diff_rows={}",
             stats.frames,
             stats.repaint_ratio(),
             stats.average_duration(),
@@ -1922,7 +1922,7 @@ mod tests {
     use std::time::Duration;
 
     fn argv(args: &[&str]) -> Vec<String> {
-        std::iter::once("cometix".to_string())
+        std::iter::once("nyan".to_string())
             .chain(args.iter().map(|arg| arg.to_string()))
             .collect()
     }
@@ -2141,7 +2141,7 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let cwd = std::env::temp_dir().join(format!(
-            "cometix-main-resume-order-{}",
+            "nyan-main-resume-order-{}",
             uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&cwd).unwrap();
@@ -2242,7 +2242,7 @@ mod tests {
                 .next(),
         )
         .expect("setup frame");
-        assert!(first.to_string().contains("Welcome to Claude Code"));
+        assert!(first.to_string().contains("Welcome to nyan"));
         assert_eq!(
             crate::interactive_helpers::default_setup_snapshot_call_count(),
             0,
@@ -2314,7 +2314,7 @@ mod tests {
     fn direct_uuid_resume_failure_renders_exit_with_error_and_requests_exit_one() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-main-fatal-resume-{}",
+            "nyan-main-fatal-resume-{}",
             uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&root).unwrap();
@@ -2391,7 +2391,7 @@ mod tests {
     fn non_unique_cli_resume_value_opens_filtered_picker_after_setup() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-main-resume-search-{}",
+            "nyan-main-resume-search-{}",
             uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&root).unwrap();
@@ -2695,7 +2695,7 @@ mod tests {
         let previous_override = crate::bootstrap::state::get_main_loop_model_override();
         let previous_initial = crate::bootstrap::state::get_initial_main_loop_model();
         let root = std::env::temp_dir().join(format!(
-            "cometix-initial-model-{}",
+            "nyan-initial-model-{}",
             uuid::Uuid::new_v4().simple()
         ));
         fs::create_dir_all(&root).unwrap();

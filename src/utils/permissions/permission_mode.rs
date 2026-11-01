@@ -133,7 +133,7 @@ pub fn permission_mode_short_title(mode: PermissionMode) -> &'static str {
     }
 }
 
-/// Footer display copy used by Cometix prompt UI.
+/// Footer display copy used by Nyan prompt UI.
 pub fn permission_mode_display_label(mode: PermissionMode) -> &'static str {
     match mode {
         PermissionMode::Default | PermissionMode::Bubble => "manual mode",

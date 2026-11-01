@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: official `showInvalidConfigDialog` renders an Ink app,
 //! writes `defaultConfig` to disk for reset, and calls `process.exit(...)`.
-//! Cometix ports the dialog, options, safe theme constant, and exported wrapper
+//! Nyan ports the dialog, options, safe theme constant, and exported wrapper
 //! boundary, but does not write files or terminate the process in this slice.
 
 use crate::components::custom_select::{Select, SelectLayout, SelectOptionData};
@@ -142,7 +142,7 @@ pub fn InvalidConfigDialog<'a>(
 /// Maps to: CC `components/InvalidConfigDialog.tsx` `showInvalidConfigDialog`.
 ///
 /// Official behavior mounts the dialog, writes default config on reset, unmounts,
-/// and exits the process. The Cometix safe wrapper records the same entrypoint
+/// and exits the process. The Nyan safe wrapper records the same entrypoint
 /// and returns without rendering, writing, or exiting until a dedicated startup
 /// error runtime slice wires this into the app shell.
 pub async fn show_invalid_config_dialog(_error: ConfigParseError) {}

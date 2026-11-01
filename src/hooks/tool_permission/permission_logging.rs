@@ -1,7 +1,7 @@
 //! Maps to: CC `hooks/toolPermission/permissionLogging.ts`.
 //!
 //! Official code fans out to analytics, OTel, and code-edit counters. Telemetry
-//! is intentionally disabled in Cometix; this module preserves the official
+//! is intentionally disabled in Nyan; this module preserves the official
 //! decision/source/event/attribute shaping as pure records.
 
 use super::permission_context::{

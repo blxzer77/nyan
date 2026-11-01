@@ -86,12 +86,12 @@ mod tests {
     use std::process::Command;
 
     fn native_lookup_fresh_process_probe() {
-        let Some(command) = crate::utils::process_env::var("COMETIX_WHICH_PROBE_COMMAND") else {
+        let Some(command) = crate::utils::process_env::var("NYAN_WHICH_PROBE_COMMAND") else {
             return;
         };
         crate::utils::process_env::capture_startup();
-        let expected = crate::utils::process_env::var("COMETIX_WHICH_PROBE_RESULT");
-        if let Some(replacement) = crate::utils::process_env::var("COMETIX_WHICH_PROBE_REPLACE_PATH") {
+        let expected = crate::utils::process_env::var("NYAN_WHICH_PROBE_RESULT");
+        if let Some(replacement) = crate::utils::process_env::var("NYAN_WHICH_PROBE_REPLACE_PATH") {
             crate::utils::process_env::set("PATH", replacement);
         }
         let result = which_sync(&command).map(|p| p.to_string_lossy().into_owned());
@@ -104,13 +104,13 @@ mod tests {
 
     #[test]
     fn native_lookup_matches_official_bun_path_order_spelling_and_startup_snapshot() {
-        if crate::utils::process_env::var_os("COMETIX_WHICH_PROBE_COMMAND").is_some() {
+        if crate::utils::process_env::var_os("NYAN_WHICH_PROBE_COMMAND").is_some() {
             native_lookup_fresh_process_probe();
             return;
         }
         // CC which.ts:58-82; real Bun source fresh-process oracle (29 cases),
         // research/proof/plugin-discover-data-0914/which-fresh.{py,json}.
-        let root = std::env::temp_dir().join(format!("cometix-which-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-which-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("one/directory")).unwrap();
         std::fs::create_dir_all(root.join("two")).unwrap();
         for path in ["one/probe", "two/probe", "one/not-executable", "probe"] {
@@ -152,16 +152,16 @@ mod tests {
                    replacement: Option<&str>| {
             let mut child = Command::new(std::env::current_exe().unwrap());
             child.args(["--exact", "utils::which::tests::native_lookup_matches_official_bun_path_order_spelling_and_startup_snapshot", "--nocapture"])
-                .current_dir(&root).env("COMETIX_WHICH_PROBE_COMMAND", command)
-                .env_remove("COMETIX_WHICH_PROBE_RESULT").env_remove("COMETIX_WHICH_PROBE_REPLACE_PATH").env_remove("PATH");
+                .current_dir(&root).env("NYAN_WHICH_PROBE_COMMAND", command)
+                .env_remove("NYAN_WHICH_PROBE_RESULT").env_remove("NYAN_WHICH_PROBE_REPLACE_PATH").env_remove("PATH");
             if let Some(path) = path {
                 child.env("PATH", path);
             }
             if let Some(expected) = expected {
-                child.env("COMETIX_WHICH_PROBE_RESULT", expected);
+                child.env("NYAN_WHICH_PROBE_RESULT", expected);
             }
             if let Some(replacement) = replacement {
-                child.env("COMETIX_WHICH_PROBE_REPLACE_PATH", replacement);
+                child.env("NYAN_WHICH_PROBE_REPLACE_PATH", replacement);
             }
             child
                 .stdout(std::process::Stdio::piped())
@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn async_lookup_matches_official_bun_eager_call_before_await() {
         let file =
-            std::env::temp_dir().join(format!("cometix-which-eager-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-which-eager-{}", uuid::Uuid::new_v4()));
         std::fs::write(&file, "#!/bin/sh\nexit 77\n").unwrap();
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap();
         let nul_command = format!("{}\0suffix", file.display());

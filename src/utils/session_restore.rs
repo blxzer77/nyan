@@ -24,7 +24,7 @@ pub struct ResumeRestoreStores {
     pub entrypoint: Option<crate::types::command::ResumeEntrypoint>,
     pub turn_interruption_state: Option<crate::utils::conversation::TurnInterruptionState>,
     /// In-memory counterpart of official AppState.fileHistory restored by
-    /// `restoreSessionStateFromLog`. Cometix does not copy backup files or
+    /// `restoreSessionStateFromLog`. Nyan does not copy backup files or
     /// write file-history records in this UI-only phase.
     pub file_history: Option<RestoredFileHistoryState>,
     /// Commit attribution payloads are ant-only upstream; keep the restored
@@ -38,7 +38,7 @@ pub struct ResumeRestoreStores {
     pub read_file_state: Vec<crate::utils::query_helpers::ReadFileStateEntry>,
     pub bash_tools: Vec<String>,
     /// Official SDK/non-interactive restore stores TodoWrite state by session
-    /// id. Interactive Cometix only exposes this as an in-memory seam.
+    /// id. Interactive Nyan only exposes this as an in-memory seam.
     pub todos_by_session: std::collections::BTreeMap<String, Vec<serde_json::Value>>,
     pub standalone_agent_context: Option<RestoredStandaloneAgentContext>,
     pub agent_setting: Option<String>,
@@ -641,7 +641,7 @@ mod tests {
         let previous_original_cwd = crate::bootstrap::state::get_original_cwd();
         let previous_worktree = crate::utils::worktree::get_current_worktree_session();
         let root =
-            std::env::temp_dir().join(format!("cometix-restore-worktree-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-restore-worktree-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let root = std::fs::canonicalize(root).unwrap();
         let original = root.join("original");
@@ -727,7 +727,7 @@ mod tests {
         let previous_original_cwd = crate::bootstrap::state::get_original_cwd();
         let previous_worktree = crate::utils::worktree::get_current_worktree_session();
         let root =
-            std::env::temp_dir().join(format!("cometix-missing-worktree-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-missing-worktree-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let root = std::fs::canonicalize(root).unwrap();
         std::env::set_current_dir(&root).unwrap();
@@ -932,11 +932,11 @@ mod tests {
     #[test]
     fn process_resumed_conversation_switches_and_adopts_the_selected_transcript() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let previous_session_id = crate::bootstrap::state::get_session_id();
         let previous_project_dir = crate::bootstrap::state::get_session_project_dir();
         let root = std::env::temp_dir().join(format!(
-            "cometix-process-resume-adopt-{}",
+            "nyan-process-resume-adopt-{}",
             uuid::Uuid::new_v4()
         ));
         let project_dir = root.join("project-dir");

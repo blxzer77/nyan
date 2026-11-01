@@ -78,7 +78,7 @@ pub const GLOBAL_CONFIG_KEYS: &[&str] = &[
     "autoUpdatesProtectedForNative",
     "theme",
     "verbose",
-    // Cometix extension keys (user-authorized L2, 2026-07-31; no CC counterpart)
+    // nyan extension keys (user-authorized L2, 2026-07-31; no CC counterpart)
     "expandThinking",
     "expandCollapsedReadSearch",
     "preferredNotifChannel",
@@ -597,17 +597,17 @@ pub struct GlobalConfig {
     pub theme: Option<String>,
     pub editor_mode: Option<String>,
     pub verbose: Option<bool>,
-    /// Cometix display preference: show thinking blocks expanded (default true;
+    /// nyan display preference: show thinking blocks expanded (default true;
     /// authoritative owner is the factory default in
     /// `create_official_default_global_config`). Single-source expansion
     /// control at the leaf (replaces CC's verbose gate).
-    /// Cometix extension (no CC counterpart) — user-authorized L2 (v3 ruling, 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
+    /// nyan extension (no CC counterpart) — user-authorized L2 (v3 ruling, 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
     pub expand_thinking: Option<bool>,
-    /// Cometix display preference: expand collapsed read/search groups (default
+    /// nyan display preference: expand collapsed read/search groups (default
     /// true; authoritative owner is the factory default in
     /// `create_official_default_global_config`). Single-source expansion
     /// control at the leaf (replaces CC's verbose gate).
-    /// Cometix extension (no CC counterpart) — user-authorized L2 (v3 ruling, 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
+    /// nyan extension (no CC counterpart) — user-authorized L2 (v3 ruling, 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
     pub expand_collapsed_read_search: Option<bool>,
     pub preferred_notif_channel: Option<String>,
     pub custom_notify_command: Option<String>,
@@ -701,7 +701,7 @@ pub struct GlobalConfig {
     /// each fetch overwrites the whole list rather than invalidating entries.
     pub additional_model_options_cache:
         Option<Vec<crate::utils::model::model_options::ModelOption>>,
-    /// @cometix offset: not an official global-config key. Claude Code sizes
+    /// @nyan offset: not an official global-config key. Claude Code sizes
     /// the context window from its own model tables, which know nothing about a
     /// gateway's models; `utils::context::get_context_window_for_model` reads
     /// this map (model id → tokens) so their real windows apply.
@@ -752,7 +752,7 @@ pub struct GlobalConfig {
     pub remote_control_at_startup: Option<bool>,
 
     /// Preserve Claude Code global config fields that are not yet strongly
-    /// modeled by Cometix. This mirrors the TS config object semantics and
+    /// modeled by nyan. This mirrors the TS config object semantics and
     /// prevents future/unknown keys from being lost when saving.
     #[serde(flatten)]
     pub other_global_fields: HashMap<String, serde_json::Value>,
@@ -1327,7 +1327,7 @@ fn start_global_config_freshness_watcher() {
     // so it must never reach libc's getenv (no `node_os::homedir`, local time
     // or DNS here).
     let _ = thread::Builder::new()
-        .name("cometix-global-config-freshness".to_string())
+        .name("nyan-global-config-freshness".to_string())
         .spawn(move || {
             loop {
                 thread::sleep(Duration::from_millis(CONFIG_FRESHNESS_POLL_MS));
@@ -1632,7 +1632,7 @@ pub fn clear_global_config_cache_for_testing() {
 pub fn save_global_config(updater: impl FnOnce(&mut GlobalConfig)) -> anyhow::Result<()> {
     if !is_write_enabled() {
         tracing::info!(
-            "[DRY_RUN] save_global_config: writes are disabled (set COMETIX_WRITE_ENABLED=1 to enable)"
+            "[DRY_RUN] save_global_config: writes are disabled (set NYAN_WRITE_ENABLED=1 to enable)"
         );
         return Ok(());
     }
@@ -1764,15 +1764,15 @@ pub fn record_first_start_time() {
 }
 
 pub fn is_config_write_enabled() -> bool {
-    crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("COMETIX_WRITE_ENABLED").as_deref())
+    crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("NYAN_WRITE_ENABLED").as_deref())
 }
 
 fn is_write_enabled() -> bool {
     // Same gate as session persistence (`PORTING.md`): production writes
-    // unless `COMETIX_WRITE_ENABLED=0`; tests must opt in. The previous
+    // unless `NYAN_WRITE_ENABLED=0`; tests must opt in. The previous
     // `is_env_truthy` check made every production `saveGlobalConfig` a
     // no-op, so `getOrCreateUserID` minted a new `device_id` per request.
-    crate::utils::env_utils::is_cometix_write_enabled()
+    crate::utils::env_utils::is_nyan_write_enabled()
 }
 
 pub fn should_skip_plugin_autoupdate() -> bool {
@@ -1917,7 +1917,7 @@ mod tests {
     use std::fs;
 
     fn unique_temp_dir(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("cometix-config-{name}-{}", uuid::Uuid::new_v4()))
+        std::env::temp_dir().join(format!("nyan-config-{name}-{}", uuid::Uuid::new_v4()))
     }
 
     #[test]
@@ -1995,7 +1995,7 @@ mod tests {
     #[test]
     fn merge_fills_absent_display_pref_keys_with_ruled_factory_true() {
         // Pins the ruled default (v3, 2026-08-01) at the live merge path:
-        // a disk config without the Cometix display-pref keys must load with
+        // a disk config without the nyan display-pref keys must load with
         // both effective true (factory-authoritative, CC {...DEFAULT, ...disk}
         // spread shape). Explicit disk values must still win.
         let merged = load_global_config_from_value(serde_json::json!({}))
@@ -2244,7 +2244,7 @@ mod tests {
         let root = unique_temp_dir("user-id-persist");
         fs::create_dir_all(&root).unwrap();
         let _config_dir = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let previous = replace_test_global_config(None);
         clear_global_config_cache_for_testing();
 
@@ -2277,7 +2277,7 @@ mod tests {
         let root = unique_temp_dir("mcp-raw-snapshot");
         fs::create_dir_all(&root).unwrap();
         let _config_dir = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         clear_global_config_cache_for_testing();
         let raw = serde_json::json!({
             "sdk":{"type":"sdk","name":"sdk-host","future":{"nested":null}},

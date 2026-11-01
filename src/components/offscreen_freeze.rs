@@ -2,7 +2,7 @@
 //!
 //! Claude Code's React component freezes a subtree once native terminal
 //! scrollback has moved it above the live viewport, and bypasses freezing when
-//! `InVirtualListContext` is active. Cometix uses the equivalent iocraft
+//! `InVirtualListContext` is active. Nyan uses the equivalent iocraft
 //! retained-render implementation at the same component boundary.
 //!
 //! CC's freeze returns a cached element (`OffscreenFreeze.tsx:24-38`), which

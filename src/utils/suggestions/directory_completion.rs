@@ -371,7 +371,7 @@ mod tests {
         // directoryCompletion.ts:89-156: directories only, case-insensitive
         // prefix, cached directory scan, maxResults, directory metadata.
         let temp = std::env::temp_dir().join(format!(
-            "cometix-directory-completion-{}",
+            "nyan-directory-completion-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&temp).unwrap();
@@ -425,7 +425,7 @@ mod tests {
     #[tokio::test]
     async fn path_completion_matches_official_directory_first_and_include_files() {
         let temp =
-            std::env::temp_dir().join(format!("cometix-path-completion-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-path-completion-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp).unwrap();
         std::fs::create_dir(temp.join("Folder")).unwrap();
         std::fs::write(temp.join("file.txt"), "").unwrap();

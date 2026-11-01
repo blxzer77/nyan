@@ -6,8 +6,8 @@
 //!
 //! Detection seam: CC's detector chain (detectHomebrew → winget → mise → asdf
 //! → pacman → apk → deb → rpm) shells out to package managers and reads
-//! `/etc/os-release`; Cometix has no native-installer distribution yet, so
-//! detection is driven by the `COMETIX_PACKAGE_MANAGER` env var (same seam
+//! `/etc/os-release`; Nyan has no native-installer distribution yet, so
+//! detection is driven by the `NYAN_PACKAGE_MANAGER` env var (same seam
 //! `utils/doctor_diagnostic.rs` uses for its diagnostic `package_manager`
 //! field). CC memoizes `getPackageManager` because detection spawns processes;
 //! the env read is cheap, so memoization is deferred until real detection
@@ -61,10 +61,10 @@ impl PackageManager {
 
 /// Maps to: CC `packageManagers.ts:302-336` `getPackageManager` — detect which
 /// package manager installed the binary, `unknown` when none is detected.
-/// Detection seam (see module docs): reads `COMETIX_PACKAGE_MANAGER` instead
+/// Detection seam (see module docs): reads `NYAN_PACKAGE_MANAGER` instead
 /// of running CC's spawn-based detector chain.
 pub async fn get_package_manager() -> PackageManager {
-    match crate::utils::process_env::var("COMETIX_PACKAGE_MANAGER") {
+    match crate::utils::process_env::var("NYAN_PACKAGE_MANAGER") {
         Some(value) => PackageManager::from_value(&value),
         None => PackageManager::Unknown,
     }
@@ -101,11 +101,11 @@ mod tests {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _package_manager = EnvVarGuard::unset("COMETIX_PACKAGE_MANAGER");
+        let _package_manager = EnvVarGuard::unset("NYAN_PACKAGE_MANAGER");
 
         assert_eq!(get_package_manager().await, PackageManager::Unknown);
 
-        crate::utils::process_env::set("COMETIX_PACKAGE_MANAGER", "winget");
+        crate::utils::process_env::set("NYAN_PACKAGE_MANAGER", "winget");
         assert_eq!(get_package_manager().await, PackageManager::Winget);
     }
 }

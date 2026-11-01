@@ -134,7 +134,7 @@ mod tests {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _fd = EnvVarGuard::preserve("CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR");
         let path = std::env::temp_dir().join(format!(
-            "cometix-auth-fd-{}-{}",
+            "nyan-auth-fd-{}-{}",
             std::process::id(),
             uuid::Uuid::new_v4()
         ));
@@ -165,10 +165,10 @@ mod tests {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let env_key = "COMETIX_TEST_EMPTY_AUTH_FD";
+        let env_key = "NYAN_TEST_EMPTY_AUTH_FD";
         let _fd = EnvVarGuard::preserve(env_key);
         let root =
-            std::env::temp_dir().join(format!("cometix-empty-auth-fd-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-empty-auth-fd-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let empty_path = root.join("empty");
         let fallback_path = root.join("fallback");

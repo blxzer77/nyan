@@ -1060,7 +1060,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("cometix-lsp-ignore-{unique}"));
+        let root = std::env::temp_dir().join(format!("nyan-lsp-ignore-{unique}"));
         std::fs::create_dir_all(&root).unwrap();
         let _ = std::process::Command::new("git")
             .arg("init")

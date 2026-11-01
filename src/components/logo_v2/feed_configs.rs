@@ -57,7 +57,7 @@ pub fn create_whats_new_feed(release_notes: &[String]) -> FeedConfig {
     FeedConfig {
         title: "What's new".to_string(),
         footer: (!lines.is_empty()).then(|| "/release-notes for more".to_string()),
-        empty_message: Some("Check the Claude Code changelog for updates".to_string()),
+        empty_message: Some("Check the nyan changelog for updates".to_string()),
         lines,
         custom_content: None,
     }
@@ -100,8 +100,8 @@ pub fn create_project_onboarding_feed(steps: &[ProjectOnboardingStep]) -> FeedCo
 
 pub fn create_guest_passes_feed(reward_text: Option<&str>) -> FeedConfig {
     let subtitle = reward_text
-        .map(|reward| format!("Share Claude Code and earn {reward} of extra usage"))
-        .unwrap_or_else(|| "Share Claude Code with friends".to_string());
+        .map(|reward| format!("Share nyan and earn {reward} of extra usage"))
+        .unwrap_or_else(|| "Share nyan with friends".to_string());
 
     FeedConfig {
         title: "3 guest passes".to_string(),
@@ -158,7 +158,7 @@ mod tests {
         assert!(empty.footer.is_none());
         assert_eq!(
             empty.empty_message.as_deref(),
-            Some("Check the Claude Code changelog for updates")
+            Some("Check the nyan changelog for updates")
         );
 
         let populated = create_whats_new_feed(&["Added feature".to_string()]);
@@ -205,7 +205,7 @@ mod tests {
         assert!(custom.margin_y_first_line);
         assert_eq!(
             custom.lines[1].text,
-            "Share Claude Code and earn $5 of extra usage"
+            "Share nyan and earn $5 of extra usage"
         );
     }
 }

@@ -1,7 +1,7 @@
 //! Maps to: CC `components/SandboxViolationExpandedView.tsx`.
 //!
 //! The official component subscribes to `SandboxManager.getSandboxViolationStore()`
-//! (via `utils/sandbox/sandbox-adapter.ts`). Cometix keeps the runtime store on
+//! (via `utils/sandbox/sandbox-adapter.ts`). Nyan keeps the runtime store on
 //! [`crate::utils::sandbox::sandbox_adapter::get_sandbox_violation_store`]; this
 //! view currently receives the already-known last-violations snapshot plus total
 //! count as props.

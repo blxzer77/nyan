@@ -3,7 +3,7 @@
 //! Maps to: CC `utils/swarm/permissionSync.ts`.
 //!
 //! Official CC stores pending/resolved permission requests on disk and also
-//! routes permission requests/responses through teammate mailboxes. Cometix keeps
+//! routes permission requests/responses through teammate mailboxes. Nyan keeps
 //! the official request/response shapes and function boundaries in memory until
 //! full team-file persistence is enabled.
 
@@ -488,17 +488,17 @@ mod tests {
     /// `get_leader_name` reads the team file from disk (CC
     /// `permissionSync.ts:657` `readTeamFileAsync`), so a memory-only seed is a
     /// no-op fixture — `write_team_record` suppresses the write unless
-    /// `COMETIX_TEST_TEAM_FILE_IO` is on. Pin a scratch config root and enable
+    /// `NYAN_TEST_TEAM_FILE_IO` is on. Pin a scratch config root and enable
     /// the team-file and mailbox disk paths; the returned guards must outlive
     /// the test body.
     fn seed_team() -> (EnvVarGuard, EnvVarGuard, EnvVarGuard) {
         let root = std::env::temp_dir().join(format!(
-            "cometix-permission-sync-{}",
+            "nyan-permission-sync-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
-        let write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
+        let write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::utils::swarm::team_helpers::clear_team_tool_state_for_test();
         let record = crate::utils::swarm::team_helpers::create_team_record(
             "alpha".to_string(),

@@ -32,8 +32,8 @@ impl Workflow {
 
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Claude => "@Claude Code - Tag @claude in issues and PR comments",
-            Self::ClaudeReview => "Claude Code Review - Automated code review on new PRs",
+            Self::Claude => "@nyan - Tag @claude in issues and PR comments",
+            Self::ClaudeReview => "nyan Review - Automated code review on new PRs",
         }
     }
 }
@@ -203,10 +203,10 @@ mod tests {
             "canvas=\n{text}"
         );
         assert!(
-            text.contains("@Claude Code - Tag @claude"),
+            text.contains("@nyan - Tag @claude"),
             "canvas=\n{text}"
         );
-        assert!(text.contains("Claude Code Review"), "canvas=\n{text}");
+        assert!(text.contains("nyan Review"), "canvas=\n{text}");
         assert!(text.contains(WORKFLOW_EXAMPLES_URL), "canvas=\n{text}");
         assert!(text.contains("Space to toggle"), "canvas=\n{text}");
         assert!(text.contains("Esc to cancel"), "canvas=\n{text}");

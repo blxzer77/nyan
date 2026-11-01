@@ -11,9 +11,7 @@ pub(crate) const CREDENTIALS_SERVICE_SUFFIX: &str = "-credentials";
 
 /// Maps to: CC `utils/secureStorage/macOsKeychainHelpers.ts:29-41`
 /// `getMacOsKeychainStorageServiceName`.
-pub(crate) fn get_mac_os_keychain_storage_service_name(
-    service_suffix: &str,
-) -> anyhow::Result<String> {
+fn keychain_service_name(prefix: &str, service_suffix: &str) -> anyhow::Result<String> {
     let config_dir = crate::utils::env_utils::get_claude_config_home_dir();
     let dir_hash = if crate::utils::process_env::var_os("CLAUDE_CONFIG_DIR")
         .as_deref()
@@ -32,8 +30,21 @@ pub(crate) fn get_mac_os_keychain_storage_service_name(
     };
     let oauth_suffix = crate::constants::oauth::get_oauth_config()?.oauth_file_suffix;
     Ok(format!(
-        "Claude Code{oauth_suffix}{service_suffix}{dir_hash}"
+        "{prefix}{oauth_suffix}{service_suffix}{dir_hash}"
     ))
+}
+
+pub(crate) fn get_mac_os_keychain_storage_service_name(
+    service_suffix: &str,
+) -> anyhow::Result<String> {
+    keychain_service_name("nyan", service_suffix)
+}
+
+/// Previous keychain service names. Read-only import sources; never written.
+pub(crate) fn legacy_keychain_service_names(service_suffix: &str) -> Vec<String> {
+    keychain_service_name("Claude Code", service_suffix)
+        .into_iter()
+        .collect()
 }
 
 /// Maps to: CC `utils/secureStorage/macOsKeychainHelpers.ts:43-49`
@@ -160,18 +171,26 @@ mod tests {
         let _staging = EnvVarGuard::unset("USE_STAGING_OAUTH");
         assert_eq!(
             get_mac_os_keychain_storage_service_name("").unwrap(),
-            "Claude Code"
+            "nyan"
         );
         assert_eq!(
             get_mac_os_keychain_storage_service_name(CREDENTIALS_SERVICE_SUFFIX).unwrap(),
-            "Claude Code-credentials"
+            "nyan-credentials"
+        );
+        assert_eq!(
+            legacy_keychain_service_names(CREDENTIALS_SERVICE_SUFFIX),
+            vec!["Claude Code-credentials".to_string()]
         );
         drop(_config);
-        let custom_dir = std::path::Path::new("/tmp/cometix-claude-config");
+        let custom_dir = std::path::Path::new("/tmp/nyan-claude-config");
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", custom_dir);
         assert_eq!(
             get_mac_os_keychain_storage_service_name(CREDENTIALS_SERVICE_SUFFIX).unwrap(),
-            "Claude Code-credentials-4f825471"
+            "nyan-credentials-e69ace20"
+        );
+        assert_eq!(
+            legacy_keychain_service_names(CREDENTIALS_SERVICE_SUFFIX),
+            vec!["Claude Code-credentials-e69ace20".to_string()]
         );
 
         let _user = EnvVarGuard::set("USER", "alice");

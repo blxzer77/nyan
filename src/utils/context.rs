@@ -64,7 +64,7 @@ pub fn has_1m_context(model: &str) -> bool {
 }
 
 /// Maps to CC `utils/context.ts` `modelSupports1M(...)` for the public model
-/// patterns Cometix currently supports.
+/// patterns Nyan currently supports.
 pub fn model_supports_1m(model: &str) -> bool {
     if is_1m_context_disabled() {
         return false;
@@ -129,7 +129,7 @@ pub fn get_context_window_for_model_for_audience(
 
 /// Maps to CC `utils/context.ts#getContextWindowForModel`.
 pub fn get_context_window_for_model(model: &str, betas: &[String]) -> i64 {
-    // @cometix offset: nothing in CC's model tables describes a gateway's own
+    // @nyan offset: nothing in CC's model tables describes a gateway's own
     // models, so they all reported the 200k default. `modelContextWindows` in
     // the global config corrects that per model id; the `[1m]` suffix still wins.
     if !has_1m_context(model)

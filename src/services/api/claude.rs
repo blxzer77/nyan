@@ -2,7 +2,7 @@
 //!
 //! Maps to: CC services/api/claude.ts:1-3420
 //!
-//! This module contains the Claude API interaction layer for CometixCode:
+//! This module contains the Claude API interaction layer for nyan:
 //! - Extra body parameter assembly from env vars and beta headers
 //! - Prompt caching configuration and cache control
 //! - Message conversion (UserMessage/AssistantMessage -> API MessageParam)
@@ -294,7 +294,7 @@ pub struct CacheControl {
 /// `scope` is only emitted when it is `global` (`...(scope === 'global' && { scope })`);
 /// `org` is the API default and stays off the wire.
 ///
-/// @cometix offset: first-party `ttl: "1h"` is gated by `PromptCache1hConfig`.
+/// @nyan offset: first-party `ttl: "1h"` is gated by `PromptCache1hConfig`.
 /// The query-source allowlist is settings.json `promptCache1h.allowlist`.
 /// Vertex / Foundry / Bedrock keep `should1hCacheTTL`.
 pub fn get_cache_control(scope: Option<CacheScope>, query_source: Option<&str>) -> CacheControl {
@@ -339,10 +339,10 @@ fn prompt_cache_1h_user_eligible() -> bool {
 /// Maps to CC `getFeatureValue_CACHED_MAY_BE_STALE('tengu_prompt_cache_1h_config', {})`
 /// then `config.allowlist ?? []`.
 ///
-/// @cometix offset: GrowthBook is not ported; the same `{ allowlist }` payload
+/// @nyan offset: GrowthBook is not ported; the same `{ allowlist }` payload
 /// is read from settings.json via `get_prompt_cache_1h_allowlist`.
 fn prompt_cache_1h_allowlist() -> Vec<String> {
-    // @cometix offset: official reads GrowthBook `tengu_prompt_cache_1h_config`.
+    // @nyan offset: official reads GrowthBook `tengu_prompt_cache_1h_config`.
     // Users set the same `{ allowlist }` payload in settings.json.
     crate::utils::settings::get_prompt_cache_1h_allowlist()
 }
@@ -397,7 +397,7 @@ fn should_1h_cache_ttl_with_inputs(
         return prompt_cache_1h_allowlist_matches(allowlist, query_source);
     }
 
-    // @cometix offset: first-party uses `PromptCache1hConfig` as the final
+    // @nyan offset: first-party uses `PromptCache1hConfig` as the final
     // control. An empty settings allowlist means "any querySource"; a
     // non-empty list uses the official prefix-match rules.
     if !first_party_config_enabled {
@@ -1213,7 +1213,7 @@ pub fn assistant_message_to_message_param(
 /// Rust's current typed-message subset.
 ///
 /// Ensures messages contain at most `limit` media items and strips the oldest
-/// first to preserve recent context. Cometix typed messages currently expose
+/// first to preserve recent context. Nyan typed messages currently expose
 /// user images directly; document/media blocks nested inside raw SDK params are
 /// handled by `strip_excess_media_items_typed(...)` below.
 pub fn strip_excess_media_items(messages: &[(Message,)], limit: usize) -> Vec<Message> {
@@ -1805,13 +1805,13 @@ pub fn adjust_params_for_non_streaming(
 /// Returns effective max output tokens for a model considering env overrides
 /// and slot-reservation cap. The slot-reservation cap (CAPPED_DEFAULT_MAX_TOKENS)
 /// is controlled by a GrowthBook feature flag in CC; here it is controlled by
-/// the COMETIX_MAX_TOKENS_CAP env var.
+/// the NYAN_MAX_TOKENS_CAP env var.
 pub fn get_max_output_tokens_for_model(model: &str) -> u32 {
     let max_output = get_model_max_output_tokens(model);
 
     // Slot-reservation cap: drop default to 8k for all models
     let is_cap_enabled = crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("COMETIX_MAX_TOKENS_CAP").as_deref(),
+        crate::utils::process_env::var("NYAN_MAX_TOKENS_CAP").as_deref(),
     );
     let default_tokens = if is_cap_enabled {
         max_output.default.min(CAPPED_DEFAULT_MAX_TOKENS)
@@ -1954,7 +1954,7 @@ fn format_message_param_convert_error(
     }
     let detail = failed_block_detail.unwrap_or_else(|| error.to_string());
     let mut message = format!(
-        "failed to convert Cometix message to SDK MessageParam: {index_label} role={} block_types={:?}: {detail}",
+        "failed to convert Nyan message to SDK MessageParam: {index_label} role={} block_types={:?}: {detail}",
         param.role, block_types
     );
     if let Some(snippet) = failed_block_snippet {
@@ -2036,7 +2036,7 @@ fn sdk_system_prompt_from_blocks(
     }
     let value = serde_json::to_value(blocks)?;
     let sdk_blocks = serde_json::from_value(value).map_err(|error| {
-        anyhow::anyhow!("failed to convert Cometix system prompt blocks to SDK params: {error}")
+        anyhow::anyhow!("failed to convert Nyan system prompt blocks to SDK params: {error}")
     })?;
     Ok(Some(
         anthropic_sdk::resources::messages::SystemPrompt::Blocks(sdk_blocks),
@@ -2110,7 +2110,7 @@ struct SdkMessageCreatePlan {
 /// Maps to CC `services/api/claude.ts` `paramsFromContext(...)`: CC adds
 /// first-party cache-editing fields to structurally typed SDK objects at
 /// runtime. They are not public `anthropic-sdk-typescript` message models, so
-/// Cometix keeps those extras in its request adapter and overlays them through
+/// Nyan keeps those extras in its request adapter and overlays them through
 /// `RequestOptions`. The create object itself is `BetaMessageCreateParams`
 /// because official passes it to `anthropic.beta.messages.create`.
 fn build_sdk_message_create_plan(
@@ -2558,7 +2558,15 @@ fn build_sdk_message_request_options(
             params.betas = Some(plan.betas.clone());
         }
         let mut headers = base.headers.take().unwrap_or_default();
-        headers.insert("anthropic-beta".to_string(), Some(plan.betas.join(",")));
+        if let Some((name, value)) =
+            crate::services::api::request_headers::anthropic_beta_header(&plan.betas)
+        {
+            headers.insert(name, Some(value));
+        }
+        crate::services::api::request_headers::override_header_if_configured(
+            &mut headers,
+            "anthropic-beta",
+        );
         base.headers = Some(headers);
     }
 
@@ -4518,7 +4526,7 @@ fn system_api_error_message_from_error(error: anyhow::Error) -> SystemApiErrorMe
 
 fn is_non_streaming_fallback_disabled() -> bool {
     // Maps to CC `CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK`. GrowthBook gates
-    // are not available in Cometix's direct API adapter, so only the explicit
+    // are not available in Nyan's direct API adapter, so only the explicit
     // env kill switch is honored here.
     crate::utils::env_utils::is_env_truthy(
         crate::utils::process_env::var("CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK")
@@ -4987,7 +4995,7 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _plan_lock = crate::utils::plans::test_plan_state_lock();
         let dir =
-            std::env::temp_dir().join(format!("cometix-normalize-plan-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-normalize-plan-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &dir);
         let _project = PinnedProjectDir::at(&dir);
@@ -5762,7 +5770,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::remove("MAX_THINKING_TOKENS");
         crate::utils::process_env::remove("CLAUDE_CODE_THINKING");
-        crate::utils::process_env::remove("COMETIX_THINKING");
+        crate::utils::process_env::remove("NYAN_THINKING");
 
         let mut settings = crate::utils::settings::types::SettingsJson::default();
         assert!(matches!(
@@ -6704,7 +6712,7 @@ mod tests {
         let value = serde_json::to_value(params).expect("params serialize");
 
         // Pins the CURRENT deviation, not CC's behaviour. CC ships the block
-        // whole under the beta header (claude.ts:1303-1306); Cometix flattens
+        // whole under the beta header (claude.ts:1303-1306); Nyan flattens
         // it because `anthropic_sdk::ContentBlockParam` has no
         // `advisor_tool_result` variant. The test previously carried a name
         // promising the block was preserved while asserting `["text"]` — an
@@ -8140,7 +8148,7 @@ mod tests {
         let error = refusal_system_api_error_message("claude-opus-4-20250514")
             .expect("refusal should produce API error message");
 
-        assert!(error.content.contains("Claude Code is unable to respond"));
+        assert!(error.content.contains("nyan is unable to respond"));
         assert_eq!(error.error, "invalid_request");
         assert!(error.content.contains("/model claude-sonnet-4-20250514"));
     }
@@ -8378,7 +8386,7 @@ mod tests {
             Some("sdk"),
             true,
         ));
-        // @cometix offset: first-party uses PromptCache1hConfig as the final
+        // @nyan offset: first-party uses PromptCache1hConfig as the final
         // control. Empty allowlist + flag on = any querySource; a non-empty
         // list uses the official prefix-match rules.
         assert!(!should_1h_cache_ttl_with_inputs(
@@ -8456,7 +8464,7 @@ mod tests {
     fn cache_control_1h_allowlist_ignores_growthbook_delivery() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-prompt-cache-1h-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-prompt-cache-1h-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("create temp config dir");
         std::fs::write(
             root.join(".claude.json"),
@@ -8759,7 +8767,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let config_dir = std::env::temp_dir().join(format!(
-            "cometix-non-streaming-oauth-order-{}",
+            "nyan-non-streaming-oauth-order-{}",
             std::process::id()
         ));
         std::fs::create_dir_all(&config_dir).unwrap();
@@ -9082,7 +9090,7 @@ mod tests {
     fn get_max_output_tokens_default_for_sonnet() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::remove("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
-        crate::utils::process_env::remove("COMETIX_MAX_TOKENS_CAP");
+        crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
         let result = get_max_output_tokens_for_model("claude-sonnet-4-20250514");
         assert_eq!(result, 32_000);
     }
@@ -9091,7 +9099,7 @@ mod tests {
     fn get_max_output_tokens_env_override() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::set("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "32000suffix");
-        crate::utils::process_env::remove("COMETIX_MAX_TOKENS_CAP");
+        crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
         let result = get_max_output_tokens_for_model("claude-sonnet-4-20250514");
         assert_eq!(result, 32_000);
 

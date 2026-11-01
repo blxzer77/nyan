@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn permission_rule_explanation_matches_official_classifier_arm_in_error_color() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
 
         let reason = PermissionDecisionReason::Classifier {
             classifier: "auto-mode".to_string(),
@@ -419,7 +419,7 @@ mod tests {
         }
         .render(Some(80));
 
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
 
         let text = canvas.to_string();
         assert!(

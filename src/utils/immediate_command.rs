@@ -21,7 +21,7 @@ pub fn should_inference_config_command_be_immediate_from_config(
     _get_env: &impl Fn(&str) -> Option<String>,
 ) -> bool {
     // Maps to CC `getFeatureValue_CACHED_MAY_BE_STALE('tengu_immediate_model_command', false)`.
-    // Per Cometix policy, GrowthBook cache/config/env overrides are not read here;
+    // Per Nyan policy, GrowthBook cache/config/env overrides are not read here;
     // the external-user branch is controlled only by `utils::feature_flags`.
     should_inference_config_command_be_immediate_from(
         crate::utils::build_profile::build_audience(),

@@ -2663,10 +2663,10 @@ mod tests {
 
     /// CC keeps attachments as plain JS objects: whatever fields a transcript
     /// entry carries survive `JSON.parse` → render → `JSON.stringify`. The
-    /// typed enum only declares the fields Cometix reads, so re-serializing it
+    /// typed enum only declares the fields Nyan reads, so re-serializing it
     /// alone would drop the rest — a payload written by a newer CC, or by a
     /// producer that spread extra keys, would lose them the first time a
-    /// session round-trips through Cometix. The transcript payload is
+    /// session round-trips through Nyan. The transcript payload is
     /// therefore taken from the preserved wire form.
     #[test]
     fn transcript_attachments_round_trip_undeclared_fields_like_official() {
@@ -2912,7 +2912,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn user_input_attachment_phase_keeps_file_then_agent_producer_order() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-user-attachment-order-{}",
+            "nyan-user-attachment-order-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -2954,7 +2954,7 @@ mod tests {
         use std::os::unix::ffi::OsStrExt as _;
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-at-mention-timeout-{}",
+            "nyan-at-mention-timeout-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -3006,7 +3006,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn compact_file_restoration_keeps_file_unchanged_attachment() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-compact-file-unchanged-{}",
+            "nyan-compact-file-unchanged-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -3051,7 +3051,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn at_mention_file_and_directory_flow_through_read_attachment_owner() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-at-mention-{}",
+            "nyan-at-mention-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let source = root.join("src");
@@ -3090,7 +3090,7 @@ mod tests {
     #[test]
     fn transformed_nested_memory_is_cached_as_partial_raw_disk_view() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-nested-memory-partial-{}",
+            "nyan-nested-memory-partial-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let rules = root.join(".claude/rules");
@@ -3150,7 +3150,7 @@ mod tests {
     async fn at_mention_token_fallback_keeps_truncated_read_state_range() {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let root = std::env::temp_dir().join(format!(
-            "cometix-at-mention-token-fallback-{}",
+            "nyan-at-mention-token-fallback-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -3213,7 +3213,7 @@ mod tests {
         }
         let _restore = DynamicSkillsRestore;
         let root = std::env::temp_dir().join(format!(
-            "cometix-at-mention-dynamic-skill-{}",
+            "nyan-at-mention-dynamic-skill-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let skill_dir = root.join("nested/.claude/skills");
@@ -3260,7 +3260,7 @@ mod tests {
         }
         let _restore = DynamicSkillsRestore;
         let root = std::env::temp_dir().join(format!(
-            "cometix-at-mention-missing-dynamic-skill-{}",
+            "nyan-at-mention-missing-dynamic-skill-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let skill_dir = root.join("nested/.claude/skills");
@@ -3290,7 +3290,7 @@ mod tests {
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = std::env::current_dir().unwrap();
         let root = cwd.join(format!(
-            ".cometix-nested-race-{}",
+            ".nyan-nested-race-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let rules = root.join(".claude/rules");
@@ -3337,7 +3337,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn dynamic_snapshot_clears_insertion_that_arrives_during_source_await() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-dynamic-race-{}",
+            "nyan-dynamic-race-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let first = root.join("first");
@@ -3383,7 +3383,7 @@ mod tests {
             0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
         ];
         let root = std::env::temp_dir().join(format!(
-            "cometix-changed-image-{}",
+            "nyan-changed-image-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -3430,7 +3430,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn changed_full_file_state_emits_edited_text_reminder_and_refreshes_cache() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-changed-file-{}",
+            "nyan-changed-file-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -3734,7 +3734,7 @@ mod tests {
     #[tokio::test]
     async fn dynamic_skill_attachment_lists_discovered_skills_and_drains_triggers() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-dynamic-skill-attachment-{}",
+            "nyan-dynamic-skill-attachment-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let skills_dir = root.join("nested/.claude/skills");
@@ -3873,7 +3873,7 @@ mod tests {
     #[tokio::test]
     async fn dynamic_skill_precedes_main_thread_reminders_in_async_attachment_order() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-dynamic-skill-order-{}",
+            "nyan-dynamic-skill-order-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let skills_dir = root.join("nested/.claude/skills");

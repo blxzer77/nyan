@@ -805,7 +805,7 @@ mod tests {
         use crate::tool::ToolCall;
         use crate::types::message::{Message, UserContent};
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let mut context = crate::tool::ToolUseContext::default();
         context.agent_id = Some(format!("skill-builtin-{}", uuid::Uuid::new_v4()));
         let args = serde_json::json!({"skill": "/init"});
@@ -905,7 +905,7 @@ mod tests {
 
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-skill-tool-call-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-skill-tool-call-{}", uuid::Uuid::new_v4()));
         let skill_file = root
             .join(".claude")
             .join("skills")
@@ -986,7 +986,7 @@ mod tests {
 
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-skill-tool-shell-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-skill-tool-shell-{}", uuid::Uuid::new_v4()));
         let skill_file = root
             .join(".claude")
             .join("skills")
@@ -1305,7 +1305,7 @@ mod tests {
 
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-skill-tool-modifier-{}",
+            "nyan-skill-tool-modifier-{}",
             uuid::Uuid::new_v4()
         ));
         let skill_file = root
@@ -1433,7 +1433,7 @@ mod tests {
 
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-skill-tool-fork-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-skill-tool-fork-{}", uuid::Uuid::new_v4()));
         let skill_file = root
             .join(".claude")
             .join("skills")
@@ -1491,7 +1491,7 @@ mod tests {
             .unwrap();
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-skill-tool-fork-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-skill-tool-fork-{}", uuid::Uuid::new_v4()));
         let skill_file = root
             .join(".claude")
             .join("skills")

@@ -589,7 +589,7 @@ mod tests {
         // branch — the diff comes from the tool inputs alone
         // (FileEditTool/UI.tsx:293-301).
         let missing = std::env::temp_dir().join(format!(
-            "cometix-edit-rejected-missing-{}",
+            "nyan-edit-rejected-missing-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let data = load_rejection_diff(&missing.display().to_string(), "old", "new", false);

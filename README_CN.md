@@ -1,8 +1,8 @@
 <div align="center">
 
 <h1>
-  <img src="assets/logo-dark.gif#gh-dark-mode-only" alt="CometixCode" height="40" align="top"><img src="assets/logo-light.gif#gh-light-mode-only" alt="CometixCode" height="40" align="top">
-  CometixCode
+  <img src="assets/logo-dark.gif#gh-dark-mode-only" alt="nyan" height="40" align="top"><img src="assets/logo-light.gif#gh-light-mode-only" alt="nyan" height="40" align="top">
+  nyan
 </h1>
 
 [English](README.md) | 简体中文
@@ -12,7 +12,7 @@
 
 </div>
 
-一个终端 AI 编码助手，用 Rust 对 Anthropic Claude Code 做 1:1 复刻。
+一个终端 AI 编码助手，用 Rust 对 Anthropic Claude Code 做 1:1 复刻。nyan 是 [CometixCode](https://github.com/Haleclipse/CometixCode) 的分支（fork）。
 
 > **非官方项目，与 Anthropic 无隶属关系。**
 > 本项目是通过研读已发布的 Claude Code CLI 独立实现的。
@@ -21,7 +21,7 @@
 
 ## 这是什么
 
-Claude Code 的终端界面是 TypeScript + React + Ink。CometixCode 在 Rust 上用
+Claude Code 的终端界面是 TypeScript + React + Ink。nyan 在 Rust 上用
 iocraft 复刻它 —— 那是一个 React 风格的保留模式 TUI 框架，是 Ink 的结构对应物：
 同样有组件、hooks 和声明式元素。移植是逐文件对照原版进行的，而不是另起炉灶重新
 设计架构：一个 TypeScript 组件对应一个 Rust 组件，一个 hook 对应一个 hook，刻意
@@ -40,11 +40,11 @@ iocraft 复刻它 —— 那是一个 React 风格的保留模式 TUI 框架，�
 </p>
 
 <p align="center">
-  <strong>CometixCode × Infistar.cc 无限星河｜高可用全模型 API</strong><br>
+  <strong>nyan × Infistar.cc 无限星河｜高可用全模型 API</strong><br>
   企业级高并发稳定调度｜官方 1 折起 · 透明倍率 · 多节点冗余<br>
   全系模型支持｜ChatGPT · Claude · Gemini · DeepSeek<br>
   全模态接入｜文本 · 图像 · 视频 · Embedding / Rerank<br>
-  CometixCode 用户通过<a href="https://www.infistar.cc/register?aff=HALLEY">专属链接</a>注册，可享专属特惠。
+  nyan 用户通过<a href="https://www.infistar.cc/register?aff=HALLEY">专属链接</a>注册，可享专属特惠。
 </p>
 
 ## 构建
@@ -54,7 +54,7 @@ cargo build --release
 cargo run --release
 ```
 
-可执行文件名为 `cometix`。
+可执行文件名为 `nyan`。
 
 ### 交叉编译 Windows 版
 
@@ -68,7 +68,7 @@ cargo build --release --target x86_64-pc-windows-gnu
 ## ripgrep
 
 文件搜索会调用外部的 `rg`。Claude Code 把打包好的 ripgrep 放在自己的 npm 包内
-并执行那个路径；CometixCode 保持同样的形态 —— 该二进制是外挂资产，**不会**被编译
+并执行那个路径；nyan 保持同样的形态 —— 该二进制是外挂资产，**不会**被编译
 进可执行文件。
 
 查找顺序：
@@ -102,6 +102,7 @@ just check         # 仅做类型/借用检查，不链接
 
 ## 致谢
 
+- **[CometixCode]** —— nyan 是 Haleclipse 的 CometixCode 项目的分支（fork）。
 - **[ClaudeCodeRev]** —— 本移植所依据的分析工作。这里的每一处行为，都源自经由它
   对 Claude Code 的研读。
 - **[CometixTUI]** —— 本项目所基于的 TUI 框架，一个携带了 Ink 对齐原语的
@@ -114,6 +115,7 @@ just check         # 仅做类型/借用检查，不链接
 
 [AGPL-3.0-only](LICENSE)。
 
+[CometixCode]: https://github.com/Haleclipse/CometixCode
 [CometixTUI]: https://github.com/Haleclipse/CometixTUI
 [ClaudeCodeRev]: https://github.com/Haleclipse/ClaudeCodeRev
 [marked-rs]: https://github.com/Haleclipse/marked-rs

@@ -40,7 +40,7 @@ const DEFAULT_API_TIMEOUT_MS: u64 = 600_000;
 // ---------------------------------------------------------------------------
 
 /// Stands in for the SDK's `readEnv(key)`: `process.env[key]?.trim()`, with
-/// `''` kept. CC leaves these options to the SDK; Cometix computes them from
+/// `''` kept. CC leaves these options to the SDK; Nyan computes them from
 /// `env` and passes them explicitly, because the SDK reads the OS
 /// environment, which carrier writes after startup never reach.
 fn read_env(env: &EnvSnapshot, key: &str) -> Option<String> {
@@ -184,39 +184,19 @@ pub async fn get_anthropic_client(
     // ----- Build default headers -----
     // Maps to: CC services/api/client.ts:101-129. The `?:` spreads are
     // truthiness tests, so an empty value adds no header.
-    let container_id = env.var("CLAUDE_CODE_CONTAINER_ID").truthy();
-    let remote_session_id = env.var("CLAUDE_CODE_REMOTE_SESSION_ID").truthy();
     let client_app = env.var("CLAUDE_AGENT_SDK_CLIENT_APP").truthy();
     let custom_headers = get_custom_headers(&env);
 
-    let mut default_headers: HashMap<String, Option<String>> = HashMap::new();
-    default_headers.insert("x-app".to_string(), Some("cli".to_string()));
-    default_headers.insert(
-        "User-Agent".to_string(),
-        Some(crate::utils::http::get_user_agent()),
-    );
-    default_headers.insert(
-        "X-Claude-Code-Session-Id".to_string(),
-        Some(crate::bootstrap::state::get_session_id()),
-    );
+    let mut default_headers = crate::services::api::request_headers::common_headers();
+    for (name, value) in crate::services::api::request_headers::anthropic_adapter_headers(&env) {
+        default_headers.insert(name, value);
+    }
 
     // Merge custom headers
     for (k, v) in &custom_headers {
         default_headers.insert(k.clone(), Some(v.clone()));
     }
 
-    if let Some(cid) = container_id {
-        default_headers.insert(
-            "x-claude-remote-container-id".to_string(),
-            Some(cid.to_string()),
-        );
-    }
-    if let Some(rsid) = remote_session_id {
-        default_headers.insert(
-            "x-claude-remote-session-id".to_string(),
-            Some(rsid.to_string()),
-        );
-    }
     if let Some(app) = client_app {
         default_headers.insert("x-client-app".to_string(), Some(app.to_string()));
     }
@@ -226,15 +206,6 @@ pub async fn get_anthropic_client(
         env.var("ANTHROPIC_CUSTOM_HEADERS").truthy().is_some(),
         custom_headers.contains_key("Authorization"),
     ));
-
-    // Additional protection header
-    // Maps to: CC services/api/client.ts:124-129
-    if crate::utils::env_utils::is_env_truthy(env.var("CLAUDE_CODE_ADDITIONAL_PROTECTION")) {
-        default_headers.insert(
-            "x-anthropic-additional-protection".to_string(),
-            Some("true".to_string()),
-        );
-    }
 
     // ----- OAuth refresh -----
     // Maps to: CC services/api/client.ts:131-133
@@ -266,6 +237,7 @@ pub async fn get_anthropic_client(
     if !is_claude_ai_subscriber() {
         configure_api_key_headers(&mut default_headers, &env).await;
     }
+    crate::services::api::request_headers::apply_configured_overrides(&mut default_headers);
 
     // Maps to: CC services/api/client.ts:140 `buildFetch(fetchOverride, source)`.
     let resolved_fetch = build_fetch(source);
@@ -851,7 +823,7 @@ impl AnthropicClientHandle {
                     // `GOOGLE_*`/`GCE_METADATA_*` settings applied after trust
                     // reach it, and its requests go through CC's transport,
                     // as the Azure credential's do. gaxios' own proxy rules
-                    // differ (Cometix-specific deviation, docs/ENV_REDESIGN.md
+                    // differ (Nyan-specific deviation, docs/ENV_REDESIGN.md
                     // C2c-4).
                     VertexAuth::GoogleAuth => {
                         use anthropic_sdk_vertex::google_auth::Environment;
@@ -1115,7 +1087,7 @@ impl<'a> ClientBeta<'a> {
     }
 }
 
-/// `anthropic.beta.messages` of a [`ClientBuildOutput`]: the calls Cometix
+/// `anthropic.beta.messages` of a [`ClientBuildOutput`]: the calls Nyan
 /// makes, each sent through the provider client.
 pub struct ClientBetaMessages<'a>(&'a ClientBuildOutput);
 
@@ -1227,7 +1199,7 @@ impl ClientBetaMessages<'_> {
             }
             // TS `bedrock-sdk/src/client.ts:244` deletes `countTokens` from
             // `messages`, so through CC's cast it is not a function; here it
-            // is this error. Cometix estimates Bedrock tokens through
+            // is this error. Nyan estimates Bedrock tokens through
             // `bedrock-runtime` instead (`token_estimation.rs`).
             ClientBuildOutput::Bedrock(_) => Err(anthropic_sdk::ApiError::Sdk(
                 "countTokens is not supported by the Bedrock provider".to_owned(),
@@ -1244,7 +1216,7 @@ impl ClientBetaMessages<'_> {
 /// so this lets them be correlated. It logs every request's path either way.
 /// The SDK runs middleware on each attempt, as CC's wrapper runs on each
 /// fetch. CC's one `fetchOverride` is `dumpPromptsFetch` (`query.ts:688`,
-/// passed at `claude.ts:848,1783`); Cometix's `claude.rs` dumps prompts
+/// passed at `claude.ts:848,1783`); Nyan's `claude.rs` dumps prompts
 /// itself, so it needs no override.
 fn build_fetch(source: Option<String>) -> ResolvedFetch {
     ResolvedFetch {
@@ -1341,7 +1313,7 @@ pub(crate) fn aws_uri_encode(value: &str) -> String {
 /// without the API's Unix socket. CC builds the AWS clients with
 /// `getAWSClientProxyConfig()` (`utils/proxy.ts:394-418`), which always uses
 /// the proxy and ignores `NO_PROXY`, and without one under skip-auth; this
-/// follows the fetch proxy rules instead (Cometix-specific deviation).
+/// follows the fetch proxy rules instead (Nyan-specific deviation).
 ///
 /// Requests are signed with the provider SDK's SigV4, whose canonical request
 /// follows `@smithy/signature-v4`, the signer the AWS SDK clients use too.
@@ -1524,7 +1496,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let config_home = std::env::temp_dir().join(format!(
-            "cometix-api-key-oauth-gate-{}",
+            "nyan-api-key-oauth-gate-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&config_home).unwrap();
@@ -1563,7 +1535,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let config_home = std::env::temp_dir().join(format!(
-            "cometix-sdk-defaults-{}",
+            "nyan-sdk-defaults-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&config_home).unwrap();
@@ -1612,7 +1584,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let config_home = std::env::temp_dir().join(format!(
-            "cometix-sdk-base-url-{}",
+            "nyan-sdk-base-url-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&config_home).unwrap();
@@ -1734,7 +1706,7 @@ mod tests {
     }
 
     /// CC `new AnthropicVertex({ ...ARGS, region, googleAuth })` cast to
-    /// `Anthropic`: each `beta.messages` call Cometix makes is rewritten as
+    /// `Anthropic`: each `beta.messages` call Nyan makes is rewritten as
     /// the TS client's `buildRequest` does (`vertex-sdk/src/client.ts:139-182`)
     /// and carries `ARGS`'s headers. The skip-auth mock sends no Google
     /// credential; the key is the one read from the snapshot.
@@ -1875,7 +1847,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let config_home =
-            std::env::temp_dir().join(format!("cometix-vertex-defaults-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-vertex-defaults-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&config_home).unwrap();
         let _guards = [
             EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home),
@@ -1981,7 +1953,7 @@ mod tests {
                 .await;
             head
         });
-        let file = std::env::temp_dir().join(format!("cometix-adc-{}.json", uuid::Uuid::new_v4()));
+        let file = std::env::temp_dir().join(format!("nyan-adc-{}.json", uuid::Uuid::new_v4()));
         std::fs::write(
             &file,
             serde_json::json!({
@@ -2214,7 +2186,7 @@ mod tests {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let empty = std::env::temp_dir().join(format!("cometix-no-az-{}", uuid::Uuid::new_v4()));
+        let empty = std::env::temp_dir().join(format!("nyan-no-az-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&empty).unwrap();
         let _guards = [
             EnvVarGuard::set("AZURE_TOKEN_CREDENTIALS", "AzureCliCredential"),
@@ -2618,7 +2590,7 @@ mod tests {
         let proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let proxy_address = proxy.local_addr().unwrap();
         let (proxied, proxy_server) = spawn_aws_stand_in(proxy);
-        let home = std::env::temp_dir().join(format!("cometix-aws-chain-{}", uuid::Uuid::new_v4()));
+        let home = std::env::temp_dir().join(format!("nyan-aws-chain-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&home).unwrap();
         let config = home.join("config");
         let credentials = home.join("credentials");
@@ -2732,7 +2704,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let config_home = std::env::temp_dir().join(format!(
-            "cometix-sdk-proxy-{}",
+            "nyan-sdk-proxy-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&config_home).unwrap();
@@ -2806,7 +2778,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let config_home = std::env::temp_dir().join(format!(
-            "cometix-blank-auth-token-{}",
+            "nyan-blank-auth-token-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&config_home).unwrap();
@@ -2843,7 +2815,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let config_home = std::env::temp_dir().join(format!(
-            "cometix-subscriber-null-key-{}",
+            "nyan-subscriber-null-key-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&config_home).unwrap();
@@ -2905,7 +2877,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let config_home = std::env::temp_dir().join(format!(
-            "cometix-selected-oauth-gate-{}",
+            "nyan-selected-oauth-gate-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&config_home).unwrap();
@@ -3020,7 +2992,8 @@ mod tests {
     #[test]
     fn user_agent_uses_official_claude_cli_shape() {
         let ua = crate::utils::http::get_user_agent();
-        assert!(ua.starts_with("claude-cli/"));
+        assert_eq!(ua, crate::utils::http::user_agent());
+        assert!(ua.starts_with("nyan/"));
     }
 
     #[test]

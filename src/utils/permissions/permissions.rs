@@ -867,7 +867,7 @@ fn has_permissions_to_use_tool_inner<'a>(
     // does `hasPermissionsToUseTool`'s signature
     // (`tool, input, context, assistantMessage, toolUseID`).
     //
-    // Cometix used to return `Allow` here whenever the caller reported the tool
+    // Nyan used to return `Allow` here whenever the caller reported the tool
     // use as not-queued, which was read off `AssistantMessageKind::ToolUse.status`
     // — so a row whose status had already advanced would skip deny rules, ask
     // rules, and the classifier entirely. Both real callers computed the flag
@@ -895,7 +895,7 @@ fn has_permissions_to_use_tool_inner<'a>(
                                           result: PermissionResult|
      -> PreClassifierOutcome<'a> {
         let ask_is_bypass_immune = match &result {
-            // @cometix offset: CC's step 1g keeps a `safetyCheck` ask above step
+            // @nyan offset: CC's step 1g keeps a `safetyCheck` ask above step
             // 2a's bypassPermissions allow, so switching bypass mode on still
             // prompted for shell-analysis findings (redirection, `rm`, …). Bypass
             // is the user turning confirmation off wholesale, so it covers these
@@ -1082,7 +1082,7 @@ fn has_permissions_to_use_tool_inner<'a>(
                 // What it is NOT is a final decision. CC's OUTER
                 // `hasPermissionsToUseTool` still runs `if (result.behavior ===
                 // 'ask')` on this exact value at `:505` — the dontAsk transform at
-                // `:508-517` and then the auto branch at `:519+`. Cometix used to
+                // `:508-517` and then the auto branch at `:519+`. Nyan used to
                 // short-circuit to `Ask` here, which also skipped the auto branch,
                 // so a content ask rule and a `classifierApprovable` safetyCheck
                 // never reached the classifier; `:526-531` says both must
@@ -1261,7 +1261,7 @@ fn has_permissions_to_use_tool_inner<'a>(
             // (permissions.ts:486-501) returns an `allow` before the dontAsk
             // transform and the auto-mode classifier ever see it.
             //
-            // Cometix used to keep the result only for `ask`/`deny` plus eight
+            // Nyan used to keep the result only for `ask`/`deny` plus eight
             // hardcoded filesystem/search tools, and re-decided every `allow`
             // against an invented allow-list further down. That discarded
             // AgentTool's `{behavior:'allow'}` (AgentTool.tsx:1692-1708, whose
@@ -1340,11 +1340,11 @@ fn parse_tool_permission_input(
             }),
         // No schema row is NOT a parse failure. CC reads the schema off the
         // Tool object itself, so `tool.checkPermissions` always runs
-        // (permissions.ts:1215-1216). Cometix keeps schemas in the
+        // (permissions.ts:1215-1216). Nyan keeps schemas in the
         // gate-filtered `get_all_base_tools()` table instead, so a registered
         // behavior can have no row — always for StructuredOutput and `mcp`,
         // and for every feature-gated tool while its gate is off. Suppressing
-        // the tool's own decision there is a Cometix representation gap.
+        // the tool's own decision there is a Nyan representation gap.
         None => Some(normalized_input),
     }
 }
@@ -3279,7 +3279,7 @@ mod tests {
     #[test]
     fn read_working_directory_ask_is_bypassable_but_explicit_ask_is_not() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-bypass-{}",
+            "nyan-read-bypass-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let outside = root.with_extension("outside").join("file.txt");
@@ -3565,8 +3565,8 @@ mod tests {
     #[test]
     fn auto_mode_denies_the_tool_when_the_classifier_is_unavailable() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
-        crate::utils::process_env::set("COMETIX_AUTO_CLASSIFIER_FORCE", "unavailable");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "unavailable");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let input = serde_json::json!({"command": "npm publish --access public"});
@@ -3591,8 +3591,8 @@ mod tests {
             abort_signal: None,
         });
 
-        crate::utils::process_env::remove("COMETIX_AUTO_CLASSIFIER_FORCE");
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_AUTO_CLASSIFIER_FORCE");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let deny_req = match decision {
@@ -3634,8 +3634,8 @@ mod tests {
     #[test]
     fn tool_wide_ask_rule_is_ask_in_default_but_classifier_in_auto() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
-        crate::utils::process_env::set("COMETIX_AUTO_CLASSIFIER_FORCE", "allow");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "allow");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let read_only_input = serde_json::json!({"command": "git status"});
@@ -3688,8 +3688,8 @@ mod tests {
             )
         );
 
-        crate::utils::process_env::remove("COMETIX_AUTO_CLASSIFIER_FORCE");
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_AUTO_CLASSIFIER_FORCE");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
     }
 
@@ -3702,22 +3702,22 @@ mod tests {
     /// (`utils/permissions/classifierDecision.ts:56-93`).
     ///
     /// "The classifier is not consulted" is asserted on the DECISION, not by
-    /// waiting for a call that must not come: `COMETIX_AUTO_CLASSIFIER_FORCE=block`
+    /// waiting for a call that must not come: `NYAN_AUTO_CLASSIFIER_FORCE=block`
     /// makes any classifier consultation resolve to `Block` in microseconds, so a
     /// regression fails instead of hanging (`validation.md` § 4). The
     /// non-allowlisted control proves the force switch is live in this fixture.
     #[test]
     fn auto_mode_allowlisted_tool_matches_official_classifier_skip() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
-        crate::utils::process_env::set("COMETIX_AUTO_CLASSIFIER_FORCE", "block");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "block");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         // OUTSIDE the working dir on purpose: `FileReadTool.checkPermissions`
         // asks for such a path even under an `acceptEdits` overlay, so CC's
         // earlier `:600-656` fast-path cannot fire and the only remaining
         // pre-classifier producer of an allow is the `:658-686` allowlist.
-        let read_path = std::env::temp_dir().join("cometix-allowlist-read.txt");
+        let read_path = std::env::temp_dir().join("nyan-allowlist-read.txt");
         let read_path = read_path.display().to_string();
 
         let run = |tool_name: &str,
@@ -3774,8 +3774,8 @@ mod tests {
             &control_denials,
         );
 
-        crate::utils::process_env::remove("COMETIX_AUTO_CLASSIFIER_FORCE");
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_AUTO_CLASSIFIER_FORCE");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         assert_eq!(
@@ -3814,13 +3814,13 @@ mod tests {
     #[test]
     fn auto_mode_accept_edits_fast_path_matches_official_classifier_skip() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
-        crate::utils::process_env::set("COMETIX_AUTO_CLASSIFIER_FORCE", "block");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "block");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let inside = crate::bootstrap::state::get_original_cwd().join("accept-edits-fast-path.txt");
         let inside = inside.display().to_string();
-        let outside = std::env::temp_dir().join("cometix-accept-edits-outside.txt");
+        let outside = std::env::temp_dir().join("nyan-accept-edits-outside.txt");
         let outside = outside.display().to_string();
 
         let run = |path: &str, denials: &crate::tool::SharedDenialTracking| {
@@ -3856,8 +3856,8 @@ mod tests {
         );
         let out_of_cwd = run(&outside, &control_denials);
 
-        crate::utils::process_env::remove("COMETIX_AUTO_CLASSIFIER_FORCE");
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_AUTO_CLASSIFIER_FORCE");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         // The fast path now carries CC `:641-648`'s payload: the acceptEdits
@@ -3902,8 +3902,8 @@ mod tests {
     #[test]
     fn auto_mode_classifier_block_matches_official_decision_reason() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
-        crate::utils::process_env::set("COMETIX_AUTO_CLASSIFIER_FORCE", "block");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "block");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let input = serde_json::json!({"command": "npm publish --access public"});
@@ -3944,8 +3944,8 @@ mod tests {
         );
         let limit_reached = run(&at_limit);
 
-        crate::utils::process_env::remove("COMETIX_AUTO_CLASSIFIER_FORCE");
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_AUTO_CLASSIFIER_FORCE");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let HasPermissionsToUseToolResult::Deny(deny) = blocked else {
@@ -4005,8 +4005,8 @@ mod tests {
     #[test]
     fn auto_mode_powershell_matches_official_explicit_permission_guard() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
-        crate::utils::process_env::set("COMETIX_AUTO_CLASSIFIER_FORCE", "allow");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "allow");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let input = serde_json::json!({ "command": "Get-ChildItem -Recurse" });
@@ -4042,8 +4042,8 @@ mod tests {
         let interactive = run(false);
         let headless = run(true);
 
-        crate::utils::process_env::remove("COMETIX_AUTO_CLASSIFIER_FORCE");
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_AUTO_CLASSIFIER_FORCE");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         if crate::utils::build_profile::has_internal_capability(
@@ -4543,7 +4543,7 @@ mod tests {
     /// its trust arm.
     fn managed_policy_root(contents: &str) -> (std::path::PathBuf, EnvVarGuard) {
         let root =
-            std::env::temp_dir().join(format!("cometix-headless-policy-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-headless-policy-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("create managed root");
         std::fs::write(root.join("managed-settings.json"), contents)
             .expect("write policy settings");
@@ -4823,15 +4823,15 @@ mod tests {
     /// falls straight through `:549-686` to `classifyYoloAction` at `:689-693`.
     ///
     /// "The classifier IS consulted" is asserted on the decision rather than on a
-    /// call count: `COMETIX_AUTO_CLASSIFIER_FORCE=block` resolves any
+    /// call count: `NYAN_AUTO_CLASSIFIER_FORCE=block` resolves any
     /// consultation to `Block` in microseconds, and CC `:903-911` stamps that
     /// deny with `{type:'classifier', classifier:'auto-mode', reason}` — a value
     /// no other branch in this function can produce.
     #[test]
     fn auto_mode_content_ask_rule_matches_official_classifier_fallthrough() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
-        crate::utils::process_env::set("COMETIX_AUTO_CLASSIFIER_FORCE", "block");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "block");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         // A CONTENT ask rule, not a whole-tool one: `BashTool.checkPermissions`
@@ -4864,8 +4864,8 @@ mod tests {
             abort_signal: None,
         });
 
-        crate::utils::process_env::remove("COMETIX_AUTO_CLASSIFIER_FORCE");
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_AUTO_CLASSIFIER_FORCE");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let HasPermissionsToUseToolResult::Deny(deny) = decision else {
@@ -4900,18 +4900,18 @@ mod tests {
     #[test]
     fn auto_mode_safety_check_matches_official_classifier_approvable_split() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
-        crate::utils::process_env::set("COMETIX_AUTO_CLASSIFIER_FORCE", "block");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "block");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let cwd = crate::bootstrap::state::get_original_cwd();
         // `.git` is in DANGEROUS_DIRECTORIES → `classifierApprovable: true`
         // (CC `filesystem.ts:652-660`).
-        let approvable_path = cwd.join(".git/cometix-parity-probe").display().to_string();
+        let approvable_path = cwd.join(".git/nyan-parity-probe").display().to_string();
         // `PROGRA~1` is an 8.3 short name → `hasSuspiciousWindowsPathPattern` →
         // `classifierApprovable: false` (CC `filesystem.ts:630-639`).
         let non_approvable_path = cwd
-            .join("PROGRA~1/cometix-parity-probe")
+            .join("PROGRA~1/nyan-parity-probe")
             .display()
             .to_string();
 
@@ -4940,8 +4940,8 @@ mod tests {
         let non_approvable = run(&non_approvable_path, false);
         let non_approvable_headless = run(&non_approvable_path, true);
 
-        crate::utils::process_env::remove("COMETIX_AUTO_CLASSIFIER_FORCE");
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_AUTO_CLASSIFIER_FORCE");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let HasPermissionsToUseToolResult::Deny(classified) = approvable else {
@@ -5351,8 +5351,8 @@ mod tests {
         );
 
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1");
-        crate::utils::process_env::set("COMETIX_AUTO_CLASSIFIER_FORCE", "block");
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "block");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let auto_context = ToolPermissionContext {
@@ -5372,8 +5372,8 @@ mod tests {
             abort_signal: None,
         });
 
-        crate::utils::process_env::remove("COMETIX_AUTO_CLASSIFIER_FORCE");
-        crate::utils::process_env::remove("COMETIX_TRANSCRIPT_CLASSIFIER");
+        crate::utils::process_env::remove("NYAN_AUTO_CLASSIFIER_FORCE");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         assert!(
@@ -5411,7 +5411,7 @@ mod tests {
     #[test]
     fn write_permission_uses_invocation_cwd_override_in_generic_gate() {
         let invocation_cwd = std::env::temp_dir().join(format!(
-            "cometix-write-permission-cwd-{}",
+            "nyan-write-permission-cwd-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let mut permission_context = ToolPermissionContext::default();
@@ -5598,7 +5598,7 @@ mod tests {
             "old_string": "old",
             "new_string": "new"
         });
-        // @cometix offset: bypass mode also covers safetyCheck asks.
+        // @nyan offset: bypass mode also covers safetyCheck asks.
         assert_eq!(
             has_permissions_to_use_tool(HasPermissionsToUseToolParams {
                 tool_use_id: "toolu-edit-safety-ask",
@@ -6443,7 +6443,7 @@ mod tests {
     impl TranscriptClassifierGuard {
         fn on() -> Self {
             Self {
-                _env: EnvVarGuard::set("COMETIX_TRANSCRIPT_CLASSIFIER", "1"),
+                _env: EnvVarGuard::set("NYAN_TRANSCRIPT_CLASSIFIER", "1"),
             }
         }
     }

@@ -331,7 +331,7 @@ pub struct AssistantMessage {
 /// `AssistantMessage.message.id`, whose real owner is
 /// `utils/messages.ts:386-408#baseCreateAssistantMessage`.
 ///
-/// Cometix keeps API content and the transcript envelope in one typed message.
+/// Nyan keeps API content and the transcript envelope in one typed message.
 /// This metadata block is therefore out-of-band: API/session adapters must
 /// project it onto the envelope and must never send it as model content.
 ///
@@ -361,7 +361,7 @@ pub struct AssistantMessageIdentity {
     /// `createAssistantAPIErrorMessage` (`utils/messages.ts:453`).
     ///
     /// It belongs on this carrier, not on `AssistantMessage`, for the reason
-    /// stated above: it is envelope metadata, never model content. Cometix had
+    /// stated above: it is envelope metadata, never model content. Nyan had
     /// no such field at all and the renderer reconstructed it by sniffing
     /// `text.starts_with("API Error")`
     /// (`components/messages/assistant_text_message.rs`), which misses every
@@ -1138,10 +1138,10 @@ pub struct AttachmentMessage {
     ///
     /// CC stores attachments as plain JS objects, so every field an entry
     /// carries survives `JSON.parse` → render → `JSON.stringify`. The typed
-    /// enum only declares the fields Cometix reads, so re-serializing it drops
+    /// enum only declares the fields Nyan reads, so re-serializing it drops
     /// anything else the entry held — a payload written by a newer CC, or by a
     /// producer that spread extra keys, would silently lose those fields the
-    /// first time a session round-trips through Cometix. Recording writes this
+    /// first time a session round-trips through Nyan. Recording writes this
     /// payload back verbatim when present; attachments built in-process have
     /// no wire form and serialize from the typed value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1553,7 +1553,7 @@ pub enum ToolUseStatus {
 /// CC 2.1.88 vocabulary, with the producer behind every tag:
 /// - `bash_progress`          — `tools/BashTool/BashTool.tsx:900-912`
 /// - `powershell_progress`    — `tools/PowerShellTool/PowerShellTool.tsx:635-647`
-///   (same fields as `bash_progress`; seam: Cometix has no PowerShell tool)
+///   (same fields as `bash_progress`; seam: Nyan has no PowerShell tool)
 /// - `mcp_progress`           — `services/mcp/client.ts:1847-1855` (started),
 ///   `:1885-1894` (completed), `:1926-1935` (failed), `:3104-3112` (progress)
 /// - `query_update`           — `tools/WebSearchTool/WebSearchTool.ts:347-353`
@@ -1612,7 +1612,7 @@ pub enum ToolUseProgressMessage {
     /// (`services/mcp/client.ts:1847-1855, 1885-1894, 1926-1935, 3104-3112`):
     /// `status`/`serverName`/`toolName` are always present; `elapsedTimeMs`
     /// only on completed/failed; `progress`/`total`/`progressMessage` only on
-    /// SDK `onprogress` forwarding. Seam: Cometix MCP calls do not emit
+    /// SDK `onprogress` forwarding. Seam: Nyan MCP calls do not emit
     /// progress yet — no Rust producer.
     McpProgress {
         /// `'started' | 'progress' | 'completed' | 'failed'`.

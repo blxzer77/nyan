@@ -108,7 +108,7 @@ mod tests {
     impl SessionFixture {
         fn new() -> Self {
             let fixture = Self {
-                root: std::env::temp_dir().join(format!("cometix-color-{}", uuid::Uuid::new_v4())),
+                root: std::env::temp_dir().join(format!("nyan-color-{}", uuid::Uuid::new_v4())),
                 previous_session: crate::bootstrap::state::get_session_id(),
                 previous_dir: crate::bootstrap::state::get_session_project_dir(),
                 previous_metadata: get_current_session_metadata(),
@@ -199,7 +199,7 @@ mod tests {
     fn color_persistence_and_reset_matches_official_state_and_cold_restore() {
         // CC color.ts:45-63,75-92: disk first, same name, default sentinel.
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         let fixture = SessionFixture::new();
         let store = AppStore::new(AppState::default(), None);
@@ -279,7 +279,7 @@ mod tests {
     fn color_write_error_matches_official_no_success_or_state_mutation() {
         // CC color.ts:51/79 await has no catch; setAppState is after that await.
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let fixture = SessionFixture::new();
         let path = fixture.root.join("color-session.jsonl");
         std::fs::create_dir_all(path).unwrap();

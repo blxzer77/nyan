@@ -206,7 +206,7 @@ fn provision_content_replacement_state_with_enabled(
 /// Maps to CC `getFeatureValue_CACHED_MAY_BE_STALE('tengu_hawthorn_steeple', false)`
 /// as consumed by `provisionContentReplacementState(...)`.
 ///
-/// Cometix resolves the gate from the source-controlled switch table instead of
+/// Nyan resolves the gate from the source-controlled switch table instead of
 /// GrowthBook.
 pub fn is_content_replacement_enabled() -> bool {
     crate::utils::feature_flags::feature_enabled(
@@ -216,7 +216,7 @@ pub fn is_content_replacement_enabled() -> bool {
 
 /// Maps to CC `utils/toolResultStorage.ts` `getPerMessageBudgetLimit()`.
 ///
-/// Cometix resolves the `tengu_hawthorn_window` override from the
+/// Nyan resolves the `tengu_hawthorn_window` override from the
 /// source-controlled switch table instead of GrowthBook.
 pub fn get_per_message_budget_limit() -> usize {
     let override_value = crate::utils::feature_flags::feature_enabled(
@@ -228,7 +228,7 @@ pub fn get_per_message_budget_limit() -> usize {
 
 /// Maps to CC `getPersistenceThreshold(toolName, declaredMaxResultSizeChars)`.
 ///
-/// Cometix resolves the `tengu_satin_quoll` override map from the
+/// Nyan resolves the `tengu_satin_quoll` override map from the
 /// source-controlled switch table instead of GrowthBook.
 pub fn get_persistence_threshold(tool_name: &str, declared_max: usize) -> usize {
     if declared_max == usize::MAX {
@@ -1088,7 +1088,7 @@ mod tests {
     fn content_replacement_gate_reads_switch_table_and_ignores_growthbook_delivery() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-content-replacement-gate-{}",
+            "nyan-content-replacement-gate-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&root).expect("create temp config dir");
@@ -1133,7 +1133,7 @@ mod tests {
         );
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-tool-result-window-{}",
+            "nyan-tool-result-window-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&root).expect("create temp config dir");

@@ -2,7 +2,7 @@
 //!
 //! This module is the aggregate command owner. CC resolves `getCommands(cwd)`
 //! after setup and passes that immutable array through `REPL Props.commands`.
-//! Cometix mirrors that ownership: command consumers receive a launch snapshot;
+//! Nyan mirrors that ownership: command consumers receive a launch snapshot;
 //! they do not read a second UI-only builtin registry.
 //!
 //! Bundled/workflow command producers remain an explicit follow-up at
@@ -699,7 +699,7 @@ fn commands() -> Vec<Command> {
         Command::local_ui(diff::NAME, diff::DESCRIPTION).executable(execution::call_diff),
         Command::local_ui(
             "doctor",
-            "Diagnose and verify your Claude Code installation and settings",
+            "Diagnose and verify your nyan installation and settings",
         )
         .enabled_when(doctor_enabled)
         .executable(execution::call_doctor),
@@ -755,7 +755,7 @@ fn commands() -> Vec<Command> {
             .executable(execution::call_memory),
         Command::local_ui("mobile", "Show QR code to download the Claude mobile app")
             .aliases(&["ios", "android"]),
-        Command::local_ui("model", "Set the AI model for Claude Code")
+        Command::local_ui("model", "Set the AI model for nyan")
             .description_when(model::description)
             .argument_hint("[model]")
             .immediate_when(
@@ -792,25 +792,25 @@ fn commands() -> Vec<Command> {
         Command::local_ui(stats::NAME, stats::DESCRIPTION).executable(stats::call),
         Command::local_ui(
             "status",
-            "Show Claude Code status including version, model, account, API connectivity, and tool statuses",
+            "Show nyan status including version, model, account, API connectivity, and tool statuses",
         )
         .immediate()
         .executable(execution::call_status),
         statusline::command(),
-        Command::local("stickers", "Order Claude Code stickers"),
+        Command::local("stickers", "Order nyan stickers"),
         Command::local_ui("tag", "Toggle a searchable tag on the current session")
             .argument_hint("<tag-name>")
             .enabled_when(is_internal_build),
         Command::local_ui("theme", "Change the theme")
             .executable(execution::call_theme),
-        Command::local_ui("feedback", "Submit feedback about Claude Code")
+        Command::local_ui("feedback", "Submit feedback about nyan")
             .aliases(&["bug"])
             .argument_hint("[report]")
             .enabled_when(feedback_enabled),
         review::command(),
         Command::local_ui(
             "ultrareview",
-            "~10–20 min · Finds and verifies bugs in your branch. Runs in Claude Code on the web.",
+            "~10–20 min · Finds and verifies bugs in your branch. Runs in nyan on the web.",
         )
         .enabled_when(ultrareview_enabled),
         Command::local("rewind", "Restore the code and/or conversation to a previous point")
@@ -853,12 +853,12 @@ fn commands() -> Vec<Command> {
             .executable(execution::call_usage),
         Command::prompt(
             "insights",
-            "Generate a report analyzing your Claude Code sessions",
+            "Generate a report analyzing your nyan sessions",
         )
         .prompt_metadata("analyzing your sessions", 0),
         Command::local("vim", "Toggle between Vim and Normal editing modes")
             .executable(execution::call_vim),
-        Command::local_ui("think-back", "Your 2025 Claude Code Year in Review")
+        Command::local_ui("think-back", "Your 2025 nyan Year in Review")
             .enabled_when(thinkback_enabled),
         Command::local("thinkback-play", "Play the thinkback animation")
             .enabled_when(thinkback_enabled)
@@ -892,7 +892,7 @@ fn commands() -> Vec<Command> {
     }
 
     result.push(
-        Command::local_ui("passes", "Share a free week of Claude Code with friends")
+        Command::local_ui("passes", "Share a free week of nyan with friends")
             .hidden_when(passes_hidden),
     );
     result.push(
@@ -1461,7 +1461,7 @@ mod tests {
 
         let model = command_description(find("model"));
         assert!(
-            model.starts_with("Set the AI model for Claude Code (currently ")
+            model.starts_with("Set the AI model for nyan (currently ")
                 && model.ends_with(')'),
             "model={model}"
         );
@@ -1592,7 +1592,7 @@ mod tests {
     #[test]
     fn get_commands_loads_and_executes_filesystem_skill_before_builtins() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-command-registry-skill-{}",
+            "nyan-command-registry-skill-{}",
             uuid::Uuid::new_v4()
         ));
         let skill_file = root
@@ -1690,7 +1690,7 @@ mod tests {
         crate::skills::load_skills_dir::clear_dynamic_skills();
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-dynamic-builtin-collision-{}",
+            "nyan-dynamic-builtin-collision-{}",
             uuid::Uuid::new_v4()
         ));
         let discovered = root.join("packages/pkg/.claude/skills");
@@ -1745,7 +1745,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let previous_inline = crate::bootstrap::state::get_inline_plugins();
         let root = std::env::temp_dir().join(format!(
-            "cometix-command-registry-plugin-{}",
+            "nyan-command-registry-plugin-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(root.join(".claude-plugin")).unwrap();
@@ -1887,7 +1887,7 @@ mod tests {
 
     /// CC 2.1.88's `commands/fork/index.ts` is a `@generated-stub` (`export {}`
     /// only), so `commands.ts:113-117`'s `forkCmd` has no portable body and
-    /// Cometix registers no `/fork` — the same treatment every other
+    /// Nyan registers no `/fork` — the same treatment every other
     /// stub-backed CC command gets here. The user-visible consequence is the
     /// unknown-command warning from
     /// `process_slash_command.rs:983-985`, reached before any command is
@@ -1963,7 +1963,7 @@ mod tests {
         let _dynamic = crate::skills::load_skills_dir::DynamicSkillsTestSnapshot::capture();
         crate::skills::load_skills_dir::clear_dynamic_skills();
         let root =
-            std::env::temp_dir().join(format!("cometix-skill-listing-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-skill-listing-{}", uuid::Uuid::new_v4()));
         let mut bundled = Command::prompt("bundled-no-description", "Derived description");
         bundled.source = CommandSource::Bundled;
         bundled.loaded_from = Some(SkillLoadedFrom::Bundled);

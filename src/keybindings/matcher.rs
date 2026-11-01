@@ -1,5 +1,5 @@
 //! Maps to: CC `keybindings/match.ts` — the terminal-event → keystroke
-//! bridge. CC receives Ink's `(input, Key)` pair; Cometix receives
+//! bridge. CC receives Ink's `(input, Key)` pair; Nyan receives
 //! crossterm's `KeyEvent` (re-exported through iocraft).
 //!
 //! Behavior notes vs CC:

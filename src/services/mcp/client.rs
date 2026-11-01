@@ -2,7 +2,7 @@
 //! Maps to: CC `services/mcp/client.ts`.
 //!
 //! Claude Code uses `@modelcontextprotocol/sdk`'s `Client`,
-//! `StdioClientTransport`, and `StreamableHTTPClientTransport`. Cometix maps
+//! `StdioClientTransport`, and `StreamableHTTPClientTransport`. Nyan maps
 //! those responsibilities to the official Rust SDK for MCP
 //! (`modelcontextprotocol/rust-sdk`, crate `rmcp`). This module owns transport
 //! startup, client connection, tool/prompt/resource discovery, reconnect cache
@@ -867,7 +867,7 @@ mod runtime {
         RootsCapabilities,
     };
     // SEP-2577 deprecates roots in the 2026-07-28 draft; CC's SDK (1.29)
-    // still serves `roots/list`, on the 2025-11-25 protocol Cometix speaks.
+    // still serves `roots/list`, on the 2025-11-25 protocol Nyan speaks.
     #[allow(deprecated)]
     use rmcp::model::{ListRootsResult, Root};
     use rmcp::service::{
@@ -914,9 +914,9 @@ mod runtime {
     /// to a stale entry when a refetch fails. CC sends every request and
     /// surfaces every failure, so the cache is off for every connection.
     async fn serve_client<T, E, A>(
-        handler: CometixMcpClientHandler,
+        handler: NyanMcpClientHandler,
         transport: T,
-    ) -> Result<RunningService<RoleClient, CometixMcpClientHandler>, ClientInitializeError>
+    ) -> Result<RunningService<RoleClient, NyanMcpClientHandler>, ClientInitializeError>
     where
         T: rmcp::transport::IntoTransport<RoleClient, E, A>,
         E: std::error::Error + Send + Sync + 'static,
@@ -1067,7 +1067,7 @@ mod runtime {
             connection_id: u64,
             name: String,
             config: ScopedMcpServerConfig,
-            service: &RunningService<RoleClient, CometixMcpClientHandler>,
+            service: &RunningService<RoleClient, NyanMcpClientHandler>,
         ) -> Self {
             let client = Self(Arc::new(McpClientInner {
                 connection_id,
@@ -1356,7 +1356,7 @@ mod runtime {
     type McpAuthCacheData = BTreeMap<String, McpAuthCacheEntry>;
 
     #[derive(Clone, Debug)]
-    struct CometixMcpClientHandler {
+    struct NyanMcpClientHandler {
         server_name: String,
         cwd: PathBuf,
         /// The connection this handler serves, set when its handle is made:
@@ -1365,7 +1365,7 @@ mod runtime {
         client: Arc<OnceLock<std::sync::Weak<McpClientInner>>>,
     }
 
-    impl CometixMcpClientHandler {
+    impl NyanMcpClientHandler {
         fn new(server_name: &str) -> Self {
             Self {
                 server_name: server_name.to_string(),
@@ -1395,17 +1395,16 @@ mod runtime {
         out
     }
 
-    impl ClientHandler for CometixMcpClientHandler {
+    impl ClientHandler for NyanMcpClientHandler {
         fn get_info(&self) -> InitializeRequestParams {
             // Maps to: CC `new Client({ name:'claude-code', title:'Claude Code', ... },
             // { capabilities:{ roots:{}, elicitation:{} } })`, initialized at the
             // SDK's `LATEST_PROTOCOL_VERSION`.
             let mut implementation = Implementation::new(
-                "claude-code",
-                option_env!("CARGO_PKG_VERSION").unwrap_or("unknown"),
+                "nyan",
+                crate::constants::product::VERSION,
             );
-            implementation.title = Some("Claude Code".to_string());
-            implementation.description = Some("Anthropic's agentic coding tool".to_string());
+            implementation.title = Some("nyan".to_string());
             implementation.website_url = Some(crate::constants::product::PRODUCT_URL.to_string());
 
             let mut capabilities = ClientCapabilities::default();
@@ -1874,11 +1873,11 @@ mod runtime {
     async fn serve_stdio(
         name: &str,
         config: &ScopedMcpServerConfig,
-    ) -> anyhow::Result<RunningService<RoleClient, CometixMcpClientHandler>> {
+    ) -> anyhow::Result<RunningService<RoleClient, NyanMcpClientHandler>> {
         let (transport, _stderr) = TokioChildProcess::builder(stdio_command(config)?)
             .stderr(Stdio::piped())
             .spawn()?;
-        let handler = CometixMcpClientHandler::new(name);
+        let handler = NyanMcpClientHandler::new(name);
         let timeout = Duration::from_millis(connection_timeout_ms());
         Ok(tokio::time::timeout(timeout, serve_client(handler, transport)).await??)
     }
@@ -2001,7 +2000,7 @@ mod runtime {
         name: &str,
         config: &ScopedMcpServerConfig,
         url: &str,
-    ) -> anyhow::Result<RunningService<RoleClient, CometixMcpClientHandler>> {
+    ) -> anyhow::Result<RunningService<RoleClient, NyanMcpClientHandler>> {
         let mut transport_config = streamable_http_config(name, config, url).await?;
         if transport_config.auth_header.as_deref() == Some("") {
             transport_config.auth_header = None;
@@ -2010,7 +2009,7 @@ mod runtime {
             streamable_http_client()?,
             transport_config,
         );
-        let handler = CometixMcpClientHandler::new(name);
+        let handler = NyanMcpClientHandler::new(name);
         let timeout = Duration::from_millis(connection_timeout_ms());
         Ok(tokio::time::timeout(timeout, serve_client(handler, transport)).await??)
     }
@@ -2030,7 +2029,7 @@ mod runtime {
         name: &str,
         proxy_url: &str,
         token: String,
-    ) -> anyhow::Result<RunningService<RoleClient, CometixMcpClientHandler>> {
+    ) -> anyhow::Result<RunningService<RoleClient, NyanMcpClientHandler>> {
         // Rust/rmcp transport boundary for the source's nested `doRequest`:
         // each retry must start a new service with the bearer token it sends.
         let transport_config = claude_ai_proxy_http_config(proxy_url, token)?;
@@ -2038,7 +2037,7 @@ mod runtime {
             streamable_http_client()?,
             transport_config,
         );
-        let handler = CometixMcpClientHandler::new(name);
+        let handler = NyanMcpClientHandler::new(name);
         let timeout = Duration::from_millis(connection_timeout_ms());
         Ok(tokio::time::timeout(timeout, serve_client(handler, transport)).await??)
     }
@@ -2046,7 +2045,7 @@ mod runtime {
     async fn serve_claude_ai_proxy_http(
         name: &str,
         proxy_url: &str,
-    ) -> anyhow::Result<RunningService<RoleClient, CometixMcpClientHandler>> {
+    ) -> anyhow::Result<RunningService<RoleClient, NyanMcpClientHandler>> {
         // Maps to: CC `services/mcp/client.ts:369-424`
         // `createClaudeAiProxyFetch`: refresh before attaching the bearer token
         // and retry once after a 401 only when the failed token changed or a
@@ -2108,7 +2107,7 @@ mod runtime {
         name: &str,
         config: &ScopedMcpServerConfig,
         url: &str,
-    ) -> anyhow::Result<RunningService<RoleClient, CometixMcpClientHandler>> {
+    ) -> anyhow::Result<RunningService<RoleClient, NyanMcpClientHandler>> {
         let mut headers = BTreeMap::from([(
             "User-Agent".to_string(),
             crate::utils::http::get_mcp_user_agent(),
@@ -2128,7 +2127,7 @@ mod runtime {
         let timeout = Duration::from_millis(connection_timeout_ms());
         tokio::time::timeout(timeout, async {
             let transport = legacy_sse_transport(name, url, headers).await?;
-            let handler = CometixMcpClientHandler::new(name);
+            let handler = NyanMcpClientHandler::new(name);
             anyhow::Ok(serve_client(handler, transport).await?)
         })
         .await?
@@ -2137,7 +2136,7 @@ mod runtime {
     async fn serve_legacy_sse_ide(
         name: &str,
         url: &str,
-    ) -> anyhow::Result<RunningService<RoleClient, CometixMcpClientHandler>> {
+    ) -> anyhow::Result<RunningService<RoleClient, NyanMcpClientHandler>> {
         let headers = BTreeMap::from([(
             "User-Agent".to_string(),
             crate::utils::http::get_mcp_user_agent(),
@@ -2145,7 +2144,7 @@ mod runtime {
         let timeout = Duration::from_millis(connection_timeout_ms());
         tokio::time::timeout(timeout, async {
             let transport = legacy_sse_transport(name, url, headers).await?;
-            let handler = CometixMcpClientHandler::new(name);
+            let handler = NyanMcpClientHandler::new(name);
             anyhow::Ok(serve_client(handler, transport).await?)
         })
         .await?
@@ -2155,7 +2154,7 @@ mod runtime {
         name: &str,
         config: &ScopedMcpServerConfig,
         url: &str,
-    ) -> anyhow::Result<RunningService<RoleClient, CometixMcpClientHandler>> {
+    ) -> anyhow::Result<RunningService<RoleClient, NyanMcpClientHandler>> {
         let mut headers = BTreeMap::from([(
             "User-Agent".to_string(),
             crate::utils::http::get_mcp_user_agent(),
@@ -2173,7 +2172,7 @@ mod runtime {
                 name, url, headers,
             )
             .await?;
-            let handler = CometixMcpClientHandler::new(name);
+            let handler = NyanMcpClientHandler::new(name);
             anyhow::Ok(serve_client(handler, transport).await?)
         })
         .await?
@@ -2183,7 +2182,7 @@ mod runtime {
         name: &str,
         config: &ScopedMcpServerConfig,
         url: &str,
-    ) -> anyhow::Result<RunningService<RoleClient, CometixMcpClientHandler>> {
+    ) -> anyhow::Result<RunningService<RoleClient, NyanMcpClientHandler>> {
         let mut headers = BTreeMap::from([(
             "User-Agent".to_string(),
             crate::utils::http::get_mcp_user_agent(),
@@ -2206,7 +2205,7 @@ mod runtime {
                 name, url, headers,
             )
             .await?;
-            let handler = CometixMcpClientHandler::new(name);
+            let handler = NyanMcpClientHandler::new(name);
             anyhow::Ok(serve_client(handler, transport).await?)
         })
         .await?
@@ -2215,7 +2214,7 @@ mod runtime {
     async fn serve_transport(
         name: &str,
         config: &ScopedMcpServerConfig,
-    ) -> anyhow::Result<RunningService<RoleClient, CometixMcpClientHandler>> {
+    ) -> anyhow::Result<RunningService<RoleClient, NyanMcpClientHandler>> {
         match config.transport {
             Transport::Stdio => serve_stdio(name, config).await,
             Transport::Sse => {
@@ -2488,7 +2487,7 @@ mod runtime {
     async fn serve_transport_with_auth_retry(
         name: &str,
         config: &ScopedMcpServerConfig,
-    ) -> anyhow::Result<RunningService<RoleClient, CometixMcpClientHandler>> {
+    ) -> anyhow::Result<RunningService<RoleClient, NyanMcpClientHandler>> {
         match serve_transport(name, config).await {
             Ok(service) => Ok(service),
             Err(error) if is_auth_error(&error) => {
@@ -3123,7 +3122,7 @@ mod runtime {
     /// also start an automatic one.
     fn spawn_service_close_watcher(
         client: McpClient,
-        service: RunningService<RoleClient, CometixMcpClientHandler>,
+        service: RunningService<RoleClient, NyanMcpClientHandler>,
     ) {
         tokio::spawn(async move {
             let _ = service.waiting().await;
@@ -3154,7 +3153,7 @@ mod runtime {
     /// closed.
     fn watch_connection(
         client: &McpClient,
-        service: RunningService<RoleClient, CometixMcpClientHandler>,
+        service: RunningService<RoleClient, NyanMcpClientHandler>,
         memoized: bool,
     ) -> bool {
         if memoized
@@ -3440,7 +3439,7 @@ mod runtime {
                 let mut connected_config = config.clone();
                 connected_config.scope = crate::services::mcp::types::ConfigScope::Dynamic;
                 let transport = SdkControlClientTransport::new(name.clone(), send_mcp_message);
-                let handler = CometixMcpClientHandler::new(&name);
+                let handler = NyanMcpClientHandler::new(&name);
                 match serve_client(handler, transport).await {
                     Ok(service) => {
                         let connection_id = NEXT_CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
@@ -4245,7 +4244,7 @@ pub(crate) mod counting_fixture {
     impl CountingFixture {
         pub(crate) fn new() -> Self {
             let dir =
-                std::env::temp_dir().join(format!("cometix-mcp-memo-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("nyan-mcp-memo-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&dir).unwrap();
             let script = dir.join("server.mjs");
             std::fs::write(&script, COUNTING_STDIO_FIXTURE).expect("write MCP fixture");
@@ -4534,7 +4533,7 @@ mod tests {
         };
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let script_path = std::env::temp_dir().join(format!(
-            "cometix-mcp-ide-selection-{}.mjs",
+            "nyan-mcp-ide-selection-{}.mjs",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -5116,9 +5115,9 @@ rl.on('line', line => {
         let previous_cwd = crate::bootstrap::state::get_original_cwd();
         let previous_session_id = crate::bootstrap::state::get_session_id();
         let root =
-            std::env::temp_dir().join(format!("cometix-mcp-large-output-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-mcp-large-output-{}", uuid::Uuid::new_v4()));
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(&root);
-        crate::bootstrap::state::set_original_cwd("/tmp/cometix-project");
+        crate::bootstrap::state::set_original_cwd("/tmp/nyan-project");
         crate::bootstrap::state::set_session_id("session-mcp-large-output-test");
         let (endpoint, server) = spawn_count_tokens_server(r#"{"inputTokens":999}"#);
         let _config_home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
@@ -6307,7 +6306,7 @@ rl.on('line', line => {
         // Elicitation notification hooks are detached onto it.
         crate::utils::process_runtime::initialize_test_process_runtime();
         let script_path = std::env::temp_dir().join(format!(
-            "cometix-mcp-url-elicit-{}.mjs",
+            "nyan-mcp-url-elicit-{}.mjs",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -6683,7 +6682,7 @@ rl.on('line', line => {
     fn server_elicitations_are_cancelled_until_the_session_registers_its_handler() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let script_path =
-            std::env::temp_dir().join(format!("cometix-mcp-elicit-{}.mjs", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-mcp-elicit-{}.mjs", uuid::Uuid::new_v4()));
         std::fs::write(
             &script_path,
             r#"
@@ -7575,7 +7574,7 @@ rl.on('line', line => {
     fn stdio_tools_list_changed_notification_refreshes_live_tools() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let script_path = std::env::temp_dir().join(format!(
-            "cometix-mcp-tools-list-changed-{}.mjs",
+            "nyan-mcp-tools-list-changed-{}.mjs",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -7711,7 +7710,7 @@ rl.on('line', line => {
     fn notifications_carry_the_connection_that_sent_them() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let script_path = std::env::temp_dir().join(format!(
-            "cometix-mcp-notifying-{}.mjs",
+            "nyan-mcp-notifying-{}.mjs",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -7871,7 +7870,7 @@ rl.on('line', line => {
     fn stdio_prompts_and_resources_list_changed_refresh_live_state() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let script_path = std::env::temp_dir().join(format!(
-            "cometix-mcp-prompts-resources-list-changed-{}.mjs",
+            "nyan-mcp-prompts-resources-list-changed-{}.mjs",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -8049,7 +8048,7 @@ rl.on('line', line => {
     fn stdio_read_mcp_resource_reads_text_content_from_live_server() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let script_path = std::env::temp_dir().join(format!(
-            "cometix-mcp-read-resource-{}.mjs",
+            "nyan-mcp-read-resource-{}.mjs",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -8080,8 +8079,8 @@ rl.on('line', line => {
       id: message.id,
       result: {
         resources: [{
-          uri: 'file:///tmp/cometix-resource.txt',
-          name: 'cometix-resource',
+          uri: 'file:///tmp/nyan-resource.txt',
+          name: 'nyan-resource',
           description: 'A text resource',
           mimeType: 'text/plain'
         }]
@@ -8114,7 +8113,7 @@ rl.on('line', line => {
             .block_on(async {
                 let _ = drain_mcp_connection_callback_observations().await;
                 const SERVER: &str = "read-resource-stdio-fixture";
-                let uri = "file:///tmp/cometix-resource.txt";
+                let uri = "file:///tmp/nyan-resource.txt";
                 let config = ScopedMcpServerConfig {
                     name: None,
                     scope: crate::services::mcp::types::ConfigScope::User,
@@ -8164,7 +8163,7 @@ rl.on('line', line => {
     fn stdio_read_mcp_resource_checks_resource_capability_like_official_tool() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let script_path = std::env::temp_dir().join(format!(
-            "cometix-mcp-read-resource-no-capability-{}.mjs",
+            "nyan-mcp-read-resource-no-capability-{}.mjs",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -8251,7 +8250,7 @@ rl.on('line', line => {
     fn stdio_get_mcp_prompt_for_command_fetches_live_prompt_content() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let script_path = std::env::temp_dir().join(format!(
-            "cometix-mcp-get-prompt-{}.mjs",
+            "nyan-mcp-get-prompt-{}.mjs",
             uuid::Uuid::new_v4()
         ));
         std::fs::write(
@@ -8875,7 +8874,7 @@ rl.on('line', line => {
     fn streamable_http_401_challenge_returns_unavailable_without_credential_or_auth_cache_write() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let config_home =
-            std::env::temp_dir().join(format!("cometix-mcp-http-401-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-mcp-http-401-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&config_home).expect("create config home");
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
 
@@ -9201,7 +9200,7 @@ rl.on('line', line => {
     fn cached_needs_auth_skips_remote_probe_and_projects_auth_tool() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir =
-            std::env::temp_dir().join(format!("cometix-mcp-auth-cache-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-mcp-auth-cache-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir);
         let now_ms = std::time::SystemTime::now()

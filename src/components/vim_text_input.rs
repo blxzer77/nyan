@@ -2,7 +2,7 @@
 //!
 //! Official `VimTextInput` composes `useVimInput` with `BaseTextInput`,
 //! clipboard-image hint polling, terminal focus, and initial-mode syncing.
-//! Cometix currently lacks the `useVimInput` state machine; this boundary
+//! Nyan currently lacks the `useVimInput` state machine; this boundary
 //! delegates to the normal `TextInput` path and exposes the official mode
 //! synchronization helpers so the future Vim hook can attach here without
 //! moving render responsibilities into prompt input.

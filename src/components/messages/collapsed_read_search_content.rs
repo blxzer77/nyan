@@ -22,7 +22,7 @@ pub struct CollapsedReadSearchContentProps {
     /// threaded to the per-entry tool renderers below.
     pub verbose: bool,
     pub is_transcript_mode: bool,
-    /// Cometix extension (no CC counterpart) — user-authorized L2 (v3 ruling,
+    /// Nyan extension (no CC counterpart) — user-authorized L2 (v3 ruling,
     /// 2026-08-01). SINGLE-SOURCE expansion control REPLACING CC's verbose gate
     /// (CollapsedReadSearchContent.tsx:36-43 gates per-tool rows on `verbose`
     /// only): when true, render per-tool rows instead of the one-line summary;

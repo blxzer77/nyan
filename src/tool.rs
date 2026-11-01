@@ -399,7 +399,7 @@ impl PartialEq for AddNotification {
 /// `setInProgressToolUseIDs: (f: (prev: Set<string>) => Set<string>) => void`.
 ///
 /// The set itself is REPL state (`REPL.tsx:1897`); `ToolUseContext` carries only
-/// the setter, and tool execution calls it on start and finish. Cometix runs
+/// the setter, and tool execution calls it on start and finish. Nyan runs
 /// tool execution on the query actor, off the render thread, so the installed
 /// closure forwards the update over the actor event channel instead of calling
 /// `setState` in-process — same role as [`ToolProgressSink`].
@@ -2973,7 +2973,7 @@ mod tests {
         };
 
         context.record_terminal_notification_from_config(
-            TerminalNotificationOptions::new("idle_prompt", "Cometix is waiting"),
+            TerminalNotificationOptions::new("idle_prompt", "Nyan is waiting"),
             &config,
             &env,
         );
@@ -2990,7 +2990,7 @@ mod tests {
         assert_eq!(plan.method_used, "terminal_bell");
         assert_eq!(plan.hook_input.hook_event_name, "Notification");
         assert_eq!(plan.hook_input.notification_type, "idle_prompt");
-        assert_eq!(plan.hook_input.message, "Cometix is waiting");
+        assert_eq!(plan.hook_input.message, "Nyan is waiting");
     }
 
     #[test]

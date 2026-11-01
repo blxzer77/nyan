@@ -429,7 +429,7 @@ mod tests {
     use super::*;
 
     fn argv(args: &[&str]) -> Vec<String> {
-        std::iter::once("cometix".to_string())
+        std::iter::once("nyan".to_string())
             .chain(args.iter().map(|a| (*a).to_string()))
             .collect()
     }

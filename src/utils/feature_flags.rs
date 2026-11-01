@@ -4,7 +4,7 @@
 //! `getFeatureValue_CACHED_MAY_BE_STALE(...)` and
 //! `getFeatureValue_CACHED_WITH_REFRESH(...)`, but intentionally does not
 //! implement cloud delivery, cache parsing, refresh windows, or config override
-//! ingestion. Cometix keeps a single source-controlled switch table instead.
+//! ingestion. Nyan keeps a single source-controlled switch table instead.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FeatureFlag {
@@ -118,7 +118,7 @@ pub enum FeatureFlag {
     /// Maps to CC GrowthBook `tengu_hawthorn_window` per-message budget override.
     PerMessageBudgetLimitOverride,
     /// Maps to CC GrowthBook `tengu_prompt_cache_1h_config`.
-    /// @cometix offset: final 1P `ttl: "1h"` switch. The allowlist itself is
+    /// @nyan offset: final 1P `ttl: "1h"` switch. The allowlist itself is
     /// settings.json `promptCache1h.allowlist`. Vertex / Foundry / Bedrock
     /// keep the official `should1hCacheTTL` path.
     PromptCache1hConfig,
@@ -160,7 +160,7 @@ pub struct FeatureSwitch {
 
 /// Maps to CC GrowthBook defaults, frozen as source-controlled constants.
 ///
-/// Change this table, not runtime config/cache parsing, when Cometix needs a
+/// Change this table, not runtime config/cache parsing, when Nyan needs a
 /// different behavior for an upstream GrowthBook-controlled feature.
 pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
     FeatureSwitch {
@@ -402,13 +402,13 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         // CC ships BRIDGE_MODE on in production builds (scripts/build.ts:41
         // "Generally available (ON in production)").
         enabled: true,
-        note: "Remote Control build gate mirrors CC production (on); pill/dialog reachability still requires the isBridgeEnabled entitlement and a replBridgeEnabled producer (absent in Cometix — no bridge transport or settings-screen toggle).",
+        note: "Remote Control build gate mirrors CC production (on); pill/dialog reachability still requires the isBridgeEnabled entitlement and a replBridgeEnabled producer (absent in Nyan — no bridge transport or settings-screen toggle).",
     },
     FeatureSwitch {
         flag: FeatureFlag::McpSkills,
         cc_growthbook_name: "MCP_SKILLS",
         enabled: true,
-        note: "CC 2.1.88 build fetches MCP skills from servers that support resources (`client.ts:2172-2176`, `fetchMcpSkillsForClient`) and lists `loadedFrom: 'mcp'` commands as skills. Plain MCP prompts are never skills. Cometix has no MCP skill producer (the rebuild's `mcpSkills.ts` is a stub), so the gated readers find nothing.",
+        note: "CC 2.1.88 build fetches MCP skills from servers that support resources (`client.ts:2172-2176`, `fetchMcpSkillsForClient`) and lists `loadedFrom: 'mcp'` commands as skills. Plain MCP prompts are never skills. Nyan has no MCP skill producer (the rebuild's `mcpSkills.ts` is a stub), so the gated readers find nothing.",
     },
     FeatureSwitch {
         flag: FeatureFlag::ExperimentalSkillSearch,
@@ -426,7 +426,7 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         flag: FeatureFlag::PersistThresholdOverrides,
         cc_growthbook_name: "tengu_satin_quoll",
         enabled: false,
-        note: "Official default is an empty override map, so the MCP output cap falls through to the hardcoded default; the switch stays off because Cometix has no source-controlled per-tool override payload.",
+        note: "Official default is an empty override map, so the MCP output cap falls through to the hardcoded default; the switch stays off because Nyan has no source-controlled per-tool override payload.",
     },
     FeatureSwitch {
         flag: FeatureFlag::AutoModeConfig,
@@ -470,7 +470,7 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         flag: FeatureFlag::PerMessageBudgetLimitOverride,
         cc_growthbook_name: "tengu_hawthorn_window",
         enabled: false,
-        note: "Official default is null, so the per-message aggregate budget stays at MAX_TOOL_RESULTS_PER_MESSAGE_CHARS; the switch stays off because Cometix has no source-controlled window payload.",
+        note: "Official default is null, so the per-message aggregate budget stays at MAX_TOOL_RESULTS_PER_MESSAGE_CHARS; the switch stays off because Nyan has no source-controlled window payload.",
     },
     FeatureSwitch {
         flag: FeatureFlag::AttributionHeader,
@@ -482,7 +482,7 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         flag: FeatureFlag::PromptCache1hConfig,
         cc_growthbook_name: "tengu_prompt_cache_1h_config",
         enabled: false,
-        note: "Official default is an empty config object. @cometix offset: first-party 1h master switch (default off). The query-source allowlist is settings.json promptCache1h.allowlist, not GrowthBook.",
+        note: "Official default is an empty config object. @nyan offset: first-party 1h master switch (default off). The query-source allowlist is settings.json promptCache1h.allowlist, not GrowthBook.",
     },
     FeatureSwitch {
         flag: FeatureFlag::RemoteGitDiff,
@@ -524,7 +524,7 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         flag: FeatureFlag::EmergencyTip,
         cc_growthbook_name: "tengu-top-of-feed-tip",
         enabled: false,
-        note: "Official default is an empty tip, so LogoV2 renders no top-of-feed notice; the dynamic config is the only upstream producer and Cometix has no source-controlled tip payload.",
+        note: "Official default is an empty tip, so LogoV2 renders no top-of-feed notice; the dynamic config is the only upstream producer and Nyan has no source-controlled tip payload.",
     },
     FeatureSwitch {
         flag: FeatureFlag::IronGateClosed,

@@ -1223,7 +1223,7 @@ pub fn yolo_result_to_decision(result: YoloClassifierResult) -> YoloClassifierDe
 /// Unit-test injection only. No production environment can skip classification.
 #[cfg(test)]
 pub fn forced_classifier_decision(tool_name: &str) -> Option<YoloClassifierDecision> {
-    if let Some(force) = crate::utils::process_env::var("COMETIX_AUTO_CLASSIFIER_FORCE") {
+    if let Some(force) = crate::utils::process_env::var("NYAN_AUTO_CLASSIFIER_FORCE") {
         match force.to_ascii_lowercase().as_str() {
             "allow" => {
                 return Some(YoloClassifierDecision::Allow {
@@ -1247,7 +1247,7 @@ pub fn forced_classifier_decision(tool_name: &str) -> Option<YoloClassifierDecis
         }
     }
     if !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("COMETIX_AUTO_CLASSIFIER_LIVE").as_deref(),
+        crate::utils::process_env::var("NYAN_AUTO_CLASSIFIER_LIVE").as_deref(),
     ) {
         return Some(YoloClassifierDecision::Unavailable {
             reason: format!("classifier live API disabled in tests for {tool_name}"),
@@ -2027,7 +2027,7 @@ mod tests {
     #[test]
     fn force_env_is_test_only_on_sync_path() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _env = EnvVarGuard::set("COMETIX_AUTO_CLASSIFIER_FORCE", "allow");
+        let _env = EnvVarGuard::set("NYAN_AUTO_CLASSIFIER_FORCE", "allow");
         let result = classify_yolo_action_sync_with_signal(
             &[],
             "Bash",

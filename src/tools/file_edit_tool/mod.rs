@@ -28,8 +28,8 @@ pub(crate) type EditOutput = FileEditOutput;
 /// Private `PermissionRequest.call_input` transport. `call_input` is
 /// `#[serde(skip)]`, so this physical destination never reaches SDK/session
 /// payloads.
-pub(crate) const CHECKED_EDIT_DESTINATION_KEY: &str = "__cometix_checked_edit_destination";
-pub(crate) const CHECKED_EDIT_APPROVED_PATH_KEY: &str = "__cometix_checked_edit_approved_path";
+pub(crate) const CHECKED_EDIT_DESTINATION_KEY: &str = "__nyan_checked_edit_destination";
+pub(crate) const CHECKED_EDIT_APPROVED_PATH_KEY: &str = "__nyan_checked_edit_approved_path";
 
 pub(crate) fn resolved_edit_destination(path: &Path) -> PathBuf {
     let candidate = crate::utils::fs_operations::get_paths_for_permission_check(path)
@@ -634,7 +634,7 @@ impl crate::tool::ToolCall for FileEditTool {
 
             // DEVIATION(SECURITY): repository-wide no-write mode has no CC
             // equivalent. It must fail before skills, mkdir, history, or temp.
-            if !crate::utils::env_utils::is_cometix_write_enabled() {
+            if !crate::utils::env_utils::is_nyan_write_enabled() {
                 return edit_error(
                     crate::tools::shared::write_gate::FILE_EDIT_DISABLED_ERROR,
                     Vec::new(),
@@ -1069,7 +1069,7 @@ mod tests {
 
     fn temp_root(label: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!(
-            "cometix-edit-{label}-{}",
+            "nyan-edit-{label}-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1426,7 +1426,7 @@ mod tests {
         assert!(
             error
                 .message
-                .starts_with("Claude Code settings.json validation failed after edit:")
+                .starts_with("nyan settings.json validation failed after edit:")
         );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
         let _ = std::fs::remove_dir_all(root);
@@ -1437,7 +1437,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
         let root = temp_root("disabled");
         let path = root.join("missing/disabled.txt");
@@ -1468,7 +1468,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
         let root = temp_root("empty-old");
 
@@ -1518,7 +1518,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
         let root = temp_root("encoding");
         let path = root.join("encoded.txt");
@@ -1579,7 +1579,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
         let root = temp_root("replace-all");
         let path = root.join("values.txt");
@@ -1614,7 +1614,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let _bootstrap = BootstrapRestore::capture();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
         let _checkpointing = EnvVarGuard::set("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING", "0");
         let root = temp_root("history");
@@ -1717,7 +1717,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
         let _remote = EnvVarGuard::set("CLAUDE_CODE_REMOTE", "1");
         let mut config = crate::utils::config::GlobalConfig::default();
@@ -1787,7 +1787,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "0");
         let _skills = crate::skills::load_skills_dir::DynamicSkillsTestSnapshot::capture();
         crate::skills::load_skills_dir::clear_dynamic_skills();
@@ -1826,7 +1826,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
         let root = temp_root("retarget");
         let package = root.join("package");
@@ -1866,7 +1866,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
         let root = temp_root("user-path-update");
         let original_path = root.join("original.txt");
@@ -1903,7 +1903,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
         let root = temp_root("user-modified");
         let path = root.join("value.txt");

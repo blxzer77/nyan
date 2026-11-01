@@ -119,7 +119,7 @@ mod tests {
     fn resolve_overridden_model_matches_official_first_object_entry_for_duplicate_values() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-model-overrides-{}",
+            "nyan-model-overrides-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -165,7 +165,7 @@ mod tests {
     fn model_overrides_replace_the_provider_value_for_their_canonical_key() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-model-strings-{}",
+            "nyan-model-strings-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

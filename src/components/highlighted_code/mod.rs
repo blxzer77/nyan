@@ -3,7 +3,7 @@
 //! Official `HighlightedCode` attempts native `ColorFile` highlighting and
 //! falls back to `HighlightedCode/Fallback.tsx` when disabled/unavailable.
 //! ColorFile returns ANSI / styled lines; Ink renders them via `<Ansi>`.
-//! Cometix's `ColorFile` returns `ToolRenderLine` segments with syntect
+//! Nyan's `ColorFile` returns `ToolRenderLine` segments with syntect
 //! foregrounds — same projection as `StructuredDiff`.
 
 pub mod fallback;
@@ -98,7 +98,7 @@ fn tool_render_line_text(line: &ToolRenderLine) -> String {
 }
 
 /// Maps to: CC `components/HighlightedCode.tsx#HighlightedCode` —
-/// Ink `<Ansi>{line}</Ansi>` over ColorFile output; Cometix projects the
+/// Ink `<Ansi>{line}</Ansi>` over ColorFile output; Nyan projects the
 /// equivalent syntect segments onto colored `Text` nodes (same as
 /// `StructuredDiff`).
 #[component]

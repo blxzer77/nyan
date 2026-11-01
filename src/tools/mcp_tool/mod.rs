@@ -3,7 +3,7 @@
 //! Maps to: CC `tools/MCPTool/MCPTool.ts`.
 //!
 //! Dynamic MCP tools are created from live MCP client capabilities in
-//! `services/mcp/client.ts#fetchToolsForClient`. In Cometix, live dynamic tool
+//! `services/mcp/client.ts#fetchToolsForClient`. In Nyan, live dynamic tool
 //! execution is dispatched from `services/tools/tool_execution.rs` using the
 //! same runtime MCP state. This module preserves the official generic
 //! `MCPTool` ToolDef boundary plus transcript UI helpers; it does not start

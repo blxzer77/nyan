@@ -85,11 +85,11 @@ impl RulesTabType {
 
     pub fn subtitle(self) -> Option<&'static str> {
         match self {
-            Self::Allow => Some("Claude Code won't ask before using allowed tools."),
+            Self::Allow => Some("nyan won't ask before using allowed tools."),
             Self::Ask => {
-                Some("Claude Code will always ask for confirmation before using these tools.")
+                Some("nyan will always ask for confirmation before using these tools.")
             }
-            Self::Deny => Some("Claude Code will always reject requests to use denied tools."),
+            Self::Deny => Some("nyan will always reject requests to use denied tools."),
             Self::Recent | Self::Workspace => None,
         }
     }
@@ -631,7 +631,7 @@ fn PermissionRuleListCancelBinding(
     let active = props.active;
     let mut pending = props.pending;
     #[cfg(test)]
-    if crate::utils::process_env::var_os("COMETIX_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
+    if crate::utils::process_env::var_os("NYAN_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
         eprintln!("cancel binding render active={active}");
         hooks.use_terminal_events({
             let runtime = runtime.clone();
@@ -651,7 +651,7 @@ fn PermissionRuleListCancelBinding(
         move || active,
         move || {
             #[cfg(test)]
-            if crate::utils::process_env::var_os("COMETIX_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
+            if crate::utils::process_env::var_os("NYAN_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
                 eprintln!("cancel binding invoked active={active}");
             }
             if let Some(pending) = pending.as_mut() {
@@ -882,7 +882,7 @@ pub fn PermissionRuleList<'a>(
 
     if pending_cancel.get() {
         #[cfg(test)]
-        if crate::utils::process_env::var_os("COMETIX_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
+        if crate::utils::process_env::var_os("NYAN_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
             eprintln!("parent pending_cancel");
         }
         pending_cancel.set(false);
@@ -896,7 +896,7 @@ pub fn PermissionRuleList<'a>(
     let completed_exit = { pending_exit_result.read().clone() };
     if let Some(result) = completed_exit {
         #[cfg(test)]
-        if crate::utils::process_env::var_os("COMETIX_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
+        if crate::utils::process_env::var_os("NYAN_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
             eprintln!("parent on_exit={result:?}");
         }
         pending_exit_result.set(None);
@@ -1168,7 +1168,7 @@ pub fn PermissionRuleList<'a>(
                     RulesTabType::Workspace => element! {
                         View(flex_direction: FlexDirection::Column) {
                             Text(
-                                content: "Claude Code can read files in the workspace, and make edits when auto-accept edits is on.".to_string(),
+                                content: "nyan can read files in the workspace, and make edits when auto-accept edits is on.".to_string(),
                                 wrap: TextWrap::Wrap,
                             )
                             WorkspaceTab(
@@ -1227,7 +1227,7 @@ mod tests {
         .to_string();
         assert!(text.contains("Permissions:"), "canvas=\n{text}");
         assert!(text.contains("Recently denied"), "canvas=\n{text}");
-        assert!(text.contains("Claude Code won't ask"), "canvas=\n{text}");
+        assert!(text.contains("nyan won't ask"), "canvas=\n{text}");
         assert!(
             text.contains("Add a new rule…"),
             "rules tab should render the canonical add option; canvas=\n{text}"
@@ -1357,7 +1357,7 @@ mod tests {
 
     #[tokio::test]
     async fn workspace_add_remove_lifecycle_matches_official_callbacks_and_exit() {
-        let _diagnostic = EnvVarGuard::set("COMETIX_PERMISSION_CANCEL_DIAGNOSTIC", "1");
+        let _diagnostic = EnvVarGuard::set("NYAN_PERMISSION_CANCEL_DIAGNOSTIC", "1");
         chalk::set_stdout_level(3);
         use futures::StreamExt;
         use std::time::Duration;

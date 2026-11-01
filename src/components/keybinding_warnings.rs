@@ -2,7 +2,7 @@
 //!
 //! Safety/runtime boundary: official `KeybindingWarnings` reads
 //! `isKeybindingCustomizationEnabled()`, `getCachedKeybindingWarnings()`, and
-//! `getKeybindingsPath()` from `keybindings/loadUserBindings.js`. Cometix does
+//! `getKeybindingsPath()` from `keybindings/loadUserBindings.js`. Nyan does
 //! not yet have the custom keybinding loader/runtime state, so this component
 //! preserves the official render boundary from explicit snapshot props only. No
 //! settings reads, filesystem reads, or keybinding validation side effects occur

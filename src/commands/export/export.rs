@@ -169,7 +169,7 @@ mod tests {
     }
     #[tokio::test]
     async fn export_call_matches_official_file_dialog_and_failure_receipts() {
-        let dir = std::env::temp_dir().join(format!("cometix-export-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("nyan-export-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let context =
             ToolUseContext::default().with_cwd_override(Some(dir.as_path().to_path_buf()));

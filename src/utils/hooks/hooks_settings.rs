@@ -2,7 +2,7 @@
 //! Maps to: CC `utils/hooks/hooksSettings.ts`.
 //!
 //! The official module is used by hook configuration UI to enumerate hooks by
-//! source, compare persisted hooks, and render source labels. Cometix keeps the
+//! source, compare persisted hooks, and render source labels. Nyan keeps the
 //! same responsibility boundary in utils/hooks because hooks settings are loaded
 //! from settings/session-hook stores rather than component state.
 
@@ -214,7 +214,7 @@ pub fn get_hook_display_text(hook: &HookDisplayConfig) -> &str {
 
 /// Maps to: CC `getAllHooks(appState)`.
 ///
-/// Official reads session hooks from `AppState.sessionHooks`; Cometix's current
+/// Official reads session hooks from `AppState.sessionHooks`; Nyan's current
 /// `session_hooks` port is process-local, so callers pass the active session id.
 pub fn get_all_hooks(session_id: &str) -> Vec<IndividualHookConfig> {
     let mut hooks = Vec::new();
@@ -283,7 +283,7 @@ pub fn hook_source_description_display_string(source: HookSource) -> &'static st
         HookSource::LocalSettings => "Local settings (.claude/settings.local.json)",
         HookSource::PluginHook => "Plugin hooks (~/.claude/plugins/*/hooks/hooks.json)",
         HookSource::SessionHook => "Session hooks (in-memory, temporary)",
-        HookSource::BuiltinHook => "Built-in hooks (registered internally by Claude Code)",
+        HookSource::BuiltinHook => "Built-in hooks (registered internally by nyan)",
         HookSource::PolicySettings => "policySettings",
     }
 }

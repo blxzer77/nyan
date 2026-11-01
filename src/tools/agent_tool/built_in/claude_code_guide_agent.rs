@@ -88,7 +88,7 @@ fn get_feedback_guideline() -> &'static str {
 pub fn claude_code_guide_system_prompt() -> String {
     // Dynamic current-configuration sections from CC (custom skills, custom
     // agents, MCP clients, plugin skills, settings.json) depend on the full
-    // `ToolUseContext.options` command/agent/config surfaces. Cometix keeps
+    // `ToolUseContext.options` command/agent/config surfaces. Nyan keeps
     // this on the same agent module seam and currently emits the official base
     // prompt plus feedback guideline.
     format!(

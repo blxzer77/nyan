@@ -1,7 +1,7 @@
 //! Maps to: CC `components/LogoV2/CondensedLogo.tsx`.
 //!
 //! Official hooks read AppState/model/settings and increment upsell impression
-//! counters in effects. Cometix keeps this as a render boundary with pure input
+//! counters in effects. nyan keeps this as a render boundary with pure input
 //! props; callers own state reads, config writes, and analytics.
 
 use super::animated_clawd::AnimatedClawd;
@@ -133,7 +133,7 @@ mod tests {
     fn condensed_logo_prefers_guest_passes_over_overage_credit_like_official() {
         let guest = render_condensed(LogoDisplayData::fixture(), true, true);
         assert!(
-            guest.contains("Share Claude Code and earn $5"),
+            guest.contains("Share nyan and earn $5"),
             "canvas=\n{guest}"
         );
         assert!(!guest.contains("$10 in extra usage"), "canvas=\n{guest}");

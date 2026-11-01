@@ -105,7 +105,7 @@ pub async fn refresh_oauth_token(
         .json(&body);
     // Deviation (L2, user-authorized OAuth safety gate): CC
     // `services/oauth/client.ts:169-174` sends the prepared refresh request;
-    // Cometix fails closed at the final HTTP outlet with no runtime bypass.
+    // Nyan fails closed at the final HTTP outlet with no runtime bypass.
     if !crate::constants::oauth::OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED {
         return Err(crate::constants::oauth::OAuthCredentialSideEffectsUnavailable.into());
     }

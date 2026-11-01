@@ -1,4 +1,4 @@
-# CometixCode task runner.
+# nyan task runner.
 #
 # Tests run under `cargo nextest`, which gives each test its own process.
 # Measured on one commit, no test-code changes:
@@ -96,7 +96,7 @@ test *args:
 t pattern:
     {{quote(test_runner)}} -E {{quote("test(/" + pattern + "/)")}}
 
-# Full nextest filterset: `just test-one 'binary(cometix-code) and test(foo)'`
+# Full nextest filterset: `just test-one 'binary(nyan) and test(foo)'`
 test-one filter:
     {{quote(test_runner)}} -E {{quote(filter)}}
 
@@ -107,7 +107,7 @@ test-doc:
 # --- Anthropic-internal build profile ---------------------------------------
 #
 # CC gates ~510 sites on `USER_TYPE === 'ant'`, which its bundler substitutes at
-# build time (`"external" === 'ant'` in the external source). Cometix models it
+# build time (`"external" === 'ant'` in the external source). Nyan models it
 # as a Cargo feature (utils/build_profile.rs). The recipes above only ever build
 # `external`, which leaves a hole in the gate that the env pinning above does
 # not cover: the audience is a THIRD axis, next to host state and process

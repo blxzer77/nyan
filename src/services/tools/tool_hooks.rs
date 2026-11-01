@@ -749,7 +749,7 @@ mod tests {
             run: impl std::future::Future<Output = ToolHookSeamResult>,
         ) -> serde_json::Value {
             run.await;
-            let path = std::env::temp_dir().join(format!("cometix-triple-{event}.json"));
+            let path = std::env::temp_dir().join(format!("nyan-triple-{event}.json"));
             let raw = std::fs::read_to_string(&path)
                 .unwrap_or_else(|error| panic!("{event} hook received no stdin: {error}"));
             let _ = std::fs::remove_file(&path);
@@ -764,7 +764,7 @@ mod tests {
                         "command": format!(
                             "cat > '{}'",
                             std::env::temp_dir()
-                                .join(format!("cometix-triple-{event}.json"))
+                                .join(format!("nyan-triple-{event}.json"))
                                 .display()
                         ),
                         "timeout": 10
@@ -891,7 +891,7 @@ mod tests {
 
         async fn captured(is_interrupt: bool, request: &PermissionRequest) -> serde_json::Value {
             let path = std::env::temp_dir().join(format!(
-                "cometix-is-interrupt-{}.json",
+                "nyan-is-interrupt-{}.json",
                 uuid::Uuid::new_v4().simple()
             ));
             let config = registered_from_value(serde_json::json!({

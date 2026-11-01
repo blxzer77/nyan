@@ -562,7 +562,7 @@ pub fn SelectMulti<'a>(
                                 show_scroll_up: are_more_options_above && is_first_visible_option,
                                 description: option.description.clone(),
                             ) {
-                                // CC ListItem row is gap={1} between all children; Cometix
+                                // CC ListItem row is gap={1} between all children; Nyan
                                 // ListItem only separates the indicator with an explicit
                                 // space, so this Row carries the inter-child gap.
                                 View(flex_direction: FlexDirection::Row, flex_shrink: 0.0f32, column_gap: 1u32) {

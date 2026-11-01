@@ -2,7 +2,7 @@
 //!
 //! This module contains LogoV2 runtime-data helpers, not UI rendering. Official
 //! code preloads recent activity asynchronously into a module cache and render
-//! code reads `getRecentActivitySync()`. Cometix currently uses a read-only
+//! code reads `getRecentActivitySync()`. Nyan currently uses a read-only
 //! synchronous producer from existing lite session metadata: no transcript
 //! writes, resume mutation, title generation, or session-file cleanup occurs.
 

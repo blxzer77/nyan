@@ -457,7 +457,7 @@ fn render_tool_result_lines_by_tool_name(
         });
     }
     // MCP dynamic tools (`mcp__server__tool`). No renderToolUseErrorMessage →
-    // fallback. Cometix-specific deviation: CC 2.1.88's success leaf runs
+    // fallback. Nyan-specific deviation: CC 2.1.88's success leaf runs
     // `safeParse(z.string())` on the raw (UserToolSuccessMessage.tsx:80) and
     // rejects the array-of-content-blocks shape `mcpClient` actually records
     // (client.ts:1898), nulling every MCP result row — an upstream regression
@@ -3247,7 +3247,7 @@ mod tests {
         assert!(canvas.to_string().contains("10 -old"));
         // Success rendering now delegates through the official
         // FileEditToolUpdatedMessage → StructuredDiffList component boundary;
-        // that boundary is stable text in Cometix's main-screen renderer.
+        // that boundary is stable text in Nyan's main-screen renderer.
         assert!(canvas.to_string().contains("10 -old"));
         assert!(canvas.to_string().contains("10 +new"));
     }
