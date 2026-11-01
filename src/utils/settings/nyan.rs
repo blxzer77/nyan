@@ -43,6 +43,12 @@ pub struct CompactionSettings {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mask_headroom: Option<f64>,
+    /// Shadow mode for compaction.keep (compaction C14, decision-provider 4.4).
+    /// When true, records keep-ordering vs actual-ordering comparisons to
+    /// `$CLAUDE_CONFIG_DIR/decision/compaction.keep.jsonl` without altering
+    /// the actual compression outcome.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keep_shadow: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +74,9 @@ impl CompactionSettings {
     }
     pub fn mask_headroom(&self) -> f64 {
         self.mask_headroom.unwrap_or(0.10)
+    }
+    pub fn keep_shadow(&self) -> bool {
+        self.keep_shadow.unwrap_or(false)
     }
 }
 
@@ -1308,6 +1317,7 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
         ),
         ("model", zod::string().optional()),
         ("maskHeadroom", zod::number().min(0).max(1).optional()),
+        ("keepShadow", zod::boolean().optional()),
     ]);
 
     let cache = zod::object(vec![
@@ -1616,6 +1626,7 @@ mod tests {
         assert_eq!(settings.compaction().keep_recent_tokens(), 20_000);
         assert_eq!(settings.compaction().summary_style(), SummaryStyle::Legacy);
         assert_eq!(settings.compaction().mask_headroom(), 0.10);
+        assert!(!settings.compaction().keep_shadow());
 
         assert_eq!(settings.cache().warming(), CacheWarmingMode::Active);
         assert_eq!(settings.cache().min_cached_tokens(), 20_000);

@@ -4,6 +4,7 @@
 pub mod api_microcompact;
 pub mod auto_compact;
 pub mod compact;
+pub mod decision;
 pub mod grouping;
 pub mod micro_compact;
 pub mod post_compact_cleanup;

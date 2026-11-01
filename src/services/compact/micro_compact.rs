@@ -222,12 +222,13 @@ struct MaskCandidate {
     tool_name: String,
     tokens: i64,
     bytes: usize,
+    preview: String,
 }
 
 /// @nyan: deterministic pre-compaction masking. It is deliberately separate
 /// from cached microcompact: this changes the model projection and therefore
 /// owns the persistent ContentReplacementState decision.
-pub fn mask_tool_results_if_needed(
+pub async fn mask_tool_results_if_needed(
     messages: Vec<Message>,
     state: &mut crate::utils::tool_result_storage::ContentReplacementState,
     context: &ToolUseContext,
@@ -318,12 +319,14 @@ pub fn mask_tool_results_if_needed(
             if tokens < minimum_tokens || tokens <= 0 {
                 continue;
             }
+            let preview = tool_result.content.chars().take(1500).collect::<String>();
             candidates.push(MaskCandidate {
                 message_index,
                 tool_use_id: tool_result.tool_use_id.0.clone(),
                 tool_name: tool_name.clone(),
                 tokens,
-                bytes: tool_result.content.as_bytes().len(),
+                bytes: tool_result.content.len(),
+                preview,
             });
         }
     }
@@ -333,6 +336,33 @@ pub fn mask_tool_results_if_needed(
             messages, state,
         );
         return result;
+    }
+
+    // @nyan: compaction.keep shadow mode (C14, decision-provider 4.4).
+    // Evaluate keep-ordering vs actual-ordering and append comparison to
+    // $CLAUDE_CONFIG_DIR/decision/compaction.keep.jsonl. The actual compression
+    // outcome below remains 100% unchanged.
+    if crate::services::compact::decision::is_keep_shadow_enabled() {
+        let candidate_infos: Vec<_> = candidates
+            .iter()
+            .map(|c| crate::services::compact::decision::MaskCandidateInfo {
+                message_index: c.message_index,
+                tool_use_id: c.tool_use_id.clone(),
+                tool_name: c.tool_name.clone(),
+                tokens: c.tokens,
+                bytes: c.bytes,
+                preview: c.preview.clone(),
+            })
+            .collect();
+        crate::services::compact::decision::evaluate_compaction_keep_shadow(
+            &messages,
+            &candidate_infos,
+            target,
+            measured_before,
+            threshold,
+            context,
+        )
+        .await;
     }
 
     // C2: accumulate oldest-first until `target` (threshold minus headroom) is
@@ -805,8 +835,8 @@ mod tests {
         assert!(state.sent_tools.is_empty());
     }
 
-    #[test]
-    fn threshold_mask_clears_old_results_but_not_the_current_user_round() {
+    #[tokio::test]
+    async fn threshold_mask_clears_old_results_but_not_the_current_user_round() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
         let mut messages = vec![
@@ -831,7 +861,8 @@ mod tests {
             &mut state,
             &context,
             &QuerySource::Prompt,
-        );
+        )
+        .await;
         assert_eq!(result.masked_count, 1);
         assert!(result.masked_tokens > 0);
         assert!(state.replacements.contains_key("toolu_old"));
@@ -873,8 +904,8 @@ mod tests {
         assert!(result.boundary_messages.is_empty());
     }
 
-    #[test]
-    fn cache_sharing_forks_replay_but_never_decide() {
+    #[tokio::test]
+    async fn cache_sharing_forks_replay_but_never_decide() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
         let mut messages = vec![
@@ -899,10 +930,117 @@ mod tests {
             &mut state,
             &context,
             &QuerySource::Compact,
-        );
+        )
+        .await;
         assert_eq!(result.masked_count, 0);
         assert!(result.newly_replaced.is_empty());
         assert!(state.replacements.is_empty());
         crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+    }
+
+    #[tokio::test]
+    async fn keep_shadow_records_comparison_when_enabled_without_changing_actual_outcome() {
+        use std::collections::BTreeMap;
+        use std::sync::Arc;
+        use crate::services::decision::{
+            Answer, BackendFuture, DecisionBackend, DecisionOutcome, DecisionProvider,
+            DecisionRequest, Receipt,
+        };
+
+        struct MockKeepBackend;
+        impl DecisionBackend for MockKeepBackend {
+            fn decide<'a>(
+                &'a self,
+                req: &'a DecisionRequest,
+                _deadline: std::time::Duration,
+                _abort: &'a crate::tool::AbortController,
+            ) -> BackendFuture<'a> {
+                let mut answers = BTreeMap::new();
+                for q in req.questions.keys() {
+                    // Say keep = true (0.95 prob) for toolu_keep, false (0.1) for toolu_drop
+                    let prob = if q.contains("keep") { 0.95 } else { 0.1 };
+                    answers.insert(q.clone(), Answer::Noul { probability: prob });
+                }
+                Box::pin(async move {
+                    DecisionOutcome::Answered {
+                        receipt: Receipt {
+                            point: "compaction.keep".into(),
+                            model: "typesafe/jev-1.14.0".into(),
+                            backend: "mock".into(),
+                            answers: answers.clone(),
+                            ..Default::default()
+                        },
+                        answers,
+                    }
+                })
+            }
+            fn name(&self) -> &'static str {
+                "mock"
+            }
+        }
+
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
+
+        // Temporary config dir so shadow log writes to an isolated file
+        let temp_dir = std::env::temp_dir().join(format!("nyan-keep-shadow-test-{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        crate::utils::process_env::set("CLAUDE_CONFIG_DIR", temp_dir.to_str().unwrap());
+
+        // Install mock decision provider
+        let mut decision_settings = crate::utils::settings::nyan::DecisionSettings::default();
+        decision_settings.enabled = Some(true);
+        let mock_provider = Arc::new(DecisionProvider::with_backend(
+            decision_settings,
+            Arc::new(MockKeepBackend),
+        ));
+        crate::services::compact::decision::test_override::set(mock_provider);
+
+        let mut messages = vec![
+            assistant_tool_message(&["toolu_drop", "toolu_keep"], 0),
+            user_tool_result_message(&["toolu_drop", "toolu_keep"]),
+            Message::User(crate::utils::messages::create_user_message(
+                "current task".to_string(),
+            )),
+        ];
+        if let Message::User(user) = &mut messages[1] {
+            if let Some(UserContent::ToolResult(r1)) = user.content.get_mut(0) {
+                r1.content = "x".repeat(60_000);
+            }
+            if let Some(UserContent::ToolResult(r2)) = user.content.get_mut(1) {
+                r2.content = "y".repeat(60_000);
+            }
+        }
+        let context = ToolUseContext {
+            main_loop_model: Some("claude-sonnet-4-6".to_string()),
+            ..Default::default()
+        };
+        let mut state = crate::utils::tool_result_storage::ContentReplacementState::new();
+        let result = mask_tool_results_if_needed(
+            messages,
+            &mut state,
+            &context,
+            &QuerySource::Prompt,
+        )
+        .await;
+
+        // Actual outcome should still have cleared candidates according to C2 status quo
+        assert!(result.masked_count >= 1);
+
+        // Verify the shadow log file exists and contains a valid record
+        let log_file = temp_dir.join("decision/compaction.keep.jsonl");
+        assert!(log_file.exists(), "shadow log file must be written");
+        let content = std::fs::read_to_string(&log_file).unwrap();
+        assert!(!content.trim().is_empty());
+        let record: crate::services::compact::decision::CompactionKeepShadowRecord =
+            serde_json::from_str(content.lines().next().unwrap()).unwrap();
+        assert_eq!(record.point, "compaction.keep");
+        assert_eq!(record.candidates_count, 2);
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        crate::services::compact::decision::test_override::clear();
+        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+        crate::utils::process_env::remove("CLAUDE_CONFIG_DIR");
     }
 }

@@ -871,7 +871,13 @@ where
     // official feature-gated `undefined` state and skips aggregate tool-result
     // budgeting; `Some` keeps decisions stable across this query loop so prompt
     // cache prefixes remain byte-identical on later continuations.
-    let mut content_replacement_state = params.tool_use_context.content_replacement_state.clone();
+    let mut content_replacement_state = params
+        .tool_use_context
+        .content_replacement_state
+        .clone()
+        .or_else(|| {
+            crate::utils::tool_result_storage::provision_content_replacement_state(None, &[])
+        });
     let mut auto_compact_tracking: Option<
         crate::services::compact::auto_compact::AutoCompactTrackingState,
     > = None;
@@ -1065,7 +1071,8 @@ where
                         state,
                         &mask_context,
                         &params.query_source,
-                    );
+                    )
+                    .await;
                 messages_for_query = mask_result.messages;
                 // C4: the last API usage still counts the masked bytes; carry
                 // the reduction so autocompact does not re-measure pre-mask.
