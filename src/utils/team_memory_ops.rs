@@ -51,7 +51,7 @@ mod tests {
     fn team_memory_predicates_ignore_growthbook_delivery() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-team-memory-ops-{}",
+            "nyan-team-memory-ops-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _memory_env = [

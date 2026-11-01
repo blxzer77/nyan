@@ -75,7 +75,7 @@ pub struct PermissionRequestProps {
     pub messages: Arc<Vec<Message>>,
     /// Maps to CC `PermissionRequestProps.onReject` reaching
     /// `toolUseConfirm.onReject()` — the `app:interrupt` keybinding at
-    /// `PermissionRequest.tsx:206-214` (CC's Ctrl-C; Cometix binds Ctrl-C to
+    /// `PermissionRequest.tsx:206-214` (CC's Ctrl-C; Nyan binds Ctrl-C to
     /// `app:exit`, so here it is a key a user binds to it). CC's Esc leg reaches the same row method
     /// through `PermissionPrompt.tsx:219-231` → `FallbackPermissionRequest.tsx:108-121`;
     /// in this port Esc is a `Deny` on
@@ -182,7 +182,7 @@ pub fn PermissionRequest(
     let on_cancel = Handler::<()>::from(move |_: ()| {
         (props_on_cancel)(cancel_tool_use_id.clone());
     });
-    // CC :206-214: app:interrupt (CC's Ctrl+C; not Cometix's, which binds
+    // CC :206-214: app:interrupt (CC's Ctrl+C; not Nyan's, which binds
     // Ctrl+C to app:exit) rejects whichever dialog shows. It runs after the
     // dialog's own listeners, as a parent's do; the REPL's cancel handler
     // leaves it the key while the dialog's list registers an overlay.
@@ -888,7 +888,7 @@ mod tests {
         .await;
     }
 
-    /// The default bindings plus F6 for `app:interrupt`: Cometix binds Ctrl+C
+    /// The default bindings plus F6 for `app:interrupt`: Nyan binds Ctrl+C
     /// to `app:exit`, so the dispatcher's interrupt is reached through a key a
     /// user binds to it.
     fn runtime_with_interrupt_key() -> crate::keybindings::keybinding_context::KeybindingRuntime {
@@ -977,7 +977,7 @@ mod tests {
     /// keybinding rejects through `toolUseConfirm.onReject()`, i.e. the
     /// rendered row's own callback. The cancel leg needs the same address as the
     /// allow leg, or an interrupt that arrives after its row was withdrawn drops
-    /// the successor instead. (Cometix binds Ctrl+C to `app:exit`; F6 stands in
+    /// the successor instead. (Nyan binds Ctrl+C to `app:exit`; F6 stands in
     /// for a key a user binds to `app:interrupt`.)
     ///
     /// OLD SHAPE: `on_cancel` was `Handler<()>` and carried nothing, so
@@ -1017,7 +1017,7 @@ mod tests {
     /// `PermissionPrompt.tsx:219-231`: `app:interrupt` is the dispatcher's
     /// (the row's `onReject`), Esc the prompt's own cancel (a rejection
     /// answer); the prompt keeps no interrupt of its own, so each key reaches
-    /// exactly one of them. Ctrl+C reaches neither: Cometix binds it to
+    /// exactly one of them. Ctrl+C reaches neither: Nyan binds it to
     /// `app:exit` (2.0.x semantics), which this dialog does not take.
     #[tokio::test]
     async fn a_prompt_dialog_leaves_the_interrupt_to_the_dispatcher_and_answers_esc() {
@@ -1052,7 +1052,7 @@ mod tests {
     }
 
     /// The dialogs that kept a Ctrl+C reject of their own, which CC's never
-    /// had: under Cometix's binding (Ctrl+C → `app:exit`, which no permission
+    /// had: under Nyan's binding (Ctrl+C → `app:exit`, which no permission
     /// dialog takes) Ctrl+C now answers nothing in them, while a key bound to
     /// `app:interrupt` still reaches the dispatcher (CC :206-214).
     #[tokio::test]
@@ -1415,7 +1415,7 @@ mod tests {
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-bash-permission-sandbox-{}",
+            "nyan-bash-permission-sandbox-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1457,7 +1457,7 @@ mod tests {
     #[tokio::test]
     async fn permission_request_delegates_bash_sed_to_official_sed_edit_dialog() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-permission-sed-{}.txt",
+            "nyan-permission-sed-{}.txt",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::write(&path, "hello old\n").unwrap();

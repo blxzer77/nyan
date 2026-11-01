@@ -7,7 +7,7 @@
 //! the component mounts, which cannot happen before `AppStateProvider` has
 //! created the store and bound its change pipeline.
 //!
-//! Cometix used to spawn the same work from `main.rs` ahead of `render_loop()`,
+//! Nyan used to spawn the same work from `main.rs` ahead of `render_loop()`,
 //! onto a multi-threaded runtime, with nothing ordering it against
 //! `bind_on_change`. An MCP write could therefore land before adoption and be
 //! silent where CC's would notify. These are mounted-effect writes at the

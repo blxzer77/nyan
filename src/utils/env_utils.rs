@@ -97,19 +97,19 @@ pub fn get_vertex_region_for_model(model: Option<&str>) -> String {
 ///
 /// Rust-only, and so not part of CC's `envUtils.ts`; moving it out of this
 /// file is a later cleanup (environment redesign §12).
-pub fn is_cometix_write_enabled() -> bool {
+pub fn is_nyan_write_enabled() -> bool {
     #[cfg(test)]
     {
-        is_env_truthy(crate::utils::process_env::var("COMETIX_WRITE_ENABLED").as_deref())
+        is_env_truthy(crate::utils::process_env::var("NYAN_WRITE_ENABLED").as_deref())
     }
     #[cfg(not(test))]
     {
-        !is_env_defined_falsy(crate::utils::process_env::var("COMETIX_WRITE_ENABLED").as_deref())
+        !is_env_defined_falsy(crate::utils::process_env::var("NYAN_WRITE_ENABLED").as_deref())
     }
 }
 
 /// Maps to: CC `utils/envUtils.ts:7-14` `getClaudeConfigHomeDir`:
-/// `(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'))
+/// `(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.nyan'))
 /// .normalize('NFC')`, memoized keyed on `CLAUDE_CONFIG_DIR`. `??` keeps an
 /// empty value. Each value of the variable is computed once, so with it unset
 /// the first `homedir()` answer stays, as lodash `memoize` keeps it under the
@@ -127,7 +127,7 @@ pub fn get_claude_config_home_dir() -> PathBuf {
         .or_insert_with_key(|key| {
             let dir = match key {
                 Some(dir) => PathBuf::from(dir),
-                None => crate::utils::node_os::homedir().join(".claude"),
+                None => crate::utils::node_os::homedir().join(".nyan"),
             };
             match dir.to_str() {
                 Some(dir) => {
@@ -200,7 +200,7 @@ mod tests {
             );
         }
         let _dir = EnvVarGuard::unset("CLAUDE_CONFIG_DIR");
-        let first = PathBuf::from("/home/first").join(".claude");
+        let first = PathBuf::from("/home/first").join(".nyan");
         assert_eq!(super::get_claude_config_home_dir(), first);
         let _later = EnvVarGuard::set(HOME_VAR, "/home/later");
         assert_eq!(super::get_claude_config_home_dir(), first);

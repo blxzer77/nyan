@@ -372,7 +372,7 @@ mod tests {
         assert!(!prompt.contains("run_in_background parameter"));
         // `prompt.ts:286` — fork examples REPLACE the current ones.
         assert!(!prompt.contains("<example_agent_descriptions>"));
-        // Cometix invented this heading; the official prompt has no such section.
+        // Nyan invented this heading; the official prompt has no such section.
         assert!(!prompt.contains("## When to use the Agent tool"));
     }
 
@@ -407,7 +407,7 @@ mod tests {
         ));
         assert!(!prompt.contains("## When to fork"));
         assert!(!prompt.contains("name: \"ship-audit\","));
-        // Cometix invented this heading; the official prompt has no such section.
+        // Nyan invented this heading; the official prompt has no such section.
         assert!(!prompt.contains("## When to use the Agent tool"));
     }
 

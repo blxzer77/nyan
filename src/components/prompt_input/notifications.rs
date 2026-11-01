@@ -629,7 +629,7 @@ mod tests {
                 crate::utils::config::GlobalConfig::default(),
             ));
             let root = std::env::temp_dir().join(format!(
-                "cometix-notifications-runtime-{}",
+                "nyan-notifications-runtime-{}",
                 uuid::Uuid::new_v4().simple()
             ));
             let workspace = root.join("workspace");

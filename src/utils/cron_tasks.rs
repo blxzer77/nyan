@@ -380,13 +380,13 @@ mod tests {
             }
         }
         let root = std::env::temp_dir().join(format!(
-            "cometix-durable-cron-{}",
+            "nyan-durable-cron-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
         let restore = Restore {
             cwd: std::env::current_dir().unwrap(),
-            write: Some(EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1")),
+            write: Some(EnvVarGuard::set("NYAN_WRITE_ENABLED", "1")),
             root: root.clone(),
         };
         std::env::set_current_dir(&root).unwrap();

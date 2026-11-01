@@ -365,7 +365,7 @@ mod tests {
     use crate::utils::test_env::TEST_ENV_LOCK;
 
     fn clear_context_collapse_env() {
-        crate::utils::process_env::remove("COMETIX_CONTEXT_COLLAPSE");
+        crate::utils::process_env::remove("NYAN_CONTEXT_COLLAPSE");
         crate::utils::process_env::remove("CLAUDE_CODE_CONTEXT_COLLAPSE");
         crate::utils::process_env::remove("CLAUDE_CONTEXT_COLLAPSE");
     }
@@ -376,7 +376,7 @@ mod tests {
         crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
         crate::utils::process_env::remove("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
         crate::utils::process_env::remove("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
-        crate::utils::process_env::remove("COMETIX_MAX_TOKENS_CAP");
+        crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
         crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
         crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
 
@@ -405,7 +405,7 @@ mod tests {
         crate::utils::process_env::remove("CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE");
         crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
         crate::utils::process_env::remove("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
-        crate::utils::process_env::remove("COMETIX_MAX_TOKENS_CAP");
+        crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
         crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
         crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
         let mut config = crate::utils::config::GlobalConfig::default();
@@ -440,7 +440,7 @@ mod tests {
         crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
         crate::utils::process_env::remove("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
         crate::utils::process_env::remove("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
-        crate::utils::process_env::remove("COMETIX_MAX_TOKENS_CAP");
+        crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
         crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
         crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
         let config = crate::utils::config::GlobalConfig::default();
@@ -497,7 +497,7 @@ mod tests {
         crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
         crate::utils::process_env::remove("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
         crate::utils::process_env::remove("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
-        crate::utils::process_env::remove("COMETIX_MAX_TOKENS_CAP");
+        crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
         crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
         crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
         let messages = vec![Message::User(crate::types::message::UserMessage {
@@ -551,7 +551,7 @@ mod tests {
         crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
         crate::utils::process_env::remove("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
         crate::utils::process_env::remove("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
-        crate::utils::process_env::remove("COMETIX_MAX_TOKENS_CAP");
+        crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
         crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
         crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
         let messages = (0..6)

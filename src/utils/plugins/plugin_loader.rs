@@ -2178,7 +2178,7 @@ mod tests {
     use std::fs;
     fn temp_dir(label: &str) -> PathBuf {
         let root =
-            std::env::temp_dir().join(format!("cometix-catalog-{label}-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-catalog-{label}-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         root
     }

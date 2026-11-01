@@ -631,7 +631,7 @@ fn PermissionRuleListCancelBinding(
     let active = props.active;
     let mut pending = props.pending;
     #[cfg(test)]
-    if crate::utils::process_env::var_os("COMETIX_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
+    if crate::utils::process_env::var_os("NYAN_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
         eprintln!("cancel binding render active={active}");
         hooks.use_terminal_events({
             let runtime = runtime.clone();
@@ -651,7 +651,7 @@ fn PermissionRuleListCancelBinding(
         move || active,
         move || {
             #[cfg(test)]
-            if crate::utils::process_env::var_os("COMETIX_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
+            if crate::utils::process_env::var_os("NYAN_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
                 eprintln!("cancel binding invoked active={active}");
             }
             if let Some(pending) = pending.as_mut() {
@@ -882,7 +882,7 @@ pub fn PermissionRuleList<'a>(
 
     if pending_cancel.get() {
         #[cfg(test)]
-        if crate::utils::process_env::var_os("COMETIX_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
+        if crate::utils::process_env::var_os("NYAN_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
             eprintln!("parent pending_cancel");
         }
         pending_cancel.set(false);
@@ -896,7 +896,7 @@ pub fn PermissionRuleList<'a>(
     let completed_exit = { pending_exit_result.read().clone() };
     if let Some(result) = completed_exit {
         #[cfg(test)]
-        if crate::utils::process_env::var_os("COMETIX_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
+        if crate::utils::process_env::var_os("NYAN_PERMISSION_CANCEL_DIAGNOSTIC").is_some() {
             eprintln!("parent on_exit={result:?}");
         }
         pending_exit_result.set(None);
@@ -1357,7 +1357,7 @@ mod tests {
 
     #[tokio::test]
     async fn workspace_add_remove_lifecycle_matches_official_callbacks_and_exit() {
-        let _diagnostic = EnvVarGuard::set("COMETIX_PERMISSION_CANCEL_DIAGNOSTIC", "1");
+        let _diagnostic = EnvVarGuard::set("NYAN_PERMISSION_CANCEL_DIAGNOSTIC", "1");
         chalk::set_stdout_level(3);
         use futures::StreamExt;
         use std::time::Duration;

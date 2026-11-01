@@ -225,7 +225,7 @@ mod tests {
         use crate::utils::session_storage as storage;
         use futures::StreamExt;
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let fixture = std::env::current_dir()
             .unwrap()
             .join("target")

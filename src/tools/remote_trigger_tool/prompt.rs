@@ -16,7 +16,7 @@ Actions:
 The response is the raw JSON from the API."#;
 
 /// Maps to CC `RemoteTriggerTool.isEnabled()` (`RemoteTriggerTool.ts:57-62`).
-/// Cometix reads the hardcoded feature-switch collection instead of GrowthBook;
+/// Nyan reads the hardcoded feature-switch collection instead of GrowthBook;
 /// the enterprise policy gate resolves through the ported on-disk policy cache.
 pub fn is_remote_trigger_tool_enabled() -> bool {
     crate::utils::feature_flags::feature_enabled(

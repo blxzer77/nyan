@@ -1,6 +1,6 @@
 //! Maps to: CC `hooks/useMemoryUsage.ts`.
 //!
-//! Node exposes `process.memoryUsage().heapUsed` (V8 heap). Cometix has no V8
+//! Node exposes `process.memoryUsage().heapUsed` (V8 heap). Nyan has no V8
 //! heap; D6 samples **process RSS** into the same `heap_used` field / thresholds
 //! so the ant-only footer indicator keeps official copy and gates.
 
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn parse_linux_vm_rss_kib_reads_status_line() {
-        let status = "Name:\tcometix\nVmSize:\t  123456 kB\nVmRSS:\t   2048 kB\n";
+        let status = "Name:\tnyan\nVmSize:\t  123456 kB\nVmRSS:\t   2048 kB\n";
         assert_eq!(parse_linux_vm_rss_kib(status), Some(2048));
         assert_eq!(parse_linux_vm_rss_kib("VmSize:\t1 kB\n"), None);
     }

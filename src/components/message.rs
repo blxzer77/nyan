@@ -22,7 +22,7 @@ pub struct MessageProps {
     pub can_animate: bool,
     pub verbose: bool,
     pub is_transcript_mode: bool,
-    /// Cometix extension carriers (user-authorized L2, 2026-07-31; CC verbose
+    /// Nyan extension carriers (user-authorized L2, 2026-07-31; CC verbose
     /// pattern) — prop threading for the two display preferences.
     pub expand_thinking: bool,
     pub expand_collapsed_read_search: bool,
@@ -288,7 +288,7 @@ fn render_assistant(
     use crate::types::message::AssistantContent;
 
     // Maps to: CC `Message.tsx` branching on `message.isApiErrorMessage` — a
-    // message-level field (`types/message.ts:41`). Cometix carries it as the
+    // message-level field (`types/message.ts:41`). Nyan carries it as the
     // `MessageIdentity` content block (`AssistantMessageIdentity`), so the
     // renderer derives it from the message it now holds. `AssistantTextMessage`
     // still recognises the `"API Error"` prefix for rows restored from older

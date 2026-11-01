@@ -206,7 +206,7 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _plan_lock = crate::utils::plans::test_plan_state_lock();
         let temp_dir =
-            std::env::temp_dir().join(format!("cometix-plan-command-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-plan-command-{}", uuid::Uuid::new_v4()));
         let restore = PlanEnvRestore {
             config_dir: Some(EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir)),
             session_id: crate::bootstrap::state::get_session_id(),

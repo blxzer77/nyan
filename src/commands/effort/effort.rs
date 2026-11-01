@@ -439,7 +439,7 @@ mod tests {
     impl EnvGuard {
         fn isolated() -> Self {
             let root = std::env::temp_dir()
-                .join(format!("cometix-effort-command-{}", uuid::Uuid::new_v4()));
+                .join(format!("nyan-effort-command-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&root).unwrap();
             Self {
                 config_dir: Some(EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root)),
@@ -504,7 +504,7 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&settings_path).unwrap()).unwrap();
         assert_eq!(saved["effortLevel"], "low");
 
-        // @cometix: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
+        // @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
         let max = execute_effort("max");
         assert_eq!(
             max.message,
@@ -547,7 +547,7 @@ mod tests {
             execute_effort("high").message,
             "CLAUDE_CODE_EFFORT_LEVEL=low overrides this session — clear it and high takes over"
         );
-        // @cometix: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
+        // @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
         assert_eq!(
             execute_effort("max").message,
             "CLAUDE_CODE_EFFORT_LEVEL=low overrides this session — clear it and max takes over"
@@ -576,7 +576,7 @@ mod tests {
             call("current", &context).into_result().unwrap().message,
             "Effort level: auto (currently high)"
         );
-        // @cometix: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
+        // @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
         let result = call("max", &context).into_result().unwrap();
         assert_eq!(
             result.message,

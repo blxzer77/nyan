@@ -117,8 +117,8 @@ fn filtered_logs(
 /// iocraft has no process exit-code channel on `App`; `app:interrupt` exits
 /// the retained root while preserving the official visible behavior.
 ///
-/// Cometix-specific deviation (product requirement — skip in parity audits):
-/// `app:exit` exits too. Cometix binds Ctrl+C to it (default_bindings.rs),
+/// Nyan-specific deviation (product requirement — skip in parity audits):
+/// `app:exit` exits too. Nyan binds Ctrl+C to it (default_bindings.rs),
 /// and "Press Ctrl+C to exit" stays true, as it is in 2.1.88.
 #[component]
 fn NoConversationsMessage(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
@@ -196,7 +196,7 @@ struct ResumeFailedMessageProps {
     session_id: Option<String>,
 }
 
-/// Cometix-specific deviation (product requirement — skip in parity audits):
+/// Nyan-specific deviation (product requirement — skip in parity audits):
 /// backported from CC 2.1.280's resume-failure message. 2.1.88 logs the
 /// error, rethrows, and stays on "Resuming conversation…" with no way out.
 ///
@@ -396,7 +396,7 @@ pub fn ResumeConversation(
                     Ok(processed) => {
                         // B3 flip-audit SEAM: CC builds this into the
                         // pre-mount initialState spread (sessionRestore.ts:
-                        // 534-550) with no store event; Cometix applies it to
+                        // 534-550) with no store event; Nyan applies it to
                         // the mounted store once per resume selection. A
                         // value-equal root here notifies post-flip (one
                         // idempotent version-counter bump) — no CC updater
@@ -408,7 +408,7 @@ pub fn ResumeConversation(
                         selected_repl_props.set(Some(repl_props));
                     }
                     // CC 2.1.88 :346-353 logs and rethrows, and stays on
-                    // "Resuming conversation…". Cometix-specific deviation
+                    // "Resuming conversation…". Nyan-specific deviation
                     // (skip in parity audits), backported from CC 2.1.280's
                     // onSelect catch: log, then show `ResumeFailedMessage`.
                     Err(error) => {
@@ -676,7 +676,7 @@ mod tests {
         );
     }
 
-    /// Cometix binds Ctrl+C to app:exit; one Ctrl+C (or Ctrl+D) still leaves
+    /// Nyan binds Ctrl+C to app:exit; one Ctrl+C (or Ctrl+D) still leaves
     /// this screen, as its copy says and as 2.1.88's does. The loop ignores
     /// unowned Ctrl+C, as production does.
     #[test]

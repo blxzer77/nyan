@@ -1,7 +1,7 @@
 //! Maps to: CC `components/ManagedSettingsSecurityDialog/ManagedSettingsSecurityDialog.tsx`.
 //!
 //! The official component asks the user to approve organization-managed
-//! settings that can execute code or intercept traffic. Cometix preserves the
+//! settings that can execute code or intercept traffic. Nyan preserves the
 //! component boundary, copy, dangerous-setting list, and accept/reject callback
 //! semantics; it does not exit the process from this UI boundary.
 

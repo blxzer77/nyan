@@ -1105,7 +1105,7 @@ pub(crate) fn AgentVerboseTranscriptBlock(
 }
 
 /// One `VerboseAgentTranscript` row (CC `UI.tsx:303-320` mounts
-/// `MessageComponent` per message; Cometix derives a typed row per content
+/// `MessageComponent` per message; Nyan derives a typed row per content
 /// block and mounts the same leaf component `Message.tsx` would dispatch to —
 /// see [`AgentVerboseTranscriptBlock`]).
 ///
@@ -1141,7 +1141,7 @@ enum AgentVerboseProgressRow {
 
 /// Maps to: CC `tools/AgentTool/UI.tsx:271-320` `VerboseAgentTranscript` — the
 /// filter at `:288-299` plus the per-message `MessageComponent` mount at
-/// `:303-320`, projected onto Cometix's row enum.
+/// `:303-320`, projected onto Nyan's row enum.
 ///
 /// CC's filter drops a user progress row whose MESSAGE has no `toolUseResult`
 /// ("Subagent progress messages don't carry the parsed tool output, so
@@ -1214,7 +1214,7 @@ fn agent_verbose_progress_rows(
 
 // ─── Tool result renderer ────────────────────────────────────────────────
 // Maps to: CC `tools/AgentTool/UI.tsx:325+#renderToolResultMessage` — ONE
-// upstream renderer that Cometix splits into two halves, because this port has
+// upstream renderer that Nyan splits into two halves, because this port has
 // two result pipelines where CC has only React nodes:
 //   * [`render_tool_result_message`] — the element half, mounted by the
 //     generic success leaf (`UserToolSuccessMessage.tsx:86-99`
@@ -1273,7 +1273,7 @@ pub(crate) fn render_tool_result_message(
     match agent_status.as_str() {
         "remote_launched" => {
             // CC `:346-353`: `Remote agent launched ` in normal text, then a
-            // dim `· {taskId} · {sessionUrl}` tail. Cometix keeps its existing
+            // dim `· {taskId} · {sessionUrl}` tail. Nyan keeps its existing
             // defensive per-field omission where CC interpolates the required
             // fields unconditionally.
             let mut detail = String::new();

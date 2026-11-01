@@ -1100,7 +1100,7 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _env = TEST_ENV_LOCK.lock().unwrap();
         let home =
-            std::env::temp_dir().join(format!("cometix-plugin-burst-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-plugin-burst-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&home).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &home);
         for (paste, query) in [

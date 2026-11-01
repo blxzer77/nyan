@@ -251,7 +251,7 @@ mod tests {
             }
         }
         let root =
-            TestDir(std::env::temp_dir().join(format!("cometix-refresh-{}", uuid::Uuid::new_v4())));
+            TestDir(std::env::temp_dir().join(format!("nyan-refresh-{}", uuid::Uuid::new_v4())));
         let config = root.path().join("config");
         std::fs::create_dir_all(&config).unwrap();
         let _env = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config);

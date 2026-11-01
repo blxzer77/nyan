@@ -1,7 +1,7 @@
 //! Maps to: CC `components/ConfigurableShortcutHint.tsx`.
 //!
 //! Runtime boundary: the official component calls `useShortcutDisplay(action,
-//! context, fallback)` to read the keybinding registry. Cometix reads the same
+//! context, fallback)` to read the keybinding registry. Nyan reads the same
 //! injected runtime snapshot; provider-less render tests fall back to the static
 //! default table without loading config from the retained frame.
 

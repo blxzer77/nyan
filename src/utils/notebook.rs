@@ -474,7 +474,7 @@ mod tests {
 
     fn temp_notebook(name: &str, content: &str) -> (std::path::PathBuf, std::path::PathBuf) {
         let root = std::env::temp_dir().join(format!(
-            "cometix-notebook-{name}-{}",
+            "nyan-notebook-{name}-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

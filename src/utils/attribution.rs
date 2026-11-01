@@ -19,7 +19,7 @@ pub struct AttributionTexts {
 /// CC branches not reachable in this build, kept as documented seams:
 /// - `USER_TYPE === 'ant' && isUndercover()` → empty texts. `utils/undercover.ts`
 ///   is internal-only and unported; external builds never take this branch.
-/// - `getClientType() === 'remote'` → session URL. Cometix has no remote client
+/// - `getClientType() === 'remote'` → session URL. Nyan has no remote client
 ///   runtime (CC `remote/` is unported), so the branch is skipped.
 pub fn get_attribution_texts() -> AttributionTexts {
     // @[MODEL LAUNCH]: CC updates the hardcoded fallback model name below

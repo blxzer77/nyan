@@ -188,7 +188,7 @@ pub fn emit_hook_progress(event: HookProgressEvent) {
 
 /// Maps to: CC `emitHookResponse(...)`.
 pub fn emit_hook_response(event: HookResponseEvent) {
-    // CC always writes full hook output to debug logs here. Cometix keeps that
+    // CC always writes full hook output to debug logs here. Nyan keeps that
     // observability boundary for future tracing integration but does not emit
     // telemetry/analytics from this module.
     emit(HookExecutionEvent::Response(event));

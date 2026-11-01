@@ -308,7 +308,7 @@ mod tests {
     fn local_settings_write_preserves_unrelated_fields_like_update_settings_for_source() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!(
-            "cometix-mcp-approval-write-{}",
+            "nyan-mcp-approval-write-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(temp_dir.join(".claude")).unwrap();

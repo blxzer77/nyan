@@ -273,7 +273,7 @@ pub fn unregister_leader_set_tool_permission_context() {
 /// they share a mount boundary and an owner.
 ///
 /// The Rust-only part is Drop: CC's process-lifetime REPL never really
-/// unregisters, while an unmounted Cometix REPL must clear the slots so a
+/// unregisters, while an unmounted Nyan REPL must clear the slots so a
 /// producer reaching the bridge afterwards finds `None` (CC's null branch:
 /// mailbox fallback for a teammate, no sweep for a context write) instead of
 /// pushing rows into a queue nothing renders. Precedent:

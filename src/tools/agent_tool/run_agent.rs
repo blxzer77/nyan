@@ -2337,7 +2337,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
         let root = std::env::temp_dir().join(format!(
-            "cometix-agent-system-memory-{}",
+            "nyan-agent-system-memory-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let memory_dir = root.join(".claude/agent-memory/reviewer");
@@ -2370,7 +2370,7 @@ mod tests {
             AgentDefinitionSource::ProjectSettings,
         );
         let cwd = std::env::temp_dir().join(format!(
-            "cometix-agent-env-cwd-{}",
+            "nyan-agent-env-cwd-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&cwd).unwrap();
@@ -2724,7 +2724,7 @@ mod tests {
     #[test]
     fn preloads_agent_frontmatter_skills_like_official_run_agent() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-agent-skill-preload-{}",
+            "nyan-agent-skill-preload-{}",
             uuid::Uuid::new_v4()
         ));
         let skills_dir = root.join(".claude").join("skills");
@@ -2805,7 +2805,7 @@ mod tests {
         crate::skills::load_skills_dir::clear_dynamic_skills();
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-agent-dynamic-skill-preload-{}",
+            "nyan-agent-dynamic-skill-preload-{}",
             uuid::Uuid::new_v4()
         ));
         // Nested under a package dir, i.e. NOT on the cwd→home walk
@@ -2855,7 +2855,7 @@ mod tests {
     #[test]
     fn preloads_agent_plugin_skill_by_prefix_and_suffix_like_official_run_agent() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-agent-plugin-skill-preload-{}",
+            "nyan-agent-plugin-skill-preload-{}",
             uuid::Uuid::new_v4()
         ));
         let skills_dir = root.join(".claude").join("skills");
@@ -2900,7 +2900,7 @@ mod tests {
     fn agent_mcp_initialization_skips_user_frontmatter_when_policy_locks_mcp() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-agent-mcp-policy-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-agent-mcp-policy-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
             root.join("managed-settings.json"),
@@ -3080,7 +3080,7 @@ mod tests {
                     ..fixture.config(&[])
                 };
                 let broken = crate::services::mcp::types::ScopedMcpServerConfig {
-                    command: Some("cometix-definitely-not-a-command".to_string()),
+                    command: Some("nyan-definitely-not-a-command".to_string()),
                     args: Vec::new(),
                     ..config.clone()
                 };
@@ -3221,7 +3221,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let managed_dir =
-            std::env::temp_dir().join(format!("cometix-agent-mcp-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-agent-mcp-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&managed_dir).unwrap();
         let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &managed_dir);
         crate::utils::settings::settings_cache::reset_settings_cache();
@@ -3912,7 +3912,7 @@ mod tests {
 
     fn read_file_state_root(label: &str) -> std::path::PathBuf {
         let root = std::env::temp_dir().join(format!(
-            "cometix-agent-read-state-{label}-{}",
+            "nyan-agent-read-state-{label}-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -4559,7 +4559,7 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
 
         struct PersistenceRestore(bool);
@@ -4574,7 +4574,7 @@ mod tests {
         assert!(is_session_write_enabled());
 
         let root =
-            std::env::temp_dir().join(format!("cometix-agent-delta-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-agent-delta-{}", uuid::Uuid::new_v4()));
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let cwd = root.join("project");
         std::fs::create_dir_all(&cwd).unwrap();
@@ -4730,7 +4730,7 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         // The one attachment CC does hand to the writer is `initialMessages`'
         // trailing hook context, and only behind this flag off-`ant`. Nothing
@@ -4750,7 +4750,7 @@ mod tests {
         assert!(is_session_write_enabled());
 
         let root =
-            std::env::temp_dir().join(format!("cometix-agent-recordable-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-agent-recordable-{}", uuid::Uuid::new_v4()));
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let cwd = root.join("project");
         std::fs::create_dir_all(&cwd).unwrap();
@@ -4969,7 +4969,7 @@ mod input_contract_tests {
         let previous = crate::utils::process_env::var("CLAUDE_CODE_DISABLE_AUTO_MEMORY");
         crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
         let root =
-            std::env::temp_dir().join(format!("cometix-agent-input-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-agent-input-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let context = ToolUseContext::default().with_cwd_override(Some(root.clone()));
         let mut agent =
@@ -5007,7 +5007,7 @@ mod input_contract_tests {
         crate::utils::tls_provider::install_crypto_provider();
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-agent-input-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-agent-input-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         struct Fixture {
             root: std::path::PathBuf,
@@ -5330,7 +5330,7 @@ mod input_contract_tests {
     }
     #[test]
     fn background_agent_plugin_preparation_keeps_published_current_thread_live() {
-        const CHILD: &str = "COMETIX_BACKGROUND_AGENT_PLUGIN_CHILD";
+        const CHILD: &str = "NYAN_BACKGROUND_AGENT_PLUGIN_CHILD";
         if let Some(root) = crate::utils::process_env::var_os(CHILD) {
             assert!(crate::utils::process_runtime::process_runtime_handle().is_none());
             let root = std::path::PathBuf::from(root);

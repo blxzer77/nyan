@@ -1816,7 +1816,7 @@ mod tests {
     impl CompactTestDir {
         fn new() -> Self {
             let path =
-                std::env::temp_dir().join(format!("cometix-post-compact-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("nyan-post-compact-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&path).unwrap();
             Self(path)
         }

@@ -1,7 +1,7 @@
 //! Maps to: CC `utils/permissions/bashClassifier.ts`.
 //!
 //! In the external Claude Code build this module is an explicit disabled stub
-//! (`classifier permissions feature is ANT-ONLY`). Cometix follows that safe
+//! (`classifier permissions feature is ANT-ONLY`). Nyan follows that safe
 //! behavior for now: prompt-rule helpers preserve the public string shape, but
 //! no classifier API call is made and classifier permission gates report
 //! disabled. A future ant/internal classifier port should replace only the

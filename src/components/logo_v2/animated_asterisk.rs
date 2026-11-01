@@ -1,7 +1,7 @@
 //! Maps to: CC `components/LogoV2/AnimatedAsterisk.tsx`.
 //!
 //! Official uses the shared animation-frame clock for a two-pass hue sweep and
-//! settles to grey. Cometix keeps the component boundary and settled rendering;
+//! settles to grey. nyan keeps the component boundary and settled rendering;
 //! live hue animation remains deferred until LogoV2 onboarding notices are
 //! wired into the shared animation clock.
 

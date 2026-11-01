@@ -336,7 +336,7 @@ mod tests {
 
     fn temp_notebook(name: &str, cells: serde_json::Value) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!(
-            "cometix-notebook-edit-tool-diff-{name}-{}.ipynb",
+            "nyan-notebook-edit-tool-diff-{name}-{}.ipynb",
             std::process::id()
         ));
         let content = serde_json::json!({
@@ -445,7 +445,7 @@ mod tests {
     #[test]
     fn notebook_edit_tool_diff_insert_and_missing_notebook_show_new_source() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-notebook-edit-tool-diff-missing-{}.ipynb",
+            "nyan-notebook-edit-tool-diff-missing-{}.ipynb",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);
@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn notebook_edit_tool_diff_caps_background_preview_reads() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-notebook-edit-preview-cap-{}.ipynb",
+            "nyan-notebook-edit-preview-cap-{}.ipynb",
             uuid::Uuid::new_v4().simple()
         ));
         let mut content = br#"{"cells":[]}"#.to_vec();
@@ -475,7 +475,7 @@ mod tests {
     #[test]
     fn notebook_edit_tool_diff_does_not_block_render_on_fifo() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-notebook-edit-preview-fifo-{}.ipynb",
+            "nyan-notebook-edit-preview-fifo-{}.ipynb",
             uuid::Uuid::new_v4().simple()
         ));
         let c_path = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()).unwrap();

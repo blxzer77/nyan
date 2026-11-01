@@ -479,7 +479,7 @@ mod tests {
         );
 
         let outside = std::env::temp_dir().join(format!(
-            "cometix-deny-target-{}",
+            "nyan-deny-target-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(outside.join("blocked")).unwrap();
@@ -507,7 +507,7 @@ mod tests {
     #[test]
     fn glob_absolute_patterns_and_offset_limits_match_official_slicing() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-utils-glob-{}",
+            "nyan-utils-glob-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(root.join("nested")).unwrap();
@@ -545,7 +545,7 @@ mod tests {
     #[test]
     fn glob_sorts_by_modification_time_oldest_first() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-utils-glob-sort-{}",
+            "nyan-utils-glob-sort-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -580,7 +580,7 @@ mod tests {
     #[test]
     fn glob_supports_official_ripgrep_wildcards_braces_and_literals() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-utils-glob-patterns-{}",
+            "nyan-utils-glob-patterns-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(root.join("nested")).unwrap();
@@ -634,7 +634,7 @@ mod tests {
         let keys = ["CLAUDE_CODE_GLOB_NO_IGNORE", "CLAUDE_CODE_GLOB_HIDDEN"];
         let _restore = keys.map(EnvVarGuard::preserve);
         let root = std::env::temp_dir().join(format!(
-            "cometix-utils-glob-env-{}",
+            "nyan-utils-glob-env-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(root.join(".git")).unwrap();

@@ -354,7 +354,7 @@ pub fn build_memory_prompt(
 
 /// Maps to CC `memdir/memdir.ts` `logMemoryDirCounts(...)`.
 ///
-/// Upstream logs analytics asynchronously. Cometix does not have the analytics
+/// Upstream logs analytics asynchronously. Nyan does not have the analytics
 /// service ported, so this records equivalent metadata through `tracing::debug!`
 /// and never affects prompt construction.
 fn log_memory_dir_counts(memory_dir: &Path, truncation: &EntrypointTruncation, memory_type: &str) {
@@ -376,7 +376,7 @@ fn log_memory_dir_counts(memory_dir: &Path, truncation: &EntrypointTruncation, m
     }
 
     tracing::debug!(
-        target: "cometix::memdir",
+        target: "nyan::memdir",
         memory_dir = %memory_dir.display(),
         memory_type,
         content_length = truncation.byte_count,
@@ -829,7 +829,7 @@ mod tests {
     fn build_memory_lines_matches_official_auto_memory_shape() {
         let lines = build_memory_lines(
             AUTO_MEM_DISPLAY_NAME,
-            &PathBuf::from("/tmp/cometix-memory"),
+            &PathBuf::from("/tmp/nyan-memory"),
             None,
             false,
         );
@@ -850,7 +850,7 @@ mod tests {
     fn build_memory_lines_skip_index_matches_official_gate_shape() {
         let lines = build_memory_lines(
             AUTO_MEM_DISPLAY_NAME,
-            &PathBuf::from("/tmp/cometix-memory"),
+            &PathBuf::from("/tmp/nyan-memory"),
             None,
             true,
         );
@@ -863,32 +863,32 @@ mod tests {
     #[test]
     fn build_searching_past_context_section_matches_official_grep_shape() {
         let lines = build_searching_past_context_section_for(
-            &PathBuf::from("/tmp/cometix-memory"),
-            &PathBuf::from("/tmp/cometix-project-logs"),
+            &PathBuf::from("/tmp/nyan-memory"),
+            &PathBuf::from("/tmp/nyan-project-logs"),
             false,
         );
         let prompt = lines.join("\n");
 
         assert!(prompt.starts_with("## Searching past context"));
         assert!(prompt.contains("Grep with pattern=\"<search term>\""));
-        assert!(prompt.contains("path=\"/tmp/cometix-memory/\" glob=\"*.md\""));
-        assert!(prompt.contains("path=\"/tmp/cometix-project-logs/\" glob=\"*.jsonl\""));
+        assert!(prompt.contains("path=\"/tmp/nyan-memory/\" glob=\"*.md\""));
+        assert!(prompt.contains("path=\"/tmp/nyan-project-logs/\" glob=\"*.jsonl\""));
     }
 
     #[test]
     fn build_searching_past_context_section_supports_embedded_search_shape() {
         let lines = build_searching_past_context_section_for(
-            &PathBuf::from("/tmp/cometix-memory"),
-            &PathBuf::from("/tmp/cometix-project-logs"),
+            &PathBuf::from("/tmp/nyan-memory"),
+            &PathBuf::from("/tmp/nyan-project-logs"),
             true,
         );
         let prompt = lines.join("\n");
 
         assert!(
-            prompt.contains("grep -rn \"<search term>\" /tmp/cometix-memory/ --include=\"*.md\"")
+            prompt.contains("grep -rn \"<search term>\" /tmp/nyan-memory/ --include=\"*.md\"")
         );
         assert!(prompt.contains(
-            "grep -rn \"<search term>\" /tmp/cometix-project-logs/ --include=\"*.jsonl\""
+            "grep -rn \"<search term>\" /tmp/nyan-project-logs/ --include=\"*.jsonl\""
         ));
     }
 
@@ -992,7 +992,7 @@ mod tests {
 
     fn temp_memory_dir(name: &str) -> PathBuf {
         let dir =
-            std::env::temp_dir().join(format!("cometix-memdir-{name}-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-memdir-{name}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }

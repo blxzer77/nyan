@@ -23,13 +23,13 @@ pub struct StartupDiagnosticsSnapshot {
     /// These are display-only; no config/session files are rewritten.
     pub settings_errors: Vec<crate::utils::settings::ValidationError>,
     /// Already-known native installer warnings for Settings/Status diagnostics.
-    /// Cometix does not run installer probes from the main-screen UI.
+    /// Nyan does not run installer probes from the main-screen UI.
     pub installation_diagnostics: Vec<String>,
     /// Already-known doctor warnings for Settings/Status diagnostics.
-    /// Cometix does not run external doctor probes from the main-screen UI.
+    /// Nyan does not run external doctor probes from the main-screen UI.
     pub doctor_diagnostics: Vec<String>,
     /// Already-known IDE installation status for Settings/Status summaries.
-    /// Cometix never installs IDE extensions from Status.
+    /// Nyan never installs IDE extensions from Status.
     pub ide_installation_status: Option<crate::utils::ide::IDEExtensionInstallationStatus>,
 }
 
@@ -218,7 +218,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let cert = std::env::temp_dir().join(format!(
-            "cometix-status-cert-{}",
+            "nyan-status-cert-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::write(&cert, "certificate").unwrap();
@@ -264,7 +264,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = std::env::temp_dir().join(format!(
-            "cometix-status-account-{}",
+            "nyan-status-account-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();

@@ -73,7 +73,7 @@ mod tests {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let root = std::env::temp_dir().join(format!("cometix-ca-config-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-ca-config-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
             root.join("settings.json"),

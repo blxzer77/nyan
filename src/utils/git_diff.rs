@@ -658,7 +658,7 @@ mod tests {
     #[tokio::test]
     async fn single_file_diff_covers_tracked_and_untracked_files_without_network() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-single-file-git-diff-{}",
+            "nyan-single-file-git-diff-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

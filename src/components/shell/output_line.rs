@@ -110,7 +110,7 @@ pub fn OutputLine(props: &OutputLineProps, mut hooks: Hooks) -> impl Into<AnyEle
         None
     };
     // Already line-folded content — use NoWrap so soft re-wrap cannot push
-    // past the Bash/PowerShell success fold limit (Cometix: 6 visual lines).
+    // past the Bash/PowerShell success fold limit (Nyan: 6 visual lines).
     element! {
         MessageResponse {
             View(flex_direction: FlexDirection::Column) {

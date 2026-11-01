@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn extract_read_files_records_write_content_and_refreshes_edit_from_disk() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-resume-edit-state-{}",
+            "nyan-resume-edit-state-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

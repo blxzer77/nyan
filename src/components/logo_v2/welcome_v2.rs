@@ -15,7 +15,7 @@ const WELCOME_MESSAGE: &str = "Welcome to Claude Code";
 #[derive(Default, Props)]
 pub struct WelcomeV2Props {
     /// Test/runtime override for the official theme-name branch. When omitted,
-    /// Cometix uses its current default dark theme until theme-name context is
+    /// nyan uses its current default dark theme until theme-name context is
     /// promoted alongside the existing `Theme` color context.
     pub theme_name: Option<ThemeName>,
     pub version: Option<String>,
@@ -179,7 +179,7 @@ mod tests {
         assert!(text.contains("█████▓▓░"), "canvas=\n{text}");
         assert!(text.contains("██▄█████▄██"), "canvas=\n{text}");
         assert!(text.contains("█ █   █ █"), "canvas=\n{text}");
-        assert!(!text.contains("Cometix Code"), "canvas=\n{text}");
+        assert!(!text.contains("nyan"), "canvas=\n{text}");
     }
 
     #[test]

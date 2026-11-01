@@ -303,7 +303,7 @@ pub const FILE_NOT_FOUND_CWD_NOTE: &str = "Note: your current working directory 
 
 /// Maps to CC `utils/file.ts:278-285` `isCompactLinePrefixEnabled()`.
 pub fn is_compact_line_prefix_enabled() -> bool {
-    // 3P default: killswitch off = compact format enabled. Cometix resolves the
+    // 3P default: killswitch off = compact format enabled. Nyan resolves the
     // killswitch from the source-controlled switch table instead of GrowthBook.
     !crate::utils::feature_flags::feature_enabled(
         crate::utils::feature_flags::FeatureFlag::CompactLinePrefixKillswitch,
@@ -493,7 +493,7 @@ mod tests {
     fn flushed_atomic_write_follows_symlink_without_replacing_link() {
         use std::os::unix::fs::{PermissionsExt as _, symlink};
         let root = std::env::temp_dir().join(format!(
-            "cometix-file-atomic-symlink-{}",
+            "nyan-file-atomic-symlink-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -532,7 +532,7 @@ mod tests {
     fn atomic_write_follows_dangling_direct_symlink_and_creates_target() {
         use std::os::unix::fs::symlink;
         let root = std::env::temp_dir().join(format!(
-            "cometix-file-atomic-dangling-{}",
+            "nyan-file-atomic-dangling-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -557,7 +557,7 @@ mod tests {
         use std::os::unix::fs::symlink;
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-file-atomic-hostile-links-{}",
+            "nyan-file-atomic-hostile-links-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -585,7 +585,7 @@ mod tests {
     fn atomic_replace_failure_falls_back_to_flushed_direct_write() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-file-atomic-fallback-{}",
+            "nyan-file-atomic-fallback-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -610,7 +610,7 @@ mod tests {
         use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::{Arc, Mutex};
         let root = std::env::temp_dir().join(format!(
-            "cometix-file-atomic-reader-{}",
+            "nyan-file-atomic-reader-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -651,7 +651,7 @@ mod tests {
     fn failed_atomic_and_direct_write_cleans_temporary_file() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-file-atomic-cleanup-{}",
+            "nyan-file-atomic-cleanup-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let target = root.join("target-dir");
@@ -674,7 +674,7 @@ mod tests {
     #[test]
     fn edit_path_suggestions_match_similar_extension_and_dropped_repo_patterns() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-edit-path-suggestion-{}",
+            "nyan-edit-path-suggestion-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let cwd = root.join("repository");
@@ -703,7 +703,7 @@ mod tests {
         }
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _restore = OriginalCwdRestore(crate::bootstrap::state::get_original_cwd());
-        let cwd = std::env::temp_dir().join("cometix-display-path-cwd");
+        let cwd = std::env::temp_dir().join("nyan-display-path-cwd");
         let _ = std::fs::create_dir_all(cwd.join("src"));
         crate::bootstrap::state::set_original_cwd(&cwd);
 

@@ -94,7 +94,7 @@ pub fn tool_use_confirm_for_request(
 ///
 /// The entry reaches the REPL through the bridge setter
 /// (`utils/swarm/leaderPermissionBridge.ts#SetToolUseConfirmQueueFn`) because
-/// Cometix evaluates permissions on query-actor threads while CC's closure runs
+/// Nyan evaluates permissions on query-actor threads while CC's closure runs
 /// in-component and can call `setToolUseConfirmQueue` directly. It is the
 /// ordinary `ToolUseConfirm`, in the ordinary queue, appended by the ordinary
 /// updater — the same setter `inProcessRunner.ts:223` pushes through.

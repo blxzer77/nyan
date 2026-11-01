@@ -1,7 +1,7 @@
 //! Maps to: CC `components/IdeOnboardingDialog.tsx`.
 //!
 //! Safety boundary: official `markDialogAsShown()` writes
-//! `hasIdeOnboardingBeenShown[terminal] = true` while rendering. Cometix keeps
+//! `hasIdeOnboardingBeenShown[terminal] = true` while rendering. Nyan keeps
 //! the visible onboarding UI and emits a one-shot `on_mark_shown(terminal)`
 //! callback for future runtime wiring; it does not write global config.
 

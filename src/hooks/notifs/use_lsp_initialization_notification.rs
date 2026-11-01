@@ -1,6 +1,6 @@
 //! Maps to: CC `hooks/notifs/useLspInitializationNotification.tsx`.
 //!
-//! Cometix keeps this as a pure notification seam. It models the official
+//! Nyan keeps this as a pure notification seam. It models the official
 //! visible payload for already-known LSP manager/server errors, but it does not
 //! start or poll LSP servers, mutate plugin state, or write settings/session
 //! data.
@@ -114,7 +114,7 @@ pub fn lsp_initialization_poll_outcome_from_status(
 /// `useInterval(poll, shouldPoll ? LSP_POLL_INTERVAL_MS : null)` at `:134`.
 /// CC calls it from `screens/REPL.tsx`, so the polling starts at REPL mount.
 ///
-/// Cometix previously ran the same loop from a `tokio::spawn` in `main.rs`
+/// Nyan previously ran the same loop from a `tokio::spawn` in `main.rs`
 /// issued before `render_loop()`, which raced `AppStateProvider`'s
 /// `bind_on_change`: an LSP notification landing first was silent where CC's
 /// notifies. Owning it here, called from `Repl`, makes the ordering structural
@@ -132,7 +132,7 @@ pub fn use_lsp_initialization_notification(
 
     hooks.use_future(async move {
         // CC gates the interval on `shouldPoll` (`:134`), whose inputs
-        // (bootstrap remote-mode, scroll-drain) Cometix does not expose yet —
+        // (bootstrap remote-mode, scroll-drain) Nyan does not expose yet —
         // see `poll_lsp_initialization_notifications`. Until it does, the
         // build gate that guarded this loop while it lived in `main.rs` is
         // preserved: component harnesses must not start a real LSP poll, which
@@ -162,7 +162,7 @@ pub fn poll_lsp_initialization_notifications(
     notified_errors: &mut HashSet<String>,
 ) -> LspInitializationPollOutcome {
     // Maps to: CC `getInitializationStatus()` + `getLspServerManager().getAllServers()`.
-    // Cometix does not currently expose the bootstrap remote-mode or scroll-drain
+    // Nyan does not currently expose the bootstrap remote-mode or scroll-drain
     // flags used as fast skip guards by the React hook, so polling remains cheap
     // and read-only here.
     let status = crate::services::lsp::manager::get_initialization_status();

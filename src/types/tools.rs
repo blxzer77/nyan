@@ -68,9 +68,9 @@ pub enum ToolProgress {
     /// Maps to CC `skill_progress` (`SkillTool.ts:250-258`) — the same literal
     /// with a different `type` tag.
     ///
-    /// Seam: no Rust producer. Cometix's forked-skill path delegates to
+    /// Seam: no Rust producer. Nyan's forked-skill path delegates to
     /// `run_agent`, which emits `agent_progress`; CC's SkillTool owns a second
-    /// message loop (`SkillTool.ts:239-261`) that Cometix has not ported.
+    /// message loop (`SkillTool.ts:239-261`) that Nyan has not ported.
     SkillProgress {
         /// See [`ToolProgress::AgentProgress::parent_tool_use_id`].
         parent_tool_use_id: ToolUseId,

@@ -1,6 +1,6 @@
 //! Maps to: CC `components/PromptInput/PromptInputFooter.tsx`.
 //!
-//! Cometix keeps this footer in normal document flow for the main-screen /
+//! Nyan keeps this footer in normal document flow for the main-screen /
 //! native-scrollback path. It mirrors the official row ordering (optional
 //! status line, then left-side mode/hints plus right-side notifications) while
 //! keeping status-line command execution as the only command-hook special case,
@@ -797,14 +797,14 @@ mod tests {
             .render(Some(100))
             .to_string();
 
-        // Cometix-specific deviation (product requirement — skip in parity
-        // audits): CC renders "accept edits on"; Cometix drops the " on".
+        // Nyan-specific deviation (product requirement — skip in parity
+        // audits): CC renders "accept edits on"; Nyan drops the " on".
         assert!(text.contains("⏵⏵ accept edits"), "canvas=\n{text}");
         assert!(!text.contains("accept edits on"), "canvas=\n{text}");
         assert!(text.contains("shift+tab to cycle"), "canvas=\n{text}");
-        // Cometix-specific deviation (product requirement — skip in parity
+        // Nyan-specific deviation (product requirement — skip in parity
         // audits): CC appends "esc to interrupt" while loading
-        // (PromptInputFooterLeftSide hintParts); Cometix does not clone it.
+        // (PromptInputFooterLeftSide hintParts); Nyan does not clone it.
         assert!(!text.contains("esc to interrupt"), "canvas=\n{text}");
         assert!(!text.contains("? for shortcuts"), "canvas=\n{text}");
     }

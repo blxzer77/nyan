@@ -989,7 +989,7 @@ pub fn figures() -> &'static FigureSet {
     }
 }
 
-/// Alias matching the rest of Cometix helper naming.
+/// Alias matching the rest of Nyan helper naming.
 pub fn get() -> &'static FigureSet {
     figures()
 }
@@ -1077,7 +1077,7 @@ pub const BRIDGE_READY_INDICATOR: &str = "·✔︎·";
 pub const BRIDGE_FAILED_INDICATOR: &str = "×";
 pub const BRIDGE_SPINNER_FRAMES: &[&str] = &["·|·", "·/·", "·—·", "·\\·"];
 
-// Backward-compatible Cometix aliases. Prefer `figures().pointer`, etc. in new code.
+// Backward-compatible Nyan aliases. Prefer `figures().pointer`, etc. in new code.
 pub const PROMPT_CHAR: &str = ">";
 pub const ASSISTANT_MARKER: &str = "◆";
 pub const SYSTEM_MARKER: &str = "●";

@@ -2,7 +2,7 @@
 //!
 //! Official ConsoleOAuthFlow owns OAuth service lifecycle, browser launch,
 //! clipboard writes, token installation, notifications, analytics, and keychain
-//! writes. Cometix keeps this slice render-only: status is provided as props and
+//! writes. Nyan keeps this slice render-only: status is provided as props and
 //! no external OAuth/login side effects are executed.
 
 use crate::components::custom_select::{Select, SelectLayout, SelectOptionData};

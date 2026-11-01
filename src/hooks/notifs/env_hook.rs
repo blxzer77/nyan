@@ -2,7 +2,7 @@
 //! `components/PromptInput/Notifications.tsx`.
 //!
 //! Official Claude Code lets cwd/file-change hook feedback enqueue an `env-hook`
-//! footer notification. Cometix keeps this as a pure payload constructor over
+//! footer notification. Nyan keeps this as a pure payload constructor over
 //! already-known hook feedback; it does not register file watchers, run hooks, or
 //! write settings/session data.
 

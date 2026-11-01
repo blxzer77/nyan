@@ -1,5 +1,5 @@
 [package]
-name = "cometix-code"
+name = "nyan"
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.99"
@@ -11,12 +11,12 @@ license = "AGPL-3.0-only"
 autobins = false
 
 [lib]
-name = "cometix_code"
+name = "nyan"
 path = "src/lib.rs"
 
 [[bin]]
-name = "cometix"
-path = "src/bin/cometix.rs"
+name = "nyan"
+path = "src/bin/nyan.rs"
 
 [features]
 # L1 replacement for CC runtime `process.env.USER_TYPE === 'ant'` gates.
@@ -52,7 +52,7 @@ anthropic-sdk-vertex = { git = "https://github.com/Haleclipse/anthropic-sdk-rs" 
 anthropic-sdk-foundry = { git = "https://github.com/Haleclipse/anthropic-sdk-rs", features = ["azure-identity"] }
 # CC's `@anthropic-ai/bedrock-sdk`, with the crate's port of its default
 # credential chain (`@aws-sdk/credential-providers`' `fromNodeProviderChain`),
-# which Cometix runs on the carrier and its own transport.
+# which nyan runs on the carrier and its own transport.
 anthropic-sdk-bedrock = { git = "https://github.com/Haleclipse/anthropic-sdk-rs" }
 
 # Async runtime: tokio for API/network/process I/O. iocraft's render loop is
@@ -145,7 +145,7 @@ http = "1"
 # Shared features only — do not put native-tls / rustls here or both platforms
 # get a feature union and native-tls always wins.
 flate2 = "1.1.9"
-# Cometix-specific deviation: `system-proxy`, as in Codex's reqwest default.
+# nyan-specific deviation: `system-proxy`, as in Codex's reqwest default.
 # CC reads only the proxy environment variables (`utils/proxy.ts:64-66`), and
 # Node has no notion of the OS proxy. With this feature, a "set as system
 # proxy" tool works with no configuration. The feature changes reqwest's

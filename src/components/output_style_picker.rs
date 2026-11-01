@@ -340,7 +340,7 @@ mod tests {
     fn output_style_options_for_cwd_include_custom_markdown_styles() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-output-style-picker-{}",
+            "nyan-output-style-picker-{}",
             uuid::Uuid::new_v4()
         ));
         let cwd = root.join("repo");

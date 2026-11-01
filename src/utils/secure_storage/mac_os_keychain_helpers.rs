@@ -167,7 +167,7 @@ mod tests {
             "Claude Code-credentials"
         );
         drop(_config);
-        let custom_dir = std::path::Path::new("/tmp/cometix-claude-config");
+        let custom_dir = std::path::Path::new("/tmp/nyan-claude-config");
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", custom_dir);
         assert_eq!(
             get_mac_os_keychain_storage_service_name(CREDENTIALS_SERVICE_SUFFIX).unwrap(),

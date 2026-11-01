@@ -649,14 +649,14 @@ mod tests {
     fn additional_working_directories_are_honored_for_read_validation() {
         let mut context = ToolPermissionContext::default();
         context.additional_working_directories.insert(
-            "/tmp/cometix-extra".to_string(),
+            "/tmp/nyan-extra".to_string(),
             crate::types::permissions::AdditionalWorkingDirectory {
-                path: "/tmp/cometix-extra".to_string(),
+                path: "/tmp/nyan-extra".to_string(),
                 source: PermissionRuleSource::Session,
             },
         );
         let result = is_path_allowed(
-            "/tmp/cometix-extra/file.txt",
+            "/tmp/nyan-extra/file.txt",
             &context,
             FileOperationType::Read,
             None,

@@ -1322,7 +1322,7 @@ mod tests {
     #[test]
     fn path_constraints_pass_allowed_dir_and_block_outside_redirection() {
         let allowed =
-            std::env::temp_dir().join(format!("cometix-path-{}", uuid::Uuid::new_v4().simple()));
+            std::env::temp_dir().join(format!("nyan-path-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&allowed).unwrap();
         let context = context_with_allowed_dir(&allowed);
         let cwd = allowed.display().to_string();
@@ -1334,7 +1334,7 @@ mod tests {
         ));
 
         let outside =
-            std::env::temp_dir().join(format!("cometix-outside-{}", uuid::Uuid::new_v4().simple()));
+            std::env::temp_dir().join(format!("nyan-outside-{}", uuid::Uuid::new_v4().simple()));
         let outside_file = outside.join("out.txt");
         let result = check_path_constraints(
             &format!("echo hi > {}", outside_file.display()),
@@ -1383,11 +1383,11 @@ mod tests {
     #[test]
     fn ast_path_constraints_validate_redirects_and_wrapped_commands() {
         let allowed = std::env::temp_dir().join(format!(
-            "cometix-ast-path-{}",
+            "nyan-ast-path-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let outside = std::env::temp_dir().join(format!(
-            "cometix-ast-path-outside-{}",
+            "nyan-ast-path-outside-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&allowed).unwrap();

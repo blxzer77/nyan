@@ -1,7 +1,7 @@
 //! Maps to: CC `utils/preflightChecks.tsx`:1-158.
 //!
 //! The official module performs network checks against Anthropic/OAuth
-//! endpoints and exits the process on failure. Cometix keeps this slice
+//! endpoints and exits the process on failure. Nyan keeps this slice
 //! render-only: callers pass an already-known result, and this module never
 //! performs network I/O, process exit, analytics, or logging side effects.
 

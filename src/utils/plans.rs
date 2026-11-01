@@ -413,7 +413,7 @@ mod tests {
     impl PlanFixtureDirectory {
         fn new() -> Self {
             let path =
-                std::env::temp_dir().join(format!("cometix-branch-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("nyan-branch-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&path).unwrap();
             Self(path)
         }
@@ -848,7 +848,7 @@ mod tests {
         let _plan_lock = test_plan_state_lock();
         // Session storage's test profile defaults to read-only. Enable the
         // actual writer so this exercises CC plans.ts:392-393 recordTranscript.
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let temp = PlanFixtureDirectory::new();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", temp.path());
         let _project = PinnedProjectDir::at(temp.path());

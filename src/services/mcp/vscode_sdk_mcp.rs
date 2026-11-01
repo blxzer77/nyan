@@ -43,7 +43,7 @@ pub fn vscode_log_event_name(event_name: &str) -> String {
 }
 
 /// Maps to: CC `setupVscodeSdkMcp(...)` `gates` payload.
-/// Cometix does not implement telemetry/GrowthBook delivery; unknown VSCode
+/// Nyan does not implement telemetry/GrowthBook delivery; unknown VSCode
 /// experiment gates fail closed as `false`, while the tri-state auto-mode value
 /// is only included when already known.
 pub fn vscode_experiment_gates(
@@ -94,7 +94,7 @@ pub fn handle_vscode_log_event_notification(
 ) -> bool {
     // Maps to: CC `LogEventNotificationSchema` handler registered by
     // `setupVscodeSdkMcp(...)`. Telemetry is intentionally not emitted in
-    // Cometix; we preserve the event tag for debugging/auditing only.
+    // Nyan; we preserve the event tag for debugging/auditing only.
     if server_name != VSCODE_MCP_SERVER_NAME || notification.method != LOG_EVENT_METHOD {
         return false;
     }

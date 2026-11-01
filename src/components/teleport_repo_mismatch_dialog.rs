@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: the official component validates selected paths with
 //! `validateRepoAtPath(...)` and removes invalid paths from the persisted GitHub
-//! repo mapping via `removePathFromRepo(...)`. Cometix preserves the dialog,
+//! repo mapping via `removePathFromRepo(...)`. Nyan preserves the dialog,
 //! option construction, empty-state copy, invalid-path message helper, and
 //! `on_select_path`/`on_cancel` callbacks only. Filesystem/git validation and
 //! config mutation belong to the future `utils/githubRepoPathMapping` runtime
@@ -120,7 +120,7 @@ pub fn TeleportRepoMismatchDialog<'a>(
         match choice {
             TeleportRepoMismatchChoice::Path(path) => {
                 // Official path: async validateRepoAtPath; if valid, onSelectPath.
-                // Safe Cometix path: caller/runtime owns validation, this dialog
+                // Safe Nyan path: caller/runtime owns validation, this dialog
                 // only returns the selected path.
                 (props.on_select_path)(path);
             }

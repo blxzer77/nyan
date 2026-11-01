@@ -1,7 +1,7 @@
 //! Maps to: CC `components/LogoV2/VoiceModeNotice.tsx`.
 //!
 //! The official component is feature-gated and increments
-//! `voiceNoticeSeenCount` when shown. Cometix preserves the predicate and
+//! `voiceNoticeSeenCount` when shown. nyan preserves the predicate and
 //! render boundary as pure inputs; no settings/global-config writes occur here.
 
 use super::animated_asterisk::AnimatedAsterisk;

@@ -1,6 +1,6 @@
 //! Maps to: CC `utils/suggestions/commandSuggestions.ts`.
 //!
-//! Official Claude Code uses Fuse.js at this site. Cometix keeps the same
+//! Official Claude Code uses Fuse.js at this site. Nyan keeps the same
 //! command fields, weights, hidden-exact behavior, alias display rule, and
 //! post-Fuse sorting policy, while using `nucleo-matcher` as the Rust-native
 //! fuzzy engine for the actual query match.

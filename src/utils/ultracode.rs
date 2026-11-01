@@ -634,7 +634,7 @@ mod tests {
             Some(EffortValue::Named("xhigh".to_string()))
         );
 
-        // @cometix: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
+        // @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
         let settings = crate::utils::settings::SettingsJson {
             effort_level: Some("max".to_string()),
             ..Default::default()

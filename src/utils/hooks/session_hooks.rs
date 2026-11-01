@@ -2,7 +2,7 @@
 //!
 //! Maps to: CC `utils/hooks/sessionHooks.ts`.
 //!
-//! Official stores these in `AppState.sessionHooks`. Cometix does not yet carry
+//! Official stores these in `AppState.sessionHooks`. Nyan does not yet carry
 //! that AppState map through every runtime path, so this module preserves the
 //! same public session-hook boundary in a process-local registry. Hooks are
 //! still in-memory only and are cleared by the agent/skill lifecycle owner.

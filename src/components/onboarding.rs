@@ -910,7 +910,7 @@ mod tests {
         };
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _no_write = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _no_write = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
         let approved = run(vec![vec![KeyCode::Up], vec![KeyCode::Enter]]);
         assert!(approved.contains("Security notes:"), "{approved}");
         let rejected = run(vec![vec![KeyCode::Enter]]);
@@ -1179,7 +1179,7 @@ mod tests {
             EnvVarGuard::unset("__CFBundleIdentifier"),
             EnvVarGuard::set("XDG_CONFIG_HOME", root.join("xdg")),
             EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.join("config")),
-            EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1"),
+            EnvVarGuard::set("NYAN_WRITE_ENABLED", "1"),
         ];
         if fail_write {
             std::fs::write(root.join("xdg"), "not a directory").unwrap();

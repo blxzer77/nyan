@@ -2,7 +2,7 @@
 //!
 //! CC renders a null component that registers `chat:cancel` (Escape) and
 //! `app:interrupt` (CC's Ctrl+C) keybinding handlers with independent isActive
-//! gates. Cometix keeps the same action names; `CancelRequestHandler` below is
+//! gates. Nyan keeps the same action names; `CancelRequestHandler` below is
 //! that component, which REPL mounts ahead of PromptInput as CC does
 //! (REPL.tsx:5891, :6133).
 //!
@@ -15,13 +15,13 @@
 //! Coverage vs CC (useCancelRequest.ts):
 //! - Priority 1 (:97-103): active task → clear permission queue + on_cancel ✓
 //! - Priority 2 (:106-111): pop queued command — command queue does not
-//!   exist in Cometix yet; seam documented in options.
+//!   exist in Nyan yet; seam documented in options.
 //! - isEscapeActive (:129-154): context guards are passed in by Repl as a
 //!   single `is_context_blocked` flag (CC receives the same facts as props);
 //!   overlay gate reads `context::overlay_context::is_overlay_active` ✓; the
 //!   special-mode-empty-input and teammate-view exclusions join when those
 //!   states are lifted out of PromptInput/swarm.
-//! - `app:interrupt` is CC's Ctrl+C. Cometix binds Ctrl+C to `app:exit`
+//! - `app:interrupt` is CC's Ctrl+C. Nyan binds Ctrl+C to `app:exit`
 //!   (2.0.x semantics, `default_bindings.rs`), so the interrupt leg answers
 //!   only a key a user binds to it; Ctrl+C stays PromptInput's text-level
 //!   clear and double-press exit, running turn or not.

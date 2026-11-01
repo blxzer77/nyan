@@ -11,8 +11,8 @@
 //! [`crate::components::native_auto_updater`],
 //! [`crate::components::package_manager_auto_updater`]). External network /
 //! package-manager / native-download calls are **short-circuited** until
-//! Cometix has update infrastructure — enable later via
-//! `COMETIX_AUTO_UPDATER_NETWORK=1` (still no-op stubs today).
+//! Nyan has update infrastructure — enable later via
+//! `NYAN_AUTO_UPDATER_NETWORK=1` (still no-op stubs today).
 
 use crate::utils::config::{is_auto_updater_disabled, load_global_config};
 use crate::utils::debug::log_for_debugging;
@@ -91,7 +91,7 @@ impl ReleaseChannel {
 /// Gate for real npm/GCS/native download. Always off until facilities exist;
 /// opt-in env reserved for future wiring (stubs still return empty).
 pub fn auto_updater_network_enabled() -> bool {
-    crate::utils::process_env::var("COMETIX_AUTO_UPDATER_NETWORK")
+    crate::utils::process_env::var("NYAN_AUTO_UPDATER_NETWORK")
         .is_some_and(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
 }
 
@@ -106,7 +106,7 @@ pub(crate) fn is_test_or_dev_env() -> bool {
     cfg!(test)
         || crate::utils::process_env::var("NODE_ENV")
             .is_some_and(|v| matches!(v.as_str(), "test" | "development"))
-        || crate::utils::process_env::var("COMETIX_ENV")
+        || crate::utils::process_env::var("NYAN_ENV")
             .is_some_and(|v| matches!(v.as_str(), "test" | "development"))
 }
 
@@ -144,7 +144,7 @@ pub async fn get_max_version_message() -> Option<String> {
 
 async fn get_max_version_config() -> MaxVersionConfig {
     // CC: getDynamicConfig_BLOCKS_ON_INIT('tengu_max_version_config').
-    // No GrowthBook in Cometix yet.
+    // No GrowthBook in Nyan yet.
     MaxVersionConfig::default()
 }
 

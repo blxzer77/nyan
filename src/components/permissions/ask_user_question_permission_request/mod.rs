@@ -1115,7 +1115,7 @@ mod tests {
         assert_eq!(run.responses.len(), 1);
         assert_eq!(run.responses[0].choice, PermissionPromptChoice::Deny);
         // The dialog takes no interrupt of its own: CC's is PermissionRequest's
-        // app:interrupt (:206-214), and Cometix binds Ctrl+C to app:exit.
+        // app:interrupt (:206-214), and Nyan binds Ctrl+C to app:exit.
         let run = drive(
             harness(single_question_input()),
             steps(vec![modified_key(KeyCode::Char('c'), KeyModifiers::CONTROL)]),

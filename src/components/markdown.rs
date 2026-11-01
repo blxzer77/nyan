@@ -26,8 +26,8 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const TOKEN_CACHE_MAX: usize = 500;
 const DEFAULT_MARKDOWN_WIDTH: usize = 80;
-pub(crate) const PERMISSION_COLOR_START: &str = "\x1b]1337;cometix-markdown-permission=start\x07";
-pub(crate) const PERMISSION_COLOR_END: &str = "\x1b]1337;cometix-markdown-permission=end\x07";
+pub(crate) const PERMISSION_COLOR_START: &str = "\x1b]1337;nyan-markdown-permission=start\x07";
+pub(crate) const PERMISSION_COLOR_END: &str = "\x1b]1337;nyan-markdown-permission=end\x07";
 
 pub type MarkdownBlock = MarkedToken;
 
@@ -164,7 +164,7 @@ pub fn cached_parse_markdown(content: &str) -> Vec<MarkdownBlock> {
 
 pub fn parse_markdown_uncached(content: &str) -> Vec<MarkdownBlock> {
     let options = MarkedOptions::default();
-    // Cometix intentionally keeps GFM strikethrough enabled: iocraft supports
+    // nyan intentionally keeps GFM strikethrough enabled: iocraft supports
     // SGR 9/29 and users expect `~~deleted~~` to render as crossed-out text.
     // Lone approximation markers such as `~100` remain plain text because the
     // marked-rs del tokenizer requires a closing tilde run.
@@ -967,7 +967,7 @@ pub fn Markdown(props: &MarkdownProps, mut hooks: Hooks) -> impl Into<AnyElement
         let elapsed = start.elapsed();
         if elapsed >= Duration::from_millis(5) {
             eprintln!(
-                "cometix-component name=Markdown elapsed={:?} convert={:?} content_len={} blocks={} width={} dim={}",
+                "nyan-component name=Markdown elapsed={:?} convert={:?} content_len={} blocks={} width={} dim={}",
                 elapsed,
                 convert_elapsed.unwrap_or_default(),
                 content_len,
@@ -1023,7 +1023,7 @@ pub fn StreamingMarkdown(
         let elapsed = start.elapsed();
         if elapsed >= Duration::from_millis(5) {
             eprintln!(
-                "cometix-component name=StreamingMarkdown elapsed={:?} split={:?} content_len={} stable_len={} unstable_len={}",
+                "nyan-component name=StreamingMarkdown elapsed={:?} split={:?} content_len={} stable_len={} unstable_len={}",
                 elapsed,
                 split_elapsed.unwrap_or_default(),
                 content_len,

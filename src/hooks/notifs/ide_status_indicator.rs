@@ -1,7 +1,7 @@
 //! Maps to: CC `hooks/notifs/useIDEStatusIndicator.tsx`.
 //!
 //! The official hook can detect IDEs and increment a persisted hint counter.
-//! Cometix keeps this as a pure producer over an already-known IDE snapshot: no
+//! Nyan keeps this as a pure producer over an already-known IDE snapshot: no
 //! IDE probing, no MCP client work, no config writes, and no terminal overlay.
 
 use crate::context::notifications::{

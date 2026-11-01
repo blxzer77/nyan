@@ -125,7 +125,7 @@ pub const CLIPBOARD_OFF_SYSTEM: &[(&str, Option<&str>)] =
 /// it returns `true` in the child, which then runs the body, and in the parent
 /// asserts that the child ran exactly that test and passed.
 pub fn in_child_process(module: &str, test: &str, vars: &[(&str, Option<&str>)]) -> bool {
-    const CHILD: &str = "COMETIX_TEST_CHILD";
+    const CHILD: &str = "NYAN_TEST_CHILD";
     // libtest names a test by its path without the crate.
     let module = module.split_once("::").map_or("", |(_, rest)| rest);
     let name = format!("{module}::{test}");
@@ -206,7 +206,7 @@ impl Drop for IsolatedProjectSettings {
 }
 
 /// The inverse pin: the harness defaults `ORIGINAL_CWD` to the isolated
-/// workdir (justfile `COMETIX_TEST_PROJECT_DIR`), so a test whose fixtures
+/// workdir (justfile `NYAN_TEST_PROJECT_DIR`), so a test whose fixtures
 /// live under THIS repository must now say so explicitly instead of
 /// inheriting the process cwd by accident.
 pub struct PinnedProjectDir(std::path::PathBuf);
@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn env_var_guard_restores_absence_nested_lifo_and_panic_cleanup() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let key = "COMETIX_ENV_VAR_GUARD_LIFECYCLE";
+        let key = "NYAN_ENV_VAR_GUARD_LIFECYCLE";
         let _restore = EnvVarGuard::preserve(key);
         crate::utils::process_env::remove(key);
 
@@ -277,9 +277,9 @@ mod tests {
     fn env_var_guard_order_and_nested_unwind_match_official_process_env() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let keys = [
-            "COMETIX_ENV_GUARD_ORDER_A",
-            "COMETIX_ENV_GUARD_ORDER_B",
-            "COMETIX_ENV_GUARD_ORDER_C",
+            "NYAN_ENV_GUARD_ORDER_A",
+            "NYAN_ENV_GUARD_ORDER_B",
+            "NYAN_ENV_GUARD_ORDER_C",
         ];
         let _cleanup_a = EnvVarGuard::unset(keys[0]);
         let _cleanup_b = EnvVarGuard::unset(keys[1]);
@@ -332,13 +332,13 @@ mod tests {
     #[test]
     fn env_var_guard_restore_matches_official_windows_process_env() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let key = "COMETIX_ENV_VAR_GUARD_WINDOWS";
-        let neighbor = "COMETIX_ENV_VAR_GUARD_WINDOWS_NEIGHBOR";
+        let key = "NYAN_ENV_VAR_GUARD_WINDOWS";
+        let neighbor = "NYAN_ENV_VAR_GUARD_WINDOWS_NEIGHBOR";
         let _restore_key = EnvVarGuard::preserve(key);
         crate::utils::process_env::remove(key);
         let _restore_neighbor = EnvVarGuard::preserve(neighbor);
         crate::utils::process_env::remove(neighbor);
-        crate::utils::process_env::set("Cometix_Env_Var_Guard_Windows", "before");
+        crate::utils::process_env::set("Nyan_Env_Var_Guard_Windows", "before");
         crate::utils::process_env::set(neighbor, "neighbor");
 
         {
@@ -356,7 +356,7 @@ mod tests {
         let (spelling, value) = snapshot.entry(key).unwrap();
         assert_eq!(
             spelling,
-            std::ffi::OsStr::new("Cometix_Env_Var_Guard_Windows")
+            std::ffi::OsStr::new("Nyan_Env_Var_Guard_Windows")
         );
         assert_eq!(value, std::ffi::OsStr::new("before"));
         let keys = snapshot
@@ -364,6 +364,6 @@ mod tests {
             .map(|(key, _)| key.to_string_lossy().into_owned())
             .filter(|candidate| candidate.eq_ignore_ascii_case(key) || candidate == neighbor)
             .collect::<Vec<_>>();
-        assert_eq!(keys, ["Cometix_Env_Var_Guard_Windows", neighbor]);
+        assert_eq!(keys, ["Nyan_Env_Var_Guard_Windows", neighbor]);
     }
 }

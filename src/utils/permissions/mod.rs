@@ -1,5 +1,5 @@
 //! Maps to: CC `utils/permissions/`.
-//! Current CometixCode scope is UI-only/mock: updates are applied to an
+//! Current nyan scope is UI-only/mock: updates are applied to an
 //! in-memory `ToolPermissionContext` and are never persisted to settings or
 //! session files.
 

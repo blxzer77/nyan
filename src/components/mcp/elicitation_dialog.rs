@@ -1,7 +1,7 @@
 //! Maps to: CC `components/mcp/ElicitationDialog.tsx`.
 //!
 //! Intentional safety divergence: the official URL dialog calls `openBrowser`
-//! when the user accepts/reopens a URL. Cometix does not launch external
+//! when the user accepts/reopens a URL. Nyan does not launch external
 //! browsers from this component; it emits the same accept/retry/dismiss actions
 //! and leaves any future safe browser-opening policy to the MCP service/runtime
 //! boundary.

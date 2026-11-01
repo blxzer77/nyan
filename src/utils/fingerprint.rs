@@ -118,12 +118,12 @@ mod tests {
     #[test]
     fn compute_fingerprint_from_messages_uses_first_user_text_and_build_version() {
         let messages = vec![Message::User(crate::utils::messages::create_user_message(
-            "hello world from cometix".to_string(),
+            "hello world from nyan".to_string(),
         ))];
         assert_eq!(
             compute_fingerprint_from_messages(&messages),
             compute_fingerprint(
-                "hello world from cometix",
+                "hello world from nyan",
                 crate::constants::product::VERSION
             )
         );
@@ -136,8 +136,8 @@ mod tests {
 
     #[test]
     fn compute_fingerprint_is_three_hex_chars_and_stable() {
-        let a = compute_fingerprint("hello world from cometix", "1.0.0");
-        let b = compute_fingerprint("hello world from cometix", "1.0.0");
+        let a = compute_fingerprint("hello world from nyan", "1.0.0");
+        let b = compute_fingerprint("hello world from nyan", "1.0.0");
         assert_eq!(a.len(), 3);
         assert_eq!(a, b);
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));

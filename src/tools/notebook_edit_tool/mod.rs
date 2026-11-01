@@ -16,9 +16,9 @@ pub mod ui;
 
 /// Private destination transport carried only by `PermissionRequest.call_input`
 /// (`#[serde(skip)]`), never by SDK messages or transcript persistence.
-pub(crate) const CHECKED_NOTEBOOK_DESTINATION_KEY: &str = "__cometix_checked_notebook_destination";
+pub(crate) const CHECKED_NOTEBOOK_DESTINATION_KEY: &str = "__nyan_checked_notebook_destination";
 pub(crate) const CHECKED_NOTEBOOK_APPROVED_PATH_KEY: &str =
-    "__cometix_checked_notebook_approved_path";
+    "__nyan_checked_notebook_approved_path";
 
 pub(crate) fn resolved_notebook_destination(path: &std::path::Path) -> std::path::PathBuf {
     let candidate = crate::utils::fs_operations::get_paths_for_permission_check(path)
@@ -978,7 +978,7 @@ impl crate::tool::ToolCall for NotebookEditTool {
     ) -> futures::future::BoxFuture<'a, crate::tool::ToolResult> {
         Box::pin(async move {
             let cwd = context.effective_cwd();
-            if !crate::utils::env_utils::is_cometix_write_enabled() {
+            if !crate::utils::env_utils::is_nyan_write_enabled() {
                 return crate::tool::ToolResult {
                     data: crate::tool::ToolOutput::NotebookEdit(notebook_edit_error_from_args(
                         args,
@@ -1615,7 +1615,7 @@ mod tests {
     #[test]
     fn relative_notebook_path_is_resolved_against_tool_context_like_official() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-notebook-relative-{}",
+            "nyan-notebook-relative-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1805,7 +1805,7 @@ mod tests {
     #[test]
     fn notebook_permission_uses_resolved_context_cwd_path() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-notebook-permission-{}",
+            "nyan-notebook-permission-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let mut context = crate::tool::ToolUseContext::default();
@@ -1835,7 +1835,7 @@ mod tests {
     #[tokio::test]
     async fn no_write_gate_fails_before_history_or_mutation() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let path = temp_notebook_path("no-write");
         let original = serde_json::json!({
             "nbformat": 4,
@@ -1874,7 +1874,7 @@ mod tests {
     #[tokio::test]
     async fn notebook_edit_call_rechecks_freshness_in_final_write_section() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let path = temp_notebook_path("call-freshness");
         let original = serde_json::json!({
             "nbformat": 4,
@@ -1922,10 +1922,10 @@ mod tests {
     async fn notebook_edit_tracks_history_before_mutation() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _bootstrap = BootstrapRestore::capture();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _checkpointing = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING");
         let root = std::env::temp_dir().join(format!(
-            "cometix-notebook-history-{}",
+            "nyan-notebook-history-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_dir = root.join("config");
@@ -2047,7 +2047,7 @@ mod tests {
     #[tokio::test]
     async fn notebook_edit_missing_metadata_fails_like_official_without_writing() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
 
         let run = |body: serde_json::Value| async move {
             let path = temp_notebook_path("metadata");
@@ -2107,7 +2107,7 @@ mod tests {
 
     fn temp_notebook_path(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "cometix-notebook-edit-{name}-{}.ipynb",
+            "nyan-notebook-edit-{name}-{}.ipynb",
             uuid::Uuid::new_v4()
         ))
     }

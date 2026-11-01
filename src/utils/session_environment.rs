@@ -45,7 +45,7 @@ pub fn get_session_env_dir_path() -> std::io::Result<PathBuf> {
     if !crate::utils::session_storage::is_session_write_enabled() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
-            "session environment persistence is disabled by COMETIX_WRITE_ENABLED=0",
+            "session environment persistence is disabled by NYAN_WRITE_ENABLED=0",
         ));
     }
     let path = crate::utils::env_utils::get_claude_config_home_dir()
@@ -161,11 +161,11 @@ mod tests {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _cache = CacheGuard;
         let root = std::env::temp_dir().join(format!(
-            "cometix-session-env-{}",
+            "nyan-session-env-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         invalidate_session_env_cache();
         let dir = get_session_env_dir_path().unwrap();
         std::fs::write(dir.join("filechanged-hook-0.sh"), "export D=4").unwrap();

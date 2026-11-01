@@ -277,10 +277,10 @@ mod tests {
     fn apple_terminal_backup_markers_match_official_persisted_config() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-terminal-backup-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-terminal-backup-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.to_str().unwrap());
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         mark_terminal_setup_in_progress("/fixture/Terminal.plist.bak").unwrap();
         assert_eq!(
             get_terminal_recovery_info(),

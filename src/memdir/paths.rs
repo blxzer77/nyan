@@ -367,7 +367,7 @@ mod tests {
     fn project_settings_cannot_redirect_auto_memory_directory() {
         let _guard = isolated_auto_memory_env();
         let root = std::env::temp_dir().join(format!(
-            "cometix-auto-memory-trust-{}",
+            "nyan-auto-memory-trust-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let project = root.join("project");
@@ -418,16 +418,16 @@ mod tests {
     #[test]
     fn auto_mem_entrypoint_and_daily_log_paths_match_official_shape() {
         let _guard = isolated_auto_memory_env();
-        crate::utils::process_env::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", "/tmp/cometix-memory");
+        crate::utils::process_env::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", "/tmp/nyan-memory");
         let date = chrono::NaiveDate::from_ymd_opt(2026, 7, 3).unwrap();
 
         assert_eq!(
             get_auto_mem_entrypoint(),
-            PathBuf::from("/tmp/cometix-memory").join(AUTO_MEM_ENTRYPOINT_NAME)
+            PathBuf::from("/tmp/nyan-memory").join(AUTO_MEM_ENTRYPOINT_NAME)
         );
         assert_eq!(
             get_auto_mem_daily_log_path(date),
-            PathBuf::from("/tmp/cometix-memory")
+            PathBuf::from("/tmp/nyan-memory")
                 .join("logs")
                 .join("2026")
                 .join("07")
@@ -438,14 +438,14 @@ mod tests {
     #[test]
     fn is_auto_mem_path_matches_normalized_descendants_only() {
         let _guard = isolated_auto_memory_env();
-        crate::utils::process_env::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", "/tmp/cometix-memory");
+        crate::utils::process_env::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", "/tmp/nyan-memory");
 
-        assert!(is_auto_mem_path(Path::new("/tmp/cometix-memory/topic.md")));
+        assert!(is_auto_mem_path(Path::new("/tmp/nyan-memory/topic.md")));
         assert!(is_auto_mem_path(Path::new(
-            "/tmp/cometix-memory/sub/../topic.md"
+            "/tmp/nyan-memory/sub/../topic.md"
         )));
         assert!(!is_auto_mem_path(Path::new(
-            "/tmp/cometix-memory2/topic.md"
+            "/tmp/nyan-memory2/topic.md"
         )));
     }
 }

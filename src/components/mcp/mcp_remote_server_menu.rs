@@ -1131,7 +1131,7 @@ mod tests {
     fn remote_menu_disable_dispatches_to_mcp_connection_service() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!(
-            "cometix-remote-menu-toggle-{}",
+            "nyan-remote-menu-toggle-{}",
             uuid::Uuid::new_v4()
         ));
         let project_dir = temp_dir.join("project");
@@ -1139,7 +1139,7 @@ mod tests {
         let previous_cwd = std::env::current_dir().unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir);
         let _session_write = EnvVarGuard::set("SESSION_WRITE_ENABLED", "1");
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         std::env::set_current_dir(&project_dir).unwrap();
 
         let cancels = Arc::new(Mutex::new(0usize));
@@ -1243,7 +1243,7 @@ mod tests {
             EnvVarGuard::unset("USE_STAGING_OAUTH"),
             EnvVarGuard::unset("CLAUDE_CODE_CUSTOM_OAUTH_URL"),
             EnvVarGuard::unset("CLAUDE_CODE_SIMPLE"),
-            EnvVarGuard::set("ANTHROPIC_UNIX_SOCKET", "/tmp/cometix-test-auth.sock"),
+            EnvVarGuard::set("ANTHROPIC_UNIX_SOCKET", "/tmp/nyan-test-auth.sock"),
             EnvVarGuard::set("CLAUDE_CODE_OAUTH_TOKEN", "test-oauth-token"),
         ];
         let _entrypoint = EnvVarGuard::set("CLAUDE_CODE_ENTRYPOINT", "cli test");
@@ -1445,7 +1445,7 @@ mod tests {
         }
         crate::utils::process_runtime::initialize_test_process_runtime();
         let directory =
-            std::env::temp_dir().join(format!("cometix-mcp-clipboard-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-mcp-clipboard-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let tool = directory.join("tmux");
         std::fs::write(&tool, "#!/bin/sh\n/bin/cat > \"$CLIPBOARD_FIXTURE_DIR/input\"\n/bin/sleep 0.25\n: > \"$CLIPBOARD_FIXTURE_DIR/finished\"\n").unwrap();

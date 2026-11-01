@@ -51,7 +51,7 @@ where
         .lock()
         .map_err(|_| std::io::Error::other("plugin install worker registry is unavailable"))?;
     let worker = std::thread::Builder::new()
-        .name("cometix-plugin-install-notify".to_string())
+        .name("nyan-plugin-install-notify".to_string())
         .spawn(move || {
             let result = crate::utils::process_runtime::block_on_from_sync(async move {
                 let plugin_data =

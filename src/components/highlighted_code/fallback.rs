@@ -2,7 +2,7 @@
 //!
 //! The official fallback converts leading tabs to spaces and either renders raw
 //! ANSI text or, when available, asynchronously highlights with the CLI
-//! highlighter. Cometix keeps this fallback deterministic and safe: no async CLI
+//! highlighter. Nyan keeps this fallback deterministic and safe: no async CLI
 //! highlighter is loaded here; callers that want syntax highlighting should use
 //! the native `ColorFile` path in `HighlightedCode`.
 

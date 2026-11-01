@@ -260,7 +260,7 @@ pub async fn exec_http_hook_with_policy(
     // (403 for a blocked domain) and chains to the parent proxy itself.
     // Otherwise the env-var proxy (HTTP_PROXY / HTTPS_PROXY, respecting
     // NO_PROXY) resolves the target.
-    // Cometix-specific deviation: CC tests `getProxyUrl() !== undefined`, so a
+    // Nyan-specific deviation: CC tests `getProxyUrl() !== undefined`, so a
     // proxy variable set to "" drops the SSRF guard while `configureGlobalAgents`
     // (`if (proxyUrl)`) installs no proxy: an unguarded direct request. Here an
     // empty value is no proxy, and the guard stays.
@@ -288,7 +288,7 @@ pub async fn exec_http_hook_with_policy(
 
     // SSRF guard (`:210-215`): skipped when a proxy is in use. The proxy
     // resolves the target, and a corporate proxy on a private IP must not be
-    // blocked. Cometix checks the target before connecting, where CC guards
+    // blocked. Nyan checks the target before connecting, where CC guards
     // the connection's DNS lookup.
     if sandbox_proxy.is_none() && !env_proxy_active {
         if let Err(error) = validate_ssrf_preflight(&url) {

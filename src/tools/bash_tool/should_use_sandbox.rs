@@ -35,7 +35,7 @@ pub fn should_use_sandbox(input: &SandboxInput) -> bool {
 /// Maps to CC GrowthBook `tengu_sandbox_disabled_commands` `commands` list
 /// (`shouldUseSandbox.ts:24-27`).
 ///
-/// Cometix keeps GrowthBook-controlled values as source-controlled constants
+/// Nyan keeps GrowthBook-controlled values as source-controlled constants
 /// instead of reading cloud-delivered payloads; see `utils/feature_flags.rs`.
 /// The official default payload is empty, so no base command is excluded.
 const SANDBOX_DISABLED_COMMANDS: &[&str] = &[];

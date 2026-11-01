@@ -73,7 +73,7 @@ pub fn update_queue_item(
 /// Persist editable destinations before projecting every update into the live
 /// permission context. CC ignores ordinary settings-writer failures, so those
 /// still publish live updates. Only an actual propagated error (the explicit
-/// Cometix no-write gate) leaves the context unchanged.
+/// Nyan no-write gate) leaves the context unchanged.
 pub fn persist_permissions(
     app_store: &crate::state::store::AppStore,
     updates: &[PermissionUpdate],
@@ -271,9 +271,9 @@ mod tests {
         fn isolated_no_write() -> Self {
             let previous_cwd = std::env::current_dir().unwrap();
             let previous_original_cwd = crate::bootstrap::state::get_original_cwd();
-            let previous_write = Some(EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0"));
+            let previous_write = Some(EnvVarGuard::set("NYAN_WRITE_ENABLED", "0"));
             let temporary = std::env::temp_dir().join(format!(
-                "cometix-permission-context-{}",
+                "nyan-permission-context-{}",
                 uuid::Uuid::new_v4().simple()
             ));
             std::fs::create_dir_all(&temporary).unwrap();
@@ -390,7 +390,7 @@ mod tests {
                 .contains_key(&PermissionRuleSource::LocalSettings)
         );
 
-        crate::utils::process_env::set("COMETIX_WRITE_ENABLED", "1");
+        crate::utils::process_env::set("NYAN_WRITE_ENABLED", "1");
         let persisted_rule = PermissionRuleValue::new("Bash", Some("cargo check".to_string()));
         let persisted = PermissionUpdate::AddRules {
             destination: PermissionUpdateDestination::LocalSettings,

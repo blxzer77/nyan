@@ -15,14 +15,14 @@
 //! No client is shared. CC memoizes `getProxyAgent` and routes the rest
 //! through one global dispatcher, which is safe on Node's single event loop.
 //! A reqwest connection is driven by a task on the tokio runtime that opened
-//! it, and Cometix runs each query, subagent and forked agent on its own
+//! it, and Nyan runs each query, subagent and forked agent on its own
 //! runtime. A shared pool would lend one runtime's connection to another:
 //! the request hangs while the owner is not polled, and a stream breaks when
 //! the owner shuts down. So every call builds a client. What is cached is the
 //! TLS material ([`crate::utils::mtls::get_mtls_agent`]), as in CC's
 //! `getMTLSConfig`/`getCACertificates` memos.
 //!
-//! Cometix-specific deviations:
+//! Nyan-specific deviations:
 //! - With no proxy variable set, clients keep reqwest's system-proxy detection
 //!   where CC connects directly (environment redesign §9.3).
 //! - The proxy URL is read as reqwest reads it. A missing scheme is `http://`
@@ -244,7 +244,7 @@ pub fn get_proxy_agent(uri: &str) -> anyhow::Result<reqwest::ClientBuilder> {
 /// request options (timeout, redirects) and build, as CC's spread the options
 /// into their own `fetch` init.
 /// - `for_anthropic_api` with `ANTHROPIC_UNIX_SOCKET`: that socket, without
-///   proxy or TLS options. CC does this only under Bun, which Cometix, a
+///   proxy or TLS options. CC does this only under Bun, which Nyan, a
 ///   native binary, follows. Unix only; elsewhere the variable is ignored.
 /// - A proxy: [`get_proxy_agent`].
 /// - Otherwise the mTLS and CA options if any (`getTLSFetchOptions`,

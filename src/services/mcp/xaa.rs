@@ -437,7 +437,7 @@ mod runtime {
             .body(form_urlencoded_body(&params));
         // Deviation (L2, user-authorized OAuth safety gate): CC
         // `services/mcp/xaa.ts:233-318` sends the fully prepared ID-token
-        // exchange. Cometix rejects at the final credential HTTP outlet.
+        // exchange. Nyan rejects at the final credential HTTP outlet.
         if !crate::constants::oauth::OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED {
             return Err(crate::constants::oauth::OAuthCredentialSideEffectsUnavailable.into());
         }
@@ -530,7 +530,7 @@ mod runtime {
         let request = request.body(form_urlencoded_body(&params));
         // Deviation (L2, user-authorized OAuth safety gate): CC
         // `services/mcp/xaa.ts:337-405` sends the prepared ID-JAG bearer
-        // grant. Cometix rejects at the final credential HTTP outlet.
+        // grant. Nyan rejects at the final credential HTTP outlet.
         if !crate::constants::oauth::OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED {
             return Err(crate::constants::oauth::OAuthCredentialSideEffectsUnavailable.into());
         }

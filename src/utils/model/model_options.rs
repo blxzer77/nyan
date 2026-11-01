@@ -759,7 +759,7 @@ mod tests {
     impl OptionsFixture {
         fn new(settings: serde_json::Value) -> Self {
             let root = std::env::temp_dir().join(format!(
-                "cometix-model-options-{}",
+                "nyan-model-options-{}",
                 uuid::Uuid::new_v4().simple()
             ));
             std::fs::create_dir_all(&root).unwrap();

@@ -256,7 +256,7 @@ mod tests {
     fn custom_output_style_config_is_loaded_from_official_directory() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-output-style-config-{}",
+            "nyan-output-style-config-{}",
             uuid::Uuid::new_v4()
         ));
         let config_home = root.join("config");

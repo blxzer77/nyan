@@ -307,7 +307,7 @@ mod tests {
             dispose_asciicast_recorder();
             _reset_recording_state_for_testing();
             let root =
-                std::env::temp_dir().join(format!("cometix-asciicast-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("nyan-asciicast-{}", uuid::Uuid::new_v4()));
             fs::create_dir_all(&root).unwrap();
             let config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.to_str().unwrap());
             let cwd = get_original_cwd();

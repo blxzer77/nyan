@@ -828,7 +828,7 @@ fn current_project_mcp_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// Maps to: CC `getMcpConfigsByScope(...)` for the config sources Cometix
+/// Maps to: CC `getMcpConfigsByScope(...)` for the config sources Nyan
 /// already has in memory plus read-only `.mcp.json`/enterprise file parsing.
 pub fn get_mcp_configs_by_scope_readonly(
     scope: ConfigScope,
@@ -1224,7 +1224,7 @@ pub fn get_mcp_config_by_name_readonly(name: &str) -> Option<ScopedMcpServerConf
 /// Maps to: CC `services/mcp/config.ts#isDefaultDisabledBuiltin`.
 ///
 /// The only official default-disabled built-in is behind a bundled feature that
-/// Cometix does not compile yet, so this safe projection returns false until the
+/// Nyan does not compile yet, so this safe projection returns false until the
 /// corresponding built-in MCP source is ported.
 fn is_default_disabled_builtin(_name: &str) -> bool {
     false
@@ -1274,8 +1274,8 @@ fn toggle_membership(list: &[String], name: &str, should_contain: bool) -> Vec<S
 /// Maps to: CC `services/mcp/config.ts#setMcpServerEnabled`.
 ///
 /// This persists the official project-level enabled/disabled lists through the
-/// existing Cometix config writer. `save_current_project_config` still honors
-/// the repository write gate (`COMETIX_WRITE_ENABLED`), so production-safe dry
+/// existing Nyan config writer. `save_current_project_config` still honors
+/// the repository write gate (`NYAN_WRITE_ENABLED`), so production-safe dry
 /// runs keep the same no-write behavior as other config updates.
 pub fn set_mcp_server_enabled(name: &str, enabled: bool) -> anyhow::Result<()> {
     crate::utils::config::save_current_project_config(|current| {
@@ -1610,7 +1610,7 @@ mod tests {
     #[test]
     fn dynamic_mcp_config_reads_file_paths_like_official_cli() {
         let path =
-            std::env::temp_dir().join(format!("cometix-dynamic-mcp-{}.json", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-dynamic-mcp-{}.json", uuid::Uuid::new_v4()));
         std::fs::write(
             &path,
             serde_json::json!({
@@ -1773,7 +1773,7 @@ mod tests {
     fn get_all_mcp_configs_preserves_manual_servers_without_claude_ai_business_wiring() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!(
-            "cometix-mcp-get-all-no-claudeai-{}",
+            "nyan-mcp-get-all-no-claudeai-{}",
             uuid::Uuid::new_v4()
         ));
         let config_dir = temp_dir.join("config");
@@ -1820,7 +1820,7 @@ mod tests {
     fn disabled_plugin_mcp_servers_do_not_suppress_enabled_duplicates_like_official() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!(
-            "cometix-mcp-disabled-plugin-dedup-{}",
+            "nyan-mcp-disabled-plugin-dedup-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&temp_dir).unwrap();
@@ -2085,7 +2085,7 @@ mod tests {
     fn get_mcp_configs_by_scope_projects_user_local_and_mcpjson_sources() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir =
-            std::env::temp_dir().join(format!("cometix-mcp-scope-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-mcp-scope-{}", uuid::Uuid::new_v4()));
         let project_dir = temp_dir.join("project").join("child");
         std::fs::create_dir_all(&project_dir).unwrap();
         std::fs::write(
@@ -2137,7 +2137,7 @@ mod tests {
     fn all_configured_mcp_servers_filters_project_mcpjson_by_official_approval_status() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!(
-            "cometix-mcp-project-approval-{}",
+            "nyan-mcp-project-approval-{}",
             uuid::Uuid::new_v4()
         ));
         let config_dir = temp_dir.join("config");
@@ -2156,7 +2156,7 @@ mod tests {
         .unwrap();
 
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_dir);
-        let _non_interactive = EnvVarGuard::unset("COMETIX_NON_INTERACTIVE_SESSION");
+        let _non_interactive = EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION");
         let previous_interactive = crate::bootstrap::state::get_is_interactive();
         crate::bootstrap::state::set_is_interactive(true);
         let _project_root = ProjectRootGuard::pin(&project_dir);
@@ -2185,13 +2185,13 @@ mod tests {
     #[test]
     fn parse_mcp_config_reports_missing_env_warning_like_official() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("COMETIX_MCP_PARSE_MISSING");
+        crate::utils::process_env::remove("NYAN_MCP_PARSE_MISSING");
         let parsed = parse_mcp_config_value_readonly(
             &serde_json::json!({
                 "mcpServers": {
                     "docs": {
                         "type": "http",
-                        "url": "https://example.test/${COMETIX_MCP_PARSE_MISSING}"
+                        "url": "https://example.test/${NYAN_MCP_PARSE_MISSING}"
                     }
                 }
             }),
@@ -2216,14 +2216,14 @@ mod tests {
         assert!(
             parsed.errors[0]
                 .message
-                .contains("Missing environment variables: COMETIX_MCP_PARSE_MISSING")
+                .contains("Missing environment variables: NYAN_MCP_PARSE_MISSING")
         );
     }
 
     #[test]
     fn parse_mcp_config_file_reports_invalid_json_fatal_like_official() {
         let temp_dir =
-            std::env::temp_dir().join(format!("cometix-mcp-invalid-json-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-mcp-invalid-json-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
         let path = temp_dir.join(".mcp.json");
         std::fs::write(&path, "{ invalid json").unwrap();
@@ -2243,7 +2243,7 @@ mod tests {
     fn get_mcp_config_by_name_reads_user_snapshot_like_official_lookup() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!(
-            "cometix-mcp-config-by-name-{}",
+            "nyan-mcp-config-by-name-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&temp_dir).unwrap();
@@ -2275,7 +2275,7 @@ mod tests {
     fn get_mcp_config_by_name_matches_official_source_precedence() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!(
-            "cometix-mcp-config-by-name-precedence-{}",
+            "nyan-mcp-config-by-name-precedence-{}",
             uuid::Uuid::new_v4()
         ));
         let config_dir = temp_dir.join("config");
@@ -2384,12 +2384,12 @@ mod tests {
     fn set_mcp_server_enabled_persists_disabled_membership_like_official_toggle() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir =
-            std::env::temp_dir().join(format!("cometix-mcp-set-enabled-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-mcp-set-enabled-{}", uuid::Uuid::new_v4()));
         let project_dir = temp_dir.join("project");
         std::fs::create_dir_all(&project_dir).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir);
         let _session_write = EnvVarGuard::set("SESSION_WRITE_ENABLED", "1");
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _project_root = ProjectRootGuard::pin(&project_dir);
 
         set_mcp_server_enabled("docs", false).unwrap();
@@ -2563,7 +2563,7 @@ mod tests {
             }
         }
         let root = std::env::temp_dir().join(format!(
-            "cometix-mcp-startup-errors-{}",
+            "nyan-mcp-startup-errors-{}",
             uuid::Uuid::new_v4()
         ));
         let config = root.join("config");

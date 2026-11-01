@@ -195,7 +195,7 @@ mod tests {
     fn sandbox_command_leaves_the_command_list_on_unsupported_platforms() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-sandbox-hidden-{}",
+            "nyan-sandbox-hidden-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_home = root.join("user-config");
@@ -251,7 +251,7 @@ mod tests {
     fn sandbox_exclude_writes_local_settings_like_official() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-sandbox-command-{}",
+            "nyan-sandbox-command-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let managed = root.join("managed");
@@ -262,7 +262,7 @@ mod tests {
         let _cwd_guard = CwdGuard::set(&root);
         let _managed_guard = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &managed);
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
-        let _write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
 
         let output = local_output_for_args("exclude \"npm run test:*\"");
         assert_eq!(

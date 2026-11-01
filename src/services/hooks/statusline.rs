@@ -268,7 +268,7 @@ mod tests {
         assert!(value["context_window"]["current_usage"].is_null());
         assert!(value["context_window"]["used_percentage"].is_null());
         assert!(value["context_window"]["remaining_percentage"].is_null());
-        assert!(value.get("cometix").is_none());
+        assert!(value.get("nyan").is_none());
         assert!(value.get("permission_mode").is_none());
     }
 

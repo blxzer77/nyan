@@ -146,8 +146,8 @@ mod tests {
         "CLAUDE_CODE_USE_BEDROCK",
         "CLAUDE_CODE_USE_FOUNDRY",
         "CLAUDE_CODE_USE_VERTEX",
-        "COMETIX_NON_INTERACTIVE",
-        "COMETIX_NON_INTERACTIVE_SESSION",
+        "NYAN_NON_INTERACTIVE",
+        "NYAN_NON_INTERACTIVE_SESSION",
         "COO_RUNNING_ON_HOMESPACE",
         "NODE_ENV",
         "CLAUDE_CONFIG_DIR",
@@ -183,7 +183,7 @@ mod tests {
             let previous_interactive = crate::bootstrap::state::get_is_interactive();
             let previous_config = crate::utils::config::replace_test_global_config(Some(config));
             let root = std::env::temp_dir().join(format!(
-                "cometix-use-api-key-verification-{}",
+                "nyan-use-api-key-verification-{}",
                 uuid::Uuid::new_v4().simple()
             ));
             std::fs::create_dir_all(&root).expect("create auth test root");

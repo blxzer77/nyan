@@ -426,7 +426,7 @@ fn assistant_has_visible_text(message: &RenderableMessage) -> bool {
 
 fn is_progress_message(_message: &RenderableMessage) -> bool {
     // `types/message.ts::ProgressMessage` has not yet been added to the Rust
-    // RenderableMessage union. Do not substitute Cometix-only fixture rows.
+    // RenderableMessage union. Do not substitute Nyan-only fixture rows.
     false
 }
 

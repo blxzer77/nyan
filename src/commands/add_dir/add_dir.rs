@@ -333,7 +333,7 @@ mod tests {
         std::fs::create_dir_all(&workdir).unwrap();
         let old_cwd = crate::bootstrap::state::get_original_cwd();
         let old_dirs = get_additional_directories_for_claude_md();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.join("config"));
         let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &root);
         let _skip = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");

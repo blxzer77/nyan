@@ -1,7 +1,7 @@
 //! Maps to: CC `components/LogoV2/Opus1mMergeNotice.tsx`.
 //!
 //! The official component increments `opus1mMergeNoticeSeenCount` when shown.
-//! Cometix keeps the show predicate and render boundary pure until LogoV2
+//! nyan keeps the show predicate and render boundary pure until LogoV2
 //! startup notices are allowed to write global config.
 
 use super::animated_asterisk::AnimatedAsterisk;

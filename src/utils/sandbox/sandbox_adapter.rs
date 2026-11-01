@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 
-const LINUX_SECCOMP_HELPER_ARG: &str = "__cometix-sandbox-seccomp";
+const LINUX_SECCOMP_HELPER_ARG: &str = "__nyan-sandbox-seccomp";
 
 /// Internal Linux apply-seccomp equivalent used after proxy bridge setup.
 /// Returns `None` for normal CLI invocations and an exit code if helper setup
@@ -196,7 +196,7 @@ fn wrap_sandbox_ask_callback(callback: SandboxAskCallback) -> SandboxAskCallback
 /// (REPL render-body call site: REPL.tsx:3087-3094). L1: PORTING.md
 /// `Mount-scoped external callback registration guard`. Runtime/bwrap init remains
 /// short-circuited; this stores the REPL ask seam so network-host prompts can
-/// invoke it. CC's process-lifetime REPL never unregisters; Cometix clears the
+/// invoke it. CC's process-lifetime REPL never unregisters; Nyan clears the
 /// slot on REPL unmount (iocraft Drop-guard precedent:
 /// `state/overlay.rs#OverlayRegistration`) so a producer thread parked on an
 /// ask denies (`recv` Err → `false`) instead of hanging on a stale entry.
@@ -361,7 +361,7 @@ pub fn refresh_config() {
 /// Maps to: CC `SandboxManager.waitForNetworkInitialization`
 /// (`sandbox-adapter.ts:959`, sandbox-runtime `sandbox-manager.js:425-439`).
 /// CC starts the network proxy in `initialize()` at startup and this waits
-/// for it; Cometix starts it on first use, so waiting is starting it for the
+/// for it; Nyan starts it on first use, so waiting is starting it for the
 /// current settings. `false` when sandboxing is off or the proxy cannot start.
 pub fn wait_for_network_initialization() -> bool {
     if !is_sandboxing_enabled() {
@@ -1097,7 +1097,7 @@ pub struct SandboxRuntimeConfig {
     pub enable_weaker_nested_sandbox: Option<bool>,
     pub enable_weaker_network_isolation: Option<bool>,
     /// The real CC adapter supplies the bundled ripgrep command when this is
-    /// absent from settings. Cometix has not ported that runtime dependency
+    /// absent from settings. Nyan has not ported that runtime dependency
     /// yet, so this safe config projection only preserves explicit settings.
     pub ripgrep: Option<serde_json::Value>,
 }
@@ -1645,7 +1645,7 @@ pub struct SandboxViolationEvent {
 /// Listener receives `(total_count, delta)` after a record batch.
 ///
 /// Official runtime `subscribe` passes the violations array; footer hint
-/// (CC `SandboxPromptFooterHint`) only needs the delta vs last total. Cometix
+/// (CC `SandboxPromptFooterHint`) only needs the delta vs last total. Nyan
 /// notifies `(total, delta)` so the PromptInput subscriber stays allocation-light.
 pub type SandboxViolationListener = Arc<dyn Fn(u32, u32) + Send + Sync>;
 
@@ -2021,7 +2021,7 @@ mod tests {
     #[test]
     fn seatbelt_wrapper_enforces_write_boundary() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-seatbelt-{}",
+            "nyan-seatbelt-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -2094,7 +2094,7 @@ mod tests {
                 .unwrap();
         });
         let root = std::env::temp_dir().join(format!(
-            "cometix-seatbelt-proxy-{}",
+            "nyan-seatbelt-proxy-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -2128,7 +2128,7 @@ mod tests {
         use std::os::unix::fs::symlink;
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-sandbox-write-symlink-{}",
+            "nyan-sandbox-write-symlink-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let outside = root.with_extension("outside");
@@ -2144,7 +2144,7 @@ mod tests {
     #[test]
     fn seatbelt_wrapper_blocks_mandatory_shell_startup_files() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-seatbelt-mandatory-{}",
+            "nyan-seatbelt-mandatory-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -2188,7 +2188,7 @@ mod tests {
     fn managed_sandbox_domains_only_reads_policy_settings_like_official() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-managed-sandbox-{}",
+            "nyan-managed-sandbox-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -2207,7 +2207,7 @@ mod tests {
     fn managed_sandbox_domains_only_defaults_false_without_policy() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-empty-managed-sandbox-{}",
+            "nyan-empty-managed-sandbox-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -2221,7 +2221,7 @@ mod tests {
     fn sandbox_path_resolvers_match_official_permission_vs_filesystem_semantics() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-sandbox-paths-{}",
+            "nyan-sandbox-paths-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -2260,7 +2260,7 @@ mod tests {
     fn sandbox_runtime_config_extracts_network_and_filesystem_settings_like_official() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-sandbox-config-{}",
+            "nyan-sandbox-config-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let managed = root.join("managed");
@@ -2375,7 +2375,7 @@ mod tests {
     fn sandbox_runtime_config_honors_managed_only_network_and_read_policies() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-sandbox-managed-config-{}",
+            "nyan-sandbox-managed-config-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let managed = root.join("managed");
@@ -2460,7 +2460,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-sandbox-enabled-runtime-{}",
+            "nyan-sandbox-enabled-runtime-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_home = root.join("config");
@@ -2547,7 +2547,7 @@ mod tests {
     #[test]
     fn bare_git_repo_markers_are_denied_or_scrubbed_without_host_stubs() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-sandbox-bare-git-{}",
+            "nyan-sandbox-bare-git-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -2585,7 +2585,7 @@ mod tests {
     #[test]
     fn worktree_gitdir_resolves_main_repo_write_exception() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-sandbox-worktree-{}",
+            "nyan-sandbox-worktree-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let worktree = root.join("worktree");

@@ -259,7 +259,7 @@ pub fn exec(
                 sandbox_tmp_dir.display()
             ));
         }
-        // Cometix forward-port of 2.1.285 (user, 10-03): its sandbox temp
+        // Nyan forward-port of 2.1.285 (user, 10-03): its sandbox temp
         // directory is the same per-uid root `/copy` uses, and is refused
         // unless it is the user's own; 2.1.88 uses one another user created.
         #[cfg(unix)]
@@ -578,7 +578,7 @@ mod tests {
     #[test]
     fn output_file_open_refuses_symlink_targets() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-shell-output-symlink-{}",
+            "nyan-shell-output-symlink-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -602,7 +602,7 @@ mod tests {
         }
 
         let _env = TEST_ENV_LOCK.lock().unwrap();
-        let _restore = ShellRestore(Some(EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1")));
+        let _restore = ShellRestore(Some(EnvVarGuard::set("NYAN_WRITE_ENABLED", "1")));
         reset_shell_config_for_test();
         let command = exec(
             "printf partial; printf err >&2",
@@ -646,7 +646,7 @@ mod tests {
         }
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-shell-stdin-{}",
+            "nyan-shell-stdin-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -662,7 +662,7 @@ mod tests {
             let _shell = EnvVarGuard::set("CLAUDE_CODE_SHELL", shell);
             reset_shell_config_for_test();
             for write_enabled in ["1", "0"] {
-                let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", write_enabled);
+                let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", write_enabled);
                 for (input, expected) in [
                     ("printf before && /bin/cat && printf after", "beforeafter"),
                     ("printf before; /bin/cat; printf after", "beforeafter"),

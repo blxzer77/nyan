@@ -154,7 +154,7 @@ pub fn EnterPlanModePermissionRequest<'a>(
                     pending_select.set(Some(EnterPlanModePermissionOptionValue::No));
                 }
                 // No Ctrl+C here: CC's is PermissionRequest's app:interrupt,
-                // and Cometix binds Ctrl+C to app:exit (2.0.x semantics).
+                // and Nyan binds Ctrl+C to app:exit (2.0.x semantics).
                 _ => {}
             }
         }

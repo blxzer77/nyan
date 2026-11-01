@@ -1100,7 +1100,7 @@ struct MessagesImplProps {
     /// Maps to: CC `Messages.tsx:262` `conversationId: string` — REPL-owned
     /// (`REPL.tsx:2017`), bumped on compact resets so `messageKey`
     /// (`Messages.tsx:792-795`, `${msg.uuid}-${conversationId}`) changes and
-    /// stale memoized rows remount. Cometix carries it as a generation counter.
+    /// stale memoized rows remount. Nyan carries it as a generation counter.
     pub conversation_id: u64,
     pub is_loading: bool,
     /// Mirrors official `verbose`; default main-screen messages are collapsed.
@@ -1110,12 +1110,12 @@ struct MessagesImplProps {
     /// Maps to: CC `showAllInTranscript` for the native-scrollback 30-row cap.
     pub show_all_in_transcript: bool,
     /// Mirrors official `Messages.tsx` LogoHeader ownership for non-empty
-    /// main-screen transcripts. Empty-session Cometix still renders Logo in
+    /// main-screen transcripts. Empty-session Nyan still renders Logo in
     /// REPL because there is no empty Messages node yet.
     pub show_logo: bool,
     /// Maps to CC `components/Messages.tsx` LogoHeader → `StatusNotices`.
     /// Official `StatusNotices` builds this from global config/auth/memory/IDE
-    /// reads; Cometix accepts a pure startup snapshot to preserve safe UI
+    /// reads; Nyan accepts a pure startup snapshot to preserve safe UI
     /// boundaries until runtime producers are wired.
     pub status_notice_context: StatusNoticeContext,
     /// Maps to: CC `Messages.tsx:254-258` `toolJSX`, of which Messages reads
@@ -1349,7 +1349,7 @@ impl Component for MessageRows {
                 let elapsed = start.elapsed();
                 if elapsed >= Duration::from_millis(5) {
                     eprintln!(
-                        "cometix-component name=MessageRows action=retain elapsed={:?} collapsed_len={} is_loading={} columns={}",
+                        "nyan-component name=MessageRows action=retain elapsed={:?} collapsed_len={} is_loading={} columns={}",
                         elapsed,
                         props.prepared.collapsed.len(),
                         props.is_loading,
@@ -1408,7 +1408,7 @@ impl Component for MessageRows {
                 // Official MessageRow: `addMargin={!hasMetadata}`. Outside
                 // transcript metadata chrome that is always true — including
                 // the first row after LogoHeader — so the prompt/first turn
-                // keeps a 1-row gap under the logo. Cometix has no metadata
+                // keeps a 1-row gap under the logo. Nyan has no metadata
                 // chrome yet, so every row gets the margin (user-continuation
                 // image edge cases still use `is_user_continuation` below).
                 let add_margin = true;
@@ -1474,7 +1474,7 @@ impl Component for MessageRows {
             let elapsed = start_time.elapsed();
             if elapsed >= Duration::from_millis(5) {
                 eprintln!(
-                    "cometix-component name=MessageRows action=update elapsed={:?} rendered_count={} collapsed_len={} slice_start={} slice_end={} is_loading={} columns={}",
+                    "nyan-component name=MessageRows action=update elapsed={:?} rendered_count={} collapsed_len={} slice_start={} slice_end={} is_loading={} columns={}",
                     elapsed,
                     rendered_count,
                     props.prepared.collapsed.len(),
@@ -1655,7 +1655,7 @@ impl Component for MessagesImpl {
         let prepare_elapsed = prepare_start.map(|start| start.elapsed());
         let (terminal_cols, _) = hooks.use_terminal_size();
         let (theme_name, _) = crate::components::design_system::theme_provider::use_theme(&hooks);
-        // Cometix display prefs live in AppState (Config preview). The
+        // Nyan display prefs live in AppState (Config preview). The
         // store-absent fallbacks recorded here on 2026-08-01 are gone:
         // retained Messages always mounts under AppStateProvider, and the
         // values come from the state defaults themselves (both true).
@@ -1704,7 +1704,7 @@ impl Component for MessagesImpl {
                 let elapsed = start.elapsed();
                 if elapsed >= Duration::from_millis(5) {
                     eprintln!(
-                        "cometix-component name=Messages action=retain elapsed={:?} prepare={:?} messages_len={} collapsed_len={} is_loading={} streaming_len={} columns={}",
+                        "nyan-component name=Messages action=retain elapsed={:?} prepare={:?} messages_len={} collapsed_len={} is_loading={} streaming_len={} columns={}",
                         elapsed,
                         prepare_elapsed.unwrap_or_default(),
                         props.messages.len(),
@@ -1880,7 +1880,7 @@ impl Component for MessagesImpl {
             let elapsed = start.elapsed();
             if elapsed >= Duration::from_millis(5) {
                 eprintln!(
-                    "cometix-component name=Messages action=update elapsed={:?} prepare={:?} children={} messages_len={} collapsed_len={} is_loading={} streaming_len={} columns={}",
+                    "nyan-component name=Messages action=update elapsed={:?} prepare={:?} children={} messages_len={} collapsed_len={} is_loading={} streaming_len={} columns={}",
                     elapsed,
                     prepare_elapsed.unwrap_or_default(),
                     child_count,
@@ -4491,7 +4491,7 @@ mod tests {
     fn collapse_read_search_tracks_managed_memory_operations_separately() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-collapse-session-memory-{}",
+            "nyan-collapse-session-memory-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config = root.join("config");
@@ -4556,7 +4556,7 @@ mod tests {
     fn collapse_read_search_tracks_memory_edit_operations_separately() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-collapse-memory-edit-{}",
+            "nyan-collapse-memory-edit-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_text = root.join("config").display().to_string();
@@ -4599,7 +4599,7 @@ mod tests {
     fn collapse_read_search_team_memory_tracking_ignores_growthbook_delivery() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-collapse-team-memory-{}",
+            "nyan-collapse-team-memory-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let root_text = root.display().to_string();

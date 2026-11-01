@@ -1,7 +1,7 @@
 //! Maps to: CC `services/api/overageCreditGrant.ts` cached grant helpers.
 //!
 //! Official code can fetch `/overage_credit_grant` and update
-//! `GlobalConfig.overageCreditGrantCache`. Cometix keeps this slice read-only:
+//! `GlobalConfig.overageCreditGrantCache`. Nyan keeps this slice read-only:
 //! it only consumes existing cache entries and never performs OAuth/network
 //! calls, invalidation writes, or analytics.
 

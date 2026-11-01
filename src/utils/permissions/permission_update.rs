@@ -1,7 +1,7 @@
 //! Maps to: CC `utils/permissions/PermissionUpdate.ts`.
 //! Owns in-memory projection and source-shaped persistence dispatch. The
 //! canonical settings writer owns disk I/O and cache invalidation; the explicit
-//! Cometix no-write seam remains at the persistence boundary.
+//! Nyan no-write seam remains at the persistence boundary.
 
 use crate::tool::ToolPermissionContext;
 use crate::types::permissions::{
@@ -163,7 +163,7 @@ fn behavior_key(behavior: PermissionBehavior) -> &'static str {
 /// even for source-defined no-ops (including the AddRules loader returning
 /// false): CC ignores that loader's boolean and proceeds to the next update.
 ///
-/// Explicit retained deviation: COMETIX_WRITE_ENABLED=0 returns an error at
+/// Explicit retained deviation: NYAN_WRITE_ENABLED=0 returns an error at
 /// this entry. Ordinary settings failures are caught/logged and do not become
 /// exceptions: CC's writer returns `{ error }`, which this owner ignores for
 /// all five non-AddRules branches. AddRules catches in the source-owned loader.
@@ -271,7 +271,7 @@ pub fn persist_permission_update(update: &PermissionUpdate) -> anyhow::Result<bo
 
 /// Maps to: CC `utils/permissions/PermissionUpdate.ts:349-355#persistPermissionUpdates`.
 /// Each update settles independently in input order. Ordinary writer failures
-/// do not skip later updates; only the explicit Cometix no-write error does.
+/// do not skip later updates; only the explicit Nyan no-write error does.
 pub fn persist_permission_updates(updates: &[PermissionUpdate]) -> anyhow::Result<()> {
     for update in updates {
         persist_permission_update(update)?;
@@ -541,7 +541,7 @@ mod persistence_tests {
                 original_cwd,
                 _config: EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root),
                 _managed: EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &root),
-                _writes: EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1"),
+                _writes: EnvVarGuard::set("NYAN_WRITE_ENABLED", "1"),
                 root,
             };
             reset_settings_cache();
@@ -693,13 +693,13 @@ mod persistence_tests {
         );
     }
 
-    /// Explicit retained Cometix seam: disabling writes errors at the persistence
+    /// Explicit retained Nyan seam: disabling writes errors at the persistence
     /// entry before any settings/state publication, even though CC has no gate.
     #[test]
     fn persist_updates_retains_explicit_no_write_error_before_live_projection() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let fixture = Fixture::new();
-        let _disabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _disabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let update = PermissionUpdate::AddRules {
             destination: PermissionUpdateDestination::UserSettings,
             behavior: PermissionBehavior::Allow,

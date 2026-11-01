@@ -4,7 +4,7 @@
 //! The checked-in upstream `services/compact/reactiveCompact.ts` is currently a
 //! generated empty stub, while `query.ts` still contains optional prompt-too-long
 //! and media-size recovery branches after context-collapse overflow recovery.
-//! Cometix keeps this as a safe no-op seam at the official query-loop position
+//! Nyan keeps this as a safe no-op seam at the official query-loop position
 //! until a non-stub upstream implementation exists.
 
 use crate::constants::query_source::QuerySource;

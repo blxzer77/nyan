@@ -1,7 +1,7 @@
 //! API request lifecycle tracing.
 //!
 //! Writes stage events to `~/.claude/trace/{session}.jsonl` (or
-//! `COMETIX_TRACE_DIR`) and mirrors summaries into `--debug` logs as
+//! `NYAN_TRACE_DIR`) and mirrors summaries into `--debug` logs as
 //! `api: [API:trace] ...` so `--debug=api` filters match.
 //!
 //! DEVIATION(SCOPE): local development instrumentation with no CC counterpart.
@@ -12,8 +12,8 @@
 //! module reaches the model or the transcript.
 //!
 //! Env:
-//! - `COMETIX_TRACE=off|0|1|summary|true|full`
-//! - `COMETIX_TRACE_DIR=<dir>` overrides the default trace directory
+//! - `NYAN_TRACE=off|0|1|summary|true|full`
+//! - `NYAN_TRACE_DIR=<dir>` overrides the default trace directory
 //! - `--debug=api` (or unfiltered `--debug`) implies at least summary
 
 use serde_json::{Value, json};
@@ -88,7 +88,7 @@ impl ApiTrace {
 
 /// Resolve effective trace level.
 pub fn trace_level() -> TraceLevel {
-    match crate::utils::process_env::var("COMETIX_TRACE") {
+    match crate::utils::process_env::var("NYAN_TRACE") {
         Some(raw) => {
             let normalized = raw.trim().to_ascii_lowercase();
             match normalized.as_str() {
@@ -124,7 +124,7 @@ fn debug_implies_summary() -> bool {
 
 /// Directory for trace JSONL files.
 pub fn get_trace_dir() -> PathBuf {
-    if let Some(dir) = crate::utils::process_env::var("COMETIX_TRACE_DIR") {
+    if let Some(dir) = crate::utils::process_env::var("NYAN_TRACE_DIR") {
         let trimmed = dir.trim();
         if !trimmed.is_empty() {
             return PathBuf::from(trimmed);

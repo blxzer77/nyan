@@ -113,7 +113,7 @@ pub(super) mod tests {
     impl ModelSectionFixture {
         pub(in crate::tools::config_tool) fn new() -> Self {
             let root = std::env::temp_dir().join(format!(
-                "cometix-config-prompt-{}",
+                "nyan-config-prompt-{}",
                 uuid::Uuid::new_v4().simple()
             ));
             std::fs::create_dir_all(&root).unwrap();

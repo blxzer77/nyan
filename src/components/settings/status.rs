@@ -1,6 +1,6 @@
 //! Maps to: CC components/Settings/Status.tsx
 //! Status tab — shows session info, model, version, account diagnostics.
-//! Cometix keeps this as a main-screen local command UI and only reads
+//! Nyan keeps this as a main-screen local command UI and only reads
 //! already-known runtime/config snapshots.
 
 use crate::constants::figures::figures;
@@ -737,7 +737,7 @@ mod tests {
     #[test]
     fn doctor_diagnostics_match_official_managed_settings_customization_warnings() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-status-managed-diagnostics-{}",
+            "nyan-status-managed-diagnostics-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&root).expect("create temp root");

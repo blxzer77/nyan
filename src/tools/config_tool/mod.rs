@@ -1197,7 +1197,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _fixture = super::prompt::tests::ModelSectionFixture::new();
         use_real_global_config_file();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
 
         let path = crate::utils::env::get_global_claude_file();
         assert!(
@@ -1246,7 +1246,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _fixture = super::prompt::tests::ModelSectionFixture::new();
         use_real_global_config_file();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
 
         let mut initial = crate::state::app_state_store::AppState::default();
         initial.repl_bridge_outbound_only = true;

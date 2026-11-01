@@ -617,7 +617,7 @@ pub(crate) fn check_editable_internal_path(
         });
     }
     // DEVIATION(BUILD): CC gates template-job carve-outs with its TEMPLATES
-    // bundle feature. Cometix projects internal bundle features onto the
+    // bundle feature. Nyan projects internal bundle features onto the
     // compile-time `anthropic_internal` Cargo feature so the env key and
     // policy are absent from external binaries.
     #[cfg(feature = "anthropic_internal")]
@@ -774,7 +774,7 @@ pub fn get_claude_temp_dir_name() -> String {
     format!("claude-{}", current_uid())
 }
 
-/// Cometix forward-port of CC 2.1.285's check of its per-uid temp root
+/// Nyan forward-port of CC 2.1.285's check of its per-uid temp root
 /// (user, 10-03), used by `/copy` and the sandbox temp directory. Opens the
 /// directory without following a symlink and requires the user's own uid,
 /// fixing a mode other than 0700. A directory owned by someone else is
@@ -1560,7 +1560,7 @@ mod tests {
     fn claude_temp_dirs_match_official_shape() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-temp-shape-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-temp-shape-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let resolved = root.canonicalize().unwrap();
         let _tmp = EnvVarGuard::set("CLAUDE_CODE_TMPDIR", &root);
@@ -1637,13 +1637,13 @@ mod tests {
     #[test]
     fn read_permission_matches_official_working_dir_rule_and_suggestion_order() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-permission-{}",
+            "nyan-read-permission-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let inside = root.join("inside");
         let blocked = root.join("blocked");
         let outside = root.with_file_name(format!(
-            "cometix-read-permission-outside-{}",
+            "nyan-read-permission-outside-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&inside).unwrap();
@@ -1724,7 +1724,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-internal-symlink-{}",
+            "nyan-read-internal-symlink-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config = root.join("config");
@@ -1754,12 +1754,12 @@ mod tests {
     fn read_permission_checks_resolved_working_path_then_requested_rules_like_official() {
         use std::os::unix::fs::symlink;
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-working-symlink-{}",
+            "nyan-read-working-symlink-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let workspace = root.join("workspace");
         let outside = root.with_file_name(format!(
-            "cometix-read-working-outside-{}",
+            "nyan-read-working-outside-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&workspace).unwrap();
@@ -1821,7 +1821,7 @@ mod tests {
 
     #[test]
     fn claude_settings_path_detection_normalizes_structure_and_case() {
-        let cwd = std::env::temp_dir().join("cometix-settings-path-detection");
+        let cwd = std::env::temp_dir().join("nyan-settings-path-detection");
         assert!(is_claude_settings_path(
             &cwd.join(".claude/./settings.json").display().to_string(),
             &cwd,
@@ -1882,7 +1882,7 @@ mod tests {
     fn resolved_parent_symlink_destination_deny_rule_blocks_new_write() {
         use std::os::unix::fs::symlink;
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-permission-symlink-{}",
+            "nyan-write-permission-symlink-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let target = root.join("outside");
@@ -1922,7 +1922,7 @@ mod tests {
         use std::os::unix::fs::symlink;
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-template-job-permission-{}",
+            "nyan-template-job-permission-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config = root.join("config");
@@ -1984,7 +1984,7 @@ mod tests {
     #[test]
     fn agent_memory_path_is_an_internal_write_carve_out_before_claude_safety() {
         let cwd = std::env::temp_dir().join(format!(
-            "cometix-agent-memory-permission-{}",
+            "nyan-agent-memory-permission-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let path = cwd.join(".claude/agent-memory/reviewer/MEMORY.md");
@@ -2115,7 +2115,7 @@ mod tests {
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-permission-root-matrix-{}",
+            "nyan-permission-root-matrix-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_home = root.join("config");

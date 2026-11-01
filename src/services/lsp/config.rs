@@ -3,7 +3,7 @@
 //! Maps to: CC `services/lsp/config.ts` `getAllLspServers()`.
 //!
 //! Official Claude Code loads LSP server definitions from enabled plugins only;
-//! user/project settings do not define LSP servers directly. CometixCode keeps
+//! user/project settings do not define LSP servers directly. nyan keeps
 //! that boundary by reading the cache-only plugin loader and resolving plugin
 //! LSP declarations through `utils/plugins/lsp_plugin_integration.rs`.
 
@@ -57,11 +57,11 @@ mod tests {
     fn get_all_lsp_servers_reads_enabled_inline_plugin_lsp_configs() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-lsp-config-plugin-{}",
+            "nyan-lsp-config-plugin-{}",
             uuid::Uuid::new_v4()
         ));
         let config_home =
-            std::env::temp_dir().join(format!("cometix-lsp-config-home-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-lsp-config-home-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join(".claude-plugin")).expect("plugin dir");
         std::fs::create_dir_all(&config_home).expect("config home");
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);

@@ -19,7 +19,7 @@ pub struct FileWriteTool;
 
 /// Private `PermissionRequest.call_input` transport. This value never enters
 /// SDK messages or transcripts because `call_input` is `serde(skip)`.
-pub(crate) const CHECKED_WRITE_DESTINATION_KEY: &str = "__cometix_checked_write_destination";
+pub(crate) const CHECKED_WRITE_DESTINATION_KEY: &str = "__nyan_checked_write_destination";
 
 pub(crate) fn resolved_write_destination(path: &Path) -> PathBuf {
     let candidate = crate::utils::fs_operations::get_paths_for_permission_check(path)
@@ -468,10 +468,10 @@ impl ToolCall for FileWriteTool {
                 Err(error) => return make_error(error, start),
             };
 
-            // DEVIATION(SECURITY): Cometix's repository-wide no-write mode
+            // DEVIATION(SECURITY): nyan's repository-wide no-write mode
             // has no CC equivalent. It must fail before discovery, mkdir,
             // history, temporary files, or any other disk mutation.
-            if !crate::utils::env_utils::is_cometix_write_enabled() {
+            if !crate::utils::env_utils::is_nyan_write_enabled() {
                 return make_error(
                     crate::tools::shared::write_gate::FILE_WRITE_DISABLED_ERROR,
                     start,
@@ -923,7 +923,7 @@ mod tests {
         use std::os::unix::ffi::OsStrExt as _;
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-fifo-{}",
+            "nyan-write-fifo-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -949,9 +949,9 @@ mod tests {
     #[tokio::test]
     async fn creates_file_and_parent_directories_through_shared_writer() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-create-{}",
+            "nyan-write-create-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let path = root.join("nested/new.txt");
@@ -984,9 +984,9 @@ mod tests {
         use std::os::unix::fs::symlink;
 
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-call-dangling-{}",
+            "nyan-write-call-dangling-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1018,9 +1018,9 @@ mod tests {
     #[tokio::test]
     async fn existing_file_requires_full_read_and_rejects_content_race() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-race-{}",
+            "nyan-write-race-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1066,9 +1066,9 @@ mod tests {
     #[tokio::test]
     async fn post_validation_mtime_change_with_identical_content_uses_official_fallback() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-mtime-fallback-{}",
+            "nyan-write-mtime-fallback-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1093,9 +1093,9 @@ mod tests {
     #[tokio::test]
     async fn preserves_utf16_encoding_but_honors_explicit_lf_content() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-encoding-{}",
+            "nyan-write-encoding-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1129,10 +1129,10 @@ mod tests {
     async fn transcript_persistence_disable_does_not_disable_file_write() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let _bootstrap = BootstrapRestore::capture();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::bootstrap::state::set_session_persistence_disabled(true);
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-no-session-persistence-{}",
+            "nyan-write-no-session-persistence-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let path = root.join("new.txt");
@@ -1155,9 +1155,9 @@ mod tests {
     #[tokio::test]
     async fn no_write_gate_fails_before_creating_parent_or_history() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-disabled-{}",
+            "nyan-write-disabled-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let path = root.join("nested/new.txt");
@@ -1193,9 +1193,9 @@ mod tests {
     async fn no_write_gate_leaves_existing_file_history_and_temp_state_untouched() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let _bootstrap = BootstrapRestore::capture();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-disabled-history-{}",
+            "nyan-write-disabled-history-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_dir = root.join("config");
@@ -1251,10 +1251,10 @@ mod tests {
     async fn existing_write_tracks_file_history_through_real_app_store() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let _bootstrap = BootstrapRestore::capture();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _checkpointing = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING");
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-history-{}",
+            "nyan-write-history-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_dir = root.join("config");
@@ -1360,7 +1360,7 @@ mod tests {
     #[tokio::test]
     async fn remote_git_diff_gate_reads_switch_table_not_growthbook_cache() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _remote = EnvVarGuard::set("CLAUDE_CODE_REMOTE", "1");
         let _config_restore = TestGlobalConfigRestore;
         let mut config = crate::utils::config::GlobalConfig::default();
@@ -1374,7 +1374,7 @@ mod tests {
         )]));
         crate::utils::config::set_test_global_config(Some(config));
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-remote-diff-{}",
+            "nyan-write-remote-diff-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1550,7 +1550,7 @@ mod tests {
 
     #[test]
     fn relative_permission_rules_use_tool_context_cwd_override() {
-        let root = std::env::temp_dir().join("cometix-write-permission-cwd");
+        let root = std::env::temp_dir().join("nyan-write-permission-cwd");
         let mut context = ToolUseContext::default();
         context.cwd_override = Some(root);
         context.tool_permission_context.always_deny_rules.insert(
@@ -1572,7 +1572,7 @@ mod tests {
 
     #[test]
     fn backfill_expands_only_the_observable_clone() {
-        let root = std::env::temp_dir().join("cometix-write-backfill");
+        let root = std::env::temp_dir().join("nyan-write-backfill");
         let mut context = ToolUseContext::default();
         context.cwd_override = Some(root.clone());
         let original = serde_json::json!({"file_path": "nested.txt", "content": "x"});
@@ -1587,9 +1587,9 @@ mod tests {
     #[tokio::test]
     async fn empty_existing_file_returns_create_like_official_truthiness_branch() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-empty-{}",
+            "nyan-write-empty-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

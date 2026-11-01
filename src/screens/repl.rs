@@ -214,7 +214,7 @@ impl ReplProps {
 /// `showRemoteCallout` and `showDesktopUpsellStartup`.
 ///
 /// Safety boundary: official REPL computes these by reading app state, global
-/// config, GrowthBook, OAuth tokens, and bridge entitlement. Cometix consumes an
+/// config, GrowthBook, OAuth tokens, and bridge entitlement. Nyan consumes an
 /// explicit snapshot context; the read-only producer below never writes config,
 /// initializes GrowthBook, opens network/bridge transports, or launches Desktop.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -908,7 +908,7 @@ impl ReplStartupDialogSnapshot {
     ///
     /// Remote Callout remains an explicit seam until bridge/auth runtime state
     /// is ported: guessing the official `feature('BRIDGE_MODE')`, OAuth-token,
-    /// and bridge-entitlement chain would surface an action Cometix cannot yet
+    /// and bridge-entitlement chain would surface an action Nyan cannot yet
     /// safely execute.
     pub fn from_readonly_global_config(global_config: &GlobalConfig) -> Self {
         Self {
@@ -1134,7 +1134,7 @@ struct StreamingTextPreview {
 enum StreamingTextDisplayMode {
     /// Strict CC parity: render only completed lines from `streamingText`.
     Line,
-    /// Cometix extension: render the unstable suffix too, preserving the
+    /// Nyan extension: render the unstable suffix too, preserving the
     /// accidental character-by-character streaming effect without mutating the
     /// formal transcript message list.
     Character,
@@ -1144,7 +1144,7 @@ enum StreamingTextDisplayMode {
 /// setting (`/settings` → "Streaming text"). The state model stays aligned
 /// with CC either way: deltas update `StreamingTextPreview`, and only
 /// completed assistant blocks enter transcript history. Unset or unknown
-/// values keep the Cometix default (character); CC's own behavior is `line`.
+/// values keep the Nyan default (character); CC's own behavior is `line`.
 fn streaming_text_display_mode(
     settings: &crate::utils::settings::SettingsJson,
 ) -> StreamingTextDisplayMode {
@@ -1572,7 +1572,7 @@ impl QueryPumpBurstProfile {
             return;
         }
         eprintln!(
-            "cometix-query-pump burst elapsed={:?} events={} stream={} text_delta={} text_bytes={} content_block_start={} renderable_message={} model_message={} tool_progress={} stop_hook_progress={} permission_request={} clear_preview={} terminal={} other={} queue_len={} complete={}",
+            "nyan-query-pump burst elapsed={:?} events={} stream={} text_delta={} text_bytes={} content_block_start={} renderable_message={} model_message={} tool_progress={} stop_hook_progress={} permission_request={} clear_preview={} terminal={} other={} queue_len={} complete={}",
             elapsed,
             self.events,
             self.stream_events,
@@ -3817,7 +3817,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     // useState(randomUUID())`. CC mints a fresh UUID so `Messages.tsx:793`
     // row keys (`${msg.uuid}-${conversationId}`) change and stale memoized
     // rows remount after a compact reset (REPL.tsx:3461-3463, :3662-3664).
-    // Cometix carries the same invalidation as a monotonic generation counter
+    // Nyan carries the same invalidation as a monotonic generation counter
     // in the row key/cache-key chain; a bump is CC's `randomUUID()` re-mint.
     let mut conversation_id = hooks.use_state(|| 0u64);
     // Maps to CC `REPL.tsx:1897`
@@ -4168,7 +4168,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     // `setToolUseConfirmQueue`, and the REPL passes the resulting `canUseTool`
     // into `query(...)` (`REPL.tsx:3137`, `:3409`), which is how a subagent's
     // permission ask reaches this queue (`AgentTool.tsx:399` → `:879` →
-    // `runAgent.ts:753`). Cometix evaluates the ask inside each query actor, off
+    // `runAgent.ts:753`). Nyan evaluates the ask inside each query actor, off
     // the render thread, so what reaches this component over a channel is CC's
     // queue UPDATER (`leaderPermissionBridge.ts:16-18`) — appends, withdrawals
     // and the recheck sweep all travel this one FIFO, which is what keeps
@@ -4474,7 +4474,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                 // B3 flip-audit: CC's single accept-time clear
                 // (speculation.ts:851-857) guards on text==null &&
                 // promptId==null → return prev. This outcome-side clear is
-                // the second half of Cometix's async split (the submit-side
+                // the second half of Nyan's async split (the submit-side
                 // clear already ran), so with the guard it is silent at
                 // runtime and the notification count matches CC.
                 app_store.set_state(|prev| {
@@ -4574,7 +4574,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     // SEAM (recorded, not implemented in this slice):
     // - CC feeds `ideSelection` into handlePromptSubmit → processUserInput →
     //   attachments (getSelectedLinesFromIDE / getOpenedFileFromIDE,
-    //   attachments.ts:1615-1629); Cometix's selection is display-only today.
+    //   attachments.ts:1615-1629); Nyan's selection is display-only today.
     // - CC's 4-state `useIdeConnectionStatus` (connected/pending/disconnected/
     //   null) and the disconnected-notification family remain unwired; only
     //   the strict connected gate exists here.
@@ -5023,7 +5023,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                 stream_mode.set(SpinnerMode::Requesting);
                 response_length_ref.set(0);
                 let (sender, receiver) = futures::channel::oneshot::channel();
-                let spawned = std::thread::Builder::new().name("cometix-partial-compact".into())
+                let spawned = std::thread::Builder::new().name("nyan-partial-compact".into())
                     .stack_size(8 * 1024 * 1024).spawn(move || {
                         let result = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
                             Ok(runtime) => runtime.block_on(async {
@@ -6785,7 +6785,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                         let worker_sender = sender.clone();
                         let worker_invocation = invocation.clone();
                         let spawn_result = std::thread::Builder::new()
-                            .name("cometix-compact".to_string())
+                            .name("nyan-compact".to_string())
                             .stack_size(8 * 1024 * 1024)
                             .spawn(move || {
                             let result = match tokio::runtime::Builder::new_current_thread()
@@ -7032,7 +7032,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         // submissions that process now clear the ide selection to None
         // (distinct from the identity-change reset OBJECT,
         // useIdeSelection.ts:77-82). CC's immediate local-jsx command path
-        // returns early WITHOUT clearing (REPL.tsx:4429); the Cometix analog
+        // returns early WITHOUT clearing (REPL.tsx:4429); the Nyan analog
         // is `OpenLocalCommandUi` while a query is active, so the clear is
         // applied per-path below instead of unconditionally up front.
         let mut clear_ide_selection_for_submit = {
@@ -7859,7 +7859,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                         let worker_sender = sender.clone();
                         let worker_invocation = invocation.clone();
                         let spawn_result = std::thread::Builder::new()
-                            .name("cometix-compact".to_string())
+                            .name("nyan-compact".to_string())
                             .stack_size(8 * 1024 * 1024)
                             .spawn(move || {
                                 let result = match tokio::runtime::Builder::new_current_thread()
@@ -9329,7 +9329,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     let app_store_for_remote_done = app_store.clone();
     let on_remote_callout_done = move |done: RemoteCalloutDone| {
         // Official REPL enables bridge app-state when selection is `enable`.
-        // Safe Cometix only dismisses this startup dialog; bridge runtime work
+        // Safe Nyan only dismisses this startup dialog; bridge runtime work
         // belongs to the dedicated Remote Control/bridge slice.
         let _selection = done.selection;
         let _would_mark_seen = done.would_mark_seen;
@@ -9429,7 +9429,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         };
     let on_desktop_upsell_done = move |done: DesktopUpsellDone| {
         // Official startup upsell ignores DesktopHandoff result payloads and
-        // just dismisses. Safe Cometix also avoids config writes and handoff
+        // just dismisses. Safe Nyan also avoids config writes and handoff
         // side effects; the callback keeps would-* metadata internal.
         let _done = done;
         show_desktop_upsell_startup.set(false);
@@ -9815,7 +9815,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
 
             // Maps to: CC `screens/REPL.tsx:6218-6233`. SpinnerWithVerb is a
             // REPL-owned sibling of Messages, never a Messages prop or child.
-            // Cometix Special modification: do not pass `verbose` — timer/tokens
+            // Nyan Special modification: do not pass `verbose` — timer/tokens
             // show immediately (see SpinnerWithVerb).
             #(if show_spinner && screen.get() == Screen::Prompt {
                 Some(element! {
@@ -10293,7 +10293,7 @@ mod tests {
     impl BranchFixtureDirectory {
         fn new() -> Self {
             let path =
-                std::env::temp_dir().join(format!("cometix-branch-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("nyan-branch-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&path).unwrap();
             Self(path)
         }
@@ -10618,14 +10618,14 @@ mod tests {
     /// sweep's re-evaluation now says `allow`, and a writable project root so
     /// the persist half of an answer is observable on disk.
     fn racing_permission_fixture(name: &str) -> RacingPermissionFixture {
-        let root = std::env::temp_dir().join(format!("cometix-repl-permission-race-{name}"));
+        let root = std::env::temp_dir().join(format!("nyan-repl-permission-race-{name}"));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         // macOS exposes the temp root through `/var` -> `/private/var`.
         let root = std::fs::canonicalize(&root).unwrap();
         let _cwd = OriginalCwdGuard::set(&root);
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root.join("config"));
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", &PathBuf::from("1"));
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", &PathBuf::from("1"));
 
         let store = crate::state::store::AppStore::new(
             crate::state::app_state_store::AppState::default(),
@@ -11846,7 +11846,7 @@ mod tests {
                 receipt_index += 1;
             }
         }
-        let _writes = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::utils::session_storage::record_typed_messages_with_team(
             &persistence_messages,
             None,
@@ -12156,7 +12156,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
         let marker_path = std::env::temp_dir().join(format!(
-            "cometix-repl-resume-hooks-{}",
+            "nyan-repl-resume-hooks-{}",
             uuid::Uuid::new_v4()
         ));
         let settings = crate::utils::settings::SettingsJson {
@@ -14851,7 +14851,7 @@ mod tests {
             6,
         );
 
-        assert!(text.contains("Cometix Code"), "canvas=\n{text}");
+        assert!(text.contains("nyan"), "canvas=\n{text}");
         assert!(
             text.contains("Large CLAUDE.md will impact performance"),
             "canvas=\n{text}"
@@ -15393,7 +15393,7 @@ mod tests {
     fn install_keybindings_test_env(root: std::path::PathBuf) -> KeybindingsTestEnv {
         let restore = KeybindingsTestEnv {
             config_dir: Some(EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root)),
-            write_enabled: Some(EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1")),
+            write_enabled: Some(EnvVarGuard::set("NYAN_WRITE_ENABLED", "1")),
             root: root.clone(),
         };
         crate::utils::config::clear_global_config_cache_for_testing();
@@ -15441,7 +15441,7 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-repl-keybindings-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-repl-keybindings-{}", uuid::Uuid::new_v4()));
         let _restore = install_keybindings_test_env(root.clone());
 
         let text = last_repl_text(stream::iter(text_input_events("/keybindings")), 1_500, 40);
@@ -15476,7 +15476,7 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-repl-stats-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-repl-stats-{}", uuid::Uuid::new_v4()));
         write_stats_fixture(&root);
         let _projects = crate::utils::session_storage::set_test_projects_dir_override(&root);
         let _cache =
@@ -15497,7 +15497,7 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-repl-stats-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-repl-stats-{}", uuid::Uuid::new_v4()));
         write_stats_fixture(&root);
         let _projects = crate::utils::session_storage::set_test_projects_dir_override(&root);
         let _cache =
@@ -15997,7 +15997,7 @@ mod tests {
     }
 
     #[test]
-    fn streaming_text_character_mode_preserves_cometix_incremental_preview() {
+    fn streaming_text_character_mode_preserves_nyan_incremental_preview() {
         assert_eq!(
             visible_streaming_text("partial", StreamingTextDisplayMode::Character),
             Some("partial".to_string())
@@ -16300,17 +16300,17 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-repl-logo-header-{}",
+            "nyan-repl-logo-header-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_home = root.join("config");
         std::fs::create_dir_all(&config_home).unwrap();
         let _cwd_guard = OriginalCwdGuard::set(&root);
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
-        let _write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", &PathBuf::from("0"));
+        let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", &PathBuf::from("0"));
 
         let empty_text = last_repl_text(stream::empty::<TerminalEvent>(), 100, 3);
-        let logo_title = "Cometix Code";
+        let logo_title = "nyan";
         assert_eq!(
             empty_text.matches(logo_title).count(),
             1,
@@ -16361,7 +16361,7 @@ mod tests {
             text.contains("restored session row"),
             "restored transcript row should render; canvas=\n{text}"
         );
-        let logo_title = "Cometix Code";
+        let logo_title = "nyan";
         assert_eq!(
             text.matches(logo_title).count(),
             1,
@@ -16778,7 +16778,7 @@ mod tests {
         // Mirror the process runtime published by the production entrypoint.
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _lock = env_lock().lock().unwrap();
-        let _write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", &PathBuf::from("0"));
+        let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", &PathBuf::from("0"));
         let events = timed_stream(vec![
             (key(KeyCode::Enter), 30),
             (TerminalEvent::Resize(100, 30), 100),
@@ -16844,14 +16844,14 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-repl-status-panel-{}",
+            "nyan-repl-status-panel-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_home = root.join("config");
         std::fs::create_dir_all(&config_home).unwrap();
         let _cwd_guard = OriginalCwdGuard::set(&root);
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
-        let _write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", &PathBuf::from("0"));
+        let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", &PathBuf::from("0"));
 
         // Esc goes out only once the Settings tab header is on screen: an Esc
         // that lands before the panel mounts is consumed by PromptInput and
@@ -17637,12 +17637,12 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         let config_home =
-            std::env::temp_dir().join(format!("cometix-repl-resume-empty-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-repl-resume-empty-{}", Uuid::new_v4()));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
-        let _write_guard = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_guard = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
 
         // The picker loads on worker threads now (CC awaits it), so wait for
         // the onDone output instead of an idle window the load can outlast.
@@ -17693,12 +17693,12 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         let config_home =
-            std::env::temp_dir().join(format!("cometix-repl-resume-select-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-repl-resume-select-{}", Uuid::new_v4()));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
-        let _write_guard = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_guard = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
 
         let project_path = resume::current_project_path();
         let session_id = format!("resume-select-{}", Uuid::new_v4());
@@ -17768,14 +17768,14 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         let _single_worktree = EnvVarGuard::set("COMETIX_TEST_SINGLE_WORKTREE", "1");
         let config_home = std::env::temp_dir().join(format!(
-            "cometix-repl-resume-select-error-{}",
+            "nyan-repl-resume-select-error-{}",
             Uuid::new_v4()
         ));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
-        let _write_guard = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_guard = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
 
         let project_path = resume::current_project_path();
         let session_id = Uuid::new_v4().to_string();
@@ -17849,12 +17849,12 @@ mod tests {
         // dir — pin them to the same root.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let config_home =
-            std::env::temp_dir().join(format!("cometix-repl-resume-id-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-repl-resume-id-{}", Uuid::new_v4()));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
-        let _write_guard = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_guard = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
 
         let project_path = resume::current_project_path();
         let session_id = Uuid::new_v4().to_string();
@@ -17904,12 +17904,12 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let config_home =
-            std::env::temp_dir().join(format!("cometix-repl-resume-title-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-repl-resume-title-{}", Uuid::new_v4()));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
-        let _write_guard = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_guard = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
 
         let project_path = resume::current_project_path();
         let session_id = Uuid::new_v4().to_string();
@@ -17966,14 +17966,14 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let config_home = std::env::temp_dir().join(format!(
-            "cometix-repl-resume-title-ambiguous-{}",
+            "nyan-repl-resume-title-ambiguous-{}",
             Uuid::new_v4()
         ));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
-        let _write_guard = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_guard = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
 
         let project_path = resume::current_project_path();
         let custom_title = format!("Shared custom title {}", Uuid::new_v4());
@@ -18056,12 +18056,12 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let config_home =
-            std::env::temp_dir().join(format!("cometix-repl-resume-missing-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-repl-resume-missing-{}", Uuid::new_v4()));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
-        let _write_guard = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_guard = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
 
         let project_path = resume::current_project_path();
         let session_id = Uuid::new_v4().to_string();
@@ -18118,12 +18118,12 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         let config_home =
-            std::env::temp_dir().join(format!("cometix-repl-resume-filter-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-repl-resume-filter-{}", Uuid::new_v4()));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
-        let _write_guard = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_guard = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
 
         let project_path = resume::current_project_path();
         let older_session_id = format!("resume-filter-older-{}", Uuid::new_v4());
@@ -18227,12 +18227,12 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _single_worktree = EnvVarGuard::set("COMETIX_TEST_SINGLE_WORKTREE", "1");
         let config_home =
-            std::env::temp_dir().join(format!("cometix-repl-resume-cross-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-repl-resume-cross-{}", Uuid::new_v4()));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
-        let _write_guard = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_guard = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
 
         let current_project = resume::current_project_path();
         let current_session_id = Uuid::new_v4().to_string();
@@ -18244,7 +18244,7 @@ mod tests {
         );
         std::thread::sleep(Duration::from_millis(20));
         let other_project = std::env::temp_dir()
-            .join(format!("cometix-cross-project-{}", Uuid::new_v4()))
+            .join(format!("nyan-cross-project-{}", Uuid::new_v4()))
             .display()
             .to_string();
         let other_session_id = Uuid::new_v4().to_string();
@@ -18457,13 +18457,13 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         for fail_restore in [false, true] {
             let directory =
-                std::env::temp_dir().join(format!("cometix-resume-copy-race-{}", Uuid::new_v4()));
+                std::env::temp_dir().join(format!("nyan-resume-copy-race-{}", Uuid::new_v4()));
             std::fs::create_dir_all(&directory).unwrap();
             let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", directory.join("config"));
             let _projects = crate::utils::session_storage::set_test_projects_dir_override(
                 directory.join("projects"),
             );
-            let _write = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+            let _write = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
             let clipboard_input = Arc::new(std::sync::Mutex::new(None));
             let clipboard_finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let (release_clipboard, clipboard_completion) = futures::channel::oneshot::channel();
@@ -18936,7 +18936,7 @@ mod tests {
             })
             .await
             .expect("initial REPL frame");
-            assert!(first.to_string().contains("Cometix Code"));
+            assert!(first.to_string().contains("nyan"));
 
             // ReplLogoHotPathHarness deliberately schedules two parent-only
             // idle updates. Drain those startup frames before resetting the
@@ -19048,7 +19048,7 @@ mod tests {
                 )
             });
 
-        // Cometix-specific deviation (product requirement — skip in parity
+        // Nyan-specific deviation (product requirement — skip in parity
         // audits): CC shows "esc to interrupt" while loading; not cloned.
         assert!(
             !loading_footer.contains("esc to interrupt"),
@@ -19074,7 +19074,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(
             rendered.iter().any(|text| {
-                // Cometix-specific deviation (product requirement — skip in
+                // Nyan-specific deviation (product requirement — skip in
                 // parity audits): the "esc to interrupt" loading tip is not
                 // cloned, so the mounted PromptInput is anchored by its
                 // prompt glyph instead.
@@ -19195,7 +19195,7 @@ mod tests {
         let temp = BranchFixtureDirectory::new();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", temp.path().join("config"));
         let _project = PinnedProjectDir::at(temp.path());
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
         let _remote = EnvVarGuard::set("CLAUDE_CODE_ENVIRONMENT_KIND", "byoc");
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();

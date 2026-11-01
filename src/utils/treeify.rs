@@ -1,6 +1,6 @@
 //! Maps to: CC `utils/treeify.ts`.
 //!
-//! Cometix keeps the same tree character and traversal semantics needed by
+//! Nyan keeps the same tree character and traversal semantics needed by
 //! `ValidationErrorsList`. ANSI colorization is intentionally omitted here;
 //! callers apply iocraft `Text` colors at render time.
 

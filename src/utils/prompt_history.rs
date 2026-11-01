@@ -1,7 +1,7 @@
 //! Maps to: CC `history.ts` (prompt history + pasted-ref helpers).
 //! This module reads `${CLAUDE_CONFIG_DIR}/history.jsonl` newest-first for
 //! Up/Down navigation and Ctrl-R reverse search. Writes preserve the official
-//! file shape but stay behind Cometix's explicit write opt-in so the default
+//! file shape but stay behind Nyan's explicit write opt-in so the default
 //! main-screen path remains UI-only/read-only.
 //!
 //! Also owns `parseReferences` / `formatImageRef` from the same official file.
@@ -26,7 +26,7 @@ const MAX_HISTORY_ITEMS: usize = 100;
 pub struct TextReference {
     pub id: usize,
     pub match_text: String,
-    /// Byte offset into the Rust `str` (official JS `index` is UTF-16; Cometix
+    /// Byte offset into the Rust `str` (official JS `index` is UTF-16; Nyan
     /// cursor/editing uses UTF-8 byte offsets).
     pub index: usize,
 }
@@ -256,7 +256,7 @@ fn pasted_contents_from_json(value: &serde_json::Value) -> BTreeMap<usize, Paste
 }
 
 fn history_write_enabled() -> bool {
-    crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("COMETIX_WRITE_ENABLED").as_deref())
+    crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("NYAN_WRITE_ENABLED").as_deref())
 }
 
 fn append_log_entry(entry: &LogEntry) -> anyhow::Result<()> {
@@ -300,7 +300,7 @@ mod tests {
     }
 
     fn temp_history_home() -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("cometix-history-test-{}", Uuid::new_v4()))
+        std::env::temp_dir().join(format!("nyan-history-test-{}", Uuid::new_v4()))
     }
 
     #[test]
@@ -308,7 +308,7 @@ mod tests {
         let _lock = env_lock().lock().unwrap();
         let config_home = temp_history_home();
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
-        let _write_guard = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_guard = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
         let _skip_guard = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
 
         add_to_history("/resume");
@@ -322,7 +322,7 @@ mod tests {
         let _lock = env_lock().lock().unwrap();
         let config_home = temp_history_home();
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
-        let _write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skip_guard = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
 
         add_to_history("/resume");

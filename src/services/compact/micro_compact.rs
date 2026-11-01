@@ -2,7 +2,7 @@
 //! Maps to CC `services/compact/microCompact.ts` `microcompactMessages(...)`.
 //!
 //! The upstream implementation performs cache/content microcompaction before
-//! the main model call and may yield a microcompact boundary message. Cometix
+//! the main model call and may yield a microcompact boundary message. Nyan
 //! keeps the service in the official file boundary and preserves the cached
 //! microcompact path without moving compact logic into `query/deps.rs`.
 //!
@@ -127,21 +127,21 @@ pub struct MaskResult {
 }
 
 /// Maps to CC `cachedMicrocompact.ts#isCachedMicrocompactEnabled` and
-/// `getCachedMCConfig` for Cometix's local, source-controlled runtime seam.
+/// `getCachedMCConfig` for Nyan's local, source-controlled runtime seam.
 pub fn cached_microcompact_config_from_env() -> CachedMicrocompactConfig {
     let mut config = CachedMicrocompactConfig::default();
     config.enabled = crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("COMETIX_CACHED_MICROCOMPACT").as_deref(),
+        crate::utils::process_env::var("NYAN_CACHED_MICROCOMPACT").as_deref(),
     ) || crate::utils::env_utils::is_env_truthy(
         crate::utils::process_env::var("CLAUDE_CODE_CACHED_MICROCOMPACT")
             .as_deref(),
     );
-    if let Some(value) = crate::utils::process_env::var("COMETIX_CACHED_MC_TRIGGER_THRESHOLD") {
+    if let Some(value) = crate::utils::process_env::var("NYAN_CACHED_MC_TRIGGER_THRESHOLD") {
         if let Ok(parsed) = value.parse::<usize>() {
             config.trigger_threshold = parsed.max(1);
         }
     }
-    if let Some(value) = crate::utils::process_env::var("COMETIX_CACHED_MC_KEEP_RECENT") {
+    if let Some(value) = crate::utils::process_env::var("NYAN_CACHED_MC_KEEP_RECENT") {
         if let Ok(parsed) = value.parse::<usize>() {
             config.keep_recent = parsed.max(1);
         }
@@ -153,7 +153,7 @@ pub fn cached_microcompact_config_from_env() -> CachedMicrocompactConfig {
 pub fn is_model_supported_for_cache_editing(model: &str) -> bool {
     // The sourcemap snapshot contains only the `microCompact.ts` callsite and a
     // generated stub for `cachedMicrocompact.ts`; without the official supported
-    // model table, Cometix treats every non-empty local model as supported when
+    // model table, Nyan treats every non-empty local model as supported when
     // the explicit cached-MC gate is enabled.
     !model.trim().is_empty()
 }
@@ -573,7 +573,7 @@ fn calculate_tool_result_tokens(tool_result: &crate::types::message::ToolResult)
 }
 
 fn is_main_thread_source(query_source: &QuerySource) -> bool {
-    // `QuerySource::Prompt` is Cometix's current main REPL/user prompt source.
+    // `QuerySource::Prompt` is Nyan's current main REPL/user prompt source.
     matches!(query_source, QuerySource::Prompt)
 }
 

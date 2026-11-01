@@ -1,7 +1,7 @@
 //! Maps to: CC `components/LogoV2/ChannelsNotice.tsx`.
 //!
 //! The official module is conditionally required behind feature flags and reads
-//! bootstrap/auth/settings/MCP/plugin state once at mount. Cometix exposes the
+//! bootstrap/auth/settings/MCP/plugin state once at mount. nyan exposes the
 //! same snapshot, formatting, unmatched-entry, and render branches as pure data;
 //! callers own feature gating and runtime state collection.
 

@@ -5,7 +5,7 @@
 //! - Compact full logo for narrow terminals.
 //! - Horizontal full logo for wide terminals.
 //!
-//! Cometix keeps the old comet artwork archived below, but the rendered main
+//! nyan keeps the old comet artwork archived below, but the rendered main
 //! screen now follows the official Claude Code LogoV2 shapes.
 
 use crate::components::logo_v2::clawd::Clawd;
@@ -36,7 +36,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-pub(crate) const LOGO_DISPLAY_NAME: &str = "Cometix Code";
+pub(crate) const LOGO_DISPLAY_NAME: &str = "nyan";
 const LEFT_PANEL_MAX_WIDTH: usize = 50;
 const MAX_USERNAME_LENGTH: usize = 20;
 const BORDER_PADDING: usize = 4;
@@ -44,11 +44,11 @@ const DIVIDER_WIDTH: usize = 1;
 const CONTENT_PADDING: usize = 2;
 
 #[allow(dead_code)]
-mod archived_cometix_logo {
-    //! Archived Cometix-only logo art. Keep this sealed off from the rendered
+mod archived_nyan_logo {
+    //! Archived nyan logo art. Keep this sealed off from the rendered
     //! main-screen path while the UI tracks official Claude Code LogoV2.
 
-    pub(super) const NAME: &str = "CometixCode";
+    pub(super) const NAME: &str = "archived-nyan-logo";
 
     pub(super) const COMET_ART: [&str; 13] = [
         "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⣾⣿",
@@ -152,7 +152,7 @@ impl LogoDisplayData {
         // Maps to CC `LogoV2.tsx` release-note render data:
         // `checkForReleaseNotesSync(config.lastReleaseNotesSeen)` gates full
         // logo mode, while `getRecentReleaseNotesSync(3)` populates the
-        // "What's new" feed. Safe Cometix reads only the existing changelog
+        // "What's new" feed. Safe nyan reads only the existing changelog
         // cache file; it does not fetch GitHub, write cache/config, or mark
         // `lastReleaseNotesSeen` as the current version.
         let changelog_content = release_notes_utils::read_cached_changelog_readonly();
@@ -178,7 +178,7 @@ impl LogoDisplayData {
             })
             .collect::<Vec<_>>();
         // Maps to CC `components/LogoV2/LogoV2.tsx` company announcement
-        // useState initializer. Cometix reads the already-merged settings only;
+        // useState initializer. nyan reads the already-merged settings only;
         // it does not mutate startup counters or emit analytics. `Math.random()`
         // is represented by stable per-session entropy to avoid flicker across
         // retained renders while preserving the official first-startup rule.
@@ -188,7 +188,7 @@ impl LogoDisplayData {
             stable_entropy(&session_id),
         );
         // Maps to CC `components/LogoV2/GuestPassesUpsell.tsx`
-        // `useShowGuestPassesUpsell()`. Cometix consumes existing cache/config
+        // `useShowGuestPassesUpsell()`. nyan consumes existing cache/config
         // snapshots only: no eligibility fetch, refresh-reset write,
         // impression increment, or analytics event is emitted.
         let now_ms = current_time_millis();
@@ -997,7 +997,7 @@ mod tests {
     #[test]
     fn condensed_logo_matches_official_clawd_identity_block() {
         let text = render_variant(LogoLayoutMode::Condensed, 80);
-        assert!(text.contains("Cometix Code v1.2.3"), "canvas=\n{text}");
+        assert!(text.contains("nyan v1.2.3"), "canvas=\n{text}");
         assert!(text.contains("▛███▜"), "canvas=\n{text}");
         assert!(
             text.contains("Default (recommended) · API Usage Billing"),
@@ -1005,20 +1005,20 @@ mod tests {
         );
         assert!(text.contains("/code/claude"), "canvas=\n{text}");
         assert!(
-            !text.contains(archived_cometix_logo::NAME),
-            "archived Cometix logo must not render; canvas=\n{text}"
+            !text.contains(archived_nyan_logo::NAME),
+            "archived nyan logo must not render; canvas=\n{text}"
         );
     }
 
     #[test]
     fn compact_logo_uses_official_round_border_and_clawd() {
         let text = render_variant(LogoLayoutMode::Compact, 60);
-        assert!(text.contains("Cometix Code"), "canvas=\n{text}");
+        assert!(text.contains("nyan"), "canvas=\n{text}");
         assert!(text.contains("Welcome back!"), "canvas=\n{text}");
         assert!(text.contains("▛███▜"), "canvas=\n{text}");
         assert!(text.contains("╭"), "canvas=\n{text}");
         assert!(
-            !text.contains(archived_cometix_logo::COMET_ART[0]),
+            !text.contains(archived_nyan_logo::COMET_ART[0]),
             "archived comet art must not render; canvas=\n{text}"
         );
     }
@@ -1026,7 +1026,7 @@ mod tests {
     #[test]
     fn horizontal_logo_uses_official_two_column_feed_shell() {
         let text = render_variant(LogoLayoutMode::Horizontal, 100);
-        assert!(text.contains("Cometix Code v1.2.3"), "canvas=\n{text}");
+        assert!(text.contains("nyan v1.2.3"), "canvas=\n{text}");
         assert!(text.contains("Recent activity"), "canvas=\n{text}");
         assert!(text.contains("No recent activity"), "canvas=\n{text}");
         assert!(text.contains("What's new"), "canvas=\n{text}");

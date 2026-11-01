@@ -1,7 +1,7 @@
 //! Maps to: CC `components/TeleportResumeWrapper.tsx`.
 //!
 //! The official wrapper composes `useTeleportResume`, analytics, keybindings,
-//! and `ResumeTask`. Cometix keeps analytics and external teleport execution
+//! and `ResumeTask`. Nyan keeps analytics and external teleport execution
 //! outside this render boundary; callers provide the same state snapshot.
 
 use crate::components::resume_task::{CodeSession, ResumeTask, ResumeTaskState};

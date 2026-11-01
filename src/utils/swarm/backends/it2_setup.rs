@@ -274,7 +274,7 @@ mod tests {
 
     fn temp_config_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-it2-setup-{name}-{}",
+            "nyan-it2-setup-{name}-{}",
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -374,7 +374,7 @@ mod tests {
         let dir = temp_config_dir("flags");
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &dir);
         let _session_write_guard = EnvVarGuard::set("SESSION_WRITE_ENABLED", "1");
-        let _write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
 
         assert!(!get_prefer_tmux_over_iterm2());
         mark_it2_setup_complete().unwrap();

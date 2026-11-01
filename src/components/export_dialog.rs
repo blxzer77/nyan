@@ -812,7 +812,7 @@ mod tests {
         }
         // The actual tmux subprocess blocks until after Esc unmounts the panel.
         let directory =
-            std::env::temp_dir().join(format!("cometix-export-clipboard-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-export-clipboard-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let tool = directory.join("tmux");
         std::fs::write(&tool, "#!/bin/sh\n/bin/cat > \"$CLIPBOARD_FIXTURE_DIR/input\"\n/bin/sleep 0.25\n: > \"$CLIPBOARD_FIXTURE_DIR/finished\"\n").unwrap();

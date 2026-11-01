@@ -3,7 +3,7 @@
 //! Project onboarding is the runtime producer for `LogoV2/feedConfigs.tsx`.
 //! The read paths inspect the current working directory just like CC. Write
 //! paths use `utils::config::save_current_project_config`, which is dry-run by
-//! default in Cometix unless `COMETIX_WRITE_ENABLED=1` is explicitly set.
+//! default in Nyan unless `NYAN_WRITE_ENABLED=1` is explicitly set.
 
 use crate::components::logo_v2::feed_configs::ProjectOnboardingStep;
 use crate::utils::config::{
@@ -141,7 +141,7 @@ mod tests {
     use super::*;
     fn temp_project_dir() -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-project-onboarding-{}",
+            "nyan-project-onboarding-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).unwrap();

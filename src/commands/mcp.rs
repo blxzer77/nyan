@@ -546,7 +546,7 @@ mod tests {
     fn with_temp_config_home(test: impl FnOnce(&std::path::Path)) {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!(
-            "cometix-mcp-xaa-command-test-{}-{}",
+            "nyan-mcp-xaa-command-test-{}-{}",
             std::process::id(),
             TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
@@ -780,7 +780,7 @@ mod tests {
     fn mcp_panel_unknown_args_falls_back_to_live_settings_state_like_official_call() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir =
-            std::env::temp_dir().join(format!("cometix-mcp-panel-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-mcp-panel-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
         // MCPSettings reads agent definitions from the cwd; a scratch cwd keeps

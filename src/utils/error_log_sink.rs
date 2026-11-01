@@ -261,7 +261,7 @@ mod tests {
     impl TempDir {
         fn new() -> Self {
             let path =
-                std::env::temp_dir().join(format!("cometix-mcp-log-{}", uuid::Uuid::new_v4()));
+                std::env::temp_dir().join(format!("nyan-mcp-log-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&path).unwrap();
             Self(path)
         }

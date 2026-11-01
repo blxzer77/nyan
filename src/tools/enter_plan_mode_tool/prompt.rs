@@ -166,7 +166,7 @@ User: "Fix the typo in the README"
 }
 
 /// Maps to: CC `prompt.ts:166-170` `getEnterPlanModeToolPrompt`. CC's runtime
-/// `process.env.USER_TYPE === 'ant'` is a build-time capability in Cometix.
+/// `process.env.USER_TYPE === 'ant'` is a build-time capability in Nyan.
 pub fn get_enter_plan_mode_tool_prompt() -> String {
     if crate::utils::build_profile::has_internal_capability(
         crate::utils::build_profile::InternalCapability::Prompts,

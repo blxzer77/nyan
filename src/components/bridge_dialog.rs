@@ -3,7 +3,7 @@
 //! Safety boundary: the official dialog subscribes to AppState, registers an
 //! overlay, reads git/original cwd, generates QR text via `qrcode`, persists an
 //! explicit disconnect opt-out with `saveGlobalConfig`, and mutates bridge app
-//! state. Cometix keeps the visible dialog/status/footer/key paths from an
+//! state. nyan keeps the visible dialog/status/footer/key paths from an
 //! explicit snapshot. Disconnect and close are callback-only; config writes,
 //! bridge transport mutation, overlay registration, and QR generation are
 //! deferred to their dedicated runtime slices.
@@ -42,7 +42,7 @@ pub struct BridgeDialogProps<'a> {
     pub snapshot: BridgeDialogSnapshot,
     pub show_qr_initial: bool,
     /// Pre-rendered UTF-8 QR text. Official computes this from `displayUrl`
-    /// with `qrcode.toString`; Cometix takes it as a pure snapshot input.
+    /// with `qrcode.toString`; nyan takes it as a pure snapshot input.
     pub qr_text: Option<String>,
 }
 
@@ -265,7 +265,7 @@ mod tests {
             environment_id: Some("env_123".to_string()),
             session_id: Some("session_abc".to_string()),
             verbose: true,
-            repo_name: Some("CometixCode".to_string()),
+            repo_name: Some("nyan".to_string()),
             branch_name: Some("main".to_string()),
         }
     }
@@ -285,7 +285,7 @@ mod tests {
             text.contains("·✔︎· Remote Control active"),
             "canvas=\n{text}"
         );
-        assert!(text.contains("· CometixCode · main"), "canvas=\n{text}");
+        assert!(text.contains("· nyan · main"), "canvas=\n{text}");
         assert!(text.contains("Environment: env_123"), "canvas=\n{text}");
         assert!(text.contains("Session: session_abc"), "canvas=\n{text}");
         assert!(

@@ -1013,7 +1013,7 @@ mod tests {
     #[test]
     fn environment_updates_match_official_structured_io_process_env_order() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let keys = ["COMETIX_STRUCTURED_ENV_B", "COMETIX_STRUCTURED_ENV_A"];
+        let keys = ["NYAN_STRUCTURED_ENV_B", "NYAN_STRUCTURED_ENV_A"];
         let _guards = keys.map(EnvVarGuard::unset);
         let _numeric = EnvVarGuard::unset("1");
         let variables = indexmap::IndexMap::from([

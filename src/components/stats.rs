@@ -791,7 +791,7 @@ enum StatsAsyncEvent {
 
 fn spawn_stats_load(sender: async_channel::Sender<StatsAsyncEvent>, range: StatsDateRange) {
     std::thread::Builder::new()
-        .name(format!("cometix-stats-{}", range.official_value()))
+        .name(format!("nyan-stats-{}", range.official_value()))
         .spawn(move || {
             let result = crate::utils::stats::aggregate_claude_code_stats_for_range(range)
                 .map_err(|error| error.to_string());

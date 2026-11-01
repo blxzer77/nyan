@@ -2180,7 +2180,7 @@ mod tests {
         );
         assert!(
             !text.contains("Choose an auto-update channel preview"),
-            "official Dialog does not render extra Cometix guidance; canvas=\n{text}"
+            "official Dialog does not render extra Nyan guidance; canvas=\n{text}"
         );
         assert!(
             !text.contains("Preview enabling auto-updates"),
@@ -2645,7 +2645,7 @@ mod tests {
     #[test]
     fn config_verbose_preview_updates_app_state_for_footer() {
         // Six Downs from the top reached "Verbose output" before the
-        // Cometix-only "Streaming text" row was added above it.
+        // Nyan-only "Streaming text" row was added above it.
         let events = stream::iter([
             press(KeyCode::Enter),
             press(KeyCode::Down),
@@ -2768,7 +2768,7 @@ mod tests {
         let _claude_disable_guard = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_AUTOUPDATER");
         let _traffic_guard = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC");
         let temp_root = std::env::temp_dir().join(format!(
-            "cometix-settings-readonly-{}",
+            "nyan-settings-readonly-{}",
             uuid::Uuid::new_v4()
         ));
         let config_home = temp_root.join("config-home");
@@ -2777,7 +2777,7 @@ mod tests {
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             temp_root.join("session-projects"),
         );
-        let _write_guard = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _write_guard = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
 
         let cwd = std::env::current_dir().expect("test should know current directory");
         let snapshots = vec![
@@ -3240,7 +3240,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let dir = std::env::temp_dir().join(format!(
-            "cometix-config-theme-{}",
+            "nyan-config-theme-{}",
             uuid::Uuid::new_v4().simple()
         ));
         fs::create_dir_all(&dir).unwrap();
@@ -3344,7 +3344,7 @@ mod tests {
     fn config_output_style_picker_renders_official_built_in_options() {
         let _lock = env_lock().lock().unwrap();
         let temp_root = std::env::temp_dir().join(format!(
-            "cometix-config-output-style-{}",
+            "nyan-config-output-style-{}",
             uuid::Uuid::new_v4()
         ));
         let cwd = temp_root.join("repo");

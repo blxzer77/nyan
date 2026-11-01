@@ -99,7 +99,7 @@ pub(crate) fn get_symbol_at_position(file_path: &str, line: i64, character: i64)
 mod tests {
     fn temp_file(name: &str, contents: &[u8]) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-symbol-context-{}",
+            "nyan-symbol-context-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

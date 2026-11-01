@@ -2,7 +2,7 @@
 
 /// Maps to: CC `isAgentSwarmsEnabled()`.
 ///
-/// The external-user killswitch reads Cometix's hardcoded feature-switch
+/// The external-user killswitch reads Nyan's hardcoded feature-switch
 /// collection instead of GrowthBook cache/config/network state.
 pub fn is_agent_swarms_enabled_for(
     audience: crate::utils::build_profile::BuildAudience,

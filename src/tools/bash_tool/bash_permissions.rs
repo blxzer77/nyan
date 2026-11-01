@@ -1772,14 +1772,14 @@ mod tests {
     #[test]
     fn permission_path_resolution_uses_tool_context_cwd() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-bash-permission-cwd-{}",
+            "nyan-bash-permission-cwd-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let child = root.join("child");
         let allowed = root.join("allowed");
         let unrelated = std::env::temp_dir()
             .join(format!(
-                "cometix-bash-unrelated-{}",
+                "nyan-bash-unrelated-{}",
                 uuid::Uuid::new_v4().simple()
             ))
             .join("deeper");

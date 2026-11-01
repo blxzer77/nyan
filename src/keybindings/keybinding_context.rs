@@ -39,7 +39,7 @@ struct KeybindingRuntimeInner {
     /// Maps to: CC `activeContexts: Set<KeybindingContextName>`.
     active_contexts: Mutex<HashSet<ContextName>>,
     /// The keys whose action is being handled, set around each handler call.
-    /// Cometix-specific deviation (product requirement — skip in parity
+    /// Nyan-specific deviation (product requirement — skip in parity
     /// audits): CC handlers learn only the action; the exit hook names the
     /// key that was pressed, since Ctrl+C is bound to `app:exit` here.
     dispatching: Mutex<Option<Vec<ParsedKeystroke>>>,

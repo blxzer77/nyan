@@ -263,7 +263,7 @@ fn prepare_call(messages: &[Message], args: &str, copy_full_response: bool) -> C
     })
 }
 
-/// Cometix-specific deviation (10-03, user): `/copy` writes where CC 2.1.285
+/// Nyan-specific deviation (10-03, user): `/copy` writes where CC 2.1.285
 /// does. 2.1.88 (`copy.tsx:23`) uses `join(tmpdir(), 'claude')`, on macOS the
 /// per-user `/var/folders/…/T/claude`. 2.1.285's `writeToFile` takes its
 /// shared per-uid temp root, `join(CLAUDE_CODE_TMPDIR || '/tmp', 'claude-' +
@@ -673,7 +673,7 @@ mod tests {
     fn copy_dir_is_the_per_uid_root_made_private() {
         use std::os::unix::fs::PermissionsExt as _;
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let root = std::env::temp_dir().join(format!("cometix-copy-dir-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-copy-dir-{}", uuid::Uuid::new_v4()));
         let expected = root.join(format!(
             "claude-{}",
             crate::utils::permissions::filesystem::current_uid()
@@ -696,7 +696,7 @@ mod tests {
     #[tokio::test]
     async fn write_refuses_a_symlinked_target() {
         let root =
-            std::env::temp_dir().join(format!("cometix-copy-target-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-copy-target-{}", uuid::Uuid::new_v4()));
         let dir = root.join("dir");
         std::fs::create_dir_all(&dir).unwrap();
         let outside = root.join("outside");
@@ -736,7 +736,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt as _;
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-copy-again-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-copy-again-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let _tmp = EnvVarGuard::set("CLAUDE_CODE_TMPDIR", format!(" {} ", root.display()));
         let dir = copy_dir().unwrap();
@@ -766,7 +766,7 @@ mod tests {
         }
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-copy-unread-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-copy-unread-{}", uuid::Uuid::new_v4()));
         let dir = root.join(format!(
             "claude-{}",
             crate::utils::permissions::filesystem::current_uid()
@@ -784,7 +784,7 @@ mod tests {
     #[test]
     fn copy_dir_refuses_a_symlinked_root() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let root = std::env::temp_dir().join(format!("cometix-copy-link-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-copy-link-{}", uuid::Uuid::new_v4()));
         let target = root.join("elsewhere");
         std::fs::create_dir_all(&target).unwrap();
         std::os::unix::fs::symlink(
@@ -968,7 +968,7 @@ mod tests {
     #[tokio::test]
     async fn write_to_file_uses_official_filename_under_selected_directory() {
         let directory =
-            std::env::temp_dir().join(format!("cometix-copy-write-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-copy-write-test-{}", uuid::Uuid::new_v4()));
         let path = write_to_dir("copied text", "copy.rs", &directory)
             .await
             .unwrap();
@@ -1079,7 +1079,7 @@ mod tests {
         // Keep `copy_dir()` off the real per-uid temp root.
         let _tmp = EnvVarGuard::set(
             "CLAUDE_CODE_TMPDIR",
-            std::env::temp_dir().join(format!("cometix-copy-fail-{}", uuid::Uuid::new_v4())),
+            std::env::temp_dir().join(format!("nyan-copy-fail-{}", uuid::Uuid::new_v4())),
         );
         let output = std::sync::Arc::new(std::sync::Mutex::new(None));
         {
@@ -1132,7 +1132,7 @@ mod tests {
         }
         crate::utils::process_runtime::initialize_test_process_runtime();
         let directory =
-            std::env::temp_dir().join(format!("cometix-copy-clipboard-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-copy-clipboard-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let tool = directory.join("tmux");
         std::fs::write(&tool, "#!/bin/sh\n/bin/cat >/dev/null\n/bin/sleep 0.25\n").unwrap();

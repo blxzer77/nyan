@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: official mount effects log analytics, asynchronously probe
 //! `isChromeExtensionInstalled()`, and write
-//! `hasCompletedClaudeInChromeOnboarding` to global config. Cometix keeps the
+//! `hasCompletedClaudeInChromeOnboarding` to global config. Nyan keeps the
 //! dialog copy, links, Enter/Esc completion behavior, and installed/not-installed
 //! render branches from explicit snapshot props only. No analytics, extension
 //! probe, browser launch, or config write occurs here.

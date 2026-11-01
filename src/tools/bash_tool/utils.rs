@@ -328,7 +328,7 @@ mod tests {
             base64::engine::general_purpose::STANDARD.encode(&png)
         );
         let path = std::env::temp_dir().join(format!(
-            "cometix-bash-image-output-{}",
+            "nyan-bash-image-output-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::write(&path, &uri).unwrap();
@@ -354,7 +354,7 @@ mod tests {
         use std::os::unix::fs::symlink;
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-bash-image-symlink-{}",
+            "nyan-bash-image-symlink-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn resize_shell_image_output_rejects_artifact_over_twenty_megabytes() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-bash-image-too-large-{}",
+            "nyan-bash-image-too-large-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let file = std::fs::File::create(&path).unwrap();

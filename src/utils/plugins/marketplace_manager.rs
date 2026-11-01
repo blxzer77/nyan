@@ -2050,7 +2050,7 @@ mod tests {
     #[tokio::test]
     async fn resolves_plugin_metadata_from_marketplace_cache_only() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-hint-marketplace-{}",
+            "nyan-hint-marketplace-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _env = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
@@ -2596,7 +2596,7 @@ mod tests {
     async fn missing_local_marketplace_git_cache_fails_and_cleans_without_network() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
-            std::env::temp_dir().join(format!("cometix-market-git-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-market-git-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let cache = root.join("cache");
         let source = root.join("missing-local-source");
@@ -2636,7 +2636,7 @@ mod tests {
         };
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-market-transitions-{}",
+            "nyan-market-transitions-{}",
             uuid::Uuid::new_v4()
         ));
         let source = root.join("source");

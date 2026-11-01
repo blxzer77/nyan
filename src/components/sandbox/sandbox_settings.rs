@@ -565,7 +565,7 @@ mod tests {
         // message (:83-88) whether or not the write lands, as CC's
         // setSandboxSettings never rejects. Writes stay off in this test.
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _no_write = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _no_write = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
         let (frames, results) = drive(vec![
             KeyCode::Enter,
             KeyCode::Down,

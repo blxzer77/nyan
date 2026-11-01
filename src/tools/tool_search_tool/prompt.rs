@@ -7,7 +7,7 @@ const PROMPT_HEAD: &str =
 const PROMPT_TAIL: &str = " Until fetched, only the name is known — there is no parameter schema, so the tool cannot be invoked. This tool takes a query, matches it against the deferred tool list, and returns the matched tools' complete JSONSchema definitions inside a <functions> block. Once a tool's schema appears in that result, it is callable exactly like any tool defined at the top of the prompt.\n\nResult format: each matched tool appears as one <function>{\"description\": \"...\", \"name\": \"...\", \"parameters\": {...}}</function> line inside the <functions> block — the same encoding as the tool list at the top of this prompt.\n\nQuery forms:\n- \"select:Read,Edit,Grep\" — fetch these exact tools by name\n- \"notebook jupyter\" — keyword search, up to max_results best matches\n- \"+slack send\" — require \"slack\" in the name, rank by remaining terms";
 
 /// Maps to CC `getToolLocationHint()`.
-/// Cometix uses the hardcoded feature-switch collection rather than GrowthBook.
+/// Nyan uses the hardcoded feature-switch collection rather than GrowthBook.
 fn tool_location_hint() -> &'static str {
     if crate::utils::build_profile::has_internal_capability(
         crate::utils::build_profile::InternalCapability::Prompts,
@@ -88,7 +88,7 @@ pub fn model_supports_tool_reference(model: &str) -> bool {
 
 /// Maps to CC `utils/toolSearch.ts` `isToolSearchEnabled(...)` request-time gate.
 ///
-/// Cometix keeps the official hard requirements (beta kill switch, model
+/// Nyan keeps the official hard requirements (beta kill switch, model
 /// support, and ToolSearchTool availability). The upstream `tst-auto` token
 /// threshold path is approximated as enabled once explicitly requested; full
 /// token-count based auto mode belongs beside future context-analysis ports.

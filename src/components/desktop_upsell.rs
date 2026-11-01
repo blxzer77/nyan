@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: official startup upsell reads GrowthBook/global config,
 //! increments `desktopUpsellSeenCount`, writes `desktopUpsellDismissed`, logs
-//! analytics, and can enter `DesktopHandoff`. Cometix keeps the official gate
+//! analytics, and can enter `DesktopHandoff`. Nyan keeps the official gate
 //! logic pure through `DesktopUpsellStartupSnapshot` and emits callback results
 //! describing intended writes. It does not read/write config, log analytics,
 //! open URLs, flush sessions, launch desktop, or shut down the process.
@@ -50,7 +50,7 @@ pub fn desktop_upsell_config_from_value(value: Option<&serde_json::Value>) -> De
 
 /// Maps to CC `getDynamicConfig_CACHED_MAY_BE_STALE('tengu_desktop_upsell', ...)`.
 ///
-/// Cometix resolves the dynamic-config payload from the source-controlled switch
+/// Nyan resolves the dynamic-config payload from the source-controlled switch
 /// table instead of GrowthBook, so it never initializes GrowthBook, logs
 /// exposure events, contacts the network, or writes config.
 pub fn get_desktop_upsell_config() -> DesktopUpsellConfig {

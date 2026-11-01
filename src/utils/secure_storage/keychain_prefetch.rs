@@ -69,7 +69,7 @@ pub fn start_keychain_prefetch() {
     }
 
     let spawn = std::thread::Builder::new()
-        .name("cometix-keychain-prefetch".to_string())
+        .name("nyan-keychain-prefetch".to_string())
         .spawn(move || {
             let oauth_service_for_read = oauth_service.clone();
             let oauth = std::thread::spawn(move || spawn_security(&oauth_service_for_read));

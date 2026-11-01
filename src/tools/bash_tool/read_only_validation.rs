@@ -1857,11 +1857,11 @@ mod tests {
     fn sandboxed_git_outside_original_cwd_is_not_auto_allowed() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let config = std::env::temp_dir().join(format!(
-            "cometix-readonly-sandbox-settings-{}",
+            "nyan-readonly-sandbox-settings-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let cwd = std::env::temp_dir().join(format!(
-            "cometix-readonly-sandbox-cwd-{}",
+            "nyan-readonly-sandbox-cwd-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&config).unwrap();
@@ -1886,7 +1886,7 @@ mod tests {
     #[test]
     fn git_read_only_commands_are_not_auto_allowed_in_bare_repo_shapes() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-bare-repo-readonly-{}",
+            "nyan-bare-repo-readonly-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(root.join("objects")).unwrap();

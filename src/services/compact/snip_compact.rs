@@ -18,7 +18,7 @@ pub struct SnipCompactResult {
 /// The checked-in upstream source for `snipCompact.ts` is currently a
 /// generated empty stub, while `query.ts` still has an explicit
 /// `snipCompactIfNeeded(...)` control-flow slot and threads `tokensFreed` into
-/// autocompact. Keep Cometix as a safe no-op seam at that official query-loop
+/// autocompact. Keep Nyan as a safe no-op seam at that official query-loop
 /// position until a non-stub upstream implementation exists.
 pub fn snip_compact_if_needed(
     messages_for_query: Vec<crate::types::message::Message>,

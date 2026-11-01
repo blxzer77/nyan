@@ -562,7 +562,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn lsp_validate_input_matches_official_file_checks_and_unc_bypass() {
         let temp_dir = std::env::temp_dir().join(format!(
-            "cometix-lsp-validate-{}",
+            "nyan-lsp-validate-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -708,7 +708,7 @@ mod tests {
         // The file must exist: CC opens it before routing and surfaces the
         // open failure as `Error performing {operation}: ...`.
         let temp_dir = std::env::temp_dir().join(format!(
-            "cometix-lsp-no-server-{}",
+            "nyan-lsp-no-server-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&temp_dir).unwrap();
@@ -785,7 +785,7 @@ mod tests {
         use crate::tool::ToolCall;
 
         let worktree =
-            std::env::temp_dir().join(format!("cometix-lsp-cwd-{}", uuid::Uuid::new_v4().simple()));
+            std::env::temp_dir().join(format!("nyan-lsp-cwd-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(worktree.join("src")).unwrap();
         std::fs::write(worktree.join("src/main.rs"), "fn main() {}\n").unwrap();
         let expected = worktree.join("src/main.rs").display().to_string();
@@ -859,7 +859,7 @@ mod tests {
         );
 
         let temp_dir = std::env::temp_dir().join(format!(
-            "cometix-lsp-pending-{}",
+            "nyan-lsp-pending-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&temp_dir).unwrap();

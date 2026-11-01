@@ -138,7 +138,7 @@ fn unique_prompt_path() -> PathBuf {
         .as_nanos();
     // CC `promptEditor.ts:143` `generateTempFilePath()`: `join(tmpdir(), …)`.
     crate::utils::node_os::tmpdir()
-        .join(format!("cometix-prompt-{}-{nanos}.md", std::process::id()))
+        .join(format!("nyan-prompt-{}-{nanos}.md", std::process::id()))
 }
 
 fn editor_display_name(program: &str) -> String {
@@ -263,7 +263,7 @@ mod tests {
 
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let script = std::env::temp_dir().join(format!(
-            "cometix-fake-editor-{}-{}",
+            "nyan-fake-editor-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

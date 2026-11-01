@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn brief_attachment_validation_stats_real_files_and_rejects_missing_paths() {
         let root =
-            std::env::temp_dir().join(format!("cometix-brief-{}", uuid::Uuid::new_v4().simple()));
+            std::env::temp_dir().join(format!("nyan-brief-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("photo.png"), b"1234").unwrap();
         let context = crate::tool::ToolUseContext::default().with_cwd_override(Some(root.clone()));

@@ -1,7 +1,7 @@
 //! Maps to: CC `components/DevChannelsDialog.tsx`.
 //!
 //! Safety boundary: the official component calls `gracefulShutdownSync(1)` for
-//! the Exit option and `gracefulShutdownSync(0)` on Escape. Cometix preserves
+//! the Exit option and `gracefulShutdownSync(0)` on Escape. Nyan preserves
 //! the official warning, channel list formatting, option order, and accept
 //! callback; exit/Escape intentionally do not terminate the process in this safe
 //! UI slice.
@@ -121,7 +121,7 @@ pub fn DevChannelsDialog<'a>(
                 (props.on_accept)(());
             }
             DevChannelsChoice::Exit => {
-                // Official path: `gracefulShutdownSync(1)`. Safe Cometix path:
+                // Official path: `gracefulShutdownSync(1)`. Safe Nyan path:
                 // do not exit from this render-only dialog boundary.
             }
         }
@@ -132,7 +132,7 @@ pub fn DevChannelsDialog<'a>(
             title: "WARNING: Loading development channels".to_string(),
             color: Some(theme.error),
             on_cancel: move |_| {
-                // Official path: `gracefulShutdownSync(0)`. Safe Cometix path:
+                // Official path: `gracefulShutdownSync(0)`. Safe Nyan path:
                 // no process exit.
                 pending_choice.set(Some(DevChannelsChoice::Exit));
             },

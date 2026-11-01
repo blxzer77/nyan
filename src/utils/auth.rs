@@ -257,7 +257,7 @@ fn execute_api_key_helper_command(
         && !is_non_interactive_session
     {
         eprintln!(
-            "Security: apiKeyHelper executed before workspace trust is confirmed. If you see this message, report this CometixCode bug."
+            "Security: apiKeyHelper executed before workspace trust is confirmed. If you see this message, report this nyan bug."
         );
         return Ok(None);
     }
@@ -1228,7 +1228,7 @@ mod tests {
 
     fn unique_temp_dir(label: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "cometix-auth-{label}-{}-{}",
+            "nyan-auth-{label}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1350,9 +1350,9 @@ mod tests {
         clear_api_key_helper_cache();
 
         let command = if cfg!(target_os = "windows") {
-            "echo cometix-helper-key"
+            "echo nyan-helper-key"
         } else {
-            "printf cometix-helper-key"
+            "printf nyan-helper-key"
         };
         std::fs::write(
             dir.join("settings.json"),
@@ -1361,11 +1361,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             get_api_key_from_api_key_helper(false).as_deref(),
-            Some("cometix-helper-key")
+            Some("nyan-helper-key")
         );
         assert_eq!(
             get_api_key_from_api_key_helper_cached().as_deref(),
-            Some("cometix-helper-key")
+            Some("nyan-helper-key")
         );
 
         clear_api_key_helper_cache();
@@ -1460,7 +1460,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let path = std::env::temp_dir().join(format!(
-            "cometix-auth-fd-{}-{}.txt",
+            "nyan-auth-fd-{}-{}.txt",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1501,7 +1501,7 @@ mod tests {
         // identity there. Point the config home at an empty scratch dir for the
         // duration instead of relying on the developer being logged out.
         let scratch_home = std::env::temp_dir().join(format!(
-            "cometix-oauth-fd-home-{}",
+            "nyan-oauth-fd-home-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&scratch_home).unwrap();
@@ -1515,7 +1515,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&scratch_home);
 
         let path = std::env::temp_dir().join(format!(
-            "cometix-oauth-fd-{}-{}.txt",
+            "nyan-oauth-fd-{}-{}.txt",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1542,7 +1542,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = std::env::temp_dir().join(format!(
-            "cometix-credentials-{}-{}",
+            "nyan-credentials-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

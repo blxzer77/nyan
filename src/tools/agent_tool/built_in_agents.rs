@@ -92,8 +92,8 @@ mod tests {
                 disable_built_in_agents,
             ),
             EnvVarGuard::unset("CLAUDE_CODE_NON_INTERACTIVE"),
-            EnvVarGuard::unset("COMETIX_NON_INTERACTIVE"),
-            EnvVarGuard::unset("COMETIX_NON_INTERACTIVE_SESSION"),
+            EnvVarGuard::unset("NYAN_NON_INTERACTIVE"),
+            EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION"),
         ];
         let interactive = IsInteractiveGuard::capture();
         crate::bootstrap::state::set_is_interactive(!non_interactive);

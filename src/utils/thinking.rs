@@ -188,7 +188,7 @@ pub fn model_supports_adaptive_thinking(model: &str) -> bool {
 /// Interactive REPL always seeds `ToolUseContext.thinking_config` from
 /// `ReplProps`; this is only for call sites that never received launch props.
 ///
-/// Does **not** read invented envs (`CLAUDE_CODE_THINKING` / `COMETIX_THINKING`)
+/// Does **not** read invented envs (`CLAUDE_CODE_THINKING` / `NYAN_THINKING`)
 /// or `GlobalConfig.thinking_enabled` — those are not CC
 /// `shouldEnableThinkingByDefault` / main launch sources.
 pub fn production_thinking_config_from_env_and_settings(settings: &SettingsJson) -> ThinkingConfig {
@@ -351,7 +351,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::remove("MAX_THINKING_TOKENS");
         crate::utils::process_env::remove("CLAUDE_CODE_THINKING");
-        crate::utils::process_env::remove("COMETIX_THINKING");
+        crate::utils::process_env::remove("NYAN_THINKING");
 
         assert!(matches!(
             production_thinking_config_from_env_and_settings(&SettingsJson::default()),

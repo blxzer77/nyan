@@ -1,6 +1,6 @@
 //! Maps to: CC `hooks/notifs/useDeprecationWarningNotification.tsx`.
 //!
-//! Cometix keeps model deprecation lookup outside this main-screen notification
+//! Nyan keeps model deprecation lookup outside this main-screen notification
 //! seam. Callers may pass an already-known warning string; this helper only
 //! mirrors the official notification payload and duplicate-suppression state.
 

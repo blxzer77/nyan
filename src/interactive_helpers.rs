@@ -478,7 +478,7 @@ fn SetupScreensHost<'a>(
                                     // approved set reaches the session because
                                     // the REPL-mounted `useManageMCPConnections`
                                     // reads the configs after setup completes.
-                                    // Cometix now does the same: the write above
+                                    // Nyan now does the same: the write above
                                     // lands in local settings, and
                                     // `use_manage_mcp_connections` picks it up at
                                     // mount (P5 G10). Writing the main store here
@@ -508,7 +508,7 @@ fn SetupScreensHost<'a>(
                                     // approved set reaches the session because
                                     // the REPL-mounted `useManageMCPConnections`
                                     // reads the configs after setup completes.
-                                    // Cometix now does the same: the write above
+                                    // Nyan now does the same: the write above
                                     // lands in local settings, and
                                     // `use_manage_mcp_connections` picks it up at
                                     // mount (P5 G10). Writing the main store here
@@ -677,7 +677,7 @@ mod setup_screens_snapshot_tests {
         let by_flag = setup_screens_snapshot_from_readonly_runtime(
             &config,
             &|_| None,
-            vec!["cometix".to_string(), "--chrome".to_string()],
+            vec!["nyan".to_string(), "--chrome".to_string()],
             None,
             runtime_env::Platform::Linux,
         );
@@ -686,7 +686,7 @@ mod setup_screens_snapshot_tests {
         let by_no_flag = setup_screens_snapshot_from_readonly_runtime(
             &config,
             &|_| None,
-            vec!["cometix".to_string(), "--no-chrome".to_string()],
+            vec!["nyan".to_string(), "--no-chrome".to_string()],
             None,
             runtime_env::Platform::Linux,
         );
@@ -724,7 +724,7 @@ mod setup_screens_snapshot_tests {
         let completed = setup_screens_snapshot_from_readonly_runtime(
             &config,
             &|_| None,
-            vec!["cometix".to_string(), "--chrome".to_string()],
+            vec!["nyan".to_string(), "--chrome".to_string()],
             None,
             runtime_env::Platform::Linux,
         );
@@ -815,11 +815,11 @@ mod setup_screens_snapshot_tests {
         let mut project_config = ProjectConfig::default();
         project_config.mcp_servers = Some(serde_json::json!({"alpha":{}}));
         global_config.projects.insert(
-            normalize_project_path("/tmp/cometix-project"),
+            normalize_project_path("/tmp/nyan-project"),
             project_config,
         );
 
-        let loaded = project_config_for_cwd(&global_config, Path::new("/tmp/cometix-project"));
+        let loaded = project_config_for_cwd(&global_config, Path::new("/tmp/nyan-project"));
         assert!(
             loaded
                 .mcp_servers
@@ -880,7 +880,7 @@ mod setup_screens_snapshot_tests {
     #[test]
     fn status_notice_context_from_readonly_runtime_loads_agent_definitions_snapshot() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-status-notice-agent-defs-{}",
+            "nyan-status-notice-agent-defs-{}",
             uuid::Uuid::new_v4()
         ));
         let config_home = root.join("config");
@@ -1184,17 +1184,17 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-setup-env-{}",
+            "nyan-setup-env-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
             root.join("settings.json"),
-            r#"{"env":{"COMETIX_SETUP_ENV_PROBE":"applied"}}"#,
+            r#"{"env":{"NYAN_SETUP_ENV_PROBE":"applied"}}"#,
         )
         .unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _probe = EnvVarGuard::unset("COMETIX_SETUP_ENV_PROBE");
+        let _probe = EnvVarGuard::unset("NYAN_SETUP_ENV_PROBE");
         // `.mcp.json` approvals walk up from the cwd; keep a host's out.
         let project = root.join("project");
         std::fs::create_dir_all(&project).unwrap();
@@ -1222,7 +1222,7 @@ mod tests {
             .next()
             .await;
         });
-        let applied = crate::utils::process_env::var("COMETIX_SETUP_ENV_PROBE");
+        let applied = crate::utils::process_env::var("NYAN_SETUP_ENV_PROBE");
         crate::utils::settings::settings_cache::reset_settings_cache();
         let _ = std::fs::remove_dir_all(root);
         (done.load(Ordering::SeqCst), applied)

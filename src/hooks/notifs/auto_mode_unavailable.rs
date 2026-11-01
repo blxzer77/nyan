@@ -1,7 +1,7 @@
 //! Maps to: CC `hooks/notifs/useAutoModeUnavailableNotification.ts` and
 //! `utils/permissions/permissionSetup.ts#getAutoModeUnavailableNotification`.
 //!
-//! This is a pure main-screen notification seam. Cometix does not enable real
+//! This is a pure main-screen notification seam. Nyan does not enable real
 //! auto-mode classification; callers must pass already-known UI state and the
 //! resolved official reason.
 

@@ -18,7 +18,7 @@ pub struct AgentSourceGroup {
 
 /// Maps to: CC `agentDisplay.ts#AGENT_SOURCE_GROUPS`.
 ///
-/// Note: CC also lists `localSettings`; Cometix `AgentDefinitionSource` does
+/// Note: CC also lists `localSettings`; Nyan `AgentDefinitionSource` does
 /// not yet carry a Local variant (local agent dir loading still deferred).
 pub const AGENT_SOURCE_GROUPS: &[AgentSourceGroup] = &[
     AgentSourceGroup {

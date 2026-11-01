@@ -7,7 +7,7 @@
 //!   elsewhere — mirrored via `cfg!(windows)`.
 //! - MODE_CYCLE_KEY: CC falls back to `meta+m` on Windows terminals without
 //!   VT mode (Node/Bun version gates). crossterm always enables VT
-//!   processing on Windows, so Cometix uses `shift+tab` unconditionally
+//!   processing on Windows, so Nyan uses `shift+tab` unconditionally
 //!   (documented divergence — the fallback path cannot occur here).
 //!
 //! Feature gates: CC's `KAIROS`, `TERMINAL_PANEL`, and `MESSAGE_ACTIONS`
@@ -58,9 +58,9 @@ pub fn default_binding_blocks() -> Vec<KeybindingBlock> {
         &[
             // ctrl+c / ctrl+d use special double-press handling; defined so
             // the resolver can find them but non-rebindable (reserved_shortcuts.rs).
-            // Cometix-specific deviation (product requirement — skip in parity
+            // Nyan-specific deviation (product requirement — skip in parity
             // audits): CC 2.1.88 binds Ctrl+C to app:interrupt, which cancels
-            // a running turn and rejects a permission dialog. Cometix keeps
+            // a running turn and rejects a permission dialog. Nyan keeps
             // 2.0.x's Ctrl+C: it only exits, on a double press, and Esc is
             // what interrupts. app:interrupt keeps its consumers for a key a
             // user binds to it.
@@ -404,7 +404,7 @@ mod tests {
 
     #[test]
     fn ctrl_c_resolves_app_exit_globally() {
-        // Cometix-specific deviation: CC 2.1.88 resolves app:interrupt here.
+        // Nyan-specific deviation: CC 2.1.88 resolves app:interrupt here.
         let bindings = default_bindings();
         let contexts: HashSet<_> = [ContextName::Chat, ContextName::Global].into();
         let result = resolve_key_with_chord_state(

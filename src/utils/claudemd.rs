@@ -1,5 +1,5 @@
 //!    - .claude/CLAUDE.md (dot-claude)
-//!    - AGENTS.md (cross-tool convention; `@cometix offset`)
+//!    - AGENTS.md (cross-tool convention; `@nyan offset`)
 
 use crate::utils::config;
 use std::collections::HashSet;
@@ -112,7 +112,7 @@ static SHOULD_FIRE_INSTRUCTIONS_LOADED: std::sync::atomic::AtomicBool =
 static NEXT_EAGER_LOAD_REASON: LazyLock<RwLock<&'static str>> =
     LazyLock::new(|| RwLock::new("session_start"));
 
-/// @cometix offset: the agent-instructions filename shared by other coding
+/// @nyan offset: the agent-instructions filename shared by other coding
 /// CLIs. Official Claude Code only reads `CLAUDE.md`; this port also accepts
 /// `AGENTS.md` in each scope where `CLAUDE.md` is discovered.
 const AGENTS_MEMORY_FILE: &str = "AGENTS.md";
@@ -247,7 +247,7 @@ pub fn discover_claude_md_files_with_external_policy(
                 &mut processed,
                 &mut files,
             );
-            // @cometix offset: also honor the cross-tool `AGENTS.md` convention
+            // @nyan offset: also honor the cross-tool `AGENTS.md` convention
             // at the global scope, so one file can drive several CLIs.
             process_memory_file(
                 &config_home.join(AGENTS_MEMORY_FILE),
@@ -507,7 +507,7 @@ pub fn get_memory_files_for_nested_directory(
             processed,
             &mut files,
         );
-        // @cometix offset: nested directories honor `AGENTS.md` too.
+        // @nyan offset: nested directories honor `AGENTS.md` too.
         process_memory_file(
             &dir.join(AGENTS_MEMORY_FILE),
             ClaudeMdSource::Project,
@@ -637,7 +637,7 @@ fn load_project_claude_md_files(
     for path in [
         dir.join("CLAUDE.md"),
         dir.join(".claude").join("CLAUDE.md"),
-        // @cometix offset: same cross-tool convention as the user-global scope.
+        // @nyan offset: same cross-tool convention as the user-global scope.
         dir.join(AGENTS_MEMORY_FILE),
     ] {
         process_memory_file(
@@ -1434,7 +1434,7 @@ mod tests {
     fn temp_dir(label: &str) -> PathBuf {
         let mut path = std::env::temp_dir();
         path.push(format!(
-            "cometix-claudemd-{label}-{}-{}",
+            "nyan-claudemd-{label}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1668,7 +1668,7 @@ mod tests {
         };
         assert!(run_git(&["init", "--quiet"]).success());
         assert!(run_git(&["config", "user.email", "tests@example.com"]).success());
-        assert!(run_git(&["config", "user.name", "Cometix Tests"]).success());
+        assert!(run_git(&["config", "user.name", "Nyan Tests"]).success());
         std::fs::write(root.join("seed.txt"), "seed").unwrap();
         assert!(run_git(&["add", "seed.txt"]).success());
         assert!(run_git(&["commit", "--quiet", "-m", "seed"]).success());
@@ -1852,7 +1852,7 @@ mod tests {
 
         let inside = root.join("inside.md");
         let outside = root.parent().unwrap_or(Path::new("/tmp")).join(format!(
-            "cometix-claudemd-outside-{}-{}.md",
+            "nyan-claudemd-outside-{}-{}.md",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

@@ -398,7 +398,7 @@ async fn top_level_paths() -> Vec<String> {
     paths
 }
 
-/// @cometix: CC `findMatchingFiles` (`fileSuggestions.ts:618-625`) only calls
+/// @nyan: CC `findMatchingFiles` (`fileSuggestions.ts:618-625`) only calls
 /// `fileIndex.search`. Scoring lives in `native-ts/file-index/index.ts#search`
 /// (:173-288). This is a nucleo stand-in for that search, not a
 /// `fileSuggestions.ts` helper.
@@ -704,7 +704,7 @@ mod tests {
     /// containing row onto one ceiling value.
     #[tokio::test]
     async fn file_scores_are_ranks_not_raw_match_quality() {
-        let root = std::env::temp_dir().join(format!("cometix-rank-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-rank-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("src")).unwrap();
         let root = std::fs::canonicalize(&root).unwrap();
         for name in ["alpha_one.rs", "alpha_two.rs", "alpha_three.rs"] {
@@ -755,7 +755,7 @@ mod tests {
     /// as "always respected".
     #[tokio::test]
     async fn ripgrep_ignore_files_filter_git_rows_regardless_of_the_switch() {
-        let root = std::env::temp_dir().join(format!("cometix-rgignore-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-rgignore-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("src")).unwrap();
         std::fs::create_dir_all(root.join("vendor")).unwrap();
         let root = std::fs::canonicalize(&root).unwrap();
@@ -800,7 +800,7 @@ mod tests {
     #[tokio::test]
     async fn gitignored_cwd_still_indexes_the_repository_not_its_artifacts() {
         let root =
-            std::env::temp_dir().join(format!("cometix-file-index-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-file-index-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("src")).unwrap();
         std::fs::create_dir_all(root.join(".test/workdir")).unwrap();
         // macOS hands out `/var/...` temp dirs that are symlinks into

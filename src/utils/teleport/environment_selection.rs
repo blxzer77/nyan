@@ -1,7 +1,7 @@
 //! Maps to: CC `utils/teleport/environmentSelection.ts`.
 //!
 //! The official `getEnvironmentSelectionInfo()` fetches environments from the
-//! Claude.ai API and reads merged/per-source settings. Cometix keeps the pure
+//! Claude.ai API and reads merged/per-source settings. Nyan keeps the pure
 //! selection semantics here from already-known inputs; OAuth/network/settings
 //! writes are deferred to the remote runtime/settings slice.
 

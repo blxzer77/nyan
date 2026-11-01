@@ -1,7 +1,7 @@
 //! Pure display-state seam for official `utils/classifierApprovals.ts` and
 //! `utils/classifierApprovalsHook.ts`.
 //!
-//! Cometix does not run classifier API calls yet. This module ports the official
+//! Nyan does not run classifier API calls yet. This module ports the official
 //! approval/checking stores so permission/tool execution can record classifier
 //! decisions once the live classifier path is enabled, and message renderers can
 //! show the official auxiliary row by tool-use id.

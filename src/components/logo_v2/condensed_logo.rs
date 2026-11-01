@@ -1,7 +1,7 @@
 //! Maps to: CC `components/LogoV2/CondensedLogo.tsx`.
 //!
 //! Official hooks read AppState/model/settings and increment upsell impression
-//! counters in effects. Cometix keeps this as a render boundary with pure input
+//! counters in effects. nyan keeps this as a render boundary with pure input
 //! props; callers own state reads, config writes, and analytics.
 
 use super::animated_clawd::AnimatedClawd;

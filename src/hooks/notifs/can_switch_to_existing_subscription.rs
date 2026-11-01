@@ -1,7 +1,7 @@
 //! Maps to: CC `hooks/notifs/useCanSwitchToExistingSubscription.tsx`.
 //!
 //! The official hook checks OAuth/profile state, increments a global config
-//! counter, and logs analytics. Cometix models only the visible notification
+//! counter, and logs analytics. Nyan models only the visible notification
 //! from already-known state so the main-screen path stays UI-only and readonly.
 
 use crate::context::notifications::{

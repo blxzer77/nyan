@@ -886,7 +886,7 @@ async fn run_query(input: QueryRunInput<'_>) -> Result<QueryEngineOutcome, Strin
     // Maps to CC `QueryEngine.submitMessage()` file-history snapshot gate.
     // SDK checkpointing is opt-in through `file_history_enabled()` and only
     // runs for persisted sessions.
-    if crate::utils::env_utils::is_cometix_write_enabled()
+    if crate::utils::env_utils::is_nyan_write_enabled()
         && crate::utils::file_history::file_history_enabled()
         && crate::utils::session_storage::is_session_write_enabled()
     {
@@ -1750,7 +1750,7 @@ mod tests {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _project = IsolatedProjectSettings::pin();
         let root =
-            std::env::temp_dir().join(format!("cometix-query-memory-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-query-memory-{}", uuid::Uuid::new_v4()));
         struct Cleanup(std::path::PathBuf);
         impl Drop for Cleanup {
             fn drop(&mut self) {
@@ -2218,7 +2218,7 @@ mod sdk_mapper_tests {
     }
     #[test]
     fn first_local_query_without_sdk_initialize_keeps_process_executor_live() {
-        const CHILD: &str = "COMETIX_FIRST_QUERY_PLUGIN_CHILD";
+        const CHILD: &str = "NYAN_FIRST_QUERY_PLUGIN_CHILD";
         if let Some(root) = crate::utils::process_env::var_os(CHILD) {
             assert!(crate::utils::process_runtime::process_runtime_handle().is_none());
             let root = std::path::PathBuf::from(root);

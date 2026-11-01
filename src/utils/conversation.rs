@@ -1363,7 +1363,7 @@ mod tests {
                         "type": "server_tool_use",
                         "id": "srvu_1",
                         "name": "web_search",
-                        "input": {"query": "cometix"}
+                        "input": {"query": "nyan"}
                     },
                     {
                         "type": "web_search_tool_result",
@@ -1371,7 +1371,7 @@ mod tests {
                         "content": [{
                             "type": "web_search_result",
                             "encrypted_content": "encrypted",
-                            "title": "Cometix",
+                            "title": "Nyan",
                             "url": "https://example.com"
                         }]
                     }
@@ -1392,7 +1392,7 @@ mod tests {
             ] if block.id.0 == "srvu_1"
                     && block.name == "web_search"
                     && block.input.get("query").and_then(|value| value.as_str())
-                        == Some("cometix")
+                        == Some("nyan")
                     && tool_use_id.0 == "srvu_1"
                     && content.as_array().is_some_and(|items| items.len() == 1)
         ));

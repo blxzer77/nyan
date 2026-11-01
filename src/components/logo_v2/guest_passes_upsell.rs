@@ -1,7 +1,7 @@
 //! Maps to: CC `components/LogoV2/GuestPassesUpsell.tsx`.
 //!
 //! Official reads referral caches, resets global-config counters when passes
-//! refresh, increments impression count, and logs analytics. Cometix keeps the
+//! refresh, increments impression count, and logs analytics. nyan keeps the
 //! same predicate and condensed-row render boundary as pure inputs; callers own
 //! cache refresh, config writes, and analytics.
 

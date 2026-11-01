@@ -455,7 +455,7 @@ mod runtime {
         let request = request.body(form_urlencoded_body(&params));
         // Deviation (L2, user-authorized OAuth safety gate): CC
         // `services/mcp/xaaIdpLogin.ts:443-454` sends the prepared OIDC code
-        // exchange. Cometix rejects at the final credential HTTP outlet.
+        // exchange. Nyan rejects at the final credential HTTP outlet.
         if !crate::constants::oauth::OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED {
             return Err(crate::constants::oauth::OAuthCredentialSideEffectsUnavailable.into());
         }
@@ -887,7 +887,7 @@ mod tests {
 
     fn with_temp_config_home(test: impl FnOnce(&std::path::Path)) {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-xaa-idp-login-test-{}-{}",
+            "nyan-xaa-idp-login-test-{}-{}",
             std::process::id(),
             TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));

@@ -1,6 +1,6 @@
 //! Incremental port of official `TeamDeleteTool`.
 //! Official `userFacingName()` is empty and the success renderer returns null;
-//! Cometix keeps that invisible main-screen contract while cleaning the
+//! Nyan keeps that invisible main-screen contract while cleaning the
 //! official team/task directories when file-backed team state is enabled.
 
 pub mod prompt;
@@ -302,11 +302,11 @@ mod tests {
         crate::bootstrap::state::clear_session_created_teams();
         crate::utils::tasks::clear_leader_team_name();
         let root = std::env::temp_dir().join(format!(
-            "cometix-team-delete-disk-auth-{}",
+            "nyan-team-delete-disk-auth-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
+        let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
 
         let mut record = crate::utils::swarm::team_helpers::create_team_record(
             "alpha".to_string(),

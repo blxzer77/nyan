@@ -20,7 +20,7 @@ use crate::keybindings::types::ContextName;
 use crate::keybindings::use_keybinding::use_keybinding;
 use iocraft::prelude::*;
 
-/// The official `Select` owns these actions. Cometix's retained Select renderer
+/// The official `Select` owns these actions. Nyan's retained Select renderer
 /// receives explicit focus state, so the hooks-family components install the
 /// same action handlers at their boundary.
 pub(crate) fn use_select_bindings(

@@ -75,6 +75,6 @@ mod tests {
         .render(Some(100));
         let text = canvas.to_string();
         assert!(text.contains("! for bash mode"), "canvas=\n{text}");
-        assert!(!text.contains("Cometix Code v"), "canvas=\n{text}");
+        assert!(!text.contains("nyan v"), "canvas=\n{text}");
     }
 }

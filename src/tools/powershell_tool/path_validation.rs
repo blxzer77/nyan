@@ -1877,7 +1877,7 @@ mod tests {
     fn writes_outside_the_working_directory_are_asked_with_directory_suggestions() {
         let parsed = pipeline(vec![command(
             "Set-Content",
-            &["/etc/cometix-parity.txt"],
+            &["/etc/nyan-parity.txt"],
             &literals(1),
         )]);
         match check_path_constraints(&parsed, &ToolPermissionContext::default(), false) {
@@ -1912,7 +1912,7 @@ mod tests {
         );
         let mut parsed = pipeline(vec![command(
             "Set-Content",
-            &["/etc/cometix-parity.txt"],
+            &["/etc/nyan-parity.txt"],
             &literals(1),
         )]);
         parsed.statements.push(ParsedStatement {
@@ -2062,7 +2062,7 @@ mod tests {
         parsed.statements[0].redirections =
             vec![crate::utils::powershell::parser::ParsedRedirection {
                 operator: crate::utils::powershell::parser::RedirectionOperator::Output,
-                target: "/etc/cometix-parity.txt".to_string(),
+                target: "/etc/nyan-parity.txt".to_string(),
                 is_merging: false,
             }];
         assert!(matches!(

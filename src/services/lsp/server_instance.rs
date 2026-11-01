@@ -476,7 +476,7 @@ mod tests {
 
     #[tokio::test]
     async fn start_records_process_start_error_on_official_server_boundary() {
-        let server = instance_with_command("definitely-not-a-cometix-lsp-server");
+        let server = instance_with_command("definitely-not-a-nyan-lsp-server");
         let error = server.start().await.unwrap_err().to_string();
         assert!(error.contains("failed to start") || error.contains("No such file"));
         assert_eq!(server.state(), LspServerState::Error);
@@ -485,7 +485,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_moves_server_to_stopped_like_official_lifecycle() {
-        let server = instance_with_command("definitely-not-a-cometix-lsp-server");
+        let server = instance_with_command("definitely-not-a-nyan-lsp-server");
         let _ = server.start().await;
         server.stop().await.unwrap();
         assert_eq!(server.state(), LspServerState::Stopped);
@@ -497,7 +497,7 @@ mod tests {
     /// `lsp_error_output` → `Error performing hover: ...`.
     #[tokio::test]
     async fn unhealthy_send_request_uses_the_official_lowercase_state_literal() {
-        let server = instance_with_command("definitely-not-a-cometix-lsp-server");
+        let server = instance_with_command("definitely-not-a-nyan-lsp-server");
         let error = server
             .send_request("textDocument/hover", serde_json::json!({}))
             .await
@@ -558,7 +558,7 @@ mod tests {
             "rust",
             ScopedLspServerConfig {
                 config: LspServerConfig {
-                    command: "definitely-not-a-cometix-lsp-server".to_string(),
+                    command: "definitely-not-a-nyan-lsp-server".to_string(),
                     max_restarts: Some(0),
                     ..LspServerConfig::default()
                 },

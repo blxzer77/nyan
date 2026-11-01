@@ -1,7 +1,7 @@
 //! Maps to: CC `components/LogoV2/EmergencyTip.tsx`.
 //!
 //! The official component reads a cached GrowthBook config value and records
-//! the shown tip in global config. Cometix keeps this component pure for now:
+//! the shown tip in global config. nyan keeps this component pure for now:
 //! callers provide the cached tip and last-shown value, and no config writes or
 //! GrowthBook calls occur inside the render boundary.
 
@@ -96,7 +96,7 @@ pub fn tip_of_feed_from_cached_growthbook_value(value: Option<&serde_json::Value
 
 /// Maps to: CC `EmergencyTip.tsx` `getTipOfFeed()`.
 ///
-/// Cometix resolves the `tengu-top-of-feed-tip` payload from the
+/// nyan resolves the `tengu-top-of-feed-tip` payload from the
 /// source-controlled switch table instead of GrowthBook.
 pub fn get_tip_of_feed() -> TipOfFeed {
     let value = crate::utils::feature_flags::feature_enabled(

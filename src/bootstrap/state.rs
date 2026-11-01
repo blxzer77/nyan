@@ -133,7 +133,7 @@ static HAS_DEV_CHANNELS: LazyLock<RwLock<bool>> = LazyLock::new(|| RwLock::new(f
 ///
 /// CC's opt-in actions live in `main.tsx` (`--brief`, `defaultView: 'chat'`,
 /// `/brief`, `--tools`, `CLAUDE_CODE_BRIEF`). Only the env-var path exists in
-/// Cometix, and `maybeActivateBrief` (`main.tsx:6524-6553`) sets the flag from
+/// Nyan, and `maybeActivateBrief` (`main.tsx:6524-6553`) sets the flag from
 /// it, so the initial value is derived here.
 static USER_MSG_OPT_IN: LazyLock<RwLock<bool>> = LazyLock::new(|| {
     RwLock::new(crate::utils::env_utils::is_env_truthy(
@@ -143,7 +143,7 @@ static USER_MSG_OPT_IN: LazyLock<RwLock<bool>> = LazyLock::new(|| {
 /// Maps to: CC `bootstrap/state.ts:82` `STATE.questionPreviewFormat`.
 ///
 /// CC seeds this in `main.tsx:1153-1165`: the env override wins, otherwise
-/// every non-`sdk-`/desktop/CCR client type gets `markdown`. Cometix's client
+/// every non-`sdk-`/desktop/CCR client type gets `markdown`. Nyan's client
 /// type is always `cli`, so the fallback is unconditional here.
 static QUESTION_PREVIEW_FORMAT: LazyLock<RwLock<Option<QuestionPreviewFormat>>> =
     LazyLock::new(|| {
@@ -222,7 +222,7 @@ static ORIGINAL_CWD: LazyLock<RwLock<PathBuf>> = LazyLock::new(|| {
     // CLAUDE_CONFIG_DIR.
 
     #[cfg(test)]
-    if let Some(pinned) = crate::utils::process_env::var("COMETIX_TEST_PROJECT_DIR") {
+    if let Some(pinned) = crate::utils::process_env::var("NYAN_TEST_PROJECT_DIR") {
         if !pinned.is_empty() {
             let pinned = PathBuf::from(pinned);
             return RwLock::new(PathBuf::from(
@@ -696,8 +696,8 @@ pub fn get_is_non_interactive_session() -> bool {
     !get_is_interactive() || non_interactive_env_override()
 }
 
-/// Test-only seam: `CLAUDE_CODE_NON_INTERACTIVE` / `COMETIX_NON_INTERACTIVE` /
-/// `COMETIX_NON_INTERACTIVE_SESSION`.
+/// Test-only seam: `CLAUDE_CODE_NON_INTERACTIVE` / `NYAN_NON_INTERACTIVE` /
+/// `NYAN_NON_INTERACTIVE_SESSION`.
 ///
 /// CC has no env equivalent — `rg -c CLAUDE_CODE_NON_INTERACTIVE ../rebuild/src`
 /// exits 1. These exist because the port had no production writer for
@@ -714,7 +714,7 @@ pub fn get_is_non_interactive_session() -> bool {
 #[cfg(test)]
 fn non_interactive_env_override() -> bool {
     // The tests write these through the carrier, so the seam reads it too.
-    ["CLAUDE_CODE_NON_INTERACTIVE", "COMETIX_NON_INTERACTIVE", "COMETIX_NON_INTERACTIVE_SESSION"]
+    ["CLAUDE_CODE_NON_INTERACTIVE", "NYAN_NON_INTERACTIVE", "NYAN_NON_INTERACTIVE_SESSION"]
         .into_iter()
         .any(|key| crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var(key).as_deref()))
 }
@@ -1129,8 +1129,8 @@ mod tests {
     fn non_interactive_session_mirrors_official_inverse_interactive_state_and_env_override() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::remove("CLAUDE_CODE_NON_INTERACTIVE");
-        crate::utils::process_env::remove("COMETIX_NON_INTERACTIVE");
-        crate::utils::process_env::remove("COMETIX_NON_INTERACTIVE_SESSION");
+        crate::utils::process_env::remove("NYAN_NON_INTERACTIVE");
+        crate::utils::process_env::remove("NYAN_NON_INTERACTIVE_SESSION");
 
         super::set_is_interactive(true);
         assert!(super::get_is_interactive());

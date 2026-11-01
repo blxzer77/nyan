@@ -225,7 +225,7 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-plugin-session-start-{}",
+            "nyan-plugin-session-start-{}",
             uuid::Uuid::new_v4()
         ));
         let plugin = root.join("formatter");

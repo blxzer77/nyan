@@ -182,7 +182,7 @@ where
 
 /// Maps to: CC `services/analytics/growthbook.ts:1005-1027` `resetGrowthBook`.
 ///
-/// Cometix has no GrowthBook client/network/exposure runtime to destroy. This
+/// Nyan has no GrowthBook client/network/exposure runtime to destroy. This
 /// source-shaped reset clears the locally implemented parse-once override state.
 pub fn reset_growth_book() {
     *ENV_OVERRIDES

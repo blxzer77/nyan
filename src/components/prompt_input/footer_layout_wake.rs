@@ -4,7 +4,7 @@
 //! carrier — Ink auto-layout means each footer row's local `setState`
 //! re-renders that child and the terminal reflows (Notifications.tsx:237-250
 //! apiKeyHelper 1s poll; :362-363 self-contained `<MemoryUsageIndicator />` /
-//! `<SandboxPromptFooterHint />` children). Cometix PromptInput budgets its
+//! `<SandboxPromptFooterHint />` children). Nyan PromptInput budgets its
 //! own height retained-style, so a row visibility flip must wake PromptInput
 //! — and only PromptInput — to recompute heights from the live sources.
 //!

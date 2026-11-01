@@ -380,7 +380,7 @@ mod tests {
     fn user_bindings_append_after_defaults_and_override_last_wins() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-keybindings-loader-{}",
+            "nyan-keybindings-loader-{}",
             uuid::Uuid::new_v4()
         ));
         let _restore = RestoreConfigDir {
@@ -417,7 +417,7 @@ mod tests {
     fn initial_sync_parse_failure_is_silent_but_watcher_reload_reports_it() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-keybindings-parse-warning-{}",
+            "nyan-keybindings-parse-warning-{}",
             uuid::Uuid::new_v4()
         ));
         let _restore = RestoreConfigDir {
@@ -443,7 +443,7 @@ mod tests {
     fn loader_caches_official_validation_warnings_for_doctor() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-keybindings-warnings-{}",
+            "nyan-keybindings-warnings-{}",
             uuid::Uuid::new_v4()
         ));
         let _restore = RestoreConfigDir {
@@ -473,7 +473,7 @@ mod tests {
     fn watcher_reloads_after_stable_write_without_retained_frame_io() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-keybindings-watcher-{}",
+            "nyan-keybindings-watcher-{}",
             uuid::Uuid::new_v4()
         ));
         let _restore = RestoreConfigDir {

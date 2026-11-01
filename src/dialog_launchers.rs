@@ -77,7 +77,7 @@ mod tests {
         let previous_cwd = std::env::current_dir().unwrap();
         let previous_original_cwd = crate::bootstrap::state::get_original_cwd();
         let root = std::env::temp_dir().join(format!(
-            "cometix-dialog-launcher-nonempty-{}",
+            "nyan-dialog-launcher-nonempty-{}",
             uuid::Uuid::new_v4()
         ));
         let requested_cwd = root.join("repo");
@@ -195,7 +195,7 @@ mod tests {
         let previous_cwd = std::env::current_dir().unwrap();
         let previous_original_cwd = crate::bootstrap::state::get_original_cwd();
         let root = std::env::temp_dir().join(format!(
-            "cometix-dialog-launcher-progressive-{}",
+            "nyan-dialog-launcher-progressive-{}",
             uuid::Uuid::new_v4()
         ));
         let requested_cwd = root.join("repo");
@@ -310,7 +310,7 @@ mod tests {
         let previous_cwd = std::env::current_dir().unwrap();
         let previous_original_cwd = crate::bootstrap::state::get_original_cwd();
         let cwd =
-            std::env::temp_dir().join(format!("cometix-dialog-launcher-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-dialog-launcher-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&cwd).unwrap();
         std::env::set_current_dir(&cwd).unwrap();
         let cwd = std::env::current_dir().unwrap();
@@ -384,7 +384,7 @@ mod tests {
             "canvas=\n{text}"
         );
         assert!(
-            !text.contains("Cometix Code"),
+            !text.contains("nyan"),
             "REPL mounted early:\n{text}"
         );
 

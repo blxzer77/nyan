@@ -1010,7 +1010,7 @@ mod tests {
 
     fn temp_dir(label: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-mcpb-handler-{label}-{}",
+            "nyan-mcpb-handler-{label}-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).expect("temp dir");

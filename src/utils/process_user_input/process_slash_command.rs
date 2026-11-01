@@ -24,7 +24,7 @@ pub enum LocalSettingsTab {
 
 /// Rust name for official CC local-jsx slash command UI payloads.
 ///
-/// The official implementation stores React JSX in `toolJSX`; Cometix stores a
+/// The official implementation stores React JSX in `toolJSX`; Nyan stores a
 /// typed Rust command UI descriptor instead.
 #[derive(Clone, Debug, PartialEq)]
 pub enum LocalCommandUi {

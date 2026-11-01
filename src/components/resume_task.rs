@@ -1,7 +1,7 @@
 //! Maps to: CC `components/ResumeTask.tsx`.
 //!
 //! The official component owns API loading (`fetchCodeSessionsFromSessionsAPI`),
-//! repository detection, keybindings, and retry side effects. Cometix keeps
+//! repository detection, keybindings, and retry side effects. Nyan keeps
 //! those side effects outside this render slice for now; callers provide a
 //! snapshot state while this module preserves official data shaping, error
 //! classification, option copy, and layout calculations.

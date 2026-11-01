@@ -1,7 +1,7 @@
 //! Maps to: CC `components/InterruptedByUser.tsx`.
 //!
 //! The upstream component renders the shared interrupted-turn copy used by
-//! assistant aborts and fallback rejected tool-use rows. Cometix mirrors the
+//! assistant aborts and fallback rejected tool-use rows. Nyan mirrors the
 //! external-build branch; the ANT-only `/issue` suffix remains unavailable in
 //! this external clone build.
 

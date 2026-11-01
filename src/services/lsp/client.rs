@@ -855,7 +855,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("cometix-fake-lsp-{unique}.mjs"));
+        let path = std::env::temp_dir().join(format!("nyan-fake-lsp-{unique}.mjs"));
         let mut file = fs::File::create(&path).unwrap();
         file.write_all(
             br#"

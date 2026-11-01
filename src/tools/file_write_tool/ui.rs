@@ -698,7 +698,7 @@ mod tests {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _restore = CwdRestore(crate::bootstrap::state::get_original_cwd());
         let root = std::env::temp_dir().join(format!(
-            "cometix-write-ui-cwd-{}",
+            "nyan-write-ui-cwd-{}",
             uuid::Uuid::new_v4().simple()
         ));
         crate::bootstrap::state::set_original_cwd(&root);
@@ -740,7 +740,7 @@ mod tests {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _restore = CwdRestore(crate::bootstrap::state::get_original_cwd());
         let base = std::env::temp_dir().join(format!(
-            "cometix-write-ui-rel-{}",
+            "nyan-write-ui-rel-{}",
             uuid::Uuid::new_v4().simple()
         ));
         crate::bootstrap::state::set_original_cwd(&base.join("project"));

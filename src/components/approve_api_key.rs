@@ -280,7 +280,7 @@ mod tests {
 
     fn drive_with(batches: Vec<Vec<KeyCode>>, unbind_select_escape: bool) -> (Vec<bool>, String) {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _no_write = EnvVarGuard::unset("COMETIX_WRITE_ENABLED");
+        let _no_write = EnvVarGuard::unset("NYAN_WRITE_ENABLED");
         let results: Results = Arc::new(Mutex::new(Vec::new()));
         let echo = results.clone();
         let mut batches = batches;

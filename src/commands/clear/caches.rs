@@ -194,7 +194,7 @@ mod tests {
         let _skills = crate::skills::load_skills_dir::DynamicSkillsTestSnapshot::capture();
         crate::skills::load_skills_dir::clear_dynamic_skills();
         let root = std::env::temp_dir().join(format!(
-            "cometix-clear-dynamic-skills-{}",
+            "nyan-clear-dynamic-skills-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let skill = root.join("discovered");

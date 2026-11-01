@@ -4,7 +4,7 @@
 //! This read-only slice preserves the official lookup order used by MCP auth
 //! state and transports: environment variable, legacy file descriptor, then the
 //! CCR well-known fallback file. Unlike CC `maybePersistTokenForSubprocesses`,
-//! Cometix does not write the token back to disk in this helper.
+//! Nyan does not write the token back to disk in this helper.
 
 use crate::utils::auth_file_descriptor::{
     CCR_SESSION_INGRESS_TOKEN_PATH, read_token_from_well_known_file,

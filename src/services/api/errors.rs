@@ -5,7 +5,7 @@
 //! This module ports the error handling layer that converts raw API errors
 //! (from the Anthropic SDK or third-party providers) into user-facing
 //! `AssistantMessage` values. Analytics/telemetry calls are omitted per
-//! CometixCode conventions; upstream GrowthBook gates are represented by the
+//! nyan conventions; upstream GrowthBook gates are represented by the
 //! hardcoded `utils::feature_flags` switch collection when needed.
 
 use regex::Regex;
@@ -18,7 +18,7 @@ use crate::utils::format::format_file_size;
 // ---------------------------------------------------------------------------
 
 /// Stub for CC `types/message.AssistantMessage`.
-/// TODO(port): Replace with the canonical CometixCode AssistantMessage once
+/// TODO(port): Replace with the canonical nyan AssistantMessage once
 /// `crate::types::message` gains `is_api_error_message`, `error_details`, and
 /// `error` fields matching CC `types/message.ts:38-44`.
 ///

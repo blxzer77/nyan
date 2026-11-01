@@ -3,7 +3,7 @@
 //! Safe main-screen implementation of the Doctor screen. The official screen
 //! performs async diagnostic probes, dist-tag network fetches, settings error
 //! hooks, MCP/keybinding/plugin/sandbox warning hooks, and PID lock cleanup.
-//! Cometix now delegates local diagnostic shaping to `utils/doctor_diagnostic.rs`
+//! Nyan now delegates local diagnostic shaping to `utils/doctor_diagnostic.rs`
 //! (the official `utils/doctorDiagnostic.ts` boundary) while keeping network,
 //! installer mutation, settings writes, process cleanup, and real external
 //! command execution disabled in this screen.
@@ -90,7 +90,7 @@ fn doctor_auto_update_channel() -> String {
     crate::utils::settings::load_settings_from_disk()
         .settings
         .auto_updates_channel
-        .or_else(|| crate::utils::process_env::var("COMETIX_AUTO_UPDATE_CHANNEL"))
+        .or_else(|| crate::utils::process_env::var("NYAN_AUTO_UPDATE_CHANNEL"))
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "latest".to_string())
 }
@@ -107,7 +107,7 @@ pub struct VersionLockInfo {
 /// Maps to CC `Doctor.tsx` PID-lock effect branch.
 ///
 /// Safety divergence: CC calls `cleanupStaleLocks(locksDir)` before reading
-/// locks. Cometix's `cleanup_stale_locks` is safe-disabled and removes
+/// locks. Nyan's `cleanup_stale_locks` is safe-disabled and removes
 /// nothing, so this remains a read-only Doctor diagnostic.
 fn get_doctor_version_lock_info_readonly() -> VersionLockInfo {
     if !is_pid_based_locking_enabled() {

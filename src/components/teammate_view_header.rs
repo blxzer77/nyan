@@ -1,7 +1,7 @@
 //! Maps to: CC `components/TeammateViewHeader.tsx`.
 //!
 //! Official component selects the currently viewed teammate from AppState.
-//! Cometix keeps AppState selection outside this render boundary and receives
+//! Nyan keeps AppState selection outside this render boundary and receives
 //! the already-selected teammate task as props.
 
 use crate::components::design_system::keyboard_shortcut_hint::KeyboardShortcutHint;

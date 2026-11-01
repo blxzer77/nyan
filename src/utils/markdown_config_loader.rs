@@ -358,7 +358,7 @@ mod tests {
         use crate::utils::test_env::HOME_VAR;
         use std::os::unix::fs::symlink;
 
-        let root = temp_dir("cometix-md-loader-symlink");
+        let root = temp_dir("nyan-md-loader-symlink");
         let managed_root = root.join("managed");
         let managed = managed_root.join(".claude/commands");
         let external = root.join("external");
@@ -392,7 +392,7 @@ mod tests {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let root = temp_dir("cometix-md-loader-worktree");
+        let root = temp_dir("nyan-md-loader-worktree");
         let main = root.join("main");
         let worktree = root.join("worktree");
         let worktree_git_dir = main.join(".git/worktrees/worktree");
@@ -441,7 +441,7 @@ mod tests {
     #[test]
     fn load_markdown_files_for_subdir_preserves_official_source_order() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let root = temp_dir("cometix-md-loader");
+        let root = temp_dir("nyan-md-loader");
         let config_home = root.join("config");
         let managed = root.join("managed");
         let project = root.join("project");

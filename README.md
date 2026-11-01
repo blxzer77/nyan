@@ -1,8 +1,8 @@
 <div align="center">
 
 <h1>
-  <img src="assets/logo-dark.gif#gh-dark-mode-only" alt="CometixCode" height="40" align="top"><img src="assets/logo-light.gif#gh-light-mode-only" alt="CometixCode" height="40" align="top">
-  CometixCode
+  <img src="assets/logo-dark.gif#gh-dark-mode-only" alt="nyan" height="40" align="top"><img src="assets/logo-light.gif#gh-light-mode-only" alt="nyan" height="40" align="top">
+  nyan
 </h1>
 
 English | [简体中文](README_CN.md)
@@ -13,7 +13,7 @@ English | [简体中文](README_CN.md)
 </div>
 
 A terminal-based AI coding assistant, written in Rust as a 1:1 reimplementation
-of Anthropic's Claude Code.
+of Anthropic's Claude Code. nyan is a fork of [CometixCode](https://github.com/Haleclipse/CometixCode).
 
 > **Unofficial project, not affiliated with Anthropic.**
 > This is an independent reimplementation built by reading the published
@@ -22,7 +22,7 @@ of Anthropic's Claude Code.
 
 ## What this is
 
-Claude Code's terminal UI is TypeScript on React + Ink. CometixCode reproduces
+Claude Code's terminal UI is TypeScript on React + Ink. nyan reproduces
 it in Rust on iocraft, a React-style retained-mode TUI framework that is the
 structural counterpart of Ink — components, hooks, declarative elements. The
 port follows the original file by file rather than reinventing the
@@ -43,11 +43,11 @@ permissions, MCP and slash commands are implemented; other areas are partial.
 </p>
 
 <p align="center">
-  <strong>CometixCode × Infistar.cc | High-Availability AI API</strong><br>
+  <strong>nyan × Infistar.cc | High-Availability AI API</strong><br>
   Stable routing | 10% rates · Transparent · Failover<br>
   Top models | ChatGPT · Claude · Gemini · Kimi · GLM · DeepSeek<br>
   Multimodal | Text · Image · Video · Embedding / Rerank<br>
-  CometixCode users: bonus credits via the <a href="https://www.infistar.cc/register?aff=HALLEY">exclusive link</a>.
+  nyan users: bonus credits via the <a href="https://www.infistar.cc/register?aff=HALLEY">exclusive link</a>.
 </p>
 
 ## Building
@@ -64,7 +64,7 @@ cargo build --release
 cargo run --release
 ```
 
-The binary is `cometix`.
+The binary is `nyan`.
 
 ### Cross-compiling for Windows
 
@@ -80,7 +80,7 @@ statically, so the resulting `.exe` needs no DLLs alongside it.
 ## ripgrep
 
 File search shells out to `rg`. Claude Code ships a packaged ripgrep inside its
-npm package and executes that path; CometixCode keeps the same shape — the
+npm package and executes that path; nyan keeps the same shape — the
 binary is an external asset, never compiled into the executable.
 
 Resolution order:
@@ -116,6 +116,7 @@ behind that.
 
 ## Acknowledgements
 
+- **[CometixCode]** — nyan is a fork of CometixCode by Haleclipse.
 - **[ClaudeCodeRev]** — the analysis work this port reads from. Every behaviour
   here was derived from studying Claude Code through it.
 - **[CometixTUI]** — the TUI framework this is built on, an iocraft fork
@@ -129,6 +130,7 @@ behind that.
 
 [AGPL-3.0-only](LICENSE).
 
+[CometixCode]: https://github.com/Haleclipse/CometixCode
 [CometixTUI]: https://github.com/Haleclipse/CometixTUI
 [ClaudeCodeRev]: https://github.com/Haleclipse/ClaudeCodeRev
 [marked-rs]: https://github.com/Haleclipse/marked-rs

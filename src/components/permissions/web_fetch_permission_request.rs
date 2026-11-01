@@ -261,7 +261,7 @@ pub fn WebFetchPermissionRequest<'a>(
                     pending_select.set(Some(WebFetchPermissionOptionValue::No));
                 }
                 // No Ctrl+C here: CC's is PermissionRequest's app:interrupt,
-                // and Cometix binds Ctrl+C to app:exit (2.0.x semantics).
+                // and Nyan binds Ctrl+C to app:exit (2.0.x semantics).
                 _ => {}
             }
         }

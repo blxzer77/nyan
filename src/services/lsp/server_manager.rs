@@ -461,7 +461,7 @@ mod tests {
         extension_to_language.insert(extension.to_string(), language.to_string());
         ScopedLspServerConfig {
             config: LspServerConfig {
-                command: "definitely-not-a-cometix-lsp-server".to_string(),
+                command: "definitely-not-a-nyan-lsp-server".to_string(),
                 extension_to_language,
                 ..LspServerConfig::default()
             },
@@ -687,7 +687,7 @@ mod tests {
 
         let script = write_fake_crashing_lsp_server();
         let state_file = std::env::temp_dir().join(format!(
-            "cometix-fake-crashing-lsp-state-{}",
+            "nyan-fake-crashing-lsp-state-{}",
             uuid::Uuid::new_v4()
         ));
         let mut extension_to_language = BTreeMap::new();
@@ -900,7 +900,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("cometix-{prefix}-{unique}.mjs"));
+        let path = std::env::temp_dir().join(format!("nyan-{prefix}-{unique}.mjs"));
         let mut file = fs::File::create(&path).unwrap();
         file.write_all(body.as_bytes()).unwrap();
         path
@@ -988,7 +988,7 @@ function handle(message) {{
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("cometix-fake-diagnostic-lsp-{unique}.mjs"));
+        let path = std::env::temp_dir().join(format!("nyan-fake-diagnostic-lsp-{unique}.mjs"));
         let mut file = fs::File::create(&path).unwrap();
         file.write_all(
             br#"
@@ -1047,7 +1047,7 @@ process.stdin.on('data', chunk => {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("cometix-fake-crashing-lsp-{unique}.mjs"));
+        let path = std::env::temp_dir().join(format!("nyan-fake-crashing-lsp-{unique}.mjs"));
         let mut file = fs::File::create(&path).unwrap();
         file.write_all(
             br#"

@@ -606,7 +606,7 @@ mod tests {
     #[test]
     fn normalize_file_edit_input_desanitizes_and_respects_markdown_hard_breaks() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-edit-normalize-utils-{}",
+            "nyan-edit-normalize-utils-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

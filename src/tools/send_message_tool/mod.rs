@@ -1353,17 +1353,17 @@ mod tests {
 
     /// Seeds the team both in memory AND on disk: broadcast and
     /// shutdown-approval read the team file like CC `readTeamFileAsync`, so
-    /// the returned guards (CLAUDE_CONFIG_DIR + COMETIX_TEST_TEAM_FILE_IO)
+    /// the returned guards (CLAUDE_CONFIG_DIR + NYAN_TEST_TEAM_FILE_IO)
     /// must stay alive for the test body.
     fn seed_team_for_send_message(team_name: &str) -> (EnvVarGuard, EnvVarGuard, EnvVarGuard) {
         let root = std::env::temp_dir().join(format!(
-            "cometix-send-message-{}",
+            "nyan-send-message-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
+        let io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         // The mailbox write path also checks the session write gate.
-        let write_guard = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::utils::swarm::team_helpers::clear_team_tool_state_for_test();
         crate::utils::teammate_mailbox::clear_mailboxes_for_test();
         let mut record = crate::utils::swarm::team_helpers::create_team_record(

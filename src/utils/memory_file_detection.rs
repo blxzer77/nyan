@@ -282,7 +282,7 @@ mod tests {
     #[test]
     fn session_file_and_pattern_detection_matches_official_raw_strings() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-memory-detection-session-{}",
+            "nyan-memory-detection-session-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _env = DetectionTestEnv::new(&root);
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn managed_file_directory_and_pattern_detection_delegate_to_canonical_owners() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-memory-detection-owner-{}",
+            "nyan-memory-detection-owner-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _env = DetectionTestEnv::new(&root);
@@ -357,7 +357,7 @@ mod tests {
     #[test]
     fn shell_memory_detection_requires_an_extracted_canonical_memory_path() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-memory-detection-shell-{}",
+            "nyan-memory-detection-shell-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _env = DetectionTestEnv::new(&root);

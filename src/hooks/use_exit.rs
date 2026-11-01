@@ -93,7 +93,7 @@ pub fn use_exit(hooks: &mut Hooks) -> ExitState {
 /// (Ctrl+C and Ctrl+D here, `default_bindings.rs`) presses the same counter,
 /// so Ctrl+C then Ctrl+D is a double press.
 ///
-/// Cometix-specific deviation (product requirement — skip in parity audits):
+/// Nyan-specific deviation (product requirement — skip in parity audits):
 /// the hint names the key that was pressed (`exit_press_target`), where CC
 /// names the action's key — "Ctrl-C" for `app:interrupt`, "Ctrl-D" for
 /// `app:exit` — which would read "Press Ctrl-D again" after a Ctrl+C.

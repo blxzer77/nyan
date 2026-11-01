@@ -150,7 +150,7 @@ pub fn delete_permission_rule_from_settings(rule: &PermissionRuleFromEditableSet
         let patch = patch
             .as_object()
             .ok_or_else(|| anyhow::anyhow!("settings must be an object"))?;
-        // Explicit Cometix no-write seam, not a CC permission policy.
+        // Explicit Nyan no-write seam, not a CC permission policy.
         if !crate::utils::session_storage::is_session_write_enabled() {
             anyhow::bail!(crate::tools::shared::write_gate::PERMISSION_PERSISTENCE_DISABLED_ERROR);
         }
@@ -281,7 +281,7 @@ pub fn add_permission_rules_to_settings(
             "permissions".to_string(),
             serde_json::Value::Object(permissions),
         );
-        // Explicit Cometix no-write seam. It applies at the actual write, not
+        // Explicit Nyan no-write seam. It applies at the actual write, not
         // to managed-only / duplicate no-ops above.
         if !crate::utils::session_storage::is_session_write_enabled() {
             anyhow::bail!(crate::tools::shared::write_gate::PERMISSION_PERSISTENCE_DISABLED_ERROR);
@@ -370,7 +370,7 @@ mod persistence_tests {
             let result = Self {
                 _config: EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root),
                 _managed: EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &root),
-                _writes: EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1"),
+                _writes: EnvVarGuard::set("NYAN_WRITE_ENABLED", "1"),
                 root,
             };
             reset_settings_cache();

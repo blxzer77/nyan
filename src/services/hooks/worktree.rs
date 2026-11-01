@@ -18,7 +18,7 @@ pub struct WorktreeCreateHookResult {
 
 /// Maps to: CC `hasWorktreeCreateHook()` for settings-file hooks.
 ///
-/// Registered plugin/SDK callback hooks are not yet present in Cometix; this
+/// Registered plugin/SDK callback hooks are not yet present in Nyan; this
 /// helper intentionally checks the same merged `HooksConfig` that execution
 /// consumes, so it cannot return true for hooks that execution would filter out.
 pub fn has_worktree_create_hook(config: &RegisteredHooks) -> bool {
@@ -217,7 +217,7 @@ mod tests {
             "WorktreeCreate": [
                 { "hooks": [
                     { "command": "sh -c 'echo failed >&2; exit 1'", "timeout": 5 },
-                    { "command": "printf '/tmp/cometix-hook-worktree\\n'", "timeout": 5 }
+                    { "command": "printf '/tmp/nyan-hook-worktree\\n'", "timeout": 5 }
                 ] }
             ]
         }));
@@ -231,14 +231,14 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(result.worktree_path, "/tmp/cometix-hook-worktree");
+        assert_eq!(result.worktree_path, "/tmp/nyan-hook-worktree");
     }
 
     #[tokio::test]
     async fn worktree_remove_hook_matches_remove_event_not_create_event() {
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
         let marker = std::env::temp_dir().join(format!(
-            "cometix-worktree-remove-hook-{}",
+            "nyan-worktree-remove-hook-{}",
             uuid::Uuid::new_v4()
         ));
         let command = format!("printf removed > {}", marker.display());

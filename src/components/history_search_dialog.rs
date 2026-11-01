@@ -1,7 +1,7 @@
 //! Maps to: CC `components/HistorySearchDialog.tsx`.
 //!
 //! Safety boundary: the official dialog asynchronously reads prompt history and
-//! lazily resolves pasted content before `onSelect`. Cometix keeps the official
+//! lazily resolves pasted content before `onSelect`. Nyan keeps the official
 //! picker shell, query/editing behavior, exact-then-subsequence filtering,
 //! age/preview helpers, and select/cancel callbacks from explicit snapshots.
 //! History file I/O and paste-store resolution remain in the prompt-history

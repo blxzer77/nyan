@@ -77,7 +77,7 @@ pub fn editor_result_message(path: &Path, file_exists: bool, editor_error: Optio
 
 pub fn write_disabled_message(path: &Path) -> String {
     format!(
-        "Keybindings file was not opened because writes are disabled: {}. Set COMETIX_WRITE_ENABLED=1 to enable this explicit config edit.",
+        "Keybindings file was not opened because writes are disabled: {}. Set NYAN_WRITE_ENABLED=1 to enable this explicit config edit.",
         path.display()
     )
 }
@@ -126,12 +126,12 @@ mod tests {
     fn keybindings_prepare_uses_exclusive_create_and_preserves_existing_file() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-keybindings-command-{}",
+            "nyan-keybindings-command-{}",
             uuid::Uuid::new_v4()
         ));
         let _restore = RestoreEnv {
             config_dir: Some(EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root)),
-            write_enabled: Some(EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1")),
+            write_enabled: Some(EnvVarGuard::set("NYAN_WRITE_ENABLED", "1")),
             root: root.clone(),
         };
         crate::utils::config::clear_global_config_cache_for_testing();
@@ -173,12 +173,12 @@ mod tests {
     fn keybindings_prepare_respects_explicit_no_write_mode() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-keybindings-no-write-{}",
+            "nyan-keybindings-no-write-{}",
             uuid::Uuid::new_v4()
         ));
         let _restore = RestoreEnv {
             config_dir: Some(EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root)),
-            write_enabled: Some(EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0")),
+            write_enabled: Some(EnvVarGuard::set("NYAN_WRITE_ENABLED", "0")),
             root: root.clone(),
         };
         crate::utils::config::clear_global_config_cache_for_testing();
@@ -278,16 +278,16 @@ mod tests {
 
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-keybindings-live-reload-{}",
+            "nyan-keybindings-live-reload-{}",
             uuid::Uuid::new_v4()
         ));
         let _restore = RestoreEnv {
             config_dir: Some(EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root)),
-            write_enabled: Some(EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1")),
+            write_enabled: Some(EnvVarGuard::set("NYAN_WRITE_ENABLED", "1")),
             root: root.clone(),
         };
         let script = std::env::temp_dir().join(format!(
-            "cometix-keybindings-editor-{}",
+            "nyan-keybindings-editor-{}",
             uuid::Uuid::new_v4()
         ));
         let _remove_script = RemoveScript(script.clone());

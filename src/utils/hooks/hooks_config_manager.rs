@@ -80,7 +80,7 @@ fn empty_matcher(field_to_match: &'static str) -> Option<MatcherMetadata> {
 
 /// Maps to: CC `getHookEventMetadata(toolNames)`.
 ///
-/// CC memoizes this by sorted tool-name key; Cometix computes a fresh map since
+/// CC memoizes this by sorted tool-name key; Nyan computes a fresh map since
 /// this service helper is cheap and currently called on demand by command UI.
 pub fn get_hook_event_metadata(tool_names: &[String]) -> HashMap<HookEvent, HookEventMetadata> {
     HashMap::from([

@@ -2,7 +2,7 @@
 //! Maps to CC `utils/hooks/postSamplingHooks.ts`.
 //!
 //! These hooks are internal (not settings.json shell hooks). CC runs them after
-//! model sampling completes and before stop hooks / tool execution. Cometix keeps
+//! model sampling completes and before stop hooks / tool execution. Nyan keeps
 //! the same boundary so future services can register side-effecting observers
 //! without adding those concerns to `query.rs`.
 

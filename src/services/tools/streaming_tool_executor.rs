@@ -1532,7 +1532,7 @@ mod tests {
         }
         let _dynamic_skills_restore = DynamicSkillsRestore;
         let root = std::env::temp_dir().join(format!(
-            "cometix-streaming-read-effects-{}",
+            "nyan-streaming-read-effects-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let mut blocks = Vec::new();
@@ -1700,7 +1700,7 @@ mod tests {
 
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-streaming-skill-modifier-{}",
+            "nyan-streaming-skill-modifier-{}",
             uuid::Uuid::new_v4()
         ));
         let skill_file = root
@@ -1914,7 +1914,7 @@ pub(crate) mod streaming_hook_decision_tests {
             .unwrap();
             Self {
                 _config: EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.join("config")),
-                _writes: EnvVarGuard::set("COMETIX_WRITE_ENABLED", writes),
+                _writes: EnvVarGuard::set("NYAN_WRITE_ENABLED", writes),
                 _simple: EnvVarGuard::unset("CLAUDE_CODE_SIMPLE"),
                 _managed: crate::services::hooks::test_support::ManagedSettingsGuard::install(
                     Some(r#"{"allowManagedHooksOnly":true}"#),

@@ -1503,7 +1503,7 @@ mod runtime {
     ///
     /// A transport-level 401 should force a refresh even when the local expiry
     /// timestamp says the access token is still fresh. This mirrors the JS MCP
-    /// SDK's send/start retry semantics while preserving Cometix's service
+    /// SDK's send/start retry semantics while preserving Nyan's service
     /// boundary: transports ask for a refreshed bearer; they do not implement
     /// OAuth protocol logic or open browsers.
     pub async fn refresh_mcp_oauth_access_token_after_auth_failure(
@@ -1625,7 +1625,7 @@ mod runtime {
             .body(form_urlencoded_body(&params));
         // Deviation (L2, user-authorized OAuth safety gate): CC
         // `services/mcp/auth.ts:381-456` sends the prepared RFC 7009 request.
-        // Cometix rejects at the final credential HTTP outlet.
+        // Nyan rejects at the final credential HTTP outlet.
         if !crate::constants::oauth::OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED {
             return Err(crate::constants::oauth::OAuthCredentialSideEffectsUnavailable.into());
         }
@@ -1972,7 +1972,7 @@ mod runtime {
                 write_html_response(
                     &mut stream,
                     "200 OK",
-                    "<h1>Authentication Successful</h1><p>You can close this window. Return to CometixCode.</p>",
+                    "<h1>Authentication Successful</h1><p>You can close this window. Return to nyan.</p>",
                 )
                 .await?;
                 Ok(Some(callback))
@@ -2791,7 +2791,7 @@ mod tests {
     fn with_temp_config_home<T>(body: impl FnOnce(std::path::PathBuf) -> T) -> T {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let temp_dir =
-            std::env::temp_dir().join(format!("cometix-mcp-oauth-auth-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-mcp-oauth-auth-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir);
         let result = body(temp_dir.clone());

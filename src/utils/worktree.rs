@@ -768,11 +768,11 @@ mod tests {
             original_cwd: "/repo".to_string(),
             worktree_path: "/repo-feature".to_string(),
             worktree_name: "feature".to_string(),
-            worktree_branch: Some("cometix/feature".to_string()),
+            worktree_branch: Some("nyan/feature".to_string()),
             original_branch: Some("main".to_string()),
             original_head_commit: Some("abc123".to_string()),
             session_id: "session-1".to_string(),
-            tmux_session_name: tmux.then(|| "repo_cometix_feature".to_string()),
+            tmux_session_name: tmux.then(|| "repo_nyan_feature".to_string()),
             hook_based: None,
             creation_duration_ms: None,
             used_sparse_paths: None,
@@ -798,7 +798,7 @@ mod tests {
     }
 
     fn temp_root(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("cometix-{name}-{}", uuid::Uuid::new_v4()))
+        std::env::temp_dir().join(format!("nyan-{name}-{}", uuid::Uuid::new_v4()))
     }
 
     fn git_available() -> bool {
@@ -857,9 +857,9 @@ mod tests {
     #[test]
     fn keep_and_cleanup_clear_the_persisted_worktree_session_slot() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        // Without COMETIX_WRITE_ENABLED the config saves are DRY_RUN no-ops
+        // Without NYAN_WRITE_ENABLED the config saves are DRY_RUN no-ops
         // and every `is_none()` below passes vacuously.
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let config_dir = temp_root("worktree-session-slot-config");
         std::fs::create_dir_all(&config_dir).unwrap();
         let _config_dir =
@@ -943,7 +943,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn create_worktree_for_session_persists_the_whole_session_object() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _write_enabled = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let config_dir = temp_root("worktree-create-slot-config");
         std::fs::create_dir_all(&config_dir).unwrap();
         let _config_dir =
@@ -1002,7 +1002,7 @@ mod tests {
         std::fs::create_dir_all(&repo).unwrap();
         run_git(&repo, &["init"]);
         run_git(&repo, &["config", "user.email", "test@example.com"]);
-        run_git(&repo, &["config", "user.name", "Cometix Test"]);
+        run_git(&repo, &["config", "user.name", "nyan Test"]);
         std::fs::write(repo.join("README.md"), "initial\n").unwrap();
         run_git(&repo, &["add", "README.md"]);
         run_git(
@@ -1082,7 +1082,7 @@ mod tests {
 
         assert_eq!(
             worktree_exit_subtitle(&s, 2, 3),
-            "You have 2 uncommitted files and 3 commits on cometix/feature. All will be lost if you remove."
+            "You have 2 uncommitted files and 3 commits on nyan/feature. All will be lost if you remove."
         );
         assert_eq!(
             worktree_exit_subtitle(&s, 1, 0),
@@ -1090,7 +1090,7 @@ mod tests {
         );
         assert_eq!(
             worktree_exit_subtitle(&s, 0, 1),
-            "You have 1 commit on cometix/feature. The branch will be deleted if you remove the worktree."
+            "You have 1 commit on nyan/feature. The branch will be deleted if you remove the worktree."
         );
         assert_eq!(
             worktree_exit_subtitle(&s, 0, 0),
@@ -1115,7 +1115,7 @@ mod tests {
         assert_eq!(tmux[0].value, "keep-with-tmux");
         assert_eq!(
             tmux[0].description,
-            "Stays at /repo-feature. Reattach with: tmux attach -t repo_cometix_feature"
+            "Stays at /repo-feature. Reattach with: tmux attach -t repo_nyan_feature"
         );
         assert_eq!(tmux[1].label, "Keep worktree, kill tmux session");
         assert_eq!(tmux[1].value, "keep-kill-tmux");
@@ -1128,7 +1128,7 @@ mod tests {
         let plain = session(false);
         assert_eq!(
             worktree_exit_result_message(&plain, 0, 0, WorktreeExitAction::Keep),
-            "Worktree kept. Your work is saved at /repo-feature on branch cometix/feature"
+            "Worktree kept. Your work is saved at /repo-feature on branch nyan/feature"
         );
         assert_eq!(
             worktree_exit_result_message(&plain, 2, 3, WorktreeExitAction::Remove),
@@ -1136,7 +1136,7 @@ mod tests {
         );
         assert_eq!(
             worktree_exit_result_message(&plain, 0, 1, WorktreeExitAction::Remove),
-            "Worktree removed. 1 commit on cometix/feature was discarded."
+            "Worktree removed. 1 commit on nyan/feature was discarded."
         );
         assert_eq!(
             worktree_exit_result_message(&plain, 2, 0, WorktreeExitAction::Remove),
@@ -1146,15 +1146,15 @@ mod tests {
         let tmux = session(true);
         assert_eq!(
             worktree_exit_result_message(&tmux, 0, 0, WorktreeExitAction::KeepWithTmux),
-            "Worktree kept. Your work is saved at /repo-feature on branch cometix/feature. Reattach to tmux session with: tmux attach -t repo_cometix_feature"
+            "Worktree kept. Your work is saved at /repo-feature on branch nyan/feature. Reattach to tmux session with: tmux attach -t repo_nyan_feature"
         );
         assert_eq!(
             worktree_exit_result_message(&tmux, 0, 2, WorktreeExitAction::RemoveWithTmux),
-            "Worktree removed. 2 commits on cometix/feature were discarded. Tmux session terminated."
+            "Worktree removed. 2 commits on nyan/feature were discarded. Tmux session terminated."
         );
         assert_eq!(
             worktree_exit_result_message(&tmux, 0, 0, WorktreeExitAction::KeepKillTmux),
-            "Worktree kept at /repo-feature on branch cometix/feature. Tmux session terminated."
+            "Worktree kept at /repo-feature on branch nyan/feature. Tmux session terminated."
         );
     }
 }

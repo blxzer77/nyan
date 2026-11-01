@@ -10,7 +10,7 @@
 /// Maps to: CC `utils/swarm/teammateModel.ts#getHardcodedTeammateModelFallback`.
 ///
 /// CC uses provider-specific `CLAUDE_OPUS_4_6_CONFIG[getAPIProvider()]`.
-/// Cometix keeps provider-specific defaults inside `utils/model/model.rs`; the
+/// Nyan keeps provider-specific defaults inside `utils/model/model.rs`; the
 /// Opus helper is therefore the equivalent hardcoded teammate fallback.
 pub fn get_hardcoded_teammate_model_fallback() -> String {
     crate::utils::model::model::get_default_opus_model()

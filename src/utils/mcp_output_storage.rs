@@ -3,7 +3,7 @@
 //! Maps to: CC `utils/mcpOutputStorage.ts`.
 //!
 //! The official file is shared by MCP result persistence and WebFetch binary
-//! downloads. Cometix keeps transcript JSONL writes disabled, but saving raw
+//! downloads. Nyan keeps transcript JSONL writes disabled, but saving raw
 //! binary bytes into the session `tool-results/` directory is a tool output
 //! side effect rather than a transcript write, and matches the WebFetch binary
 //! persistence path in Claude Code.
@@ -172,7 +172,7 @@ pub fn persist_binary_content(
     }
 
     // CC logs `tengu_binary_content_persisted` here. Telemetry is intentionally
-    // not emitted by Cometix; the fixed-vocabulary mime/ext strings and size are
+    // not emitted by Nyan; the fixed-vocabulary mime/ext strings and size are
     // preserved in the return value for callers that need UI/result copy.
     PersistBinaryResult::Saved(PersistBinaryContentResult {
         filepath,
@@ -263,11 +263,11 @@ mod tests {
         let previous_cwd = crate::bootstrap::state::get_original_cwd();
         let previous_session_id = crate::bootstrap::state::get_session_id();
         let root = std::env::temp_dir().join(format!(
-            "cometix-mcp-output-storage-{}",
+            "nyan-mcp-output-storage-{}",
             uuid::Uuid::new_v4()
         ));
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(&root);
-        crate::bootstrap::state::set_original_cwd("/tmp/cometix-project");
+        crate::bootstrap::state::set_original_cwd("/tmp/nyan-project");
         crate::bootstrap::state::set_session_id("session-binary-test");
 
         let result = persist_binary_content(b"%PDF-raw", Some("application/pdf"), "webfetch-test");

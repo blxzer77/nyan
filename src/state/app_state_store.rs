@@ -569,14 +569,14 @@ pub struct AppState {
     pub auth_version: u64,
     /// Maps to: CC `AppState.verbose` — persisted to globalConfig on change.
     pub verbose: bool,
-    /// Cometix extension (no CC counterpart) — user-authorized L2 (v3 ruling,
+    /// Nyan extension (no CC counterpart) — user-authorized L2 (v3 ruling,
     /// 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
     /// Single-source expansion control for thinking blocks, REPLACING CC's
     /// verbose gate at the leaf (AssistantThinkingMessage.tsx:38). Default
     /// true — mirrors the authoritative factory default (`expandThinking`,
     /// config.rs `create_official_default_global_config`).
     pub expand_thinking: bool,
-    /// Cometix extension (no CC counterpart) — user-authorized L2 (v3 ruling,
+    /// Nyan extension (no CC counterpart) — user-authorized L2 (v3 ruling,
     /// 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
     /// Single-source expansion control for collapsed read/search groups,
     /// REPLACING CC's verbose gate at the leaf
@@ -722,9 +722,9 @@ pub struct AppState {
     // -- Always-on bridge (CC AppStateStore.ts:134-155) --
     // The CC `feature('BRIDGE_MODE')` build gate and `isBridgeEnabled()`
     // entitlement are NOT AppState (CC evaluates them at the read sites:
-    // PromptInputFooter.tsx:241/:255); Cometix mirrors that with
+    // PromptInputFooter.tsx:241/:255); Nyan mirrors that with
     // `FeatureFlag::BridgeMode` + `bridge::bridge_enabled::is_bridge_enabled`.
-    // Truthful seam: no Cometix producer ever sets `repl_bridge_enabled` true
+    // Truthful seam: no Nyan producer ever sets `repl_bridge_enabled` true
     // (CC's settings-screen bridge toggle and useReplBridge transport are
     // unported); only the BridgeDialog disconnect writes `false`, so the
     // footer pill stays unreachable in production even when both live gates
@@ -798,7 +798,7 @@ pub struct AppState {
     /// P4 identity: single-layer Arc — per-list identity has no consumer: CC
     /// sessionRestore.ts:138-140 states interactive mode uses the file-backed
     /// v2 store and `AppState.todos` only serves SDK/non-interactive callers,
-    /// and Cometix has zero render-path consumers of this map.
+    /// and Nyan has zero render-path consumers of this map.
     pub todos: Arc<std::collections::BTreeMap<String, Vec<TodoItem>>>,
     /// Maps to: CC `AppState.tasks` — taskId → TaskState. In-process
     /// teammates use [`TaskState::InProcessTeammate`]; other types are
@@ -1143,7 +1143,7 @@ mod tests {
 
     #[test]
     fn display_pref_defaults_mirror_factory_true() {
-        // Ruled default (v3, 2026-08-01): both Cometix display prefs default
+        // Ruled default (v3, 2026-08-01): both Nyan display prefs default
         // true, mirroring the authoritative factory defaults
         // (`create_official_default_global_config`).
         assert!(AppState::default().expand_thinking);

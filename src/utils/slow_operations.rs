@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn write_file_sync_matches_official_truncate_flush_and_symlink() {
-        let dir = std::env::temp_dir().join(format!("cometix-export-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("nyan-export-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.as_path().join("export.txt");
         std::fs::write(&path, "old longer contents").unwrap();

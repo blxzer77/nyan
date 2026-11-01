@@ -1,7 +1,7 @@
 //! Maps to: CC `services/api/referral.ts` cached referral helpers.
 //!
 //! Official code can fetch referral eligibility and write it to
-//! `GlobalConfig.passesEligibilityCache`. Cometix keeps this slice read-only:
+//! `GlobalConfig.passesEligibilityCache`. Nyan keeps this slice read-only:
 //! it only inspects existing config/credential snapshots and never performs
 //! OAuth/network calls, writes config, or logs analytics. That restriction is
 //! stated here rather than carried in a `_readonly` suffix on every name — the
@@ -263,7 +263,7 @@ mod tests {
         // The sibling test below does the same thing in reverse (it writes a
         // max-subscriber file); this one needs the directory empty.
         let dir = std::env::temp_dir().join(format!(
-            "cometix-referral-nosub-{}",
+            "nyan-referral-nosub-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -285,7 +285,7 @@ mod tests {
             "referrer_reward": { "currency": "USD", "amount_minor_units": 500 }
         }));
         let dir =
-            std::env::temp_dir().join(format!("cometix-referral-cache-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-referral-cache-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join(".credentials.json"),

@@ -296,7 +296,7 @@ mod tests {
             Self {
                 _env: [
                     EnvVarGuard::unset("CLAUDE_CODE_NEW_INIT"),
-                    EnvVarGuard::set("COMETIX_WRITE_ENABLED", "0"),
+                    EnvVarGuard::set("NYAN_WRITE_ENABLED", "0"),
                 ],
             }
         }

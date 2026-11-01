@@ -87,7 +87,7 @@ fn sanitize_path_key(key: &str) -> Result<&str, PathTraversalError> {
 
 /// Maps to CC `isTeamMemoryEnabled()`.
 ///
-/// Cometix resolves the `tengu_herring_clock` cohort from the source-controlled
+/// Nyan resolves the `tengu_herring_clock` cohort from the source-controlled
 /// switch table instead of GrowthBook.
 pub fn is_team_memory_enabled() -> bool {
     if !crate::memdir::paths::is_auto_memory_enabled() {
@@ -293,7 +293,7 @@ mod tests {
     fn team_memory_prefix_requires_a_path_component_boundary_and_uses_override() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-team-mem-path-{}",
+            "nyan-team-mem-path-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _override = EnvVarGuard::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", &root);
@@ -308,7 +308,7 @@ mod tests {
     async fn team_memory_key_rejects_encoded_unicode_and_lexical_traversal() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-team-mem-key-{}",
+            "nyan-team-mem-key-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _override = EnvVarGuard::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", &root);
@@ -331,11 +331,11 @@ mod tests {
         use std::os::unix::fs::symlink;
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-team-mem-symlink-{}",
+            "nyan-team-mem-symlink-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let outside = std::env::temp_dir().join(format!(
-            "cometix-team-mem-outside-{}",
+            "nyan-team-mem-outside-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _override = EnvVarGuard::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", &root);

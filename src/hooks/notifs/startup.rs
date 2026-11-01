@@ -1,5 +1,5 @@
 //! Maps to official startup notification assembly in `main.tsx` plus the
-//! startup-oriented notification hooks. This keeps Cometix notification
+//! startup-oriented notification hooks. This keeps Nyan notification
 //! producers read-only and main-screen-safe.
 
 use super::settings_errors::settings_errors_notification_from_errors;

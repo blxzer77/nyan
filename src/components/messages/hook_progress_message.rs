@@ -2,7 +2,7 @@
 //!
 //! Official hook-progress rows are intentionally narrow: PreToolUse/PostToolUse
 //! progress is hidden in live rows and summarized only in transcript mode, while
-//! other unresolved hook events show a `Running … hook…` response row. Cometix
+//! other unresolved hook events show a `Running … hook…` response row. Nyan
 //! keeps this as display-only chrome; no hooks are executed here.
 
 use crate::components::message_response::MessageResponse;

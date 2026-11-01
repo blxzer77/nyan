@@ -726,7 +726,7 @@ mod tests {
     fn task_v2_tools_are_available_in_interactive_sessions_and_env_override() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::remove("CLAUDE_CODE_ENABLE_TASKS");
-        crate::utils::process_env::remove("COMETIX_NON_INTERACTIVE_SESSION");
+        crate::utils::process_env::remove("NYAN_NON_INTERACTIVE_SESSION");
         let interactive = get_all_base_tools()
             .into_iter()
             .map(|tool| tool.name)
@@ -735,7 +735,7 @@ mod tests {
             assert!(interactive.contains(expected), "missing {expected}");
         }
 
-        crate::utils::process_env::set("COMETIX_NON_INTERACTIVE_SESSION", "1");
+        crate::utils::process_env::set("NYAN_NON_INTERACTIVE_SESSION", "1");
         let non_interactive = get_all_base_tools()
             .into_iter()
             .map(|tool| tool.name)
@@ -749,7 +749,7 @@ mod tests {
             .collect::<std::collections::BTreeSet<_>>();
         assert!(forced.contains("TaskCreate"));
         crate::utils::process_env::remove("CLAUDE_CODE_ENABLE_TASKS");
-        crate::utils::process_env::remove("COMETIX_NON_INTERACTIVE_SESSION");
+        crate::utils::process_env::remove("NYAN_NON_INTERACTIVE_SESSION");
     }
 
     #[test]

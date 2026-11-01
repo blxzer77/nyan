@@ -45,7 +45,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-local-installer-{}",
+            "nyan-local-installer-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);

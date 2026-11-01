@@ -73,7 +73,7 @@ fn build_query_config_from_env_and_session(
         session_id: get_session_id(),
         gates: QueryConfigGates {
             // Maps to CC Statsig/GrowthBook gate
-            // `tengu_streaming_tool_execution2`. Cometix uses the
+            // `tengu_streaming_tool_execution2`. Nyan uses the
             // source-controlled switch table instead of GrowthBook network/cache
             // state.
             streaming_tool_execution: streaming_tool_execution_test_override()

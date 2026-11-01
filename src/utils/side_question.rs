@@ -38,7 +38,7 @@ pub fn find_btw_trigger_positions(text: &str) -> Vec<BtwTriggerPosition> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BtwTriggerPosition {
     pub word: String,
-    /// Byte offset (Cometix editing unit). Official JS `start` is UTF-16.
+    /// Byte offset (Nyan editing unit). Official JS `start` is UTF-16.
     pub start: usize,
     pub end: usize,
 }

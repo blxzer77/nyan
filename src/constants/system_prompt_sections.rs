@@ -74,7 +74,7 @@ pub fn resolve_system_prompt_sections(
 /// `clearSystemPromptSections()`.
 pub fn clear_system_prompt_sections() {
     crate::bootstrap::state::clear_system_prompt_section_state();
-    // CC also resets beta-header latches here. Cometix does not yet own those
+    // CC also resets beta-header latches here. Nyan does not yet own those
     // API-header latches, so there is no disconnected state to clear.
 }
 

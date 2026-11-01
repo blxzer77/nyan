@@ -825,7 +825,7 @@ mod tests {
 
     #[test]
     fn read_user_facing_name_matches_official_plan_and_agent_output_cases() {
-        let config_home = PathBuf::from("/tmp/cometix-config");
+        let config_home = PathBuf::from("/tmp/nyan-config");
         let plan_path = config_home.join("plans/plan.md");
         assert_eq!(
             user_facing_name_for_config_home(

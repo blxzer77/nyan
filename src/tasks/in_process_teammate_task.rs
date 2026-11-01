@@ -102,7 +102,7 @@ fn now_ms() -> u64 {
 }
 
 /// Project registry state into the AppState spinner/UI snapshot.
-/// Maps to: CC keeping full TaskState in AppState; Cometix mirrors the UI
+/// Maps to: CC keeping full TaskState in AppState; Nyan mirrors the UI
 /// subset until abort controllers can live in AppState.
 pub fn teammate_task_snapshot_from(
     state: &InProcessTeammateTaskState,

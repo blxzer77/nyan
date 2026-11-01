@@ -402,7 +402,7 @@ mod tests {
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-plugin-lsp-{label}-{}",
+            "nyan-plugin-lsp-{label}-{}",
             uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&dir).expect("temp dir");
@@ -787,7 +787,7 @@ mod tests {
         let config_home = temp_dir("user-config-settings");
         let _env = [
             EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home),
-            EnvVarGuard::set("COMETIX_LSP_TOKEN", "env-token"),
+            EnvVarGuard::set("NYAN_LSP_TOKEN", "env-token"),
         ];
         let plugin_name = format!("toolbox-{}", uuid::Uuid::new_v4().simple());
         let plugin_source = format!("{plugin_name}@inline");
@@ -815,7 +815,7 @@ mod tests {
                     "configured": {
                         "command": "${CLAUDE_PLUGIN_ROOT}/bin/lsp",
                         "args": ["--workspace", "${user_config.workspace}"],
-                        "env": {"TOKEN":"${COMETIX_LSP_TOKEN}"},
+                        "env": {"TOKEN":"${NYAN_LSP_TOKEN}"},
                         "workspaceFolder": "${user_config.workspace}",
                         "extensionToLanguage": {".rs":"rust"}
                     }
@@ -921,7 +921,7 @@ mod tests {
     #[test]
     fn plugin_lsp_missing_general_env_vars_do_not_disable_server_like_official() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("COMETIX_LSP_MISSING_ENV");
+        crate::utils::process_env::remove("NYAN_LSP_MISSING_ENV");
         let root = temp_dir("missing-env");
         write_file(
             &root.join(".claude-plugin/plugin.json"),
@@ -930,7 +930,7 @@ mod tests {
               "lspServers": {
                 "server": {
                   "command":"toolbox-lsp",
-                  "args":["${COMETIX_LSP_MISSING_ENV}"],
+                  "args":["${NYAN_LSP_MISSING_ENV}"],
                   "extensionToLanguage":{".rs":"rust"}
                 }
               }
@@ -948,7 +948,7 @@ mod tests {
         );
         assert_eq!(
             servers["plugin:toolbox:server"].config.args,
-            vec!["${COMETIX_LSP_MISSING_ENV}".to_string()]
+            vec!["${NYAN_LSP_MISSING_ENV}".to_string()]
         );
         let _ = fs::remove_dir_all(root);
     }

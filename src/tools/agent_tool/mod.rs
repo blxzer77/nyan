@@ -4819,10 +4819,10 @@ mod tests {
             .lock()
             .unwrap();
         let config_home =
-            std::env::temp_dir().join(format!("cometix-agent-terminal-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-agent-terminal-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&config_home).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", config_home.to_string_lossy().as_ref());
-        let _dump_on = EnvVarGuard::set("COMETIX_DUMP_PROMPTS", "1");
+        let _dump_on = EnvVarGuard::set("NYAN_DUMP_PROMPTS", "1");
         crate::bootstrap::state::clear_invoked_skills(None);
         crate::services::api::dump_prompts::clear_all_dump_state();
 
@@ -5210,7 +5210,7 @@ mod tests {
     #[tokio::test]
     async fn foreground_completion_prepends_the_handoff_warning_from_live_state() {
         let _env = TEST_ENV_LOCK.lock().unwrap();
-        let _force = EnvVarGuard::set("COMETIX_AUTO_CLASSIFIER_FORCE", "block");
+        let _force = EnvVarGuard::set("NYAN_AUTO_CLASSIFIER_FORCE", "block");
         let context = handoff_classifier_context(
             crate::types::permissions::PermissionMode::Default,
             crate::types::permissions::PermissionMode::Auto,
@@ -5245,7 +5245,7 @@ mod tests {
     #[tokio::test]
     async fn foreground_handoff_classifier_ignores_the_query_start_snapshot() {
         let _env = TEST_ENV_LOCK.lock().unwrap();
-        let _force = EnvVarGuard::set("COMETIX_AUTO_CLASSIFIER_FORCE", "block");
+        let _force = EnvVarGuard::set("NYAN_AUTO_CLASSIFIER_FORCE", "block");
         let context = handoff_classifier_context(
             crate::types::permissions::PermissionMode::Auto,
             crate::types::permissions::PermissionMode::Default,
@@ -5280,7 +5280,7 @@ mod tests {
         let _queue_lock = crate::utils::message_queue_manager::TEST_QUEUE_LOCK
             .lock()
             .unwrap();
-        let _force = EnvVarGuard::set("COMETIX_AUTO_CLASSIFIER_FORCE", "block");
+        let _force = EnvVarGuard::set("NYAN_AUTO_CLASSIFIER_FORCE", "block");
         let task_id = register_background_task_for_lifecycle_test();
 
         let context = handoff_classifier_context(
@@ -5346,7 +5346,7 @@ mod tests {
         (fork_env, background, list_in_messages, interactive)
     }
 
-    /// A headless `cometix -p` run takes the pre-fork branch at all four gate
+    /// A headless `nyan -p` run takes the pre-fork branch at all four gate
     /// sites, with no env var involved.
     ///
     /// This is the assertion `feature_flags.rs` promised when `ForkSubagent`

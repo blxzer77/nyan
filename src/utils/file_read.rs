@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn metadata_read_matches_official_encoding_and_line_normalization() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-file-read-metadata-{}",
+            "nyan-file-read-metadata-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

@@ -628,18 +628,18 @@ mod tests {
     #[test]
     fn capture_keeps_the_first_of_repeated_keys_as_getenv() {
         let captured = ProcessEnv::capture_from([
-            (OsString::from("COMETIX_DUP"), OsString::from("first")),
-            (OsString::from("COMETIX_OTHER"), OsString::from("x")),
-            (OsString::from("COMETIX_DUP"), OsString::from("second")),
+            (OsString::from("NYAN_DUP"), OsString::from("first")),
+            (OsString::from("NYAN_OTHER"), OsString::from("x")),
+            (OsString::from("NYAN_DUP"), OsString::from("second")),
         ]);
         let snapshot = EnvSnapshot(Arc::clone(&captured.startup));
-        assert_eq!(snapshot.var("COMETIX_DUP"), Some("first"));
+        assert_eq!(snapshot.var("NYAN_DUP"), Some("first"));
         assert_eq!(
             snapshot
                 .iter()
                 .map(|(key, _)| key.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
-            ["COMETIX_DUP", "COMETIX_OTHER"]
+            ["NYAN_DUP", "NYAN_OTHER"]
         );
     }
 
@@ -649,7 +649,7 @@ mod tests {
     fn startup_capture_is_idempotent_and_frozen_matches_official_process_lifetime() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         capture_startup();
-        let key = "COMETIX_PROCESS_ENV_STARTUP_FREEZE";
+        let key = "NYAN_PROCESS_ENV_STARTUP_FREEZE";
         let _guard = EnvVarGuard::preserve(key);
         let initial = startup_snapshot();
         let initial_value = initial.var(key).map(str::to_owned);
@@ -677,21 +677,21 @@ mod tests {
             "01",
             "0",
             "4294967295",
-            "COMETIX_ORDER_A",
-            "COMETIX_ORDER_B",
+            "NYAN_ORDER_A",
+            "NYAN_ORDER_B",
         ];
         let _guards = keys.map(EnvVarGuard::unset);
 
         let mut update = begin_update();
         update.apply([
-            ("COMETIX_ORDER_A", "first"),
+            ("NYAN_ORDER_A", "first"),
             ("2", "two"),
             ("01", "ordinary-leading-zero"),
             ("4294967294", "max-index"),
             ("0", "zero"),
             ("4294967295", "not-an-index"),
-            ("COMETIX_ORDER_B", ""),
-            ("COMETIX_ORDER_A", "replacement"),
+            ("NYAN_ORDER_B", ""),
+            ("NYAN_ORDER_A", "replacement"),
         ]);
         let committed = update.commit();
         assert_eq!(
@@ -700,23 +700,23 @@ mod tests {
                 ("0".into(), "zero".into()),
                 ("2".into(), "two".into()),
                 ("4294967294".into(), "max-index".into()),
-                ("COMETIX_ORDER_A".into(), "replacement".into()),
+                ("NYAN_ORDER_A".into(), "replacement".into()),
                 ("01".into(), "ordinary-leading-zero".into()),
                 ("4294967295".into(), "not-an-index".into()),
-                ("COMETIX_ORDER_B".into(), "".into()),
+                ("NYAN_ORDER_B".into(), "".into()),
             ]
         );
 
         let mut update = begin_update();
-        update.remove("COMETIX_ORDER_A");
-        update.set("COMETIX_ORDER_A", "re-added");
+        update.remove("NYAN_ORDER_A");
+        update.set("NYAN_ORDER_A", "re-added");
         let committed = update.commit();
-        let ordinary = strings(&committed, &["COMETIX_ORDER_A", "COMETIX_ORDER_B"]);
+        let ordinary = strings(&committed, &["NYAN_ORDER_A", "NYAN_ORDER_B"]);
         assert_eq!(
             ordinary,
             [
-                ("COMETIX_ORDER_B".into(), "".into()),
-                ("COMETIX_ORDER_A".into(), "re-added".into()),
+                ("NYAN_ORDER_B".into(), "".into()),
+                ("NYAN_ORDER_A".into(), "re-added".into()),
             ]
         );
     }
@@ -758,7 +758,7 @@ mod tests {
     #[test]
     fn aborted_and_unwound_updates_match_official_synchronous_visibility() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let key = "COMETIX_PROCESS_ENV_ABORT";
+        let key = "NYAN_PROCESS_ENV_ABORT";
         let _guard = EnvVarGuard::unset(key);
         let before = snapshot();
         {
@@ -786,7 +786,7 @@ mod tests {
     #[test]
     fn normalization_matches_official_node_process_env_assignment() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let key = "COMETIX_PROCESS_ENV_NORMALIZE";
+        let key = "NYAN_PROCESS_ENV_NORMALIZE";
         let _guard = EnvVarGuard::unset(key);
         let before = snapshot();
 
@@ -813,8 +813,8 @@ mod tests {
     #[test]
     fn staged_snapshots_match_official_complete_turn_visibility() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let first_key = "COMETIX_PROCESS_ENV_ATOMIC_A";
-        let second_key = "COMETIX_PROCESS_ENV_ATOMIC_B";
+        let first_key = "NYAN_PROCESS_ENV_ATOMIC_A";
+        let second_key = "NYAN_PROCESS_ENV_ATOMIC_B";
         let _first = EnvVarGuard::unset(first_key);
         let _second = EnvVarGuard::unset(second_key);
 
@@ -873,8 +873,8 @@ mod tests {
     #[test]
     fn unix_identity_and_commit_match_official_process_env_behavior() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let lower = "cometix_process_env_case";
-        let upper = "COMETIX_PROCESS_ENV_CASE";
+        let lower = "nyan_process_env_case";
+        let upper = "NYAN_PROCESS_ENV_CASE";
         let _lower = EnvVarGuard::unset(lower);
         let _upper = EnvVarGuard::unset(upper);
         let mut update = begin_update();
@@ -927,24 +927,24 @@ mod tests {
             module_path!(),
             "startup_publication_copies_the_carrier_once",
             &[
-                ("COMETIX_PUBLISH_STALE", Some("os")),
-                ("COMETIX_PUBLISH_CHANGED", Some("os")),
-                ("COMETIX_PUBLISH_KEPT", Some("same")),
+                ("NYAN_PUBLISH_STALE", Some("os")),
+                ("NYAN_PUBLISH_CHANGED", Some("os")),
+                ("NYAN_PUBLISH_KEPT", Some("same")),
             ],
         ) {
             return;
         }
-        remove("COMETIX_PUBLISH_STALE");
-        set("COMETIX_PUBLISH_CHANGED", "carrier");
-        set("COMETIX_PUBLISH_NEW", "carrier");
+        remove("NYAN_PUBLISH_STALE");
+        set("NYAN_PUBLISH_CHANGED", "carrier");
+        set("NYAN_PUBLISH_NEW", "carrier");
         publish_startup_environment();
         let os = |key: &str| std::env::var(key).ok();
-        assert_eq!(os("COMETIX_PUBLISH_STALE"), None);
-        assert_eq!(os("COMETIX_PUBLISH_CHANGED").as_deref(), Some("carrier"));
-        assert_eq!(os("COMETIX_PUBLISH_NEW").as_deref(), Some("carrier"));
-        assert_eq!(os("COMETIX_PUBLISH_KEPT").as_deref(), Some("same"));
-        set("COMETIX_PUBLISH_LATER", "carrier");
-        assert_eq!(os("COMETIX_PUBLISH_LATER"), None);
+        assert_eq!(os("NYAN_PUBLISH_STALE"), None);
+        assert_eq!(os("NYAN_PUBLISH_CHANGED").as_deref(), Some("carrier"));
+        assert_eq!(os("NYAN_PUBLISH_NEW").as_deref(), Some("carrier"));
+        assert_eq!(os("NYAN_PUBLISH_KEPT").as_deref(), Some("same"));
+        set("NYAN_PUBLISH_LATER", "carrier");
+        assert_eq!(os("NYAN_PUBLISH_LATER"), None);
         assert!(std::panic::catch_unwind(publish_startup_environment).is_err());
     }
 
@@ -954,7 +954,7 @@ mod tests {
     #[test]
     fn carrier_operations_leave_real_environment_unchanged() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let key = "COMETIX_PROCESS_ENV_OS_UNCHANGED";
+        let key = "NYAN_PROCESS_ENV_OS_UNCHANGED";
         let real_before = std::env::vars_os().collect::<Vec<_>>();
         let raw_value_before = std::env::var_os(key);
         let _carrier = EnvVarGuard::unset(key);

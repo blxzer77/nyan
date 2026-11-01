@@ -6,7 +6,7 @@ pub const CRON_DELETE_TOOL_NAME: &str = "CronDelete";
 pub const CRON_LIST_TOOL_NAME: &str = "CronList";
 
 /// Maps to: CC `isKairosCronEnabled()` GrowthBook gate.
-/// Cometix reads the hardcoded feature-switch collection instead of GrowthBook.
+/// Nyan reads the hardcoded feature-switch collection instead of GrowthBook.
 pub fn is_kairos_cron_enabled() -> bool {
     !crate::utils::env_utils::is_env_truthy(
         crate::utils::process_env::var("CLAUDE_CODE_DISABLE_CRON").as_deref(),

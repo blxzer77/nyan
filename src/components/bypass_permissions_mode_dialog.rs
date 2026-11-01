@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: the official dialog logs analytics, writes
 //! `skipDangerousModePermissionPrompt` to user settings on accept, and calls
-//! `gracefulShutdownSync(...)` on decline/Escape. Cometix preserves the dialog,
+//! `gracefulShutdownSync(...)` on decline/Escape. Nyan preserves the dialog,
 //! option, and `onAccept` boundary only. Decline/Escape intentionally perform no
 //! process exit or settings write in this safe UI slice.
 
@@ -105,7 +105,7 @@ pub fn BypassPermissionsModeDialog<'a>(
             }
             BypassPermissionsModeChoice::Decline => {
                 // Official path: `gracefulShutdownSync(1)` from select or
-                // `gracefulShutdownSync(0)` from Escape. Safe Cometix path:
+                // `gracefulShutdownSync(0)` from Escape. Safe Nyan path:
                 // no process exit from render-only dialog slice.
             }
         }

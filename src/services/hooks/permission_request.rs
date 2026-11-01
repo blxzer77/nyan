@@ -180,15 +180,15 @@ mod tests {
     ) -> serde_json::Value {
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
         let capture = std::env::temp_dir().join(format!(
-            "cometix-permission-request-hook-input-{}.json",
+            "nyan-permission-request-hook-input-{}.json",
             uuid::Uuid::new_v4().simple()
         ));
-        let config = hook_config(r#"cat > "$COMETIX_TEST_HOOK_INPUT_CAPTURE""#);
+        let config = hook_config(r#"cat > "$NYAN_TEST_HOOK_INPUT_CAPTURE""#);
         execute_permission_request_hooks(
             &config,
             request,
             vec![(
-                "COMETIX_TEST_HOOK_INPUT_CAPTURE".to_string(),
+                "NYAN_TEST_HOOK_INPUT_CAPTURE".to_string(),
                 capture.display().to_string(),
             )],
             None,

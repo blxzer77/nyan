@@ -4,14 +4,14 @@
 //! Contains the Claude API interaction layer: client construction, streaming
 //! queries, retry logic, error classification, and message conversion.
 
-/// Stage-based API request tracing (`COMETIX_TRACE` → `~/.claude/trace/`).
+/// Stage-based API request tracing (`NYAN_TRACE` → `~/.claude/trace/`).
 pub mod api_trace;
 
 /// Claude API interaction: message conversion, caching, usage tracking, query wrappers.
 /// Maps to: CC services/api/claude.ts
 pub mod claude;
 
-/// Request/response dump for debugging (`COMETIX_DUMP_PROMPTS` → `dump-prompts/`).
+/// Request/response dump for debugging (`NYAN_DUMP_PROMPTS` → `dump-prompts/`).
 /// Maps to: CC services/api/dumpPrompts.ts
 pub mod dump_prompts;
 

@@ -144,7 +144,7 @@ pub fn messages_from_entries(entries: &[serde_json::Value]) -> Vec<crate::types:
 /// Maps to: CC's structural cast — `parseJSONL<Entry>(buf)`
 /// (`utils/sessionStorage.ts:3614`) does no subtype validation, so the entry's
 /// fields flow straight into the typed union. Unknown subtypes (including the
-/// retired Cometix-only `rate_limit`/`shutdown`/`snip_*`/`agent_notification`
+/// retired Nyan-only `rate_limit`/`shutdown`/`snip_*`/`agent_notification`
 /// wire tags) fall back to `Informational`, which is render-equivalent to CC:
 /// an unrecognized subtype reaches `SystemTextMessage.tsx:158-174` and is
 /// rendered from `content`/`level` alone.
@@ -189,7 +189,7 @@ pub(crate) fn system_message_from_entry(
         },
         // CC runtime shape: `createSystemAPIErrorMessage`
         // (utils/messages.ts:4585-4603) writes `error`/`retryInMs`/
-        // `retryAttempt`/`maxRetries`. `retryInSeconds` is the pre-D1 Cometix
+        // `retryAttempt`/`maxRetries`. `retryInSeconds` is the pre-D1 Nyan
         // wire spelling, kept readable.
         "api_error" => SystemMessage::ApiError {
             base,
@@ -329,7 +329,7 @@ pub(crate) fn system_message_from_entry(
                 .or_else(|| entry.get("total_duration_ms"))
                 .and_then(|value| value.as_u64()),
         },
-        // "informational", the legacy Cometix "text" tag, and every unknown
+        // "informational", the legacy Nyan "text" tag, and every unknown
         // subtype (see doc comment).
         _ => SystemMessage::Informational {
             base,
@@ -755,7 +755,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
         let marker_path = std::env::temp_dir().join(format!(
-            "cometix-startup-resume-hooks-{}",
+            "nyan-startup-resume-hooks-{}",
             uuid::Uuid::new_v4()
         ));
         let settings = crate::utils::settings::SettingsJson {

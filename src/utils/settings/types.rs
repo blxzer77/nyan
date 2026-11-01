@@ -114,13 +114,13 @@ pub struct SettingsJson {
     /// completed lines, CC `REPL.tsx:1997`). `prefersReducedMotion` overrides
     /// both and hides the preview entirely, as in CC.
     ///
-    /// @cometix offset: not an official settings.json key. CC has only the
-    /// line mode; Cometix keeps character streaming as an option.
+    /// @nyan offset: not an official settings.json key. CC has only the
+    /// line mode; Nyan keeps character streaming as an option.
     pub streaming_text_display: Option<String>,
     pub show_thinking_summaries: Option<bool>,
     /// Official GrowthBook `tengu_prompt_cache_1h_config` payload.
     ///
-    /// @cometix offset: not an official settings.json key. GrowthBook is not
+    /// @nyan offset: not an official settings.json key. GrowthBook is not
     /// ported, so users set `promptCache1h.allowlist` here.
     pub prompt_cache_1h: Option<PromptCache1hSettings>,
 
@@ -276,7 +276,7 @@ pub struct AttributionSettings {
 
 /// Official GrowthBook `tengu_prompt_cache_1h_config` object.
 ///
-/// @cometix offset: settings-backed replacement for the remote allowlist.
+/// @nyan offset: settings-backed replacement for the remote allowlist.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptCache1hSettings {
@@ -664,7 +664,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
             feature_enabled(FeatureFlag::Kairos) || feature_enabled(FeatureFlag::KairosBrief);
         // USER_TYPE is a build-time define in CC. Keep the same axis for the
         // remaining internal-only schema fields.
-        // @cometix: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
+        // @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
         let is_ant = crate::utils::build_profile::build_audience().is_internal();
         let xaa = is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_ENABLE_XAA").as_deref());
 
@@ -1265,7 +1265,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 )])
                 .optional()
                 .describe(
-                    "1h prompt-cache TTL allowlist. Official Claude Code receives this from GrowthBook (`tengu_prompt_cache_1h_config`); Cometix reads it from settings.",
+                    "1h prompt-cache TTL allowlist. Official Claude Code receives this from GrowthBook (`tengu_prompt_cache_1h_config`); Nyan reads it from settings.",
                 ),
             ),
             (
@@ -1705,7 +1705,7 @@ mod zod_schema_tests {
         )
         .expect("invalid effort level swallowed");
         assert!(effort.get("effortLevel").is_none());
-        // @cometix: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
+        // @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
         let max = crate::utils::zod::safe_parse(
             settings_schema(),
             &serde_json::json!({"effortLevel": "max"}),

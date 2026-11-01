@@ -758,7 +758,7 @@ mod tests {
     #[test]
     fn resume_entries_recover_orphaned_parallel_tool_results() {
         let path = std::env::temp_dir().join(format!(
-            "cometix-resume-parallel-tools-{}.jsonl",
+            "nyan-resume-parallel-tools-{}.jsonl",
             Uuid::new_v4()
         ));
         let entries = vec![

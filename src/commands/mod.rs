@@ -2,7 +2,7 @@
 //!
 //! This module is the aggregate command owner. CC resolves `getCommands(cwd)`
 //! after setup and passes that immutable array through `REPL Props.commands`.
-//! Cometix mirrors that ownership: command consumers receive a launch snapshot;
+//! Nyan mirrors that ownership: command consumers receive a launch snapshot;
 //! they do not read a second UI-only builtin registry.
 //!
 //! Bundled/workflow command producers remain an explicit follow-up at
@@ -1592,7 +1592,7 @@ mod tests {
     #[test]
     fn get_commands_loads_and_executes_filesystem_skill_before_builtins() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-command-registry-skill-{}",
+            "nyan-command-registry-skill-{}",
             uuid::Uuid::new_v4()
         ));
         let skill_file = root
@@ -1690,7 +1690,7 @@ mod tests {
         crate::skills::load_skills_dir::clear_dynamic_skills();
 
         let root = std::env::temp_dir().join(format!(
-            "cometix-dynamic-builtin-collision-{}",
+            "nyan-dynamic-builtin-collision-{}",
             uuid::Uuid::new_v4()
         ));
         let discovered = root.join("packages/pkg/.claude/skills");
@@ -1745,7 +1745,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let previous_inline = crate::bootstrap::state::get_inline_plugins();
         let root = std::env::temp_dir().join(format!(
-            "cometix-command-registry-plugin-{}",
+            "nyan-command-registry-plugin-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(root.join(".claude-plugin")).unwrap();
@@ -1887,7 +1887,7 @@ mod tests {
 
     /// CC 2.1.88's `commands/fork/index.ts` is a `@generated-stub` (`export {}`
     /// only), so `commands.ts:113-117`'s `forkCmd` has no portable body and
-    /// Cometix registers no `/fork` — the same treatment every other
+    /// Nyan registers no `/fork` — the same treatment every other
     /// stub-backed CC command gets here. The user-visible consequence is the
     /// unknown-command warning from
     /// `process_slash_command.rs:983-985`, reached before any command is
@@ -1963,7 +1963,7 @@ mod tests {
         let _dynamic = crate::skills::load_skills_dir::DynamicSkillsTestSnapshot::capture();
         crate::skills::load_skills_dir::clear_dynamic_skills();
         let root =
-            std::env::temp_dir().join(format!("cometix-skill-listing-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("nyan-skill-listing-{}", uuid::Uuid::new_v4()));
         let mut bundled = Command::prompt("bundled-no-description", "Derived description");
         bundled.source = CommandSource::Bundled;
         bundled.loaded_from = Some(SkillLoadedFrom::Bundled);

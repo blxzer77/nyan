@@ -4,7 +4,7 @@
 //! in the model's context, in a notification, or in a slash-command result —
 //! where the official product would have written the file. They are
 //! deliberately phrased without product or environment-variable names so
-//! neither the model nor the user learns a Cometix-specific escape hatch, and
+//! neither the model nor the user learns a Nyan-specific escape hatch, and
 //! they live here so every mutation path and its pre-flight gate share one
 //! wording.
 //!

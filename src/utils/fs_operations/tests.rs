@@ -138,7 +138,7 @@ fn safe_resolve_path_matches_official_nfc_realpath() {
 #[test]
 fn read_file_bytes_max_bytes_matches_official_prefix_read() {
     let path = std::env::temp_dir().join(format!(
-        "cometix-read-file-bytes-{}",
+        "nyan-read-file-bytes-{}",
         uuid::Uuid::new_v4().simple()
     ));
     std::fs::write(&path, b"abcdef").unwrap();
@@ -154,7 +154,7 @@ fn read_file_bytes_max_bytes_matches_official_prefix_read() {
 #[test]
 fn bounded_ranges_matches_official_utf8_replacement() {
     let path = std::env::temp_dir().join(format!(
-        "cometix-fs-range-unicode-{}",
+        "nyan-fs-range-unicode-{}",
         uuid::Uuid::new_v4().simple()
     ));
     std::fs::write(&path, "😀abc😀").unwrap();
@@ -172,7 +172,7 @@ fn bounded_ranges_matches_official_utf8_replacement() {
 #[test]
 fn atomic_replace_overwrites_existing_target() {
     let root = std::env::temp_dir().join(format!(
-        "cometix-fs-atomic-replace-{}",
+        "nyan-fs-atomic-replace-{}",
         uuid::Uuid::new_v4().simple()
     ));
     std::fs::create_dir_all(&root).unwrap();
@@ -191,7 +191,7 @@ fn atomic_replace_overwrites_existing_target() {
 fn permission_paths_include_parent_symlink_destination_for_new_files() {
     use std::os::unix::fs::symlink;
     let root = std::env::temp_dir().join(format!(
-        "cometix-fs-permission-paths-{}",
+        "nyan-fs-permission-paths-{}",
         uuid::Uuid::new_v4().simple()
     ));
     let logical = root.join("logical");
@@ -212,7 +212,7 @@ fn bounded_readers_matches_official_follow_symlinks() {
     use std::os::unix::fs::symlink;
 
     let root = std::env::temp_dir().join(format!(
-        "cometix-fs-range-symlink-{}",
+        "nyan-fs-range-symlink-{}",
         uuid::Uuid::new_v4().simple()
     ));
     std::fs::create_dir_all(&root).unwrap();
@@ -241,7 +241,7 @@ async fn rm_matches_official_files_trees_force_and_symlinks() {
     // CC fsOperations.ts:410-412 delegates to fs/promises.rm. Fresh Bun
     // oracle: plugin-marketplace-git-0914/fs-rm-oracle.json. No trailing
     // separators/nonrecursive directories are asserted by this native slice.
-    let root = std::env::temp_dir().join(format!("cometix-rm-{}", uuid::Uuid::new_v4()));
+    let root = std::env::temp_dir().join(format!("nyan-rm-{}", uuid::Uuid::new_v4()));
     struct Cleanup(PathBuf);
     impl Drop for Cleanup {
         fn drop(&mut self) {

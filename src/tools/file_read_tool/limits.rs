@@ -64,7 +64,7 @@ fn get_env_max_tokens() -> Option<f64> {
 
 /// Maps to CC `getDefaultFileReadingLimits` (:57-90): memoized env > override
 /// map > hardcoded precedence, with every feature field validated
-/// independently. Cometix resolves the `tengu_amber_wren` override from the
+/// independently. Nyan resolves the `tengu_amber_wren` override from the
 /// source-controlled switch table instead of GrowthBook.
 pub fn get_default_file_reading_limits() -> FileReadingLimits {
     static LIMITS: OnceLock<FileReadingLimits> = OnceLock::new();

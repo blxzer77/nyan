@@ -2,7 +2,7 @@
 //!
 //! Safety boundary: the official dialog logs analytics and mutates local
 //! settings (`enabledMcpjsonServers`, `disabledMcpjsonServers`,
-//! `enableAllProjectMcpServers`). Cometix preserves the official copy,
+//! `enableAllProjectMcpServers`). Nyan preserves the official copy,
 //! options, cancel-as-reject behavior, and exposes the selected choice via a
 //! callback. Settings writes and analytics are deferred to the MCP settings
 //! runtime slice.

@@ -385,7 +385,7 @@ pub fn get_auto_mode_config() -> Option<types::AutoModeSettings> {
 
 /// Official GrowthBook `tengu_prompt_cache_1h_config.allowlist`.
 ///
-/// @cometix offset: GrowthBook is not ported. Users set
+/// @nyan offset: GrowthBook is not ported. Users set
 /// `promptCache1h.allowlist` in settings.json (same `{ allowlist: string[] }`
 /// shape, trailing `*` prefix match). Later enabled sources override earlier
 /// ones so the merged value stays a single payload, not a concatenated union.
@@ -833,7 +833,7 @@ mod tests {
     }
 
     fn unique_temp_dir(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("cometix-settings-{name}-{}", uuid::Uuid::new_v4()))
+        std::env::temp_dir().join(format!("nyan-settings-{name}-{}", uuid::Uuid::new_v4()))
     }
 
     #[test]

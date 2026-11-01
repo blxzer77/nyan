@@ -2,7 +2,7 @@
 //! Maps to: CC `utils/mcp/elicitationValidation.ts`.
 //!
 //! Intentional divergence: CC `validateElicitationInputAsync(...)` can call the
-//! Haiku-backed natural-language date parser from `dateTimeParser.ts`. Cometix
+//! Haiku-backed natural-language date parser from `dateTimeParser.ts`. Nyan
 //! keeps this helper network/API safe for now and returns the synchronous
 //! validation result when the input is not already ISO-compatible. The future
 //! Skill/MCP runtime slice should wire the official date parser boundary here.

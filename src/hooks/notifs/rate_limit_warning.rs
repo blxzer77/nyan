@@ -1,6 +1,6 @@
 //! Maps to: CC `hooks/notifs/useRateLimitWarningNotification.tsx`.
 //!
-//! Cometix keeps the limit-fetching/auth pieces out of this file. Callers pass
+//! Nyan keeps the limit-fetching/auth pieces out of this file. Callers pass
 //! already-computed strings from a read-only status seam; this module preserves
 //! the official notification payloads and duplicate suppression rules.
 

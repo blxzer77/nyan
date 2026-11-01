@@ -2,7 +2,7 @@
 //!
 //! Official Claude Code fetches the public changelog in the background and
 //! stores it under `~/.claude/cache/changelog.md`, then render paths read an
-//! in-memory cache. Cometix keeps this runtime producer read-only: it only reads
+//! in-memory cache. Nyan keeps this runtime producer read-only: it only reads
 //! an existing cache file and never fetches from GitHub, writes cache/config, or
 //! updates `lastReleaseNotesSeen`.
 
@@ -30,7 +30,7 @@ pub fn changelog_cache_path() -> PathBuf {
 }
 
 /// Maps to: CC `utils/releaseNotes.ts` `getStoredChangelogFromMemory` render seam.
-/// Cometix reads the cache file directly as a read-only substitute for the
+/// Nyan reads the cache file directly as a read-only substitute for the
 /// startup-populated memory cache.
 pub fn read_cached_changelog_readonly() -> String {
     std::fs::read_to_string(changelog_cache_path()).unwrap_or_default()

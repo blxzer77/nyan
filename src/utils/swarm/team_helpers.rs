@@ -4,7 +4,7 @@
 //! `sanitizeAgentName`, `getTeamDir`, `getTeamFilePath`, `readTeamFile`,
 //! `writeTeamFile`, hidden-pane/member mutation helpers, and cleanup helpers).
 //! Official Claude Code persists `<teamsDir>/<sanitizeName(team)>/config.json`;
-//! Cometix keeps the same file shape for pane-backed teammates while retaining
+//! Nyan keeps the same file shape for pane-backed teammates while retaining
 //! the in-memory leader cache used by the current in-process runner.
 
 #[cfg(test)]
@@ -121,7 +121,7 @@ fn maybe_skip_disk_io_in_tests() -> bool {
     #[cfg(test)]
     {
         !crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("COMETIX_TEST_TEAM_FILE_IO").as_deref(),
+            crate::utils::process_env::var("NYAN_TEST_TEAM_FILE_IO").as_deref(),
         )
     }
     #[cfg(not(test))]
@@ -687,7 +687,7 @@ mod tests {
 
     fn unique_config_dir(prefix: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "cometix-{prefix}-{}",
+            "nyan-{prefix}-{}",
             uuid::Uuid::new_v4().simple()
         ))
     }
@@ -701,7 +701,7 @@ mod tests {
     fn team_disk_guards(prefix: &str) -> (PathBuf, EnvVarGuard, EnvVarGuard) {
         let root = unique_config_dir(prefix);
         let config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
+        let io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         super::clear_team_tool_state_for_test();
         (root, config_guard, io_guard)
     }
@@ -782,7 +782,7 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = unique_config_dir("team-file");
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
+        let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         super::clear_team_tool_state_for_test();
 
         let mut record = super::create_team_record(
@@ -978,7 +978,7 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = unique_config_dir("cleanup");
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
+        let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         super::clear_team_tool_state_for_test();
 
         let worktree_dir = root.join("agent-worktree");
@@ -1031,7 +1031,7 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = unique_config_dir("session-cleanup");
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _io_guard = EnvVarGuard::set("COMETIX_TEST_TEAM_FILE_IO", "1");
+        let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         super::clear_team_tool_state_for_test();
         crate::bootstrap::state::clear_session_created_teams();
 

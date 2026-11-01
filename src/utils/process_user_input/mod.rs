@@ -14,7 +14,7 @@ use crate::constants::query_source::QuerySource;
 use crate::types::message::RenderableMessage;
 use std::sync::Arc;
 
-/// Subset of official prompt input modes currently needed by CometixCode.
+/// Subset of official prompt input modes currently needed by nyan.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ProcessInputMode {
     Prompt,

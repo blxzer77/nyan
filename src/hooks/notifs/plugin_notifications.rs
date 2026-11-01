@@ -1,7 +1,7 @@
 //! Maps to: CC `hooks/notifs/usePluginAutoupdateNotification.tsx` and
 //! `hooks/notifs/usePluginInstallationStatus.tsx`.
 //!
-//! Cometix does not have a live plugin state store yet, so these are pure
+//! Nyan does not have a live plugin state store yet, so these are pure
 //! main-screen notification producers. They flatten official JSX notifications
 //! into visible text while preserving keys, priorities, timeouts, and copy.
 

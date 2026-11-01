@@ -92,7 +92,7 @@ pub fn opus_default_effort_config_default() -> OpusDefaultEffortConfig {
 
 /// Maps to CC `utils/effort.ts#getOpusDefaultEffortConfig`.
 ///
-/// GrowthBook override lookup is intentionally not performed in Cometix; callers
+/// GrowthBook override lookup is intentionally not performed in Nyan; callers
 /// receive the official default config unless a future feature-flag service
 /// supplies an override at this same boundary.
 pub fn get_opus_default_effort_config() -> OpusDefaultEffortConfig {
@@ -302,7 +302,7 @@ fn is_ant_user() -> bool {
 pub fn to_persistable_effort(value: Option<&EffortValue>) -> Option<String> {
     match value {
         Some(EffortValue::Named(level))
-            // @cometix: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
+            // @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
             if matches!(level.as_str(), "low" | "medium" | "high" | "xhigh" | "max") =>
         {
             Some(level.clone())
@@ -560,7 +560,7 @@ mod tests {
     impl InitialSettingsGuard {
         fn new() -> Self {
             let managed_root = std::env::temp_dir().join(format!(
-                "cometix-effort-settings-{}",
+                "nyan-effort-settings-{}",
                 uuid::Uuid::new_v4().simple()
             ));
             std::fs::create_dir_all(&managed_root).expect("create isolated managed settings root");
@@ -610,7 +610,7 @@ mod tests {
             Some(EffortValue::Named("medium".to_string()))
         );
 
-        // @cometix: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
+        // @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
         settings.set_effort_level("max");
         assert_eq!(
             get_initial_effort_setting(),

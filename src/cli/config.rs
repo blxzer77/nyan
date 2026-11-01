@@ -266,7 +266,7 @@ impl CliConfig {
     pub fn print_help() {
         println!(
             "\
-Usage: cometix [options] [prompt]
+Usage: nyan [options] [prompt]
 
 Live:
   -v, --version              Print version
