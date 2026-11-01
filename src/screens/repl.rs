@@ -16310,7 +16310,7 @@ mod tests {
         let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", &PathBuf::from("0"));
 
         let empty_text = last_repl_text(stream::empty::<TerminalEvent>(), 100, 3);
-        let logo_title = "nyan";
+        let logo_title = "nyan v";
         assert_eq!(
             empty_text.matches(logo_title).count(),
             1,
@@ -16361,7 +16361,7 @@ mod tests {
             text.contains("restored session row"),
             "restored transcript row should render; canvas=\n{text}"
         );
-        let logo_title = "nyan";
+        let logo_title = "nyan v";
         assert_eq!(
             text.matches(logo_title).count(),
             1,
