@@ -45,7 +45,7 @@ pub fn managed_settings_security_options() -> Vec<SelectOptionData> {
             ..SelectOptionData::default()
         },
         SelectOptionData {
-            label: "No, exit Claude Code".to_string(),
+            label: "No, exit nyan".to_string(),
             value: ManagedSettingsSecurityChoice::Exit.value().to_string(),
             ..SelectOptionData::default()
         },
@@ -218,7 +218,7 @@ mod tests {
             text.contains("Yes, I trust these settings"),
             "canvas=\n{text}"
         );
-        assert!(text.contains("No, exit Claude Code"), "canvas=\n{text}");
+        assert!(text.contains("No, exit nyan"), "canvas=\n{text}");
         assert!(
             text.contains("Enter to confirm · Esc to exit"),
             "canvas=\n{text}"

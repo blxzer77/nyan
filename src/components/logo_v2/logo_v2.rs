@@ -1031,7 +1031,7 @@ mod tests {
         assert!(text.contains("No recent activity"), "canvas=\n{text}");
         assert!(text.contains("What's new"), "canvas=\n{text}");
         assert!(
-            text.contains("Check the Claude Code changelog for updates"),
+            text.contains("Check the nyan changelog for updates"),
             "canvas=\n{text}"
         );
     }
@@ -1064,7 +1064,7 @@ mod tests {
         let text = render_variant_with_data(LogoLayoutMode::Horizontal, 100, guest);
         assert!(text.contains("3 guest passes"), "canvas=\n{text}");
         assert!(
-            text.contains("Share Claude Code and earn $5"),
+            text.contains("Share nyan and earn $5"),
             "canvas=\n{text}"
         );
         assert!(!text.contains("What's new"), "canvas=\n{text}");

@@ -208,7 +208,7 @@ mod tests {
             false,
         );
         assert!(
-            selecting.contains("Error loading Claude Code sessions"),
+            selecting.contains("Error loading nyan sessions"),
             "canvas=\n{selecting}"
         );
     }

@@ -70,7 +70,7 @@ fn render_failure(result: Option<PreflightCheckResult>, theme: Theme) -> AnyElem
                     View(flex_direction: FlexDirection::Column, row_gap: 1u32) {
                         Text(content: "Please check your internet connection and network settings.".to_string())
                         View(flex_direction: FlexDirection::Row) {
-                            Text(content: "Note: Claude Code might not be available in your country. Check supported countries at ".to_string())
+                            Text(content: "Note: nyan might not be available in your country. Check supported countries at ".to_string())
                             Text(content: "https://anthropic.com/supported-countries".to_string(), color: theme.suggestion)
                         }
                     }

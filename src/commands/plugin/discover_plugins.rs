@@ -708,7 +708,7 @@ fn EmptyStateMessage(props: &EmptyStateMessageProps) -> impl Into<AnyElement<'st
     let lines = match props.reason {
         Some(EmptyMarketplaceReason::GitNotInstalled) => [
             "Git is required to install marketplaces.",
-            "Please install git and restart Claude Code.",
+            "Please install git and restart nyan.",
         ],
         Some(EmptyMarketplaceReason::AllBlockedByPolicy) => [
             "Your organization policy does not allow any external marketplaces.",

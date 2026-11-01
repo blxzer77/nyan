@@ -228,7 +228,7 @@ pub fn resume_task_error_guidance_lines(error_type: ResumeTaskLoadErrorType) -> 
             "Run /login and select \"Claude account with subscription\"",
         ],
         ResumeTaskLoadErrorType::Api => vec!["Sorry, Claude encountered an error"],
-        ResumeTaskLoadErrorType::Other => vec!["Sorry, Claude Code encountered an error"],
+        ResumeTaskLoadErrorType::Other => vec!["Sorry, nyan encountered an error"],
     }
 }
 
@@ -266,9 +266,9 @@ pub fn ResumeTask(props: &ResumeTaskProps) -> impl Into<AnyElement<'static>> {
             View(flex_direction: FlexDirection::Column, padding: 1u32) {
                 View(flex_direction: FlexDirection::Row) {
                     Spinner
-                    Text(content: "Loading Claude Code sessions…".to_string(), weight: Weight::Bold, wrap: TextWrap::NoWrap)
+                    Text(content: "Loading nyan sessions…".to_string(), weight: Weight::Bold, wrap: TextWrap::NoWrap)
                 }
-                Text(content: if *retrying { "Retrying…".to_string() } else { "Fetching your Claude Code sessions…".to_string() }, dim: true, wrap: TextWrap::NoWrap)
+                Text(content: if *retrying { "Retrying…".to_string() } else { "Fetching your nyan sessions…".to_string() }, dim: true, wrap: TextWrap::NoWrap)
             }
         }
         .into_any(),
@@ -276,7 +276,7 @@ pub fn ResumeTask(props: &ResumeTaskProps) -> impl Into<AnyElement<'static>> {
             let guidance = render_error_guidance(*error_type);
             element! {
                 View(flex_direction: FlexDirection::Column, padding: 1u32) {
-                    Text(content: "Error loading Claude Code sessions".to_string(), weight: Weight::Bold, color: Color::Red, wrap: TextWrap::NoWrap)
+                    Text(content: "Error loading nyan sessions".to_string(), weight: Weight::Bold, color: Color::Red, wrap: TextWrap::NoWrap)
                     #(Some(guidance))
                     View(flex_direction: FlexDirection::Row) {
                         Text(content: "Press ".to_string(), dim: true, wrap: TextWrap::NoWrap)
@@ -292,7 +292,7 @@ pub fn ResumeTask(props: &ResumeTaskProps) -> impl Into<AnyElement<'static>> {
         ResumeTaskState::Empty { current_repo, esc_key } => element! {
             View(flex_direction: FlexDirection::Column, padding: 1u32) {
                 View(flex_direction: FlexDirection::Row) {
-                    Text(content: "No Claude Code sessions found".to_string(), weight: Weight::Bold, wrap: TextWrap::NoWrap)
+                    Text(content: "No nyan sessions found".to_string(), weight: Weight::Bold, wrap: TextWrap::NoWrap)
                     #(current_repo.as_ref().map(|repo| element! {
                         Text(content: format!(" for {repo}"), wrap: TextWrap::NoWrap)
                     }))
@@ -481,11 +481,11 @@ mod tests {
     fn resume_task_renders_loading_error_empty_and_ready_states() {
         let loading = render(ResumeTaskState::Loading { retrying: false });
         assert!(
-            loading.contains("Loading Claude Code sessions…"),
+            loading.contains("Loading nyan sessions…"),
             "canvas=\n{loading}"
         );
         assert!(
-            loading.contains("Fetching your Claude Code sessions…"),
+            loading.contains("Fetching your nyan sessions…"),
             "canvas=\n{loading}"
         );
 
@@ -494,7 +494,7 @@ mod tests {
             esc_key: "Esc".to_string(),
         });
         assert!(
-            error.contains("Error loading Claude Code sessions"),
+            error.contains("Error loading nyan sessions"),
             "canvas=\n{error}"
         );
         assert!(
@@ -511,7 +511,7 @@ mod tests {
             esc_key: "Esc".to_string(),
         });
         assert!(
-            empty.contains("No Claude Code sessions found for anthropic/claude-code"),
+            empty.contains("No nyan sessions found for anthropic/claude-code"),
             "canvas=\n{empty}"
         );
 

@@ -39,7 +39,7 @@ pub fn validate_input_for_settings_file_edit(
     match validate_settings_file_content(updated_content) {
         SettingsFileValidation::Valid => None,
         SettingsFileValidation::Invalid { error, full_schema } => Some(format!(
-            "Claude Code settings.json validation failed after edit:\n{error}\n\nFull schema:\n{full_schema}\nIMPORTANT: Do not update the env unless explicitly instructed to do so."
+            "nyan settings.json validation failed after edit:\n{error}\n\nFull schema:\n{full_schema}\nIMPORTANT: Do not update the env unless explicitly instructed to do so."
         )),
     }
 }
@@ -66,7 +66,7 @@ mod tests {
             &cwd(),
         )
         .expect("valid-to-invalid must block");
-        assert!(message.starts_with("Claude Code settings.json validation failed after edit:\n"));
+        assert!(message.starts_with("nyan settings.json validation failed after edit:\n"));
         assert!(message.contains("- model: Expected string, but received number"));
         assert!(message.contains("Full schema:\n{\n  \"$schema\""));
         assert!(

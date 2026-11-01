@@ -1480,7 +1480,7 @@ pub fn StatsContent(props: &StatsContentProps, mut hooks: Hooks) -> impl Into<An
         StatsResult::Loading => element! {
             View(margin_top: 1u32, flex_direction: FlexDirection::Row) {
                 InlineSpinner()
-                Text(content: " Loading your Claude Code stats…")
+                Text(content: " Loading your nyan stats…")
             }
         }
         .into_any(),
@@ -1492,7 +1492,7 @@ pub fn StatsContent(props: &StatsContentProps, mut hooks: Hooks) -> impl Into<An
         .into_any(),
         StatsResult::Empty => element! {
             View(margin_top: 1u32) {
-                Text(content: "No stats available yet. Start using Claude Code!", color: theme.warning, wrap: TextWrap::NoWrap)
+                Text(content: "No stats available yet. Start using nyan!", color: theme.warning, wrap: TextWrap::NoWrap)
             }
         }
         .into_any(),
@@ -1764,7 +1764,7 @@ mod tests {
     fn stats_component_renders_loading_error_empty_and_success() {
         let loading = render_stats(StatsViewData::default(), 100);
         assert!(
-            loading.contains("Loading your Claude Code stats"),
+            loading.contains("Loading your nyan stats"),
             "canvas=\n{loading}"
         );
 

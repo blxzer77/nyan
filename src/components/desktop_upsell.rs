@@ -127,7 +127,7 @@ fn selection_from_value(value: &str) -> DesktopUpsellSelection {
 pub fn desktop_upsell_options() -> Vec<SelectOptionData> {
     vec![
         SelectOptionData {
-            label: "Open in Claude Code Desktop".to_string(),
+            label: "Open in nyan Desktop".to_string(),
             value: DesktopUpsellSelection::Try.value().to_string(),
             ..SelectOptionData::default()
         },
@@ -249,13 +249,13 @@ pub fn DesktopUpsellStartup<'a>(
 
     element! {
         Dialog(
-            title: "Try Claude Code Desktop".to_string(),
+            title: "Try nyan Desktop".to_string(),
             on_cancel: move |_| pending_selection.set(Some(DesktopUpsellSelection::NotNow)),
         ) {
             View(flex_direction: FlexDirection::Column, padding_x: 2u32, padding_y: 1u32) {
                 View(margin_bottom: 1u32) {
                     Text(
-                        content: "Same Claude Code with visual diffs, live app preview, parallel sessions, and more.".to_string(),
+                        content: "Same nyan with visual diffs, live app preview, parallel sessions, and more.".to_string(),
                         wrap: TextWrap::Wrap,
                     )
                 }
@@ -420,10 +420,10 @@ mod tests {
     #[test]
     fn desktop_upsell_startup_renders_official_copy_and_options() {
         let text = render_dialog();
-        assert!(text.contains("Try Claude Code Desktop"), "canvas=\n{text}");
+        assert!(text.contains("Try nyan Desktop"), "canvas=\n{text}");
         assert!(text.contains("visual diffs"), "canvas=\n{text}");
         assert!(
-            text.contains("Open in Claude Code Desktop"),
+            text.contains("Open in nyan Desktop"),
             "canvas=\n{text}"
         );
         assert!(text.contains("Not now"), "canvas=\n{text}");

@@ -249,7 +249,7 @@ pub async fn validate_plugin_manifest(file_path: &str) -> anyhow::Result<Validat
             .collect::<Vec<_>>();
         for key in stray_keys {
             obj.shift_remove(&key);
-            warnings.push(ValidationWarning{path:key.clone(),message:format!("Field '{key}' belongs in the marketplace entry (marketplace.json), not plugin.json. It's harmless here but unused — Claude Code ignores it at load time.")});
+            warnings.push(ValidationWarning{path:key.clone(),message:format!("Field '{key}' belongs in the marketplace entry (marketplace.json), not plugin.json. It's harmless here but unused — nyan ignores it at load time.")});
         }
     }
     match zod::safe_parse(&plugin_manifest_schema().clone().strict(), &to_validate) {
@@ -262,7 +262,7 @@ pub async fn validate_plugin_manifest(file_path: &str) -> anyhow::Result<Validat
                 .expect("source regex")
                 .is_match(name)
             {
-                warnings.push(ValidationWarning{path:"name".into(),message:format!("Plugin name \"{name}\" is not kebab-case. Claude Code accepts it, but the Claude.ai marketplace sync requires kebab-case (lowercase letters, digits, and hyphens only, e.g., \"my-plugin\").")});
+                warnings.push(ValidationWarning{path:"name".into(),message:format!("Plugin name \"{name}\" is not kebab-case. nyan accepts it, but the Claude.ai marketplace sync requires kebab-case (lowercase letters, digits, and hyphens only, e.g., \"my-plugin\").")});
             }
             for (field, message) in [
                 (
@@ -881,11 +881,11 @@ mod tests {
         );
         assert_eq!(
             result.warnings[0].message,
-            "Field 'source' belongs in the marketplace entry (marketplace.json), not plugin.json. It's harmless here but unused — Claude Code ignores it at load time."
+            "Field 'source' belongs in the marketplace entry (marketplace.json), not plugin.json. It's harmless here but unused — nyan ignores it at load time."
         );
         assert_eq!(
             result.warnings[5].message,
-            "Plugin name \"CamelCase\" is not kebab-case. Claude Code accepts it, but the Claude.ai marketplace sync requires kebab-case (lowercase letters, digits, and hyphens only, e.g., \"my-plugin\")."
+            "Plugin name \"CamelCase\" is not kebab-case. nyan accepts it, but the Claude.ai marketplace sync requires kebab-case (lowercase letters, digits, and hyphens only, e.g., \"my-plugin\")."
         );
         write_fixture(
             dir.path(),

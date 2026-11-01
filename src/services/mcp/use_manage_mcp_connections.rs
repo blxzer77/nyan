@@ -199,8 +199,8 @@ pub fn remote_authentication_result_message(
                 format!("Authentication successful. Connected to {server_name}.")
             }
         }
-        McpServerConnectionType::NeedsAuth => "Authentication successful, but server still requires authentication. You may need to manually restart Claude Code.".to_string(),
-        _ => "Authentication successful, but server reconnection failed. You may need to manually restart Claude Code for the changes to take effect.".to_string(),
+        McpServerConnectionType::NeedsAuth => "Authentication successful, but server still requires authentication. You may need to manually restart nyan.".to_string(),
+        _ => "Authentication successful, but server reconnection failed. You may need to manually restart nyan for the changes to take effect.".to_string(),
     }
 }
 
@@ -2824,11 +2824,11 @@ mod tests {
         );
         assert_eq!(
             remote_authentication_result_message(McpServerConnectionType::NeedsAuth, "docs", false),
-            "Authentication successful, but server still requires authentication. You may need to manually restart Claude Code."
+            "Authentication successful, but server still requires authentication. You may need to manually restart nyan."
         );
         assert_eq!(
             remote_authentication_result_message(McpServerConnectionType::Failed, "docs", false),
-            "Authentication successful, but server reconnection failed. You may need to manually restart Claude Code for the changes to take effect."
+            "Authentication successful, but server reconnection failed. You may need to manually restart nyan for the changes to take effect."
         );
     }
 

@@ -8140,7 +8140,7 @@ mod tests {
         let error = refusal_system_api_error_message("claude-opus-4-20250514")
             .expect("refusal should produce API error message");
 
-        assert!(error.content.contains("Claude Code is unable to respond"));
+        assert!(error.content.contains("nyan is unable to respond"));
         assert_eq!(error.error, "invalid_request");
         assert!(error.content.contains("/model claude-sonnet-4-20250514"));
     }

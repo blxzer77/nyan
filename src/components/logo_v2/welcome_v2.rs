@@ -10,7 +10,7 @@ use crate::utils::theme::ThemeName;
 use iocraft::prelude::*;
 
 const WELCOME_V2_WIDTH: usize = 58;
-const WELCOME_MESSAGE: &str = "Welcome to Claude Code";
+const WELCOME_MESSAGE: &str = "Welcome to nyan";
 
 #[derive(Default, Props)]
 pub struct WelcomeV2Props {
@@ -173,13 +173,13 @@ mod tests {
     fn welcome_v2_dark_branch_matches_official_ascii_shape() {
         let text = render_welcome(ThemeName::Dark, false);
         assert!(
-            text.contains("Welcome to Claude Code v1.2.3"),
+            text.contains("Welcome to nyan v1.2.3"),
             "canvas=\n{text}"
         );
         assert!(text.contains("█████▓▓░"), "canvas=\n{text}");
         assert!(text.contains("██▄█████▄██"), "canvas=\n{text}");
         assert!(text.contains("█ █   █ █"), "canvas=\n{text}");
-        assert!(!text.contains("nyan"), "canvas=\n{text}");
+        assert!(!text.contains("Cometix"), "canvas=\n{text}");
     }
 
     #[test]

@@ -36,7 +36,7 @@ pub fn get_attribution_texts() -> AttributionTexts {
         "Claude Opus 4.6".to_string()
     };
     let default_attribution = format!(
-        "🤖 Generated with [Claude Code]({})",
+        "🤖 Generated with [nyan]({})",
         crate::constants::product::PRODUCT_URL
     );
     let default_commit = format!("Co-Authored-By: {model_name} <noreply@anthropic.com>");
@@ -83,7 +83,7 @@ mod tests {
         }
         if !texts.pr.is_empty() {
             assert!(
-                texts.pr.contains("Generated with [Claude Code]"),
+                texts.pr.contains("Generated with [nyan]"),
                 "pr={}",
                 texts.pr
             );

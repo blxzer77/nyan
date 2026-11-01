@@ -1685,7 +1685,7 @@ fn blocked_path_outcome(
         Some(PermissionDecisionReason::Other { reason })
         | Some(PermissionDecisionReason::SafetyCheck { reason, .. }) => reason.clone(),
         _ => format!(
-            "{canonical} targeting '{resolved_path}' was blocked. For security, Claude Code may only access files in the allowed working directories for this session: {dir_list}."
+            "{canonical} targeting '{resolved_path}' was blocked. For security, nyan may only access files in the allowed working directories for this session: {dir_list}."
         ),
     };
 
@@ -1760,7 +1760,7 @@ fn check_redirection_target(
         Some(PermissionDecisionReason::Other { reason })
         | Some(PermissionDecisionReason::SafetyCheck { reason, .. }) => reason.clone(),
         _ => format!(
-            "Output redirection to '{resolved_path}' was blocked. For security, Claude Code may only write to files in the allowed working directories for this session: {dir_list}."
+            "Output redirection to '{resolved_path}' was blocked. For security, nyan may only write to files in the allowed working directories for this session: {dir_list}."
         ),
     };
 

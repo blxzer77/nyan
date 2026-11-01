@@ -17,7 +17,7 @@ use iocraft::prelude::*;
 
 pub(crate) const MODEL_NO_PREFERENCE: &str = "__NO_PREFERENCE__";
 pub(crate) const MODEL_PICKER_VISIBLE_COUNT: usize = 10;
-pub(crate) const MODEL_PICKER_HEADER_TEXT: &str = "Switch between Claude models. Applies to this session and future Claude Code sessions. For other/previous model names, specify with --model.";
+pub(crate) const MODEL_PICKER_HEADER_TEXT: &str = "Switch between Claude models. Applies to this session and future nyan sessions. For other/previous model names, specify with --model.";
 pub(crate) use crate::utils::fast_mode::FAST_MODE_MODEL_DISPLAY;
 // Maps to: CC `components/ModelPicker.tsx:20` importing `type EffortLevel`
 // from `utils/effort.js`.

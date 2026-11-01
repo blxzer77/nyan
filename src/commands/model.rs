@@ -29,7 +29,7 @@ use iocraft::prelude::*;
 /// Maps to: CC `commands/model/index.ts:8-10` `get description()`.
 pub fn description() -> String {
     format!(
-        "Set the AI model for Claude Code (currently {})",
+        "Set the AI model for nyan (currently {})",
         render_model_name(&get_main_loop_model())
     )
 }

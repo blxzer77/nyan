@@ -30,7 +30,7 @@ pub fn switch_to_subscription_notification(
     subscription_type: ClaudeSubscriptionPlan,
 ) -> Notification {
     let heading = format!(
-        "Use your existing Claude {} plan with Claude Code",
+        "Use your existing Claude {} plan with nyan",
         subscription_type.display_label()
     );
     let suffix = " · /login to activate";
@@ -74,12 +74,12 @@ mod tests {
         assert_eq!(notification.priority, NotificationPriority::Low);
         assert_eq!(
             notification.text,
-            "Use your existing Claude Max plan with Claude Code · /login to activate"
+            "Use your existing Claude Max plan with nyan · /login to activate"
         );
         assert_eq!(notification.segments.len(), 2);
         assert_eq!(
             notification.segments[0].text,
-            "Use your existing Claude Max plan with Claude Code"
+            "Use your existing Claude Max plan with nyan"
         );
         assert_eq!(
             notification.segments[0].color,
@@ -99,7 +99,7 @@ mod tests {
 
         assert_eq!(
             notification.text,
-            "Use your existing Claude Pro plan with Claude Code · /login to activate"
+            "Use your existing Claude Pro plan with nyan · /login to activate"
         );
     }
 

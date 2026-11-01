@@ -271,7 +271,7 @@ fn render_idle(starting_message: Option<String>, theme: Theme) -> AnyElement<'st
     element! {
         View(flex_direction: FlexDirection::Column, row_gap: 1u32, margin_top: 1u32) {
             Text(
-                content: starting_message.unwrap_or_else(|| "Claude Code can be used with your Claude subscription or billed based on API usage through your Console account.".to_string()),
+                content: starting_message.unwrap_or_else(|| "nyan can be used with your Claude subscription or billed based on API usage through your Console account.".to_string()),
                 weight: Weight::Bold,
                 wrap: TextWrap::Wrap,
             )
@@ -299,7 +299,7 @@ fn render_platform_setup(theme: Theme) -> AnyElement<'static> {
         View(flex_direction: FlexDirection::Column, row_gap: 1u32, margin_top: 1u32) {
             Text(content: "Using 3rd-party platforms".to_string(), weight: Weight::Bold)
             View(flex_direction: FlexDirection::Column, row_gap: 1u32) {
-                Text(content: "Claude Code supports Amazon Bedrock, Microsoft Foundry, and Vertex AI. Set the required environment variables, then restart Claude Code.".to_string(), wrap: TextWrap::Wrap)
+                Text(content: "nyan supports Amazon Bedrock, Microsoft Foundry, and Vertex AI. Set the required environment variables, then restart nyan.".to_string(), wrap: TextWrap::Wrap)
                 Text(content: "If you are part of an enterprise organization, contact your administrator for setup instructions.".to_string(), wrap: TextWrap::Wrap)
                 View(flex_direction: FlexDirection::Column, margin_top: 1u32) {
                     Text(content: "Documentation:".to_string(), weight: Weight::Bold)
@@ -376,7 +376,7 @@ fn render_creating_api_key() -> AnyElement<'static> {
         View(flex_direction: FlexDirection::Column, row_gap: 1u32) {
             View(flex_direction: FlexDirection::Row) {
                 Spinner
-                Text(content: "Creating API key for Claude Code…".to_string())
+                Text(content: "Creating API key for nyan…".to_string())
             }
         }
     }
@@ -465,7 +465,7 @@ mod tests {
         });
 
         assert!(
-            text.contains("Claude Code can be used with your Claude subscription"),
+            text.contains("nyan can be used with your Claude subscription"),
             "canvas=\n{text}"
         );
         assert!(text.contains("Select login method:"), "canvas=\n{text}");
@@ -496,7 +496,7 @@ mod tests {
             ..ConsoleOAuthFlowProps::default()
         });
         assert!(
-            creating.contains("Creating API key for Claude Code…"),
+            creating.contains("Creating API key for nyan…"),
             "canvas=\n{creating}"
         );
 

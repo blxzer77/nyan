@@ -80,7 +80,7 @@ fn evaluate_import_time_constants() {
 /// go through [`parse_cli_config`] + [`dispatch`].
 pub fn try_version_fast_path(args: &[String]) -> Option<i32> {
     if args.len() == 1 && matches!(args[0].as_str(), "--version" | "-v" | "-V") {
-        println!("{NAME} {VERSION} (Claude Code)");
+        println!("{NAME} {VERSION}");
         return Some(0);
     }
     None

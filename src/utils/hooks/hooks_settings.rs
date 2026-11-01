@@ -283,7 +283,7 @@ pub fn hook_source_description_display_string(source: HookSource) -> &'static st
         HookSource::LocalSettings => "Local settings (.claude/settings.local.json)",
         HookSource::PluginHook => "Plugin hooks (~/.claude/plugins/*/hooks/hooks.json)",
         HookSource::SessionHook => "Session hooks (in-memory, temporary)",
-        HookSource::BuiltinHook => "Built-in hooks (registered internally by Claude Code)",
+        HookSource::BuiltinHook => "Built-in hooks (registered internally by nyan)",
         HookSource::PolicySettings => "policySettings",
     }
 }

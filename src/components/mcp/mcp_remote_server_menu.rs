@@ -462,12 +462,12 @@ pub fn MCPRemoteServerMenu<'a>(
                             updated.connection_type() == McpServerConnectionType::NeedsAuth
                         }) {
                             pending_runtime_result.set(Some(
-                                "Authentication successful, but server still requires authentication. You may need to manually restart Claude Code."
+                                "Authentication successful, but server still requires authentication. You may need to manually restart nyan."
                                     .to_string(),
                             ));
                         } else {
                             pending_runtime_result.set(Some(
-                                "Authentication successful, but server reconnection failed. You may need to manually restart Claude Code for the changes to take effect."
+                                "Authentication successful, but server reconnection failed. You may need to manually restart nyan for the changes to take effect."
                                     .to_string(),
                             ));
                         }

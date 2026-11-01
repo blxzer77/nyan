@@ -139,7 +139,7 @@ pub fn TranscriptSharePrompt<'a>(
             View(flex_direction: FlexDirection::Row) {
                 Text(content: format!("{BLACK_CIRCLE} "), color: Color::Cyan, wrap: TextWrap::NoWrap)
                 Text(
-                    content: "Can Anthropic look at your session transcript to help us improve Claude Code?".to_string(),
+                    content: "Can Anthropic look at your session transcript to help us improve nyan?".to_string(),
                     weight: Weight::Bold,
                     wrap: TextWrap::Wrap,
                 )

@@ -147,7 +147,7 @@ fn warning_upsell(
                 (!context.has_extra_usage_enabled && context.overage_provisioning_allowed)
                     .then_some("/extra-usage to request more")
             } else if matches!(context.subscription_type.as_deref(), Some("pro" | "max")) {
-                Some("/upgrade to keep using Claude Code")
+                Some("/upgrade to keep using nyan")
             } else {
                 None
             }

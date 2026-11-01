@@ -186,11 +186,11 @@ pub fn Passes<'a>(props: &mut PassesProps<'a>, mut hooks: Hooks) -> impl Into<An
             };
             let share_text = if let Some(reward) = referrer_reward {
                 format!(
-                    "Share a free week of Claude Code with friends. If they love it and subscribe, you'll get {} of extra usage to keep building.",
+                    "Share a free week of nyan with friends. If they love it and subscribe, you'll get {} of extra usage to keep building.",
                     format_credit_amount(reward)
                 )
             } else {
-                "Share a free week of Claude Code with friends.".to_string()
+                "Share a free week of nyan with friends.".to_string()
             };
             let theme_value = *theme;
 

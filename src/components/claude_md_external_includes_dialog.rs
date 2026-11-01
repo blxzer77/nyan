@@ -135,7 +135,7 @@ pub fn ClaudeMdExternalIncludesDialog<'a>(
             })
 
             Text(
-                content: "Important: Only use Claude Code with files you trust. Accessing\nuntrusted files may pose security risks".to_string(),
+                content: "Important: Only use nyan with files you trust. Accessing\nuntrusted files may pose security risks".to_string(),
                 color: theme.inactive,
                 wrap: TextWrap::Wrap,
             )
@@ -206,7 +206,7 @@ mod tests {
         assert!(text.contains("/outside/CLAUDE.md"), "canvas=\n{text}");
         assert!(text.contains("/shared/rules.md"), "canvas=\n{text}");
         assert!(
-            text.contains("Important: Only use Claude Code with files you trust."),
+            text.contains("Important: Only use nyan with files you trust."),
             "canvas=\n{text}"
         );
         assert!(

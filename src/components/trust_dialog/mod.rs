@@ -234,7 +234,7 @@ pub fn TrustDialog<'a>(
                     wrap: TextWrap::Wrap,
                 )
                 Text(
-                    content: "Claude Code'll be able to read, edit, and execute files here.".to_string(),
+                    content: "nyan'll be able to read, edit, and execute files here.".to_string(),
                     wrap: TextWrap::Wrap,
                 )
                 Text(
@@ -326,7 +326,7 @@ mod tests {
             "canvas=\n{text}"
         );
         assert!(
-            text.contains("Claude Code'll be able to read, edit, and execute files here."),
+            text.contains("nyan'll be able to read, edit, and execute files here."),
             "canvas=\n{text}"
         );
         assert!(

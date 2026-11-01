@@ -300,7 +300,7 @@ pub fn auto_reject_message(tool_name: &str) -> String {
 /// (`utils/permissions/permissions.ts:515`).
 pub fn dont_ask_reject_message(tool_name: &str) -> String {
     format!(
-        "Permission to use {tool_name} has been denied because Claude Code is running in don't ask mode. {DENIAL_WORKAROUND_GUIDANCE}"
+        "Permission to use {tool_name} has been denied because nyan is running in don't ask mode. {DENIAL_WORKAROUND_GUIDANCE}"
     )
 }
 
@@ -3679,7 +3679,7 @@ mod tests {
         assert_eq!(
             dont_ask_reject_message("Bash"),
             format!(
-                "Permission to use Bash has been denied because Claude Code is running in don't \
+                "Permission to use Bash has been denied because nyan is running in don't \
                  ask mode. {DENIAL_WORKAROUND_GUIDANCE}"
             )
         );

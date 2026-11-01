@@ -277,7 +277,7 @@ pub(crate) async fn get_url_markdown_content(
         match check_domain_blocklist(&hostname, abort_controller).await? {
             DomainCheckResult::Allowed => {}
             DomainCheckResult::Blocked => {
-                anyhow::bail!("Claude Code is unable to fetch from {hostname}");
+                anyhow::bail!("nyan is unable to fetch from {hostname}");
             }
             DomainCheckResult::CheckFailed(_) => {
                 anyhow::bail!(

@@ -119,7 +119,7 @@ pub fn TeleportError(props: &TeleportErrorProps) -> impl Into<AnyElement<'static
                 Dialog(title: "Log in to Claude".to_string()) {
                     View(flex_direction: FlexDirection::Column) {
                         Text(content: "Teleport requires a Claude.ai account.".to_string(), dim: true, wrap: TextWrap::NoWrap)
-                        Text(content: "Your Claude Pro/Max subscription will be used by Claude Code.".to_string(), dim: true, wrap: TextWrap::NoWrap)
+                        Text(content: "Your Claude Pro/Max subscription will be used by nyan.".to_string(), dim: true, wrap: TextWrap::NoWrap)
                     }
                     Select(
                         options: options,

@@ -322,7 +322,7 @@ impl TaskOutput {
                 String::new()
             }
             Err(error) => format!(
-                "<bash output unavailable: output file {} could not be read ({}). This usually means another Claude Code process in the same project deleted it during startup cleanup.>",
+                "<bash output unavailable: output file {} could not be read ({}). This usually means another nyan process in the same project deleted it during startup cleanup.>",
                 self.path().display(),
                 error
                     .raw_os_error()

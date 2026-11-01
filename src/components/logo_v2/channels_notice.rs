@@ -240,7 +240,7 @@ pub fn ChannelsNotice(props: &ChannelsNoticeProps, hooks: Hooks) -> impl Into<An
         ]
     } else {
         vec![format!(
-            "Experimental · inbound messages will be pushed into this session, this carries prompt injection risks. Restart Claude Code without {flag} to disable."
+            "Experimental · inbound messages will be pushed into this session, this carries prompt injection risks. Restart nyan without {flag} to disable."
         )]
     };
 

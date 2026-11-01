@@ -63,7 +63,7 @@ pub fn ClaudeInChromeOnboarding<'a>(
             View(flex_direction: FlexDirection::Column, gap: 1u32) {
                 View(flex_direction: FlexDirection::Column) {
                     Text(
-                        content: "Claude in Chrome works with the Chrome extension to let you control your browser directly from Claude Code. You can navigate websites, fill forms, capture screenshots, record GIFs, and debug with console logs and network requests.".to_string(),
+                        content: "Claude in Chrome works with the Chrome extension to let you control your browser directly from nyan. You can navigate websites, fill forms, capture screenshots, record GIFs, and debug with console logs and network requests.".to_string(),
                         wrap: TextWrap::Wrap,
                     )
                     #(if !installed {

@@ -147,7 +147,7 @@ pub const API_TIMEOUT_ERROR_MESSAGE: &str = "Request timed out";
 
 /// Maps to: CC services/api/errors.ts:197-198
 pub const OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE: &str =
-    "Your account does not have access to Claude Code. Please run /login.";
+    "Your account does not have access to nyan. Please run /login.";
 
 /// Maps to: CC bootstrap/state.ts:getIsNonInteractiveSession.
 fn get_is_non_interactive_session() -> bool {
@@ -1130,11 +1130,11 @@ pub fn get_error_message_if_refusal(
 
     let base_message = if get_is_non_interactive_session() {
         format!(
-            "{API_ERROR_MESSAGE_PREFIX}: Claude Code is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Try rephrasing the request or attempting a different approach."
+            "{API_ERROR_MESSAGE_PREFIX}: nyan is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Try rephrasing the request or attempting a different approach."
         )
     } else {
         format!(
-            "{API_ERROR_MESSAGE_PREFIX}: Claude Code is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Please double press esc to edit your last message or start a new session for Claude Code to assist with a different task."
+            "{API_ERROR_MESSAGE_PREFIX}: nyan is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Please double press esc to edit your last message or start a new session for nyan to assist with a different task."
         )
     };
 

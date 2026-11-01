@@ -18,7 +18,7 @@ use iocraft::prelude::*;
 use std::sync::Arc;
 
 pub const REMOVE_WORKSPACE_DIRECTORY_MESSAGE: &str =
-    "Claude Code will no longer have access to files in this directory.";
+    "nyan will no longer have access to files in this directory.";
 
 /// Maps to: CC `RemoveWorkspaceDirectory.tsx#handleRemove` update shape.
 pub fn remove_workspace_directory_update(directory_path: &str) -> PermissionUpdate {

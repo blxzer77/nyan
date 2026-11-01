@@ -6,4 +6,4 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const USER_AGENT_VERSION: &str = "2.1.241";
 pub const DESCRIPTION: &str = "Terminal-based AI coding assistant";
 /// Maps to: CC `constants/product.ts#PRODUCT_URL`.
-pub const PRODUCT_URL: &str = "https://code.cometix.dev";
+pub const PRODUCT_URL: &str = "https://github.com/blxzer77/nyan";

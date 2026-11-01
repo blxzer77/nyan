@@ -85,11 +85,11 @@ impl RulesTabType {
 
     pub fn subtitle(self) -> Option<&'static str> {
         match self {
-            Self::Allow => Some("Claude Code won't ask before using allowed tools."),
+            Self::Allow => Some("nyan won't ask before using allowed tools."),
             Self::Ask => {
-                Some("Claude Code will always ask for confirmation before using these tools.")
+                Some("nyan will always ask for confirmation before using these tools.")
             }
-            Self::Deny => Some("Claude Code will always reject requests to use denied tools."),
+            Self::Deny => Some("nyan will always reject requests to use denied tools."),
             Self::Recent | Self::Workspace => None,
         }
     }
@@ -1168,7 +1168,7 @@ pub fn PermissionRuleList<'a>(
                     RulesTabType::Workspace => element! {
                         View(flex_direction: FlexDirection::Column) {
                             Text(
-                                content: "Claude Code can read files in the workspace, and make edits when auto-accept edits is on.".to_string(),
+                                content: "nyan can read files in the workspace, and make edits when auto-accept edits is on.".to_string(),
                                 wrap: TextWrap::Wrap,
                             )
                             WorkspaceTab(
@@ -1227,7 +1227,7 @@ mod tests {
         .to_string();
         assert!(text.contains("Permissions:"), "canvas=\n{text}");
         assert!(text.contains("Recently denied"), "canvas=\n{text}");
-        assert!(text.contains("Claude Code won't ask"), "canvas=\n{text}");
+        assert!(text.contains("nyan won't ask"), "canvas=\n{text}");
         assert!(
             text.contains("Add a new rule…"),
             "rules tab should render the canonical add option; canvas=\n{text}"

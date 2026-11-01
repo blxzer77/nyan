@@ -30,7 +30,7 @@ pub fn dispatch(config: &CliConfig) -> Option<i32> {
     apply_live_env_side_effects(config);
 
     if config.show_version {
-        println!("{NAME} {VERSION} (Claude Code)");
+        println!("{NAME} {VERSION}");
         return Some(0);
     }
 

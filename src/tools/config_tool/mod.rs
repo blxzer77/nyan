@@ -584,7 +584,7 @@ impl crate::tool::ToolCall for ConfigTool {
     /// word-bound hit here above one in the prompt
     /// (`ToolSearchTool.ts:282`).
     fn search_hint(&self) -> Option<&'static str> {
-        Some("get or set Claude Code settings (theme, model)")
+        Some("get or set nyan settings (theme, model)")
     }
 
     /// Maps to: CC `ConfigTool.description()` (:71-73) — the `DESCRIPTION`
@@ -775,7 +775,7 @@ mod tests {
         assert!(
             schema
                 .description
-                .contains("Get or set Claude Code configuration settings")
+                .contains("Get or set nyan configuration settings")
         );
     }
 
@@ -1301,11 +1301,11 @@ mod tests {
         let tool = super::ConfigTool;
         assert_eq!(
             tool.description(&serde_json::json!({"setting": "theme"})),
-            "Get or set Claude Code configuration settings."
+            "Get or set nyan configuration settings."
         );
         assert_eq!(
             tool.search_hint(),
-            Some("get or set Claude Code settings (theme, model)")
+            Some("get or set nyan settings (theme, model)")
         );
         // The prompt is a different, much longer string that merely starts
         // with the same sentence.

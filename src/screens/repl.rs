@@ -2611,7 +2611,7 @@ fn local_command_ui_dismiss_result(panel: &LocalCommandPanel) -> Option<String> 
         LocalCommandPanel::Agents => Some("Agents dialog dismissed".to_string()),
         LocalCommandPanel::Skills => Some("Skills dialog dismissed".to_string()),
         LocalCommandPanel::Stats => Some("Stats dialog dismissed".to_string()),
-        LocalCommandPanel::Doctor => Some("Claude Code diagnostics dismissed".to_string()),
+        LocalCommandPanel::Doctor => Some("nyan diagnostics dismissed".to_string()),
         LocalCommandPanel::Diff => Some("Diff dialog dismissed".to_string()),
         LocalCommandPanel::Sandbox => Some("Sandbox dialog dismissed".to_string()),
         // Official `/btw` dismisses with `display: 'skip'` (no transcript row).
@@ -3953,7 +3953,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                 .map(|agent| agent.agent_type.clone())
         })
         .or_else(|| haiku_title.read().clone())
-        .unwrap_or_else(|| "Claude Code".to_string());
+        .unwrap_or_else(|| "nyan".to_string());
     // Maps to CC lazy `provisionContentReplacementState(initialMessages,
     // initialContentReplacements)` initialization.
     let mut content_replacement_state = hooks.use_state(move || {
@@ -15575,7 +15575,7 @@ mod tests {
         assert!(text.contains("Remote Control"), "canvas=\n{text}");
         assert!(text.contains("claude.ai/"), "canvas=\n{text}");
         assert!(
-            !text.contains("Try Claude Code Desktop"),
+            !text.contains("Try nyan Desktop"),
             "desktop upsell should wait behind remote callout:\n{text}"
         );
     }
@@ -15594,7 +15594,7 @@ mod tests {
             6,
         );
 
-        assert!(text.contains("Try Claude Code Desktop"), "canvas=\n{text}");
+        assert!(text.contains("Try nyan Desktop"), "canvas=\n{text}");
         assert!(text.contains("visual diffs"), "canvas=\n{text}");
         assert!(
             !text.contains("would_mark_seen"),
@@ -16744,7 +16744,7 @@ mod tests {
             (
                 LocalCommandUi::Doctor,
                 "doctor",
-                "Claude Code diagnostics dismissed",
+                "nyan diagnostics dismissed",
             ),
             (LocalCommandUi::Diff, "diff", "Diff dialog dismissed"),
             (
@@ -17032,12 +17032,12 @@ mod tests {
         timed_events.push((key(KeyCode::Right), 50));
         let text = last_repl_text_waiting_for(
             timed_stream(timed_events),
-            "Claude Code won't ask before using allowed tools.",
+            "nyan won't ask before using allowed tools.",
             10_000,
         );
 
         assert!(
-            text.contains("Claude Code won't ask before using allowed tools."),
+            text.contains("nyan won't ask before using allowed tools."),
             "Right from Recently denied content should return to Allow; canvas=\n{text}"
         );
         assert!(text.contains("Permissions:"), "canvas=\n{text}");
@@ -17164,14 +17164,14 @@ mod tests {
                     let Some(canvas) = canvas else { break; };
                     text = canvas_lines(&canvas).join("\n");
                     let next = match stage {
-                        0 if text.contains("Claude Code won't ask") => Some(key(KeyCode::Right)),
-                        1 if text.contains("Claude Code will always ask") => Some(key(KeyCode::Right)),
-                        2 if text.contains("Claude Code will always reject") => Some(key(KeyCode::Right)),
+                        0 if text.contains("nyan won't ask") => Some(key(KeyCode::Right)),
+                        1 if text.contains("nyan will always ask") => Some(key(KeyCode::Right)),
+                        2 if text.contains("nyan will always reject") => Some(key(KeyCode::Right)),
                         3 if text.contains("Original working directory") => Some(key(KeyCode::Down)),
                         4 if text.contains("❯ 1. Add directory") => Some(key(KeyCode::Enter)),
                         5 if text.contains("Enter the path to the directory:") => Some(TerminalEvent::Paste(directory.to_string_lossy().into_owned())),
                         6 if text.chars().filter(|ch| !ch.is_whitespace() && !matches!(*ch, '│' | '┃' | '║')).collect::<String>().contains(directory.file_name().unwrap().to_str().unwrap()) => Some(key(KeyCode::Enter)),
-                        7 if text.contains("Claude Code won't ask") => Some(key(KeyCode::Esc)),
+                        7 if text.contains("nyan won't ask") => Some(key(KeyCode::Esc)),
                         8 if text.contains("Added directory") && !text.contains("Permissions:") => { stage = 9; break; },
                         _ => None,
                     };
@@ -17286,14 +17286,14 @@ mod tests {
                                 initial_model_messages = snapshot.model_messages.clone();
                                 Some(ctrl_key('y'))
                             },
-                            1 if text.contains("Claude Code won't ask") => Some(key(KeyCode::Right)),
-                            2 if text.contains("Claude Code will always ask") => Some(key(KeyCode::Right)),
-                            3 if text.contains("Claude Code will always reject") => Some(key(KeyCode::Right)),
+                            1 if text.contains("nyan won't ask") => Some(key(KeyCode::Right)),
+                            2 if text.contains("nyan will always ask") => Some(key(KeyCode::Right)),
+                            3 if text.contains("nyan will always reject") => Some(key(KeyCode::Right)),
                             4 if text.contains("Original working directory") => Some(key(KeyCode::Down)),
                             5 if text.contains("❯ 1. Add directory") => Some(key(KeyCode::Enter)),
                             6 if text.contains("Enter the path to the directory:") => Some(TerminalEvent::Paste(directory.to_string_lossy().into_owned())),
                             7 if text.chars().filter(|ch| !ch.is_whitespace() && !matches!(*ch, '│' | '┃' | '║')).collect::<String>().contains(directory.file_name().unwrap().to_str().unwrap()) => Some(key(KeyCode::Enter)),
-                            8 if text.contains("Claude Code won't ask") => Some(key(KeyCode::Esc)),
+                            8 if text.contains("nyan won't ask") => Some(key(KeyCode::Esc)),
                             9 if notification_present && !probe.snapshot.lock().unwrap().as_ref().unwrap().local_command_open => {
                                 stage = 10;
                                 break;
@@ -17432,12 +17432,12 @@ mod tests {
                             for event in text_input_events("/permissions") { keys.try_send(event).unwrap(); }
                             stage = 1; None
                         }
-                        1 if text.contains("Claude Code won't ask") => Some(key(KeyCode::Down)),
+                        1 if text.contains("nyan won't ask") => Some(key(KeyCode::Down)),
                         2 if text.contains("❯ 1. Add a new rule") => Some(key(KeyCode::Enter)),
                         3 if text.contains("Add allow permission rule") => Some(key(KeyCode::Enter)),
                         4 if text.contains("Enter permission rule") => Some(key(KeyCode::Esc)),
-                        5 if text.contains("Claude Code won't ask") && !text.contains("Add allow permission rule") => Some(key(KeyCode::Esc)),
-                        6 if text.contains("Permissions dialog dismissed") && !text.contains("Claude Code won't ask") => { stage = 7; break; }
+                        5 if text.contains("nyan won't ask") && !text.contains("Add allow permission rule") => Some(key(KeyCode::Esc)),
+                        6 if text.contains("Permissions dialog dismissed") && !text.contains("nyan won't ask") => { stage = 7; break; }
                         _ => None,
                     };
                     if let Some(event) = event { keys.try_send(event).unwrap(); stage += 1; }

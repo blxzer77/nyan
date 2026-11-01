@@ -3362,7 +3362,7 @@ mod tests {
             "OutputStylePicker title should render; canvas=\n{text}"
         );
         assert!(
-            normalized.contains("This changes how Claude Code communicates with you"),
+            normalized.contains("This changes how nyan communicates with you"),
             "official OutputStylePicker copy should render; canvas=\n{text}"
         );
         assert!(

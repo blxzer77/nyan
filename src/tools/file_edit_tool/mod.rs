@@ -1426,7 +1426,7 @@ mod tests {
         assert!(
             error
                 .message
-                .starts_with("Claude Code settings.json validation failed after edit:")
+                .starts_with("nyan settings.json validation failed after edit:")
         );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
         let _ = std::fs::remove_dir_all(root);

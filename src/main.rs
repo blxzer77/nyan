@@ -2242,7 +2242,7 @@ mod tests {
                 .next(),
         )
         .expect("setup frame");
-        assert!(first.to_string().contains("Welcome to Claude Code"));
+        assert!(first.to_string().contains("Welcome to nyan"));
         assert_eq!(
             crate::interactive_helpers::default_setup_snapshot_call_count(),
             0,

@@ -732,7 +732,7 @@ fn create_permission_request_message(reason: Option<&PermissionDecisionReason>) 
     match reason {
         Some(PermissionDecisionReason::SafetyCheck { reason, .. }) => reason.clone(),
         Some(PermissionDecisionReason::Other { reason }) => reason.clone(),
-        _ => "Claude Code wants to run this PowerShell command".to_string(),
+        _ => "nyan wants to run this PowerShell command".to_string(),
     }
 }
 

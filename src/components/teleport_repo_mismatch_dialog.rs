@@ -152,7 +152,7 @@ pub fn TeleportRepoMismatchDialog<'a>(
                 Some(element! {
                     Fragment {
                         View(flex_direction: FlexDirection::Column, row_gap: 1u32) {
-                            Text(content: format!("Open Claude Code in {}:", props.target_repo), wrap: TextWrap::Wrap)
+                            Text(content: format!("Open nyan in {}:", props.target_repo), wrap: TextWrap::Wrap)
                         }
                         Select(
                             options: options,
@@ -231,7 +231,7 @@ mod tests {
 
         assert!(text.contains("Teleport to Repo"), "canvas=\n{text}");
         assert!(
-            text.contains("Open Claude Code in anthropic/claude-code:"),
+            text.contains("Open nyan in anthropic/claude-code:"),
             "canvas=\n{text}"
         );
         assert!(text.contains("Use ~/src/claude-code"), "canvas=\n{text}");
@@ -257,7 +257,7 @@ mod tests {
             text.contains("Run claude --teleport from a checkout of anthropic/claude-code"),
             "canvas=\n{text}"
         );
-        assert!(!text.contains("Open Claude Code in"), "canvas=\n{text}");
+        assert!(!text.contains("Open nyan in"), "canvas=\n{text}");
     }
 
     #[test]

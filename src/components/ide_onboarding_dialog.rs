@@ -99,7 +99,7 @@ pub fn IdeOnboardingDialog<'a>(
         props.terminal_ide_type.as_deref(),
         props.platform.as_deref(),
     );
-    let title = format!("✻ Welcome to Claude Code for {ide_name}");
+    let title = format!("✻ Welcome to nyan for {ide_name}");
 
     element! {
         Fragment {
@@ -118,7 +118,7 @@ pub fn IdeOnboardingDialog<'a>(
                         Text(content: "⧉ selected lines".to_string(), color: theme.suggestion, wrap: TextWrap::NoWrap)
                     }
                     View(flex_direction: FlexDirection::Row) {
-                        Text(content: "• Review Claude Code's changes ".to_string(), wrap: TextWrap::NoWrap)
+                        Text(content: "• Review nyan's changes ".to_string(), wrap: TextWrap::NoWrap)
                         Text(content: "+11".to_string(), color: theme.diff_added_word, wrap: TextWrap::NoWrap)
                         Text(content: " ".to_string(), wrap: TextWrap::NoWrap)
                         Text(content: "-22".to_string(), color: theme.diff_removed_word, wrap: TextWrap::NoWrap)
@@ -178,7 +178,7 @@ mod tests {
         .to_string();
 
         assert!(
-            text.contains("✻ Welcome to Claude Code for VS Code"),
+            text.contains("✻ Welcome to nyan for VS Code"),
             "canvas=\n{text}"
         );
         assert!(
@@ -189,7 +189,7 @@ mod tests {
         assert!(text.contains("⧉ open files"), "canvas=\n{text}");
         assert!(text.contains("⧉ selected lines"), "canvas=\n{text}");
         assert!(
-            text.contains("• Review Claude Code's changes +11 -22 in the comfort of your IDE"),
+            text.contains("• Review nyan's changes +11 -22 in the comfort of your IDE"),
             "canvas=\n{text}"
         );
         assert!(
@@ -223,7 +223,7 @@ mod tests {
         .to_string();
 
         assert!(
-            text.contains("Welcome to Claude Code for PyCharm"),
+            text.contains("Welcome to nyan for PyCharm"),
             "canvas=\n{text}"
         );
         assert!(text.contains("installed plugin v2026.1"), "canvas=\n{text}");

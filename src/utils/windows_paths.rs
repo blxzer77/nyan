@@ -71,7 +71,7 @@ pub fn find_git_bash_path() -> Result<PathBuf, String> {
             return Ok(path);
         }
         return Err(format!(
-            "Claude Code was unable to find CLAUDE_CODE_GIT_BASH_PATH path \"{}\"",
+            "nyan was unable to find CLAUDE_CODE_GIT_BASH_PATH path \"{}\"",
             path.display()
         ));
     }
@@ -117,7 +117,7 @@ pub fn find_git_bash_path() -> Result<PathBuf, String> {
         }
     }
 
-    Err("Claude Code on Windows requires git-bash (https://git-scm.com/downloads/win). If installed but not in PATH, set environment variable pointing to your bash.exe, similar to: CLAUDE_CODE_GIT_BASH_PATH=C:\\Program Files\\Git\\bin\\bash.exe".to_string())
+    Err("nyan on Windows requires git-bash (https://git-scm.com/downloads/win). If installed but not in PATH, set environment variable pointing to your bash.exe, similar to: CLAUDE_CODE_GIT_BASH_PATH=C:\\Program Files\\Git\\bin\\bash.exe".to_string())
 }
 
 #[cfg(test)]

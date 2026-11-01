@@ -427,7 +427,7 @@ fn ComputerUseTccPanel(
                     Text(content: format!("Screen Recording: {} {}", if tcc_state.screen_recording { MAIN_SYMBOLS.tick } else { MAIN_SYMBOLS.cross }, if tcc_state.screen_recording { "granted" } else { "not granted" }), wrap: TextWrap::NoWrap)
                 }
                 Text(
-                    content: "Grant the missing permissions in System Settings, then select \"Try again\". macOS may require you to restart Claude Code after granting Screen Recording.".to_string(),
+                    content: "Grant the missing permissions in System Settings, then select \"Try again\". macOS may require you to restart nyan after granting Screen Recording.".to_string(),
                     color: theme.inactive,
                     wrap: TextWrap::Wrap,
                 )

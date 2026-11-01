@@ -518,7 +518,7 @@ pub fn permissions_schema() -> &'static crate::utils::zod::Schema {
                     crate::types::permissions::EXTERNAL_PERMISSION_MODES.to_vec()
                 })
                 .optional()
-                .describe("Default permission mode when Claude Code needs access"),
+                .describe("Default permission mode when nyan needs access"),
             ),
             (
                 "disableBypassPermissionsMode",
@@ -673,7 +673,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 "$schema",
                 zod::literal(json!(super::constants::CLAUDE_CODE_SETTINGS_SCHEMA_URL))
                     .optional()
-                    .describe("JSON Schema reference for Claude Code settings"),
+                    .describe("JSON Schema reference for nyan settings"),
             ),
             (
                 "apiKeyHelper",
@@ -715,7 +715,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                     ),
                     (
                         "clientId",
-                        zod::string().describe("Claude Code's client_id registered at the IdP"),
+                        zod::string().describe("nyan's client_id registered at the IdP"),
                     ),
                     (
                         "callbackPort",
@@ -757,7 +757,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 environment_variables_schema()
                     .clone()
                     .optional()
-                    .describe("Environment variables to set for Claude Code sessions"),
+                    .describe("Environment variables to set for nyan sessions"),
             ),
             (
                 "attribution",
@@ -777,7 +777,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 ])
                 .optional()
                 .describe(
-                    "Customize attribution text for commits and PRs. Each field defaults to the standard Claude Code attribution if not set.",
+                    "Customize attribution text for commits and PRs. Each field defaults to the standard nyan attribution if not set.",
                 ),
             ),
             (
@@ -803,7 +803,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 "model",
                 zod::string()
                     .optional()
-                    .describe("Override the default model used by Claude Code"),
+                    .describe("Override the default model used by nyan"),
             ),
             (
                 "availableModels",
@@ -1265,7 +1265,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 )])
                 .optional()
                 .describe(
-                    "1h prompt-cache TTL allowlist. Official Claude Code receives this from GrowthBook (`tengu_prompt_cache_1h_config`); Nyan reads it from settings.",
+                    "1h prompt-cache TTL allowlist. Official nyan receives this from GrowthBook (`tengu_prompt_cache_1h_config`); Nyan reads it from settings.",
                 ),
             ),
             (
