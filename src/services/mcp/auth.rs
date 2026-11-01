@@ -2357,7 +2357,7 @@ mod runtime {
             manager.configure_client(client_config)?;
             (client_metadata_url, None)
         } else {
-            let client_name = format!("Claude Code ({server_name})");
+            let client_name = mcp_oauth_client_name();
             // Deviation (L2, user-authorized OAuth safety gate): dynamic
             // registration can mint a client secret. Metadata, scopes, and the
             // complete registration inputs remain prepared before the SDK send.
@@ -2463,10 +2463,46 @@ pub use runtime::{
 };
 pub(crate) use runtime::oauth_http_client;
 
+/// Dynamic registration `client_name`. Settings `mcpOauthClientName` wins;
+/// otherwise the name is `nyan`.
+pub(crate) fn mcp_oauth_client_name() -> String {
+    crate::utils::settings::get_initial_settings()
+        .mcp_oauth_client_name
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| "nyan".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+
+    #[test]
+    fn mcp_oauth_client_name_defaults_to_nyan_and_settings_override() {
+        use crate::utils::settings::settings_cache::{reset_settings_cache, set_session_settings_cache};
+        use crate::utils::settings::types::SettingsJson;
+        use crate::utils::settings::validation::SettingsWithErrors;
+
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        set_session_settings_cache(SettingsWithErrors {
+            settings: SettingsJson::default(),
+            errors: Vec::new(),
+            policy_settings: None,
+        });
+        assert_eq!(mcp_oauth_client_name(), "nyan");
+        set_session_settings_cache(SettingsWithErrors {
+            settings: SettingsJson {
+                mcp_oauth_client_name: Some("custom-client".to_string()),
+                ..SettingsJson::default()
+            },
+            errors: Vec::new(),
+            policy_settings: None,
+        });
+        assert_eq!(mcp_oauth_client_name(), "custom-client");
+        reset_settings_cache();
+    }
 
     #[test]
     fn get_server_key_matches_official_hash_input_shape() {

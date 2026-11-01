@@ -2558,7 +2558,15 @@ fn build_sdk_message_request_options(
             params.betas = Some(plan.betas.clone());
         }
         let mut headers = base.headers.take().unwrap_or_default();
-        headers.insert("anthropic-beta".to_string(), Some(plan.betas.join(",")));
+        if let Some((name, value)) =
+            crate::services::api::request_headers::anthropic_beta_header(&plan.betas)
+        {
+            headers.insert(name, Some(value));
+        }
+        crate::services::api::request_headers::override_header_if_configured(
+            &mut headers,
+            "anthropic-beta",
+        );
         base.headers = Some(headers);
     }
 

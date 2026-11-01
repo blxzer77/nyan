@@ -1402,7 +1402,7 @@ fn cache_marketplace_from_url(
         let mut headers=reqwest::header::HeaderMap::new();
         headers.insert(reqwest::header::ACCEPT,reqwest::header::HeaderValue::from_static("application/json, text/plain, */*"));
         if let Some(custom_headers)=custom_headers {for(key,value)in custom_headers {headers.insert(reqwest::header::HeaderName::from_bytes(key.as_bytes())?,reqwest::header::HeaderValue::from_str(value.as_str().unwrap_or(""))?);}}
-        headers.insert(reqwest::header::USER_AGENT,reqwest::header::HeaderValue::from_static("Claude-Code-Plugin-Manager"));
+        headers.insert(reqwest::header::USER_AGENT,reqwest::header::HeaderValue::from_str(&crate::utils::http::user_agent())?);
         let request=client.get(url).headers(headers);
         let response=request.send().await.map_err(|error|{let message=if error.is_connect(){format!("Could not connect to {redacted}. Please check your internet connection and verify the URL is correct.\n\nTechnical details: {error}")}else{format!("Failed to download marketplace from {redacted}: {error}")};anyhow::anyhow!(message)})?;
         let status=response.status();if !status.is_success(){anyhow::bail!("HTTP {} error while downloading marketplace from {redacted}. The marketplace file may not exist at this URL.\n\nTechnical details: Request failed with status code {}",status.as_u16(),status.as_u16());}
@@ -2882,7 +2882,7 @@ mod tests {
                 }
                 let request = String::from_utf8(request).unwrap().to_ascii_lowercase();
                 assert_eq!(request.matches("user-agent:").count(), 1);
-                assert!(request.contains("user-agent: claude-code-plugin-manager"));
+                assert!(request.contains("user-agent: nyan/"));
                 write!(stream,"HTTP/1.1 {status} Result\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
             });
             let target = root.join(format!("{status}-{valid}.json"));

@@ -164,7 +164,7 @@ fn parse_proxy_url(proxy_url: &str) -> anyhow::Result<reqwest::Url> {
 pub(crate) fn client_builder() -> reqwest::ClientBuilder {
     crate::utils::tls_provider::install_crypto_provider();
     #[allow(clippy::disallowed_methods)] // The allowed constructor.
-    let builder = reqwest::Client::builder();
+    let builder = reqwest::Client::builder().user_agent(crate::utils::http::user_agent());
     if crate::utils::tls_provider::get_allow_unauthorized() {
         builder.tls_danger_accept_invalid_certs(true)
     } else {

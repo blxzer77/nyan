@@ -184,39 +184,19 @@ pub async fn get_anthropic_client(
     // ----- Build default headers -----
     // Maps to: CC services/api/client.ts:101-129. The `?:` spreads are
     // truthiness tests, so an empty value adds no header.
-    let container_id = env.var("CLAUDE_CODE_CONTAINER_ID").truthy();
-    let remote_session_id = env.var("CLAUDE_CODE_REMOTE_SESSION_ID").truthy();
     let client_app = env.var("CLAUDE_AGENT_SDK_CLIENT_APP").truthy();
     let custom_headers = get_custom_headers(&env);
 
-    let mut default_headers: HashMap<String, Option<String>> = HashMap::new();
-    default_headers.insert("x-app".to_string(), Some("cli".to_string()));
-    default_headers.insert(
-        "User-Agent".to_string(),
-        Some(crate::utils::http::get_user_agent()),
-    );
-    default_headers.insert(
-        "X-Claude-Code-Session-Id".to_string(),
-        Some(crate::bootstrap::state::get_session_id()),
-    );
+    let mut default_headers = crate::services::api::request_headers::common_headers();
+    for (name, value) in crate::services::api::request_headers::anthropic_adapter_headers(&env) {
+        default_headers.insert(name, value);
+    }
 
     // Merge custom headers
     for (k, v) in &custom_headers {
         default_headers.insert(k.clone(), Some(v.clone()));
     }
 
-    if let Some(cid) = container_id {
-        default_headers.insert(
-            "x-claude-remote-container-id".to_string(),
-            Some(cid.to_string()),
-        );
-    }
-    if let Some(rsid) = remote_session_id {
-        default_headers.insert(
-            "x-claude-remote-session-id".to_string(),
-            Some(rsid.to_string()),
-        );
-    }
     if let Some(app) = client_app {
         default_headers.insert("x-client-app".to_string(), Some(app.to_string()));
     }
@@ -226,15 +206,6 @@ pub async fn get_anthropic_client(
         env.var("ANTHROPIC_CUSTOM_HEADERS").truthy().is_some(),
         custom_headers.contains_key("Authorization"),
     ));
-
-    // Additional protection header
-    // Maps to: CC services/api/client.ts:124-129
-    if crate::utils::env_utils::is_env_truthy(env.var("CLAUDE_CODE_ADDITIONAL_PROTECTION")) {
-        default_headers.insert(
-            "x-anthropic-additional-protection".to_string(),
-            Some("true".to_string()),
-        );
-    }
 
     // ----- OAuth refresh -----
     // Maps to: CC services/api/client.ts:131-133
@@ -266,6 +237,7 @@ pub async fn get_anthropic_client(
     if !is_claude_ai_subscriber() {
         configure_api_key_headers(&mut default_headers, &env).await;
     }
+    crate::services::api::request_headers::apply_configured_overrides(&mut default_headers);
 
     // Maps to: CC services/api/client.ts:140 `buildFetch(fetchOverride, source)`.
     let resolved_fetch = build_fetch(source);
@@ -3020,7 +2992,8 @@ mod tests {
     #[test]
     fn user_agent_uses_official_claude_cli_shape() {
         let ua = crate::utils::http::get_user_agent();
-        assert!(ua.starts_with("claude-cli/"));
+        assert_eq!(ua, crate::utils::http::user_agent());
+        assert!(ua.starts_with("nyan/"));
     }
 
     #[test]

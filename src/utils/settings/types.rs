@@ -117,6 +117,11 @@ pub struct SettingsJson {
     /// @nyan offset: not an official settings.json key. CC has only the
     /// line mode; Nyan keeps character streaming as an option.
     pub streaming_text_display: Option<String>,
+    /// @nyan: MCP OAuth dynamic-registration `client_name`. Absent means `nyan`.
+    pub mcp_oauth_client_name: Option<String>,
+    /// @nyan: model-request headers. A name here replaces the common or
+    /// provider header of the same name. This does not add a provider.
+    pub http_headers: Option<IndexMap<String, String>>,
     pub show_thinking_summaries: Option<bool>,
     /// Official GrowthBook `tengu_prompt_cache_1h_config` payload.
     ///

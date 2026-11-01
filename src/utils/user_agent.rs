@@ -1,18 +1,19 @@
 //! User-Agent string helpers.
-//! Maps to: CC `utils/userAgent.ts`.
+//!
+//! The wire value is [`crate::utils::http::user_agent`]. This name remains so
+//! older call sites keep compiling.
 
-/// Maps to: CC `utils/userAgent.ts#getClaudeCodeUserAgent`.
 pub fn get_claude_code_user_agent() -> String {
-    format!("claude-code/{}", crate::constants::product::VERSION)
+    crate::utils::http::user_agent()
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
-    fn claude_code_user_agent_matches_official_prefix() {
+    fn claude_code_user_agent_is_the_shared_nyan_agent() {
         assert_eq!(
             super::get_claude_code_user_agent(),
-            format!("claude-code/{}", crate::constants::product::VERSION)
+            crate::utils::http::user_agent()
         );
     }
 }

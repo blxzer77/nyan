@@ -1401,11 +1401,10 @@ mod runtime {
             // { capabilities:{ roots:{}, elicitation:{} } })`, initialized at the
             // SDK's `LATEST_PROTOCOL_VERSION`.
             let mut implementation = Implementation::new(
-                "claude-code",
-                option_env!("CARGO_PKG_VERSION").unwrap_or("unknown"),
+                "nyan",
+                crate::constants::product::VERSION,
             );
-            implementation.title = Some("Claude Code".to_string());
-            implementation.description = Some("Anthropic's agentic coding tool".to_string());
+            implementation.title = Some("nyan".to_string());
             implementation.website_url = Some(crate::constants::product::PRODUCT_URL.to_string());
 
             let mut capabilities = ClientCapabilities::default();

@@ -18,6 +18,7 @@ pub mod dump_prompts;
 /// Anthropic API client factory (Direct / Bedrock / Foundry / Vertex).
 /// Maps to: CC services/api/client.ts
 pub mod client;
+pub mod request_headers;
 
 /// Error formatting, SSL classification, HTML sanitization for API errors.
 /// Maps to: CC services/api/errorUtils.ts
