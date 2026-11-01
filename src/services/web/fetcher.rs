@@ -530,7 +530,10 @@ mod network_tests {
         assert!(page.redirects.is_empty());
         let seen = &server.seen()[0];
         assert!(seen.header("accept").unwrap().contains("text/markdown"));
-        assert!(seen.header("user-agent").unwrap().starts_with("Claude-User"));
+        assert_eq!(
+            seen.header("user-agent").unwrap(),
+            crate::utils::http::get_web_fetch_user_agent()
+        );
     }
 
     #[tokio::test]

@@ -16300,7 +16300,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "nyan-repl-logo-header-{}",
+            "repl-logo-header-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_home = root.join("config");
