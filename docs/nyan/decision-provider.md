@@ -319,7 +319,7 @@ pub trait DecisionBackend: Send + Sync {
   "enabled": true,
   "emrank": {
     "url": "https://emrank.tech/v1/decisions",
-    "apiKeyFile": "~/.cometix/keys/emrank",
+    "apiKeyFile": "~/.nyan/keys/emrank",
     "models": { "fast": "typesafe/jev-1.14.0", "accurate": "cloudflare/clef" },
     "poolIdleTimeoutMs": 90000,
     "prewarm": true
@@ -360,7 +360,7 @@ pub trait DecisionBackend: Send + Sync {
 ```
 
 - `enabled: false` 或某点 `off`：不发请求，行为与没有 Decision Provider 时相同。
-- 每台机器各自配置；key 在 `~/.cometix/keys/emrank`（0600，corp-pc 已就位，nyan-pc 复制同一文件）；读取时 trim。
+- 每台机器各自配置；key 在 `~/.nyan/keys/emrank`（0600，corp-pc 已就位，nyan-pc 复制同一文件）；读取时 trim。
 - **关键路径**（检索、外部搜索、压缩）的 800 ms 是硬上限：与确定性路径**并行发起**，到点未返回就按规则继续，不等待、不重试。
   `retrieval.answers` / `web.answers` 在 Inspect / 融合完成后发起，此时其余工作已结束，等待它的 0.5 s 计入工具耗时；
   `retrieval.sufficient` 判"不足"时追加的一轮在同一个工具调用内完成（总 deadline 不变）。

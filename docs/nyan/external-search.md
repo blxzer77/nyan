@@ -37,7 +37,7 @@
 | WebFetch 权限 | 预批准 host 直接放行；否则按 `domain:<host>` 规则 allow / deny / ask | `web_fetch_tool/mod.rs:45,245-300` |
 | WebFetch 预检 | 每个域名请求 `api.anthropic.com/api/web/domain_info` | `utils.rs:431` |
 | WebFetch 返回 | Markdown 交给小模型（`ANTHROPIC_SMALL_FAST_MODEL`）按提示改写，模型拿到的是改写结果 | `utils.rs:597-631` |
-| provider key | `~/.cometix/keys/{anysearch,brave,deepseek,exa,firecrawl,tavily}`（目录 0700、文件 0600，2026-10-27 就位）。Tavily 当前额度用尽（432） | — |
+| provider key | `~/.nyan/keys/{anysearch,brave,deepseek,exa,firecrawl,tavily}`（目录 0700、文件 0600，2026-10-27 就位）。Tavily 当前额度用尽（432） | — |
 | 网络出口 | 本机所有出站经本地代理 `127.0.0.1:7897`（http/socks5），reqwest 开了 `system-proxy`；**搜索与抓取都走代理**（用户确认） | `Cargo.toml:129-144` |
 
 ### 2.2 provider（已定，2026-10-27）
@@ -251,7 +251,7 @@ Exa、Tavily、Firecrawl、DeepSeek、AnySearch 可以在搜索时一并返回�
 
 - **工具结果里只出现具名原因**（`quota_exhausted` / `rate_limited` / `auth_failed` / `timeout` / `http_<code>` / `invalid_response`），
   从不出现 provider 的原始错误体。
-- **调试日志**：错误体先把所有已加载的 key 值（`~/.cometix/keys/*` 读出的内容）替换为 `<redacted:name>`，再截到 200 字符。
+- **调试日志**：错误体先把所有已加载的 key 值（`~/.nyan/keys/*` 读出的内容）替换为 `<redacted:name>`，再截到 200 字符。
   AnySearch 的 402 体可能含**新生成的**凭据（不是已加载的 key，替换规则覆盖不到），所以 AnySearch 的 402 **只记状态码**，
   不记正文。
 - 请求日志不记 `Authorization` / `X-Subscription-Token` / `x-api-key` 头。
@@ -343,7 +343,7 @@ legacy 的 6 条 OWASP 控制，结合本机"所有流量经本地代理"的事�
 | `https://www.gstatic.com/generate_204`、`https://www.baidu.com/` | 204 / 200 | 204 / 200（不受影响） |
 
 FlClash 侧已由负责方修复（两台机器）：代理端口 7897 入站、目标为回环 / RFC1918 / 链路本地 / CGNAT（tailnet）/ IPv6 私网段 /
-`localhost` / `ts.net` 的一律 REJECT，TUN 等其他入站不受影响（报告与回滚方式见 `~/.cometix/reports/2026-10-27-flclash-proxy-private-egress.md`，
+`localhost` / `ts.net` 的一律 REJECT，TUN 等其他入站不受影响（报告与回滚方式见 `~/.nyan/reports/2026-10-27-flclash-proxy-private-egress.md`，
 不在本仓库）。
 
 结论：
@@ -406,7 +406,7 @@ legacy 的 FetchRecord / EvidenceRecord 在本项目里就是一个快照文件�
 - **URL 索引替代 CC 的 15 分钟内容缓存**：CC 的进程内缓存（`utils.rs:27-29,152,293`，存整份 Markdown）删除；改为
   进程内 `规范化 URL → 最新快照 hash + fetched_at` 的索引，TTL 15 分钟（沿用 CC 的时长）。命中时直接读快照文件，返回
   内容里注明抓取时间；range 续读（4.1）不受 TTL 限制，只要快照文件存在就读。
-- 权限：`web-snapshots/` 目录 0700、快照文件 0600（与 `~/.cometix/keys` 同样做法；快照可能含登录后可见的内容）。
+- 权限：`web-snapshots/` 目录 0700、快照文件 0600（与 `~/.nyan/keys` 同样做法；快照可能含登录后可见的内容）。
 
 ### 4.4 返回给模型的内容（Evidence）
 
@@ -504,12 +504,12 @@ nyan 抓取器（4.2 全部 SSRF 检查）
 {
   "providers": {
     // baseUrl 可选，默认为官方地址；测试时注入 mock（第九节）
-    "anysearch": { "enabled": true, "apiKeyFile": "~/.cometix/keys/anysearch", "maxCallsPerSession": 40 },
-    "brave":     { "enabled": true, "apiKeyFile": "~/.cometix/keys/brave",     "maxCallsPerSession": 40 },
-    "deepseek":  { "enabled": true, "apiKeyFile": "~/.cometix/keys/deepseek",  "maxCallsPerSession": 60 },
-    "exa":       { "enabled": true, "apiKeyFile": "~/.cometix/keys/exa",       "maxCallsPerSession": 30 },
-    "firecrawl": { "enabled": true, "apiKeyFile": "~/.cometix/keys/firecrawl", "maxCallsPerSession": 20 },
-    "tavily":    { "enabled": true, "apiKeyFile": "~/.cometix/keys/tavily",    "maxCallsPerSession": 20 },
+    "anysearch": { "enabled": true, "apiKeyFile": "~/.nyan/keys/anysearch", "maxCallsPerSession": 40 },
+    "brave":     { "enabled": true, "apiKeyFile": "~/.nyan/keys/brave",     "maxCallsPerSession": 40 },
+    "deepseek":  { "enabled": true, "apiKeyFile": "~/.nyan/keys/deepseek",  "maxCallsPerSession": 60 },
+    "exa":       { "enabled": true, "apiKeyFile": "~/.nyan/keys/exa",       "maxCallsPerSession": 30 },
+    "firecrawl": { "enabled": true, "apiKeyFile": "~/.nyan/keys/firecrawl", "maxCallsPerSession": 20 },
+    "tavily":    { "enabled": true, "apiKeyFile": "~/.nyan/keys/tavily",    "maxCallsPerSession": 20 },
     "searxng":   { "enabled": true, "url": "http://10.144.0.3:8454" }   // 不限次数
   },
   "search": {
@@ -534,7 +534,7 @@ nyan 抓取器（4.2 全部 SSRF 检查）
 ```
 
 - 凭据只按文件 / 环境变量名引用，不写进 settings 正文（Decision #4）。
-- key 已在 corp-pc 的 `~/.cometix/keys/`（0600）；nyan-pc 需要同样的文件（每台机器各自一份，不同步）。
+- key 已在 corp-pc 的 `~/.nyan/keys/`（0600）；nyan-pc 需要同样的文件（每台机器各自一份，不同步）。
 - provider 是 search 还是 fetch 由适配器能力决定（2.3），配置里只有一个 `enabled`；某家 `enabled = false` 时
   search 与 fetch 都不用它。
 - 额度用尽的 provider（如当前的 Tavily）保持 `enabled`：每次返回具名 `quota_exhausted`，不影响其余；额度恢复后自动可用。
