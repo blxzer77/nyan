@@ -1797,7 +1797,7 @@ mod tests {
     #[test]
     fn grep_content_and_count_order_is_stable_and_results_have_completion_notes() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-grep-stable-{}",
+            "nyan-grep-stable-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -1838,7 +1838,7 @@ mod tests {
     #[test]
     fn grep_decodes_legacy_content_and_truncates_long_lines() {
         let root = std::env::temp_dir().join(format!(
-            "cometix-grep-encoding-{}",
+            "nyan-grep-encoding-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

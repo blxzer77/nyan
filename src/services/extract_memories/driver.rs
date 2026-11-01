@@ -95,7 +95,7 @@ fn commit_success(outcome: &ExtractOutcome, token_count: u64) {
             // A cursor that cannot be persisted must not advance in memory
             // either, or a resume would re-extract a different range.
             tracing::warn!(
-                target: "cometix::memory",
+                target: "nyan::memory",
                 error = %error,
                 "memory_extract_cursor_persist_failed"
             );
@@ -111,16 +111,16 @@ fn commit_success(outcome: &ExtractOutcome, token_count: u64) {
 fn log_outcome(label: &str, outcome: &ExtractOutcome) {
     match &outcome.status {
         ExtractStatus::Success => tracing::info!(
-            target: "cometix::memory",
+            target: "nyan::memory",
             input_tokens = outcome.input_tokens,
             output_tokens = outcome.output_tokens,
             "{label}: memory_extract_ok"
         ),
         ExtractStatus::Skipped(reason) => {
-            tracing::debug!(target: "cometix::memory", ?reason, "{label}: memory_extract_skipped")
+            tracing::debug!(target: "nyan::memory", ?reason, "{label}: memory_extract_skipped")
         }
         ExtractStatus::Failed(failure) => {
-            tracing::warn!(target: "cometix::memory", ?failure, "{label}: memory_extract_failed")
+            tracing::warn!(target: "nyan::memory", ?failure, "{label}: memory_extract_failed")
         }
     }
 }
@@ -245,7 +245,7 @@ pub(crate) async fn extract_before_compact_with_deps<D: crate::query::deps::Quer
     let started = std::time::Instant::now();
     let Some(_gate) = memory_agent_gate_within(timeout).await else {
         tracing::warn!(
-            target: "cometix::memory",
+            target: "nyan::memory",
             "extract_skipped_before_compact: another memory agent held the gate past the timeout"
         );
         return ExtractStatus::Failed(ExtractFailure::TimedOut);
@@ -253,7 +253,7 @@ pub(crate) async fn extract_before_compact_with_deps<D: crate::query::deps::Quer
     let remaining = timeout.saturating_sub(started.elapsed());
     if remaining < Duration::from_millis(250) {
         tracing::warn!(
-            target: "cometix::memory",
+            target: "nyan::memory",
             "extract_skipped_before_compact: no time left after waiting for the memory agent gate"
         );
         return ExtractStatus::Failed(ExtractFailure::TimedOut);
@@ -279,7 +279,7 @@ pub(crate) async fn extract_before_compact_with_deps<D: crate::query::deps::Quer
     match &outcome.status {
         ExtractStatus::Success => commit_success(&outcome, token_count),
         ExtractStatus::Failed(_) => tracing::warn!(
-            target: "cometix::memory",
+            target: "nyan::memory",
             "extract_skipped_before_compact: extraction failed; cursor unchanged, compaction proceeds"
         ),
         ExtractStatus::Skipped(_) => {}
@@ -316,7 +316,7 @@ pub async fn extract_before_compact_for_summary(
     // would hit the network from a unit test. The harness opts in explicitly.
     #[cfg(test)]
     if !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("COMETIX_TEST_MEMORY_EXTRACT").as_deref(),
+        crate::utils::process_env::var("NYAN_TEST_MEMORY_EXTRACT").as_deref(),
     ) {
         return;
     }
@@ -438,7 +438,7 @@ mod tests {
             EnvVarGuard::unset("CLAUDE_CODE_DISABLE_AUTO_MEMORY"),
             EnvVarGuard::unset("CLAUDE_CODE_SIMPLE"),
             EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY"),
-            EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1"),
+            EnvVarGuard::set("NYAN_WRITE_ENABLED", "1"),
         ];
         crate::bootstrap::state::set_session_persistence_disabled(false);
         let fixture = Fixture {

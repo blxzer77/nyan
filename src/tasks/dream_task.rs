@@ -94,7 +94,7 @@ impl DreamLockLease {
             self.start_mtime_ms,
         ) {
             tracing::warn!(
-                target: "cometix::memory",
+                target: "nyan::memory",
                 error = %error,
                 "dream_lock_rollback_failed"
             );

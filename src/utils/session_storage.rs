@@ -6610,14 +6610,14 @@ mod tests {
             }
         }
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _write = EnvVarGuard::set("COMETIX_WRITE_ENABLED", "1");
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         let restore = Restore {
             session_id: crate::bootstrap::state::get_session_id(),
             project_dir: crate::bootstrap::state::get_session_project_dir(),
             meta: get_project().current_session_meta.read().unwrap().clone(),
-            root: std::env::temp_dir().join(format!("cometix-cursor-{}", Uuid::new_v4())),
+            root: std::env::temp_dir().join(format!("nyan-cursor-{}", Uuid::new_v4())),
         };
         let path = restore.root.join("cursor-active.jsonl");
         fs::create_dir_all(&restore.root).unwrap();

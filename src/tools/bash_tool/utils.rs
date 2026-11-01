@@ -408,7 +408,7 @@ mod tests {
     fn format_output_switch_off_restores_the_cc_head_only_path() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "cometix-bash-head-tail-off-{}",
+            "nyan-bash-head-tail-off-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();

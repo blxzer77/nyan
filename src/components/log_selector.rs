@@ -1908,7 +1908,7 @@ mod tests {
         // These fixtures use synthetic project paths. A developer checkout
         // may have auxiliary worktrees, which would make LogSelector hide the
         // synthetic rows behind its current-worktree filter.
-        EnvVarGuard::set("COMETIX_TEST_SINGLE_WORKTREE", "1")
+        EnvVarGuard::set("NYAN_TEST_SINGLE_WORKTREE", "1")
     }
 
     #[test]

@@ -3053,7 +3053,7 @@ mod tests {
     #[tokio::test]
     async fn gbk_file_decodes_with_a_note() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-gbk-{}",
+            "nyan-read-gbk-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3097,7 +3097,7 @@ mod tests {
     #[tokio::test]
     async fn explicit_encoding_failure_is_an_error() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-bad-encoding-{}",
+            "nyan-read-bad-encoding-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3132,7 +3132,7 @@ mod tests {
     #[tokio::test]
     async fn content_binary_check_and_hex_view() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-binary-{}",
+            "nyan-read-binary-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3182,7 +3182,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-long-line-{}",
+            "nyan-read-long-line-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -3217,7 +3217,7 @@ mod tests {
     #[tokio::test]
     async fn batch_read_reports_each_member_and_shares_the_budget() {
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-batch-{}",
+            "nyan-read-batch-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3287,7 +3287,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-batch-budget-{}",
+            "nyan-read-batch-budget-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3345,7 +3345,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-batch-off-{}",
+            "nyan-read-batch-off-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -3389,7 +3389,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-notes-off-{}",
+            "nyan-read-notes-off-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -3739,10 +3739,10 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "cometix-read-max-token-off-{}",
+            "nyan-read-max-token-off-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        std::fs::create_dir_all(root.join(".cometix")).unwrap();
+        std::fs::create_dir_all(root.join(".nyan")).unwrap();
         // Project settings are the only source this test can point at without
         // touching the real user settings root.
         std::fs::write(
@@ -4961,7 +4961,7 @@ PY\n\
     async fn dedup_re_reads_when_prior_read_result_was_replaced() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-dedup-replacement-{}",
+            "nyan-read-dedup-replacement-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -5020,7 +5020,7 @@ PY\n\
     async fn batch_dedup_re_reads_when_prior_batch_result_was_replaced() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!(
-            "cometix-read-batch-dedup-replacement-{}",
+            "nyan-read-batch-dedup-replacement-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();

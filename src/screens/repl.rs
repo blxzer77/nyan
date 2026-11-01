@@ -17766,7 +17766,7 @@ mod tests {
         // Mirror the process runtime published by the production entrypoint.
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
-        let _single_worktree = EnvVarGuard::set("COMETIX_TEST_SINGLE_WORKTREE", "1");
+        let _single_worktree = EnvVarGuard::set("NYAN_TEST_SINGLE_WORKTREE", "1");
         let config_home = std::env::temp_dir().join(format!(
             "nyan-repl-resume-select-error-{}",
             Uuid::new_v4()
@@ -18225,7 +18225,7 @@ mod tests {
         }
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         crate::utils::process_runtime::initialize_test_process_runtime();
-        let _single_worktree = EnvVarGuard::set("COMETIX_TEST_SINGLE_WORKTREE", "1");
+        let _single_worktree = EnvVarGuard::set("NYAN_TEST_SINGLE_WORKTREE", "1");
         let config_home =
             std::env::temp_dir().join(format!("nyan-repl-resume-cross-{}", Uuid::new_v4()));
         let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
@@ -18452,7 +18452,7 @@ mod tests {
             return;
         }
         let _guard = env_lock().lock().unwrap();
-        let _single_worktree = EnvVarGuard::set("COMETIX_TEST_SINGLE_WORKTREE", "1");
+        let _single_worktree = EnvVarGuard::set("NYAN_TEST_SINGLE_WORKTREE", "1");
         let _project = PinnedProjectDir::at_manifest_root();
         crate::utils::process_runtime::initialize_test_process_runtime();
         for fail_restore in [false, true] {
