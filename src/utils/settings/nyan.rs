@@ -143,6 +143,48 @@ pub struct MemorySettings {
     pub consolidate_min_new_files: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub secret_scan: Option<bool>,
+    /// @nyan: per-point Decision Provider shadow switches (SMOKE-EVAL C4).
+    /// Every switch is off by default; off means no request, no log, and the
+    /// exact deterministic behaviour of the module.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decision_shadow: Option<MemoryDecisionShadowSettings>,
+}
+
+/// @nyan: independent shadow switch per memory decision point. A point is only
+/// queried when its own switch (or an explicit `settings.nyan.decision.points`
+/// shadow/active mode) is on; the deterministic path is never altered.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct MemoryDecisionShadowSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extract_now: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extract_skip: Option<bool>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub memory_type: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duplicate: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub consolidate: Option<bool>,
+}
+
+impl MemoryDecisionShadowSettings {
+    pub fn extract_now(&self) -> bool {
+        self.extract_now.unwrap_or(false)
+    }
+    pub fn extract_skip(&self) -> bool {
+        self.extract_skip.unwrap_or(false)
+    }
+    pub fn memory_type(&self) -> bool {
+        self.memory_type.unwrap_or(false)
+    }
+    pub fn duplicate(&self) -> bool {
+        self.duplicate.unwrap_or(false)
+    }
+    pub fn consolidate(&self) -> bool {
+        self.consolidate.unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -183,6 +225,9 @@ impl MemorySettings {
     }
     pub fn secret_scan(&self) -> bool {
         self.secret_scan.unwrap_or(true)
+    }
+    pub fn decision_shadow(&self) -> MemoryDecisionShadowSettings {
+        self.decision_shadow.clone().unwrap_or_default()
     }
 }
 
@@ -1359,6 +1404,17 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
             zod::number().int().nonnegative().optional(),
         ),
         ("secretScan", zod::boolean().optional()),
+        (
+            "decisionShadow",
+            zod::object(vec![
+                ("extractNow", zod::boolean().optional()),
+                ("extractSkip", zod::boolean().optional()),
+                ("type", zod::boolean().optional()),
+                ("duplicate", zod::boolean().optional()),
+                ("consolidate", zod::boolean().optional()),
+            ])
+            .optional(),
+        ),
     ]);
 
     let retrieval_index = zod::object(vec![
@@ -1635,6 +1691,13 @@ mod tests {
         assert_eq!(settings.memory().consolidate_min_hours(), 24);
         assert_eq!(settings.memory().consolidate_min_new_files(), 5);
         assert!(settings.memory().secret_scan());
+        // @nyan: every memory decision-shadow switch defaults to off.
+        let shadow = settings.memory().decision_shadow();
+        assert!(!shadow.extract_now());
+        assert!(!shadow.extract_skip());
+        assert!(!shadow.memory_type());
+        assert!(!shadow.duplicate());
+        assert!(!shadow.consolidate());
 
         let retrieval = settings.retrieval();
         assert!(retrieval.enabled());

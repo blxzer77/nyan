@@ -129,6 +129,56 @@ fn read_index() -> String {
     std::fs::read_to_string(crate::memdir::paths::get_auto_mem_entrypoint()).unwrap_or_default()
 }
 
+/// @nyan (C4): `memory.extract_now` / `memory.extract_skip` shadow comparison.
+/// Detached, so the throttle below stays the only decision. Cloning the history
+/// only happens when at least one switch is on.
+fn spawn_turn_shadow(messages: &[Message], due: bool, turns_since: u32, token_delta: u64) {
+    use crate::services::memory_decision as shadow;
+    let extract_now = shadow::shadow_enabled_now(shadow::DecisionPoint::MemoryExtractNow);
+    let extract_skip = shadow::shadow_enabled_now(shadow::DecisionPoint::MemoryExtractSkip);
+    if !extract_now && !extract_skip {
+        return;
+    }
+    let messages = messages.to_vec();
+    shadow::spawn_detached(async move {
+        if extract_now {
+            shadow::evaluate_extract_now(&messages, due, turns_since, token_delta).await;
+        }
+        // The deterministic rule never skips, so a skip comparison is only
+        // meaningful on a turn the rule says is due.
+        if extract_skip && due {
+            shadow::evaluate_extract_skip(&messages, turns_since, token_delta).await;
+        }
+    });
+}
+
+/// @nyan (C4): `memory.type` / `memory.duplicate` shadow comparison around one
+/// memory-agent run. Returns `None` (no directory walk, no allocation) when both
+/// switches are off.
+fn snapshot_before_memory_run() -> Option<Vec<crate::services::memory_decision::MemoryFileSnapshot>>
+{
+    crate::services::memory_decision::types_or_duplicates_enabled()
+        .then(crate::services::memory_decision::snapshot_memory_files)
+}
+
+fn spawn_memory_file_shadow(
+    before: Option<Vec<crate::services::memory_decision::MemoryFileSnapshot>>,
+) {
+    use crate::services::memory_decision as shadow;
+    let Some(before) = before else {
+        return;
+    };
+    shadow::spawn_detached(async move {
+        let after = shadow::snapshot_memory_files();
+        let changed = shadow::changed_since(&before, &after);
+        if changed.is_empty() {
+            return;
+        }
+        shadow::evaluate_types(&changed, 30).await;
+        shadow::evaluate_duplicates(&before, &changed, 30, 30).await;
+    });
+}
+
 /// Turn-end entry. Counts the turn, applies the turn/token throttle and, when
 /// due, runs one extraction. Safe to call from a detached task.
 pub async fn extract_if_due(
@@ -160,9 +210,11 @@ pub(crate) async fn extract_if_due_with_deps<D: crate::query::deps::QueryDeps>(
     ensure_cursor_loaded();
     let settings = memory_settings();
     let token_count = crate::utils::tokens::token_count_with_estimation(&messages).max(0) as u64;
-    let (due, cursor) = {
+    let (due, cursor, turns_since, token_delta) = {
         let mut state = progress();
         state.turns_since_extract = state.turns_since_extract.saturating_add(1);
+        let turns_since = state.turns_since_extract;
+        let token_delta = token_count.saturating_sub(state.tokens_at_last_extract);
         (
             extraction_is_due(
                 &state,
@@ -172,14 +224,19 @@ pub(crate) async fn extract_if_due_with_deps<D: crate::query::deps::QueryDeps>(
                 settings.extract_every_tokens(),
             ),
             state.cursor.clone(),
+            turns_since,
+            token_delta,
         )
     };
+    // @nyan (C4): shadow comparison; never alters `due` and never blocks.
+    spawn_turn_shadow(&messages, due, turns_since, token_delta);
     if !due {
         return ExtractStatus::Skipped(ExtractSkipReason::NotDue);
     }
     let Some(_gate) = try_memory_agent_gate() else {
         return ExtractStatus::Skipped(ExtractSkipReason::Busy);
     };
+    let shadow_before = snapshot_before_memory_run();
     let outcome = super::run_extract_memories_with_deps(
         context,
         cache_safe_params,
@@ -194,6 +251,7 @@ pub(crate) async fn extract_if_due_with_deps<D: crate::query::deps::QueryDeps>(
         deps,
     )
     .await;
+    spawn_memory_file_shadow(shadow_before);
     log_outcome("turn_end", &outcome);
     if outcome.status == ExtractStatus::Success {
         commit_success(&outcome, token_count);
@@ -263,6 +321,7 @@ pub(crate) async fn extract_before_compact_with_deps<D: crate::query::deps::Quer
         let fresh = progress().cursor.clone();
         if fresh.message_uuid.is_some() { fresh } else { cursor }
     };
+    let shadow_before = snapshot_before_memory_run();
     let outcome = super::run_extract_memories_with_deps(
         context.clone(),
         cache_safe_params,
@@ -275,6 +334,7 @@ pub(crate) async fn extract_before_compact_with_deps<D: crate::query::deps::Quer
         deps,
     )
     .await;
+    spawn_memory_file_shadow(shadow_before);
     log_outcome("before_compact", &outcome);
     match &outcome.status {
         ExtractStatus::Success => commit_success(&outcome, token_count),
