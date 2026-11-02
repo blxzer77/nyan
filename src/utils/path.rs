@@ -104,6 +104,11 @@ pub fn get_directory_for_path(path: &str) -> String {
         .to_string()
 }
 
+/// Maps to: CC `utils/path.ts:133-135#containsPathTraversal`.
+pub fn contains_path_traversal(path: &str) -> bool {
+    path.split(['/', '\\']).any(|segment| segment == "..")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,9 +216,4 @@ mod tests {
             "../../a"
         );
     }
-}
-
-/// Maps to: CC `utils/path.ts:133-135#containsPathTraversal`.
-pub fn contains_path_traversal(path: &str) -> bool {
-    path.split(['/', '\\']).any(|segment| segment == "..")
 }

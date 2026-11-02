@@ -1596,18 +1596,17 @@ impl FileReadTool {
                         &content,
                         &extension,
                     ) as f64;
-                    if estimate > remaining_tokens {
-                        if let Some((kept, kept_lines)) =
+                    if estimate > remaining_tokens
+                        && let Some((kept, kept_lines)) =
                             crate::tools::file_read_tool::text_io::trim_to_token_budget(
                                 &content,
                                 &extension,
                                 remaining_tokens,
                             )
-                        {
-                            content = kept;
-                            shown_lines = kept_lines;
-                            truncated = true;
-                        }
+                    {
+                        content = kept;
+                        shown_lines = kept_lines;
+                        truncated = true;
                     }
                     // Charge the budget for what was actually returned, not
                     // for the full member.

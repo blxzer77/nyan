@@ -629,7 +629,7 @@ mod tests {
                     .permissions()
                     .mode();
                 assert_eq!(dir_mode & 0o777, 0o700, "snapshot root must be private");
-                let file_mode = std::fs::metadata(&hash_dir.join(format!("{}.md", first.hash)))
+                let file_mode = std::fs::metadata(hash_dir.join(format!("{}.md", first.hash)))
                     .unwrap()
                     .permissions()
                     .mode();

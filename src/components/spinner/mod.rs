@@ -381,7 +381,7 @@ fn next_displayed_response_length(
     let increment = if gap < 70 {
         3
     } else if gap < 200 {
-        8.max((gap.saturating_mul(15) + 99) / 100)
+        8.max(gap.saturating_mul(15).div_ceil(100))
     } else {
         50
     };

@@ -1619,11 +1619,11 @@ mod tests {
         let cwd = parent.join("project");
         let nested = cwd.join("submodule");
 
-        std::fs::create_dir_all(&managed.join(".claude/rules")).unwrap();
-        std::fs::create_dir_all(&config_home.join("rules")).unwrap();
-        std::fs::create_dir_all(&parent.join(".claude/rules")).unwrap();
-        std::fs::create_dir_all(&cwd.join(".claude/rules")).unwrap();
-        std::fs::create_dir_all(&nested.join(".claude/rules")).unwrap();
+        std::fs::create_dir_all(managed.join(".claude/rules")).unwrap();
+        std::fs::create_dir_all(config_home.join("rules")).unwrap();
+        std::fs::create_dir_all(parent.join(".claude/rules")).unwrap();
+        std::fs::create_dir_all(cwd.join(".claude/rules")).unwrap();
+        std::fs::create_dir_all(nested.join(".claude/rules")).unwrap();
 
         // 1. Managed level
         std::fs::write(managed.join("AGENTS.md"), "managed agents").unwrap();

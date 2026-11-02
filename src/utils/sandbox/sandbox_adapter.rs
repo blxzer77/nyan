@@ -2482,7 +2482,7 @@ mod tests {
             let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
             let _managed_guard = EnvVarGuard::set(
                 "CLAUDE_CODE_MANAGED_SETTINGS_PATH",
-                &root.join("missing-managed-settings.json"),
+                root.join("missing-managed-settings.json"),
             );
 
             let expected =

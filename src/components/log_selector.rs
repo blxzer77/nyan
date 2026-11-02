@@ -199,7 +199,7 @@ fn raw_log_title(log: &SessionSummary) -> String {
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
         })
-        .or_else(|| {
+        .or({
             if use_first_prompt {
                 Some(stripped_first_prompt)
             } else {

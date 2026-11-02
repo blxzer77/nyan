@@ -159,6 +159,14 @@ mod runtime {
         })
     }
 
+    /// Maps to: CC `services/mcp/claudeai.ts#clearClaudeAIMcpConfigsCache`.
+    pub fn clear_claude_ai_mcp_configs_cache() {
+        *CLAUDE_AI_MCP_CONFIGS_CACHE
+            .lock()
+            .expect("claude.ai MCP config cache") = None;
+        crate::services::mcp::client::clear_mcp_auth_cache();
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -211,14 +219,6 @@ mod runtime {
                 oracle["oldKeys"]
             );
         }
-    }
-
-    /// Maps to: CC `services/mcp/claudeai.ts#clearClaudeAIMcpConfigsCache`.
-    pub fn clear_claude_ai_mcp_configs_cache() {
-        *CLAUDE_AI_MCP_CONFIGS_CACHE
-            .lock()
-            .expect("claude.ai MCP config cache") = None;
-        crate::services::mcp::client::clear_mcp_auth_cache();
     }
 }
 
