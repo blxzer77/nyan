@@ -962,10 +962,14 @@ mod tests {
         );
 
         let pid = windows_pid_from_marker(&marker);
-        assert!(
-            windows_process_is_running(pid),
-            "normal shell exit unexpectedly killed the grandchild"
-        );
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < deadline {
+            assert!(
+                windows_process_is_running(pid),
+                "normal shell exit unexpectedly killed the grandchild"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
     }
 
     #[cfg(windows)]
