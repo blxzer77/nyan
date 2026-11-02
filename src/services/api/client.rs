@@ -2427,9 +2427,9 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(
-            request.contains(&format!(
-                "\r\nauthorization: aws4-hmac-sha256 credential=akidexample/"
-            )),
+            request.contains(
+                &"\r\nauthorization: aws4-hmac-sha256 credential=akidexample/".to_string()
+            ),
             "{request}"
         );
         assert!(request.contains("\r\nx-amz-date: "), "{request}");

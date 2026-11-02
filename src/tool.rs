@@ -3004,7 +3004,7 @@ mod tests {
         context.set_app_state(|state| {
             state.verbose = true;
         });
-        assert_eq!(store.get().verbose, true);
+        assert!(store.get().verbose);
         assert_eq!(context.get_app_state().map(|s| s.verbose), Some(true));
 
         context.set_app_state_for_tasks(|state| {

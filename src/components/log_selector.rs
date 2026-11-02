@@ -798,7 +798,7 @@ fn tag_tabs_for_logs(logs: &[SessionSummary]) -> Vec<String> {
     }
 }
 
-fn selected_tag<'a>(tag_tabs: &'a [String], selected_tag_index: usize) -> Option<&'a str> {
+fn selected_tag(tag_tabs: &[String], selected_tag_index: usize) -> Option<&str> {
     tag_tabs
         .get(selected_tag_index)
         .and_then(|tag| (tag != ALL_TAG_LABEL).then_some(tag.as_str()))

@@ -354,7 +354,9 @@ pub fn frame_timing_sample_tick() -> bool {
             .filter(|&value| value >= 1)
             .unwrap_or(1)
     });
-    COUNTER.fetch_add(1, Ordering::Relaxed) % every == 0
+    COUNTER
+        .fetch_add(1, Ordering::Relaxed)
+        .is_multiple_of(every)
 }
 
 /// Cumulative process CPU time in microseconds, the Rust twin of Node

@@ -401,7 +401,7 @@ fn resolve_arg(project_path: &str, arg: &str) -> Result<ResolvedResume, ResumeEr
     })
 }
 
-fn latest_session_match<'a>(candidates: Vec<&'a SessionSummary>) -> Option<&'a SessionSummary> {
+fn latest_session_match(candidates: Vec<&SessionSummary>) -> Option<&SessionSummary> {
     dedupe_latest_by_session_id(candidates).into_iter().next()
 }
 
@@ -420,7 +420,7 @@ fn unique_deduped_session_match<'a>(
     }
 }
 
-fn dedupe_latest_by_session_id<'a>(candidates: Vec<&'a SessionSummary>) -> Vec<&'a SessionSummary> {
+fn dedupe_latest_by_session_id(candidates: Vec<&SessionSummary>) -> Vec<&SessionSummary> {
     let mut latest: Vec<&SessionSummary> = Vec::new();
     for candidate in candidates {
         if let Some(existing) = latest
@@ -759,7 +759,7 @@ mod tests {
             "nyan-resume-parallel-tools-{}.jsonl",
             Uuid::new_v4()
         ));
-        let entries = vec![
+        let entries = [
             json!({
                 "type": "assistant",
                 "uuid": "a1",

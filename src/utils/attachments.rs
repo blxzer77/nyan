@@ -1475,7 +1475,7 @@ pub(crate) fn get_agent_listing_delta_attachment(
         .collect::<Vec<_>>();
     let added_lines = filtered
         .iter()
-        .map(|agent| crate::tools::agent_tool::prompt::format_agent_line(agent))
+        .map(crate::tools::agent_tool::prompt::format_agent_line)
         .collect::<Vec<_>>();
     let subscription = crate::utils::auth::get_subscription_type();
     Some(AttachmentMessage::new(serde_json::json!({

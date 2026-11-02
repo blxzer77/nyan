@@ -1111,7 +1111,9 @@ mod tests {
         let bytes = std::fs::read(&path).unwrap();
         assert_ne!(bytes.get(..2), Some(&[0xff, 0xfe][..]));
         let units = bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
             .collect::<Vec<_>>();
         assert_eq!(String::from_utf16(&units).unwrap(), "new\n");

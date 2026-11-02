@@ -20,14 +20,16 @@ pub fn render_outcome(outcome: &SearchOutcome, max_results: usize) -> String {
             .map(Branch::as_str)
             .collect::<Vec<_>>()
             .join(", ");
-        let symbol_check = candidate
-            .no_symbol_check
-            .then_some(" (no symbol check)")
-            .unwrap_or("");
-        let answers = candidate
-            .answers_query
-            .then_some(" (answers query)")
-            .unwrap_or("");
+        let symbol_check = if candidate.no_symbol_check {
+            " (no symbol check)"
+        } else {
+            ""
+        };
+        let answers = if candidate.answers_query {
+            " (answers query)"
+        } else {
+            ""
+        };
         lines.push(format!(
             "{}:{}-{}{}  ({sources}){symbol_check}{answers}",
             candidate.path, candidate.start_line, candidate.end_line, symbol

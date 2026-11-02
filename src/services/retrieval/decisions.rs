@@ -37,10 +37,11 @@ const MAX_JUDGED: usize = 30;
 /// enough that 30 candidates stay inside one fast-model request.
 const JUDGED_SNIPPET_CHARS: usize = 1_200;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Intent {
     Definition,
     Callers,
+    #[default]
     Concept,
     Literal,
 }
@@ -86,12 +87,6 @@ pub struct IntentDecision {
     pub intent: Intent,
     pub symbol_weight: f64,
     pub relation: bool,
-}
-
-impl Default for Intent {
-    fn default() -> Self {
-        Intent::Concept
-    }
 }
 
 impl IntentDecision {

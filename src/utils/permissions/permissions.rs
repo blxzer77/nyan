@@ -258,24 +258,24 @@ pub fn create_permission_request_message(
         PermissionDecisionReason::SubcommandResults { reasons } => {
             let needs_approval = reasons
                 .iter()
-                .filter_map(|(command, result)| {
+                .filter(|&(command, result)| {
                     matches!(
                         result.as_ref(),
                         PermissionResult::Ask { .. } | PermissionResult::Passthrough { .. }
                     )
-                    .then(|| {
-                        if tool_name == crate::tools::bash_tool::tool_name::BASH_TOOL_NAME {
-                            let extracted =
-                                crate::utils::bash::commands::extract_output_redirections(command);
-                            if extracted.redirections.is_empty() {
-                                command.clone()
-                            } else {
-                                extracted.command_without_redirections
-                            }
-                        } else {
+                })
+                .map(|(command, result)| {
+                    if tool_name == crate::tools::bash_tool::tool_name::BASH_TOOL_NAME {
+                        let extracted =
+                            crate::utils::bash::commands::extract_output_redirections(command);
+                        if extracted.redirections.is_empty() {
                             command.clone()
+                        } else {
+                            extracted.command_without_redirections
                         }
-                    })
+                    } else {
+                        command.clone()
+                    }
                 })
                 .collect::<Vec<_>>();
             if needs_approval.is_empty() {

@@ -353,7 +353,7 @@ pub fn use_keybindings<IsActive>(
                     .lock()
                     .expect("keybinding handlers lock")
                     .get_mut(&action)
-                    && runtime.dispatch(vec![keystroke.clone()], || handler())
+                    && runtime.dispatch(vec![keystroke.clone()], handler)
                 {
                     event.stop_propagation();
                 }

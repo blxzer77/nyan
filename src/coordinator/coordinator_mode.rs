@@ -120,7 +120,7 @@ pub fn get_coordinator_user_context(
 
     let worker_tools =
         if crate::utils::env_utils::is_env_truthy(env.var("CLAUDE_CODE_SIMPLE").as_deref()) {
-            let mut names = vec![
+            let mut names = [
                 BASH_TOOL_NAME,
                 FILE_READ_TOOL_NAME,
                 crate::tools::file_edit_tool::constants::FILE_EDIT_TOOL_NAME,

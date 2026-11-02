@@ -564,8 +564,8 @@ pub fn apply_tool_result_budget_with_state_and_skip_tool_names_result(
             .collect::<std::collections::HashSet<_>>();
         for candidate in frozen
             .into_iter()
-            .chain(skipped_fresh.into_iter())
-            .chain(eligible_fresh.into_iter())
+            .chain(skipped_fresh)
+            .chain(eligible_fresh)
             .filter(|candidate| !selected_ids.contains(&candidate.tool_use_id))
         {
             state.seen_ids.insert(candidate.tool_use_id);

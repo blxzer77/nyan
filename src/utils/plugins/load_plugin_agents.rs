@@ -88,8 +88,8 @@ pub fn load_agents_from_directory(
         .await;
     });
     *loaded_paths = shared_paths.lock().unwrap().clone();
-    let result = agents.lock().unwrap().clone();
-    result
+
+    agents.lock().unwrap().clone()
 }
 
 /// Maps to CC `loadPluginAgents.ts#loadAgentFromFile`.
@@ -278,9 +278,9 @@ fn parse_tool_list_value(value: Option<&Value>) -> Option<Vec<String>> {
         Value::Bool(false) => Some(Vec::new()),
         Value::String(value) if value.is_empty() => Some(Vec::new()),
         Value::String(value) => Some(
-            crate::utils::permissions::permission_setup::parse_tool_list_from_cli(&[
-                value.to_string()
-            ]),
+            crate::utils::permissions::permission_setup::parse_tool_list_from_cli(
+                std::slice::from_ref(value),
+            ),
         ),
         Value::Array(values) => Some(
             crate::utils::permissions::permission_setup::parse_tool_list_from_cli(

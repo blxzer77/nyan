@@ -221,7 +221,9 @@ pub(crate) fn validate_edit_input(
             let decoded = if bytes.starts_with(&[0xff, 0xfe]) {
                 String::from_utf16_lossy(
                     &bytes
-                        .chunks_exact(2)
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
                         .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
                         .collect::<Vec<_>>(),
                 )
@@ -1139,16 +1141,13 @@ mod tests {
             FileEditTool.get_activity_description(&serde_json::json!({})),
             Some("Editing file".to_string())
         );
-        assert_eq!(
-            FileEditTool
-                .prepare_permission_matcher(&serde_json::json!({
-                    "file_path": "/repo/src/lib.rs",
-                    "old_string": "a",
-                    "new_string": "b"
-                }))
-                .expect("matcher")("/repo/src/**"),
-            true
-        );
+        assert!(FileEditTool
+            .prepare_permission_matcher(&serde_json::json!({
+                "file_path": "/repo/src/lib.rs",
+                "old_string": "a",
+                "new_string": "b"
+            }))
+            .expect("matcher")("/repo/src/**"));
     }
 
     #[test]

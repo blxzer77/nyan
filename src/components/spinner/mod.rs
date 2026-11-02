@@ -79,20 +79,14 @@ pub fn Spinner(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum SpinnerMode {
     Requesting,
+    #[default]
     Responding,
     ToolInput,
     ToolUse,
     Thinking,
-}
-
-impl Default for SpinnerMode {
-    fn default() -> Self {
-        // Maps to CC `REPL.tsx`: `streamMode` starts as `'responding'`.
-        Self::Responding
-    }
 }
 
 #[derive(Default, Props)]
@@ -617,9 +611,9 @@ fn task_spinner_verb(task: &crate::utils::tasks::TaskRecord) -> Option<String> {
         .or_else(|| non_empty_task_text(Some(task.subject.as_str())))
 }
 
-fn find_next_pending_task<'a>(
-    tasks: &'a [crate::utils::tasks::TaskRecord],
-) -> Option<&'a crate::utils::tasks::TaskRecord> {
+fn find_next_pending_task(
+    tasks: &[crate::utils::tasks::TaskRecord],
+) -> Option<&crate::utils::tasks::TaskRecord> {
     let pending = tasks
         .iter()
         .filter(|task| task.status == "pending")
@@ -803,7 +797,7 @@ pub fn SpinnerWithVerb(
         props.time_ms_override.is_some() || props.disable_animation,
     );
     let frame = hooks.use_animation_frame(frame_interval);
-    let loading_start = hooks.use_const(|| Instant::now());
+    let loading_start = hooks.use_const(Instant::now);
     // Depend on the frame tick so each interval re-samples wall time.
     let _frame_tick = frame.time_ms;
     let elapsed_ms = props

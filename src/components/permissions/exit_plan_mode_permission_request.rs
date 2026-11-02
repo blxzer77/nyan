@@ -446,9 +446,11 @@ pub fn ExitPlanModePermissionRequest<'a>(
             plan: current_plan.read().clone(),
             feedback: (include_details && !plan_feedback.read().trim().is_empty())
                 .then(|| plan_feedback.read().trim().to_string()),
-            content_blocks: include_details
-                .then(|| content_blocks.clone())
-                .unwrap_or_default(),
+            content_blocks: if include_details {
+                content_blocks.clone()
+            } else {
+                Default::default()
+            },
         });
     }
 

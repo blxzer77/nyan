@@ -250,7 +250,7 @@ fn validate(raw_url: &str, config: &FetchConfig) -> Result<ValidatedUrl, FetchEr
     {
         let mut guard = config.host_guard.clone();
         guard.allow_private_for_tests |= config.allow_private_for_tests;
-        return host_guard::validate_url(raw_url, &guard).map_err(map_guard_error);
+        host_guard::validate_url(raw_url, &guard).map_err(map_guard_error)
     }
     #[cfg(not(test))]
     host_guard::validate_url(raw_url, &config.host_guard).map_err(map_guard_error)

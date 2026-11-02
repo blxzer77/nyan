@@ -31,20 +31,11 @@ fn now_ms() -> u64 {
 
 /// Options for the session cron scheduler.
 /// Maps to: CC `CronSchedulerOptions` (session subset).
+#[derive(Default)]
 pub struct CronSchedulerOptions {
     pub assistant_mode: bool,
     pub get_jitter_config: Option<Box<dyn Fn() -> CronJitterConfig + Send>>,
     pub is_killed: Option<Box<dyn Fn() -> bool + Send>>,
-}
-
-impl Default for CronSchedulerOptions {
-    fn default() -> Self {
-        Self {
-            assistant_mode: false,
-            get_jitter_config: None,
-            is_killed: None,
-        }
-    }
 }
 
 /// Maps to: CC `CronScheduler` (tick-driven; no internal timer).
@@ -217,14 +208,16 @@ impl CronScheduler {
                 let new_next =
                     jittered_next_cron_run_ms(&t.cron, now, &t.id, &jitter_cfg).unwrap_or(u64::MAX);
                 self.next_fire_at.insert(t.id.clone(), new_next);
-                if durable && let Err(error) = mark_cron_tasks_fired(&[t.id.clone()], now) {
+                if durable
+                    && let Err(error) = mark_cron_tasks_fired(std::slice::from_ref(&t.id), now)
+                {
                     crate::utils::debug::log_for_debugging(&format!(
                         "[ScheduledTasks] failed to stamp {}: {error}",
                         t.id
                     ));
                 }
             } else {
-                if let Err(error) = remove_cron_tasks(&[t.id.clone()]) {
+                if let Err(error) = remove_cron_tasks(std::slice::from_ref(&t.id)) {
                     crate::utils::debug::log_for_debugging(&format!(
                         "[ScheduledTasks] failed to remove {}: {error}",
                         t.id
@@ -265,7 +258,7 @@ mod tests {
         .unwrap();
         // Force created_at far enough in the past that next fire is due.
         {
-            crate::utils::cron_tasks::remove_session_cron_tasks(&[id.clone()]);
+            crate::utils::cron_tasks::remove_session_cron_tasks(std::slice::from_ref(&id));
             crate::utils::cron_tasks::add_session_cron_task(CronTask {
                 id: id.clone(),
                 cron: "* * * * *".to_string(),

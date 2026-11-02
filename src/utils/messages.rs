@@ -5004,7 +5004,9 @@ mod message_merge_tests {
     fn whitespace_filter_matches_official_envelope_identity_and_js_trim() {
         use crate::types::message::{AssistantContent, AssistantMessageIdentity};
         let identity = AssistantContent::MessageIdentity(AssistantMessageIdentity::default());
-        assert!(!has_only_whitespace_text_content(&[identity.clone()]));
+        assert!(!has_only_whitespace_text_content(std::slice::from_ref(
+            &identity
+        )));
         assert!(has_only_whitespace_text_content(&[
             AssistantContent::Text("\u{feff} \n".into()),
             identity.clone()

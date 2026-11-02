@@ -554,13 +554,12 @@ impl LocalIndex {
                         continue;
                     }
                     for reference in &file.references {
-                        let matches_target =
-                            target_names.iter().any(|name| *name == reference.name)
-                                || query_tokens.iter().any(|token| {
-                                    identifier_tokens(&reference.name)
-                                        .iter()
-                                        .any(|name_token| name_token == token)
-                                });
+                        let matches_target = target_names.contains(&reference.name)
+                            || query_tokens.iter().any(|token| {
+                                identifier_tokens(&reference.name)
+                                    .iter()
+                                    .any(|name_token| name_token == token)
+                            });
                         if !matches_target {
                             continue;
                         }

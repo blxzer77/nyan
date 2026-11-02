@@ -9,17 +9,12 @@ use crate::components::design_system::pane::Pane;
 use iocraft::prelude::*;
 use std::path::Path;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub enum ShowInIDEPermissionOptionType {
     AcceptOnce,
     Reject,
+    #[default]
     Other,
-}
-
-impl Default for ShowInIDEPermissionOptionType {
-    fn default() -> Self {
-        Self::Other
-    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

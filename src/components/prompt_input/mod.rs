@@ -749,7 +749,7 @@ pub fn PromptInput<'a>(
         cursor_offset.set(cursor_offset.get().saturating_sub(1).min(value.len()));
         input.set(value);
     }
-    let mut prev_input = hooks.use_state(|| String::new());
+    let mut prev_input = hooks.use_state(String::new);
     let mut autocomplete_dismissed_input = hooks.use_state(|| Option::<String>::None);
     let mut should_submit_suggestion = hooks.use_state(|| false);
     let mut should_cycle_permission_mode = hooks.use_state(|| false);

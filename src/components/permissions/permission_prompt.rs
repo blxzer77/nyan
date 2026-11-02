@@ -132,10 +132,7 @@ pub fn PermissionPrompt(
 
     // CC :71-78: the Tab hint while a feedback option is focused outside its
     // input mode.
-    let focused_feedback_type = focused_value
-        .read()
-        .as_deref()
-        .and_then(|value| feedback_type_of(value));
+    let focused_feedback_type = focused_value.read().as_deref().and_then(&feedback_type_of);
     let show_tab_hint =
         focused_feedback_type.is_some_and(|feedback_type| !input_mode(feedback_type));
 

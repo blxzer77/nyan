@@ -520,7 +520,7 @@ fn should_retry(error: &ApiError) -> bool {
         return true;
     }
     if should_retry_header == Some("false") {
-        let is_5xx = error.status.map_or(false, |s| s >= 500);
+        let is_5xx = error.status.is_some_and(|s| s >= 500);
         // Internal builds can ignore x-should-retry:false for 5xx only.
         if !crate::utils::build_profile::has_internal_capability(
             crate::utils::build_profile::InternalCapability::Api,

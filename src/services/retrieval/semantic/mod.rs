@@ -993,7 +993,7 @@ impl EmbeddingClient {
                 } else {
                     FailureKind::Unreachable
                 });
-                format!("embedding service unreachable")
+                "embedding service unreachable".to_string()
             })?;
         if !response.status().is_success() {
             self.health.record_failure(FailureKind::Unreachable);
@@ -1138,7 +1138,9 @@ impl EmbeddingClient {
             ));
         }
         let values = bytes
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
             .collect::<Vec<_>>();
         let norm = values

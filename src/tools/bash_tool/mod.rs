@@ -251,7 +251,11 @@ pub fn is_search_or_read_bash_command(command: &str) -> BashSearchReadKind {
         result.is_read |= read;
         result.is_list |= list;
     }
-    non_neutral.then_some(result).unwrap_or_default()
+    if non_neutral {
+        result
+    } else {
+        Default::default()
+    }
 }
 
 fn is_silent_bash_command(command: &str) -> bool {

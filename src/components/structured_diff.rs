@@ -213,7 +213,7 @@ fn named_syntect_theme(name: &'static str) -> &'static SyntectTheme {
         .lock()
         .expect("syntax theme cache mutex should not be poisoned");
     if let Some(theme) = themes.get(name) {
-        return *theme;
+        return theme;
     }
     let assets = HighlightingAssets::from_binary();
     let theme = Box::leak(Box::new(assets.get_theme(name).clone()));

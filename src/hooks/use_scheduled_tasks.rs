@@ -74,7 +74,9 @@ pub fn create_repl_cron_scheduler(assistant_mode: bool) -> CronScheduler {
 pub fn handle_fired_task_for_lead(task: &CronTask) -> Option<String> {
     if task.agent_id.is_some() {
         // Teammate routing is deferred; drop orphaned teammate crons.
-        if let Err(error) = crate::utils::cron_tasks::remove_cron_tasks(&[task.id.clone()]) {
+        if let Err(error) =
+            crate::utils::cron_tasks::remove_cron_tasks(std::slice::from_ref(&task.id))
+        {
             crate::utils::debug::log_for_debugging(&format!(
                 "[ScheduledTasks] failed to remove orphaned cron {}: {error}",
                 task.id

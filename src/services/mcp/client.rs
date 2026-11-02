@@ -2404,9 +2404,7 @@ mod runtime {
         Ok(())
     }
 
-    fn remote_auth_context<'a>(
-        config: &'a ScopedMcpServerConfig,
-    ) -> Option<(&'static str, &'a str)> {
+    fn remote_auth_context(config: &ScopedMcpServerConfig) -> Option<(&'static str, &str)> {
         match config.transport {
             Transport::Http => config.url.as_deref().map(|url| ("http", url)),
             Transport::Sse => config.url.as_deref().map(|url| ("sse", url)),
@@ -2475,7 +2473,7 @@ mod runtime {
                 record_remote_auth_challenge(name, config, &error)?;
                 if refresh_after_remote_auth_failure(name, config, &error).await? {
                     match serve_transport(name, config).await {
-                        Ok(service) => return Ok(service),
+                        Ok(service) => Ok(service),
                         Err(retry_error) => {
                             if is_auth_error(&retry_error) {
                                 record_remote_auth_challenge(name, config, &retry_error)?;

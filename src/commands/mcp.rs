@@ -332,7 +332,7 @@ fn run_mcp_xaa_cli(args: &[String], rt: &tokio::runtime::Runtime) -> anyhow::Res
 }
 
 fn parts(args: &str) -> Vec<&str> {
-    args.trim().split_whitespace().collect()
+    args.split_whitespace().collect()
 }
 
 /// Returns the official `onComplete(...)` output for the current no-client MCP

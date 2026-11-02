@@ -3902,7 +3902,7 @@ where
                 .into_iter()
                 .map(crate::types::message::Message::User),
         );
-        model_messages.extend(tool_result_attachments.into_iter());
+        model_messages.extend(tool_result_attachments);
         max_output_tokens_override = None;
         stop_hook_active = None;
         turn_count = next_turn_count;
@@ -4510,7 +4510,7 @@ fn build_call_model_request(
     options.advisor_model = tool_use_context
         .get_app_state()
         .and_then(|state| state.advisor_model.clone())
-        .or_else(|| crate::utils::advisor::get_initial_advisor_setting());
+        .or_else(crate::utils::advisor::get_initial_advisor_setting);
     // Maps to CC `query.ts:666-669` `getToolPermissionContext: async () =>
     // appState.toolPermissionContext` — resolved here as a snapshot of the
     // same live projection this request already builds its tool pool from;

@@ -765,7 +765,7 @@ mod tests {
 
             let cleared_env = CLEARED_ENV
                 .iter()
-                .map(|name| EnvVarGuard::unset(*name))
+                .map(|name| EnvVarGuard::unset(name))
                 .collect();
 
             crate::utils::settings::settings_cache::reset_settings_cache();

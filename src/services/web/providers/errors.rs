@@ -72,9 +72,9 @@ fn exa_quota_code(body: &[u8]) -> bool {
 /// logged for it.
 pub(super) fn log_failure(kind: ProviderKind, status: u16, body: &[u8], api_key: Option<&str>) {
     if kind == ProviderKind::AnySearch && status == 402 {
-        crate::utils::debug::log_for_debugging(&format!(
-            "web provider anysearch: HTTP 402 (body withheld)"
-        ));
+        crate::utils::debug::log_for_debugging(
+            &"web provider anysearch: HTTP 402 (body withheld)".to_string(),
+        );
         return;
     }
     let secrets = api_key.map(str::to_string).into_iter().collect::<Vec<_>>();

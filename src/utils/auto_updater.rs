@@ -25,18 +25,13 @@ use std::time::Duration;
 pub const OFFICIAL_PACKAGE_URL: &str = "@anthropic-ai/claude-code";
 
 /// Maps to: CC `utils/autoUpdater.ts:35-39` `InstallStatus`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum InstallStatus {
     Success,
     NoPermissions,
     InstallFailed,
+    #[default]
     InProgress,
-}
-
-impl Default for InstallStatus {
-    fn default() -> Self {
-        Self::InProgress
-    }
 }
 
 /// Maps to: CC `utils/autoUpdater.ts:41-45` `AutoUpdaterResult`.
@@ -217,9 +212,7 @@ pub async fn install_latest_native(_channel: ReleaseChannel) -> NativeInstallLat
 
 /// Maps to: CC `assertMinVersion` — GrowthBook short-circuited no-op.
 pub async fn assert_min_version() {
-    if is_test_or_dev_env() {
-        return;
-    }
+    if is_test_or_dev_env() {}
     // CC would fetch tengu_version_config and exit if too old.
 }
 

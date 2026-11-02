@@ -620,7 +620,7 @@ mod tests {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let previous_env = NOTIFICATIONS_RUNTIME_ENV_KEYS
                 .iter()
-                .map(|key| EnvVarGuard::unset(*key))
+                .map(|key| EnvVarGuard::unset(key))
                 .collect::<Vec<_>>();
             let previous_cwd = std::env::current_dir().expect("current cwd");
             let previous_original_cwd = crate::bootstrap::state::get_original_cwd();

@@ -6408,7 +6408,7 @@ mod tests {
                 usage: None,
             })
         };
-        let messages = vec![
+        let messages = [
             make(
                 "assistant-thinking",
                 crate::types::message::AssistantContent::Thinking {
@@ -8607,7 +8607,7 @@ mod tests {
             "nyan-session-progress-bridge-{}.jsonl",
             Uuid::new_v4()
         ));
-        let entries = vec![
+        let entries = [
             json!({
                 "type": "user",
                 "uuid": "u1",
@@ -8682,7 +8682,7 @@ mod tests {
             "nyan-session-snip-removal-{}.jsonl",
             Uuid::new_v4()
         ));
-        let entries = vec![
+        let entries = [
             json!({
                 "type": "user",
                 "uuid": "u1",

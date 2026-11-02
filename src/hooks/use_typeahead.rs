@@ -1469,7 +1469,7 @@ pub fn use_typeahead(
     // A ref: only the suggestion memo reads it, to preserve the selected item
     // across producer refreshes. As a `State` it was written on every
     // recompute — a render-phase write that forced a second update pass.
-    let previous_suggestions = hooks.use_ref(|| Arc::<Vec<SuggestionItem>>::default());
+    let previous_suggestions = hooks.use_ref(Arc::<Vec<SuggestionItem>>::default);
     let selection_reset = hooks.use_ref(|| false);
     let file_requests =
         hooks.use_const(|| Arc::new(async_channel::unbounded::<FileSuggestionRequest>()));
@@ -2639,7 +2639,7 @@ mod tests {
     fn command_argument_hint_matches_static_and_progressive_source_branches() {
         let command = crate::commands::color::command();
         assert_eq!(
-            command_argument_hint_for_input("/color ", 7, &[command.clone()]),
+            command_argument_hint_for_input("/color ", 7, std::slice::from_ref(&command)),
             Some("<color|default>".into())
         );
         assert_eq!(

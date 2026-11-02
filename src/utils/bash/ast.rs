@@ -1877,10 +1877,9 @@ fn parse_redirect(
         .and_then(|descriptor| descriptor.parse::<u32>().ok());
     let destination = node.child_by_field_name("destination").or_else(|| {
         let mut cursor = node.walk();
-        let found = node
-            .named_children(&mut cursor)
-            .find(|child| child.kind() != "file_descriptor");
-        found
+
+        node.named_children(&mut cursor)
+            .find(|child| child.kind() != "file_descriptor")
     });
     let Some(destination) = destination else {
         return Err(too_complex(node, "Redirect has no static destination"));

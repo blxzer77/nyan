@@ -5041,7 +5041,7 @@ mod input_contract_tests {
         ];
         fixture.env = env
             .iter()
-            .map(|(key, value)| EnvVarGuard::set(*key, value))
+            .map(|(key, value)| EnvVarGuard::set(key, value))
             .collect();
         let (tx, mut rx) = tokio::sync::mpsc::channel(4);
         fixture.server = Some(tokio::spawn(async move {

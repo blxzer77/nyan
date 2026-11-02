@@ -444,13 +444,12 @@ pub fn PowerShellPermissionRequest<'a>(
     let description_to_show = if props.explainer_visible {
         None
     } else {
-        request
-            .description
-            .trim()
-            .is_empty()
-            .then(|| input_description.clone())
-            .unwrap_or_else(|| Some(request.description.clone()))
-            .filter(|description| !description.trim().is_empty())
+        if request.description.trim().is_empty() {
+            input_description.clone()
+        } else {
+            Some(request.description.clone())
+        }
+        .filter(|description| !description.trim().is_empty())
     };
     let show_tab_to_amend = options
         .get(focused)

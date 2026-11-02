@@ -28,7 +28,7 @@ pub struct RatchetProps {
 pub fn Ratchet(props: &mut RatchetProps) -> impl Into<AnyElement<'static>> {
     let engaged = matches!(props.lock, RatchetLock::Always)
         || (matches!(props.lock, RatchetLock::Offscreen) && !props.is_visible);
-    let children = props.children.drain(..).collect::<Vec<_>>();
+    let children = std::mem::take(&mut props.children);
 
     element! {
         View(
