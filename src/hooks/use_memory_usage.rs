@@ -47,10 +47,21 @@ pub fn memory_usage_status_for_heap(heap_used: u64) -> MemoryUsageStatus {
 
 /// Sample current process memory for the indicator (RSS → `heap_used`).
 pub fn sample_memory_usage() -> MemoryUsageInfo {
-    let Some(heap_used) = try_process_rss_bytes() else {
+    memory_usage_info_for_sample(
+        try_process_rss_bytes(),
+        cfg!(any(target_os = "linux", target_os = "macos", windows)),
+    )
+}
+
+fn memory_usage_info_for_sample(sample: Option<u64>, provider_supported: bool) -> MemoryUsageInfo {
+    let Some(heap_used) = sample else {
         return MemoryUsageInfo {
             heap_used: 0,
-            status: MemoryUsageStatus::Unknown,
+            status: if provider_supported {
+                MemoryUsageStatus::Unknown
+            } else {
+                MemoryUsageStatus::Normal
+            },
         };
     };
     MemoryUsageInfo {
@@ -99,7 +110,10 @@ pub fn try_process_rss_bytes() -> Option<u64> {
     {
         return windows_process_rss_bytes();
     }
-    None
+    #[cfg(not(windows))]
+    {
+        None
+    }
 }
 
 /// Process resident set size in bytes, retaining the legacy zero fallback for
@@ -244,6 +258,18 @@ mod tests {
         assert_eq!(
             parse_linux_statm_rss_pages("10000 1234 10 1 0 50 0"),
             Some(1234)
+        );
+    }
+
+    #[test]
+    fn failed_rss_samples_are_unknown_only_with_a_provider() {
+        assert_eq!(
+            memory_usage_info_for_sample(None, true).status,
+            MemoryUsageStatus::Unknown
+        );
+        assert_eq!(
+            memory_usage_info_for_sample(None, false).status,
+            MemoryUsageStatus::Normal
         );
     }
 

@@ -6,6 +6,8 @@ use super::settings_errors::settings_errors_notification_from_errors;
 use crate::context::notifications::{
     Notification, NotificationColor, NotificationPriority, NotificationsState,
 };
+use crate::utils::auto_updater::auto_update_message_for_platform;
+use crate::utils::config::is_auto_updater_disabled;
 use crate::utils::sandbox::sandbox_adapter::sandbox_unavailable_message_for_platform;
 use crate::utils::settings::{SettingsJson, ValidationError};
 
@@ -40,6 +42,22 @@ pub fn startup_notifications(
     startup_notifications_with_gate(settings, errors, false, &mut state)
 }
 
+fn auto_update_startup_notification_for_platform(
+    platform: &str,
+    disabled: bool,
+) -> Option<Notification> {
+    if disabled {
+        return None;
+    }
+    auto_update_message_for_platform(platform).map(|message| {
+        Notification::text(
+            "windows-auto-updater-unavailable",
+            message,
+            NotificationPriority::Low,
+        )
+    })
+}
+
 pub fn startup_notifications_with_gate(
     settings: &SettingsJson,
     errors: &[ValidationError],
@@ -49,6 +67,13 @@ pub fn startup_notifications_with_gate(
     let mut notifications = settings_errors_notification_from_errors(errors)
         .into_iter()
         .collect::<Vec<_>>();
+    let platform = std::env::consts::OS;
+    if platform == "windows"
+        && let Some(notification) =
+            auto_update_startup_notification_for_platform(platform, is_auto_updater_disabled())
+    {
+        notifications.push(notification);
+    }
     if let Some(message) = sandbox_unavailable_message_for_platform(
         crate::utils::platform::get_platform().as_str(),
         crate::utils::sandbox::sandbox_adapter::get_sandbox_enabled_setting(settings),
@@ -81,6 +106,20 @@ mod tests {
             doc_link: None,
             suggestion: None,
         }
+    }
+
+    #[test]
+    fn windows_auto_update_startup_notification_is_low_priority_and_disabled_aware() {
+        let notification = auto_update_startup_notification_for_platform("windows", false)
+            .expect("enabled Windows updater should produce a startup notification");
+        assert_eq!(notification.key, "windows-auto-updater-unavailable");
+        assert_eq!(
+            notification.text,
+            "Windows 暂不支持自动更新，请从 GitHub Releases 手动下载"
+        );
+        assert_eq!(notification.priority, NotificationPriority::Low);
+        assert!(auto_update_startup_notification_for_platform("windows", true).is_none());
+        assert!(auto_update_startup_notification_for_platform("linux", false).is_none());
     }
 
     #[test]

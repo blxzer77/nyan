@@ -10,9 +10,7 @@
 use crate::components::auto_updater::AutoUpdater;
 use crate::components::native_auto_updater::NativeAutoUpdater;
 use crate::components::package_manager_auto_updater::PackageManagerAutoUpdater;
-use crate::utils::auto_updater::{
-    AutoUpdaterResult, InstallStatus, auto_update_message_for_platform,
-};
+use crate::utils::auto_updater::{AutoUpdaterResult, InstallStatus};
 use crate::utils::config::is_auto_updater_disabled;
 use crate::utils::debug::log_for_debugging;
 use crate::utils::doctor_diagnostic::{InstallationType, get_current_installation_type};
@@ -58,6 +56,10 @@ pub fn select_auto_updater_renderer(
     }
 }
 
+fn should_render_auto_updater_for_platform(platform: &str, disabled: bool) -> bool {
+    !disabled && platform != "windows"
+}
+
 /// Maps to: CC `AutoUpdaterWrapper.tsx:35-58` `checkInstallation`.
 ///
 /// Returns `None` when auto-updates are disabled: CC (`:39-47`) skips the
@@ -80,8 +82,8 @@ pub fn AutoUpdaterWrapper(
     props: &AutoUpdaterWrapperProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    if let Some(message) = auto_update_message_for_platform(std::env::consts::OS) {
-        return element! { Text(content: message.to_string(), wrap: TextWrap::Wrap) }.into_any();
+    if !should_render_auto_updater_for_platform(std::env::consts::OS, is_auto_updater_disabled()) {
+        return element! { View(width: 0u32, height: 0u32) }.into_any();
     }
 
     // Maps to: CC AutoUpdaterWrapper.tsx:28-33 — `useState<boolean | null>(null)`
@@ -246,6 +248,14 @@ mod tests {
     /// Maps to: CC AutoUpdaterWrapper.tsx:39-47 — with auto-updates disabled
     /// the installation probe is skipped entirely, the flags stay `null`, and
     /// no updater child is ever selected.
+    #[test]
+    fn windows_wrapper_is_hidden_and_disabled_wrapper_stays_hidden() {
+        assert!(!should_render_auto_updater_for_platform("windows", false));
+        assert!(!should_render_auto_updater_for_platform("windows", true));
+        assert!(!should_render_auto_updater_for_platform("linux", true));
+        assert!(should_render_auto_updater_for_platform("linux", false));
+    }
+
     #[test]
     fn installer_probe_skipped_when_auto_updates_disabled_matches_official() {
         let _lock = TEST_ENV_LOCK

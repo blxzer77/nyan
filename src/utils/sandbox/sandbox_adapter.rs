@@ -308,7 +308,7 @@ pub const WINDOWS_SANDBOX_UNAVAILABLE_MESSAGE: &str = "Windows sandbox unavailab
 /// Platform-only projection of CC `isSupportedPlatform`, kept parameterized so
 /// platform behavior can be tested on a non-Windows host.
 pub fn is_supported_platform_for(platform: &str) -> bool {
-    matches!(platform, "macos" | "linux")
+    matches!(platform, "macos" | "linux" | "wsl")
 }
 
 pub fn sandbox_unavailable_message_for_platform(
@@ -1989,6 +1989,7 @@ mod tests {
     #[test]
     fn sandbox_platform_support_and_unavailability_are_explicit() {
         assert!(is_supported_platform_for("linux"));
+        assert!(is_supported_platform_for("wsl"));
         assert!(is_supported_platform_for("macos"));
         assert!(!is_supported_platform_for("windows"));
         assert_eq!(
