@@ -3,7 +3,10 @@
 //! producers read-only and main-screen-safe.
 
 use super::settings_errors::settings_errors_notification_from_errors;
-use crate::context::notifications::{Notification, NotificationsState};
+use crate::context::notifications::{
+    Notification, NotificationColor, NotificationPriority, NotificationsState,
+};
+use crate::utils::sandbox::sandbox_adapter::sandbox_unavailable_message_for_platform;
 use crate::utils::settings::{SettingsJson, ValidationError};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -38,12 +41,27 @@ pub fn startup_notifications(
 }
 
 pub fn startup_notifications_with_gate(
-    _settings: &SettingsJson,
+    settings: &SettingsJson,
     errors: &[ValidationError],
     is_remote_mode: bool,
     state: &mut StartupNotificationState,
 ) -> NotificationsState {
-    let notifications = settings_errors_notification_from_errors(errors).into_iter();
+    let mut notifications = settings_errors_notification_from_errors(errors)
+        .into_iter()
+        .collect::<Vec<_>>();
+    if let Some(message) = sandbox_unavailable_message_for_platform(
+        crate::utils::platform::get_platform().as_str(),
+        crate::utils::sandbox::sandbox_adapter::get_sandbox_enabled_setting(settings),
+    ) {
+        notifications.push(
+            Notification::text(
+                "windows-sandbox-unavailable",
+                message,
+                NotificationPriority::High,
+            )
+            .with_color(NotificationColor::Warning),
+        );
+    }
     apply_startup_notifications_once(is_remote_mode, state, notifications)
 }
 
