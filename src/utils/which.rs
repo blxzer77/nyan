@@ -127,9 +127,7 @@ fn bun_which(command: &str) -> Option<PathBuf> {
 fn bun_which(command: &str) -> Option<PathBuf> {
     let startup = crate::utils::process_env::startup_snapshot();
     let path = startup.var_os("PATH")?;
-    let pathext = startup
-        .var("PATHEXT")
-        .unwrap_or_else(|| ".COM;.EXE;.BAT;.CMD".to_string());
+    let pathext = startup.var("PATHEXT").unwrap_or(".COM;.EXE;.BAT;.CMD");
     let current_dir = std::env::current_dir().ok()?;
     let path_dirs = std::env::split_paths(&path).collect::<Vec<_>>();
     windows_command_candidates(command, &path_dirs, &pathext, &current_dir)
