@@ -262,30 +262,10 @@ pub(crate) fn assign_process_to_job(child: &Child) -> Option<ProcessJob> {
     #[cfg(windows)]
     {
         use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::System::JobObjects::{
-            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-            SetInformationJobObject,
-        };
+        use windows_sys::Win32::System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW};
 
         let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
         if job.is_null() {
-            return None;
-        }
-        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        let configured = unsafe {
-            SetInformationJobObject(
-                job,
-                JobObjectExtendedLimitInformation,
-                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast::<std::ffi::c_void>(),
-                std::mem::size_of_val(&limits) as u32,
-            ) != 0
-        };
-        if !configured {
-            unsafe {
-                let _ = windows_sys::Win32::Foundation::CloseHandle(job);
-            }
             return None;
         }
 
@@ -771,6 +751,19 @@ mod tests {
     }
 
     #[cfg(windows)]
+    fn windows_nested_tree_parent_normal_exit_command() -> &'static str {
+        concat!(
+            "$null = Start-Process -FilePath $env:NYAN_WINDOWS_POWERSHELL ",
+            "-ArgumentList @('-NoProfile','-NonInteractive','-Command',",
+            "$env:NYAN_WINDOWS_GRANDCHILD_COMMAND) -WindowStyle Hidden; ",
+            "$deadline = [DateTime]::UtcNow.AddSeconds(5); ",
+            "while (-not (Test-Path $env:NYAN_WINDOWS_CHILD_PID_FILE) -and ",
+            "[DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 10 }; ",
+            "exit 0"
+        )
+    }
+
+    #[cfg(windows)]
     fn spawn_windows_nested_tree(
         marker: &std::path::Path,
         abort: &crate::tool::AbortController,
@@ -800,7 +793,7 @@ mod tests {
             )
             .env("NYAN_WINDOWS_CHILD_PID_FILE", marker.as_os_str());
         use std::os::windows::process::CommandExt;
-        process.creation_flags(0x0800_0000);
+        process.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
         wrap_spawn(
             process.spawn().unwrap_or_else(|error| {
                 panic!("nested process-tree smoke failed to start: {error}")
@@ -927,6 +920,56 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn windows_smoke_normal_exit_keeps_grandchild_alive_after_job_drop() {
+        let powershell = crate::utils::shell::powershell_detection::get_cached_powershell_path()
+            .unwrap_or_else(|| panic!("PowerShell is unavailable on the Windows runner"));
+        let marker = std::env::temp_dir().join(format!(
+            "nyan-windows-normal-child-pid-{}.txt",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _env = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        let _marker = crate::utils::test_env::EnvVarGuard::set(
+            "NYAN_WINDOWS_CHILD_PID_FILE",
+            marker.as_os_str(),
+        );
+        let _powershell = crate::utils::test_env::EnvVarGuard::set(
+            "NYAN_WINDOWS_POWERSHELL",
+            powershell.as_str(),
+        );
+        let _grandchild = crate::utils::test_env::EnvVarGuard::set(
+            "NYAN_WINDOWS_GRANDCHILD_COMMAND",
+            windows_nested_tree_command(),
+        );
+        let _cleanup = WindowsProcessCleanup(&marker);
+        let run = crate::utils::shell::run_command_streaming(
+            &powershell,
+            &[
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                windows_nested_tree_parent_normal_exit_command(),
+            ],
+            Duration::from_secs(5),
+            None,
+            &crate::tool::AbortController::default(),
+            None,
+        )
+        .unwrap_or_else(|error| panic!("normal-exit smoke failed to start: {error}"));
+        assert!(
+            run.output.status.success(),
+            "normal-exit smoke failed with {:?}",
+            run.output.status
+        );
+
+        let pid = windows_pid_from_marker(&marker);
+        assert!(
+            windows_process_is_running(pid),
+            "normal shell exit unexpectedly killed the grandchild"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn windows_smoke_cancel_kills_grandchild_without_orphan() {
         let marker = std::env::temp_dir().join(format!(
             "nyan-windows-cancel-child-pid-{}.txt",
@@ -971,7 +1014,7 @@ mod tests {
         crate::utils::subprocess_env::apply_subprocess_env_std(&mut process);
         process.env("NYAN_WINDOWS_BACKGROUND_MARKER", marker.as_os_str());
         use std::os::windows::process::CommandExt;
-        process.creation_flags(0x0800_0000);
+        process.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
         let shell = wrap_spawn(
             process.spawn().expect("background smoke must start"),
             crate::tool::AbortController::default(),

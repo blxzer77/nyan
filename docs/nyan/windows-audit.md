@@ -56,7 +56,7 @@
 
 | 位置 | 现状 | 建议方案 | 工作量 |
 |---|---|---|---|
-| `src/utils/shell_command.rs:609-632` | **能编译且基本正常**。Windows 使用带 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 的 Job Object 管理进程树，创建/分配失败回退 `taskkill /PID /T /F`；Unix 使用负进程组 signal。 | 保持 fallback，并持续覆盖超时、取消、后台任务和孙进程。 | L |
+| `src/utils/shell_command.rs:609-632` | **能编译且基本正常**。Windows 使用不带 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 的 Job Object 管理进程树，仅在超时、取消、abort 或 watchdog 路径显式终止；创建/分配或终止失败回退 `taskkill /PID /T /F`；Unix 使用负进程组 signal。 | 保持 fallback，并持续覆盖正常退出、超时、取消、后台任务和孙进程。 | L |
 | `src/utils/bash/shell_snapshot.rs:220-245` | **能编译且基本正常**。snapshot 超时在 Windows 复用 Job Object，失败时回退 `taskkill`。 | 保持与 shell command 一致的进程树清理语义。 | M |
 | `src/utils/shell_command.rs:495-510`、`:554-558` | **能编译但状态语义不完全相同**。Windows 没有 Unix signal 退出码；代码用进程 exit code 或合成 137/143 表示 killed/timeout。 | 对 UI/模型结果使用显式 `timed_out`/`interrupted` 字段，不要依赖 Unix 退出码；保留兼容码只用于展示。 | M |
 | `src/utils/native_installer/pid_lock.rs:51-71`、`:87-95` | **能编译但行为不对**。非 Unix `is_process_running_platform` 恒为 `false`，Windows 上所有 PID lock 都会被诊断为非运行。 | 用 `OpenProcess` + `GetExitCodeProcess`（并验证 executable path，避免 PID reuse）；再实现 acquire/release/清理。 | L |

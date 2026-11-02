@@ -334,7 +334,7 @@ pub fn exec(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        process.creation_flags(0x0800_0000);
+        process.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
     }
 
     let child = match process.spawn() {
@@ -450,11 +450,6 @@ pub fn run_command_streaming(
     {
         use std::os::unix::process::CommandExt;
         process.process_group(0);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        process.creation_flags(0x0800_0000);
     }
     let shell = crate::utils::shell_command::wrap_spawn(
         process.spawn()?,
