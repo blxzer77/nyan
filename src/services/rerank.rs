@@ -765,11 +765,35 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "calls the live rerank service at 10.144.0.11:8091"]
-    fn a_cargo_lock_snippet_no_longer_draws_a_400_once_truncated() {
+    fn a_cargo_lock_snippet_is_capped_at_the_default_before_it_reaches_score() {
+        // Fixture for the eval case: the real Cargo.lock (> 40k chars) sent
+        // with the default cap. The mock stands in for vLLM and answers 400
+        // whenever a rendered document is far larger than the default cap
+        // plus the instruction template.
+        const LIMIT: usize = DEFAULT_MAX_DOCUMENT_CHARS + 1_000;
+        fn guard(raw: &str) -> (u16, String) {
+            let body: Value = serde_json::from_str(raw.split("\r\n\r\n").nth(1).unwrap_or(""))
+                .unwrap_or(Value::Null);
+            let too_long = body["text_2"].as_array().is_some_and(|docs| {
+                docs.iter().any(|doc| {
+                    doc.as_str()
+                        .is_some_and(|text| text.chars().count() > LIMIT)
+                })
+            });
+            if too_long {
+                (
+                    400,
+                    r#"{"error":{"message":"maximum context length is 4096 tokens","code":400}}"#
+                        .to_string(),
+                )
+            } else {
+                (200, r#"{"data":[{"score":0.25}]}"#.to_string())
+            }
+        }
+
         let lockfile = include_str!("../../Cargo.lock");
         assert!(
-            lockfile.len() > 40_000,
+            lockfile.chars().count() > 40_000,
             "Cargo.lock is the oversized snippet from the eval"
         );
         tokio::runtime::Builder::new_current_thread()
@@ -782,32 +806,32 @@ mod tests {
                     query: "INDEX_SCHEMA_VERSION".to_string(),
                     documents: vec![lockfile.to_string()],
                 };
-                // The shared test helper caps requests at 2s, which times out
-                // before vLLM can reject a Cargo.lock-sized prompt.
-                let slow = std::sync::Arc::new(ServiceHealth::with_timeouts(
-                    ServiceKind::Rerank,
-                    Duration::from_millis(1_500),
-                    Duration::from_secs(30),
-                ));
-                let bare = client("http://10.144.0.11:8091", slow)
+
+                let bare_mock = mock_inspect(guard).await;
+                let bare = client(&bare_mock.url, health())
                     .with_max_document_chars(lockfile.chars().count());
                 assert_eq!(
-                    bare.score(&request, Duration::from_secs(30)).await,
+                    bare.score(&request, Duration::from_secs(2)).await,
                     Err(RerankFailure::Http),
-                    "the live service still 400s an untruncated Cargo.lock"
+                    "an untruncated Cargo.lock is the 400"
                 );
-                let capped = RerankClient::from_settings(
-                    &crate::utils::settings::nyan::RerankSettings::default(),
-                    30_000,
-                )
-                .unwrap();
+
+                let capped_mock = mock_inspect(guard).await;
+                let capped = client(&capped_mock.url, health());
                 let outcome = capped
-                    .score(&request, Duration::from_secs(30))
+                    .score(&request, Duration::from_secs(2))
                     .await
                     .expect("the default cap keeps the prompt inside max_model_len");
-                assert_eq!(outcome.scores.len(), 1);
-                assert!((0.0..=1.0).contains(&outcome.scores[0]));
-                assert_eq!(request.documents[0].len(), lockfile.len());
+                assert_eq!(outcome.scores, vec![0.25]);
+                let raw = capped_mock.handle.await.unwrap();
+                let body: Value =
+                    serde_json::from_str(raw.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+                let sent = body["text_2"][0].as_str().unwrap();
+                let prefix = truncate_chars(lockfile, DEFAULT_MAX_DOCUMENT_CHARS);
+                assert_eq!(prefix.chars().count(), DEFAULT_MAX_DOCUMENT_CHARS);
+                assert!(sent.contains(prefix));
+                assert!(!sent.contains(truncate_chars(lockfile, DEFAULT_MAX_DOCUMENT_CHARS + 1)));
+                assert_eq!(request.documents[0], lockfile);
             });
     }
 
