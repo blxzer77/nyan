@@ -145,7 +145,10 @@ fn stop_hooks_config(tool_use_context: &ToolUseContext) -> RegisteredHooks {
 /// Unit tests keep `handle_stop_hooks` side-effect free, so this is only
 /// compiled for the production entry point.
 #[cfg(not(test))]
-fn spawn_memory_work(params: &StopHookParams, cache_safe_params: Option<std::sync::Arc<CacheSafeParams>>) {
+fn spawn_memory_work(
+    params: &StopHookParams,
+    cache_safe_params: Option<std::sync::Arc<CacheSafeParams>>,
+) {
     use crate::services::extract_memories::driver;
     if !matches!(params.query_source, QuerySource::Prompt)
         // An aborted turn has nothing final to extract; the fork would be
@@ -170,7 +173,13 @@ fn spawn_memory_work(params: &StopHookParams, cache_safe_params: Option<std::syn
         return;
     };
     let mut messages = params.messages_for_query.clone();
-    messages.extend(params.assistant_messages.iter().cloned().map(Message::Assistant));
+    messages.extend(
+        params
+            .assistant_messages
+            .iter()
+            .cloned()
+            .map(Message::Assistant),
+    );
     let context = params.tool_use_context.clone();
     let query_source = params.query_source.clone();
     handle.spawn(async move {

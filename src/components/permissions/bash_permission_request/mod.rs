@@ -511,12 +511,7 @@ pub fn BashPermissionRequest<'a>(
         let reject_feedback = reject_feedback;
         let options = options.clone();
         move |event| {
-            let TerminalEvent::Key(KeyEvent {
-                code,
-                kind,
-                ..
-            }) = event.event()
-            else {
+            let TerminalEvent::Key(KeyEvent { code, kind, .. }) = event.event() else {
                 return;
             };
             if *kind == KeyEventKind::Release {

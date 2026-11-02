@@ -2242,10 +2242,8 @@ mod tests {
     #[test]
     fn get_mcp_config_by_name_reads_user_snapshot_like_official_lookup() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let temp_dir = std::env::temp_dir().join(format!(
-            "nyan-mcp-config-by-name-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let temp_dir =
+            std::env::temp_dir().join(format!("nyan-mcp-config-by-name-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir);
         std::fs::write(
@@ -2562,10 +2560,8 @@ mod tests {
                 crate::utils::settings::settings_cache::reset_settings_cache();
             }
         }
-        let root = std::env::temp_dir().join(format!(
-            "nyan-mcp-startup-errors-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("nyan-mcp-startup-errors-{}", uuid::Uuid::new_v4()));
         let config = root.join("config");
         let managed = root.join("managed");
         let plugin = root.join("plugin");

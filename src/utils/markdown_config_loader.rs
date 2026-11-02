@@ -489,7 +489,10 @@ mod tests {
     }
     #[test]
     fn description_matches_actual_bun_header_whitespace_and_utf16_oracle() {
-        let cases: serde_json::Value = serde_json::from_str(include_str!("../../tests/fixtures/oracles/plugin-command-dependencies-0916/description-oracle.json")).unwrap();
+        let cases: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/oracles/plugin-command-dependencies-0916/description-oracle.json"
+        ))
+        .unwrap();
         for case in cases.as_array().unwrap() {
             let input = case["input"].as_str().unwrap();
             let units = case["units"]

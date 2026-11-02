@@ -412,9 +412,9 @@ pub fn ResumeConversation(
                     // (skip in parity audits), backported from CC 2.1.280's
                     // onSelect catch: log, then show `ResumeFailedMessage`.
                     Err(error) => {
-                        crate::utils::log::log_error(crate::utils::log::LogError::new(
-                            format!("resume picker: onSelect failed: {error}"),
-                        ));
+                        crate::utils::log::log_error(crate::utils::log::LogError::new(format!(
+                            "resume picker: onSelect failed: {error}"
+                        )));
                         resume_failed_session_id.set(Some(resuming_session_id.read().clone()));
                     }
                 }
@@ -697,11 +697,13 @@ mod tests {
                         }
                     }
                 };
-                let mut frames = Box::pin(app.mock_terminal_render_loop(
-                    MockTerminalConfig::with_events(events)
-                        .with_size(80, 5)
-                        .with_ignore_ctrl_c(true),
-                ));
+                let mut frames = Box::pin(
+                    app.mock_terminal_render_loop(
+                        MockTerminalConfig::with_events(events)
+                            .with_size(80, 5)
+                            .with_ignore_ctrl_c(true),
+                    ),
+                );
                 for _ in 0..20 {
                     let next = crate::utils::race(frames.next().map(Some), async {
                         futures_timer::Delay::new(std::time::Duration::from_millis(100)).await;
@@ -736,14 +738,22 @@ mod tests {
         };
         let id = "0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b";
         let text = render(Some(id));
-        assert!(text.contains("Failed to resume the conversation."), "canvas=\n{text}");
         assert!(
-            text.contains(&format!("Run claude --resume {id} to retry, or claude to start a new session.")),
+            text.contains("Failed to resume the conversation."),
+            "canvas=\n{text}"
+        );
+        assert!(
+            text.contains(&format!(
+                "Run claude --resume {id} to retry, or claude to start a new session."
+            )),
             "canvas=\n{text}"
         );
         for unsafe_id in [None, Some(""), Some("a b"), Some("-x"), Some("CON")] {
             let text = render(unsafe_id);
-            assert!(text.contains("Run claude to start a new session."), "{unsafe_id:?} canvas=\n{text}");
+            assert!(
+                text.contains("Run claude to start a new session."),
+                "{unsafe_id:?} canvas=\n{text}"
+            );
             assert!(!text.contains("--resume"), "{unsafe_id:?} canvas=\n{text}");
         }
 
@@ -773,7 +783,9 @@ mod tests {
 
     #[test]
     fn command_safe_session_id_matches_2_1_280() {
-        assert!(is_command_safe_session_id("0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b"));
+        assert!(is_command_safe_session_id(
+            "0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b"
+        ));
         assert!(is_command_safe_session_id("_abc-1"));
         assert!(is_command_safe_session_id("com10"));
         for id in ["", "-abc", "a b", "a/b", "nul", "Lpt3", &"x".repeat(201)] {

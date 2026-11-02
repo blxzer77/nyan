@@ -491,49 +491,48 @@ fn parse_raw_single_file_diff(
 }
 
 async fn get_single_file_diff_ref(root: &Path) -> String {
-    let base_branch = if let Some(base_ref) =
-        crate::utils::process_env::var("CLAUDE_CODE_BASE_REF").truthy()
-    {
-        base_ref
-    } else {
-        // Maps to cached `getDefaultBranch()`: origin/HEAD, then remote
-        // main/master existence, then the official `main` fallback.
-        let symbolic = run_single_file_git(
-            root,
-            &["symbolic-ref", "refs/remotes/origin/HEAD", "--short"],
-        )
-        .await
-        .and_then(|(success, output)| success.then_some(output))
-        .map(|output| {
-            output
-                .trim()
-                .strip_prefix("origin/")
-                .unwrap_or(output.trim())
-                .to_string()
-        });
-        if let Some(branch) = symbolic.filter(|branch| !branch.is_empty()) {
-            branch
+    let base_branch =
+        if let Some(base_ref) = crate::utils::process_env::var("CLAUDE_CODE_BASE_REF").truthy() {
+            base_ref
         } else {
-            let mut branch = None;
-            for candidate in ["main", "master"] {
-                if run_single_file_git(
-                    root,
-                    &[
-                        "rev-parse",
-                        "--verify",
-                        &format!("refs/remotes/origin/{candidate}"),
-                    ],
-                )
-                .await
-                .is_some_and(|(success, _)| success)
-                {
-                    branch = Some(candidate.to_string());
-                    break;
+            // Maps to cached `getDefaultBranch()`: origin/HEAD, then remote
+            // main/master existence, then the official `main` fallback.
+            let symbolic = run_single_file_git(
+                root,
+                &["symbolic-ref", "refs/remotes/origin/HEAD", "--short"],
+            )
+            .await
+            .and_then(|(success, output)| success.then_some(output))
+            .map(|output| {
+                output
+                    .trim()
+                    .strip_prefix("origin/")
+                    .unwrap_or(output.trim())
+                    .to_string()
+            });
+            if let Some(branch) = symbolic.filter(|branch| !branch.is_empty()) {
+                branch
+            } else {
+                let mut branch = None;
+                for candidate in ["main", "master"] {
+                    if run_single_file_git(
+                        root,
+                        &[
+                            "rev-parse",
+                            "--verify",
+                            &format!("refs/remotes/origin/{candidate}"),
+                        ],
+                    )
+                    .await
+                    .is_some_and(|(success, _)| success)
+                    {
+                        branch = Some(candidate.to_string());
+                        break;
+                    }
                 }
+                branch.unwrap_or_else(|| "main".to_string())
             }
-            branch.unwrap_or_else(|| "main".to_string())
-        }
-    };
+        };
     let Some((success, stdout)) =
         run_single_file_git(root, &["merge-base", "HEAD", &base_branch]).await
     else {

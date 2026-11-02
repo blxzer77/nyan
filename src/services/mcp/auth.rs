@@ -2348,9 +2348,12 @@ mod runtime {
             .and_then(Value::as_bool)
             .unwrap_or(false)
         {
-            let client_metadata_url = crate::utils::process_env::var("MCP_OAUTH_CLIENT_METADATA_URL")
-                .truthy()
-                .unwrap_or_else(|| crate::constants::oauth::MCP_CLIENT_METADATA_URL.to_string());
+            let client_metadata_url =
+                crate::utils::process_env::var("MCP_OAUTH_CLIENT_METADATA_URL")
+                    .truthy()
+                    .unwrap_or_else(|| {
+                        crate::constants::oauth::MCP_CLIENT_METADATA_URL.to_string()
+                    });
             let client_config =
                 OAuthClientConfig::new(client_metadata_url.clone(), redirect_uri.clone())
                     .with_scopes(scopes.clone());
@@ -2455,13 +2458,13 @@ mod runtime {
     }
 }
 
+pub(crate) use runtime::oauth_http_client;
 pub use runtime::{
     clear_mcp_client_config, fetch_auth_server_metadata, get_mcp_client_config,
     perform_mcp_oauth_flow, record_mcp_www_authenticate_challenge,
     refresh_mcp_oauth_access_token_after_auth_failure, revoke_server_tokens,
     save_mcp_client_secret,
 };
-pub(crate) use runtime::oauth_http_client;
 
 /// Dynamic registration `client_name`. Settings `mcpOauthClientName` wins;
 /// otherwise the name is `nyan`.
@@ -2479,7 +2482,9 @@ mod tests {
 
     #[test]
     fn mcp_oauth_client_name_defaults_to_nyan_and_settings_override() {
-        use crate::utils::settings::settings_cache::{reset_settings_cache, set_session_settings_cache};
+        use crate::utils::settings::settings_cache::{
+            reset_settings_cache, set_session_settings_cache,
+        };
         use crate::utils::settings::types::SettingsJson;
         use crate::utils::settings::validation::SettingsWithErrors;
 
@@ -2528,11 +2533,20 @@ mod tests {
         crate::utils::tls_provider::install_crypto_provider();
         let proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let proxy_address = proxy.local_addr().unwrap();
-        let _env: Vec<_> = ["https_proxy", "http_proxy", "HTTP_PROXY", "no_proxy", "NO_PROXY"]
-            .into_iter()
-            .map(EnvVarGuard::unset)
-            .chain([EnvVarGuard::set("HTTPS_PROXY", format!("http://{proxy_address}"))])
-            .collect();
+        let _env: Vec<_> = [
+            "https_proxy",
+            "http_proxy",
+            "HTTP_PROXY",
+            "no_proxy",
+            "NO_PROXY",
+        ]
+        .into_iter()
+        .map(EnvVarGuard::unset)
+        .chain([EnvVarGuard::set(
+            "HTTPS_PROXY",
+            format!("http://{proxy_address}"),
+        )])
+        .collect();
         let (seen_tx, mut seen_rx) = tokio::sync::mpsc::unbounded_channel();
         let server = tokio::spawn(async move {
             loop {
@@ -2561,7 +2575,10 @@ mod tests {
         let first = seen_rx.recv().await.expect("a request reached the proxy");
         assert!(first.starts_with("GET http://mcp.invalid/"), "{first}");
         while let Ok(line) = seen_rx.try_recv() {
-            assert!(!line.contains("other.invalid"), "followed a cross-origin redirect: {line}");
+            assert!(
+                !line.contains("other.invalid"),
+                "followed a cross-origin redirect: {line}"
+            );
         }
     }
 

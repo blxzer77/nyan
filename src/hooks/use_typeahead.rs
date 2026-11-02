@@ -2021,10 +2021,17 @@ mod tests {
             .suggestions
             .get(selected.get().max(0) as usize)
             .map(|item| format!("{} ", item.command_text));
-        element!(Text(content: format!(
-            "suppressed={} count={} selected={} accept={:?}",
-            suppressed.get(), typeahead.suggestions.len(), selected.get(), accept,
-        )))
+        element!(
+            Text(
+                content: format!(
+                    "suppressed={} count={} selected={} accept={:?}",
+                    suppressed.get(),
+                    typeahead.suggestions.len(),
+                    selected.get(),
+                    accept,
+                ),
+            )
+        )
     }
 
     #[test]
@@ -2174,10 +2181,14 @@ mod tests {
                 }
             }
         });
-        element!(Text(content: format!(
-            "kind={:?} width={:?}",
-            typeahead.kind, typeahead.max_column_width,
-        )))
+        element!(
+            Text(
+                content: format!(
+                    "kind={:?} width={:?}",
+                    typeahead.kind, typeahead.max_column_width,
+                ),
+            )
+        )
     }
 
     #[test]
@@ -2252,12 +2263,16 @@ mod tests {
             }
         });
         let current = file_result.read().clone();
-        element!(Text(content: format!(
-            "kind={:?} items={} revision={}",
-            current.kind,
-            current.items.len(),
-            current.revision,
-        )))
+        element!(
+            Text(
+                content: format!(
+                    "kind={:?} items={} revision={}",
+                    current.kind,
+                    current.items.len(),
+                    current.revision,
+                ),
+            )
+        )
     }
 
     #[test]

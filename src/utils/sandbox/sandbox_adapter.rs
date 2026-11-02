@@ -2020,10 +2020,8 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn seatbelt_wrapper_enforces_write_boundary() {
-        let root = std::env::temp_dir().join(format!(
-            "nyan-seatbelt-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("nyan-seatbelt-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&root).unwrap();
         let root = root.canonicalize().unwrap();
         let outside = root.with_extension("outside");

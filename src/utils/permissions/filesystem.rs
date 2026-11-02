@@ -1559,8 +1559,7 @@ mod tests {
     #[test]
     fn claude_temp_dirs_match_official_shape() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let root =
-            std::env::temp_dir().join(format!("nyan-temp-shape-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-temp-shape-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let resolved = root.canonicalize().unwrap();
         let _tmp = EnvVarGuard::set("CLAUDE_CODE_TMPDIR", &root);

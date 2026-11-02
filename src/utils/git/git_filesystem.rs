@@ -203,8 +203,7 @@ mod tests {
     struct TestDir(PathBuf);
     impl TestDir {
         fn new() -> Self {
-            let path =
-                std::env::temp_dir().join(format!("nyan-git-head-{}", uuid::Uuid::new_v4()));
+            let path = std::env::temp_dir().join(format!("nyan-git-head-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&path).unwrap();
             Self(path)
         }

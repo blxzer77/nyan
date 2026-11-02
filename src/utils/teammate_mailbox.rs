@@ -834,10 +834,7 @@ mod tests {
     use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
 
     fn unique_config_dir(prefix: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "nyan-{prefix}-{}",
-            uuid::Uuid::new_v4().simple()
-        ))
+        std::env::temp_dir().join(format!("nyan-{prefix}-{}", uuid::Uuid::new_v4().simple()))
     }
 
     #[test]

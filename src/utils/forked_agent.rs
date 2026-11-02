@@ -778,7 +778,10 @@ mod tests {
             QuerySource::AutoDream,
             QuerySource::CacheWarm,
         ] {
-            assert!(is_cache_sharing_fork(&source), "{source:?} shares the cache");
+            assert!(
+                is_cache_sharing_fork(&source),
+                "{source:?} shares the cache"
+            );
         }
         for source in [
             QuerySource::Prompt,

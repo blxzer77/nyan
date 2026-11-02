@@ -3052,10 +3052,8 @@ mod tests {
     /// @nyan: T5 — a GBK file decodes with a note instead of mojibake.
     #[tokio::test]
     async fn gbk_file_decodes_with_a_note() {
-        let dir = std::env::temp_dir().join(format!(
-            "nyan-read-gbk-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("nyan-read-gbk-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("gbk.txt");
         let text =
@@ -3216,10 +3214,8 @@ mod tests {
     /// @nyan: T4 — batch Read keeps members independent and shares one budget.
     #[tokio::test]
     async fn batch_read_reports_each_member_and_shares_the_budget() {
-        let dir = std::env::temp_dir().join(format!(
-            "nyan-read-batch-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("nyan-read-batch-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         let first = dir.join("a.txt");
         let second = dir.join("b.txt");
@@ -4556,8 +4552,7 @@ trailer<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF\n";
         if !crate::utils::pdf::is_pdftoppm_available() {
             return;
         }
-        let dir =
-            std::env::temp_dir().join(format!("nyan-read-pdf-pages-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("nyan-read-pdf-pages-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
         let path = dir.join("doc.pdf");

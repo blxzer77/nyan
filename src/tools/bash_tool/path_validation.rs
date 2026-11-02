@@ -1382,10 +1382,8 @@ mod tests {
 
     #[test]
     fn ast_path_constraints_validate_redirects_and_wrapped_commands() {
-        let allowed = std::env::temp_dir().join(format!(
-            "nyan-ast-path-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let allowed =
+            std::env::temp_dir().join(format!("nyan-ast-path-{}", uuid::Uuid::new_v4().simple()));
         let outside = std::env::temp_dir().join(format!(
             "nyan-ast-path-outside-{}",
             uuid::Uuid::new_v4().simple()

@@ -184,10 +184,7 @@ mod tests {
 
     #[test]
     fn import_copies_into_the_new_file_and_leaves_the_old_bytes_alone() {
-        let root = std::env::temp_dir().join(format!(
-            "nyan-cred-import-{}",
-            std::process::id()
-        ));
+        let root = std::env::temp_dir().join(format!("nyan-cred-import-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("old")).unwrap();
         let source = root.join("old/.credentials.json");

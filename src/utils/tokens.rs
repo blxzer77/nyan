@@ -128,9 +128,9 @@ pub fn token_count_with_estimation(messages: &[Message]) -> i64 {
 /// counted inside that usage, so a replacement decided after the request was
 /// sent has to be subtracted explicitly (compaction C4).
 pub fn usage_anchor_index(messages: &[Message]) -> Option<usize> {
-    messages.iter().rposition(|message| {
-        matches!(message, Message::Assistant(assistant) if assistant.usage.is_some())
-    })
+    messages.iter().rposition(
+        |message| matches!(message, Message::Assistant(assistant) if assistant.usage.is_some()),
+    )
 }
 
 #[cfg(test)]

@@ -2352,10 +2352,8 @@ mod tests {
 
     #[test]
     fn bash_output_uses_cwd_override_like_official_run_with_cwd_override() {
-        let dir = std::env::temp_dir().join(format!(
-            "nyan-bash-cwd-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("nyan-bash-cwd-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         let args = serde_json::json!({"command": "pwd -P"});
 

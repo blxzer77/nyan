@@ -2265,7 +2265,10 @@ fn validate_headless_options(
     // Maps to CC `main.tsx:2099`: `fallbackModel && options.model &&
     // fallbackModel === options.model`, the flags as given.
     if let (Some(fallback), Some(model)) = (
-        config.fallback_model.as_deref().filter(|model| !model.is_empty()),
+        config
+            .fallback_model
+            .as_deref()
+            .filter(|model| !model.is_empty()),
         config.model.as_deref().filter(|model| !model.is_empty()),
     ) {
         if fallback == model {
@@ -2999,7 +3002,10 @@ mod tests {
         )
         .await;
         assert_eq!(get_main_loop_model(), "custom-sonnet");
-        assert_eq!(engine.user_specified_model_for_test(), Some("custom-sonnet"));
+        assert_eq!(
+            engine.user_specified_model_for_test(),
+            Some("custom-sonnet")
+        );
 
         // No switch: `activeUserSpecifiedModel` stays.
         engine.set_model("kept".to_string());
@@ -3015,13 +3021,18 @@ mod tests {
         // `null` clears the override; on a switch the new model is adopted.
         engine.set_model("custom-sonnet".to_string());
         handle_control_request(
-            control(serde_json::json!({"subtype": "apply_flag_settings", "settings": {"model": null}})),
+            control(
+                serde_json::json!({"subtype": "apply_flag_settings", "settings": {"model": null}}),
+            ),
             &mut initialized,
             &mut engine,
             &bridge,
         )
         .await;
-        assert_eq!(crate::bootstrap::state::get_main_loop_model_override(), None);
+        assert_eq!(
+            crate::bootstrap::state::get_main_loop_model_override(),
+            None
+        );
         assert_eq!(
             engine.user_specified_model_for_test(),
             Some(get_main_loop_model().as_str())

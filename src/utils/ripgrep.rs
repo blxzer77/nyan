@@ -1000,10 +1000,8 @@ mod tests {
     fn system_lookup_skips_non_executable_path_entries_like_which() {
         use std::os::unix::fs::PermissionsExt;
 
-        let root = std::env::temp_dir().join(format!(
-            "nyan-rg-which-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("nyan-rg-which-{}", uuid::Uuid::new_v4().simple()));
         let first = root.join("first");
         let second = root.join("second");
         std::fs::create_dir_all(&first).unwrap();
@@ -1078,8 +1076,7 @@ mod tests {
 
     #[test]
     fn rip_grep_finds_matches_like_official() {
-        let dir =
-            std::env::temp_dir().join(format!("nyan-rg-{}", uuid::Uuid::new_v4().simple()));
+        let dir = std::env::temp_dir().join(format!("nyan-rg-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.txt"), "hello ripgrep\n").unwrap();
         let lines = rip_grep(
@@ -1101,10 +1098,8 @@ mod tests {
 
     #[test]
     fn rip_grep_drains_large_stdout_while_child_is_running() {
-        let dir = std::env::temp_dir().join(format!(
-            "nyan-rg-large-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("nyan-rg-large-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         for index in 0..4_000 {
             std::fs::write(
@@ -1243,10 +1238,8 @@ mod tests {
 
     #[test]
     fn rip_grep_stream_emits_lines() {
-        let dir = std::env::temp_dir().join(format!(
-            "nyan-rg-stream-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("nyan-rg-stream-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("b.txt"), "stream-needle\n").unwrap();
         let mut seen = Vec::new();
@@ -1263,10 +1256,8 @@ mod tests {
 
     #[test]
     fn count_files_rounded_rg_rounds_like_official() {
-        let dir = std::env::temp_dir().join(format!(
-            "nyan-rg-count-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("nyan-rg-count-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         for i in 0..8 {
             std::fs::write(dir.join(format!("f{i}.txt")), "x\n").unwrap();

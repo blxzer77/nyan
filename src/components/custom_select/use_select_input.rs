@@ -338,8 +338,7 @@ pub fn use_select_input(
             }
             // CC :181-184: Tab (shift or not) toggles the focused option's
             // input mode; the key is not stopped.
-            if has_on_input_mode_toggle
-                && matches!(key_event.code, KeyCode::Tab | KeyCode::BackTab)
+            if has_on_input_mode_toggle && matches!(key_event.code, KeyCode::Tab | KeyCode::BackTab)
             {
                 if let Some(value) = state.focused_value() {
                     let mut toggled = input_mode_toggled;

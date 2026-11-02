@@ -1304,10 +1304,8 @@ mod tests {
         use std::io::Write;
 
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let root = std::env::temp_dir().join(format!(
-            "nyan-skill-tool-modifier-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("nyan-skill-tool-modifier-{}", uuid::Uuid::new_v4()));
         let skill_file = root
             .join(".claude")
             .join("skills")

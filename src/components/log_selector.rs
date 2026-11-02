@@ -13,8 +13,8 @@ use crate::constants::xml::TICK_TAG;
 use crate::hooks::use_double_press::use_double_press;
 use crate::hooks::use_search_input::use_search_input;
 use crate::utils::format::format_log_metadata;
-use crate::utils::session_storage::{SessionSelection, SessionSummary};
 use crate::utils::fuse::{BitapSearch, FuseOptions, KeyStore};
+use crate::utils::session_storage::{SessionSelection, SessionSummary};
 use crate::utils::theme::Theme;
 use iocraft::prelude::*;
 use nucleo_matcher::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
@@ -28,8 +28,7 @@ use unicode_width::UnicodeWidthStr;
 
 const ALL_TAG_LABEL: &str = "All";
 const AGENTIC_SEARCH_OPTION_LABEL: &str = "Search deeply using Claude →";
-const AGENTIC_SEARCH_READONLY_NOTICE: &str =
-    "Agentic search is unavailable in nyan UI-only mode.";
+const AGENTIC_SEARCH_READONLY_NOTICE: &str = "Agentic search is unavailable in nyan UI-only mode.";
 const DEEP_SEARCH_READ_WINDOW_BYTES: u64 = 256 * 1024;
 const DEEP_SEARCH_MAX_TEXT_LENGTH: usize = 50_000;
 const DEEP_SEARCH_SNIPPET_CONTEXT_CHARS: usize = 50;

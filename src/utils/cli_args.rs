@@ -109,10 +109,8 @@ mod tests {
 
     #[test]
     fn eager_parse_cli_flag_supports_space_separated_value() {
-        let value = eager_parse_cli_flag(
-            "--settings",
-            ["nyan", "--settings", "settings.test.json"],
-        );
+        let value =
+            eager_parse_cli_flag("--settings", ["nyan", "--settings", "settings.test.json"]);
         assert_eq!(value.as_deref(), Some("settings.test.json"));
     }
 

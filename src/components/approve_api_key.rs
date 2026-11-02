@@ -226,7 +226,10 @@ mod tests {
     /// a line counting key presses (so each key produces a frame) and
     /// listing the `onDone` answers.
     #[component]
-    fn ApproveHarness(props: &ApproveHarnessProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    fn ApproveHarness(
+        props: &ApproveHarnessProps,
+        mut hooks: Hooks,
+    ) -> impl Into<AnyElement<'static>> {
         let unbind_select_escape = props.unbind_select_escape;
         let runtime = hooks.use_const(|| {
             let mut bindings = crate::keybindings::default_bindings::default_bindings();
@@ -250,7 +253,13 @@ mod tests {
                 keys.set(keys.get() + 1);
             }
         });
-        let answers = results.lock().unwrap().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
+        let answers = results
+            .lock()
+            .unwrap()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
         element! {
             ContextProvider(value: Context::owned(runtime)) {
                 ContextProvider(value: Context::owned(*theme::current())) {
@@ -306,9 +315,12 @@ mod tests {
                     break;
                 };
                 for code in batch {
-                    keys.send(TerminalEvent::Key(KeyEvent::new(KeyEventKind::Press, *code)))
-                        .await
-                        .unwrap();
+                    keys.send(TerminalEvent::Key(KeyEvent::new(
+                        KeyEventKind::Press,
+                        *code,
+                    )))
+                    .await
+                    .unwrap();
                 }
                 sent += batch.len();
                 next_batch += 1;
@@ -366,7 +378,10 @@ mod tests {
     fn approve_api_key_opens_focused_on_no_and_enter_rejects() {
         // CC :61-62 `defaultValue="no" defaultFocusValue="no"`.
         let (answers, mount) = drive(vec![KeyCode::Enter]);
-        let focused = mount.lines().find(|line| line.contains('❯')).unwrap_or_default();
+        let focused = mount
+            .lines()
+            .find(|line| line.contains('❯'))
+            .unwrap_or_default();
         assert!(focused.contains("No (recommended)"), "canvas=\n{mount}");
         assert_eq!(answers, vec![false]);
     }
@@ -403,10 +418,14 @@ mod tests {
     fn approve_api_key_answers_once_for_keys_in_one_batch() {
         // Enter on "Yes" and Esc in one read: the accept is the answer, and
         // neither the Select's cancel nor the Dialog's confirm:no adds one.
-        let (answers, _) = drive_batches(vec![vec![KeyCode::Up], vec![KeyCode::Enter, KeyCode::Esc]]);
+        let (answers, _) =
+            drive_batches(vec![vec![KeyCode::Up], vec![KeyCode::Enter, KeyCode::Esc]]);
         assert_eq!(answers, vec![true]);
         // Two rejections in one read, then another key once mounted still.
-        let (answers, _) = drive_batches(vec![vec![KeyCode::Esc, KeyCode::Char('n')], vec![KeyCode::Enter]]);
+        let (answers, _) = drive_batches(vec![
+            vec![KeyCode::Esc, KeyCode::Char('n')],
+            vec![KeyCode::Enter],
+        ]);
         assert_eq!(answers, vec![false]);
     }
 

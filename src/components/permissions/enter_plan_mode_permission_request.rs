@@ -125,12 +125,7 @@ pub fn EnterPlanModePermissionRequest<'a>(
         let mut pending_select = pending_select;
         let options = options.clone();
         move |event| {
-            let TerminalEvent::Key(KeyEvent {
-                code,
-                kind,
-                ..
-            }) = event
-            else {
+            let TerminalEvent::Key(KeyEvent { code, kind, .. }) = event else {
                 return;
             };
             if kind == KeyEventKind::Release {

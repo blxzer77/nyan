@@ -8,8 +8,8 @@
 use crate::commands::{
     Command, CommandKind, CommandSource, format_description_with_source, get_command_name,
 };
-use crate::utils::suggestions::skill_usage_tracking::get_skill_usage_score;
 use crate::utils::fuse::{BitapSearch, FuseKey, FuseOptions, KeyStore};
+use crate::utils::suggestions::skill_usage_tracking::get_skill_usage_score;
 use std::cmp::Ordering;
 use std::ops::Range;
 use std::sync::OnceLock;

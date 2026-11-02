@@ -505,7 +505,8 @@ mod tests {
     async fn mcpb_manifest_matches_published_v_any_bun_oracle() {
         let oracle: Value = serde_json::from_str(include_str!(
             "../../../tests/fixtures/oracles/mcpb-schema-0915/oracle.json"
-        )).unwrap();
+        ))
+        .unwrap();
         let mut differences = Vec::new();
         for case in oracle["cases"].as_array().unwrap() {
             let actual = match validate_manifest(&case["input"]).await {

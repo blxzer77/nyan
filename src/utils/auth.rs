@@ -174,8 +174,10 @@ fn env_value(get_env: &impl Fn(&str) -> Option<String>, key: &str) -> Option<Str
 
 /// Maps to: CC `utils/auth.ts:88-96` `isManagedOAuthContext`.
 fn is_managed_oauth_context() -> bool {
-    crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref())
-        || crate::utils::process_env::var("CLAUDE_CODE_ENTRYPOINT").as_deref() == Some("claude-desktop")
+    crate::utils::env_utils::is_env_truthy(
+        crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref(),
+    ) || crate::utils::process_env::var("CLAUDE_CODE_ENTRYPOINT").as_deref()
+        == Some("claude-desktop")
 }
 
 /// Maps to: CC `utils/auth.ts:355-363` `getConfiguredApiKeyHelper`.

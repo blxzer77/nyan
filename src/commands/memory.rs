@@ -44,7 +44,9 @@ pub fn MemoryCommandPanel<'a>(
     let consolidate_channel =
         hooks.use_const(|| Arc::new(async_channel::unbounded::<Result<String, String>>()));
     let consolidate_receiver = consolidate_channel.1.clone();
-    let app_store = hooks.try_use_context::<crate::state::store::AppStore>().map(|store| store.clone());
+    let app_store = hooks
+        .try_use_context::<crate::state::store::AppStore>()
+        .map(|store| store.clone());
     hooks.use_future(async move {
         while let Ok(result) = consolidate_receiver.recv().await {
             completed_selection.set(Some(result));
@@ -130,10 +132,9 @@ pub fn MemoryCommandPanel<'a>(
                 Some(handle) => {
                     let store = app_store.clone();
                     handle.spawn(async move {
-                        let result = crate::services::auto_dream::run_manual_consolidation(
-                            store.clone(),
-                        )
-                        .await;
+                        let result =
+                            crate::services::auto_dream::run_manual_consolidation(store.clone())
+                                .await;
                         // The panel closes right after "started", so the real
                         // outcome has to surface as a notification (success
                         // and every named failure alike).

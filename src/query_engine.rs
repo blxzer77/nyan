@@ -1434,13 +1434,12 @@ fn resolve_system_prompt(
         );
     // Maps to CC QueryEngine.ts:316-325: explicit custom prompts can opt into
     // memory mechanics; place it after custom copy and before appended policy.
-    let memory_mechanics_prompt = if custom.is_some()
-        && crate::memdir::paths::has_auto_mem_path_override()
-    {
-        crate::memdir::memdir::load_memory_prompt()
-    } else {
-        None
-    };
+    let memory_mechanics_prompt =
+        if custom.is_some() && crate::memdir::paths::has_auto_mem_path_override() {
+            crate::memdir::memdir::load_memory_prompt()
+        } else {
+            None
+        };
     let mut prompt = custom
         .map(|prompt| vec![prompt])
         .unwrap_or(default_system_prompt);
@@ -1753,8 +1752,7 @@ mod tests {
     fn custom_prompt_memory_order_matches_official_query_engine_assembly() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _project = IsolatedProjectSettings::pin();
-        let root =
-            std::env::temp_dir().join(format!("nyan-query-memory-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-query-memory-{}", uuid::Uuid::new_v4()));
         struct Cleanup(std::path::PathBuf);
         impl Drop for Cleanup {
             fn drop(&mut self) {
@@ -1772,16 +1770,15 @@ mod tests {
             append_system_prompt: Some("APPEND".into()),
             ..Default::default()
         };
-        let (prompt, _, context) =
-            resolve_system_prompt(
-                &config,
-                &crate::utils::model::model::get_main_loop_model(),
-                &[],
-                &[],
-                &[],
-                &QueryEngineOverrides::default(),
-            )
-            .unwrap();
+        let (prompt, _, context) = resolve_system_prompt(
+            &config,
+            &crate::utils::model::model::get_main_loop_model(),
+            &[],
+            &[],
+            &[],
+            &QueryEngineOverrides::default(),
+        )
+        .unwrap();
         // CC QueryEngine.ts:316-325: custom → opted-in memory mechanics → append.
         assert_eq!(prompt.len(), 3);
         assert_eq!(prompt[0], "CUSTOM");

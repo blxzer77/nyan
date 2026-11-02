@@ -213,8 +213,10 @@ pub fn tool_to_api_schema(
                     && (crate::utils::feature_flags::feature_enabled(
                         crate::utils::feature_flags::FeatureFlag::FineGrainedToolStreaming,
                     ) || crate::utils::env_utils::is_env_truthy(
-                        crate::utils::process_env::var("CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING")
-                            .as_deref(),
+                        crate::utils::process_env::var(
+                            "CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING",
+                        )
+                        .as_deref(),
                     )))
                 .then_some(true),
             };
@@ -224,8 +226,7 @@ pub fn tool_to_api_schema(
     };
 
     let disable_experimental_betas = crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS").as_deref(),
     );
     let strict = (!disable_experimental_betas)
         .then_some(base.strict)

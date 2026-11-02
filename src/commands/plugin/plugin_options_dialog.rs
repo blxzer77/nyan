@@ -249,7 +249,10 @@ mod tests {
     use super::*;
     #[test]
     fn number_values_and_serialization_match_official_bun() {
-        let oracle: Value = serde_json::from_str(include_str!("../../../tests/fixtures/oracles/plugin-ui-complete-0914/options-number-oracle.json")).unwrap();
+        let oracle: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/oracles/plugin-ui-complete-0914/options-number-oracle.json"
+        ))
+        .unwrap();
         for case in oracle.as_array().unwrap() {
             let values = build_final_values(
                 &["value".into()],
@@ -281,7 +284,10 @@ mod tests {
     }
     #[test]
     fn number_input_whitespace_matches_official_bun() {
-        let oracle:Value=serde_json::from_str(include_str!("../../../tests/fixtures/oracles/plugin-ui-complete-0914/options-values-oracle.json")).unwrap();
+        let oracle: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/oracles/plugin-ui-complete-0914/options-values-oracle.json"
+        ))
+        .unwrap();
         for case in oracle.as_array().unwrap() {
             let schema = serde_json::json!({"value":{"type":"number"}});
             let collected =

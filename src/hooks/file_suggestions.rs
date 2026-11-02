@@ -799,8 +799,7 @@ mod tests {
     /// own files must still arrive — rebased with `../` prefixes.
     #[tokio::test]
     async fn gitignored_cwd_still_indexes_the_repository_not_its_artifacts() {
-        let root =
-            std::env::temp_dir().join(format!("nyan-file-index-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-file-index-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("src")).unwrap();
         std::fs::create_dir_all(root.join(".test/workdir")).unwrap();
         // macOS hands out `/var/...` temp dirs that are symlinks into

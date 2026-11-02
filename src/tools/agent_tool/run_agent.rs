@@ -2723,10 +2723,8 @@ mod tests {
 
     #[test]
     fn preloads_agent_frontmatter_skills_like_official_run_agent() {
-        let root = std::env::temp_dir().join(format!(
-            "nyan-agent-skill-preload-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("nyan-agent-skill-preload-{}", uuid::Uuid::new_v4()));
         let skills_dir = root.join(".claude").join("skills");
         let skill_file = skills_dir.join("audit").join("SKILL.md");
         std::fs::create_dir_all(skill_file.parent().unwrap()).unwrap();
@@ -4573,8 +4571,7 @@ mod tests {
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
-        let root =
-            std::env::temp_dir().join(format!("nyan-agent-delta-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-agent-delta-{}", uuid::Uuid::new_v4()));
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let cwd = root.join("project");
         std::fs::create_dir_all(&cwd).unwrap();
@@ -4968,8 +4965,7 @@ mod input_contract_tests {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let previous = crate::utils::process_env::var("CLAUDE_CODE_DISABLE_AUTO_MEMORY");
         crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
-        let root =
-            std::env::temp_dir().join(format!("nyan-agent-input-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-agent-input-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let context = ToolUseContext::default().with_cwd_override(Some(root.clone()));
         let mut agent =
@@ -5006,8 +5002,7 @@ mod input_contract_tests {
         // The production CLI installs this provider before constructing API clients.
         crate::utils::tls_provider::install_crypto_provider();
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let root =
-            std::env::temp_dir().join(format!("nyan-agent-input-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-agent-input-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         struct Fixture {
             root: std::path::PathBuf,

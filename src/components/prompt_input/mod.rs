@@ -592,9 +592,7 @@ fn on_input_text_changed(
     if let Some(active) = app_store.and_then(|store| {
         let state = store.get();
         match &state.speculation {
-            crate::state::app_state_store::SpeculationState::Active(active) => {
-                Some(active.clone())
-            }
+            crate::state::app_state_store::SpeculationState::Active(active) => Some(active.clone()),
             crate::state::app_state_store::SpeculationState::Idle => None,
         }
     }) {
@@ -3191,11 +3189,8 @@ pub fn PromptInput<'a>(
     // CC PromptInput.tsx:2981-2985: `<Box marginTop={1} marginLeft={2}>` + one
     // dim line.
     let suppressed_dialogs_height = if props.has_suppressed_dialogs { 2 } else { 0 };
-    let prompt_height = queue_height
-        + suppressed_dialogs_height
-        + stash_height
-        + input_box_height
-        + footer_height;
+    let prompt_height =
+        queue_height + suppressed_dialogs_height + stash_height + input_box_height + footer_height;
     // Fill viewing fields from AppState (not REPL dual props).
     let mut swarm_banner_input = props.swarm_banner_input.clone();
     if effective_viewing_agent_name.is_some() {
@@ -4419,11 +4414,17 @@ mod tests {
             "canvas=\n{thinking}"
         );
         // CC :2713-2737: selecting and cancelling both close the toggle.
-        for closing in [vec![key(KeyCode::Down), key(KeyCode::Enter)], vec![key(KeyCode::Esc)]] {
+        for closing in [
+            vec![key(KeyCode::Down), key(KeyCode::Enter)],
+            vec![key(KeyCode::Esc)],
+        ] {
             let mut events = vec![key_with_modifiers(KeyCode::Char('t'), KeyModifiers::ALT)];
             events.extend(closing);
             let closed = prompt_after_events(false, events);
-            assert!(!closed.contains("Toggle thinking mode"), "canvas=\n{closed}");
+            assert!(
+                !closed.contains("Toggle thinking mode"),
+                "canvas=\n{closed}"
+            );
         }
 
         let fast = prompt_after_events(
@@ -4968,9 +4969,9 @@ mod tests {
                     )
                 }
             };
-            let mut render_loop = Box::pin(app.mock_terminal_render_loop(
-                MockTerminalConfig::default().with_size(80, 24),
-            ));
+            let mut render_loop = Box::pin(
+                app.mock_terminal_render_loop(MockTerminalConfig::default().with_size(80, 24)),
+            );
             let mut last = None;
             for _ in 0..4 {
                 let Some(canvas) = crate::utils::race(render_loop.next(), async {
@@ -5014,9 +5015,9 @@ mod tests {
                         )
                     }
                 };
-                let mut render_loop = Box::pin(app.mock_terminal_render_loop(
-                    MockTerminalConfig::default().with_size(80, 24),
-                ));
+                let mut render_loop = Box::pin(
+                    app.mock_terminal_render_loop(MockTerminalConfig::default().with_size(80, 24)),
+                );
                 let mut last = None;
                 for _ in 0..4 {
                     let Some(frame) = crate::utils::race(render_loop.next(), async {
@@ -5120,7 +5121,10 @@ mod tests {
             .iter()
             .position(|line| line.trim() == "Waiting for permission…")
             .unwrap_or_else(|| panic!("hint missing:\n{shown}"));
-        assert!(lines[hint].starts_with("  Waiting"), "marginLeft 2:\n{shown}");
+        assert!(
+            lines[hint].starts_with("  Waiting"),
+            "marginLeft 2:\n{shown}"
+        );
         let prompt = lines
             .iter()
             .position(|line| line.contains(PROMPT_CHAR))
@@ -5130,7 +5134,10 @@ mod tests {
         let hidden = element!(PromptSuppressedDialogsHarness(suppressed: false))
             .render(Some(80))
             .to_string();
-        assert!(!hidden.contains("Waiting for permission"), "canvas=\n{hidden}");
+        assert!(
+            !hidden.contains("Waiting for permission"),
+            "canvas=\n{hidden}"
+        );
     }
 
     #[test]

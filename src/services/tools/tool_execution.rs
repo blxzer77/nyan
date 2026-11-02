@@ -7176,10 +7176,8 @@ mod tests {
             "nyan-post-failure-{}.json",
             uuid::Uuid::new_v4().simple()
         ));
-        let missing = std::env::temp_dir().join(format!(
-            "nyan-absent-{}.txt",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let missing =
+            std::env::temp_dir().join(format!("nyan-absent-{}.txt", uuid::Uuid::new_v4().simple()));
 
         let context = ToolUseContext::with_permission_context(ToolPermissionContext::default());
         assert!(
@@ -11593,8 +11591,7 @@ rl.on('line', line => {
 
     #[tokio::test]
     async fn local_tool_executor_runs_glob_and_grep_readonly_tools() {
-        let root =
-            std::env::temp_dir().join(format!("nyan-search-tools-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-search-tools-{}", uuid::Uuid::new_v4()));
         let nested = root.join("src");
         std::fs::create_dir_all(&nested).unwrap();
         std::fs::write(
@@ -11850,8 +11847,7 @@ rl.on('line', line => {
     async fn local_tool_executor_writes_and_edits_files_after_permission() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let root =
-            std::env::temp_dir().join(format!("nyan-write-edit-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-write-edit-{}", uuid::Uuid::new_v4()));
         let path = root.join("nested").join("file.txt");
         let mut context = crate::tool::ToolUseContext::default();
         let write_request = mock_permission_request_with_input(
@@ -12884,8 +12880,7 @@ rl.on('line', line => {
         let cwd_state_guard = CwdStateGuard::capture();
         crate::utils::worktree::restore_worktree_session(None);
 
-        let repo =
-            std::env::temp_dir().join(format!("nyan-worktree-test-{}", std::process::id()));
+        let repo = std::env::temp_dir().join(format!("nyan-worktree-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&repo);
         std::fs::create_dir_all(&repo).expect("mkdir repo");
         let status = std::process::Command::new("git")

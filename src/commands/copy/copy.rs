@@ -695,8 +695,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn write_refuses_a_symlinked_target() {
-        let root =
-            std::env::temp_dir().join(format!("nyan-copy-target-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-copy-target-{}", uuid::Uuid::new_v4()));
         let dir = root.join("dir");
         std::fs::create_dir_all(&dir).unwrap();
         let outside = root.join("outside");
@@ -735,8 +734,7 @@ mod tests {
     fn copy_dir_rechecks_the_root_on_every_call() {
         use std::os::unix::fs::PermissionsExt as _;
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let root =
-            std::env::temp_dir().join(format!("nyan-copy-again-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-copy-again-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let _tmp = EnvVarGuard::set("CLAUDE_CODE_TMPDIR", format!(" {} ", root.display()));
         let dir = copy_dir().unwrap();
@@ -765,8 +763,7 @@ mod tests {
             return; // root opens it anyway
         }
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let root =
-            std::env::temp_dir().join(format!("nyan-copy-unread-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-copy-unread-{}", uuid::Uuid::new_v4()));
         let dir = root.join(format!(
             "claude-{}",
             crate::utils::permissions::filesystem::current_uid()

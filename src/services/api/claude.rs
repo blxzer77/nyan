@@ -26,9 +26,9 @@ use crate::utils::betas::{
     model_supports_structured_outputs, should_include_first_party_only_betas,
     should_use_global_cache_scope,
 };
+use crate::utils::content_array::insert_block_after_tool_results;
 use crate::utils::context::{CAPPED_DEFAULT_MAX_TOKENS, get_model_max_output_tokens};
 use crate::utils::effort::{EffortValue, model_supports_effort, resolve_applied_effort};
-use crate::utils::content_array::insert_block_after_tool_results;
 use crate::utils::model::model::{
     get_default_opus_model, get_default_sonnet_model, get_main_loop_model, get_small_fast_model,
     normalize_model_string_for_api,
@@ -309,8 +309,7 @@ fn should_1h_cache_ttl(query_source: Option<&str>) -> bool {
     // Maps to CC `services/api/claude.ts:393-434` `should1hCacheTTL(...)`.
     let provider = crate::utils::model::providers::get_api_provider();
     let bedrock_opt_in = crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("ENABLE_PROMPT_CACHING_1H_BEDROCK")
-            .as_deref(),
+        crate::utils::process_env::var("ENABLE_PROMPT_CACHING_1H_BEDROCK").as_deref(),
     );
     should_1h_cache_ttl_with_inputs(
         provider,
@@ -678,8 +677,7 @@ pub fn get_prompt_caching_enabled(model: &str) -> bool {
 
     // Check if we should disable for small/fast model
     if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("DISABLE_PROMPT_CACHING_HAIKU")
-            .as_deref(),
+        crate::utils::process_env::var("DISABLE_PROMPT_CACHING_HAIKU").as_deref(),
     ) {
         let small_fast_model = get_small_fast_model();
         if model == small_fast_model {
@@ -689,8 +687,7 @@ pub fn get_prompt_caching_enabled(model: &str) -> bool {
 
     // Check if we should disable for default Sonnet
     if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("DISABLE_PROMPT_CACHING_SONNET")
-            .as_deref(),
+        crate::utils::process_env::var("DISABLE_PROMPT_CACHING_SONNET").as_deref(),
     ) {
         let default_sonnet = get_default_sonnet_model();
         if model == default_sonnet {
@@ -1822,8 +1819,7 @@ pub fn get_max_output_tokens_for_model(model: &str) -> u32 {
     // Env var override: CLAUDE_CODE_MAX_OUTPUT_TOKENS
     crate::utils::env_validation::validate_bounded_int_env_var(
         "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
-        crate::utils::process_env::var("CLAUDE_CODE_MAX_OUTPUT_TOKENS")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_CODE_MAX_OUTPUT_TOKENS").as_deref(),
         default_tokens as usize,
         max_output.upper_limit as usize,
     )
@@ -1847,7 +1843,9 @@ pub fn get_nonstreaming_fallback_timeout_ms() -> u64 {
             }
         }
     }
-    if crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref()) {
+    if crate::utils::env_utils::is_env_truthy(
+        crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref(),
+    ) {
         120_000
     } else {
         300_000
@@ -2577,9 +2575,10 @@ fn build_sdk_message_request_options(
         && !crate::utils::forked_agent::is_cache_sharing_api_source(&options.query_source)
     {
         if let Some(agent_id) = options.agent_id.as_ref() {
-            base.headers
-                .get_or_insert_with(Default::default)
-                .insert("X-Claude-Code-Agent-Id".to_string(), Some(agent_id.0.clone()));
+            base.headers.get_or_insert_with(Default::default).insert(
+                "X-Claude-Code-Agent-Id".to_string(),
+                Some(agent_id.0.clone()),
+            );
         }
     }
 
@@ -2742,8 +2741,7 @@ fn params_from_context(
         sdk_thinking,
         anthropic_sdk::resources::messages::ThinkingConfig::Disabled
     ) && !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_THINKING")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_THINKING").as_deref(),
     );
     let context_management = if betas.contains(&CONTEXT_MANAGEMENT_BETA_HEADER.to_string()) {
         crate::services::compact::api_microcompact::get_api_context_management(
@@ -3787,8 +3785,7 @@ fn streaming_attempt_options_from_retry_context(
 /// Maps to CC `CLAUDE_ENABLE_STREAM_WATCHDOG` gate around the idle timers.
 fn stream_watchdog_enabled() -> bool {
     crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_ENABLE_STREAM_WATCHDOG")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_ENABLE_STREAM_WATCHDOG").as_deref(),
     )
 }
 
@@ -4529,8 +4526,7 @@ fn is_non_streaming_fallback_disabled() -> bool {
     // are not available in Nyan's direct API adapter, so only the explicit
     // env kill switch is honored here.
     crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK").as_deref(),
     )
 }
 
@@ -5177,9 +5173,13 @@ mod tests {
                 anthropic_sdk::RequestOptions::default(),
             )
             .unwrap();
-            assert!(!request.headers.as_ref().is_some_and(|headers| {
-                headers.contains_key("X-Claude-Code-Agent-Id")
-            }), "source {source} must share the main cache identity");
+            assert!(
+                !request
+                    .headers
+                    .as_ref()
+                    .is_some_and(|headers| { headers.contains_key("X-Claude-Code-Agent-Id") }),
+                "source {source} must share the main cache identity"
+            );
         }
     }
 

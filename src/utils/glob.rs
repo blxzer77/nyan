@@ -506,10 +506,8 @@ mod tests {
 
     #[test]
     fn glob_absolute_patterns_and_offset_limits_match_official_slicing() {
-        let root = std::env::temp_dir().join(format!(
-            "nyan-utils-glob-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("nyan-utils-glob-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(root.join("nested")).unwrap();
         for name in ["a.txt", "b.txt", "nested/c.txt"] {
             std::fs::write(root.join(name), name).unwrap();

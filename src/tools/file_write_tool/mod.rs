@@ -922,10 +922,8 @@ mod tests {
     fn validation_rejects_fifo_without_opening_or_blocking_on_it() {
         use std::os::unix::ffi::OsStrExt as _;
 
-        let root = std::env::temp_dir().join(format!(
-            "nyan-write-fifo-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("nyan-write-fifo-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("pipe");
         let path_c = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
@@ -1019,10 +1017,8 @@ mod tests {
     async fn existing_file_requires_full_read_and_rejects_content_race() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let root = std::env::temp_dir().join(format!(
-            "nyan-write-race-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("nyan-write-race-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("existing.txt");
         std::fs::write(&path, "old\n").unwrap();

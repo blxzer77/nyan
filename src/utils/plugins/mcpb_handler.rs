@@ -1231,11 +1231,12 @@ mod tests {
     #[tokio::test]
     async fn local_bundle_schema_to_config_and_cache_matches_official_bun() {
         let dir = temp_dir("schema-pipeline");
-        let valid = include_bytes!(
-            "../../../tests/fixtures/oracles/mcpb-schema-0915/valid.mcpb"
-        );
+        let valid = include_bytes!("../../../tests/fixtures/oracles/mcpb-schema-0915/valid.mcpb");
         std::fs::write(dir.join("probe.mcpb"), valid).unwrap();
-        let oracle: Value = serde_json::from_str(include_str!("../../../tests/fixtures/oracles/mcpb-schema-0915/bundle-oracle.json")).unwrap();
+        let oracle: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/oracles/mcpb-schema-0915/bundle-oracle.json"
+        ))
+        .unwrap();
         let mut first_path = None;
         for _ in 0..2 {
             let loaded = load_mcpb_file("probe.mcpb", &dir, "probe@test", None, None, false)
@@ -1277,9 +1278,8 @@ mod tests {
             .unwrap();
             first_path = Some(loaded.extracted_path);
         }
-        let invalid = include_bytes!(
-            "../../../tests/fixtures/oracles/mcpb-schema-0915/invalid.mcpb"
-        );
+        let invalid =
+            include_bytes!("../../../tests/fixtures/oracles/mcpb-schema-0915/invalid.mcpb");
         std::fs::write(dir.join("invalid.mcpb"), invalid).unwrap();
         let error = load_mcpb_file("invalid.mcpb", &dir, "probe@test", None, None, false)
             .await
@@ -1304,7 +1304,11 @@ mod tests {
         let config = dir.join("config");
         std::fs::create_dir_all(&config).unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config);
-        std::fs::write(dir.join("probe.mcpb"), include_bytes!("../../../tests/fixtures/oracles/mcpb-schema-0915/needs-config.mcpb")).unwrap();
+        std::fs::write(
+            dir.join("probe.mcpb"),
+            include_bytes!("../../../tests/fixtures/oracles/mcpb-schema-0915/needs-config.mcpb"),
+        )
+        .unwrap();
         for pass in 0..2 {
             let result = load_mcpb_file("probe.mcpb", &dir, "schema-probe@test", None, None, false)
                 .await

@@ -349,10 +349,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let custom_path =
-            std::env::temp_dir().join(format!("nyan-sysprompt-custom-{stamp}.txt"));
-        let append_path =
-            std::env::temp_dir().join(format!("nyan-sysprompt-append-{stamp}.txt"));
+        let custom_path = std::env::temp_dir().join(format!("nyan-sysprompt-custom-{stamp}.txt"));
+        let append_path = std::env::temp_dir().join(format!("nyan-sysprompt-append-{stamp}.txt"));
         std::fs::write(&custom_path, "FROM_FILE").unwrap();
         std::fs::write(&append_path, "APPEND_FILE").unwrap();
 

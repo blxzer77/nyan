@@ -55,11 +55,11 @@ pub fn Spinner(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     // startup screens (main.rs's "Resuming conversation…", "Loading
     // commands…") mount outside `AppStateProvider` (Contract B), so the
     // setting is read provider-optionally and defaults to animated there.
-    let reduced_motion = crate::state::app_state::use_app_state_maybe_outside_of_provider(
-        &mut hooks,
-        |state| state.settings.prefers_reduced_motion.unwrap_or(false),
-    )
-    .unwrap_or(false);
+    let reduced_motion =
+        crate::state::app_state::use_app_state_maybe_outside_of_provider(&mut hooks, |state| {
+            state.settings.prefers_reduced_motion.unwrap_or(false)
+        })
+        .unwrap_or(false);
     let frame = hooks.use_animation_frame(if reduced_motion {
         None
     } else {
@@ -1284,7 +1284,11 @@ mod tests {
             spinner_row_interval(SpinnerMode::Requesting, false, false),
             Some(Duration::from_millis(50))
         );
-        for mode in [SpinnerMode::Responding, SpinnerMode::Thinking, SpinnerMode::ToolUse] {
+        for mode in [
+            SpinnerMode::Responding,
+            SpinnerMode::Thinking,
+            SpinnerMode::ToolUse,
+        ] {
             assert_eq!(
                 spinner_row_interval(mode, false, false),
                 Some(Duration::from_millis(100)),
@@ -1295,7 +1299,10 @@ mod tests {
             spinner_row_interval(SpinnerMode::Responding, true, false),
             Some(Duration::from_millis(1_000))
         );
-        assert_eq!(spinner_row_interval(SpinnerMode::Requesting, false, true), None);
+        assert_eq!(
+            spinner_row_interval(SpinnerMode::Requesting, false, true),
+            None
+        );
     }
 
     fn render_text(element: impl Into<AnyElement<'static>>) -> String {

@@ -422,10 +422,7 @@ mod tests {
         let text = render_dialog();
         assert!(text.contains("Try nyan Desktop"), "canvas=\n{text}");
         assert!(text.contains("visual diffs"), "canvas=\n{text}");
-        assert!(
-            text.contains("Open in nyan Desktop"),
-            "canvas=\n{text}"
-        );
+        assert!(text.contains("Open in nyan Desktop"), "canvas=\n{text}");
         assert!(text.contains("Not now"), "canvas=\n{text}");
         assert!(text.contains("Don't ask again"), "canvas=\n{text}");
     }

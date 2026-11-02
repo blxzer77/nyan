@@ -86,9 +86,7 @@ impl RulesTabType {
     pub fn subtitle(self) -> Option<&'static str> {
         match self {
             Self::Allow => Some("nyan won't ask before using allowed tools."),
-            Self::Ask => {
-                Some("nyan will always ask for confirmation before using these tools.")
-            }
+            Self::Ask => Some("nyan will always ask for confirmation before using these tools."),
             Self::Deny => Some("nyan will always reject requests to use denied tools."),
             Self::Recent | Self::Workspace => None,
         }

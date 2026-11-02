@@ -1993,7 +1993,9 @@ mod tests {
         assert_eq!(results[0].content, "Entered plan mode");
         assert_eq!(
             rendered_tool_result_text(&all_rows, results[0]),
-            format!("{BLACK_CIRCLE} Entered plan mode\nClaude is now exploring and designing an implementation approach.")
+            format!(
+                "{BLACK_CIRCLE} Entered plan mode\nClaude is now exploring and designing an implementation approach."
+            )
         );
         assert_eq!(results[1].content, "User has approved your plan");
         // CC ExitPlanModeTool/UI.tsx:58-64 leads with the mode-colored

@@ -605,7 +605,8 @@ mod tests {
         let cases: serde_json::Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/tests/fixtures/oracles/mcp-config-fields-0915/oracle.json"
-        ))).unwrap();
+        )))
+        .unwrap();
         for case in cases.as_array().unwrap() {
             let validated = zod::safe_parse(mcp_server_config_schema(), &case["input"]).unwrap();
             assert_eq!(validated, case["parsed"]);

@@ -2595,8 +2595,7 @@ mod tests {
     #[tokio::test]
     async fn missing_local_marketplace_git_cache_fails_and_cleans_without_network() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let root =
-            std::env::temp_dir().join(format!("nyan-market-git-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-market-git-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let cache = root.join("cache");
         let source = root.join("missing-local-source");
@@ -2635,10 +2634,8 @@ mod tests {
             ExecFileStdin, ExecFileWithCwdOptions, exec_file_no_throw_with_cwd_options,
         };
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let root = std::env::temp_dir().join(format!(
-            "nyan-market-transitions-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("nyan-market-transitions-{}", uuid::Uuid::new_v4()));
         let source = root.join("source");
         let cache = root.join("cache");
         std::fs::create_dir_all(source.join("plugins/a")).unwrap();

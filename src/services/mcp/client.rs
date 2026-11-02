@@ -411,8 +411,7 @@ pub async fn process_mcp_result(
     }
 
     if crate::utils::env_utils::is_env_defined_falsy(
-        crate::utils::process_env::var("ENABLE_MCP_LARGE_OUTPUT_FILES")
-            .as_deref(),
+        crate::utils::process_env::var("ENABLE_MCP_LARGE_OUTPUT_FILES").as_deref(),
     ) || content_contains_images(&transformed.content)
     {
         transformed.content =
@@ -1400,10 +1399,8 @@ mod runtime {
             // Maps to: CC `new Client({ name:'claude-code', title:'Claude Code', ... },
             // { capabilities:{ roots:{}, elicitation:{} } })`, initialized at the
             // SDK's `LATEST_PROTOCOL_VERSION`.
-            let mut implementation = Implementation::new(
-                "nyan",
-                crate::constants::product::VERSION,
-            );
+            let mut implementation =
+                Implementation::new("nyan", crate::constants::product::VERSION);
             implementation.title = Some("nyan".to_string());
             implementation.website_url = Some(crate::constants::product::PRODUCT_URL.to_string());
 
@@ -2005,10 +2002,8 @@ mod runtime {
         if transport_config.auth_header.as_deref() == Some("") {
             transport_config.auth_header = None;
         }
-        let transport = StreamableHttpClientTransport::with_client(
-            streamable_http_client()?,
-            transport_config,
-        );
+        let transport =
+            StreamableHttpClientTransport::with_client(streamable_http_client()?, transport_config);
         let handler = NyanMcpClientHandler::new(name);
         let timeout = Duration::from_millis(connection_timeout_ms());
         Ok(tokio::time::timeout(timeout, serve_client(handler, transport)).await??)
@@ -2033,10 +2028,8 @@ mod runtime {
         // Rust/rmcp transport boundary for the source's nested `doRequest`:
         // each retry must start a new service with the bearer token it sends.
         let transport_config = claude_ai_proxy_http_config(proxy_url, token)?;
-        let transport = StreamableHttpClientTransport::with_client(
-            streamable_http_client()?,
-            transport_config,
-        );
+        let transport =
+            StreamableHttpClientTransport::with_client(streamable_http_client()?, transport_config);
         let handler = NyanMcpClientHandler::new(name);
         let timeout = Duration::from_millis(connection_timeout_ms());
         Ok(tokio::time::timeout(timeout, serve_client(handler, transport)).await??)
@@ -4243,8 +4236,7 @@ pub(crate) mod counting_fixture {
 
     impl CountingFixture {
         pub(crate) fn new() -> Self {
-            let dir =
-                std::env::temp_dir().join(format!("nyan-mcp-memo-{}", uuid::Uuid::new_v4()));
+            let dir = std::env::temp_dir().join(format!("nyan-mcp-memo-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&dir).unwrap();
             let script = dir.join("server.mjs");
             std::fs::write(&script, COUNTING_STDIO_FIXTURE).expect("write MCP fixture");
@@ -4373,11 +4365,17 @@ mod tests {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _env: Vec<_> = ["https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY", "no_proxy"]
-            .into_iter()
-            .map(EnvVarGuard::unset)
-            .chain([EnvVarGuard::set("NO_PROXY", "127.0.0.1")])
-            .collect();
+        let _env: Vec<_> = [
+            "https_proxy",
+            "HTTPS_PROXY",
+            "http_proxy",
+            "HTTP_PROXY",
+            "no_proxy",
+        ]
+        .into_iter()
+        .map(EnvVarGuard::unset)
+        .chain([EnvVarGuard::set("NO_PROXY", "127.0.0.1")])
+        .collect();
         let target = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let target_address = target.local_addr().unwrap();
         let target_hit = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -4419,7 +4417,10 @@ mod tests {
 
     #[test]
     fn resource_helper_callback_scope_and_reconnect_match_actual_bun_oracle() {
-        let oracle: serde_json::Value = serde_json::from_str(include_str!("../../../tests/fixtures/oracles/mcp-contract-review-0915/oracle.json")).unwrap();
+        let oracle: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/oracles/mcp-contract-review-0915/oracle.json"
+        ))
+        .unwrap();
         let mut calls = Vec::new();
         for names in [vec!["a", "b"], vec!["c"]] {
             let added = std::sync::atomic::AtomicBool::new(false);
@@ -6305,10 +6306,8 @@ rl.on('line', line => {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         // Elicitation notification hooks are detached onto it.
         crate::utils::process_runtime::initialize_test_process_runtime();
-        let script_path = std::env::temp_dir().join(format!(
-            "nyan-mcp-url-elicit-{}.mjs",
-            uuid::Uuid::new_v4()
-        ));
+        let script_path =
+            std::env::temp_dir().join(format!("nyan-mcp-url-elicit-{}.mjs", uuid::Uuid::new_v4()));
         std::fs::write(
             &script_path,
             r#"
@@ -7709,10 +7708,8 @@ rl.on('line', line => {
     #[test]
     fn notifications_carry_the_connection_that_sent_them() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let script_path = std::env::temp_dir().join(format!(
-            "nyan-mcp-notifying-{}.mjs",
-            uuid::Uuid::new_v4()
-        ));
+        let script_path =
+            std::env::temp_dir().join(format!("nyan-mcp-notifying-{}.mjs", uuid::Uuid::new_v4()));
         std::fs::write(
             &script_path,
             r#"
@@ -8249,10 +8246,8 @@ rl.on('line', line => {
     #[test]
     fn stdio_get_mcp_prompt_for_command_fetches_live_prompt_content() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let script_path = std::env::temp_dir().join(format!(
-            "nyan-mcp-get-prompt-{}.mjs",
-            uuid::Uuid::new_v4()
-        ));
+        let script_path =
+            std::env::temp_dir().join(format!("nyan-mcp-get-prompt-{}.mjs", uuid::Uuid::new_v4()));
         std::fs::write(
             &script_path,
             r#"

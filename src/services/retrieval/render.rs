@@ -88,7 +88,10 @@ pub fn render_outcome(outcome: &SearchOutcome, max_results: usize) -> String {
     };
     lines.push(searched_note);
     if outcome.extra_round {
-        lines.push("[retrieval: one extra round ran because the first results were judged insufficient]".to_string());
+        lines.push(
+            "[retrieval: one extra round ran because the first results were judged insufficient]"
+                .to_string(),
+        );
     }
     if !outcome.dropped.is_empty() {
         let mut reasons = std::collections::BTreeMap::<String, usize>::new();

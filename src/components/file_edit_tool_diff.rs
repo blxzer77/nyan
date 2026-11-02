@@ -222,10 +222,8 @@ mod tests {
     use crate::utils::theme;
 
     fn temp_file(name: &str, content: &str) -> std::path::PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "nyan-file-edit-diff-{name}-{}",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("nyan-file-edit-diff-{name}-{}", std::process::id()));
         std::fs::write(&path, content).unwrap();
         path
     }

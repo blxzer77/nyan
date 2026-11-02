@@ -78,19 +78,16 @@ pub fn file_history_enabled() -> bool {
     }
     load_global_config().file_checkpointing_enabled != Some(false)
         && !crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING")
-                .as_deref(),
+            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING").as_deref(),
         )
 }
 
 /// Maps to: CC `fileHistoryEnabledSdk()`.
 fn file_history_enabled_sdk() -> bool {
     crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING").as_deref(),
     ) && !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING").as_deref(),
     )
 }
 
@@ -960,8 +957,7 @@ mod tests {
     async fn diff_stats_count_deleted_lines_against_missing_backup() {
         // With no backup (file absent at target), every current line counts
         // as a deletion on rewind — CC diffLines(original, '').
-        let temp =
-            std::env::temp_dir().join(format!("nyan-fh-diff-{}.txt", uuid::Uuid::new_v4()));
+        let temp = std::env::temp_dir().join(format!("nyan-fh-diff-{}.txt", uuid::Uuid::new_v4()));
         std::fs::write(&temp, "one\ntwo\nthree\n").expect("write temp");
         let stats = compute_diff_stats_for_file(&temp.to_string_lossy(), None).await;
         assert_eq!(stats.files_changed.len(), 1);

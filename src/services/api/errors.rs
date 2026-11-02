@@ -354,7 +354,9 @@ pub fn get_oauth_org_not_allowed_error_message() -> &'static str {
 ///
 /// Maps to: CC services/api/errors.ts:217-219
 fn is_ccr_mode() -> bool {
-    crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref())
+    crate::utils::env_utils::is_env_truthy(
+        crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref(),
+    )
 }
 
 // ---------------------------------------------------------------------------

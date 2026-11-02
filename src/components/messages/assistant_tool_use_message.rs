@@ -1311,8 +1311,7 @@ fn shell_progress_auxiliary_messages(
 fn shell_background_hint(task_id: Option<&str>) -> Option<String> {
     if task_id.is_none()
         || crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS")
-                .as_deref(),
+            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS").as_deref(),
         )
     {
         return None;
@@ -2033,7 +2032,9 @@ mod tests {
 
         assert_eq!(
             canvas.to_string(),
-            format!("{BLACK_CIRCLE} Edit Notebook(nb_dir/\n               demo.ipyn\n               b@cell-a)\n")
+            format!(
+                "{BLACK_CIRCLE} Edit Notebook(nb_dir/\n               demo.ipyn\n               b@cell-a)\n"
+            )
         );
         let url = crate::components::file_path_link::file_path_to_file_url(&notebook_path);
         assert_eq!(hyperlink_text(&canvas, &url), "nb_dir/demo.ipynb");
@@ -2269,10 +2270,7 @@ mod tests {
             ),
         ] {
             let plan = render_tool_header_canvas(tool_name, input, false, 80);
-            assert_eq!(
-                plan.to_string(),
-                format!("{BLACK_CIRCLE} Updated plan\n")
-            );
+            assert_eq!(plan.to_string(), format!("{BLACK_CIRCLE} Updated plan\n"));
             assert_eq!(hyperlink_text(&plan, &plan_url), "");
         }
     }
@@ -3777,7 +3775,10 @@ mod tests {
         let text = render("toolu_waiting");
         assert!(text.contains("Waiting for permission…"), "canvas=\n{text}");
         let other = render("toolu_other");
-        assert!(!other.contains("Waiting for permission…"), "canvas=\n{other}");
+        assert!(
+            !other.contains("Waiting for permission…"),
+            "canvas=\n{other}"
+        );
     }
 
     #[test]

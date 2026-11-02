@@ -165,7 +165,10 @@ mod runtime {
         #[test]
         fn memoized_claudeai_promise_matches_source_inflight_and_clear_oracle() {
             crate::utils::process_runtime::initialize_test_process_runtime();
-            let oracle: serde_json::Value = serde_json::from_str(include_str!("../../../tests/fixtures/oracles/mcp-discovery-0915/claudeai-cache-oracle.json")).unwrap();
+            let oracle: serde_json::Value = serde_json::from_str(include_str!(
+                "../../../tests/fixtures/oracles/mcp-discovery-0915/claudeai-cache-oracle.json"
+            ))
+            .unwrap();
             let cache = Mutex::new(None);
             let (old_tx, old_rx) = futures::channel::oneshot::channel();
             let old = memoized_config_promise(&cache, || {

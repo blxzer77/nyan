@@ -225,26 +225,21 @@ pub(crate) fn Onboarding<'a>(
     // `goToNextStep` of the render that chose to install.
     // A3/A6: dropping the UI waiter does not cancel the installation promise.
     let install_terminal = hooks.use_async_handler({
-        move |()| {
-            async move {
-                if let Some(runtime) =
-                    crate::utils::process_runtime::runtime_handle_for_detached_work()
-                {
-                    let _ = runtime
-                        .spawn(async move {
-                            crate::commands::terminal_setup::terminal_setup::setup_terminal(
-                                theme_name,
-                            )
+        move |()| async move {
+            if let Some(runtime) = crate::utils::process_runtime::runtime_handle_for_detached_work()
+            {
+                let _ = runtime
+                    .spawn(async move {
+                        crate::commands::terminal_setup::terminal_setup::setup_terminal(theme_name)
                             .await
-                        })
-                        .await;
-                } else {
-                    crate::utils::log::log_error(crate::utils::log::LogError::new(
-                        "Process runtime unavailable for terminal setup",
-                    ));
-                }
-                go_to_next_step();
+                    })
+                    .await;
+            } else {
+                crate::utils::log::log_error(crate::utils::log::LogError::new(
+                    "Process runtime unavailable for terminal setup",
+                ));
             }
+            go_to_next_step();
         }
     });
 
@@ -807,7 +802,10 @@ mod tests {
             let mut frames = Vec::new();
             while let Some(canvas) = render_loop.next().await {
                 let text = canvas.to_string();
-                assert!(text.contains("provider setting="), "the echo stopped rendering:\n{text}");
+                assert!(
+                    text.contains("provider setting="),
+                    "the echo stopped rendering:\n{text}"
+                );
                 if !text.contains(&format!("keys={} ", frames.len())) {
                     continue;
                 }
@@ -820,8 +818,16 @@ mod tests {
             frames
         });
         assert_eq!(frames.len(), 3, "frames={frames:#?}");
-        assert!(frames[1].contains("provider setting=dark current=light"), "{}", frames[1]);
-        assert!(frames[2].contains("provider setting=light current=light"), "{}", frames[2]);
+        assert!(
+            frames[1].contains("provider setting=dark current=light"),
+            "{}",
+            frames[1]
+        );
+        assert!(
+            frames[2].contains("provider setting=light current=light"),
+            "{}",
+            frames[2]
+        );
         assert!(frames[2].contains("Security notes:"), "{}", frames[2]);
     }
 
@@ -995,10 +1001,8 @@ mod tests {
     ) -> String {
         futures::executor::block_on(async move {
             let (keys, events) = async_channel::unbounded();
-            let mut app = element!(StepHarness(
-                initial_step: Some(initial_step),
-                unbind_confirmation_escape,
-            ));
+            let mut app =
+                element!(StepHarness(initial_step: Some(initial_step), unbind_confirmation_escape));
             let mut render_loop = Box::pin(app.mock_terminal_render_loop(
                 MockTerminalConfig::with_events(events).with_size(120, 40),
             ));
@@ -1032,10 +1036,18 @@ mod tests {
         // active context. With Esc unbound in Confirmation, that unbound
         // match stops Esc (useKeybinding.ts:182-186) before the Select's
         // cancel; n still skips.
-        let escaped = run_steps(OnboardingStepId::TerminalSetup, true, vec![vec![KeyCode::Esc]]);
+        let escaped = run_steps(
+            OnboardingStepId::TerminalSetup,
+            true,
+            vec![vec![KeyCode::Esc]],
+        );
         assert!(escaped.contains("done=0"), "{escaped}");
         assert!(escaped.contains("Use nyan's terminal setup?"), "{escaped}");
-        let declined = run_steps(OnboardingStepId::TerminalSetup, true, vec![vec![KeyCode::Char('n')]]);
+        let declined = run_steps(
+            OnboardingStepId::TerminalSetup,
+            true,
+            vec![vec![KeyCode::Char('n')]],
+        );
         assert!(declined.contains("done=1"), "{declined}");
     }
 
@@ -1045,7 +1057,11 @@ mod tests {
         // `currentStepIndex`, so two Enters read together both go to the
         // step after security; the second does not also leave terminal
         // setup.
-        let shown = run_steps(OnboardingStepId::Security, false, vec![vec![KeyCode::Enter, KeyCode::Enter]]);
+        let shown = run_steps(
+            OnboardingStepId::Security,
+            false,
+            vec![vec![KeyCode::Enter, KeyCode::Enter]],
+        );
         assert!(shown.contains("done=0"), "{shown}");
         assert!(shown.contains("Use nyan's terminal setup?"), "{shown}");
     }

@@ -148,7 +148,8 @@ static USER_MSG_OPT_IN: LazyLock<RwLock<bool>> = LazyLock::new(|| {
 static QUESTION_PREVIEW_FORMAT: LazyLock<RwLock<Option<QuestionPreviewFormat>>> =
     LazyLock::new(|| {
         RwLock::new(
-            match crate::utils::process_env::var("CLAUDE_CODE_QUESTION_PREVIEW_FORMAT").unwrap_or_default()
+            match crate::utils::process_env::var("CLAUDE_CODE_QUESTION_PREVIEW_FORMAT")
+                .unwrap_or_default()
                 .as_str()
             {
                 "html" => Some(QuestionPreviewFormat::Html),
@@ -714,9 +715,15 @@ pub fn get_is_non_interactive_session() -> bool {
 #[cfg(test)]
 fn non_interactive_env_override() -> bool {
     // The tests write these through the carrier, so the seam reads it too.
-    ["CLAUDE_CODE_NON_INTERACTIVE", "NYAN_NON_INTERACTIVE", "NYAN_NON_INTERACTIVE_SESSION"]
-        .into_iter()
-        .any(|key| crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var(key).as_deref()))
+    [
+        "CLAUDE_CODE_NON_INTERACTIVE",
+        "NYAN_NON_INTERACTIVE",
+        "NYAN_NON_INTERACTIVE_SESSION",
+    ]
+    .into_iter()
+    .any(|key| {
+        crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var(key).as_deref())
+    })
 }
 
 #[cfg(not(test))]
@@ -755,7 +762,8 @@ impl Drop for IsInteractiveGuard {
 /// `preferThirdPartyAuthentication`.
 pub fn prefer_third_party_authentication() -> bool {
     get_is_non_interactive_session()
-        && crate::utils::process_env::var("CLAUDE_CODE_ENTRYPOINT").as_deref() != Some("claude-vscode")
+        && crate::utils::process_env::var("CLAUDE_CODE_ENTRYPOINT").as_deref()
+            != Some("claude-vscode")
 }
 
 /// Maps to CC `getKairosActive()`.

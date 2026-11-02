@@ -131,8 +131,7 @@ impl Project {
         if !SESSION_WRITE_ENABLED
             || crate::bootstrap::state::is_session_persistence_disabled()
             || crate::utils::env_utils::is_env_truthy(
-                crate::utils::process_env::var("CLAUDE_CODE_SKIP_PROMPT_HISTORY")
-                    .as_deref(),
+                crate::utils::process_env::var("CLAUDE_CODE_SKIP_PROMPT_HISTORY").as_deref(),
             )
         {
             return true;
@@ -2289,8 +2288,7 @@ fn read_transcript_entries(path: &Path) -> Vec<serde_json::Value> {
 
     if file_size > SKIP_PRECOMPACT_THRESHOLD
         && !crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_PRECOMPACT_SKIP")
-                .as_deref(),
+            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_PRECOMPACT_SKIP").as_deref(),
         )
     {
         return read_large_transcript_entries(path, file_size);
@@ -4824,8 +4822,7 @@ fn attachment_row_is_withheld(payload: &serde_json::Value) -> bool {
     let is_hook_context =
         payload.get("type").and_then(|value| value.as_str()) == Some("hook_additional_context");
     let keep_hook_context = crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT")
-            .as_deref(),
+        crate::utils::process_env::var("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT").as_deref(),
     );
     !(is_hook_context && keep_hook_context)
 }
@@ -6532,8 +6529,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let root =
-            std::env::temp_dir().join(format!("nyan-worktree-resolve-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-worktree-resolve-{}", Uuid::new_v4()));
         let current = root.join("current");
         let sibling = root.join("sibling");
         let bin = root.join("bin");
@@ -6726,8 +6722,7 @@ mod tests {
     fn append_entry_to_file_is_serialized_after_queued_entries() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _write_env = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let root =
-            std::env::temp_dir().join(format!("nyan-sync-append-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-sync-append-{}", uuid::Uuid::new_v4()));
         let path = root.join("ordered.jsonl");
 
         let _ = get_project()
@@ -7319,8 +7314,7 @@ mod tests {
 
     #[test]
     fn subagent_transcript_paths_and_metadata_match_official_sidecar_shape() {
-        let root =
-            std::env::temp_dir().join(format!("nyan-subagent-session-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-subagent-session-{}", Uuid::new_v4()));
         let _guard = set_test_projects_dir_override(root.join("projects"));
         let project_path = "/tmp/project with spaces";
         let session_id = "session-1";
@@ -7420,8 +7414,7 @@ mod tests {
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
-        let root =
-            std::env::temp_dir().join(format!("nyan-agent-cwd-override-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-agent-cwd-override-{}", Uuid::new_v4()));
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let parent_cwd = root.join("parent-repo");
         let worktree_cwd = root.join("worktrees").join("agent-abc12345");
@@ -7533,8 +7526,7 @@ mod tests {
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
-        let root =
-            std::env::temp_dir().join(format!("nyan-resumed-subagent-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("nyan-resumed-subagent-{}", Uuid::new_v4()));
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let original_cwd = root.join("current-project");
         // What `session_restore.rs:352` passes: the directory holding the
@@ -9222,8 +9214,7 @@ mod tests {
             .to_string_lossy()
             .into_owned();
         let Some(root) = crate::utils::process_env::var(PROBE) else {
-            let root =
-                std::env::temp_dir().join(format!("nyan-title-search-{}", Uuid::new_v4()));
+            let root = std::env::temp_dir().join(format!("nyan-title-search-{}", Uuid::new_v4()));
             struct Cleanup(PathBuf);
             impl Drop for Cleanup {
                 fn drop(&mut self) {

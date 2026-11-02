@@ -900,14 +900,15 @@ fn has_permissions_to_use_tool_inner<'a>(
             // prompted for shell-analysis findings (redirection, `rm`, …). Bypass
             // is the user turning confirmation off wholesale, so it covers these
             // too; a user-configured `ask` rule (step 1f) still wins.
-            PermissionResult::Ask { decision_reason, .. } => {
+            PermissionResult::Ask {
+                decision_reason, ..
+            } => {
                 let safety_check = matches!(
                     decision_reason,
                     Some(crate::utils::permissions::permission_result::PermissionDecisionReason::SafetyCheck { .. })
                 );
                 tool_permission_ask_is_bypass_immune(decision_reason.as_ref())
-                    && !(safety_check
-                        && params.context.mode == PermissionMode::BypassPermissions)
+                    && !(safety_check && params.context.mode == PermissionMode::BypassPermissions)
             }
             _ => false,
         };
@@ -4910,10 +4911,7 @@ mod tests {
         let approvable_path = cwd.join(".git/nyan-parity-probe").display().to_string();
         // `PROGRA~1` is an 8.3 short name → `hasSuspiciousWindowsPathPattern` →
         // `classifierApprovable: false` (CC `filesystem.ts:630-639`).
-        let non_approvable_path = cwd
-            .join("PROGRA~1/nyan-parity-probe")
-            .display()
-            .to_string();
+        let non_approvable_path = cwd.join("PROGRA~1/nyan-parity-probe").display().to_string();
 
         let run = |path: &str, should_avoid_permission_prompts: bool| {
             let auto_context = ToolPermissionContext {

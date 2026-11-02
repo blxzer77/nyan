@@ -1130,10 +1130,8 @@ mod tests {
     #[test]
     fn remote_menu_disable_dispatches_to_mcp_connection_service() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let temp_dir = std::env::temp_dir().join(format!(
-            "nyan-remote-menu-toggle-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let temp_dir =
+            std::env::temp_dir().join(format!("nyan-remote-menu-toggle-{}", uuid::Uuid::new_v4()));
         let project_dir = temp_dir.join("project");
         std::fs::create_dir_all(&project_dir).unwrap();
         let previous_cwd = std::env::current_dir().unwrap();

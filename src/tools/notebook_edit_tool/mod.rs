@@ -17,8 +17,7 @@ pub mod ui;
 /// Private destination transport carried only by `PermissionRequest.call_input`
 /// (`#[serde(skip)]`), never by SDK messages or transcript persistence.
 pub(crate) const CHECKED_NOTEBOOK_DESTINATION_KEY: &str = "__nyan_checked_notebook_destination";
-pub(crate) const CHECKED_NOTEBOOK_APPROVED_PATH_KEY: &str =
-    "__nyan_checked_notebook_approved_path";
+pub(crate) const CHECKED_NOTEBOOK_APPROVED_PATH_KEY: &str = "__nyan_checked_notebook_approved_path";
 
 pub(crate) fn resolved_notebook_destination(path: &std::path::Path) -> std::path::PathBuf {
     let candidate = crate::utils::fs_operations::get_paths_for_permission_check(path)

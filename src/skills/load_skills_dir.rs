@@ -441,8 +441,7 @@ fn load_skill_dir_commands(cwd: &Path) -> Vec<SkillCommand> {
         }
     } else {
         if !crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_POLICY_SKILLS")
-                .as_deref(),
+            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_POLICY_SKILLS").as_deref(),
         ) {
             let managed = crate::utils::settings::managed_path::get_managed_file_path()
                 .join(".claude")
@@ -1268,8 +1267,7 @@ mod tests {
     use std::io::Write;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("nyan-skills-{name}-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("nyan-skills-{name}-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&dir).expect("temp dir");
         dir
     }

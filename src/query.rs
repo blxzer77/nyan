@@ -980,10 +980,11 @@ where
                     )
                 } else {
                     crate::utils::tool_result_storage::ApplyToolResultBudgetResult {
-                        messages: crate::utils::tool_result_storage::apply_tool_result_replacements_only(
-                            messages_after_compact_boundary,
-                            state,
-                        ),
+                        messages:
+                            crate::utils::tool_result_storage::apply_tool_result_replacements_only(
+                                messages_after_compact_boundary,
+                                state,
+                            ),
                         newly_replaced: Vec::new(),
                     }
                 };
@@ -1267,8 +1268,7 @@ where
             // context still exceeds the manual-compact safety margin, return a
             // terminal API-error row instead of making a doomed model request.
             if should_preempt_context_blocking_limit(&params.query_source, autocompact_compacted) {
-                let model_for_token_warning =
-                    crate::utils::model::model::get_main_loop_model();
+                let model_for_token_warning = crate::utils::model::model::get_main_loop_model();
                 let token_usage =
                     crate::utils::tokens::token_count_with_estimation(&messages_for_query)
                         .saturating_sub(snip_tokens_freed);
@@ -2586,12 +2586,10 @@ where
         // wrote. The turn-ending case is started from the stop hook instead.
         // The prefix is the request as sent: the assistant reply ends in an
         // unanswered tool_use and was never cached.
-        if matches!(
-            params.query_source,
-            QuerySource::Prompt | QuerySource::Sdk
-        ) && assistant_messages
-            .last()
-            .is_some_and(|assistant| !assistant_tool_use_blocks(assistant).is_empty())
+        if matches!(params.query_source, QuerySource::Prompt | QuerySource::Sdk)
+            && assistant_messages
+                .last()
+                .is_some_and(|assistant| !assistant_tool_use_blocks(assistant).is_empty())
         {
             let warm_context = loop_local_tool_use_context(
                 &params,
@@ -4447,9 +4445,7 @@ fn query_tool_use_context(
     // Legacy/test builder. Production prefers seeded `QueryParams::tool_use_context`.
     let mut context = crate::tool::ToolUseContext::with_permission_context(permission_context)
         .with_non_interactive_session(crate::bootstrap::state::get_is_non_interactive_session())
-        .with_main_loop_model(
-            crate::utils::model::model::get_main_loop_model(),
-        )
+        .with_main_loop_model(crate::utils::model::model::get_main_loop_model())
         .with_query_tracking(query_tracking)
         .with_resume_restore_stores(resume_restore_stores.clone())
         .with_mcp_state(mcp_state.clone())
@@ -6351,8 +6347,7 @@ mod tests {
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _non_interactive = EnvVarGuard::unset("CLAUDE_CODE_NON_INTERACTIVE");
         let _nyan_non_interactive = EnvVarGuard::unset("NYAN_NON_INTERACTIVE");
-        let _nyan_non_interactive_session =
-            EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION");
+        let _nyan_non_interactive_session = EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION");
         let _checkpointing = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING");
         let _bootstrap = BootstrapRestore {
             interactive: crate::bootstrap::state::get_is_interactive(),

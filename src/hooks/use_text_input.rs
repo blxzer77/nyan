@@ -877,11 +877,13 @@ mod tests {
                     }
                 };
                 let events = stream::iter(events).chain(stream::pending());
-                let mut frames = Box::pin(app.mock_terminal_render_loop(
-                    MockTerminalConfig::with_events(events)
-                        .with_size(90, 3)
-                        .with_ignore_ctrl_c(true),
-                ));
+                let mut frames = Box::pin(
+                    app.mock_terminal_render_loop(
+                        MockTerminalConfig::with_events(events)
+                            .with_size(90, 3)
+                            .with_ignore_ctrl_c(true),
+                    ),
+                );
                 let mut last = String::new();
                 for _ in 0..10 {
                     let Some(frame) = crate::utils::race(frames.next(), async {
@@ -1010,7 +1012,11 @@ mod tests {
                 last = canvas.to_string();
                 match stage {
                     0 if last.contains("mark=0") => {
-                        for event in [press(KeyCode::F(6)), press(KeyCode::F(6)), press(KeyCode::F(24))] {
+                        for event in [
+                            press(KeyCode::F(6)),
+                            press(KeyCode::F(6)),
+                            press(KeyCode::F(24)),
+                        ] {
                             keys.send(event).await.unwrap();
                         }
                         stage = 1;

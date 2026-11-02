@@ -1807,7 +1807,10 @@ mod tests {
     #[test]
     fn discovery_effect_cleanup_matches_source_independent_cancel_and_identity_oracle() {
         use std::sync::Arc;
-        let oracle: serde_json::Value = serde_json::from_str(include_str!("../../../tests/fixtures/oracles/mcp-contract-review-0915/oracle.json")).unwrap();
+        let oracle: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/oracles/mcp-contract-review-0915/oracle.json"
+        ))
+        .unwrap();
         let base = McpDiscoveryDependencies {
             store: crate::state::store::AppStore::new(
                 crate::state::app_state_store::AppState::default(),
@@ -1860,7 +1863,10 @@ mod tests {
 
     #[test]
     fn optional_resource_updates_match_actual_bun_flush_oracle() {
-        let oracle: serde_json::Value = serde_json::from_str(include_str!("../../../tests/fixtures/oracles/mcp-contract-review-0915/oracle.json")).unwrap();
+        let oracle: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/oracles/mcp-contract-review-0915/oracle.json"
+        ))
+        .unwrap();
         let resource = |server: &str, uri: &str| super::super::types::ServerResource {
             server: server.into(),
             uri: uri.into(),
