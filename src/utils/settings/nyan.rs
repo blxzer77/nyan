@@ -151,8 +151,11 @@ pub struct MemorySettings {
 }
 
 /// @nyan: independent shadow switch per memory decision point. A point is only
-/// queried when its own switch (or an explicit `settings.nyan.decision.points`
-/// shadow/active mode) is on; the deterministic path is never altered.
+/// queried when its own switch here is on **and** the Decision Provider is
+/// enabled **and** the point's resolved mode in `settings.nyan.decision` is not
+/// `off`. A `shadow`/`active` mode in `decision.points` alone does not turn a
+/// memory point on, and even `active` is only recorded, never applied; the
+/// deterministic path is never altered.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
