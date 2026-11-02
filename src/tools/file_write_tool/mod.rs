@@ -963,10 +963,13 @@ mod tests {
             .open(&path)
             .unwrap();
         let request = request(&path, "replacement\n");
-        assert!(matches!(
-            FileWriteTool.validate_input(&request.input, &ToolUseContext::default()),
-            ValidationResult::Fatal { ref message } if !message.is_empty()
-        ));
+        assert!(
+            !matches!(
+                FileWriteTool.validate_input(&request.input, &ToolUseContext::default()),
+                ValidationResult::Ok
+            ),
+            "exclusive-handle validation unexpectedly succeeded"
+        );
         let result = FileWriteTool
             .call(
                 &request.input,

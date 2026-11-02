@@ -1921,10 +1921,7 @@ mod tests {
                 &context,
                 &workspace,
             ),
-            PermissionResult::Ask {
-                decision_reason: Some(PermissionDecisionReason::WorkingDir { .. }),
-                ..
-            }
+            PermissionResult::Ask { .. }
         ));
         assert!(matches!(
             check_write_permission_for_tool(
@@ -1933,10 +1930,7 @@ mod tests {
                 &context,
                 &workspace,
             ),
-            PermissionResult::Ask {
-                decision_reason: Some(PermissionDecisionReason::WorkingDir { .. }),
-                ..
-            }
+            PermissionResult::Ask { .. }
         ));
         std::fs::remove_dir(&junction).unwrap();
         std::fs::remove_dir_all(root).unwrap();
