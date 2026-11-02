@@ -85,15 +85,16 @@
 |---|---|---|---|
 | `src/utils/auto_updater.rs:86-91`、`:146-190`、`:193-210` | **不可用**。网络检查与 npm/GCS/native install 仍是 short-circuit/no-op；安装结果是 `InstallFailed` 或空结果。 | Windows 首发采用手动下载/覆盖安装，UI 明确显示“自动更新不可用”；后续实现签名更新包和原子替换。 | L–XL |
 | `src/utils/native_installer/package_managers.rs:7-14`、`:62-70` | **不可用**。实际 package-manager detector 尚未实现，只读 `NYAN_PACKAGE_MANAGER`。Windows 的 winget 只是枚举值，不代表可安装。 | 选择并实现一种发行渠道（winget/MSIX/独立 installer），不要把环境变量 seam 当成生产更新能力。 | L |
-| `src/utils/local_installer.rs:1-8`、`:23-31` | **不可用**。只有 local npm 安装存在性 probe，安装/更新动作未移植。 | Windows 二进制不要依赖 Node/npm local install；用独立 zip/MSIX 安装器。 | L |
+| `src/utils/local_installer.rs:1-8`、`:23-31` | **不可用**。只有 local npm 安装存在性 probe，安装/更新动作未移植；且 probe 只查 `.bin/claude`，Windows npm 常见的 `claude.cmd` 不在检查范围内。 | Windows 二进制不要依赖 Node/npm local install；用独立 zip/MSIX 安装器。若保留 npm 兼容路径，至少同时识别 `.cmd`/`.exe`。 | L |
 | `.github/workflows/ci.yml:233-251`、仓库当前 workflow 文件列表 | **不可用（发布）**。当前 CI 没有 release workflow，只验证 Windows target check；没有 Windows release 构建、zip 归档、签名或安装器。`docs/nyan/cicd.md:560-636` 只是设计，且明确记录未做代码签名。 | 增加单独 release workflow：构建一次、打 zip、放置 `vendor/ripgrep/x64-win32/rg.exe`、Windows runner 下载并运行冒烟；签名/SmartScreen 作为发布前置或明确限制。 | L–XL |
 
 ### 8. ripgrep 和其他外部二进制
 
 | 位置 | 现状 | 建议方案 | 工作量 |
 |---|---|---|---|
-| `src/utils/ripgrep.rs:78-120`、`:145-169`、`:929-965` | **基本正常**。已支持 `x64-win32/rg.exe`、Windows PATH/PATHEXT 和 vendor → source tree → system fallback。缺 vendor 时会依赖用户 PATH 中的 `rg.exe`。 | 发布包必须带 Windows `rg.exe`，并在 release 冒烟运行 `rg --version`；缺失时 doctor 给出清晰诊断。 | M |
+| `src/utils/ripgrep.rs:78-120`、`:145-169`、`:929-965` | **能编译但发布行为未闭环**。已支持 `x64-win32/rg.exe`、Windows PATH/PATHEXT 和 vendor → source tree → system fallback；但当前仓库没有 `vendor/` 资产目录，发布包若不补入 `rg.exe` 就会依赖用户 PATH。 | 发布流程必须下载并带上 Windows `rg.exe`，并在 release 冒烟运行 `rg --version`；缺失时 doctor 给出清晰诊断。 | M |
 | `src/components/global_search_dialog.rs:22-44` | **能编译但行为不对**。Global Search 直接 `Command::new("rg")`，绕过 `utils::ripgrep::ripgrep_command()`；发布包即使带了 vendor `rg.exe`，用户 PATH 没有 rg 时该功能仍失败。 | 改为复用统一 ripgrep resolver，或由发布启动器把 vendor 目录加入 PATH；前者更可靠。 | S–M |
+| `src/utils/which.rs:75-80` | **不可用（依赖该 helper 的 Windows 路径）**。Windows/其它非 Unix 平台的 `bun_which` 恒返回 `None`，不会按 `PATHEXT` 查找 `.exe`、`.cmd`、`.bat` 等外部命令。 | 实现 Windows `PATH` + `PATHEXT` 查找，并补 `git`、`node`、`rg.exe`、`.cmd` shim 测试；不要让调用方静默得到“命令不存在”。 | M |
 | `src/utils/sandbox/network_proxy.rs:1189-1203` | **不可用（Windows sandbox 依赖）**。Linux sandbox bridge 直接启动 `socat`；Windows 不应安装/依赖它，因为 Windows sandbox backend 尚不存在。 | Windows 禁用 sandbox bridge 检查；未来 Windows backend 使用 native socket/pipe 或 Windows 兼容 bridge。 | M–XL |
 | `src/utils/windows_paths.rs:94-117` | **正常**。`where.exe` 是 Windows 系统工具，用于发现 Git；调用继承受控环境。 | 保持；在没有 Git 的干净 Windows runner 验证错误信息。 | S |
 | `src/hooks/use_memory_usage.rs:74-94` | **正常（不会误启动 `ps`）**。`ps` 只在 macOS 分支；Windows 不会调用 Unix 外部命令，但当前实现没有 Windows RSS provider，见下一节。 | 用 Windows API 获取 RSS，避免以 0 代表正常。 | M |
