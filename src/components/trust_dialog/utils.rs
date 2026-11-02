@@ -50,7 +50,7 @@ pub fn get_hooks_sources_from_settings(
 ) -> Vec<String> {
     source_pair(project_settings, local_settings)
         .into_iter()
-        .filter(|&(settings, label)| has_hooks(settings))
+        .filter(|&(settings, _)| has_hooks(settings))
         .map(|(settings, label)| label.to_string())
         .collect()
 }
@@ -72,7 +72,7 @@ pub fn get_bash_permission_sources_from_settings(
 ) -> Vec<String> {
     source_pair(project_settings, local_settings)
         .into_iter()
-        .filter(|&(settings, label)| {
+        .filter(|&(settings, _)| {
             has_bash_permission_settings(
                 settings.and_then(|settings| settings.permissions.as_ref()),
             )
@@ -94,7 +94,7 @@ pub fn get_otel_headers_helper_sources_from_settings(
 ) -> Vec<String> {
     source_pair(project_settings, local_settings)
         .into_iter()
-        .filter(|&(settings, label)| has_otel_headers_helper(settings))
+        .filter(|&(settings, _)| has_otel_headers_helper(settings))
         .map(|(settings, label)| label.to_string())
         .collect()
 }

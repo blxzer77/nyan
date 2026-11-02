@@ -18,7 +18,7 @@ use crate::components::custom_select::{
     UseSelectStateProps, use_select_input, use_select_state,
 };
 use crate::components::design_system::dialog::Dialog;
-use crate::utils::config::{CustomApiKeyResponses, GlobalConfig};
+use crate::utils::config::GlobalConfig;
 use crate::utils::theme::Theme;
 use iocraft::prelude::*;
 use std::collections::BTreeMap;

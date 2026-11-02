@@ -258,13 +258,13 @@ pub fn create_permission_request_message(
         PermissionDecisionReason::SubcommandResults { reasons } => {
             let needs_approval = reasons
                 .iter()
-                .filter(|&(command, result)| {
+                .filter(|&(_, result)| {
                     matches!(
                         result.as_ref(),
                         PermissionResult::Ask { .. } | PermissionResult::Passthrough { .. }
                     )
                 })
-                .map(|(command, result)| {
+                .map(|(command, _result)| {
                     if tool_name == crate::tools::bash_tool::tool_name::BASH_TOOL_NAME {
                         let extracted =
                             crate::utils::bash::commands::extract_output_redirections(command);

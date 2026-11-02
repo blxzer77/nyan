@@ -180,7 +180,7 @@ async fn get_files_using_git(cwd: &Path, respect_gitignore: bool) -> Option<Vec<
     let files = output
         .stdout
         .split(|byte| *byte == b'\n')
-        .filter(|&line| (!line.is_empty()))
+        .filter(|&line| !line.is_empty())
         .map(|line| String::from_utf8_lossy(line).replace('\\', "/"))
         .collect::<Vec<_>>();
     // CC :287-297 — rebase first, then apply the ripgrep ignore files to the

@@ -1244,7 +1244,7 @@ impl QdrantClient {
                 .json(&json!({"points": points.as_ref()}))
             })
             .await
-            .inspect_err(|error| {
+            .inspect_err(|_error| {
                 self.health.record_failure(FailureKind::Unreachable);
             })?;
         if !response.status().is_success() {
@@ -1349,7 +1349,7 @@ impl QdrantClient {
                 }))
             })
             .await
-            .inspect_err(|error| {
+            .inspect_err(|_error| {
                 self.health.record_failure(FailureKind::Unreachable);
             })?;
         if response.status().as_u16() == 404 {

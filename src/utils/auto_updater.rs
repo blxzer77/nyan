@@ -212,7 +212,9 @@ pub async fn install_latest_native(_channel: ReleaseChannel) -> NativeInstallLat
 
 /// Maps to: CC `assertMinVersion` — GrowthBook short-circuited no-op.
 pub async fn assert_min_version() {
-    if is_test_or_dev_env() {}
+    if is_test_or_dev_env() {
+        return;
+    }
     // CC would fetch tengu_version_config and exit if too old.
 }
 

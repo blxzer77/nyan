@@ -724,7 +724,9 @@ pub fn start_settings_change_detector() {
     // and `initialize()` in remote mode (`changeDetector.ts:84`).
     // `CLAUDE_CODE_EXIT_AFTER_FIRST_RENDER`, the other early return, is not
     // ported.
-    crate::utils::env_utils::is_bare_mode() || crate::bootstrap::state::get_is_remote_mode();
+    if crate::utils::env_utils::is_bare_mode() || crate::bootstrap::state::get_is_remote_mode() {
+        return;
+    }
     #[cfg(not(test))]
     crate::utils::settings::change_detector::initialize();
 }
