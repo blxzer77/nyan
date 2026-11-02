@@ -60,7 +60,7 @@ try {
     Expand-Archive -Path $archive -DestinationPath $unpacked
     New-Item -ItemType Directory -Force $InstallDir | Out-Null
     Copy-Item (Join-Path $unpacked 'nyan.exe') (Join-Path $InstallDir 'nyan.exe') -Force
-    Write-Host "Installed nyan $($tag.Substring(5)) to $(Join-Path $InstallDir 'nyan.exe')"
+    Write-Host "Installed nyan $($tag.Substring('nyan-v'.Length)) to $(Join-Path $InstallDir 'nyan.exe')"
 
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     $pathEntries = if ($userPath) { $userPath -split ';' } else { @() }
