@@ -278,7 +278,7 @@ pub(crate) fn assign_process_to_job(child: &Child) -> Option<ProcessJob> {
             SetInformationJobObject(
                 job,
                 JobObjectExtendedLimitInformation,
-                (&limits as *const _).cast(),
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast::<std::ffi::c_void>(),
                 std::mem::size_of_val(&limits) as u32,
             ) != 0
         };
