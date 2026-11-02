@@ -64,8 +64,8 @@ impl TokenCache {
     }
 
     fn insert(&mut self, key: u64, value: Vec<MarkdownBlock>) {
-        if self.entries.contains_key(&key) {
-            self.entries.insert(key, value);
+        if let std::collections::hash_map::Entry::Occupied(mut e) = self.entries.entry(key) {
+            e.insert(value);
             if let Some(pos) = self.order.iter().position(|existing| *existing == key) {
                 self.order.remove(pos);
             }

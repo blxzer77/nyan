@@ -591,7 +591,7 @@ fn bash_rule_matches_candidate(
                 }
                 candidate == prefix
                     || candidate.starts_with(&format!("{prefix} "))
-                    || candidate == &format!("xargs {prefix}")
+                    || candidate == format!("xargs {prefix}")
                     || candidate.starts_with(&format!("xargs {prefix} "))
             }
         },

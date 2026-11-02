@@ -155,11 +155,9 @@ pub fn ShowInIDEPrompt<'a>(
                         pending_focus.set(Some(options_for_input[next].value.clone()));
                     }
                 }
-                KeyCode::Down => {
-                    if !options_for_input.is_empty() {
-                        let next = (focused_index + 1).min(options_for_input.len() - 1);
-                        pending_focus.set(Some(options_for_input[next].value.clone()));
-                    }
+                KeyCode::Down if !options_for_input.is_empty() => {
+                    let next = (focused_index + 1).min(options_for_input.len() - 1);
+                    pending_focus.set(Some(options_for_input[next].value.clone()));
                 }
                 _ => {}
             }

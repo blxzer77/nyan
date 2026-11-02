@@ -335,7 +335,7 @@ pub fn restore_code_confirmation_text(
     diff_stats_for_restore: Option<&DiffStats>,
 ) -> Option<String> {
     let diff_stats = diff_stats_for_restore?;
-    if diff_stats.files_changed.first().is_none() {
+    if diff_stats.files_changed.is_empty() {
         return Some("The code has not changed (nothing will be restored).".to_string());
     }
 

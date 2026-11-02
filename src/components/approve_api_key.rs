@@ -46,10 +46,7 @@ pub(crate) fn record_custom_api_key_response(
     custom_api_key_truncated: &str,
     approved: bool,
 ) {
-    let mut responses = config
-        .custom_api_key_responses
-        .clone()
-        .unwrap_or_else(CustomApiKeyResponses::default);
+    let mut responses = config.custom_api_key_responses.clone().unwrap_or_default();
     let list = if approved {
         &mut responses.approved
     } else {

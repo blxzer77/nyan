@@ -2085,8 +2085,7 @@ fn extract_json_string_field_prefix(text: &str, key: &str, max_chars: usize) -> 
             collected += 1;
         }
         let value = unescape_json_string(&raw)
-            .replace('\n', " ")
-            .replace('\t', " ")
+            .replace(['\n', '\t'], " ")
             .trim()
             .to_string();
         if !value.is_empty() {

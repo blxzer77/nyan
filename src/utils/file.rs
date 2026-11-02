@@ -427,7 +427,7 @@ pub fn get_display_path(path: &str) -> String {
         } else {
             path
         };
-        return format!("~{}", &source[home.len()..].replace('\\', "/"));
+        return format!("~{}", source[home.len()..].replace('\\', "/"));
     }
     if absolute == home || path == home {
         return "~".to_string();

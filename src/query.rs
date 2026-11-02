@@ -9143,12 +9143,9 @@ mod tests {
         loop {
             let event = event_rx.recv().await.unwrap();
             track_in_progress(&mut in_progress, &event);
-            match event {
-                QueryEvent::PermissionRequest(request) => {
-                    assert_eq!(request.tool_use_id, "toolu_abort_permission_1");
-                    break;
-                }
-                _ => {}
+            if let QueryEvent::PermissionRequest(request) = event {
+                assert_eq!(request.tool_use_id, "toolu_abort_permission_1");
+                break;
             }
         }
         let waiting_tool_was_in_progress = in_progress.contains("toolu_abort_permission_1");
@@ -9247,12 +9244,9 @@ mod tests {
         ));
 
         loop {
-            match event_rx.recv().await.unwrap() {
-                QueryEvent::PermissionRequest(request) => {
-                    assert_eq!(request.tool_use_id, "toolu_abort_max_turns");
-                    break;
-                }
-                _ => {}
+            if let QueryEvent::PermissionRequest(request) = event_rx.recv().await.unwrap() {
+                assert_eq!(request.tool_use_id, "toolu_abort_max_turns");
+                break;
             }
         }
         command_tx.send(QueryCommand::Abort).await.unwrap();
@@ -10570,15 +10564,14 @@ mod tests {
                 {
                     saw_compact_boundary_message = true;
                 }
-                QueryEvent::ToolContextUpdate(context) => {
+                QueryEvent::ToolContextUpdate(context)
                     if context
                         .read_file_state
                         .snapshot()
                         .into_iter()
-                        .any(|entry| entry.path == "/tmp/post-compact.rs")
-                    {
-                        rebuilt_read_state = Some(context.read_file_state.snapshot());
-                    }
+                        .any(|entry| entry.path == "/tmp/post-compact.rs") =>
+                {
+                    rebuilt_read_state = Some(context.read_file_state.snapshot());
                 }
                 _ => {}
             }
@@ -12070,16 +12063,16 @@ mod tests {
                     });
                 }
                 QueryEvent::Message(crate::types::message::Message::User(user))
-                | QueryEvent::ModelMessage(crate::types::message::Message::User(user)) => {
+                | QueryEvent::ModelMessage(crate::types::message::Message::User(user))
                     if user.content.iter().any(|content| {
                         matches!(
                             content,
                             crate::types::message::UserContent::MetaText(text)
                                 if text == MAX_OUTPUT_TOKENS_RECOVERY_MESSAGE
                         )
-                    }) {
-                        recovery_events += 1;
-                    }
+                    }) =>
+                {
+                    recovery_events += 1;
                 }
                 _ => {}
             }
@@ -13628,12 +13621,13 @@ mod tests {
         // non-aborting "cancelled" answer that continued the query — a path
         // CC does not have: cancellation is only the pre-canUseTool abort
         // gate (`toolExecution.ts:415-453`), never a permission response.
-        for (choice, expected_status, expected_reason, expects_continuation) in [(
-            PermissionPromptChoice::Deny,
-            ToolResultStatus::Rejected,
-            "aborted_tools",
-            false,
-        )] {
+        {
+            let (choice, expected_status, expected_reason, expects_continuation) = (
+                PermissionPromptChoice::Deny,
+                ToolResultStatus::Rejected,
+                "aborted_tools",
+                false,
+            );
             let (terminal, seen, statuses) = run_choice(choice);
             assert_eq!(terminal.reason, expected_reason, "choice={choice:?}");
             assert!(statuses.contains(&expected_status), "choice={choice:?}");

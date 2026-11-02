@@ -1070,11 +1070,7 @@ fn line_background(kind: DiffLineKind) -> Option<ToolRenderBackground> {
 }
 
 fn dimmed_background(background: ToolRenderBackground) -> ToolRenderBackground {
-    match background {
-        ToolRenderBackground::DiffAdded => ToolRenderBackground::DiffAdded,
-        ToolRenderBackground::DiffRemoved => ToolRenderBackground::DiffRemoved,
-        other => other,
-    }
+    background
 }
 
 fn split_diff_line(line: &str) -> (DiffLineKind, &str) {

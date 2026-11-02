@@ -466,12 +466,11 @@ pub fn Notifications(
         props.auto_updater_result.as_ref().map(|r| r.status),
     );
     // Maps to: CC `showSuccessMessage={!isShowingCompactMessage}`.
-    let show_success = crate::services::compact::auto_compact::calculate_token_warning_state(
+    let show_success = !crate::services::compact::auto_compact::calculate_token_warning_state(
         token_usage as i64,
         &main_loop_model,
     )
-    .is_above_warning_threshold
-        == false;
+    .is_above_warning_threshold;
 
     let (col_pl, col_pr) = if props.inline {
         (0u32, 0u32)

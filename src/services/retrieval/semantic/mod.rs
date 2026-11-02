@@ -1244,9 +1244,8 @@ impl QdrantClient {
                 .json(&json!({"points": points.as_ref()}))
             })
             .await
-            .map_err(|error| {
+            .inspect_err(|error| {
                 self.health.record_failure(FailureKind::Unreachable);
-                error
             })?;
         if !response.status().is_success() {
             self.health.record_failure(FailureKind::Unreachable);
@@ -1350,9 +1349,8 @@ impl QdrantClient {
                 }))
             })
             .await
-            .map_err(|error| {
+            .inspect_err(|error| {
                 self.health.record_failure(FailureKind::Unreachable);
-                error
             })?;
         if response.status().as_u16() == 404 {
             // The collection does not exist yet: first sync has not finished.

@@ -82,11 +82,7 @@ pub fn MemoryCommandPanel<'a>(
                     crate::utils::process_env::var("VISUAL").truthy()
                 {
                     Some(format!("Using $VISUAL=\"{value}\"."))
-                } else if let Some(value) = crate::utils::process_env::var("EDITOR").truthy() {
-                    Some(format!("Using $EDITOR=\"{value}\"."))
-                } else {
-                    None
-                };
+                } else { crate::utils::process_env::var("EDITOR").truthy().map(|value| format!("Using $EDITOR=\"{value}\".")) };
                 let hint = editor_info.map_or_else(
                     || "> To use a different editor, set the $EDITOR or $VISUAL environment variable.".to_string(),
                     |info| format!("> {info} To change editor, set $EDITOR or $VISUAL environment variable."),

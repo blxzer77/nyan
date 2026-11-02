@@ -571,7 +571,7 @@ mod tests {
         let (provider, backend) = provider(Box::new(|request| {
             let mut answers = BTreeMap::new();
             // Candidate 2 answers the query.
-            for (key, _) in request.questions.iter() {
+            for key in request.questions.keys() {
                 answers.insert(
                     key.clone(),
                     Answer::Noul {

@@ -951,35 +951,33 @@ pub fn PermissionRuleList<'a>(
                 modifiers,
                 kind,
                 ..
-            }) if *kind != KeyEventKind::Release => {
-                if search_active {
-                    search.reset_key_state(code, modifiers);
-                    match code {
-                        KeyCode::Esc => {
-                            if search.is_empty() {
-                                is_search_mode.set(false);
-                            } else {
-                                search.clear();
-                            }
-                        }
-                        KeyCode::Enter | KeyCode::Down => is_search_mode.set(false),
-                        KeyCode::Up => {} // source onExitUp absent
-                        KeyCode::Backspace
-                            if search.is_empty() && !modifiers.contains(KeyModifiers::ALT) =>
-                        {
-                            is_search_mode.set(false)
-                        }
-                        KeyCode::Char('h' | 'H' | 'd' | 'D')
-                            if search.is_empty() && modifiers.contains(KeyModifiers::CONTROL) =>
-                        {
-                            is_search_mode.set(false)
-                        }
-                        _ => {
-                            search.handle_edit_key(code, modifiers);
+            }) if *kind != KeyEventKind::Release && search_active => {
+                search.reset_key_state(code, modifiers);
+                match code {
+                    KeyCode::Esc => {
+                        if search.is_empty() {
+                            is_search_mode.set(false);
+                        } else {
+                            search.clear();
                         }
                     }
-                    event.stop_propagation();
+                    KeyCode::Enter | KeyCode::Down => is_search_mode.set(false),
+                    KeyCode::Up => {} // source onExitUp absent
+                    KeyCode::Backspace
+                        if search.is_empty() && !modifiers.contains(KeyModifiers::ALT) =>
+                    {
+                        is_search_mode.set(false)
+                    }
+                    KeyCode::Char('h' | 'H' | 'd' | 'D')
+                        if search.is_empty() && modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        is_search_mode.set(false)
+                    }
+                    _ => {
+                        search.handle_edit_key(code, modifiers);
+                    }
                 }
+                event.stop_propagation();
             }
             _ => {}
         }

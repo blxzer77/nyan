@@ -297,7 +297,7 @@ pub fn extract_completion_token(
                     .is_some_and(char::is_whitespace);
             if boundary_ok {
                 let end = extend_token_end(text, cursor);
-                if end >= at_idx + 1 && text[at_idx + 1..end].chars().all(is_completion_char) {
+                if end > at_idx && text[at_idx + 1..end].chars().all(is_completion_char) {
                     return Some(CompletionToken {
                         token: text[at_idx..end].to_string(),
                         start_pos: at_idx,

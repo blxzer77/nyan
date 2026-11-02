@@ -372,7 +372,7 @@ fn append_completion_note(mut content: String, output: &Output) -> String {
     }
     if let Some(note) = &output.completion_note {
         if !content.is_empty() {
-            content.push_str("\n");
+            content.push('\n');
         }
         content.push_str(note);
     }

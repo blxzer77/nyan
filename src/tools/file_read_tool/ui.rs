@@ -236,7 +236,7 @@ pub fn render_tool_use_message(input: &serde_json::Value, verbose: bool) -> Opti
                 format!(
                     "lines {}-{}",
                     javascript_to_string(start_line),
-                    ryu_js::Buffer::new().format(sum - 1.0).to_string()
+                    ryu_js::Buffer::new().format(sum - 1.0)
                 )
             }
             None => format!("from line {}", javascript_to_string(start_line)),

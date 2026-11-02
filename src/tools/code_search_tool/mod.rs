@@ -258,34 +258,32 @@ impl crate::tool::ToolCall for CodeSearchTool {
         let abort = context.abort_controller.clone();
         let permission_context = context.tool_permission_context.clone();
         Box::pin(async move {
-            let result = request_from_args(&args)
-                .map(|request| async move {
-                    // @nyan: retrieval 4.11 — the Decision Provider is optional;
-                    // without it every decision falls back to 4.3's rules.
-                    let provider = crate::utils::settings::get_settings_with_errors()
-                        .settings
-                        .nyan
-                        .as_ref()
-                        .map(crate::services::decision::DecisionProvider::from_nyan);
-                    let outcome = crate::services::retrieval::search_with_provider(
-                        request.clone(),
-                        &cwd,
-                        &abort,
-                        &permission_context,
-                        provider.as_ref(),
-                    )
-                    .await;
-                    let content = crate::services::retrieval::render::render_outcome(
-                        &outcome,
-                        request.bounded_max_results(),
-                    );
-                    Output {
-                        content,
-                        num_results: outcome.candidates.len(),
-                        truncated: outcome.truncated,
-                    }
-                })
-                .map(|future| future);
+            let result = request_from_args(&args).map(|request| async move {
+                // @nyan: retrieval 4.11 — the Decision Provider is optional;
+                // without it every decision falls back to 4.3's rules.
+                let provider = crate::utils::settings::get_settings_with_errors()
+                    .settings
+                    .nyan
+                    .as_ref()
+                    .map(crate::services::decision::DecisionProvider::from_nyan);
+                let outcome = crate::services::retrieval::search_with_provider(
+                    request.clone(),
+                    &cwd,
+                    &abort,
+                    &permission_context,
+                    provider.as_ref(),
+                )
+                .await;
+                let content = crate::services::retrieval::render::render_outcome(
+                    &outcome,
+                    request.bounded_max_results(),
+                );
+                Output {
+                    content,
+                    num_results: outcome.candidates.len(),
+                    truncated: outcome.truncated,
+                }
+            });
             match result {
                 Ok(future) => crate::tool::ToolResult {
                     data: crate::tool::ToolOutput::CodeSearch(future.await),

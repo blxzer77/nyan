@@ -545,8 +545,8 @@ pub fn apply_tool_result_budget_with_state_and_skip_tool_names_result(
             let mut remaining = frozen_size + fresh_size;
             let mut clearable = eligible_fresh
                 .iter()
+                .filter(|&candidate| candidate.clearable)
                 .cloned()
-                .filter(|candidate| candidate.clearable)
                 .collect::<Vec<_>>();
             clearable.sort_by(|left, right| right.len.cmp(&left.len));
             for candidate in clearable {

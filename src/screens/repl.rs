@@ -4110,7 +4110,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     // Maps to CC `const queuedCommands = useCommandQueue()`. The reactive
     // snapshot keeps showSpinner mounted between queued task notifications.
     let queued_commands = crate::hooks::use_command_queue::use_command_queue(&mut hooks);
-    let _apply_initial_launch_state = hooks.use_const({
+    hooks.use_const({
         let app_store = app_store.clone();
         let initial_main_thread_agent_definition = initial_main_thread_agent_definition.clone();
         move || {
@@ -4750,7 +4750,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     });
     // Seed AppState.showRemoteCallout once from the startup snapshot (CC
     // main/bridge sets the field; REPL only reads/dismisses via AppState).
-    let _seed_remote_callout = hooks.use_const({
+    hooks.use_const({
         let app_store = app_store.clone();
         move || {
             if initial_show_remote_callout {

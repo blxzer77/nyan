@@ -1080,19 +1080,18 @@ pub(crate) fn read_image_with_token_budget(
     // anything else thrown in this block (`FileReadTool.ts:1118-1134`). The
     // Rust resizer only produces `ImageResizeError`, so the degrade arm is a
     // structural mirror rather than a reachable branch today.
-    let (encoded, resized_media_type, resized_dimensions) =
-        match maybe_resize_and_downsample_image_buffer(
+    let (encoded, resized_media_type, resized_dimensions) = {
+        let resized = maybe_resize_and_downsample_image_buffer(
             &image_buffer,
             original_size,
             detected_format,
-        ) {
-            Ok(resized) => (
-                base64::engine::general_purpose::STANDARD.encode(&resized.buffer),
-                resized.media_type,
-                resized.dimensions,
-            ),
-            Err(error) => return Err(error.into()),
-        };
+        )?;
+        (
+            base64::engine::general_purpose::STANDARD.encode(&resized.buffer),
+            resized.media_type,
+            resized.dimensions,
+        )
+    };
     let estimated_tokens = ((encoded.len() as f64) * 0.125).ceil();
     let (base64, media_type, dimensions) = if estimated_tokens > max_tokens {
         // CC next tries token-budget compression from the same original buffer,
@@ -1598,17 +1597,16 @@ impl FileReadTool {
                         &extension,
                     ) as f64;
                     if estimate > remaining_tokens {
-                        match crate::tools::file_read_tool::text_io::trim_to_token_budget(
-                            &content,
-                            &extension,
-                            remaining_tokens,
-                        ) {
-                            Some((kept, kept_lines)) => {
-                                content = kept;
-                                shown_lines = kept_lines;
-                                truncated = true;
-                            }
-                            None => {}
+                        if let Some((kept, kept_lines)) =
+                            crate::tools::file_read_tool::text_io::trim_to_token_budget(
+                                &content,
+                                &extension,
+                                remaining_tokens,
+                            )
+                        {
+                            content = kept;
+                            shown_lines = kept_lines;
+                            truncated = true;
                         }
                     }
                     // Charge the budget for what was actually returned, not

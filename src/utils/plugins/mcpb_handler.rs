@@ -1281,8 +1281,7 @@ mod tests {
         std::fs::write(dir.join("invalid.mcpb"), invalid).unwrap();
         let error = load_mcpb_file("invalid.mcpb", &dir, "probe@test", None, None, false)
             .await
-            .err()
-            .expect("strict schema rejects before extraction");
+            .expect_err("strict schema rejects before extraction");
         assert_eq!(
             error.to_string(),
             "Invalid manifest: Unrecognized key(s) in object: 'unknown'"
