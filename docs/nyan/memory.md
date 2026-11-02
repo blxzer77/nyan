@@ -38,7 +38,7 @@ CC 现成部件（`run_forked_agent`、`dream_task`、secret scanner、`/memory`
 | 会话费用 | **未接线**：`cost_tracker` 只累加别处算好的 USD，token → USD 的计算半边未移植，主 API 路径也没有调用 `add_to_total_cost` | `utils/model_cost.rs:4-9`、`cost_tracker.rs:97,113` |
 | Context Memory / exact facts | **无** | — |
 
-本机实际使用：`~/.cometix/projects/*/memory/` 下共 6 条记忆，全部是主模型在对话中手写的。
+本机实际使用：`~/.nyan/projects/*/memory/` 下共 6 条记忆，全部是主模型在对话中手写的。
 
 ## 三、决定
 
@@ -49,7 +49,7 @@ CC 现成部件（`run_forked_agent`、`dream_task`、secret scanner、`/memory`
 - **scope = canonical git root**：`get_auto_mem_base` 先 `find_canonical_git_root(original_cwd)`，worktree 会解析到主仓库
   根，非 git 目录才退回原始 cwd（`memdir/paths.rs:89-92`）。所以**同一仓库的所有 worktree 共用一份记忆**——接受：
   记忆记录的是用户偏好、项目背景、外部位置，与 worktree 的内容差异无关（检索索引则按 worktree 分开，见检索 4.8）。
-- **两台机器各自一份、不同步**（README 第一节第 7 条）：nyan-pc 与 corp-pc 的 `~/.cometix/projects/*/memory/` 互相独立；
+- **两台机器各自一份、不同步**（README 第一节第 7 条）：nyan-pc 与 corp-pc 的 `~/.nyan/projects/*/memory/` 互相独立；
   同一仓库在两机上的 key 也可能不同（路径含用户名）。不做同步、不做合并冲突处理；需要共享的记忆由用户手动复制。
 - **"候选"用 memdir 已有的结构表达，不加状态字段**：CC 只注入 `MEMORY.md` 索引（`utils/claudemd.rs:320-331`），
   单条记忆文件不会自动进上下文。所以"已生效" = 文件存在且在索引里；"候选" = 文件存在但不在索引里。确认候选就是把

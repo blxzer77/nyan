@@ -22,7 +22,7 @@ crate）。本设计的中心是**一个门禁、一次构建、零 secret、不
 
 | 项 | 值 |
 |---|---|
-| crate | 单 crate `cometix-code`（非 workspace）；`autobins = false`，bin 是 `src/bin/cometix.rs`，构建目标是 `--bin cometix` |
+| crate | 单 crate `nyan`（非 workspace）；`autobins = false`，bin 是 `src/bin/nyan.rs`，构建目标是 `--bin nyan` |
 | 规模 | 1438 个 `.rs`、约 67.8 万行、`src/` 32 MB |
 | 测试 | 6633 个 nextest 测试，全部在 lib 的 `#[cfg(test)]` 模块里；`tests/` 只有 39 个 fixture 文件，没有集成测试 |
 | 依赖 | 469 个锁定包；7 条直接 git 依赖，来自 3 个仓库（CometixTUI ×2、anthropic-sdk-rs ×4、marked-rs ×1；`Cargo.lock` 里 8 个 git 包），锁文件固定 rev |
@@ -55,7 +55,7 @@ crate）。本设计的中心是**一个门禁、一次构建、零 secret、不
 | `cargo clippy --lib --tests` | 1 个 correctness error（`src/services/mcp/client.rs:6432`，loop never loops），2669 warning | Phase 0 修掉后可按 correctness 门禁 |
 | `cargo fmt --check` | 失败：master 447 个 hunk / 154 个文件（分支 HEAD 450 / 156） | 上游本身未格式化，见 4.4 |
 | `cargo test --doc` | 4 m 06 s，17 ignored、0 passed | doctest 全被忽略，PR 不跑 |
-| `cargo build --release --bin cometix` | 5 m 27 s，52 MB | strip + thin LTO + panic=abort |
+| `cargo build --release --bin nyan` | 5 m 27 s，52 MB | strip + thin LTO + panic=abort |
 | `~/.cargo/{registry,git}` | 约 522 MB | 可整体缓存（整个 `~/.cargo` 是 576 MB，含 bin） |
 
 hosted 4 vCPU 的单核比本机慢（legacy 在 nyan-dev-01 上测得约 25%），上表只能当量级；**首次 hosted 运行必须记录
@@ -469,7 +469,7 @@ master 的 docs-only 提交同样只产生 policy+gate 的绿 run；release 前�
 | 设置根 | `CLAUDE_CONFIG_DIR=target/test-home` | 同时重定向 settings 与 `~/.claude.json`（justfile:17-19） |
 | 隐私/分析 | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=`、`DISABLE_TELEMETRY=`、`NODE_ENV=` | 置空，避免宿主开关改变 growthbook 读取 |
 | cwd | `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=` | 否则 `reset_cwd_if_outside_project` 永远报项目根 |
-| 项目设置 | `COMETIX_TEST_PROJECT_DIR=tests/fixtures/isolated-project` | 补掉 `projectSettings` 读本仓库 `.claude/settings.json` 的洞 |
+| 项目设置 | `NYAN_TEST_PROJECT_DIR=tests/fixtures/isolated-project` | 补掉 `projectSettings` 读本仓库 `.claude/settings.json` 的洞 |
 | 宿主模型/网关 | `env -u` 掉 19 个 `ANTHROPIC_*` / `CLAUDE_*` 变量 | 空字符串会被当成模型名（justfile:86） |
 | 身份 | `tests/fixtures/credentials.mock.json` | 合成 token，固定登录态 |
 | 终端尺寸 | `TERM=xterm-256color`、`COLUMNS=80`、`LINES=24` | **CI 新增**：hosted runner 没有 TTY 也没有 `TERM`，crossterm 的 `window_size()` 失败后退到 `tput`，`tput` 因缺 `TERM` 再失败，`terminal::size()` 变成 `(0,0)`——Pane 分隔线、logo、spinner 计时、picker 描述宽度全部塌成 0。钉成开发机实测值 |
@@ -575,7 +575,7 @@ mutation（`cargo-mutants`）与 fuzz 不在首批：先在 Phase 0 把基线修
 
 | 产物 | runner | 方式 | 冒烟位置 |
 |---|---|---|---|
-| linux-x64 | `ubuntu-24.04` | 原生 `cargo build --release --locked --bin cometix` | 同 job |
+| linux-x64 | `ubuntu-24.04` | 原生 `cargo build --release --locked --bin nyan` | 同 job |
 | linux-arm64 | `ubuntu-24.04-arm` | 原生 | 同 job |
 | windows-x64 | `ubuntu-24.04` | 交叉 `--target x86_64-pc-windows-gnu` + mingw-w64 | `windows-2025` 下载 zip 跑 `.exe` |
 | darwin-arm64 | `macos-15` | 原生 | 同 job |
@@ -599,11 +599,11 @@ Linux 上更便宜；`windows-2025` 只负责证明产物能启动。首次 dry 
 | darwin-x64 | `x64-darwin` | `x86_64-apple-darwin` |
 
 ripgrep 版本固定在 policy（当前最新 15.2.0，实测该 release 有上述资产），下载 `.tar.gz` 与同名 `.sha256` 后校验。
-归档布局（解压后 `cometix` 与 `vendor/` 同级）：
+归档布局（解压后 `nyan` 与 `vendor/` 同级）：
 
 ```
 nyan-v0.2.0-linux-x64/
-  cometix
+  nyan
   LICENSE
   vendor/ripgrep/x64-linux/rg
 ```
@@ -615,8 +615,8 @@ Windows 是 zip，Linux/macOS 是 tar.gz。LICENSE（AGPL-3.0）必须随包。
 冒烟命令（每个平台）：
 
 ```sh
-CLAUDE_CONFIG_DIR=$(mktemp -d) ./cometix --version    # 输出以版本号开头
-CLAUDE_CONFIG_DIR=$(mktemp -d) ./cometix --help       # 退出码 0
+CLAUDE_CONFIG_DIR=$(mktemp -d) ./nyan --version    # 输出以版本号开头
+CLAUDE_CONFIG_DIR=$(mktemp -d) ./nyan --help       # 退出码 0
 vendor/ripgrep/<dir>/rg --version                     # 结构化验证 vendor 路径存在且可执行
 ```
 
@@ -748,7 +748,7 @@ just _prep
 env CLAUDE_CONFIG_DIR="$PWD/target/test-home" \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC= DISABLE_TELEMETRY= NODE_ENV= \
     CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR= \
-    COMETIX_TEST_PROJECT_DIR="$PWD/tests/fixtures/isolated-project" \
+    NYAN_TEST_PROJECT_DIR="$PWD/tests/fixtures/isolated-project" \
     env -u ANTHROPIC_MODEL -u ANTHROPIC_SMALL_FAST_MODEL … -u ANTHROPIC_API_KEY \
     cargo nextest run --lib --no-fail-fast
 ```
@@ -825,6 +825,6 @@ Phase 0 要把“依赖时序”本身修掉（等待条件而不是 sleep/固�
 | clippy 测试 | `cargo clippy --lib --tests` | 1 correctness error / 2669 warning |
 | fmt | `cargo fmt --check` | master 447 hunk / 154 文件 |
 | doctest | `cargo test --doc` | 17 ignored / 0 passed / 4 m 06 s |
-| release 构建 | `cargo build --release --bin cometix` | 5 m 27 s / 52 MB |
+| release 构建 | `cargo build --release --bin nyan` | 5 m 27 s / 52 MB |
 | 基线（master） | 附录 A 命令 | 6607 passed / 26 failed / 5 skipped |
 | runner 规格 | GitHub 文档 | 4 vCPU / 16 GB / 14 GB SSD；public repo 免费；20 并发；macOS 5 |

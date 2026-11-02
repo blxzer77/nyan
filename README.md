@@ -12,8 +12,9 @@ English | [简体中文](README_CN.md)
 
 </div>
 
-A terminal-based AI coding assistant, written in Rust as a 1:1 reimplementation
-of Anthropic's Claude Code. nyan is a fork of [CometixCode](https://github.com/Haleclipse/CometixCode).
+A terminal-based, provider-agnostic agent for software engineering, written in
+Rust. nyan provides an interactive workspace for coding, tool execution, MCP,
+permissions, and agent workflows across supported model providers.
 
 > **Unofficial project, not affiliated with Anthropic.**
 > This is an independent reimplementation built by reading the published
@@ -22,16 +23,14 @@ of Anthropic's Claude Code. nyan is a fork of [CometixCode](https://github.com/H
 
 ## What this is
 
-Claude Code's terminal UI is TypeScript on React + Ink. nyan reproduces
-it in Rust on iocraft, a React-style retained-mode TUI framework that is the
-structural counterpart of Ink — components, hooks, declarative elements. The
-port follows the original file by file rather than reinventing the
-architecture: a TypeScript component maps to a Rust component, a hook to a
-hook, and deliberate deviations are recorded in the source where they happen.
+nyan's terminal UI is implemented in Rust on iocraft, a React-style retained-mode
+TUI framework built around components, hooks, and declarative elements. The
+architecture keeps those concepts explicit, and deliberate deviations are
+recorded in the source where they happen.
 
-It builds against [CometixTUI], a fork of iocraft carrying the primitives this
-port needs (row-level diffing, event propagation, SIGCONT self-healing, IME
-cursor, bracketed paste, grid layout).
+It builds against [CometixTUI], a fork of iocraft carrying the primitives nyan
+needs (row-level diffing, event propagation, SIGCONT self-healing, IME cursor,
+bracketed paste, grid layout).
 
 It is a work in progress. Large parts of the interactive loop, tool execution,
 permissions, MCP and slash commands are implemented; other areas are partial.
@@ -79,9 +78,8 @@ statically, so the resulting `.exe` needs no DLLs alongside it.
 
 ## ripgrep
 
-File search shells out to `rg`. Claude Code ships a packaged ripgrep inside its
-npm package and executes that path; nyan keeps the same shape — the
-binary is an external asset, never compiled into the executable.
+File search shells out to `rg`. The binary is an external asset, never compiled
+into the executable.
 
 Resolution order:
 
@@ -111,7 +109,6 @@ behind that.
 ## Community
 
 <a href="https://qm.qq.com/q/nmbS5eUUP8" target="_blank"><img src="https://img.shields.io/badge/QQ%20群-1045122926-EB1923?logo=tencentqq&logoColor=white" alt="QQ Group" /></a>
-<a href="https://t.me/CometixSpace" target="_blank"><img alt="telegram" src="https://img.shields.io/badge/chat-telegram-blueviolet?style=flat&logo=Telegram"></a>
 [![LINUX DO](https://img.shields.io/badge/LINUX%20DO-Community-blue)](https://linux.do/t/topic/2927016)
 
 ## Acknowledgements

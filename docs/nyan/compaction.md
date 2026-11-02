@@ -5,10 +5,9 @@ thinking 的兼容判定、Read 去重改为反查替换状态、resume 漏洞�
 并删除了"resume 后 usage 不可信"的规则，新增 C14 决策点。cache 保活（C12）与 ContentReplacementState 默认开启已确认；
 C13 已查清（统计口径错误 + 网关侧断崖 + 子代理缺 Agent-Id，新增切片 G）。
 
-本文是 nyan 在 CometixCode（Claude Code 的 Rust 移植，下称 CC）之上的二次开发设计。设计来源是
+本文是 nyan 的压缩能力二次开发设计。设计来源是
 nyan-legacy 的 N4 定稿（`.agents/notes/proposed/architecture/2026-10-22-n4-slices-and-admission-design.md`）
-和 durable spec §8.7，按 CC 的现有结构落地。所有有意偏离 CC 的代码位置用 `@nyan` 注释标注，与上游的
-`@cometix offset` 区分。
+和 durable spec §8.7，按 CC 的现有结构落地。所有有意偏离现有行为的代码位置用 `@nyan` 注释标注。
 
 **定位**：CC 的压缩方案是成熟的基座，本设计是在它之上**补充与轻改**，不是替换。从 legacy 取的是设计思想
 （先清后摘、清而不删、失败不伪装、cache 不因时间失效），实现优先复用 CC 现有机制；legacy 的具体实现与 CC
@@ -16,7 +15,7 @@ nyan-legacy 的 N4 定稿（`.agents/notes/proposed/architecture/2026-10-22-n4-s
 
 ## 一、为什么这样设计
 
-本机 cometix 的 4 个真实会话里，工具结果占发给模型内容的 54%–83%（按块类型统计字符数）；nyan-legacy
+本机 nyan 的 4 个真实会话里，工具结果占发给模型内容的 54%–83%（按块类型统计字符数）；nyan-legacy
 在 22 个 durable 会话上测得 94.9%。两组数据的结论相同：**清掉旧工具结果是主路径，摘要是例外**。legacy
 的量化还表明：阈值取单条占预算 1% 明显好于 2%/5%，"保留最近 2 轮"与"8 轮"差别很小。
 
@@ -75,7 +74,7 @@ boundary 之后的视图
   或 `/compact` 走全量路径）时：此前写下的 `content-replacement` 条目都在这个边界之前被丢掉，而保留尾部里仍可能
   有它们对应的工具结果（经 preserved_segment 重新接链）→ resume 后原文复活、cache 断、上下文膨胀。修法：把
   `"type":"content-replacement"` 加进 `METADATA_MARKERS`（`@nyan`）。本会话的 transcript 已 5.2 MB，这不是假设场景。
-- `tool_result_storage.rs:31` 注释"Cometix keeps session writes disabled"已过时（`SESSION_WRITE_ENABLED = true`，
+- `tool_result_storage.rs:31` 旧注释"session writes disabled"已过时（`SESSION_WRITE_ENABLED = true`，
   `session_storage.rs:86`），实现时一并更正。
 
 ### C2 触发与候选
@@ -116,7 +115,7 @@ prompt cache 是第一约束：**不允许任何因时间流逝而丢掉 cache �
 - 掩码只在**超阈值时**发生（C2），不按时间、不按轮数；一次掩码要清到 `measure ≤ 阈值 − 掩码余量`
   （余量默认为预算的 10%），避免每轮都只清一点点、每轮都打断 cache。
 - 分叉与命令路径不新增决定（C2），否则同一前缀会被两处各自改写。
-- cached microcompact（`COMETIX_CACHED_MICROCOMPACT`，服务端 cache edit）保持原样不动，默认关闭。
+- cached microcompact（`NYAN_CACHED_MICROCOMPACT`，服务端 cache edit）保持原样不动，默认关闭。
 - cache 保活见 C12。
 
 ### C4 估算
@@ -380,7 +379,7 @@ A、C、D、F、G 可并行（写集不重叠；A 与 F 都依赖批次 0 的 `i
   `maybe_time_based_microcompact`（`:379`，含 `:435` 的 `reset_microcompact_state()`）、`evaluate_time_based_trigger`（`:467`），
   以及 `:616`、`:692`、`:787`、`:898`、`:1093` 五个 time-based 测试（删除，改为断言"空闲后不清理"）；
 - `services/compact/time_based_mc_config.rs` 整个模块（`TimeBasedMicrocompactConfig`、`time_based_microcompact_config_from_env`
-  及其测试；env 覆盖 `COMETIX_TIME_BASED_MICROCOMPACT`、`CLAUDE_CODE_TIME_BASED_MICROCOMPACT`、`..._GAP_MINUTES`、
+  及其测试；env 覆盖 `NYAN_TIME_BASED_MICROCOMPACT`、`CLAUDE_CODE_TIME_BASED_MICROCOMPACT`、`..._GAP_MINUTES`、
   `..._KEEP_RECENT` 随之失效）与 `services/compact/mod.rs:14` 的 `pub mod`；
 - `utils/feature_flags.rs`：`FeatureFlag::TimeBasedMicrocompact`（`:31`）及其 `FeatureSwitch`（`:223`）。
 

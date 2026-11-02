@@ -57,11 +57,11 @@ nyan 在 **nyan-pc** 与 **corp-pc** 上都要能用 semantic 与 rerank；GPU �
 |---|---|---|
 | embedding（jina-code-embeddings-1.5b） | `http://10.144.0.11:8090` | corp-pc 上的 vLLM，两机同一地址 |
 | rerank（qwen3-reranker-0.6b） | `http://10.144.0.11:8091` | corp-pc 上的 vLLM，两机同一地址 |
-| Qdrant 1.19.2 | `http://10.144.0.3:6333` | nyan-ops；`apiKeyFile = ~/.cometix/keys/qdrant` |
+| Qdrant 1.19.2 | `http://10.144.0.3:6333` | nyan-ops；`apiKeyFile = ~/.nyan/keys/qdrant` |
 
-- 全部为 **http、无 TLS、无 vLLM token**；Qdrant 仍要 API key（`~/.cometix/keys/qdrant`，两机各一份、0600）。
+- 全部为 **http、无 TLS、无 vLLM token**；Qdrant 仍要 API key（`~/.nyan/keys/qdrant`，两机各一份、0600）。
 - 服务只绑定 EasyTier 虚拟网卡地址 / 回环，不暴露到 LAN。
-- 两台机器的 settings 用同一组地址（`~/.cometix/settings.json` 仍各机一份、不同步）；nyan 不做自动发现。
+- 两台机器的 settings 用同一组地址（`~/.nyan/settings.json` 仍各机一份、不同步）；nyan 不做自动发现。
 
 **客户端**：
 
@@ -240,7 +240,7 @@ query → 选分支（4.3 的规则）
   写进切片 commit message。阈值：二进制增量 > 15 MB 或冷编译时间增量 > 25%，则该部分改为 cargo feature
   （`retrieval-grammars` / `retrieval-text`，默认开启，可在构建时关掉），对应分支在关闭时按"未启用"处理（4.10）。
 
-  **实测（2026-10-29，切片 C + E 完成时）**：`cargo build --release --bin cometix`，`RUSTC_WRAPPER=`（关 sccache）、
+  **实测（2026-10-29，切片 C + E 完成时）**：`cargo build --release --bin nyan`，`RUSTC_WRAPPER=`（关 sccache）、
   独立空 `CARGO_TARGET_DIR`，同一台机器背靠背跑。基线 = `git archive HEAD` 原 Cargo.lock `--locked`。未引用的 crate
   会被链接器丢掉，所以测量时全部语法 crate 已从 `grammar_for` 引用、tantivy 从 text index 引用。
 
@@ -464,7 +464,7 @@ Decision Provider 时完全相同。
     // 两台机器相同，经 EasyTier（3.1）
     "embedding": { "url": "http://10.144.0.11:8090", "model": "jina-code-embeddings-1.5b",
                    "dim": 1536, "apiKeyFile": null },
-    "qdrant":    { "url": "http://10.144.0.3:6333", "apiKeyFile": "~/.cometix/keys/qdrant" }
+    "qdrant":    { "url": "http://10.144.0.3:6333", "apiKeyFile": "~/.nyan/keys/qdrant" }
   },
   "rerank": { "enabled": false, "url": "http://10.144.0.11:8091", "model": "qwen3-reranker-0.6b", "topN": 20 },
   "budget": { "deadlineMs": 8000, "semanticDeadlineMs": 4500, "rrfK": 60,
@@ -478,7 +478,7 @@ Decision Provider 时完全相同。
 
 凭据只按文件引用（legacy Decision #4），不写进 settings 正文；未配置 `semantic` = 该分支不启用、不发请求。
 `apiKeyFile` 为 `null` 时不发 `Authorization` 头（EasyTier 内网不鉴权，见 3.1）。Qdrant 的 key 首次配置时从
-corp-pc 的 `~/Projects/work/internal/retrieval/keys/qdrant-api-key` 复制到各机的 `~/.cometix/keys/qdrant`（0600；
+corp-pc 的 `~/Projects/work/internal/retrieval/keys/qdrant-api-key` 复制到各机的 `~/.nyan/keys/qdrant`（0600；
 两台机器各一份，README 第一节第 7 条）。
 
 ## 七、实现切片

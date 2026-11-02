@@ -12,7 +12,8 @@
 
 </div>
 
-一个终端 AI 编码助手，用 Rust 对 Anthropic Claude Code 做 1:1 复刻。nyan 是 [CometixCode](https://github.com/Haleclipse/CometixCode) 的分支（fork）。
+一个面向服务商通用的终端 Agent，用 Rust 编写，面向软件工程工作流。nyan
+提供交互式编码、工具执行、MCP、权限控制和 Agent 工作流能力，支持多种模型服务商。
 
 > **非官方项目，与 Anthropic 无隶属关系。**
 > 本项目是通过研读已发布的 Claude Code CLI 独立实现的。
@@ -21,13 +22,11 @@
 
 ## 这是什么
 
-Claude Code 的终端界面是 TypeScript + React + Ink。nyan 在 Rust 上用
-iocraft 复刻它 —— 那是一个 React 风格的保留模式 TUI 框架，是 Ink 的结构对应物：
-同样有组件、hooks 和声明式元素。移植是逐文件对照原版进行的，而不是另起炉灶重新
-设计架构：一个 TypeScript 组件对应一个 Rust 组件，一个 hook 对应一个 hook，刻意
-的偏离都就地记录在源码注释里。
+nyan 的终端界面用 Rust 基于 iocraft 实现。iocraft 是一个围绕组件、hooks
+和声明式元素构建的 React 风格保留模式 TUI 框架。项目保持这些概念清晰可见，
+刻意的偏离都就地记录在源码注释里。
 
-项目构建于 [CometixTUI]，那是 iocraft 的一个 fork，携带了本移植所需的原语
+项目构建于 [CometixTUI]，那是 iocraft 的一个 fork，携带了 nyan 所需的原语
 （行级差分、事件传播、SIGCONT 自愈、输入法光标、括号粘贴、网格布局）。
 
 项目仍在进行中。交互主循环、工具执行、权限、MCP 与斜杠命令的大部分已经实现，
@@ -67,9 +66,7 @@ cargo build --release --target x86_64-pc-windows-gnu
 
 ## ripgrep
 
-文件搜索会调用外部的 `rg`。Claude Code 把打包好的 ripgrep 放在自己的 npm 包内
-并执行那个路径；nyan 保持同样的形态 —— 该二进制是外挂资产，**不会**被编译
-进可执行文件。
+文件搜索会调用外部的 `rg`。该二进制是外挂资产，**不会**被编译进可执行文件。
 
 查找顺序：
 
@@ -97,7 +94,6 @@ just check         # 仅做类型/借用检查，不链接
 ## 社区
 
 <a href="https://qm.qq.com/q/nmbS5eUUP8" target="_blank"><img src="https://img.shields.io/badge/QQ%20群-1045122926-EB1923?logo=tencentqq&logoColor=white" alt="QQ Group" /></a>
-<a href="https://t.me/CometixSpace" target="_blank"><img alt="telegram" src="https://img.shields.io/badge/chat-telegram-blueviolet?style=flat&logo=Telegram"></a>
 [![LINUX DO](https://img.shields.io/badge/LINUX%20DO-Community-blue)](https://linux.do/t/topic/2927016)
 
 ## 致谢

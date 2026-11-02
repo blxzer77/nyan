@@ -1,6 +1,6 @@
 # nyan 二次开发：压缩、记忆、检索、外部搜索、Decision Provider、工具 I/O
 
-本目录是 nyan（CometixCode 的 fork）在 Claude Code 移植之上做的二次开发设计与实施计划。设计思想来自
+本目录是 nyan 面向压缩、记忆、检索、外部搜索、Decision Provider 与工具 I/O 的二次开发设计与实施计划。设计思想来自
 nyan-legacy（pactile context-governance、旧 roadmap N3–N8），实现以 CC 现有代码为基座。
 
 **原则：对齐 legacy 的思想，不照搬它的形态。** legacy 的具体形态（RetrievalPack 词汇、13 项检查表、EvidenceRecord /
@@ -21,7 +21,7 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 
 ## 一、通用约定
 
-1. **偏离标记**：所有有意偏离 CC 的代码位置加 `// @nyan: <原因>` 注释；上游自己的偏离是 `@cometix offset`，不混用。
+1. **偏离标记**：所有有意偏离现有行为的代码位置加 `// @nyan: <原因>` 注释，统一使用 `@nyan` 标记。
 2. **配置**：全部挂在 `SettingsJson` 新增的一个正式字段 `nyan` 下（settings 是严格 schema，未知顶层键会报错，
    `utils/settings/validation.rs:454`）：`nyan.compaction` / `nyan.cache` / `nyan.memory` / `nyan.retrieval` / `nyan.web` / `nyan.decision` / `nyan.toolIo`。
    凭据只按文件路径或环境变量名引用，不写进 settings 正文。
@@ -30,11 +30,11 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 4. **cache 是第一约束**：不允许任何因时间流逝而丢 cache 的机制；会改变请求前缀的操作必须换来足够的 token 节省，
    且之后字节稳定。子代理 / 分叉（摘要、提取、合并）优先共享主会话 cache。
 5. **失败不伪装**：所有降级、跳过、截断都以具名状态出现在结果里，不变成空结果或静默成功。
-6. **存储位置**：全部在 `$CLAUDE_CONFIG_DIR`（本机为 `~/.cometix`）下，永不写进工作树。
+6. **存储位置**：全部在 `$CLAUDE_CONFIG_DIR`（本机为 `~/.nyan`）下，永不写进工作树。
    - 记忆：按 canonical git root（沿用 CC memdir）；
    - 检索索引：按 worktree 根（不同 worktree 内容不同）；
    - 网页快照：全局一份、内容寻址。
-7. **两台机器**：nyan 在 nyan-pc 与 corp-pc 上都用。`~/.cometix`（settings、keys、记忆、索引、快照）各机一份、
+7. **两台机器**：nyan 在 nyan-pc 与 corp-pc 上都用。`~/.nyan`（settings、keys、记忆、索引、快照）各机一份、
    **不同步**（接受：两机的工作区与会话本就不同）。任何依赖某台机器的能力都要可降级（第 9 条）。
 
 ### 公共组件（各模块共用，只定义一次）
@@ -71,7 +71,7 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 2. 实现；偏离处加 `@nyan`。
 3. 受影响的已有测试改为断言新行为；新行为各有测试。
 4. 跑测试——**必须用 justfile 的隔离方式**（`CLAUDE_CONFIG_DIR` 指向 `target/test-home`，清掉宿主的模型 / 网关
-   环境变量），否则测试会读写真实的 `~/.cometix`：
+   环境变量），否则测试会读写真实的 `~/.nyan`：
    - 有 `just` 与 `cargo-nextest` 时：`just t <模块名>`，收尾跑 `just test`；
    - 没有时：`cargo test --lib --no-run` 后，按 justfile `t` recipe 的环境变量逐个进程跑受影响模块的测试。
    - 已知基线失败（与本工作无关）：`components::prompt_input` 下 4 个测试（`arrows_matches_official_cursor_before_history`、
@@ -167,4 +167,4 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 
 仓库外基础设施：FlClash 经代理可直达回环 / LAN / tailnet——已报告并由负责方在两台机器上修复（2026-10-27 13:12，7897 入站
 私网目标 REJECT，回归已复核）；nyan 的主机判定仍是第一道防线、不依赖该修复（外部搜索 4.2；报告在
-`~/.cometix/reports/2026-10-27-flclash-proxy-private-egress.md`，不在仓库）。
+`~/.nyan/reports/2026-10-27-flclash-proxy-private-egress.md`，不在仓库）。
