@@ -160,27 +160,33 @@ pub struct ModelCapabilities {
 
 ### 3.3 Pi Agent 模型元数据：来源、格式、许可证和更新
 
-采用 [earendil-works/pi](https://github.com/earendil-works/pi) 的 `packages/ai` 模型目录作为首个外部元数据来源。仓库许可证为 MIT；nyan 不复制 Pi runtime，仅引入生成后的数据快照，并在发行物/源码中保留 MIT NOTICE 与来源 commit。
+采用 [badlogic/pi-mono（当前仓库重定向到 earendil-works/pi）](https://github.com/badlogic/pi-mono) 的 `packages/ai` 模型目录作为首个外部元数据来源。Pi 仓库代码许可证为 MIT；nyan 不复制 Pi runtime，仅引入生成后的数据快照，并在发行物/源码中保留 MIT NOTICE 与来源 commit。
+
+Pi 的通用模型数据主要来自 [models.dev](https://github.com/anomalyco/models.dev)，当前 Pi source adapter 读取 models.dev v2 experimental catalog，再叠加 Pi 自己的 provider/family 修正和手写模型定义。因此“借用 Pi 元数据”不是把 models.dev 当作 nyan 的运行时 API，也不能把 models.dev 的模型服务/权重许可证推断为 MIT；Pi 与 models.dev 的代码/数据仓库许可证、各模型厂商的服务条款和权重许可证必须分开记录。
 
 Pi 的元数据结构可直接覆盖 nyan 的核心字段：
 
-- `packages/ai/src/providers/model-schema.ts` 定义 schema；
+- `packages/ai/catalog/sources/models-dev.ts` 负责读取/归一化 models.dev 的 `modalities`、`capabilities.tools`、`capabilities.reasoning`、`limit.context/input/output`、`cost`、API/base URL 等字段；models.dev v2 schema 当前标为 experimental；
+- `packages/ai/catalog/providers/*.ts` 负责 provider 的 API、base URL、compat、认证和 Pi-specific 修正；
+- `packages/ai/src/providers/model-schema.ts` 定义生成数据 schema；
 - `packages/ai/src/types.ts` 的 `BaseModel` 包含 `id`、`name`、`api`、`provider`、`baseUrl`、`input`、`inputLimits`、`cost`；
 - chat `Model` 额外包含 `reasoning`、`thinkingLevelMap`、`promptCache`、`contextWindow`、`maxTokens` 和 API compatibility overrides；
-- `packages/ai/src/providers/*.models.ts` 是 provider-specific source shards；
-- `packages/ai/src/providers/data/*.json` 是生成的数据；`models.generated.ts` 聚合 provider shards；
+- `packages/ai/src/providers/*.models.ts` 是 provider-specific source shards；`packages/ai/src/providers/data/*.json` 是生成/水合的数据；`models.generated.ts` 聚合 provider shards；
 - `packages/ai/scripts/model-data.ts` 校验 schema version、provider 文件、manifest、structure hash 和每个生成文件的 SHA-256；
 - `.github/workflows/publish-model-catalog.yml` 在 CI 成功后按工作日计划生成、校验并发布 catalog artifact。该 workflow 不是 nyan 的运行时依赖，nyan 只消费经过 pin 的快照。
 
+Pi 还支持 provider 自己的 `refreshModels()` 动态目录和用户 `models.json` 覆盖；这不是能力探测。nyan 不启用运行时刷新，而是固定一个经过审查的生成快照。
+
 引入方式：
 
-1. 在 nyan 中新增一个**生成数据导入 PR**，记录 Pi commit/tag、model catalog schema version、生成时间和 MIT NOTICE；不引入 Pi 的 TypeScript/Bun runtime。
-2. 将 Pi 的 JSON model catalog 转换成 nyan 自己的稳定 JSON schema，保留 source commit 和原始 provider/model ID；生成 Rust 静态数据或 checked-in resource，不在启动时联网。
+1. 在 nyan 中新增一个**生成数据导入 PR**，记录 Pi commit/tag、models.dev source commit/版本、model catalog schema version、生成时间、Pi MIT NOTICE 和 models.dev 许可证说明；不引入 Pi 的 TypeScript/Bun runtime。
+2. 将 Pi 的 JSON model catalog 转换成 nyan 自己的稳定 JSON schema，保留 source commit、models.dev source 和原始 provider/model ID；生成 Rust 静态数据或 checked-in resource，不在启动时联网。
 3. 做 schema/hash 校验：缺 `contextWindow`、`maxTokens`、`input`、`reasoning` 或 provider/api 的条目不能进入可运行 catalog；上游新增字段默认忽略，schema breaking change 必须人工审查。
-4. 更新走显式 PR：升级 source commit，重新生成快照、跑校验、更新 NOTICE 和变更说明；不自动拉取远端元数据，不因上游 catalog 变化而改变用户运行时行为。
-5. Pi catalog 的 `reasoning` 映射为 thinking 候选，`input` 中的 `image` 映射为图片能力，`contextWindow`/`maxTokens`/`promptCache`/`inputLimits` 映射为同名能力；工具支持仍由 adapter protocol 与 profile override 共同决定，因为 Pi 的 BaseModel 并不把“tools”作为单独通用布尔字段。
+4. 更新走显式 PR：升级 Pi/models.dev source commit，重新生成快照、跑校验、更新 NOTICE 和变更说明；不自动拉取远端元数据，不因上游 catalog 变化而改变用户运行时行为。
+5. Pi catalog 的 `reasoning` 映射为 thinking 候选，`input` 中的 `image` 映射为图片能力，`contextWindow`/`maxTokens`/`promptCache`/`inputLimits` 映射为同名能力；`capabilities.tools`/`structured_output` 作为工具/结构化输出候选，但最终仍由 adapter protocol 和 profile override 决定，不宣称运行时已验证。
+6. 不复制完整生成模型表到设计文档；实现时只提交必要快照和来源 manifest。模型厂商的商标、服务条款、权重许可证不随 Pi MIT 自动获得。
 
-如果未来需要第二个来源，必须先定义来源优先级、许可证和字段冲突规则；不能把多个 catalog 在运行时无规则合并。
+如果未来需要第二个元数据来源，必须先定义来源优先级、字段冲突、许可证和更新责任；不能把多个 catalog 在运行时无规则合并。
 
 ### 3.4 Provider protocol
 
@@ -508,7 +514,7 @@ nyan 没有用户，因此实现阶段直接删除旧入口：
 
 12 条产品决策已经固定；实现前还需要确认以下调研衍生问题：
 
-1. **Pi catalog 的引入形态**：接受把 Pi 的 MIT 生成 JSON 快照复制为 nyan checked-in resource，并随 nyan 保留 NOTICE/source commit，还是需要只在构建时下载、不把数据提交进仓库？（推荐 checked-in snapshot，保证可复现。）
+1. **Pi/models.dev catalog 的引入形态**：接受把带 Pi source commit、models.dev source/version、各自许可证说明的生成 JSON 快照复制为 nyan checked-in resource，还是需要只在构建时下载、不把数据提交进仓库？（推荐 checked-in snapshot，保证可复现。）
 2. **Pi 快照更新节奏**：按 Pi release、固定月度 PR，还是仅在 provider/model 变更时手动更新？（推荐显式 PR，不自动跟随 Pi 的 hourly publication。）
 3. **元数据冲突**：Pi 数据缺失或错误时，是否允许 profile override 覆盖全部能力字段，还是只允许 context/maxOutput 等安全字段覆盖？（推荐允许用户 profile 覆盖，但 managed policy 可限制上限和能力。）
 4. **首批 OAuth provider 清单**：是否首批只做 Anthropic、OpenAI Codex/ChatGPT、Gemini/Vertex，GitHub Copilot、OpenRouter、Kimi、xAI 等后置？Pi 和 CLIProxyAPI 都支持更多 provider，但每个 OAuth flow 都是独立维护成本。
