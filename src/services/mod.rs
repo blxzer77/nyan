@@ -22,6 +22,8 @@ pub mod hooks;
 pub mod lsp;
 pub mod mcp;
 pub mod mcp_server_approval;
+/// @nyan: shadow-mode Decision Provider seam for the memory points (C4).
+pub mod memory_decision;
 pub mod mock_rate_limits;
 pub mod oauth;
 pub mod policy_limits;

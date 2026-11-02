@@ -458,15 +458,33 @@ pub fn spawn_idle_consolidation_if_due(
         .unwrap_or_default()
         .as_millis()
         .min(u64::MAX as u128) as u64;
-    if !consolidation_is_due(
+    let due_now = consolidation_is_due(
         last_start_ms,
         newest,
         count,
         memory.consolidate_min_hours(),
         memory.consolidate_min_new_files(),
         now_ms,
-    ) || crate::services::extract_memories::driver::memory_agent_busy()
-    {
+    );
+    // @nyan (C4): `memory.consolidate` shadow comparison. Detached and
+    // side-effect free; `due_now` below still decides whether a pass starts.
+    if crate::services::memory_decision::shadow_enabled_now(
+        crate::services::decision::DecisionPoint::MemoryConsolidate,
+    ) {
+        let shadow = crate::services::memory_decision::ConsolidationContext {
+            last_start_ms,
+            newest_file_ms: newest,
+            new_file_count: count,
+            min_hours: memory.consolidate_min_hours(),
+            min_new_files: memory.consolidate_min_new_files(),
+            now_ms,
+            deterministic_due: due_now,
+        };
+        crate::services::memory_decision::spawn_detached(async move {
+            let _ = crate::services::memory_decision::evaluate_consolidate(shadow).await;
+        });
+    }
+    if !due_now || crate::services::extract_memories::driver::memory_agent_busy() {
         // Never record an attempt for a pass that could not start: the idle
         // trigger is cheap to re-evaluate next turn.
         return;
