@@ -1,32 +1,37 @@
 # Provider / Model 抽象重设计
 
-状态：设计稿（2026-11-02），只读审计后产出，未实现。
+状态：设计稿（2026-11-02 修订），只读审计后产出，未实现。
+
+本文只描述目标设计，不修改运行时实现。nyan 当前没有需要保护的用户配置，因此本设计直接替换旧模型/provider 配置，不提供兼容迁移层。
 
 ## 0. 结论摘要
 
-nyan 的目标是 provider 无关的通用 agent，而不是把 Anthropic API 当作运行时抽象。当前代码的真实边界是：上层已经有相对通用的消息、工具和 agent 流程，但 API client、请求参数、能力判断、凭据和模型选择仍以 Anthropic 为中心。本设计把它们拆成四层：
+nyan 的目标是 provider 无关的通用 agent，而不是把 Anthropic API 当作运行时抽象。目标运行时分层如下：
 
 ```text
-Settings / env / CLI
+settings.nyan / CLI / session
         ↓
 ProviderCatalog + ModelCatalog + CredentialResolver
         ↓
 Provider-neutral Request IR
         ↓
-Provider adapter（Anthropic / OpenAI-compatible / Gemini）
+Provider adapter
         ↓
-stream / usage / error normalized back to query loop
+normalized stream / usage / error / retry policy
 ```
 
-核心原则：
+已确定的核心原则：
 
-1. **模型 ID 不等于 provider**：`provider/model` 是稳定引用；裸模型名只在迁移兼容层解析。
-2. **能力声明优先于名称推断**：上下文长度、工具调用、thinking、图片、结构化输出、流式能力等由模型条目声明；未知能力按“不支持”处理，避免误发请求。
-3. **协议适配器隔离专有字段**：`anthropic-beta`、Anthropic cache control、Bedrock/Vertex/Foundry 特殊认证和 OAuth 不进入公共 Request IR。
-4. **配置不携带秘密**：settings 只引用环境变量、key 文件或 OAuth profile；真正的 secret 不进 JSON、日志、model picker 或错误消息。
-5. **选择与执行分离**：主 agent、子 agent、Decision Provider 都选择 `ModelRef`，执行层只接收已经解析的 `ResolvedModel`。
-6. **失败可降级但不伪装**：provider 不可用、能力未知、凭据缺失或 adapter 不支持某字段时，走明确的 fallback / error，不静默改用另一家 provider。
-7. **配置迁移可逆**：先支持旧的 Anthropic 配置和 gateway 配置，再逐步把新格式设为权威；每一步都能退回旧路径。
+1. 新配置统一放在 `settings.nyan.providers`、`settings.nyan.models`、`settings.nyan.selection`；旧模型/provider 字段直接删除，不做兼容迁移。
+2. 稳定配置只能引用 profile 名；`provider/model` 直写只允许命令行或单个会话临时使用，不能写入 project settings。
+3. 模型能力来自固定的、外部维护的模型元数据快照；不做运行时探测。profile 中显式能力覆盖元数据快照。
+4. 不设默认 provider。没有可解析的 profile 时清晰报错或进入配置引导，绝不偷偷回退 Anthropic。
+5. Provider 协议由 adapter 隔离：Anthropic Messages、OpenAI Chat Completions、OpenAI Responses、Gemini；vLLM/Ollama 只走 OpenAI-compatible，不做 Ollama native adapter。
+6. OAuth 由各 provider 自己管理，不做统一 broker。凭据 resolver 只提供 provider-scoped 的存取边界。
+7. Project settings 只能引用 user/managed settings 已定义的 profile 名，不能新增 endpoint 或 credential file。
+8. Decision Provider 暂时只允许商业模型；本地 profile 即使支持分类能力，也不能绑定到 Decision Provider。
+9. 主请求默认不跨 provider 自动重试；只有用户显式配置的 fallback 列表才允许切 provider。
+10. Windows key file 必须通过 owner-only ACL 验证；无法验证就拒绝使用，并说明原因。
 
 本文的接口是设计形状，不是要求一次性实现的代码 API。
 
@@ -34,39 +39,39 @@ stream / usage / error normalized back to query loop
 
 ### 1.1 Settings、环境变量和启动覆盖
 
-Settings 是严格 schema 的 `SettingsJson`，普通模型字段目前是 `model`、`availableModels`、`modelOverrides`、`advisorModel`，并另有 `env` 和 `httpHeaders`（`src/utils/settings/types.rs:60-85,122-124`）。nyan 自己的扩展集中在一个 `nyan` 顶层 key 下（`src/utils/settings/nyan.rs:1-19`），新 provider 配置应遵守同一约定，不再增加多个顶层私有 key。
+当前 `SettingsJson` 的普通模型字段是 `model`、`availableModels`、`modelOverrides`、`advisorModel`，另有 `env` 和 `httpHeaders`（`src/utils/settings/types.rs:60-85,122-124`）。nyan 自己的扩展集中在 `nyan` 顶层 key 下（`src/utils/settings/nyan.rs:1-19`）。目标配置会继续放在这个命名空间，但 `model`、`availableModels`、`modelOverrides` 等旧字段不再作为 provider 配置入口。
 
-settings 文件的合并顺序是 `userSettings → projectSettings → localSettings → cli flag → managed policy`；启用来源由 `get_enabled_setting_sources` 决定，但 CLI flag 和 policy 不能被关闭（`src/utils/settings/constants.rs:89-105`、`src/utils/settings/mod.rs:246-300`）。同一字段的后来源覆盖前来源，当前 settings 通过 session cache 读取（`src/utils/settings/mod.rs:303-329`）。
+当前 settings 来源和合并顺序是 `userSettings → projectSettings → localSettings → cli flag → managed policy`；policy 最后覆盖前面的值（`src/utils/settings/constants.rs:89-105`、`src/utils/settings/mod.rs:246-300`）。新设计保留这个来源机制，但增加来源作用域约束：
 
-当前主模型选择链为：
+- provider/profile 定义只来自 user 或 managed settings；
+- project/local settings 只能写 profile 名、选择关系和不含 endpoint/credential 的策略；
+- CLI 可临时指定 profile 或 `provider/model`，不落盘；
+- policy 可以定义或限制 profile，并可限制 provider、模型、fallback 和本地 endpoint。
+
+### 1.2 当前模型/provider 选择链
+
+当前主模型链是：
 
 ```text
-CLI --model / main-thread agent model
-  → bootstrap main_loop_model_override
+CLI / bootstrap override
   → ANTHROPIC_MODEL
   → settings.model
-  → provider/build audience 默认模型
+  → Anthropic build-audience 默认模型
 ```
 
-入口和重要语义在 `src/main.rs:264-291`、`src/utils/model/model.rs:77-102,138-163`：CLI 或主线程 agent 形成运行时 override；没有 override 时才让 env/settings 继续参与解析。`sonnet` / `opus` / `haiku` / `best` / `opusplan` 和 `[1m]` 是 Anthropic 语义别名（`src/utils/model/model.rs:104-135`）。
+入口在 `src/main.rs:264-291`、`src/utils/model/model.rs:77-102,138-163`；`sonnet`、`opus`、`haiku`、`best`、`opusplan` 和 `[1m]` 是 Anthropic 专属别名（`src/utils/model/model.rs:104-135`）。当前 provider 由 `CLAUDE_CODE_USE_BEDROCK`、`CLAUDE_CODE_USE_VERTEX`、`CLAUDE_CODE_USE_FOUNDRY` 环境变量决定（`src/utils/model/providers.rs:7-27`），没有统一 provider trait。
 
-当前 provider 选择不是配置对象，而是环境变量优先级：`CLAUDE_CODE_USE_BEDROCK` → `CLAUDE_CODE_USE_VERTEX` → `CLAUDE_CODE_USE_FOUNDRY` → FirstParty（`src/utils/model/providers.rs:7-27`）。`ANTHROPIC_BASE_URL` 只用于判断是否仍是官方 Anthropic host（`src/utils/model/providers.rs:39-68`），不能表达一个通用 provider。
+这些旧入口只用于现状审计。目标实现中它们被删除：不再读取 `settings.model`、`ANTHROPIC_MODEL`、`GlobalConfig.modelContextWindows`，也不再保留 Anthropic 默认 provider。
 
-### 1.2 Gateway model-picker 与模型能力
+### 1.3 Gateway model picker 与上下文窗口
 
-nyan 已有一处针对 gateway 的扩展：`settings.availableModels` 追加到 model picker，`additionalModelOptionsCache` 提供 label/description（`src/components/model_picker.rs:57-115`），内置 picker 仍硬编码 Sonnet/Opus/Haiku（`src/components/model_picker.rs:117-145`）。`modelOverrides` 把 Anthropic canonical ID 映射成 Bedrock 等 provider-specific ID（`src/utils/settings/types.rs:75-77`，并由 `src/utils/model/model_strings.rs:63-103` 使用）。
+当前 picker 将 `availableModels` 追加到内置 Sonnet/Opus/Haiku（`src/components/model_picker.rs:57-145`）；`additionalModelOptionsCache` 只提供 label/description。`modelOverrides` 将 Anthropic canonical ID 映射成 provider-specific ID（`src/utils/settings/types.rs:75-77`、`src/utils/model/model_strings.rs:63-103`）。
 
-上下文长度也有一条 gateway 专用旁路：`GlobalConfig.modelContextWindows` 按模型 ID 查表，并在去掉 `[1m]` 后再查；查不到才回到官方 200k / 1M 规则（`src/utils/context.rs:126-154`，字段定义在 `src/utils/config.rs:617-621`）。它解决了 gateway 自有模型没有官方 model table 的问题，但能力仍只有一个整数，且位置不在 Settings schema。
+当前 `GlobalConfig.modelContextWindows` 是 gateway 专用旁路，按 model ID 查上下文长度（`src/utils/context.rs:126-154`，字段在 `src/utils/config.rs:617-621`）。目标设计删除这条旁路，统一使用固定模型元数据 + profile override；不存在“查不到时默认 200k”的隐式行为。
 
-模型其它能力依赖名称、provider 和 Anthropic beta：
+### 1.4 请求构造与 Anthropic 专有部分
 
-- `utils/betas.rs` 按 canonical Claude 名称和 `ApiProvider` 判断 interleaved thinking、context management、structured outputs、tool-search 等（`src/utils/betas.rs:118-193,209-297`）；
-- 3P 模型只能通过 `ANTHROPIC_DEFAULT_*_MODEL_SUPPORTED_CAPABILITIES` 覆盖少数 thinking/effort 能力（`src/utils/model/model_support_overrides.rs:37-92`）；
-- thinking 和 max output 仍调用 Anthropic 模型表（`src/services/api/claude.rs:30-39`、`src/utils/context.rs:161-190`）。
-
-### 1.3 请求构造与 Anthropic 专有部分
-
-当前请求主链是：
+当前请求链是：
 
 ```text
 query loop
@@ -76,39 +81,72 @@ query loop
   → provider-specific SDK / stream parser
 ```
 
-client factory 明确构造四种 Anthropic SDK client：Direct、Bedrock、Foundry、Vertex（`src/services/api/client.rs:1-9,152-163`）。它在一个工厂内同时处理通用 header、OAuth refresh、API key、proxy、timeout、四种 provider auth 和 base URL（`src/services/api/client.rs:184-246,291-515`）。
+client factory 构造 Direct、Bedrock、Foundry、Vertex 四种 Anthropic SDK client，并同时处理 header、OAuth refresh、API key、proxy、timeout 和 provider auth（`src/services/api/client.rs:1-9,152-163,184-246,291-515`）。请求 body 直接使用 `BetaMessageCreateParams`，stream parser 直接处理 Anthropic content block delta（`src/services/api/claude.rs:2027-2116,2264-2403,3010-3175`）。
 
-请求 body 直接是 Anthropic SDK 类型：`BetaMessageCreateParams` 包含 Anthropic 的 `max_tokens`、`system` block、`thinking`、`tools`、`tool_choice` 等，模型和 provider 逻辑在 `src/services/api/claude.rs:2027-2116,2264-2403`；stream parser 也直接匹配 Anthropic content block delta，包括 thinking delta（`src/services/api/claude.rs:3010-3175`）。
+当前 header 已有可复用边界：
 
-当前 header 已有正确的分层起点，但仍是 Anthropic adapter 形状：
+- common：`User-Agent`、`x-app`（`src/services/api/request_headers.rs:12-21`）；
+- Anthropic adapter：session/container/remote header（`:23-50`）；
+- `anthropic-beta` 只由 Anthropic 请求使用（`:52-58`）；
+- `httpHeaders` 最后覆盖同名 header（`:60-82`）。
 
-- common header：`User-Agent`、`x-app`（`src/services/api/request_headers.rs:12-21`）；
-- Anthropic adapter header：`X-Nyan-Session-Id`、远程 session/container header、`x-anthropic-additional-protection`（`src/services/api/request_headers.rs:23-50`）；
-- `anthropic-beta` 只应发给 Anthropic 请求（`src/services/api/request_headers.rs:52-58`），但 beta 计算本身仍广泛散落在 `utils/betas.rs`；
-- `httpHeaders` 会按 header 名覆盖内建 header（`src/services/api/request_headers.rs:60-82`）。
+OAuth、beta、cache control、Bedrock/Vertex/Foundry auth 和 Anthropic SDK 类型都必须留在 Anthropic adapter 或其 credential owner 中。`OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED=false`（`src/constants/oauth.rs:40-47`）继续只影响 Anthropic OAuth，不成为全局 provider 开关。
 
-OAuth 也仍是 Claude.ai 专有路径：OAuth endpoint、scope、`oauth-2025-04-20` 和 `.credentials.json` 形状都集中在 `src/constants/oauth.rs:23-43,64-102` 与 `src/utils/auth.rs:551-609`。关键产品开关 `OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED` 被编译期固定为 `false`（`src/constants/oauth.rs:40-47`）；刷新后的 OAuth credentials 会先在内存构造，但持久化前直接返回 unavailable error，且不会清理 beta/tool-schema cache（`src/utils/auth.rs:614-691`）。`get_anthropic_client` 在选中 Claude.ai OAuth 且该 gate 拒绝时，会让 client construction 失败（`src/services/api/client.rs:210-240`）。这不是通用 OAuth 能力，不能直接复制给其它 provider。
+### 1.5 子 agent 和 Decision Provider
 
-### 1.4 子 agent 和 Decision Provider 选模
+当前子 agent 选择优先级是 `CLAUDE_CODE_SUBAGENT_MODEL` → tool model → agent definition model → `inherit`（`src/utils/model/agent.rs:21-93`），并在 Bedrock 下继承 region prefix。目标设计删除这些旧 env/model alias 入口，改为 profile 名或父 agent 的 `ResolvedModel`。
 
-子 agent 当前模型选择优先级是：`CLAUDE_CODE_SUBAGENT_MODEL` → tool 指定模型 → agent definition 的 model → `inherit`（父模型），并在 Bedrock 下继承 region prefix（`src/utils/model/agent.rs:21-93`）。运行时在 `run_agent` 中先解析模型，再用它启动子 agent query（`src/tools/agent_tool/run_agent.rs:706-750`）。`inherit` 是“继承父模型”的特殊值，不是 provider-neutral 的模型引用。
+当前 Decision Provider 用 `fast` / `accurate` 映射 EMRank 模型（`src/utils/settings/nyan.rs:838-902`、`src/services/decision/mod.rs:48-137`）。目标保留 tier 概念，但 tier 只能绑定标记为 `commercial: true` 的 profile；本地 provider 不得进入 Decision Provider。
 
-Decision Provider 目前将模型抽象成 `fast` / `accurate` 两个闭集别名：配置定义在 `src/utils/settings/nyan.rs:838-902`，决策点注册表包括 `agent.route` 等宿主场景（`src/services/decision/mod.rs:48-137`），System One 后端通过 `settings.nyan.decision.emrank.models` 映射真实模型（`src/utils/settings/nyan.rs:841-852`）。这使 Decision Provider 能独立于主模型，但后端和凭据仍是 EMRank/Anthropic chat 的专用假设；后续需要把别名映射到通用 `ModelRef`，并保留 `fast/accurate` 作为逻辑档位而非 provider 名称。
+## 二、已定决策
 
-## 二、目标抽象
+以下 12 条是本设计的约束，不再作为待选项：
 
-### 2.1 四个核心对象
+1. **配置位置与替换**：新配置统一在 `settings.nyan.providers` / `models` / `selection`；直接替换旧配置。nyan 当前没有用户，因此不做兼容迁移、导入、deprecated 读取或旧字段警告。
+2. **模型引用**：持久化配置以 profile 名为主。`provider/model` 只允许 CLI 或单个 session 临时使用，不能写入 project settings。
+3. **能力元数据**：不做运行时探测；采用 Pi Agent 维护的固定模型元数据快照，profile 显式字段可覆盖快照。
+4. **无默认 provider**：用户必须配置 provider/profile。没有可解析 profile 时给清晰错误或配置引导，不回退 Anthropic。
+5. **OpenAI 两种协议**：Chat Completions 与 Responses API 在同一阶段实现，分别作为可声明的 adapter protocol。
+6. **Ollama**：不实现 Ollama native adapter；Ollama 只能配置为 OpenAI-compatible endpoint。vLLM 同样走 OpenAI-compatible。
+7. **OAuth**：各 provider 自己管理 OAuth、refresh、token schema 和持久化；不做统一 OAuth broker。Pi Agent 与 CLIProxyAPI 只作为设计参考，不作为运行时依赖。
+8. **Project settings 边界**：project settings 绝对不能新增 endpoint 或 credential file，只能引用 user/managed settings 已定义的 profile 名。
+9. **Decision Provider**：暂时只允许商业模型 profile，不能绑定本地 provider。
+10. **旧字段删除**：直接删除 `settings.model`、`ANTHROPIC_MODEL`、`GlobalConfig.modelContextWindows` 的读取逻辑与配置入口；不保留兼容路径。
+11. **跨 provider fallback**：默认禁止跨 provider 自动重试；只有用户显式配置的 fallback profile 列表允许切换 provider。
+12. **Windows key file**：必须验证 owner-only ACL；无法验证就拒绝使用，并说明需要改用环境变量或系统凭据。
+
+## 三、目标抽象
+
+### 3.1 Provider、profile 和模型引用
 
 ```rust
-pub struct ProviderId(pub String);        // anthropic, openai-main, gemini, vllm, ollama
-pub struct ModelRef {                     // 始终可解析到一个 provider
+pub struct ProviderId(pub String);       // anthropic, openai, gemini, local-vllm
+pub struct ModelProfileId(pub String);   // main, review, local-fast
+
+pub struct ModelRef {
+    pub profile: ModelProfileId,
     pub provider: ProviderId,
-    pub model: String,                     // provider wire model id
+    pub model: String,                   // provider wire model id
 }
 
+pub struct ResolvedModel {
+    pub reference: ModelRef,
+    pub display_name: String,
+    pub capabilities: ModelCapabilities,
+    pub credential_profile: String,
+    pub endpoint: Endpoint,
+    pub commercial: bool,
+}
+```
+
+持久化 `selection` 只写 profile 名。CLI/session 临时输入 `provider/model` 时先解析为一个不可持久化的临时 `ResolvedModel`，请求结束即丢弃。project settings 不能写 provider/model 直写值，也不能定义 profile 内容。
+
+### 3.2 能力模型
+
+```rust
 pub struct ModelCapabilities {
-    pub context_window: u32,
-    pub max_output_tokens: Option<u32>,
+    pub context_window: u32,             // 必填才能运行
+    pub max_output_tokens: u32,
     pub tools: ToolCapability,
     pub thinking: ThinkingCapability,
     pub images: ImageCapability,
@@ -116,45 +154,46 @@ pub struct ModelCapabilities {
     pub streaming: bool,
     pub prompt_cache: CacheCapability,
 }
-
-pub struct ResolvedModel {
-    pub reference: ModelRef,
-    pub display_name: String,
-    pub capabilities: ModelCapabilities,
-    pub credential_profile: Option<String>,
-    pub endpoint: Endpoint,
-}
 ```
 
-`ModelRef` 是配置与日志中的身份；`ResolvedModel` 是请求前的快照。一次请求必须固定使用一个快照，不能在重试中因环境变量变化而悄悄换 provider 或 capabilities。
+能力至少覆盖上下文长度、工具调用、thinking、图片；同时声明结构化输出、流式和 prompt cache，因为它们会改变请求形状。未知能力按不支持处理，不通过请求 probe 猜测。
 
-能力最少覆盖用户要求的四项：`context_window`、`tools`、`thinking`、`images`。建议同时声明 `max_output_tokens`、`structured_output`、`streaming`、`prompt_cache`，原因是这些字段当前也会改变请求形状。能力应是可组合的显式枚举，而不是无穷的字符串：
+### 3.3 Pi Agent 模型元数据：来源、格式、许可证和更新
 
-```jsonc
-{
-  "tools": "native",       // none | native | emulated
-  "thinking": "adaptive",  // none | budgeted | adaptive
-  "images": "input",       // none | input | inputAndOutput
-  "promptCache": "native"  // none | native | clientSide
-}
-```
+采用 [earendil-works/pi](https://github.com/earendil-works/pi) 的 `packages/ai` 模型目录作为首个外部元数据来源。仓库许可证为 MIT；nyan 不复制 Pi runtime，仅引入生成后的数据快照，并在发行物/源码中保留 MIT NOTICE 与来源 commit。
 
-未知能力一律按 `none` 处理；provider adapter 可在启动时对配置做 schema 校验，但不应根据模型名称猜测“看起来支持”。
+Pi 的元数据结构可直接覆盖 nyan 的核心字段：
 
-### 2.2 Provider 是协议 + endpoint + credential profile
+- `packages/ai/src/providers/model-schema.ts` 定义 schema；
+- `packages/ai/src/types.ts` 的 `BaseModel` 包含 `id`、`name`、`api`、`provider`、`baseUrl`、`input`、`inputLimits`、`cost`；
+- chat `Model` 额外包含 `reasoning`、`thinkingLevelMap`、`promptCache`、`contextWindow`、`maxTokens` 和 API compatibility overrides；
+- `packages/ai/src/providers/*.models.ts` 是 provider-specific source shards；
+- `packages/ai/src/providers/data/*.json` 是生成的数据；`models.generated.ts` 聚合 provider shards；
+- `packages/ai/scripts/model-data.ts` 校验 schema version、provider 文件、manifest、structure hash 和每个生成文件的 SHA-256；
+- `.github/workflows/publish-model-catalog.yml` 在 CI 成功后按工作日计划生成、校验并发布 catalog artifact。该 workflow 不是 nyan 的运行时依赖，nyan 只消费经过 pin 的快照。
 
-provider 条目不直接等于厂商。建议使用以下 protocol：
+引入方式：
 
-| protocol | 覆盖 | 首批 adapter | 关键差异 |
+1. 在 nyan 中新增一个**生成数据导入 PR**，记录 Pi commit/tag、model catalog schema version、生成时间和 MIT NOTICE；不引入 Pi 的 TypeScript/Bun runtime。
+2. 将 Pi 的 JSON model catalog 转换成 nyan 自己的稳定 JSON schema，保留 source commit 和原始 provider/model ID；生成 Rust 静态数据或 checked-in resource，不在启动时联网。
+3. 做 schema/hash 校验：缺 `contextWindow`、`maxTokens`、`input`、`reasoning` 或 provider/api 的条目不能进入可运行 catalog；上游新增字段默认忽略，schema breaking change 必须人工审查。
+4. 更新走显式 PR：升级 source commit，重新生成快照、跑校验、更新 NOTICE 和变更说明；不自动拉取远端元数据，不因上游 catalog 变化而改变用户运行时行为。
+5. Pi catalog 的 `reasoning` 映射为 thinking 候选，`input` 中的 `image` 映射为图片能力，`contextWindow`/`maxTokens`/`promptCache`/`inputLimits` 映射为同名能力；工具支持仍由 adapter protocol 与 profile override 共同决定，因为 Pi 的 BaseModel 并不把“tools”作为单独通用布尔字段。
+
+如果未来需要第二个来源，必须先定义来源优先级、许可证和字段冲突规则；不能把多个 catalog 在运行时无规则合并。
+
+### 3.4 Provider protocol
+
+| protocol | 覆盖 | 阶段 | 关键差异 |
 |---|---|---|---|
-| `anthropicMessages` | Anthropic API、Anthropic-compatible gateway、Bedrock/Vertex/Foundry 的 Anthropic wire 变体 | Anthropic | system blocks、thinking、tool schema、beta、cache control、SSE/专用 transport |
-| `openaiChat` | OpenAI、OpenRouter、兼容网关、vLLM 的 OpenAI endpoint | OpenAI-compatible | `messages` content parts、tool calls、JSON response format、usage/finish reason |
-| `gemini` | Gemini API / Vertex Gemini | Gemini | `contents`/`parts`、function call、thought parts、inline data |
-| `ollama` | Ollama 原生 endpoint | 后续；也可先用 `openaiChat` | 本地模型发现、keep-alive、图片格式和本地错误语义 |
+| `anthropicMessages` | Anthropic API、Anthropic-compatible gateway、Bedrock/Vertex/Foundry 的 Anthropic wire 变体 | Anthropic adapter 阶段 | system blocks、thinking、tool schema、beta、cache control、SSE/专用 transport |
+| `openaiChat` | OpenAI Chat Completions、OpenRouter、vLLM、Ollama OpenAI-compatible endpoint | OpenAI 阶段 | `messages` content parts、tool calls、JSON response format、usage/finish reason |
+| `openaiResponses` | OpenAI Responses API 与兼容 Responses endpoint | OpenAI 阶段，与 `openaiChat` 同 PR | `input` items、response output items、reasoning、background/continuation 语义 |
+| `gemini` | Gemini API / Vertex Gemini | 后续独立阶段 | `contents`/`parts`、function call、thought parts、inline data |
 
-vLLM 默认走 `openaiChat`，除非其 endpoint 明确只实现其它协议；Ollama 允许用户显式选择 `ollama` 或兼容的 `openaiChat`。这样“本地/云端”不是协议枚举，也不会把部署方式锁死在品牌名里。
+不提供 `ollama` protocol。Ollama profile 必须声明 `protocol: openaiChat`，并把 Ollama 特有的 endpoint/header/body 差异限制在 OpenAI-compatible adapter 的显式 compatibility options 中；首版不实现 Ollama native API。
 
-公共层接口只暴露规范化输入输出：
+### 3.5 Provider-neutral Request IR
 
 ```rust
 #[async_trait]
@@ -171,31 +210,11 @@ pub trait ProviderAdapter: Send + Sync {
 }
 ```
 
-`ModelRequest` 由会话消息、system blocks、工具 schema、tool choice、thinking preference、image parts、output limit 和 query source 组成；不包含任何 provider header/beta 字段。adapter 负责：
+`ModelRequest` 包含消息、system blocks、tools、tool choice、thinking preference、图片、output limit 和 query source，但不包含 provider header/beta。adapter 负责 wire body、stream normalization、usage、stop reason、request id 和 provider-specific error mapping。
 
-1. 把 IR 转成自身 wire body；
-2. 只发送自身支持的能力；
-3. 把 stream delta、tool call、usage、stop reason、provider request id 归一化；
-4. 把 HTTP/SDK 错误映射成 `ProviderError`（auth、unsupported、rateLimited、overloaded、contextOverflow、invalidRequest、transport、unknown）。
+## 四、建议配置格式
 
-### 2.3 Anthropic adapter 的隔离边界
-
-第一阶段不删除现有 `services/api/claude.rs`，而是把它变成 Anthropic adapter 的实现细节。以下内容只允许出现在 Anthropic adapter、Anthropic credential/provider modules 或明确的 provider capability table 中：
-
-- `anthropic-beta` 及 `src/utils/betas.rs` 的 beta 选择；
-- `request_headers.rs` 中 Anthropic adapter headers；common headers 仍可复用；
-- `system` block 的 Anthropic cache control、prompt cache scope 和 thinking/redacted-thinking block；
-- Bedrock SigV4 / bearer、Vertex Google auth、Foundry Azure auth；
-- Claude.ai OAuth scopes、`oauth-2025-04-20`、`.credentials.json` 与 `OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED=false`；
-- Anthropic 模型 alias、`[1m]` 语义和官方模型表。
-
-公共层可以知道“这个模型声明支持 prompt cache/thinking”，但不能知道 beta header 字符串，也不能直接调用 `get_merged_betas`。这会让 OpenAI/Gemini 请求不再被误加 Anthropic beta，也让关闭 OAuth side effect 不影响其它 provider。
-
-## 三、建议配置格式
-
-### 3.1 Settings 形状
-
-新配置放在 `settings.nyan.providers` 与 `settings.nyan.models`。字段均使用现有 `SettingsJson.nyan` 的 optional/deep-merge 规则；provider credential 的 secret 只写引用。
+### 4.1 Provider、profile 和 selection
 
 ```jsonc
 {
@@ -204,27 +223,26 @@ pub trait ProviderAdapter: Send + Sync {
       "anthropic": {
         "protocol": "anthropicMessages",
         "baseUrl": "https://api.anthropic.com",
-        "credential": { "env": "ANTHROPIC_API_KEY" }
+        "credential": { "oauth": "anthropic-claude-ai" },
+        "commercial": true
       },
       "openai": {
-        "protocol": "openaiChat",
+        "protocols": ["openaiChat", "openaiResponses"],
         "baseUrl": "https://api.openai.com/v1",
-        "credential": { "env": "OPENAI_API_KEY" }
+        "credential": { "env": "OPENAI_API_KEY" },
+        "commercial": true
       },
       "local-vllm": {
         "protocol": "openaiChat",
         "baseUrl": "http://127.0.0.1:8000/v1",
-        "credential": { "optionalEnv": "VLLM_API_KEY" }
+        "credential": { "optionalEnv": "VLLM_API_KEY" },
+        "commercial": false
       },
       "local-ollama": {
-        "protocol": "ollama",
-        "baseUrl": "http://127.0.0.1:11434",
-        "credential": { "none": true }
-      },
-      "gemini": {
-        "protocol": "gemini",
-        "baseUrl": "https://generativelanguage.googleapis.com",
-        "credential": { "env": "GEMINI_API_KEY" }
+        "protocol": "openaiChat",
+        "baseUrl": "http://127.0.0.1:11434/v1",
+        "credential": { "none": true },
+        "commercial": false
       }
     },
     "models": {
@@ -260,9 +278,14 @@ pub trait ProviderAdapter: Send + Sync {
     },
     "selection": {
       "main": "main",
+      "mainFallbacks": [],
       "subagent": "inherit",
+      "subagents": {
+        "Explore": "main",
+        "Plan": "main"
+      },
       "decision": {
-        "fast": "local-fast",
+        "fast": "main",
         "accurate": "main"
       }
     }
@@ -270,215 +293,242 @@ pub trait ProviderAdapter: Send + Sync {
 }
 ```
 
-这里的 `models` key 是用户可见的 profile 名称，`provider + model` 是实际身份。建议允许 `selection.main` 直接写 `provider/model`，但内部统一归一化为 profile；这样同一个模型可以有不同 capability declaration、费用标签或 endpoint profile，而日志仍可记录完整 `provider/model`。
+规则：
 
-不建议把所有可发现模型自动写回 settings：model discovery 是外部状态，应该只生成临时 picker cache；用户要稳定选择的模型才写入 `nyan.models`。
+- `selection.main` 是必填的 profile 名；未配置或 profile 不存在时，启动进入配置引导/返回明确错误；不使用内置 Anthropic default。
+- `mainFallbacks` 是用户显式允许的 fallback profile 列表，默认空；不配置就不跨 provider 自动切换。
+- `selection.subagent` 和 `subagents.*` 只能是 profile 名或 `inherit`；project settings 可以引用 user/managed 中存在的名字，但不能定义 provider/profile 内容。
+- `provider/model` 直写只接受 CLI/session 临时输入，必须带“不落盘”语义。
+- profile 的 `capabilities` 覆盖 Pi snapshot；覆盖值必须经 schema 校验，不能把未声明能力自动设为 true。
+- profile 定义只能写在 user 或 managed settings。project/local settings 只能写 profile 名、选择关系和 policy，不得写 `baseUrl`、`credential.file`、secret、OAuth client data 或任意新的 provider ID。
 
-### 3.2 Credential 引用
+### 4.2 Credential 引用与 OAuth owner
 
 ```jsonc
 {
   "credential": { "env": "OPENAI_API_KEY" },
   "credential": { "file": "~/.nyan/keys/openai" },
   "credential": { "optionalEnv": "VLLM_API_KEY" },
-  "credential": { "oauth": "google-default" },
-  "credential": { "oauth": "anthropic-claude-ai" }
+  "credential": { "oauth": "anthropic-claude-ai" },
+  "credential": { "oauth": "openai-codex" }
 }
 ```
 
-解析规则：
+credential reference 只引用来源，不把 secret 写入 settings：
 
-1. `env`：变量名必须是配置的变量名，不能在 settings 中写变量值；未设置是明确的 `missingCredential`。
-2. `file`：展开 `~` 后读取单行，trim 仅作用于文件格式，不修改 token 本体；要求普通文件、owner-only 权限（Unix 0600；Windows 使用 owner ACL 检查或至少明确记录无法检查）。
-3. `optionalEnv`：没有凭据也允许构造 client，适用于本地无认证 endpoint；如果 endpoint 返回 401，再映射为 auth error，不伪装成 offline。
-4. `oauth`：只引用 provider-specific OAuth profile。OAuth flow、refresh、token cache 和 side effects 都由该 provider 的 credential owner 实现。Anthropic 的默认关闭 gate 只作用于 `anthropic-claude-ai`，不能阻断 API key、Gemini ADC 或其它 provider。
-5. 若一个 provider 需要多段凭据（例如 AWS access key/secret/session token 或 Google ADC），credential resolver 返回 typed material，不把多段值拼成一个通用字符串。
+- `env`：读取指定变量；未设置是 `missingCredential`；
+- `file`：单行读取；Unix 要求 0600；Windows 必须验证 owner-only ACL，无法验证立即拒绝并说明需要 env 或系统凭据；
+- `optionalEnv`：允许无认证本地 endpoint，但收到 401 仍报告 auth error；
+- `oauth`：绑定一个 provider-owned OAuth profile，flow、refresh、token schema、存储和删除都由该 provider owner 实现。
 
-凭据优先级不应再由任意环境变量隐式抢占：显式 CLI/profile 选择的 credential profile > settings 中的 provider credential > provider adapter 的标准 env fallback。兼容期可读旧 env，但启动诊断要显示“来源类型/变量名”，绝不显示 secret。
+**Pi Agent 参考**：
 
-### 3.3 Provider、model 和 endpoint 的作用域
+- `packages/ai/src/auth/oauth/load.ts` 明确按 provider 注册 OAuth loaders：Anthropic、OpenAI Codex、OpenAI ChatGPT、GitHub Copilot、OpenRouter、Kimi Coding、Meta、xAI，以及可参数化的 Radius；每个 flow 是独立模块，不是统一 token broker。
+- `packages/coding-agent/src/core/auth-storage.ts` 使用 `auth.json` 文件存储，以 provider id 为 key；OAuth credential 包含 access、refresh、expires，API key 支持 env indirection；写入使用锁，目录默认 0700、文件创建 mode 0600，并处理 Windows 删除 pending 的锁重试。
+- Pi 的 OAuth module 使用 PKCE、loopback callback 或手工粘贴 redirect/code；provider-specific endpoint 和 scope 位于各自的 OAuth module。
 
-- user settings：个人 provider、key 引用、默认模型；
-- project settings：只允许模型 profile 和 capability policy，不允许 project 内定义 `file` 指向私密路径，也不允许覆盖 user credential；
-- managed policy：可限制 provider allowlist、model allowlist、最大 context、是否允许本地 endpoint；
-- CLI：一次会话的 `--provider` / `--model` / `--profile` override；不落盘；
-- env：迁移兼容和 CI/headless 注入，优先影响 credential，不应暗中改变已解析的 provider。
+**CLIProxyAPI 参考**：
 
-建议把 endpoint 的 URL 视为 provider 配置的一部分，并在显示与日志中记录 scheme/host（必要时脱敏 path）。对 `http://127.0.0.1`、LAN 和公网 endpoint 的安全策略由 provider config 明确控制，不能把“本地”作为自动信任的充分条件。
+- [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 的 `internal/auth/` 按 provider 拆分 Claude、Codex/OpenAI、Gemini/Vertex/Antigravity、Kimi、Devin、Meta、xAI 等 auth/refresh/token 实现；README 也把 Claude Code、Codex、Gemini、Grok、Kimi、Devin 等列为独立登录/路由能力。
+- `sdk/auth/filestore.go` 的 `FileTokenStore` 遍历配置的 auth directory，保存 provider-specific JSON；创建目录使用 0700，文件使用 0600；每个 provider 通过自己的 `TokenStorage` 序列化和刷新。
+- `internal/auth/claude/filename.go`、`internal/auth/codex/filename.go` 按 provider/account identity 生成文件名，保留 legacy filename fallback；这说明多账户隔离应在 provider owner 中完成，而不是由统一 broker 猜 token 格式。
+- CLIProxyAPI 是 Go gateway/proxy，不作为 nyan 的运行时依赖；nyan 只借鉴“provider-specific OAuth + per-account file store + refresh owner”的边界。
 
-## 四、模型选择协议
+Pi 和 CLIProxyAPI 都是 MIT 许可（以各自仓库 LICENSE 为准）；nyan 不复制其实现。引用的设计、字段和文件存储模式需要在实现 PR 中保留来源链接、版本/commit 和许可证说明。用户需要决定是否接受把 provider OAuth 凭据以本地加密/权限保护文件形式存储，还是首批只支持 env/key file。
 
-### 4.1 主模型
+## 五、模型选择协议
 
-解析得到：
+### 5.1 主模型与 session 临时模型
+
+持久化选择只有 profile 名：
 
 ```text
-CLI explicit --model / --profile
-  > session override from /model
-  > settings.nyan.selection.main
-  > legacy settings.model / ANTHROPIC_MODEL migration resolver
-  > built-in default profile
+CLI --profile / --model provider/model（临时）
+  > session /model profile 选择（只改当前 session）
+  > settings.nyan.selection.main（profile 名）
+  > 无配置：清晰引导/错误
 ```
 
-`selection.main` 最终必须是 `ModelRef`。裸 `sonnet`、`opus` 等只在 legacy resolver 中解释，且只有 active Anthropic profile 才允许这些 alias；OpenAI/Gemini 的裸 `gpt-4.1` 不应被误判为 Anthropic alias。
+没有 built-in default。选择器展示 profile 名、provider、协议、能力和 context window；没有 profile 时展示配置引导，不生成 Anthropic fallback。
 
-model picker 按 profile 展示 `displayName`、provider 名、能力标记和 context window；gateway discovery 的 model 列表可以作为未配置的候选，但选中后写入一个明确的 `nyan.models` profile，而不是把 provider-specific ID 塞进旧 `availableModels`。
-
-### 4.2 子 agent
-
-将当前 `inherit` 保留为逻辑选择值，但它的解析对象改成父 agent 的 `ResolvedModel`，而不是只复制字符串：
+### 5.2 子 agent
 
 ```text
-explicit agent profile/model
-  > agent definition model
-  > CLAUDE_CODE_SUBAGENT_MODEL（迁移兼容，仅 Anthropic alias 或明确 profile）
+explicit agent profile
+  > agent definition profile
   > inherit parent ResolvedModel
-  > selection.subagent
+  > selection.subagents.<agent-type>
 ```
 
-推荐新增：
+`inherit` 继承父 `ResolvedModel` 的 provider、model、capabilities snapshot 和 credential profile。子 agent 的显式值必须是 profile 名；`provider/model` 只能作为同一个 session 的临时 tool/CLI 输入，不能写回 project settings。若显式 profile 不支持 tools/thinking/images，启动前返回 capability error，不静默换模型。
+
+### 5.3 Decision Provider
+
+`fast` / `accurate` 是逻辑 tier，但只允许选择 `commercial: true` 的 profile：
 
 ```jsonc
 {
   "nyan": {
     "selection": {
-      "subagents": {
-        "Explore": "local-fast",
-        "Plan": "main",
-        "Verify": "main"
-      },
-      "subagent": "inherit"
-    }
-  }
-}
-```
-
-规则：
-
-- agent definition 或 tool 的显式 `provider/model` 优先于 profile 默认；
-- `inherit` 继承 provider、model、capabilities snapshot 和 credential profile，但子 agent 可以通过 policy 限制能力；
-- 若显式子 agent 模型不支持 tools，而 agent 必须用工具，启动前返回 capability error，不自动切到主模型；
-- `CLAUDE_CODE_SUBAGENT_MODEL` 只作为迁移 alias，文档中标 deprecated；新实现使用 `NYAN_SUBAGENT_MODEL` 或 settings profile；
-- Bedrock region prefix 等 provider-specific 逻辑只在 Anthropic adapter/credential resolution 中执行。
-
-### 4.3 Decision Provider
-
-`fast` / `accurate` 保留为**逻辑档位**，不再绑定 EMRank 或 Anthropic。配置改成：
-
-```jsonc
-{
-  "nyan": {
-    "decision": {
-      "backends": {
-        "fast": { "model": "local-fast", "deadlineMs": 800 },
-        "accurate": { "model": "main", "deadlineMs": 2000 }
-      },
-      "points": {
-        "retrieval.answers": { "mode": "active", "tier": "fast" },
-        "memory.type": { "mode": "active", "tier": "accurate" }
+      "decision": {
+        "fast": "commercial-fast",
+        "accurate": "commercial-accurate"
       }
     }
   }
 }
 ```
 
-Decision Provider 选择模型的约束：
+约束：
 
-1. 先按点的 `tier` 选择，再检查模型能力：必须支持结构化输出或至少稳定的闭集 JSON、tools=false 即可、context window 足够；
-2. 如果用户指定的模型不满足 capability，按明确的 `backendUnavailable` 回退到确定性路径，不把主会话模型偷偷换掉；
-3. Decision Provider 请求独立记录 provider/model、latency、usage 和 fallback reason；不把凭据或完整 state 写入日志；
-4. “更快”由实测 latency/health/cost metadata 维护，不由模型名猜；同一 tier 可以在 user settings 里改 provider；
-5. provider down 时可以尝试同 tier 的显式备用 profile，但重试次数、预算和安全集合仍由 Decision Provider 核心决定；不能把 classifier 的失败变成主模型行为变化。
+1. profile 必须支持闭集结构化输出、足够的 context window，并标记 commercial；
+2. local-vLLM、Ollama、其它 `commercial: false` profile 在 schema/resolver 阶段拒绝；
+3. Decision Provider 的 fallback 也只能来自显式 commercial fallback 列表；
+4. down/timeout/low-confidence 仍回到确定性路径，不切到主 agent profile；
+5. 保留现有 `off/shadow/active` 语义和 credential redaction，不改变硬安全规则。
 
-现有 `DecisionBackend` 接口和 `off/shadow/active` 语义可以保留（`src/services/decision/mod.rs:19-27`）；只替换 backend model resolution，不改变硬安全规则、确定性回退和凭据 redaction。
+## 六、上下文窗口、token 计算与缺失元数据
 
-## 五、迁移路径
+### 6.1 没有声明 context window 时
 
-### 5.1 兼容解析表
+`contextWindow` 是可运行 profile 的必填能力：
 
-| 旧来源 | 迁移到 | 兼容期行为 |
+- Pi 快照有 `contextWindow` 时直接导入；
+- profile 显式 override 时使用 override；
+- 两者都没有时，profile 解析失败，不能发送请求；
+- 不使用旧的 `modelContextWindows`、200k 默认值、模型名称猜测或 runtime probe。
+
+这样做会让缺元数据的 profile 立即暴露配置错误，而不是在长对话中随机 overflow。
+
+### 6.2 token 计数规则
+
+即使 profile 无法运行，诊断仍可显示估算 token：
+
+1. 预请求使用 provider-neutral 的现有 rough estimator，按文本、tool schema、图片引用和消息结构估算；它用于 UI/诊断，不声称与 provider tokenizer 精确一致；
+2. 发送前用 `contextWindow - reservedOutputTokens - safetyMargin` 做 admission；任何无法计算的图片/二进制 part 按 profile 的 `inputLimits` 或保守上限计入；
+3. provider 返回的 usage 是事后权威值，按 provider adapter 归一化记录；不回写成新的能力元数据；
+4. contextWindow 缺失时没有 admission threshold，也不启动自动 compaction 试探；先报 profile invalid；
+5. `maxOutputTokens` 取 profile/元数据与 provider adapter 上限的较小值，不能因未知而使用无限或旧 Anthropic 默认。
+
+### 6.3 Cache 与 token 统计
+
+`promptCache` 只描述已知的 provider cache 语义；未知时按 none。cache 命中、写入和读取 token 只在 provider 返回 usage 后记录，不用猜测或跨 provider 迁移 cache receipt。
+
+## 七、限流、错误和重试语义
+
+### 7.1 统一错误模型
+
+adapter 把 provider 错误归一化为：
+
+```text
+rateLimited { retryAfter, providerWindow? }
+overloaded
+transient { status, retryable }
+contextOverflow
+invalidRequest
+unauthorized
+forbidden
+notFound
+transport
+partialStream
+```
+
+原始 status、Retry-After 和 provider-specific rate-limit headers 只进入安全的 request receipt；不把 token 或完整响应写日志。
+
+### 7.2 默认重试规则
+
+- 同一 provider 的**请求尚未产生可见输出**时，才允许对明确的 transient/rate-limited/overloaded 错误重试；默认最多 2 次，指数退避 + jitter，并受 `maxRetryDelay` 限制；
+- 优先尊重标准 `Retry-After`；provider adapter 可解析自己的 reset headers，但不能把某家 header 当成通用协议；
+- 一旦流已经产生 normalized output，连接失败返回 `partialStream`，不自动重放整个请求，避免重复工具调用和重复副作用；
+- 400/401/403/404、能力不支持、上下文溢出和 schema 错误不重试；
+- provider 选择不因 429/5xx 自动改变。跨 provider 只有在用户显式提供 `mainFallbacks`/对应 tier fallback 列表时才允许，并记录 provider switch；
+- fallback 列表按顺序尝试，每个 profile 使用自己的 credential、协议、rate-limit policy 和 capability snapshot；列表为空就是不 fallback。
+
+### 7.3 各协议语义
+
+| provider/protocol | 限流/暂态信号 | 默认处理 |
 |---|---|---|
-| `settings.model` | `nyan.selection.main` + Anthropic profile | 旧值继续有效；新配置优先并在诊断中提示来源 |
-| `ANTHROPIC_MODEL` | Anthropic legacy resolver | 仅当没有显式新选择时读取；写日志为 deprecated source |
-| `availableModels` | picker discovery / managed allowlist | 继续作为 allowlist；选中后 materialize 新 profile |
-| `modelOverrides` | `models.<profile>.model` 或 Anthropic deployment mapping | 保留读取；新配置明确 provider 和 wire model，避免 canonical ID collision |
-| `GlobalConfig.modelContextWindows` | `models.<profile>.capabilities.contextWindow` | 新声明优先；旧 map 作为 legacy fallback，不能覆盖显式 capability |
-| `additionalModelOptionsCache` | provider discovery cache | 只作 UI metadata；不作为能力或凭据来源 |
-| `ANTHROPIC_SMALL_FAST_MODEL` | `selection.roles.fast` 或 Decision tier | Anthropic 兼容期读取；新配置显式绑定 profile |
-| `CLAUDE_CODE_SUBAGENT_MODEL` | `selection.subagent` / per-agent map | 兼容读取；不再能跨 provider 解释裸 alias |
-| `settings.nyan.decision.emrank.models` | `decision.backends.*.model` | `fast/accurate` key 保留，value 改成 profile/ModelRef |
-| `httpHeaders` | provider common/adapter header policy | 兼容 global override，但禁止用它注入另一协议的 auth/beta；未来按 provider 作用域 |
+| Anthropic Messages | HTTP 429、529 overloaded、408/5xx；优先 `Retry-After` 与 Anthropic rate-limit headers | 未输出前最多 2 次同 provider retry；429/529 不自动切其它 provider |
+| OpenAI Chat Completions | HTTP 429、408/5xx；优先 `Retry-After`，可记录 `x-ratelimit-*` reset 信息 | 与 Responses 共用 retry controller，但 adapter 分别解析 body/error；流已输出则 partialStream |
+| OpenAI Responses | HTTP 429、408/5xx，以及 Responses-specific error body | 与 Chat 同阶段实现；不得把 Responses continuation 当成可安全重放的完整请求，除非尚未产生输出 |
+| Gemini | 429/503 或 provider 明确标为 `RESOURCE_EXHAUSTED`/暂态的响应；优先标准 retry hint | adapter 负责把 Google error reason 映射为 rateLimited/overloaded；无 hint 时使用受限指数退避 |
+| OpenAI-compatible vLLM/Ollama | 只依赖标准 HTTP 429/408/5xx；不假设某个 gateway header | profile 默认可关闭 retry；开启后只在同 endpoint 重试，跨 provider 仍需显式 fallback |
 
-### 5.2 分阶段兼容策略
+“各家 provider 支持什么 header/错误码”属于 adapter contract 和测试 fixture，不在公共层硬编码。provider 更新 rate-limit 语义时更新 adapter 与 fixture，不修改用户配置含义。
 
-1. **Read-only catalog phase**：新增 provider/model schema 和 resolver，但默认不改变现有 Anthropic 请求；启动输出 resolved catalog（无 secret）。
-2. **Anthropic-through-adapter phase**：把现有 Anthropic client 接到公共 Request IR，默认请求字节与当前路径一致；旧 env/settings 仍是输入。
-3. **Explicit non-Anthropic opt-in**：OpenAI-compatible、Gemini、vLLM、Ollama 只有在新 profile 被显式选中时启用；旧配置永远继续走 Anthropic。
-4. **New selection authority**：新 `nyan.selection` 优先，旧模型字段进入 deprecated warning；managed policy 可阻止旧隐式 gateway 路径。
-5. **Cleanup after telemetry**：至少一个版本周期后再移除旧 `modelOverrides` / `modelContextWindows` 的写入支持；读取和迁移导出可保留更久。
+## 八、替换路径（不是兼容迁移）
 
-迁移命令/诊断（实现时）应提供 dry-run：列出旧来源、解析出的 `ModelRef`、能力缺口、需要用户确认的 provider endpoint 和 credential reference；默认不写文件。自动写入只生成备份，并且不把 env 的 secret 落盘。
+nyan 没有用户，因此实现阶段直接删除旧入口：
 
-## 六、分阶段实施计划（每阶段可单独 PR）
+- 从 `SettingsJson` 删除 `model`、`availableModels`、`modelOverrides` 等旧 provider/model 配置入口；
+- 删除 `ANTHROPIC_MODEL`、`CLAUDE_CODE_SUBAGENT_MODEL` 等旧模型选择读取；
+- 删除 `GlobalConfig.modelContextWindows` 和 `gateway_context_window`；
+- 删除基于 Anthropic build audience 的隐式默认模型/默认 provider；
+- 删除旧 `availableModels` picker allowlist 的读取；picker 只展示已解析 profile；
+- 不写 migration command、dry-run、旧字段 warning、备份导入或 legacy fallback；
+- 旧环境变量即使存在也不影响新 resolver，错误信息直接指出应配置 `settings.nyan.providers/models/selection` 或 CLI 临时 profile。
+
+当前代码中的旧字段和调用链保留在本节之前仅作为审计证据，不是目标行为。
+
+## 九、分阶段实施计划（每阶段可单独 PR）
 
 | PR | 内容 | 独立验收 | 主要风险 |
 |---|---|---|---|
-| 1. catalog types | 新增 `ProviderId`、`ModelRef`、capabilities、credential reference、schema 与纯 resolver；不接请求 | settings schema 能读/拒绝非法值；旧配置回归测试全绿 | strict schema、deep merge、空值语义被破坏 |
-| 2. credential owner | env/key-file/OAuth profile resolver、权限检查、secret-safe diagnostics；Anthropic OAuth 仍 default-closed | mock env/file/OAuth；日志无 secret；缺凭据错误类型稳定 | Windows ACL 与 Unix mode 差异；OAuth side effect 误扩大范围 |
-| 3. request IR | 公共 message/tool/image/thinking/usage/error 类型和 capability validation；保留现有 API | 同一输入 IR 能拒绝不支持能力；序列化 fixture 稳定 | 把 Anthropic semantics 泄漏进公共类型；tool/thinking 配对错误 |
-| 4. Anthropic adapter | 将 `services/api/client.rs`、`claude.rs`、headers、betas、Bedrock/Vertex/Foundry 接到 adapter；默认行为字节对照 | Anthropic direct/gateway/3P mock 请求与旧 fixture 对照；OAuth gate 仍只影响 Claude.ai | cache prefix、beta 顺序、stream/tool/thinking 解析改变 |
-| 5. OpenAI-compatible adapter | OpenAI、vLLM 和兼容 gateway；tools/images/streaming/JSON output；usage/error mapping | local `TcpListener` mock 覆盖 chat/tool/vision/stream/error | 各 gateway 方言不一致；tool call streaming 拼接 |
-| 6. Gemini + Ollama | Gemini parts/function calls/thoughts；Ollama discovery/keep-alive/native errors | provider-specific mock 与 offline fallback；不影响已选 Anthropic | thought parts 和图片协议转换；本地服务阻塞启动 |
-| 7. selector integration | model picker、main model、subagent profile/inherit、managed allowlist；旧配置迁移提示 | picker 显示 provider/capability；子 agent 不再错误继承 provider-specific alias | session snapshot 与 retry 不一致；显式选择优先级争议 |
-| 8. Decision Provider integration | `fast/accurate` → ModelRef；capability/health/cost selection；保留 off/shadow/active | Decision backend 可替换 provider；down/timeout 仍确定性回退 | classifier 质量/延迟下降；把主会话凭据或源码误发到错误 provider |
-| 9. migration + deprecation | dry-run/export、旧字段警告、文档和 release notes；暂不删除读取 | 旧 settings/env、gateway map 与新配置双向验收 | 用户配置组合数量大；自动迁移产生不可逆覆盖 |
+| 1. provider/profile schema replacement | 新增 `settings.nyan.providers/models/selection`、profile scope、无默认 provider；删除旧 `settings.model`、`ANTHROPIC_MODEL`、`modelContextWindows` 读取和 schema；不接请求 | 无配置时清晰引导/错误；只能解析 profile；project 只能引用 user/managed profile；旧字段不再生效 | strict schema、settings source scope、删除旧调用点不完整 |
+| 2. pinned model metadata | 导入 Pi MIT catalog 的转换格式、source commit/schema manifest、NOTICE、profile override 和 context/token validation | 快照 hash/schema 校验；缺 contextWindow 的 profile 被拒绝；更新只通过显式 PR | 上游数据变化、许可证/NOTICE、Pi schema breaking change |
+| 3. credential owner and OAuth | env/key file/OAuth reference、provider-specific credential owner；Pi/CLIProxyAPI 参考的 per-provider OAuth；Windows owner-only ACL | env、OAuth、key file mock；Windows ACL 无法验证时拒绝；无 secret 日志 | token schema差异、refresh side effects、Windows ACL |
+| 4. request IR + Anthropic adapter | 公共 message/tool/image/thinking/usage/error IR；Anthropic client、headers、betas、Bedrock/Vertex/Foundry 接入 adapter | Anthropic mock 请求与 stream fixture；OAuth gate 仍只作用 Anthropic | cache prefix、beta、stream/tool/thinking 改变 |
+| 5. OpenAI adapters | **同一阶段**实现 Chat Completions 和 Responses；tools/images/streaming/structured output/usage/error | 两种协议各自 mock contract；同一 profile 不能混淆 chat/responses；未输出重试与 partialStream | 两种 wire shape、tool call streaming、retry/replay |
+| 6. OpenAI-compatible local + Gemini | vLLM/Ollama 只走 OpenAI-compatible；Gemini adapter 独立实现；不做 Ollama native | local endpoint mock；Gemini parts/function/thinking fixture；无本地 provider 进入 DP | gateway 方言、图片/thinking转换、本地 timeout |
+| 7. selector and subagent | profile-only picker、main/session CLI、`inherit` snapshot、per-agent profile、project scope enforcement | 无默认 provider；临时 `provider/model` 不落盘；子 agent capability validation | session snapshot、显式 profile 优先级 |
+| 8. retry/fallback/health | normalized errors、各 adapter rate-limit policy、同 provider retry、显式 fallback 列表；禁止隐式跨 provider | 429/Retry-After/529/503/stream partial fixture；空 fallback 不切 provider；switch receipt | 重复工具调用、provider header drift |
+| 9. commercial Decision Provider | `fast/accurate` tier 绑定 commercial profile；拒绝 local profile；保留 off/shadow/active | local profile schema rejection；down/timeout 回确定性路径；fallback 仍只 commercial | classifier 费用/延迟、来源隐私 |
 
-PR 之间的写集应保持隔离：先 schema/resolver，再 IR，再 adapter，最后接入选择和迁移；不要在 adapter PR 顺便重写 model picker 或 settings merge。
+没有 migration/deprecation PR。第 1 PR 完成后，旧字段和旧读取路径应不存在；后续 PR 不得重新引入兼容读取。
 
-## 七、风险与防护
+## 十、风险与防护
 
 | 风险 | 影响 | 防护 |
 |---|---|---|
-| 把 capability 当作 provider 猜测 | 错误 thinking/tools/images 请求，甚至丢工具调用 | capabilities 显式声明；unknown=unsupported；请求前 validate |
-| 统一 IR 过度追求最低公分母 | Gemini/Anthropic 特性丢失，效果退化 | IR 保留可选 typed extension；extension 只能由对应 adapter 读取 |
-| 不同 provider 的 tool-call 语义不同 | tool_use/tool_result 不成对、循环卡死 | normalized stream state machine；每家 adapter 单测 fixture |
-| cache 语义混用 | prompt cache miss 或把不支持 cache 的 provider 当命中 | `CacheCapability` 明确为 native/clientSide/none；cache receipt 记录 provider |
-| OAuth 复用错误 | token 写错文件、刷新副作用越过编译期开关 | credential owner 按 provider 隔离；Anthropic gate 不下沉为全局开关 |
-| 项目设置携带凭据 | secret 泄漏到 git | project scope 禁止 secret value/file path policy；gitleaks 与 schema test |
-| gateway endpoint 伪装 provider | beta/auth/header 发错，错误信息误导 | protocol 显式配置；base URL 只作为 endpoint，不再决定 provider 身份 |
-| env 在 session 中途变化 | 同一会话模型/能力不稳定 | 启动或选择时解析 snapshot；请求携带 ResolvedModel snapshot |
-| 本地 provider 阻塞或不可用 | TUI 启动变慢、Decision Provider 卡住 | 不启动探测；首次请求超时；health state 与确定性 fallback |
-| provider 数量扩大导致测试矩阵爆炸 | CI 慢、协议回归难发现 | 每 adapter mock contract suite + 少量真实 smoke；公共 IR 测试复用 |
-| 迁移覆盖旧设置 | 用户行为悄悄改变 | dry-run、备份、显式确认；旧读取至少保留一个版本周期 |
+| Pi catalog 上游字段/许可证变化 | 能力或分发合规错误 | pin commit/schema/hash；显式更新 PR；保留 MIT NOTICE；schema breaking 必须人工审查 |
+| 缺 contextWindow | 请求 overflow 或错误 compaction | profile 解析直接失败；不使用旧 200k/default/probe |
+| provider rate-limit 语义不同 | 重试过多、重复请求、错误切 provider | adapter-specific policy；只在未输出时 retry；跨 provider 只走显式列表 |
+| Chat/Responses 混淆 | tool/continuation 丢失 | 独立 protocol adapter 和 contract fixture；profile 明确协议 |
+| 统一 OAuth broker 误用 token | token scope、刷新、存储和撤销错误 | provider-owned OAuth modules；credential profile 按 provider 隔离 |
+| Windows key file ACL 不可验证 | secret 被同机其他账户读取 | ACL 验证失败即拒绝；提示使用 env/系统凭据 |
+| Project settings 注入 endpoint | 项目文件劫持请求或泄露凭据 | schema/source scope 禁止 endpoint/credential file，只接受 profile name |
+| 无默认 provider | 首次启动体验差 | 清晰配置引导、列出缺失字段和可用 CLI 临时选项；不静默 fallback |
+| 本地模型误进 Decision Provider | 分类数据外发/质量和延迟不可控 | `commercial` capability + schema hard gate；tier fallback 同样检查 |
+| OpenAI-compatible gateway 方言 | 请求字段不兼容 | protocol compatibility options 显式配置；adapter fixture；不 runtime probe |
+| OAuth 文件并发写 | token 丢失/refresh race | 参考 Pi 的 file lock；provider owner 按 provider/account 串行化 |
 
-安全边界：provider adapter 不得改变权限系统的硬 deny、路径检查、凭据 redaction 或 hook/user decision；Decision Provider 也不能用新模型选择绕过这些规则。
+安全边界：provider adapter 不得改变权限系统的 hard deny、路径检查、凭据 redaction 或 hook/user decision。模型能力、fallback 和 retry 也不能绕过这些边界。
 
-## 八、需要拍板的决策点
+## 十一、仍需用户拍板的问题
 
-以下是实现前需要确认的产品决策；括号内是本设计的推荐默认值。
+12 条产品决策已经固定；实现前还需要确认以下调研衍生问题：
 
-1. **新配置的权威位置**：是否接受全部放在 `settings.nyan.providers/models/selection`，不新增顶层 `providers`？（推荐：接受，保持现有 strict schema 与 nyan 约定。）
-2. **模型引用格式**：是否以 profile key 为主、同时允许 `provider/model` 直写？（推荐：profile 为主，直写仅作 CLI/临时 override。）
-3. **未声明能力的策略**：unknown 是否一律禁用，还是允许 adapter probe 自动发现？（推荐：unknown=禁用；probe 只更新显式 discovery cache，不自动改变运行时 capability。）
-4. **默认 provider**：新安装是否继续默认 Anthropic，还是提供无 provider 的 setup wizard？（推荐：兼容现状默认 Anthropic，但代码路径不再把 Anthropic 当公共抽象。）
-5. **OpenAI-compatible 范围**：首批是否只承诺 OpenAI Chat Completions 子集，还是优先 Responses API？（推荐：先定义一个 adapter contract，首批实现 Chat Completions；Responses 作为独立 protocol capability，避免混淆。）
-6. **Ollama 协议**：是否优先走 OpenAI-compatible endpoint，还是必须实现 Ollama native adapter？（推荐：vLLM 先走 OpenAI-compatible；Ollama native 放第二阶段，但 profile 可显式选。）
-7. **OAuth 范围**：是否只实现 provider 自己已有的 OAuth（Anthropic gate 保持 false），不为通用 provider 做统一 OAuth broker？（推荐：是；每家 provider 自己拥有 OAuth/ADC/exec credential。）
-8. **项目级 provider**：是否允许 `.claude/settings*.json` / project settings 定义 endpoint？（推荐：只允许引用 managed/用户已定义的 provider，不允许项目新增任意公网 endpoint 或 credential file。）
-9. **主模型与 Decision Provider 的隔离**：Decision Provider 是否允许使用本地模型，即使主模型是云端？（推荐：允许，默认仍 off/shadow；能力、延迟、隐私和预算独立记录。）
-10. **旧配置淘汰窗口**：旧 `settings.model`、`ANTHROPIC_MODEL`、`modelContextWindows` 至少保留多久？（推荐：一个完整 release 周期后再停止写入支持，读取兼容更久。）
-11. **provider fallback 语义**：主请求遇到 429/5xx 是否允许自动跨 provider 重试？（推荐：默认不跨 provider；只有用户显式配置的同 tier fallback 才允许，且必须记录 provider switch。）
-12. **Windows 凭据文件权限**：Windows 是否要求 owner-only ACL，还是“能读取即接受并警告”？（推荐：发布前实现 ACL 检查；第一阶段若无法可靠检查则拒绝把 key file 当安全存储并给出 env 替代。）
+1. **Pi catalog 的引入形态**：接受把 Pi 的 MIT 生成 JSON 快照复制为 nyan checked-in resource，并随 nyan 保留 NOTICE/source commit，还是需要只在构建时下载、不把数据提交进仓库？（推荐 checked-in snapshot，保证可复现。）
+2. **Pi 快照更新节奏**：按 Pi release、固定月度 PR，还是仅在 provider/model 变更时手动更新？（推荐显式 PR，不自动跟随 Pi 的 hourly publication。）
+3. **元数据冲突**：Pi 数据缺失或错误时，是否允许 profile override 覆盖全部能力字段，还是只允许 context/maxOutput 等安全字段覆盖？（推荐允许用户 profile 覆盖，但 managed policy 可限制上限和能力。）
+4. **首批 OAuth provider 清单**：是否首批只做 Anthropic、OpenAI Codex/ChatGPT、Gemini/Vertex，GitHub Copilot、OpenRouter、Kimi、xAI 等后置？Pi 和 CLIProxyAPI 都支持更多 provider，但每个 OAuth flow 都是独立维护成本。
+5. **OAuth 文件 vs 系统凭据**：是否接受首批使用 provider-scoped `~/.nyan/keys`/auth 文件，随后补 Windows Credential Manager、macOS Keychain 和 Linux secret service？（Windows key file ACL 的拒绝规则已经固定。）
+6. **商业模型判定**：`commercial: true` 是用户在 profile 中写，还是只能由 managed policy/内置 catalog 授权？（推荐 user 可标记，但 Decision Provider 只接受 managed allowlist 或内置 catalog 认可的 profile。）
+7. **同 provider retry 默认值**：各 provider 默认最多 2 次是否合适？是否给 managed policy 一个全局最大预算？
+8. **Gemini 阶段**：是否与 OpenAI 阶段并行实现，还是作为下一 PR，尽管 OpenAI Chat/Responses 必须同阶段？
+9. **OpenAI-compatible fallback**：vLLM/Ollama endpoint 是否允许用户显式加入主模型 fallback 列表？（推荐允许主请求，但永远禁止进入 Decision Provider。）
 
-## 九、验收标准
+## 十二、验收标准
 
-1. 不配置新 provider 时，现有 Anthropic direct/Bedrock/Vertex/Foundry 的请求与 stream 行为保持不变。
-2. `provider/model`、profile key、旧 Anthropic alias 的解析结果可在启动诊断中区分；请求期间使用固定 `ResolvedModel`。
-3. 任一模型的 context/tools/thinking/images 能力都可显式声明；未声明能力不会进入请求 body。
-4. `request_headers.rs` 的 common header 不含 `anthropic-beta`；Anthropic beta、OAuth 和特殊 auth 只由 Anthropic adapter 生成。
-5. OAuth side effect gate 为 false 时，Claude.ai refresh 持久化仍失败并明确报错，但 API key、OpenAI-compatible、Gemini、vLLM、Ollama 不受影响。
-6. key file、env、OAuth、无认证四类 credential source 都有 provider-independent resolver contract 和 provider-specific typed material；日志不含 secret。
-7. 子 agent 的 `inherit` 继承父 `ResolvedModel`；显式 provider/model 不支持所需工具时 fail before request，不静默换模型。
-8. Decision Provider 的 `fast/accurate` 仅是 tier；可以分别绑定不同 provider，down/timeout/low-confidence 仍回到确定性路径。
-9. `modelContextWindows` 旧 map 只作为迁移 fallback；显式 `models.*.capabilities.contextWindow` 永远优先。
-10. 新配置 PR 不删除旧字段、不重置 prompt cache、不改变权限硬边界；迁移 dry-run 不写 secret。
+1. `settings.nyan.providers/models/selection` 是唯一持久化模型/provider 配置；无配置时不产生请求且给出明确引导/错误。
+2. `settings.model`、`ANTHROPIC_MODEL`、`GlobalConfig.modelContextWindows` 和旧 alias 不再被读取。
+3. profile 是唯一稳定模型引用；project settings 只能写已有 profile 名，不能写 endpoint、credential file 或 `provider/model`。
+4. Pi snapshot 有 source commit、schema version、hash 和 MIT NOTICE；更新不是 runtime 网络行为。
+5. profile 没有 contextWindow 时解析失败；有值时预请求使用保守估算，事后使用 provider usage，不使用隐式 200k。
+6. Anthropic beta/OAuth/cache/auth 只由 Anthropic adapter 处理；OpenAI Chat/Responses、Gemini 不收到 Anthropic beta。
+7. OpenAI Chat Completions 与 Responses 在同一阶段分别通过 contract fixture；vLLM/Ollama 只使用 OpenAI-compatible，不能选择 Ollama native protocol。
+8. OAuth credential schema、refresh、storage 和 account isolation 按 provider owner 分开；Pi/CLIProxyAPI 仅为参考，不成为依赖。
+9. Windows key file ACL 无法验证时拒绝使用；日志和错误不显示 secret。
+10. Decision Provider 只接受 commercial profile；local profile 及其 fallback 均被拒绝。
+11. 429/overload/5xx 的 retry 使用 adapter-specific 语义；stream 已产生输出后不重放；跨 provider 只在显式 fallback 列表中发生。
+12. 所有 PR 阶段可单独测试；没有迁移 PR，也没有旧字段兼容读取或自动 fallback。
