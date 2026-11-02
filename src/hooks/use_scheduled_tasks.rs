@@ -64,7 +64,7 @@ pub fn enqueue_cron_fire_prompt(prompt: &str) {
 pub fn create_repl_cron_scheduler(assistant_mode: bool) -> CronScheduler {
     CronScheduler::create(CronSchedulerOptions {
         assistant_mode,
-        get_jitter_config: Some(Box::new(|| DEFAULT_CRON_JITTER_CONFIG.clone())),
+        get_jitter_config: Some(Box::new(|| DEFAULT_CRON_JITTER_CONFIG)),
         is_killed: Some(Box::new(|| !is_kairos_cron_enabled())),
     })
 }

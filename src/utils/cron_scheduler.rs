@@ -152,7 +152,7 @@ impl CronScheduler {
             .get_jitter_config
             .as_ref()
             .map(|f| f())
-            .unwrap_or_else(|| DEFAULT_CRON_JITTER_CONFIG.clone());
+            .unwrap_or_else(|| DEFAULT_CRON_JITTER_CONFIG);
 
         let mut fired = Vec::new();
         let mut seen = HashSet::new();

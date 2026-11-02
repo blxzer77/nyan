@@ -195,7 +195,7 @@ pub fn DesktopUpsellStartup<'a>(
         }
     });
 
-    let selected = { pending_selection.read().clone() };
+    let selected = { *pending_selection.read() };
     if let Some(selection) = selected {
         pending_selection.set(None);
         match selection {

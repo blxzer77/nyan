@@ -539,7 +539,7 @@ pub fn BashPermissionRequest<'a>(
         }
     });
 
-    let selected = { pending_select.read().clone() };
+    let selected = { *pending_select.read() };
     if let Some(value) = selected {
         pending_select.set(None);
         let mut selection = BashPermissionSelection::new(value);

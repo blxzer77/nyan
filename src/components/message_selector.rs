@@ -945,7 +945,7 @@ pub fn MessageSelector<'a>(
             keybinding_runtime.clone(),
             "messageSelector:up",
             ContextName::MessageSelector,
-            nav_active.clone(),
+            nav_active,
             move || {
                 selected_index.set(selected_index.get().saturating_sub(1));
                 true
@@ -959,7 +959,7 @@ pub fn MessageSelector<'a>(
             keybinding_runtime.clone(),
             "messageSelector:down",
             ContextName::MessageSelector,
-            nav_active.clone(),
+            nav_active,
             move || {
                 selected_index.set((selected_index.get() + 1).min(option_count.saturating_sub(1)));
                 true
@@ -973,7 +973,7 @@ pub fn MessageSelector<'a>(
             keybinding_runtime.clone(),
             "messageSelector:top",
             ContextName::MessageSelector,
-            nav_active.clone(),
+            nav_active,
             move || {
                 selected_index.set(0);
                 true
@@ -987,7 +987,7 @@ pub fn MessageSelector<'a>(
             keybinding_runtime.clone(),
             "messageSelector:bottom",
             ContextName::MessageSelector,
-            nav_active.clone(),
+            nav_active,
             move || {
                 selected_index.set(option_count.saturating_sub(1));
                 true

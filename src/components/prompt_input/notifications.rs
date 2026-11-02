@@ -410,7 +410,7 @@ pub fn Notifications(
         return element! { View(width: 0u32, height: 0u32) }.into_any();
     }
 
-    let api_key_elapsed = api_key_helper_elapsed.read().clone();
+    let api_key_elapsed = *api_key_helper_elapsed.read();
 
     let mut head_rows: Vec<FooterRow> = Vec::new();
     let mut mid_rows: Vec<FooterRow> = Vec::new();

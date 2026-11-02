@@ -168,7 +168,7 @@ pub fn write_file_sync_and_flush_to_target(
     };
     let atomic_result = (|| {
         sync_write_new(&temporary_path, bytes)?;
-        if let Some(permissions) = existing_permissions.clone() {
+        if let Some(permissions) = existing_permissions {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;

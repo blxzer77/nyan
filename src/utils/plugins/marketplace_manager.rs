@@ -1196,7 +1196,7 @@ pub fn save_marketplace_to_settings(
     current.insert(name.into(), entry.clone());
     let _ = crate::utils::settings::update_settings_for_source(
         setting_source,
-        &serde_json::json!({"extraKnownMarketplaces":current})
+        serde_json::json!({"extraKnownMarketplaces":current})
             .as_object()
             .unwrap(),
     );
