@@ -883,6 +883,10 @@ async fn run_query(input: QueryRunInput<'_>) -> Result<QueryEngineOutcome, Strin
     // legacy-parameter shim.
     history.extend(crate::query::user_model_messages_from_rows(&base.messages));
     let mut context = base.tool_use_context;
+    if context.content_replacement_state.is_none() {
+        context.content_replacement_state =
+            crate::utils::tool_result_storage::provision_content_replacement_state(None, &[]);
+    }
     // Maps to CC `QueryEngine.submitMessage()` file-history snapshot gate.
     // SDK checkpointing is opt-in through `file_history_enabled()` and only
     // runs for persisted sessions.

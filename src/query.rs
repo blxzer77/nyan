@@ -871,7 +871,13 @@ where
     // official feature-gated `undefined` state and skips aggregate tool-result
     // budgeting; `Some` keeps decisions stable across this query loop so prompt
     // cache prefixes remain byte-identical on later continuations.
-    let mut content_replacement_state = params.tool_use_context.content_replacement_state.clone();
+    let mut content_replacement_state = params
+        .tool_use_context
+        .content_replacement_state
+        .clone()
+        .or_else(|| {
+            crate::utils::tool_result_storage::provision_content_replacement_state(None, &[])
+        });
     let mut auto_compact_tracking: Option<
         crate::services::compact::auto_compact::AutoCompactTrackingState,
     > = None;
@@ -1072,7 +1078,6 @@ where
                 snip_tokens_freed =
                     snip_tokens_freed.saturating_add(mask_result.anchor_tokens_freed);
                 if !mask_result.newly_replaced.is_empty() {
-                    content_replacement_state_changed = true;
                     if should_persist_content_replacements(&params.query_source) {
                         let _ = crate::utils::session_storage::record_content_replacement(
                             &mask_result.newly_replaced,
