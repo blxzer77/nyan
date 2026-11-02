@@ -1320,37 +1320,38 @@ impl FileReadTool {
         let existing = (!dedup_killswitch)
             .then(|| sink.cache_get(&full_file_path))
             .flatten();
-        if let Some(existing) = existing {
-            if !existing.is_partial_view && existing.offset.is_some() {
-                let range_match = existing
-                    .offset
-                    .as_ref()
-                    .is_some_and(|offset| javascript_strict_equal(offset, &input.offset))
-                    && match (&existing.limit, &input.limit) {
-                        (None, None) => true,
-                        (Some(existing), Some(input)) => javascript_strict_equal(existing, input),
-                        _ => false,
-                    };
-                let unchanged = range_match
-                    && crate::utils::file::get_file_modification_time_result(&full_file_path)
-                        .ok()
-                        .is_some_and(|mtime| existing.timestamp_ms == Some(mtime));
-                let still_in_context = unchanged
-                    && dedup_target_is_still_in_context(
-                        context,
-                        &full_file_path,
-                        &input.offset,
-                        &input.limit,
-                    );
-                if still_in_context {
-                    return Ok(FileReadToolResult {
-                        data: ReadOutput::FileUnchanged(ReadFileUnchangedOutput {
-                            file_path: input.file_path.clone(),
-                        }),
-                        new_messages: Vec::new(),
-                        memory_file_mtime_ms: None,
-                    });
-                }
+        if let Some(existing) = existing
+            && !existing.is_partial_view
+            && existing.offset.is_some()
+        {
+            let range_match = existing
+                .offset
+                .as_ref()
+                .is_some_and(|offset| javascript_strict_equal(offset, &input.offset))
+                && match (&existing.limit, &input.limit) {
+                    (None, None) => true,
+                    (Some(existing), Some(input)) => javascript_strict_equal(existing, input),
+                    _ => false,
+                };
+            let unchanged = range_match
+                && crate::utils::file::get_file_modification_time_result(&full_file_path)
+                    .ok()
+                    .is_some_and(|mtime| existing.timestamp_ms == Some(mtime));
+            let still_in_context = unchanged
+                && dedup_target_is_still_in_context(
+                    context,
+                    &full_file_path,
+                    &input.offset,
+                    &input.limit,
+                );
+            if still_in_context {
+                return Ok(FileReadToolResult {
+                    data: ReadOutput::FileUnchanged(ReadFileUnchangedOutput {
+                        file_path: input.file_path.clone(),
+                    }),
+                    new_messages: Vec::new(),
+                    memory_file_mtime_ms: None,
+                });
             }
         }
 
@@ -1908,13 +1909,12 @@ impl FileReadTool {
                         page_paths,
                     });
                 }
-                if let Some(page_count) = get_pdf_page_count(resolved_file_path) {
-                    if page_count > PDF_AT_MENTION_INLINE_THRESHOLD {
+                if let Some(page_count) = get_pdf_page_count(resolved_file_path)
+                    && page_count > PDF_AT_MENTION_INLINE_THRESHOLD {
                         return Err(anyhow::anyhow!(
                             "This PDF has {page_count} pages, which is too many to read at once. Use the pages parameter to read specific page ranges (e.g., pages: \"1-5\"). Maximum {PDF_MAX_PAGES_PER_READ} pages per request."
                         ));
                     }
-                }
                 let opened_metadata = futures::executor::block_on(
                     crate::utils::fs_operations::get_fs_implementation().stat(resolved_file_path),
                 )?;

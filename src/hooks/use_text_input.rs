@@ -199,14 +199,12 @@ pub fn use_text_input(hooks: &mut Hooks, mut options: UseTextInputOptions) -> Te
                                         runtime.bindings().as_slice(),
                                         None,
                                     )
-                                {
-                                    if runtime.has_registered_handler(
+                                    && runtime.has_registered_handler(
                                         &action,
                                         &HashSet::from([preceding.clone()]),
                                     ) {
                                         return;
                                     }
-                                }
                             }
                             let mut contexts: HashSet<ContextName> = runtime.active_contexts();
                             contexts.insert(ContextName::Chat);

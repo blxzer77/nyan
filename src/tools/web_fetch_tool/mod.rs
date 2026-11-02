@@ -299,19 +299,17 @@ async fn run_nyan_web_fetch_with(
     // @nyan: web.page_answers only appends a hint; the body is never rewritten.
     // The tool input's prompt is the only query this tool has (decision-provider 4.2).
     let mut hint = String::new();
-    if !prompt.trim().is_empty() {
-        if let Some(provider) = crate::services::web::decision::provider() {
-            let decisions = crate::services::web::decision::WebDecisions::new(
-                &provider,
-                &context.abort_controller,
-            );
-            if decisions.page_lacks_answer(prompt, &selected.text).await {
-                let next = crate::services::web::search::next_candidate(source);
-                hint.push_str(&format!(
-                    "\n[page may not answer the query — consider fetching: {}]",
-                    next.unwrap_or_else(|| "another search result".to_string())
-                ));
-            }
+    if !prompt.trim().is_empty()
+        && let Some(provider) = crate::services::web::decision::provider()
+    {
+        let decisions =
+            crate::services::web::decision::WebDecisions::new(&provider, &context.abort_controller);
+        if decisions.page_lacks_answer(prompt, &selected.text).await {
+            let next = crate::services::web::search::next_candidate(source);
+            hint.push_str(&format!(
+                "\n[page may not answer the query — consider fetching: {}]",
+                next.unwrap_or_else(|| "another search result".to_string())
+            ));
         }
     }
 
@@ -463,19 +461,18 @@ impl crate::tool::ToolCall for WebFetchTool {
             .get("url")
             .and_then(|value| value.as_str())
             .and_then(preapproved::parse_web_fetch_url_host_path)
+            && preapproved::is_preapproved_host(&hostname, &pathname)
         {
-            if preapproved::is_preapproved_host(&hostname, &pathname) {
-                return PermissionResult::Allow {
-                    updated_input: Some(args.clone()),
-                    user_modified: None,
-                    decision_reason: Some(PermissionDecisionReason::Other {
-                        reason: "Preapproved host".to_string(),
-                    }),
-                    tool_use_id: None,
-                    accept_feedback: None,
-                    content_blocks: Vec::new(),
-                };
-            }
+            return PermissionResult::Allow {
+                updated_input: Some(args.clone()),
+                user_modified: None,
+                decision_reason: Some(PermissionDecisionReason::Other {
+                    reason: "Preapproved host".to_string(),
+                }),
+                tool_use_id: None,
+                accept_feedback: None,
+                content_blocks: Vec::new(),
+            };
         }
 
         let rule_content = web_fetch_tool_input_to_permission_rule_content(args);

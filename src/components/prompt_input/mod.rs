@@ -156,12 +156,11 @@ fn prompt_pill_tasks(
             // yet (Bash parity batch); every shell counts as a plain shell.
             BackgroundTaskCategory::Shell => Some(PillTask::LocalBash { is_monitor: false }),
             BackgroundTaskCategory::LocalAgent => {
-                if cfg!(feature = "anthropic_internal") {
-                    if let BackgroundTaskDetailData::Agent(agent) = &item.detail {
-                        if agent.agent_type.as_deref() != Some("main-session") {
-                            return None;
-                        }
-                    }
+                if cfg!(feature = "anthropic_internal")
+                    && let BackgroundTaskDetailData::Agent(agent) = &item.detail
+                    && agent.agent_type.as_deref() != Some("main-session")
+                {
+                    return None;
                 }
                 Some(PillTask::LocalAgent)
             }
@@ -701,27 +700,27 @@ pub fn PromptInput<'a>(
     let mut pasted_contents = hooks.use_state(std::collections::BTreeMap::new);
     let mut last_controlled_revision = hooks.use_state(|| Option::<u64>::None);
     let mut last_insert_revision = hooks.use_state(|| Option::<u64>::None);
-    if let Some(update) = props.controlled_input.as_ref() {
-        if last_controlled_revision.get() != Some(update.revision) {
-            input.set(update.text.clone());
-            cursor_offset.set(crate::utils::cursor::clamp_cursor(
-                &update.text,
-                update.cursor_offset.unwrap_or(update.text.len()),
-            ));
-            if let Some(mode) = update.mode {
-                input_mode.set(mode);
-            }
-            if let Some(contents) = &update.pasted_contents {
-                pasted_contents.set(contents.clone());
-            }
-            last_controlled_revision.set(Some(update.revision));
+    if let Some(update) = props.controlled_input.as_ref()
+        && last_controlled_revision.get() != Some(update.revision)
+    {
+        input.set(update.text.clone());
+        cursor_offset.set(crate::utils::cursor::clamp_cursor(
+            &update.text,
+            update.cursor_offset.unwrap_or(update.text.len()),
+        ));
+        if let Some(mode) = update.mode {
+            input_mode.set(mode);
         }
+        if let Some(contents) = &update.pasted_contents {
+            pasted_contents.set(contents.clone());
+        }
+        last_controlled_revision.set(Some(update.revision));
     }
-    if let Some(update) = props.insert_text.as_ref() {
-        if last_insert_revision.get() != Some(update.revision) {
-            insert_search_dialog_text(input, cursor_offset, update.text.clone());
-            last_insert_revision.set(Some(update.revision));
-        }
+    if let Some(update) = props.insert_text.as_ref()
+        && last_insert_revision.get() != Some(update.revision)
+    {
+        insert_search_dialog_text(input, cursor_offset, update.text.clone());
+        last_insert_revision.set(Some(update.revision));
     }
     // Refs, not state: the undo buffer is never rendered, and it is recorded
     // by diffing snapshots during render — a `State` write there is a
@@ -912,11 +911,11 @@ pub fn PromptInput<'a>(
                 )
                 .with_color(crate::context::notifications::NotificationColor::Warning),
             );
-        } else if let Some(content) = result.content {
-            if content != *input.read() {
-                cursor_offset.set(content.len());
-                input.set(content);
-            }
+        } else if let Some(content) = result.content
+            && content != *input.read()
+        {
+            cursor_offset.set(content.len());
+            input.set(content);
         }
     }
     let local_command_ui_active = props.is_local_command_ui_active;
@@ -1264,24 +1263,25 @@ pub fn PromptInput<'a>(
     // Maps to: CC PromptInput effective `footerItemSelected` + clear effect —
     // null out AppState when the selected pill stopped rendering.
     let footer_item_selected = raw_footer_selection.filter(|item| footer_items.contains(item));
-    if raw_footer_selection.is_some() && footer_item_selected.is_none() {
-        if let Some(store) = app_store.as_ref() {
-            // P3 §3a (F-A1): CC clears via `prev.footerSelection === null
-            // ? prev : { ...prev, footerSelection: null }`
-            // (PromptInput.tsx:671-673). Render-body write — an already-null
-            // selection returns `prev` untouched (no frame scheduled).
-            store.set_state(|prev| {
-                if prev.footer_selection.is_none() {
-                    return crate::state::store::UpdateDecision::Same(());
-                }
-                let mut next = (**prev).clone();
-                next.footer_selection = None;
-                crate::state::store::UpdateDecision::Replace {
-                    next: Arc::new(next),
-                    result: (),
-                }
-            });
-        }
+    if raw_footer_selection.is_some()
+        && footer_item_selected.is_none()
+        && let Some(store) = app_store.as_ref()
+    {
+        // P3 §3a (F-A1): CC clears via `prev.footerSelection === null
+        // ? prev : { ...prev, footerSelection: null }`
+        // (PromptInput.tsx:671-673). Render-body write — an already-null
+        // selection returns `prev` untouched (no frame scheduled).
+        store.set_state(|prev| {
+            if prev.footer_selection.is_none() {
+                return crate::state::store::UpdateDecision::Same(());
+            }
+            let mut next = (**prev).clone();
+            next.footer_selection = None;
+            crate::state::store::UpdateDecision::Replace {
+                next: Arc::new(next),
+                result: (),
+            }
+        });
     }
     // Maps to: CC PromptInput.tsx:678-682. No footer item here for
     // `tmuxSelected` (ant-only) or `bagelSelected` (`bagelFooterVisible` is
@@ -2304,21 +2304,21 @@ pub fn PromptInput<'a>(
             );
             typeahead_selected.set(0);
             submit_count += 1;
-            if prompt_suggestion_state.text.is_some() {
-                if let Some(store) = app_store.as_ref() {
-                    store.replace_with(|state| {
-                        if matches!(
-                            state.speculation,
-                            crate::state::app_state_store::SpeculationState::Active(_)
-                        ) && accepted_suggestion
-                        {
-                            state.prompt_suggestion.accepted_at = current_time_millis();
-                        } else {
-                            state.prompt_suggestion =
-                                crate::state::app_state_store::PromptSuggestionState::default();
-                        }
-                    });
-                }
+            if prompt_suggestion_state.text.is_some()
+                && let Some(store) = app_store.as_ref()
+            {
+                store.replace_with(|state| {
+                    if matches!(
+                        state.speculation,
+                        crate::state::app_state_store::SpeculationState::Active(_)
+                    ) && accepted_suggestion
+                    {
+                        state.prompt_suggestion.accepted_at = current_time_millis();
+                    } else {
+                        state.prompt_suggestion =
+                            crate::state::app_state_store::PromptSuggestionState::default();
+                    }
+                });
             }
             (props.on_submit)(PromptSubmission {
                 text,
@@ -2333,50 +2333,50 @@ pub fn PromptInput<'a>(
         (props.on_permission_mode_cycle)(());
     }
 
-    if let Some(text) = history_search.take_pending_submit() {
-        if !text.trim().is_empty() {
-            let text = input_modes::prepend_mode_character_to_input(&text, input_mode.get());
-            let submitted_pasted_contents = pasted_contents.read().clone();
-            prompt_history::add_to_history_with_pasted(&text, &submitted_pasted_contents);
-            arrow_history.reset();
-            restore_stash_or_clear(
-                input,
-                cursor_offset,
-                pasted_contents,
-                stashed_prompt,
-                input_mode,
-            );
-            typeahead_selected.set(0);
-            submit_count += 1;
-            (props.on_submit)(PromptSubmission {
-                text,
-                pasted_contents: submitted_pasted_contents,
-                from_keybinding: false,
-            });
-        }
+    if let Some(text) = history_search.take_pending_submit()
+        && !text.trim().is_empty()
+    {
+        let text = input_modes::prepend_mode_character_to_input(&text, input_mode.get());
+        let submitted_pasted_contents = pasted_contents.read().clone();
+        prompt_history::add_to_history_with_pasted(&text, &submitted_pasted_contents);
+        arrow_history.reset();
+        restore_stash_or_clear(
+            input,
+            cursor_offset,
+            pasted_contents,
+            stashed_prompt,
+            input_mode,
+        );
+        typeahead_selected.set(0);
+        submit_count += 1;
+        (props.on_submit)(PromptSubmission {
+            text,
+            pasted_contents: submitted_pasted_contents,
+            from_keybinding: false,
+        });
     }
 
-    if let Some(text) = text_input.take_pending_submit() {
-        if !text.trim().is_empty() {
-            let text = input_modes::prepend_mode_character_to_input(&text, input_mode.get());
-            let submitted_pasted_contents = pasted_contents.read().clone();
-            prompt_history::add_to_history_with_pasted(&text, &submitted_pasted_contents);
-            arrow_history.reset();
-            restore_stash_or_clear(
-                input,
-                cursor_offset,
-                pasted_contents,
-                stashed_prompt,
-                input_mode,
-            );
-            typeahead_selected.set(0);
-            submit_count += 1;
-            (props.on_submit)(PromptSubmission {
-                text,
-                pasted_contents: submitted_pasted_contents,
-                from_keybinding: false,
-            });
-        }
+    if let Some(text) = text_input.take_pending_submit()
+        && !text.trim().is_empty()
+    {
+        let text = input_modes::prepend_mode_character_to_input(&text, input_mode.get());
+        let submitted_pasted_contents = pasted_contents.read().clone();
+        prompt_history::add_to_history_with_pasted(&text, &submitted_pasted_contents);
+        arrow_history.reset();
+        restore_stash_or_clear(
+            input,
+            cursor_offset,
+            pasted_contents,
+            stashed_prompt,
+            input_mode,
+        );
+        typeahead_selected.set(0);
+        submit_count += 1;
+        (props.on_submit)(PromptSubmission {
+            text,
+            pasted_contents: submitted_pasted_contents,
+            from_keybinding: false,
+        });
     }
 
     if let Some(direction) = text_input.take_pending_history() {
@@ -2576,15 +2576,14 @@ pub fn PromptInput<'a>(
                         TeamsDialogAction::Shutdown(agent_id) => Some((agent_id, true)),
                         _ => None,
                     };
-                    if let Some((agent_id, shutdown)) = agent_id {
-                        if let Some(task) = crate::tasks::in_process_teammate_task::find_teammate_task_by_agent_id(&agent_id) {
+                    if let Some((agent_id, shutdown)) = agent_id
+                        && let Some(task) = crate::tasks::in_process_teammate_task::find_teammate_task_by_agent_id(&agent_id) {
                             if shutdown {
                                 crate::tasks::in_process_teammate_task::request_teammate_shutdown(&task.task_id);
                             } else {
                                 crate::tasks::in_process_teammate_task::kill_in_process_teammate(&task.task_id);
                             }
                         }
-                    }
                 },
             )
         }
@@ -2925,25 +2924,25 @@ pub fn PromptInput<'a>(
                 }
             });
         }
-    } else if prompt_suggestion.is_some() && prompt_suggestion_state.shown_at == 0 {
-        if let Some(store) = app_store.as_ref() {
-            // P3 §3a: render-body write — after shown_at is stamped the
-            // guard must return `prev` untouched or each notify pass
-            // schedules another frame after the B3 flip (unbounded render
-            // loop).
-            store.set_state(|prev| {
-                if !(prev.prompt_suggestion.shown_at == 0 && prev.prompt_suggestion.text.is_some())
-                {
-                    return crate::state::store::UpdateDecision::Same(());
-                }
-                let mut next = (**prev).clone();
-                next.prompt_suggestion.shown_at = current_time_millis();
-                crate::state::store::UpdateDecision::Replace {
-                    next: Arc::new(next),
-                    result: (),
-                }
-            });
-        }
+    } else if prompt_suggestion.is_some()
+        && prompt_suggestion_state.shown_at == 0
+        && let Some(store) = app_store.as_ref()
+    {
+        // P3 §3a: render-body write — after shown_at is stamped the
+        // guard must return `prev` untouched or each notify pass
+        // schedules another frame after the B3 flip (unbounded render
+        // loop).
+        store.set_state(|prev| {
+            if !(prev.prompt_suggestion.shown_at == 0 && prev.prompt_suggestion.text.is_some()) {
+                return crate::state::store::UpdateDecision::Same(());
+            }
+            let mut next = (**prev).clone();
+            next.prompt_suggestion.shown_at = current_time_millis();
+            crate::state::store::UpdateDecision::Replace {
+                next: Arc::new(next),
+                result: (),
+            }
+        });
     }
     let placeholder = if input_mode.get() == PromptInputMode::Bash {
         Some("Enter shell command…".to_string())

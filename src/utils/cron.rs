@@ -264,16 +264,18 @@ pub fn cron_to_human(cron: &str, utc: bool) -> String {
         (parts[0], parts[1], parts[2], parts[3], parts[4]);
 
     // Every N minutes: */N * * * *
-    if let Some(n_str) = minute.strip_prefix("*/") {
-        if hour == "*" && day_of_month == "*" && month == "*" && day_of_week == "*" {
-            if let Ok(n) = n_str.parse::<u32>() {
-                return if n == 1 {
-                    "Every minute".to_string()
-                } else {
-                    format!("Every {n} minutes")
-                };
-            }
-        }
+    if let Some(n_str) = minute.strip_prefix("*/")
+        && hour == "*"
+        && day_of_month == "*"
+        && month == "*"
+        && day_of_week == "*"
+        && let Ok(n) = n_str.parse::<u32>()
+    {
+        return if n == 1 {
+            "Every minute".to_string()
+        } else {
+            format!("Every {n} minutes")
+        };
     }
 
     // Every hour: M * * * *
@@ -282,36 +284,33 @@ pub fn cron_to_human(cron: &str, utc: bool) -> String {
         && day_of_month == "*"
         && month == "*"
         && day_of_week == "*"
+        && let Ok(m) = minute.parse::<u32>()
     {
-        if let Ok(m) = minute.parse::<u32>() {
-            return if m == 0 {
-                "Every hour".to_string()
-            } else {
-                format!("Every hour at :{m:02}")
-            };
-        }
+        return if m == 0 {
+            "Every hour".to_string()
+        } else {
+            format!("Every hour at :{m:02}")
+        };
     }
 
     // Every N hours: M */N * * *
-    if let Some(n_str) = hour.strip_prefix("*/") {
-        if minute.chars().all(|c| c.is_ascii_digit())
-            && day_of_month == "*"
-            && month == "*"
-            && day_of_week == "*"
-        {
-            if let (Ok(n), Ok(m)) = (n_str.parse::<u32>(), minute.parse::<u32>()) {
-                let suffix = if m == 0 {
-                    String::new()
-                } else {
-                    format!(" at :{m:02}")
-                };
-                return if n == 1 {
-                    format!("Every hour{suffix}")
-                } else {
-                    format!("Every {n} hours{suffix}")
-                };
-            }
-        }
+    if let Some(n_str) = hour.strip_prefix("*/")
+        && minute.chars().all(|c| c.is_ascii_digit())
+        && day_of_month == "*"
+        && month == "*"
+        && day_of_week == "*"
+        && let (Ok(n), Ok(m)) = (n_str.parse::<u32>(), minute.parse::<u32>())
+    {
+        let suffix = if m == 0 {
+            String::new()
+        } else {
+            format!(" at :{m:02}")
+        };
+        return if n == 1 {
+            format!("Every hour{suffix}")
+        } else {
+            format!("Every {n} hours{suffix}")
+        };
     }
 
     if !minute.chars().all(|c| c.is_ascii_digit()) || !hour.chars().all(|c| c.is_ascii_digit()) {

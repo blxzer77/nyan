@@ -1262,10 +1262,10 @@ fn read_cached_global_config(path: &Path, stats: Option<ConfigFileStats>) -> Opt
     if cache.path != path {
         return None;
     }
-    if let Some(stats) = stats {
-        if stats.mtime_ms > cache.mtime_ms {
-            return None;
-        }
+    if let Some(stats) = stats
+        && stats.mtime_ms > cache.mtime_ms
+    {
+        return None;
     }
     CONFIG_CACHE_HITS.fetch_add(1, Ordering::Relaxed);
     Some(cache.config.clone())
@@ -1563,10 +1563,10 @@ pub fn load_global_config() -> GlobalConfig {
     // startup load. A background freshness watcher refreshes external writes.
     // In tests, keep the stat guard so individual cases can mutate temp config
     // files without coordinating with a background thread.
-    if !cfg!(test) {
-        if let Some(config) = read_cached_global_config(&path, None) {
-            return config;
-        }
+    if !cfg!(test)
+        && let Some(config) = read_cached_global_config(&path, None)
+    {
+        return config;
     }
 
     let stats = read_config_file_stats(&path);
@@ -1857,10 +1857,10 @@ fn has_trust_dialog_accepted_for_path(config: &GlobalConfig, cwd: &Path) -> bool
     let mut path = cwd;
     loop {
         let key = normalize_project_path(&path.to_string_lossy());
-        if let Some(project) = config.projects.get(&key) {
-            if project.has_trust_dialog_accepted == Some(true) {
-                return true;
-            }
+        if let Some(project) = config.projects.get(&key)
+            && project.has_trust_dialog_accepted == Some(true)
+        {
+            return true;
         }
         match path.parent() {
             Some(parent) if parent != path => path = parent,

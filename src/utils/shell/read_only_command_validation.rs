@@ -1695,17 +1695,18 @@ pub fn validate_flags(
             continue;
         }
 
-        if let Some(targets) = options.xargs_target_commands {
-            if options.command_name == Some("xargs") && (!token.starts_with('-') || token == "--") {
-                if token == "--" && index + 1 < tokens.len() {
-                    index += 1;
-                    token = tokens[index].as_str();
-                }
-                if targets.contains(&token) {
-                    break;
-                }
-                return false;
+        if let Some(targets) = options.xargs_target_commands
+            && options.command_name == Some("xargs")
+            && (!token.starts_with('-') || token == "--")
+        {
+            if token == "--" && index + 1 < tokens.len() {
+                index += 1;
+                token = tokens[index].as_str();
             }
+            if targets.contains(&token) {
+                break;
+            }
+            return false;
         }
 
         if token == "--" {
@@ -1745,15 +1746,12 @@ pub fn validate_flags(
                     let potential_value = &flag[2..];
                     if potential_value.bytes().all(|byte| byte.is_ascii_digit())
                         && !potential_value.is_empty()
+                        && let Some(attached_type) = flag_arg_type(config, potential_flag)
+                        && matches!(attached_type, FlagArgType::Number | FlagArgType::String)
+                        && validate_flag_argument(potential_value, attached_type)
                     {
-                        if let Some(attached_type) = flag_arg_type(config, potential_flag) {
-                            if matches!(attached_type, FlagArgType::Number | FlagArgType::String)
-                                && validate_flag_argument(potential_value, attached_type)
-                            {
-                                index += 1;
-                                continue;
-                            }
-                        }
+                        index += 1;
+                        continue;
                     }
                 }
 

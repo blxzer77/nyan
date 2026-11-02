@@ -837,19 +837,19 @@ fn remove_extra_marketplace(
             known[name] = Value::Null;
             updates.insert("extraKnownMarketplaces".into(), known);
         }
-        if let Some(mut enabled) = settings.enabled_plugins {
-            if let Some(map) = enabled.as_object_mut() {
-                let suffix = format!("@{name}");
-                let mut removed = false;
-                for (key, value) in map {
-                    if key.ends_with(&suffix) {
-                        *value = Value::Null;
-                        removed = true;
-                    }
+        if let Some(mut enabled) = settings.enabled_plugins
+            && let Some(map) = enabled.as_object_mut()
+        {
+            let suffix = format!("@{name}");
+            let mut removed = false;
+            for (key, value) in map {
+                if key.ends_with(&suffix) {
+                    *value = Value::Null;
+                    removed = true;
                 }
-                if removed {
-                    updates.insert("enabledPlugins".into(), enabled);
-                }
+            }
+            if removed {
+                updates.insert("enabledPlugins".into(), enabled);
             }
         }
         if !updates.is_empty() {

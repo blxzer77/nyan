@@ -553,14 +553,13 @@ pub fn CopyPicker(props: &mut CopyPickerProps, mut hooks: Hooks) -> impl Into<An
                         && !crate::utils::config::load_global_config()
                             .copy_full_response
                             .unwrap_or(false)
-                    {
-                        if let Err(error) = crate::utils::config::save_global_config(|config| {
+                        && let Err(error) = crate::utils::config::save_global_config(|config| {
                             config.copy_full_response = Some(true);
-                        }) {
-                            crate::utils::debug::log_for_debugging(&format!(
-                                "Failed to save copyFullResponse preference: {error}"
-                            ));
-                        }
+                        })
+                    {
+                        crate::utils::debug::log_for_debugging(&format!(
+                            "Failed to save copyFullResponse preference: {error}"
+                        ));
                     }
                     // CC :180-209 executes its pre-await prefix on the event
                     // stack. The eager clipboard future starts native/tmux now.
@@ -613,17 +612,17 @@ pub fn CopyPicker(props: &mut CopyPickerProps, mut hooks: Hooks) -> impl Into<An
         },
     );
 
-    if let Some(value) = select_events.take_accepted() {
-        if let Some(selection) = PickerSelection::from_value(&value) {
-            action(CopyPickerAction::Copy(selection));
-        }
+    if let Some(value) = select_events.take_accepted()
+        && let Some(selection) = PickerSelection::from_value(&value)
+    {
+        action(CopyPickerAction::Copy(selection));
     }
     if write_requested.get() {
         write_requested.set(false);
-        if let Some(value) = select_state.focused_value() {
-            if let Some(selection) = PickerSelection::from_value(&value) {
-                action(CopyPickerAction::Write(selection));
-            }
+        if let Some(value) = select_state.focused_value()
+            && let Some(selection) = PickerSelection::from_value(&value)
+        {
+            action(CopyPickerAction::Write(selection));
         }
     }
     if select_events.take_cancelled() {

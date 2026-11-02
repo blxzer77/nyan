@@ -207,15 +207,14 @@ pub async fn handle_stop_hooks(params: StopHookParams) -> StopHookResult {
     if matches!(params.query_source, QuerySource::Prompt)
         && !prompt_suggestion_env_disabled
         && !crate::utils::env_utils::is_bare_mode()
+        && let Some(cache_safe_params) = cache_safe_params.clone()
     {
-        if let Some(cache_safe_params) = cache_safe_params.clone() {
-            tokio::spawn(async move {
-                crate::services::prompt_suggestion::prompt_suggestion::execute_prompt_suggestion(
-                    std::sync::Arc::unwrap_or_clone(cache_safe_params),
-                )
-                .await;
-            });
-        }
+        tokio::spawn(async move {
+            crate::services::prompt_suggestion::prompt_suggestion::execute_prompt_suggestion(
+                std::sync::Arc::unwrap_or_clone(cache_safe_params),
+            )
+            .await;
+        });
     }
     if params.stop_hook_active.unwrap_or(false) {
         // A blocked stop hook continues the same turn; extracting now would
@@ -453,14 +452,13 @@ pub fn stop_hook_result_from_hook_results(
                 prevented_continuation: result.prevent_continuation,
             });
         }
-        if result.outcome == crate::services::hooks::HookOutcome::NonBlockingError {
-            if let Some(stderr) = result
+        if result.outcome == crate::services::hooks::HookOutcome::NonBlockingError
+            && let Some(stderr) = result
                 .stderr
                 .as_ref()
                 .filter(|stderr| !stderr.trim().is_empty())
-            {
-                hook_errors.push(stderr.clone());
-            }
+        {
+            hook_errors.push(stderr.clone());
         }
         if let Some(message) = result.system_message {
             has_output = true;

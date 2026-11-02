@@ -62,13 +62,12 @@ pub(crate) async fn enter_worktree_output(input: &serde_json::Value) -> Result<O
     }
 
     // Resolve to main repo root so worktree creation works from within a worktree.
-    if let Ok(cwd) = std::env::current_dir() {
-        if let Some(main_repo) = crate::utils::git::find_canonical_git_root(&cwd) {
-            if main_repo != cwd {
-                let _ = std::env::set_current_dir(&main_repo);
-                let _ = crate::utils::shell::set_cwd(&main_repo, None);
-            }
-        }
+    if let Ok(cwd) = std::env::current_dir()
+        && let Some(main_repo) = crate::utils::git::find_canonical_git_root(&cwd)
+        && main_repo != cwd
+    {
+        let _ = std::env::set_current_dir(&main_repo);
+        let _ = crate::utils::shell::set_cwd(&main_repo, None);
     }
 
     // CC `input.name ?? getPlanSlug()` (:90) — the schema's superRefine is

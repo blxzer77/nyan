@@ -884,10 +884,10 @@ mod tests {
                 kind,
                 ..
             }) = event
+                && kind == KeyEventKind::Press
+                && !focus.header_focused
             {
-                if kind == KeyEventKind::Press && !focus.header_focused {
-                    focus.focus_header();
-                }
+                focus.focus_header();
             }
         });
         element! { Text(content: format!("{} header={}", props.label, focus.header_focused)) }

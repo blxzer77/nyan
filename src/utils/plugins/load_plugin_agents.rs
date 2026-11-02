@@ -43,10 +43,9 @@ pub fn load_plugin_agents_from_plugins(plugins: &[LoadedPlugin]) -> Vec<AgentDef
                     .extension()
                     .and_then(|extension| extension.to_str())
                     .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
+                && let Some(agent) = load_agent_from_file(path, plugin, &[], &mut loaded_paths)
             {
-                if let Some(agent) = load_agent_from_file(path, plugin, &[], &mut loaded_paths) {
-                    all_agents.push(agent);
-                }
+                all_agents.push(agent);
             }
         }
     }

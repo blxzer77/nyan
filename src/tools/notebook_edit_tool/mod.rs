@@ -360,15 +360,14 @@ fn notebook_edit_output_with_target(
                     object.insert("execution_count".to_string(), serde_json::Value::Null);
                     object.insert("outputs".to_string(), serde_json::Value::Array(Vec::new()));
                 }
-                if let Some(next_cell_type) = cell_type.as_deref() {
-                    if object.get("cell_type").and_then(|value| value.as_str())
+                if let Some(next_cell_type) = cell_type.as_deref()
+                    && object.get("cell_type").and_then(|value| value.as_str())
                         != Some(next_cell_type)
-                    {
-                        object.insert(
-                            "cell_type".to_string(),
-                            serde_json::Value::String(next_cell_type.to_string()),
-                        );
-                    }
+                {
+                    object.insert(
+                        "cell_type".to_string(),
+                        serde_json::Value::String(next_cell_type.to_string()),
+                    );
                 }
                 Ok(())
             } else {
@@ -1018,20 +1017,20 @@ impl crate::tool::ToolCall for NotebookEditTool {
                 };
             }
 
-            if crate::utils::file_history::file_history_enabled() {
-                if let Some(store) = context.app_store.store.as_ref() {
-                    crate::utils::file_history::file_history_track_edit(
-                        store,
-                        &full_path.display().to_string(),
-                        // The ENVELOPE uuid — CC passes `parentMessage.uuid`
-                        // (`NotebookEditTool.ts:315`), which is what
-                        // `fileHistoryRewind` matches on (`fileHistory.ts:367`).
-                        parent_message
-                            .map(|message| message.uuid.as_str())
-                            .unwrap_or_default(),
-                    )
-                    .await;
-                }
+            if crate::utils::file_history::file_history_enabled()
+                && let Some(store) = context.app_store.store.as_ref()
+            {
+                crate::utils::file_history::file_history_track_edit(
+                    store,
+                    &full_path.display().to_string(),
+                    // The ENVELOPE uuid — CC passes `parentMessage.uuid`
+                    // (`NotebookEditTool.ts:315`), which is what
+                    // `fileHistoryRewind` matches on (`fileHistory.ts:367`).
+                    parent_message
+                        .map(|message| message.uuid.as_str())
+                        .unwrap_or_default(),
+                )
+                .await;
             }
 
             // DEVIATION(SECURITY): history is the final await, and CC only

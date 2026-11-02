@@ -567,10 +567,10 @@ fn should_retry(error: &ApiError) -> bool {
 ///
 /// Maps to: CC `services/api/withRetry.ts:530-548`
 pub fn get_retry_delay(attempt: u32, retry_after_header: Option<&str>, max_delay_ms: u64) -> u64 {
-    if let Some(header) = retry_after_header {
-        if let Ok(seconds) = header.parse::<u64>() {
-            return seconds * 1000;
-        }
+    if let Some(header) = retry_after_header
+        && let Ok(seconds) = header.parse::<u64>()
+    {
+        return seconds * 1000;
     }
 
     let exp: u64 = 1u64
@@ -939,60 +939,56 @@ where
 
                 // --- Fast mode fallback on 429/529 ---
                 // Maps to: CC services/api/withRetry.ts:267-305
-                if was_fast_mode_active && !is_persistent_retry_enabled() {
-                    if let Some(api_err) = error.as_api() {
-                        if api_err.status == Some(429) || is_529_error(api_err) {
-                            // Check overage-disabled header
-                            if let Some(overage_reason) = api_err
-                                .header("anthropic-ratelimit-unified-overage-disabled-reason")
-                            {
-                                if !overage_reason.is_empty() {
-                                    // TODO: handleFastModeOverageRejection once fast_mode is ported.
-                                    // See CC `utils/fastMode.ts:handleFastModeOverageRejection`.
-                                    retry_context.fast_mode = Some(false);
-                                    last_error = Some(error);
-                                    attempt += 1;
-                                    continue;
-                                }
-                            }
-
-                            let retry_after_ms = get_retry_after_ms(&error);
-                            if let Some(ms) = retry_after_ms {
-                                if ms < SHORT_RETRY_THRESHOLD_MS {
-                                    // Short retry-after: wait with fast mode still active
-                                    if cancellable_sleep(
-                                        Duration::from_millis(ms),
-                                        &mut options.abort_rx,
-                                    )
-                                    .await
-                                    .is_err()
-                                    {
-                                        return Err(CannotRetryError {
-                                            original_error: RetryableError::Aborted,
-                                            retry_context,
-                                        }
-                                        .into());
-                                    }
-                                    last_error = Some(error);
-                                    attempt += 1;
-                                    continue;
-                                }
-                            }
-
-                            // Long or unknown retry-after: enter cooldown
-                            let _cooldown_ms = retry_after_ms
-                                .unwrap_or(DEFAULT_FAST_MODE_FALLBACK_HOLD_MS)
-                                .max(MIN_COOLDOWN_MS);
-                            // TODO: triggerFastModeCooldown once fast_mode module is ported.
-                            // See CC `utils/fastMode.ts:triggerFastModeCooldown`.
-                            if is_fast_mode_enabled() {
-                                retry_context.fast_mode = Some(false);
-                            }
-                            last_error = Some(error);
-                            attempt += 1;
-                            continue;
-                        }
+                if was_fast_mode_active
+                    && !is_persistent_retry_enabled()
+                    && let Some(api_err) = error.as_api()
+                    && (api_err.status == Some(429) || is_529_error(api_err))
+                {
+                    // Check overage-disabled header
+                    if let Some(overage_reason) =
+                        api_err.header("anthropic-ratelimit-unified-overage-disabled-reason")
+                        && !overage_reason.is_empty()
+                    {
+                        // TODO: handleFastModeOverageRejection once fast_mode is ported.
+                        // See CC `utils/fastMode.ts:handleFastModeOverageRejection`.
+                        retry_context.fast_mode = Some(false);
+                        last_error = Some(error);
+                        attempt += 1;
+                        continue;
                     }
+
+                    let retry_after_ms = get_retry_after_ms(&error);
+                    if let Some(ms) = retry_after_ms
+                        && ms < SHORT_RETRY_THRESHOLD_MS
+                    {
+                        // Short retry-after: wait with fast mode still active
+                        if cancellable_sleep(Duration::from_millis(ms), &mut options.abort_rx)
+                            .await
+                            .is_err()
+                        {
+                            return Err(CannotRetryError {
+                                original_error: RetryableError::Aborted,
+                                retry_context,
+                            }
+                            .into());
+                        }
+                        last_error = Some(error);
+                        attempt += 1;
+                        continue;
+                    }
+
+                    // Long or unknown retry-after: enter cooldown
+                    let _cooldown_ms = retry_after_ms
+                        .unwrap_or(DEFAULT_FAST_MODE_FALLBACK_HOLD_MS)
+                        .max(MIN_COOLDOWN_MS);
+                    // TODO: triggerFastModeCooldown once fast_mode module is ported.
+                    // See CC `utils/fastMode.ts:triggerFastModeCooldown`.
+                    if is_fast_mode_enabled() {
+                        retry_context.fast_mode = Some(false);
+                    }
+                    last_error = Some(error);
+                    attempt += 1;
+                    continue;
                 }
 
                 // --- Fast mode not enabled error ---
@@ -1104,41 +1100,41 @@ where
 
                 // --- Context overflow adjustment ---
                 // Maps to: CC services/api/withRetry.ts:385-427
-                if let Some(api_err) = error.as_api() {
-                    if let Some(overflow) = parse_max_tokens_context_overflow(api_err) {
-                        let safety_buffer: u64 = 1000;
-                        let available_context = overflow
-                            .context_limit
-                            .saturating_sub(overflow.input_tokens)
-                            .saturating_sub(safety_buffer);
+                if let Some(api_err) = error.as_api()
+                    && let Some(overflow) = parse_max_tokens_context_overflow(api_err)
+                {
+                    let safety_buffer: u64 = 1000;
+                    let available_context = overflow
+                        .context_limit
+                        .saturating_sub(overflow.input_tokens)
+                        .saturating_sub(safety_buffer);
 
-                        if available_context < FLOOR_OUTPUT_TOKENS {
-                            tracing::error!(
-                                "availableContext {} is less than FLOOR_OUTPUT_TOKENS {}",
-                                available_context,
-                                FLOOR_OUTPUT_TOKENS
-                            );
-                            return Err(CannotRetryError {
-                                original_error: error,
-                                retry_context,
-                            }
-                            .into());
+                    if available_context < FLOOR_OUTPUT_TOKENS {
+                        tracing::error!(
+                            "availableContext {} is less than FLOOR_OUTPUT_TOKENS {}",
+                            available_context,
+                            FLOOR_OUTPUT_TOKENS
+                        );
+                        return Err(CannotRetryError {
+                            original_error: error,
+                            retry_context,
                         }
-
-                        let min_required = match &retry_context.thinking_config {
-                            ThinkingConfig::Enabled { budget_tokens } => {
-                                budget_tokens.unwrap_or(0).max(0) as u64 + 1
-                            }
-                            _ => 1,
-                        };
-
-                        let adjusted = FLOOR_OUTPUT_TOKENS.max(available_context).max(min_required);
-                        retry_context.max_tokens_override = Some(adjusted);
-
-                        last_error = Some(error);
-                        attempt += 1;
-                        continue;
+                        .into());
                     }
+
+                    let min_required = match &retry_context.thinking_config {
+                        ThinkingConfig::Enabled { budget_tokens } => {
+                            budget_tokens.unwrap_or(0).max(0) as u64 + 1
+                        }
+                        _ => 1,
+                    };
+
+                    let adjusted = FLOOR_OUTPUT_TOKENS.max(available_context).max(min_required);
+                    retry_context.max_tokens_override = Some(adjusted);
+
+                    last_error = Some(error);
+                    attempt += 1;
+                    continue;
                 }
 
                 // --- Compute retry delay ---

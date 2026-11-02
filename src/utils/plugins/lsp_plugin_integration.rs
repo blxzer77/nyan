@@ -34,10 +34,10 @@ pub fn load_plugin_lsp_servers_readonly(
         servers.extend(default_servers);
     }
 
-    if let Some(spec) = plugin.manifest.lsp_servers.as_ref() {
-        if let Some(manifest_servers) = load_lsp_servers_from_spec(plugin, spec, errors) {
-            servers.extend(manifest_servers);
-        }
+    if let Some(spec) = plugin.manifest.lsp_servers.as_ref()
+        && let Some(manifest_servers) = load_lsp_servers_from_spec(plugin, spec, errors)
+    {
+        servers.extend(manifest_servers);
     }
 
     (!servers.is_empty()).then_some(servers)

@@ -245,12 +245,11 @@ pub fn user_message_option_display(
         return "((empty message))".to_string();
     }
 
-    if contains_tag(&message_text, BASH_INPUT_TAG) {
-        if let Some(input) =
+    if contains_tag(&message_text, BASH_INPUT_TAG)
+        && let Some(input) =
             extract_tag(&message_text, BASH_INPUT_TAG).filter(|text| !text.is_empty())
-        {
-            return format!("! {input}");
-        }
+    {
+        return format!("! {input}");
     }
 
     if contains_tag(&message_text, COMMAND_MESSAGE_TAG) {
@@ -779,10 +778,9 @@ pub fn MessageSelector<'a>(
     if let Some(option) = restore_options
         .iter()
         .find(|o| Some(o.value.official_value()) == restore_select.focused_value().as_deref())
+        && selected_restore_option.get() != option.value
     {
-        if selected_restore_option.get() != option.value {
-            selected_restore_option.set(option.value);
-        }
+        selected_restore_option.set(option.value);
     }
     let mut restore_result =
         hooks.use_state(|| Option::<(RestoreOption, Result<(), String>)>::None);

@@ -77,12 +77,10 @@ pub fn get_effective_context_window_size(model: &str) -> i64 {
     let mut context_window = crate::utils::context::get_context_window_for_model(model, &[]);
 
     if let Some(value) = crate::utils::process_env::var("CLAUDE_CODE_AUTO_COMPACT_WINDOW").truthy()
+        && let Ok(parsed) = value.parse::<i64>()
+        && parsed > 0
     {
-        if let Ok(parsed) = value.parse::<i64>() {
-            if parsed > 0 {
-                context_window = context_window.min(parsed);
-            }
-        }
+        context_window = context_window.min(parsed);
     }
 
     context_window - reserved_tokens_for_summary
@@ -94,14 +92,13 @@ pub fn get_auto_compact_threshold(model: &str) -> i64 {
     let autocompact_threshold = effective_context_window - AUTOCOMPACT_BUFFER_TOKENS;
 
     if let Some(value) = crate::utils::process_env::var("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE").truthy()
+        && let Ok(parsed) = value.parse::<f64>()
+        && parsed > 0.0
+        && parsed <= 100.0
     {
-        if let Ok(parsed) = value.parse::<f64>() {
-            if parsed > 0.0 && parsed <= 100.0 {
-                let percentage_threshold =
-                    (effective_context_window as f64 * (parsed / 100.0)).floor() as i64;
-                return percentage_threshold.min(autocompact_threshold);
-            }
-        }
+        let percentage_threshold =
+            (effective_context_window as f64 * (parsed / 100.0)).floor() as i64;
+        return percentage_threshold.min(autocompact_threshold);
     }
 
     autocompact_threshold

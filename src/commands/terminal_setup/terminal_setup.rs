@@ -210,10 +210,10 @@ pub fn alacritty_config_paths_for(
         );
     }
 
-    if platform == Platform::Windows {
-        if let Some(app_data) = app_data {
-            config_paths.push(app_data.join("alacritty").join("alacritty.toml"));
-        }
+    if platform == Platform::Windows
+        && let Some(app_data) = app_data
+    {
+        config_paths.push(app_data.join("alacritty").join("alacritty.toml"));
     }
     config_paths
 }

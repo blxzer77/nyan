@@ -631,20 +631,19 @@ impl crate::tool::ToolCall for SkillTool {
                     "Skill {command_name} cannot be used with Skill tool due to disable-model-invocation"
                 ));
             }
-            if let Some(skill) = command.prompt_command.as_deref() {
-                if skill.execution_context
+            if let Some(skill) = command.prompt_command.as_deref()
+                && skill.execution_context
                     == crate::skills::load_skills_dir::SkillExecutionContext::Fork
-                {
-                    return execute_forked_skill(
-                        skill,
-                        &command_name,
-                        skill_args,
-                        context,
-                        on_progress,
-                        Some(request.tool_use_id.as_str()),
-                    )
-                    .await;
-                }
+            {
+                return execute_forked_skill(
+                    skill,
+                    &command_name,
+                    skill_args,
+                    context,
+                    on_progress,
+                    Some(request.tool_use_id.as_str()),
+                )
+                .await;
             }
             // CC SkillTool.ts:633-644,754-759: this shared owner performs
             // callback -> hooks -> invocation -> metadata/meta/permissions.

@@ -270,10 +270,8 @@ impl StreamingDecoder {
         if chunk.starts_with(&[0xFE, 0xFF]) {
             return Ok(Self::with_encoding(encoding_rs::UTF_16BE, "utf-16be"));
         }
-        if check_binary {
-            if let Some(kind) = binary_kind(chunk) {
-                return Err(DecodeError::Binary { kind });
-            }
+        if check_binary && let Some(kind) = binary_kind(chunk) {
+            return Err(DecodeError::Binary { kind });
         }
         if valid_utf8_prefix(chunk) {
             return Ok(Self::with_encoding(encoding_rs::UTF_8, "utf-8"));

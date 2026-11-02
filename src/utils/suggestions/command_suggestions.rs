@@ -499,15 +499,14 @@ fn command_id(command: &Command) -> String {
     let name = get_command_name(command);
     match command.kind {
         CommandKind::Prompt => {
-            if command.source == CommandSource::Plugin {
-                if let Some(repository) = command
+            if command.source == CommandSource::Plugin
+                && let Some(repository) = command
                     .plugin_info
                     .as_ref()
                     .map(|info| info.repository.as_str())
                     .filter(|repository| !repository.is_empty())
-                {
-                    return format!("{name}:plugin:{repository}");
-                }
+            {
+                return format!("{name}:plugin:{repository}");
             }
             format!("{name}:{:?}", command.source)
         }

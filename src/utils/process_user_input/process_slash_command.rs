@@ -672,17 +672,17 @@ pub(crate) fn local_jsx_command_result(
             None,
         )
     };
-    if display != Some(CommandResultDisplay::System) && !preceding_input_blocks.is_empty() {
-        if let Some(RenderableMessage {
+    if display != Some(CommandResultDisplay::System)
+        && !preceding_input_blocks.is_empty()
+        && let Some(RenderableMessage {
             kind: RenderableMessageKind::User { message },
             ..
         }) = result.messages.first_mut()
-        {
-            message.content = crate::utils::messages::prepare_user_content(
-                format_command_input_tags(command, args),
-                preceding_input_blocks,
-            );
-        }
+    {
+        message.content = crate::utils::messages::prepare_user_content(
+            format_command_input_tags(command, args),
+            preceding_input_blocks,
+        );
     }
     result.should_query = should_query;
     result.messages.extend(meta_messages.iter().map(|text| {

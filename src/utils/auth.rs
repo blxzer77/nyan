@@ -1006,13 +1006,13 @@ pub fn get_anthropic_api_key_with_source(
         env_value(&get_env, "ANTHROPIC_API_KEY")
     };
 
-    if crate::bootstrap::state::prefer_third_party_authentication() {
-        if let Some(api_key) = api_key_env.clone() {
-            return AnthropicApiKeyWithSource {
-                key: Some(api_key),
-                source: ApiKeySource::AnthropicApiKey,
-            };
-        }
+    if crate::bootstrap::state::prefer_third_party_authentication()
+        && let Some(api_key) = api_key_env.clone()
+    {
+        return AnthropicApiKeyWithSource {
+            key: Some(api_key),
+            source: ApiKeySource::AnthropicApiKey,
+        };
     }
 
     if crate::utils::env_utils::is_env_truthy(get_env("CI").as_deref())

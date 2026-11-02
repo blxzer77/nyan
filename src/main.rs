@@ -1044,12 +1044,13 @@ fn Main(props: &MainProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     if setup_complete.get() && !plugin_hooks_loaded.get() {
         let policy =
             crate::utils::hooks::hooks_config_snapshot::load_hooks_config_from_settings_sources();
-        if !policy.allow_managed_hooks_only && !policy.disable_all_hooks {
-            if let Err(error) = crate::utils::plugins::load_plugin_hooks::load_plugin_hooks() {
-                crate::utils::debug::log_for_debugging(&format!(
-                    "Warning: Failed to load plugin hooks after setup: {error}"
-                ));
-            }
+        if !policy.allow_managed_hooks_only
+            && !policy.disable_all_hooks
+            && let Err(error) = crate::utils::plugins::load_plugin_hooks::load_plugin_hooks()
+        {
+            crate::utils::debug::log_for_debugging(&format!(
+                "Warning: Failed to load plugin hooks after setup: {error}"
+            ));
         }
         crate::utils::plugins::load_plugin_hooks::setup_plugin_hook_hot_reload();
         plugin_hooks_loaded.set(true);

@@ -147,10 +147,10 @@ fn set_effort_value(effort_value: EffortValue, model: &str) -> EffortCommandResu
     };
     let was_clamped = effort_value != clamped;
     let persistable = to_persistable_effort(Some(&clamped));
-    if let Some(value) = persistable.as_deref() {
-        if let Err(error) = update_effort_setting(Some(value)) {
-            return EffortCommandResult::message(format!("Failed to set effort level: {error}"));
-        }
+    if let Some(value) = persistable.as_deref()
+        && let Err(error) = update_effort_setting(Some(value))
+    {
+        return EffortCommandResult::message(format!("Failed to set effort level: {error}"));
     }
 
     unpin_launch_effort();

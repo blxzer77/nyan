@@ -241,13 +241,13 @@ fn build_log_metadata(log: &SessionSummary, show_project_path: bool) -> String {
         log.pr_number,
         log.pr_repository.as_deref(),
     );
-    if show_project_path {
-        if let Some(project_path) = log.project_path.as_deref().filter(|s| !s.is_empty()) {
-            if !metadata.is_empty() {
-                metadata.push_str(" · ");
-            }
-            metadata.push_str(project_path);
+    if show_project_path
+        && let Some(project_path) = log.project_path.as_deref().filter(|s| !s.is_empty())
+    {
+        if !metadata.is_empty() {
+            metadata.push_str(" · ");
         }
+        metadata.push_str(project_path);
     }
     metadata
 }
@@ -813,24 +813,24 @@ fn log_matches_structured_filters(
     show_all_worktrees: bool,
     current_project_path: &str,
 ) -> bool {
-    if let Some(tag) = selected_tag {
-        if log.tag.as_deref() != Some(tag) {
-            return false;
-        }
+    if let Some(tag) = selected_tag
+        && log.tag.as_deref() != Some(tag)
+    {
+        return false;
     }
 
-    if branch_filter_enabled {
-        if let Some(branch) = current_branch {
-            if log.git_branch.as_deref() != Some(branch) {
-                return false;
-            }
-        }
+    if branch_filter_enabled
+        && let Some(branch) = current_branch
+        && log.git_branch.as_deref() != Some(branch)
+    {
+        return false;
     }
 
-    if has_multiple_worktrees && !show_all_worktrees {
-        if log.project_path.as_deref() != Some(current_project_path) {
-            return false;
-        }
+    if has_multiple_worktrees
+        && !show_all_worktrees
+        && log.project_path.as_deref() != Some(current_project_path)
+    {
+        return false;
     }
 
     true
@@ -1113,10 +1113,10 @@ pub fn LogSelector<'a>(
     let selected_tag = selected_tag(&tag_tabs, selected_tag_index.get());
     let filter_indicators = {
         let mut indicators = Vec::new();
-        if branch_filter_enabled.get() {
-            if let Some(branch) = current_branch.as_deref() {
-                indicators.push(branch.to_string());
-            }
+        if branch_filter_enabled.get()
+            && let Some(branch) = current_branch.as_deref()
+        {
+            indicators.push(branch.to_string());
         }
         if has_multiple_worktrees && !show_all_worktrees.get() {
             indicators.push("current worktree".to_string());
@@ -1494,43 +1494,42 @@ pub fn LogSelector<'a>(
                     }
                     KeyCode::Right => {
                         let idx = clamp_focus(focused_index.get(), displayed_len);
-                        if let Some(row) = display_rows.get(idx) {
-                            if row.is_group_parent && row.has_children {
-                                let mut expanded = expanded_group_session_ids.read().clone();
-                                if !is_group_expanded(&row.group_session_id, &expanded) {
-                                    expanded.push(row.group_session_id.clone());
-                                    expanded_group_session_ids.set(expanded);
-                                }
-                                event.stop_propagation();
+                        if let Some(row) = display_rows.get(idx)
+                            && row.is_group_parent
+                            && row.has_children
+                        {
+                            let mut expanded = expanded_group_session_ids.read().clone();
+                            if !is_group_expanded(&row.group_session_id, &expanded) {
+                                expanded.push(row.group_session_id.clone());
+                                expanded_group_session_ids.set(expanded);
                             }
+                            event.stop_propagation();
                         }
                     }
                     KeyCode::Left => {
                         let idx = clamp_focus(focused_index.get(), displayed_len);
-                        if let Some(row) = display_rows.get(idx) {
-                            if row.has_children {
-                                let mut expanded = expanded_group_session_ids.read().clone();
-                                expanded.retain(|id| id != &row.group_session_id);
-                                expanded_group_session_ids.set(expanded);
-                                if row.is_child {
-                                    if let Some(parent_idx) =
-                                        display_rows.iter().position(|candidate| {
-                                            candidate.is_group_parent
-                                                && candidate.group_session_id
-                                                    == row.group_session_id
-                                        })
-                                    {
-                                        focused_index.set(parent_idx);
-                                        visible_from_index.set(visible_from_for_focus(
-                                            parent_idx,
-                                            visible_from_index.get(),
-                                            visible_count,
-                                            displayed_len,
-                                        ));
-                                    }
-                                }
-                                event.stop_propagation();
+                        if let Some(row) = display_rows.get(idx)
+                            && row.has_children
+                        {
+                            let mut expanded = expanded_group_session_ids.read().clone();
+                            expanded.retain(|id| id != &row.group_session_id);
+                            expanded_group_session_ids.set(expanded);
+                            if row.is_child
+                                && let Some(parent_idx) =
+                                    display_rows.iter().position(|candidate| {
+                                        candidate.is_group_parent
+                                            && candidate.group_session_id == row.group_session_id
+                                    })
+                            {
+                                focused_index.set(parent_idx);
+                                visible_from_index.set(visible_from_for_focus(
+                                    parent_idx,
+                                    visible_from_index.get(),
+                                    visible_count,
+                                    displayed_len,
+                                ));
                             }
+                            event.stop_propagation();
                         }
                     }
                     KeyCode::Tab if tag_tabs_len > 0 => {

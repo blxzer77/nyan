@@ -162,14 +162,13 @@ pub fn evict_terminal_task(task_id: &str, app_store: &AppStore) {
         // Date.now()`. `retain` only exists on LocalAgentTaskState; in the
         // Rust union that is the `Other` stub with `retain: Some(_)`
         // (`None` = field absent → CC's `in` narrowing is false).
-        if let TaskState::Other(other) = task.as_ref() {
-            if other.retain.is_some()
-                && other
-                    .evict_after
-                    .map_or(true, |deadline| deadline > now_ms())
-            {
-                return UpdateDecision::Same(());
-            }
+        if let TaskState::Other(other) = task.as_ref()
+            && other.retain.is_some()
+            && other
+                .evict_after
+                .map_or(true, |deadline| deadline > now_ms())
+        {
+            return UpdateDecision::Same(());
         }
         // CC :141-142 — `const {[taskId]: _, ...remainingTasks} = prev.tasks`.
         let mut next = (**prev).clone();

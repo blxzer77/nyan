@@ -534,8 +534,8 @@ impl ToolCall for FileWriteTool {
                 return make_error_after_discovery(error.to_string(), dynamic_skill_dirs);
             }
 
-            if crate::utils::file_history::file_history_enabled() {
-                if let Some(store) = context.app_store.store.as_ref() {
+            if crate::utils::file_history::file_history_enabled()
+                && let Some(store) = context.app_store.store.as_ref() {
                     crate::utils::file_history::file_history_track_edit(
                         store,
                         &full_path.display().to_string(),
@@ -548,7 +548,6 @@ impl ToolCall for FileWriteTool {
                     )
                     .await;
                 }
-            }
 
             // File history is the final await before the atomic read/write
             // section. Re-resolve once more so a swap during backup fails
@@ -612,14 +611,12 @@ impl ToolCall for FileWriteTool {
 
             if context.agent_id.is_some()
                 && full_path == crate::memdir::paths::get_auto_mem_entrypoint()
-            {
-                if let Err(error) = crate::memdir::memdir::validate_agent_memory_index_update(
+                && let Err(error) = crate::memdir::memdir::validate_agent_memory_index_update(
                     old_content.as_deref().unwrap_or_default(),
                     &input.content,
                 ) {
                     return make_error_after_discovery(error, dynamic_skill_dirs);
                 }
-            }
             if let Err(error) = crate::memdir::write_guard::check_memory_content(
                 &full_path,
                 &input.content,

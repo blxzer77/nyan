@@ -37,14 +37,14 @@ pub fn derive_tool_use_status(
     let Some(tool_use_id) = tool_use_id else {
         return ToolUseStatus::Queued;
     };
-    if let Some(lookups) = lookups {
-        if lookups.resolved_tool_use_ids.contains(tool_use_id) {
-            return if lookups.errored_tool_use_ids.contains(tool_use_id) {
-                ToolUseStatus::Failed
-            } else {
-                ToolUseStatus::Succeeded
-            };
-        }
+    if let Some(lookups) = lookups
+        && lookups.resolved_tool_use_ids.contains(tool_use_id)
+    {
+        return if lookups.errored_tool_use_ids.contains(tool_use_id) {
+            ToolUseStatus::Failed
+        } else {
+            ToolUseStatus::Succeeded
+        };
     }
     if in_progress_tool_use_ids.contains(tool_use_id) {
         ToolUseStatus::Running
@@ -1029,14 +1029,14 @@ fn tool_use_auxiliary_messages(
 
     let normalized_tool_name = tool_name.trim().to_ascii_lowercase();
 
-    if status == ToolUseStatus::Running {
-        if let Some(messages) = tool_use_progress_auxiliary_messages(
+    if status == ToolUseStatus::Running
+        && let Some(messages) = tool_use_progress_auxiliary_messages(
             normalized_tool_name.as_str(),
             progress_messages,
             options,
-        ) {
-            return messages;
-        }
+        )
+    {
+        return messages;
     }
 
     // Maps to BashTool/UI.tsx and PowerShellTool/UI.tsx queued/progress
@@ -1869,10 +1869,10 @@ mod tests {
                 let Some(cell) = canvas.cell(col, row) else {
                     continue;
                 };
-                if cell.hyperlink() == Some(url) {
-                    if let Some(value) = cell.text() {
-                        text.push_str(value);
-                    }
+                if cell.hyperlink() == Some(url)
+                    && let Some(value) = cell.text()
+                {
+                    text.push_str(value);
                 }
             }
         }

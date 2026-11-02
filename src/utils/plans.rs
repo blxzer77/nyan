@@ -41,10 +41,10 @@ pub fn get_plan_slug(session_id: Option<&str>) -> String {
         .map(str::to_string)
         .unwrap_or_else(crate::bootstrap::state::get_session_id);
 
-    if let Ok(cache) = PLAN_SLUG_CACHE.read() {
-        if let Some(slug) = cache.get(&session_id).filter(|slug| !slug.is_empty()) {
-            return slug.clone();
-        }
+    if let Ok(cache) = PLAN_SLUG_CACHE.read()
+        && let Some(slug) = cache.get(&session_id).filter(|slug| !slug.is_empty())
+    {
+        return slug.clone();
     }
 
     let mut slug = String::new();

@@ -256,19 +256,17 @@ pub fn get_proxy_agent(uri: &str) -> anyhow::Result<reqwest::ClientBuilder> {
 pub fn get_proxy_fetch_options(for_anthropic_api: bool) -> anyhow::Result<reqwest::ClientBuilder> {
     let env = crate::utils::process_env::snapshot();
 
-    if for_anthropic_api {
-        if let Some(unix_socket) = env.var("ANTHROPIC_UNIX_SOCKET").truthy() {
-            // `.no_proxy()`: reqwest ignores proxies on a socket but would
-            // still attach a system proxy's credentials to the request.
-            #[cfg(unix)]
-            return Ok(fetch_builder(
-                client_builder().no_proxy().unix_socket(unix_socket),
-            ));
-            #[cfg(not(unix))]
-            log_for_debugging(&format!(
-                "ANTHROPIC_UNIX_SOCKET={unix_socket} is not supported on this platform; ignored"
-            ));
-        }
+    if for_anthropic_api && let Some(unix_socket) = env.var("ANTHROPIC_UNIX_SOCKET").truthy() {
+        // `.no_proxy()`: reqwest ignores proxies on a socket but would
+        // still attach a system proxy's credentials to the request.
+        #[cfg(unix)]
+        return Ok(fetch_builder(
+            client_builder().no_proxy().unix_socket(unix_socket),
+        ));
+        #[cfg(not(unix))]
+        log_for_debugging(&format!(
+            "ANTHROPIC_UNIX_SOCKET={unix_socket} is not supported on this platform; ignored"
+        ));
     }
 
     if let Some(proxy_url) = get_proxy_url(&env) {
@@ -294,13 +292,13 @@ pub fn get_proxy_fetch_options(for_anthropic_api: bool) -> anyhow::Result<reqwes
 pub fn configure_global_agents() {
     let proxy_url = get_proxy_url(&crate::utils::process_env::snapshot());
     let _mtls_agent = crate::utils::mtls::get_mtls_agent();
-    if let Some(proxy_url) = proxy_url {
-        if let Err(error) = parse_proxy_url(&proxy_url) {
-            crate::utils::debug::log_for_debugging_with_level(
-                &format!("Proxy: {error:#}"),
-                crate::utils::debug::DebugLogLevel::Error,
-            );
-        }
+    if let Some(proxy_url) = proxy_url
+        && let Err(error) = parse_proxy_url(&proxy_url)
+    {
+        crate::utils::debug::log_for_debugging_with_level(
+            &format!("Proxy: {error:#}"),
+            crate::utils::debug::DebugLogLevel::Error,
+        );
     }
 }
 

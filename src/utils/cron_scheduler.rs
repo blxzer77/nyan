@@ -77,12 +77,10 @@ impl CronScheduler {
     pub fn start(&mut self) {
         self.started = true;
         let durable_enabled = crate::tools::schedule_cron_tool::prompt::is_durable_cron_enabled();
-        if durable_enabled {
-            if let Err(error) = self.durable_lock.try_acquire() {
-                crate::utils::debug::log_for_debugging(&format!(
-                    "[ScheduledTasks] scheduler lock error: {error}"
-                ));
-            }
+        if durable_enabled && let Err(error) = self.durable_lock.try_acquire() {
+            crate::utils::debug::log_for_debugging(&format!(
+                "[ScheduledTasks] scheduler lock error: {error}"
+            ));
         }
         if get_scheduled_tasks_enabled()
             || (durable_enabled
@@ -129,12 +127,13 @@ impl CronScheduler {
             return Vec::new();
         }
         let durable_enabled = crate::tools::schedule_cron_tool::prompt::is_durable_cron_enabled();
-        if durable_enabled && !self.durable_lock.is_owned() {
-            if let Err(error) = self.durable_lock.try_acquire() {
-                crate::utils::debug::log_for_debugging(&format!(
-                    "[ScheduledTasks] scheduler lock error: {error}"
-                ));
-            }
+        if durable_enabled
+            && !self.durable_lock.is_owned()
+            && let Err(error) = self.durable_lock.try_acquire()
+        {
+            crate::utils::debug::log_for_debugging(&format!(
+                "[ScheduledTasks] scheduler lock error: {error}"
+            ));
         }
         if !self.enable_ready {
             if get_scheduled_tasks_enabled()
@@ -218,13 +217,11 @@ impl CronScheduler {
                 let new_next =
                     jittered_next_cron_run_ms(&t.cron, now, &t.id, &jitter_cfg).unwrap_or(u64::MAX);
                 self.next_fire_at.insert(t.id.clone(), new_next);
-                if durable {
-                    if let Err(error) = mark_cron_tasks_fired(&[t.id.clone()], now) {
-                        crate::utils::debug::log_for_debugging(&format!(
-                            "[ScheduledTasks] failed to stamp {}: {error}",
-                            t.id
-                        ));
-                    }
+                if durable && let Err(error) = mark_cron_tasks_fired(&[t.id.clone()], now) {
+                    crate::utils::debug::log_for_debugging(&format!(
+                        "[ScheduledTasks] failed to stamp {}: {error}",
+                        t.id
+                    ));
                 }
             } else {
                 if let Err(error) = remove_cron_tasks(&[t.id.clone()]) {

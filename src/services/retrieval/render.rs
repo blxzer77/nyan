@@ -75,10 +75,10 @@ pub fn render_outcome(outcome: &SearchOutcome, max_results: usize) -> String {
         .join(", ");
     let mut notes = Vec::new();
     for branch in outcome.searched_branches() {
-        if let Some(status) = outcome.branch_status(branch) {
-            if let Some(explanation) = status.explanation() {
-                notes.push(format!("{} {explanation}", branch.as_str()));
-            }
+        if let Some(status) = outcome.branch_status(branch)
+            && let Some(explanation) = status.explanation()
+        {
+            notes.push(format!("{} {explanation}", branch.as_str()));
         }
     }
     let searched_note = if notes.is_empty() {

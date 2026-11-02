@@ -52,14 +52,14 @@ pub fn has_successful_tool_call(messages: &[Message], tool_name: &str) -> bool {
     let mut most_recent_tool_use_id: Option<String> = None;
 
     for message in messages.iter().rev() {
-        if let Message::Assistant(assistant) = message {
-            if let Some(tool_use) = assistant.content.iter().find_map(|content| match content {
+        if let Message::Assistant(assistant) = message
+            && let Some(tool_use) = assistant.content.iter().find_map(|content| match content {
                 AssistantContent::ToolUse(tool_use) if tool_use.name == tool_name => Some(tool_use),
                 _ => None,
-            }) {
-                most_recent_tool_use_id = Some(tool_use.id.0.clone());
-                break;
-            }
+            })
+        {
+            most_recent_tool_use_id = Some(tool_use.id.0.clone());
+            break;
         }
     }
 
@@ -68,17 +68,17 @@ pub fn has_successful_tool_call(messages: &[Message], tool_name: &str) -> bool {
     };
 
     for message in messages.iter().rev() {
-        if let Message::User(user) = message {
-            if let Some(result) = user.content.iter().find_map(|content| match content {
+        if let Message::User(user) = message
+            && let Some(result) = user.content.iter().find_map(|content| match content {
                 UserContent::ToolResult(result)
                     if result.tool_use_id.0 == most_recent_tool_use_id =>
                 {
                     Some(result)
                 }
                 _ => None,
-            }) {
-                return !result.is_error;
-            }
+            })
+        {
+            return !result.is_error;
         }
     }
 

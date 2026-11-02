@@ -252,10 +252,10 @@ fn find_latest_on_disk(normalized: &str) -> Option<Snapshot> {
 /// Test seam: make an index entry look `age` old.
 #[cfg(test)]
 pub fn age_index_entry_for_tests(url: &str, age: chrono::Duration) {
-    if let Ok(mut entries) = index().lock() {
-        if let Some(entry) = entries.get_mut(&normalize_index_url(url)) {
-            entry.fetched_at = Utc::now() - age;
-        }
+    if let Ok(mut entries) = index().lock()
+        && let Some(entry) = entries.get_mut(&normalize_index_url(url))
+    {
+        entry.fetched_at = Utc::now() - age;
     }
 }
 

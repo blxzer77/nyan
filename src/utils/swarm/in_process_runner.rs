@@ -667,20 +667,20 @@ async fn wait_for_next_prompt_or_shutdown_with_interval(
             })
             .or_else(|| all_messages.iter().position(|message| !message.read));
 
-        if let Some(idx) = selected_index {
-            if let Some(message) = all_messages.get(idx) {
-                crate::utils::teammate_mailbox::mark_message_as_read_by_index(
-                    &identity.agent_name,
-                    Some(&identity.team_name),
-                    idx,
-                );
-                return WaitResult::NewMessage {
-                    message: message.text.clone(),
-                    from: message.from.clone(),
-                    color: message.color.clone(),
-                    summary: message.summary.clone(),
-                };
-            }
+        if let Some(idx) = selected_index
+            && let Some(message) = all_messages.get(idx)
+        {
+            crate::utils::teammate_mailbox::mark_message_as_read_by_index(
+                &identity.agent_name,
+                Some(&identity.team_name),
+                idx,
+            );
+            return WaitResult::NewMessage {
+                message: message.text.clone(),
+                from: message.from.clone(),
+                color: message.color.clone(),
+                summary: message.summary.clone(),
+            };
         }
 
         if let Some(task_prompt) =

@@ -225,14 +225,12 @@ pub async fn file_history_make_snapshot(store: &AppStore, message_id: &str) {
             };
 
             // File exists — reuse the latest backup when unchanged.
-            if let Some(latest) = latest_backup {
-                if let Some(backup_name) = latest.backup_file_name.as_deref() {
-                    if !check_origin_file_changed(&file_path, backup_name, Some(&file_stats)).await
-                    {
-                        tracked_file_backups.insert(tracking_path.clone(), latest.clone());
-                        continue;
-                    }
-                }
+            if let Some(latest) = latest_backup
+                && let Some(backup_name) = latest.backup_file_name.as_deref()
+                && !check_origin_file_changed(&file_path, backup_name, Some(&file_stats)).await
+            {
+                tracked_file_backups.insert(tracking_path.clone(), latest.clone());
+                continue;
             }
 
             // Newer than the latest backup — create a new one.
@@ -500,10 +498,9 @@ fn compare_stats(
             // mtime optimization: if the original was last modified before
             // the backup was taken, the content cannot have diverged.
             if let (Ok(original_mtime), Ok(backup_mtime)) = (original.modified(), backup.modified())
+                && original_mtime < backup_mtime
             {
-                if original_mtime < backup_mtime {
-                    return StatComparison::Unchanged;
-                }
+                return StatComparison::Unchanged;
             }
             StatComparison::NeedContentCompare
         }
@@ -705,10 +702,10 @@ fn get_backup_file_name_first_version(
     state: &FileHistoryState,
 ) -> ResolvedBackupFileName {
     for snapshot in &state.snapshots {
-        if let Some(backup) = snapshot.tracked_file_backups.get(tracking_path) {
-            if backup.version == 1 {
-                return Some(backup.backup_file_name.clone());
-            }
+        if let Some(backup) = snapshot.tracked_file_backups.get(tracking_path)
+            && backup.version == 1
+        {
+            return Some(backup.backup_file_name.clone());
         }
     }
     None

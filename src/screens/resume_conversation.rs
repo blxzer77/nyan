@@ -38,10 +38,10 @@ where
 /// Maps to: CC `screens/ResumeConversation.tsx` `parsePrIdentifier`.
 fn parse_pr_identifier(value: &str) -> Option<u64> {
     let trimmed = value.trim();
-    if let Ok(number) = trimmed.parse::<u64>() {
-        if number > 0 {
-            return Some(number);
-        }
+    if let Ok(number) = trimmed.parse::<u64>()
+        && number > 0
+    {
+        return Some(number);
     }
 
     let marker = "github.com/";
@@ -328,12 +328,11 @@ pub fn ResumeConversation(
                             }
                         })
                         .await;
-                        if let Ok(result) = loaded {
-                            if generation == load_generation.get() {
+                        if let Ok(result) = loaded
+                            && generation == load_generation.get() {
                                 logs.set(result.logs.clone());
                                 current_result = Some((generation, result));
                             }
-                        }
                         if generation == load_generation.get() {
                             loading.set(false);
                         }
@@ -430,11 +429,11 @@ pub fn ResumeConversation(
             .expect("clipboard requires the initialized process runtime")
             .spawn(async move {
                 let raw = copy.await;
-                if !raw.is_empty() {
-                    if let Err(error) = stdout.write_control_sequence_and_wait(raw).await {
-                        crate::utils::debug::log_for_debugging(&error.to_string());
-                        return;
-                    }
+                if !raw.is_empty()
+                    && let Err(error) = stdout.write_control_sequence_and_wait(raw).await
+                {
+                    crate::utils::debug::log_for_debugging(&error.to_string());
+                    return;
                 }
                 cross_project_command.set(Some(command));
             });

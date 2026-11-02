@@ -119,10 +119,9 @@ impl SecureStorageBackend for PlainTextStorage {
         let updated = (|| -> std::io::Result<()> {
             if let Err(error) =
                 crate::utils::fs_operations::get_fs_implementation().mkdir_sync(&storage_dir, None)
+                && crate::utils::errors::io_errno_code(&error) != Some("EEXIST")
             {
-                if crate::utils::errors::io_errno_code(&error) != Some("EEXIST") {
-                    return Err(error);
-                }
+                return Err(error);
             }
             std::fs::write(&storage_path, serialized)?;
             #[cfg(unix)]

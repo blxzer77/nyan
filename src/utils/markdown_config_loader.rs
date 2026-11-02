@@ -91,10 +91,10 @@ pub fn get_project_dirs_up_to_home(subdir: &str, cwd: &Path) -> Vec<PathBuf> {
             dirs.push(candidate);
         }
 
-        if let Some(git_root) = &git_root {
-            if normalize_path_for_comparison(&current) == normalize_path_for_comparison(git_root) {
-                break;
-            }
+        if let Some(git_root) = &git_root
+            && normalize_path_for_comparison(&current) == normalize_path_for_comparison(git_root)
+        {
+            break;
         }
 
         if !current.pop() {
@@ -199,23 +199,21 @@ pub fn load_markdown_files_for_subdir(subdir: &str, cwd: &Path) -> Vec<MarkdownF
     if let (Some(git_root), Some(canonical_root)) = (
         crate::utils::git::find_git_root(cwd),
         crate::utils::git::find_canonical_git_root(cwd),
-    ) {
-        if normalize_path_for_comparison(&git_root)
-            != normalize_path_for_comparison(&canonical_root)
-        {
-            let worktree_subdir = git_root.join(".claude").join(subdir);
-            let worktree_has_subdir = project_dirs.iter().any(|directory| {
+    ) && normalize_path_for_comparison(&git_root)
+        != normalize_path_for_comparison(&canonical_root)
+    {
+        let worktree_subdir = git_root.join(".claude").join(subdir);
+        let worktree_has_subdir = project_dirs.iter().any(|directory| {
+            normalize_path_for_comparison(directory)
+                == normalize_path_for_comparison(&worktree_subdir)
+        });
+        if !worktree_has_subdir {
+            let main_subdir = canonical_root.join(".claude").join(subdir);
+            if !project_dirs.iter().any(|directory| {
                 normalize_path_for_comparison(directory)
-                    == normalize_path_for_comparison(&worktree_subdir)
-            });
-            if !worktree_has_subdir {
-                let main_subdir = canonical_root.join(".claude").join(subdir);
-                if !project_dirs.iter().any(|directory| {
-                    normalize_path_for_comparison(directory)
-                        == normalize_path_for_comparison(&main_subdir)
-                }) {
-                    project_dirs.push(main_subdir);
-                }
+                    == normalize_path_for_comparison(&main_subdir)
+            }) {
+                project_dirs.push(main_subdir);
             }
         }
     }

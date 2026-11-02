@@ -605,14 +605,13 @@ fn apply_row_runtime_state(
     // were still executing finalized early whenever anything followed it —
     // exactly the parallel-execution case the CC comment calls out — and it
     // showed as active while merely loading with no live tool at all.
-    if let RenderableMessageKind::CollapsedReadSearch(group) = &mut message.kind {
-        if crate::utils::collapse_read_search::has_any_tool_in_progress(
+    if let RenderableMessageKind::CollapsedReadSearch(group) = &mut message.kind
+        && (crate::utils::collapse_read_search::has_any_tool_in_progress(
             group,
             &props.in_progress_tool_use_ids,
-        ) || (props.is_loading && !props.has_content_after)
-        {
-            group.active = true;
-        }
+        ) || (props.is_loading && !props.has_content_after))
+    {
+        group.active = true;
     }
 
     // Progress hydration for tool-use rows is gone with the row field itself:

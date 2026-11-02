@@ -967,12 +967,12 @@ impl EmbeddingClient {
         static LAST_CHECK: std::sync::Mutex<Option<(String, std::time::Instant)>> =
             std::sync::Mutex::new(None);
         let key = format!("{}|{}|{}", self.url, self.model, self.dim);
-        if let Ok(guard) = LAST_CHECK.lock() {
-            if let Some((last_key, at)) = guard.as_ref() {
-                if last_key == &key && at.elapsed() < Duration::from_secs(600) {
-                    return Ok(());
-                }
-            }
+        if let Ok(guard) = LAST_CHECK.lock()
+            && let Some((last_key, at)) = guard.as_ref()
+            && last_key == &key
+            && at.elapsed() < Duration::from_secs(600)
+        {
+            return Ok(());
         }
         match self.health.call_permit() {
             CallPermit::Skipped => return Err("embedding service unreachable".to_string()),

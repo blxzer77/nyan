@@ -1630,8 +1630,8 @@ mod tests {
                     canvas = renders.next() => {
                         let Some(canvas) = canvas else { break; };
                         last_canvas = canvas.to_string();
-                        if let Some((needle, code)) = steps.get(step) {
-                            if last_canvas.contains(needle) {
+                        if let Some((needle, code)) = steps.get(step)
+                            && last_canvas.contains(needle) {
                                 if step == 4 {
                                     assert_eq!(get_allow_rules(&store.get().tool_permission_context).is_empty(), source == PermissionRuleSource::Session,
                                         "live setter must precede remount; source={source:?}; canvas=\n{last_canvas}");
@@ -1639,7 +1639,6 @@ mod tests {
                                 sender.send(key(*code)).await.unwrap();
                                 step += 1;
                             }
-                        }
                         if !exits.lock().unwrap().is_empty() { break; }
                     }
                 }
@@ -1694,8 +1693,8 @@ mod tests {
                 canvas = renders.next() => {
                     let Some(canvas) = canvas else { break; };
                     last_canvas = canvas.to_string();
-                    if let Some((needle, code)) = steps.get(step) {
-                        if last_canvas.contains(needle) {
+                    if let Some((needle, code)) = steps.get(step)
+                        && last_canvas.contains(needle) {
                             if step == 3 {
                                 assert!(last_canvas.contains("⌕ 2"), "source numeric DOM query must survive details; canvas=\n{last_canvas}");
                                 assert!(!last_canvas.contains("Add a new rule…"), "nonempty search filters add option");
@@ -1705,7 +1704,6 @@ mod tests {
                             sender.send(TerminalEvent::Key(KeyEvent::new(KeyEventKind::Press, *code))).await.unwrap();
                             step += 1;
                         }
-                    }
                     if !exits.lock().unwrap().is_empty() { break; }
                 }
             }

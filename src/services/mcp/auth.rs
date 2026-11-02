@@ -1634,36 +1634,34 @@ mod runtime {
             return Ok(());
         }
 
-        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            if let Some(access_token) = access_token {
-                let request = client
-                    .post(endpoint)
-                    .header(
-                        reqwest::header::AUTHORIZATION,
-                        format!("Bearer {access_token}"),
-                    )
-                    .header(
-                        reqwest::header::CONTENT_TYPE,
-                        "application/x-www-form-urlencoded",
-                    )
-                    .body(form_urlencoded_body(&[
-                        ("token".to_string(), token.to_string()),
-                        ("token_type_hint".to_string(), token_type_hint.to_string()),
-                    ]));
-                // Deviation (L2, same OAuth safety gate): the source's
-                // non-compliant Bearer retry is independently guarded so no
-                // alternate revocation send bypasses the product switch.
-                if !crate::constants::oauth::OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED {
-                    return Err(
-                        crate::constants::oauth::OAuthCredentialSideEffectsUnavailable.into(),
-                    );
-                }
-                let response = request.send().await?;
-                if response.status().is_success() {
-                    return Ok(());
-                }
-                anyhow::bail!("HTTP {} revoking {token_type_hint}", response.status());
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED
+            && let Some(access_token) = access_token
+        {
+            let request = client
+                .post(endpoint)
+                .header(
+                    reqwest::header::AUTHORIZATION,
+                    format!("Bearer {access_token}"),
+                )
+                .header(
+                    reqwest::header::CONTENT_TYPE,
+                    "application/x-www-form-urlencoded",
+                )
+                .body(form_urlencoded_body(&[
+                    ("token".to_string(), token.to_string()),
+                    ("token_type_hint".to_string(), token_type_hint.to_string()),
+                ]));
+            // Deviation (L2, same OAuth safety gate): the source's
+            // non-compliant Bearer retry is independently guarded so no
+            // alternate revocation send bypasses the product switch.
+            if !crate::constants::oauth::OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED {
+                return Err(crate::constants::oauth::OAuthCredentialSideEffectsUnavailable.into());
             }
+            let response = request.send().await?;
+            if response.status().is_success() {
+                return Ok(());
+            }
+            anyhow::bail!("HTTP {} revoking {token_type_hint}", response.status());
         }
 
         tracing::debug!(server = server_name, status = %response.status(), token_type_hint, "MCP OAuth token revocation failed");
@@ -1801,8 +1799,8 @@ mod runtime {
                         } else {
                             "client_secret_basic"
                         };
-                        if let Some(refresh_token) = snapshot.refresh_token.as_deref() {
-                            if let Err(error) = revoke_token(
+                        if let Some(refresh_token) = snapshot.refresh_token.as_deref()
+                            && let Err(error) = revoke_token(
                                 server_name,
                                 &revocation_endpoint,
                                 refresh_token,
@@ -1813,12 +1811,11 @@ mod runtime {
                                 auth_method,
                             )
                             .await
-                            {
-                                tracing::debug!(server = server_name, error = %error, "failed to revoke MCP OAuth refresh token");
-                            }
+                        {
+                            tracing::debug!(server = server_name, error = %error, "failed to revoke MCP OAuth refresh token");
                         }
-                        if let Some(access_token) = snapshot.access_token.as_deref() {
-                            if let Err(error) = revoke_token(
+                        if let Some(access_token) = snapshot.access_token.as_deref()
+                            && let Err(error) = revoke_token(
                                 server_name,
                                 &revocation_endpoint,
                                 access_token,
@@ -1829,9 +1826,8 @@ mod runtime {
                                 auth_method,
                             )
                             .await
-                            {
-                                tracing::debug!(server = server_name, error = %error, "failed to revoke MCP OAuth access token");
-                            }
+                        {
+                            tracing::debug!(server = server_name, error = %error, "failed to revoke MCP OAuth access token");
                         }
                     }
                 }

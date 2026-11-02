@@ -269,10 +269,10 @@ impl AbortController {
     /// Maps to DOM `AbortController.abort(reason)` used by CC with
     /// `reason === 'interrupt'` for submit-while-running.
     pub fn abort_with_reason(&self, reason: impl Into<String>) {
-        if let Ok(mut slot) = self.reason.lock() {
-            if slot.is_none() {
-                *slot = Some(reason.into());
-            }
+        if let Ok(mut slot) = self.reason.lock()
+            && slot.is_none()
+        {
+            *slot = Some(reason.into());
         }
         self.aborted
             .store(true, std::sync::atomic::Ordering::SeqCst);
@@ -288,12 +288,11 @@ impl AbortController {
 
     /// Return this signal's reason, or the first aborted parent reason.
     pub fn reason(&self) -> Option<String> {
-        if self.aborted.load(std::sync::atomic::Ordering::SeqCst) {
-            if let Ok(reason) = self.reason.lock() {
-                if reason.is_some() {
-                    return reason.clone();
-                }
-            }
+        if self.aborted.load(std::sync::atomic::Ordering::SeqCst)
+            && let Ok(reason) = self.reason.lock()
+            && reason.is_some()
+        {
+            return reason.clone();
         }
         self.parents.iter().find_map(AbortController::reason)
     }

@@ -857,21 +857,20 @@ fn refresh_files(
                 existing.size != metadata.len() || existing.mtime_ms != mtime_ms
             }
         };
-        if !must_check {
-            if let Some(existing) = previous_entry {
-                files.push(existing.clone());
-                continue;
-            }
+        if !must_check && let Some(existing) = previous_entry {
+            files.push(existing.clone());
+            continue;
         }
         let Ok(bytes) = std::fs::read(path) else {
             continue;
         };
         let hash = hex_hash(&bytes);
-        if let Some(existing) = previous_entry {
-            if existing.file_hash_raw == hash && existing.size == metadata.len() {
-                files.push(existing.clone());
-                continue;
-            }
+        if let Some(existing) = previous_entry
+            && existing.file_hash_raw == hash
+            && existing.size == metadata.len()
+        {
+            files.push(existing.clone());
+            continue;
         }
         let decoded = match decode_bytes(&bytes, None, &relative) {
             Ok(decoded) => decoded,
@@ -973,19 +972,19 @@ fn git_changed_files(
             fields.next();
         }
     }
-    if let (Some(previous), Some(current)) = (previous_head, current_head) {
-        if previous != current {
-            let diff = Command::new("git")
-                .arg("-C")
-                .arg(root)
-                .args(["diff", "--name-only", "-z", previous, current, "--"])
-                .output()
-                .ok()?;
-            if diff.status.success() {
-                for path in diff.stdout.split(|byte| *byte == 0) {
-                    if !path.is_empty() {
-                        changed.insert(String::from_utf8_lossy(path).into_owned());
-                    }
+    if let (Some(previous), Some(current)) = (previous_head, current_head)
+        && previous != current
+    {
+        let diff = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(["diff", "--name-only", "-z", previous, current, "--"])
+            .output()
+            .ok()?;
+        if diff.status.success() {
+            for path in diff.stdout.split(|byte| *byte == 0) {
+                if !path.is_empty() {
+                    changed.insert(String::from_utf8_lossy(path).into_owned());
                 }
             }
         }

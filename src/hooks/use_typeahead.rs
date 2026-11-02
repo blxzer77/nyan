@@ -1349,10 +1349,10 @@ fn visible_async_suggestions(
 /// only. The function is kept for parity with the source file but has no
 /// live call site.
 pub async fn generate_bash_suggestions(input: &str, cursor_offset: usize) -> Vec<SuggestionItem> {
-    if let Ok(mut current) = CURRENT_SHELL_COMPLETION_ABORT_CONTROLLER.lock() {
-        if let Some(abort) = current.take() {
-            abort.abort();
-        }
+    if let Ok(mut current) = CURRENT_SHELL_COMPLETION_ABORT_CONTROLLER.lock()
+        && let Some(abort) = current.take()
+    {
+        abort.abort();
     }
     let abort = crate::tool::AbortController::default();
     if let Ok(mut current) = CURRENT_SHELL_COMPLETION_ABORT_CONTROLLER.lock() {
@@ -1364,13 +1364,12 @@ pub async fn generate_bash_suggestions(input: &str, cursor_offset: usize) -> Vec
         abort.clone(),
     )
     .await;
-    if let Ok(mut current) = CURRENT_SHELL_COMPLETION_ABORT_CONTROLLER.lock() {
-        if current
+    if let Ok(mut current) = CURRENT_SHELL_COMPLETION_ABORT_CONTROLLER.lock()
+        && current
             .as_ref()
             .is_some_and(|active| active.same_identity(&abort))
-        {
-            current.take();
-        }
+    {
+        current.take();
     }
     result
 }
@@ -2175,10 +2174,10 @@ mod tests {
             false,
         );
         hooks.use_terminal_events(move |event| {
-            if let TerminalEvent::Key(event) = event {
-                if event.code == KeyCode::F(2) {
-                    is_command.set(false);
-                }
+            if let TerminalEvent::Key(event) = event
+                && event.code == KeyCode::F(2)
+            {
+                is_command.set(false);
             }
         });
         element!(
@@ -2254,12 +2253,12 @@ mod tests {
             source_key: "src".into(),
         });
         hooks.use_terminal_events(move |event| {
-            if let TerminalEvent::Key(event) = event {
-                if event.code == KeyCode::F(2) {
-                    clear_suggestions(file_result);
-                    // Already-empty state must be a no-op (no revision bump).
-                    clear_suggestions(file_result);
-                }
+            if let TerminalEvent::Key(event) = event
+                && event.code == KeyCode::F(2)
+            {
+                clear_suggestions(file_result);
+                // Already-empty state must be a no-op (no revision bump).
+                clear_suggestions(file_result);
             }
         });
         let current = file_result.read().clone();

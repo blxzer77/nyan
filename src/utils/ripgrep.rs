@@ -102,12 +102,12 @@ fn vendor_rg_path() -> Option<PathBuf> {
     let dir = vendor_ripgrep_platform_dir();
     let bin = if cfg!(windows) { "rg.exe" } else { "rg" };
     // Release archives ship CC's sibling package layout directly.
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            let candidate = parent.join("vendor").join("ripgrep").join(&dir).join(bin);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(parent) = exe.parent()
+    {
+        let candidate = parent.join("vendor").join("ripgrep").join(&dir).join(bin);
+        if candidate.is_file() {
+            return Some(candidate);
         }
     }
     // Development tree: the checked-out vendor directory.
@@ -368,14 +368,14 @@ pub fn codesign_ripgrep_if_necessary() {
             &builtin_path,
         ])
         .output();
-    if let Ok(sign) = sign {
-        if !sign.status.success() {
-            log_for_debugging(&format!(
-                "Failed to sign ripgrep: {} {}",
-                String::from_utf8_lossy(&sign.stdout),
-                String::from_utf8_lossy(&sign.stderr)
-            ));
-        }
+    if let Ok(sign) = sign
+        && !sign.status.success()
+    {
+        log_for_debugging(&format!(
+            "Failed to sign ripgrep: {} {}",
+            String::from_utf8_lossy(&sign.stdout),
+            String::from_utf8_lossy(&sign.stderr)
+        ));
     }
 
     let mut quarantine_command = Command::new("xattr");
@@ -383,14 +383,14 @@ pub fn codesign_ripgrep_if_necessary() {
     let quarantine = quarantine_command
         .args(["-d", "com.apple.quarantine", &builtin_path])
         .output();
-    if let Ok(quarantine) = quarantine {
-        if !quarantine.status.success() {
-            log_for_debugging(&format!(
-                "Failed to remove quarantine: {} {}",
-                String::from_utf8_lossy(&quarantine.stdout),
-                String::from_utf8_lossy(&quarantine.stderr)
-            ));
-        }
+    if let Ok(quarantine) = quarantine
+        && !quarantine.status.success()
+    {
+        log_for_debugging(&format!(
+            "Failed to remove quarantine: {} {}",
+            String::from_utf8_lossy(&quarantine.stdout),
+            String::from_utf8_lossy(&quarantine.stderr)
+        ));
     }
 }
 
@@ -629,20 +629,19 @@ pub fn count_files_rounded_rg(
     ignore_patterns: &[String],
 ) -> Option<u64> {
     let cache_key = format!("{}|{}", dir_path.display(), ignore_patterns.join(","));
-    if let Ok(guard) = COUNT_FILES_CACHE.lock() {
-        if let Some(cache) = guard.as_ref() {
-            if let Some(cached) = cache.get(&cache_key) {
-                return *cached;
-            }
-        }
+    if let Ok(guard) = COUNT_FILES_CACHE.lock()
+        && let Some(cache) = guard.as_ref()
+        && let Some(cached) = cache.get(&cache_key)
+    {
+        return *cached;
     }
 
     let home = crate::utils::node_os::homedir();
-    if let (Ok(resolved_dir), Ok(resolved_home)) = (dir_path.canonicalize(), home.canonicalize()) {
-        if resolved_dir == resolved_home {
-            store_count_cache(&cache_key, None);
-            return None;
-        }
+    if let (Ok(resolved_dir), Ok(resolved_home)) = (dir_path.canonicalize(), home.canonicalize())
+        && resolved_dir == resolved_home
+    {
+        store_count_cache(&cache_key, None);
+        return None;
     }
 
     let mut args = vec!["--files".to_string(), "--hidden".to_string()];

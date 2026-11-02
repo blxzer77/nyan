@@ -194,13 +194,13 @@ pub fn notify_session_state_changed(state: SessionState, details: Option<&Requir
         }
         _ => {
             // CC `:109` — `else if (hasPendingAction)`.
-            if HAS_PENDING_ACTION.swap(false, Ordering::SeqCst) {
-                if let Some(listener) = take_metadata_listener() {
-                    listener(&SessionExternalMetadata {
-                        pending_action: Some(None),
-                        ..SessionExternalMetadata::default()
-                    });
-                }
+            if HAS_PENDING_ACTION.swap(false, Ordering::SeqCst)
+                && let Some(listener) = take_metadata_listener()
+            {
+                listener(&SessionExternalMetadata {
+                    pending_action: Some(None),
+                    ..SessionExternalMetadata::default()
+                });
             }
         }
     }
@@ -208,13 +208,13 @@ pub fn notify_session_state_changed(state: SessionState, details: Option<&Requir
     // CC `:116-118` — task_summary is written mid-turn by the forked
     // summarizer; clear it at idle so the next turn does not briefly show the
     // previous turn's progress.
-    if state == SessionState::Idle {
-        if let Some(listener) = take_metadata_listener() {
-            listener(&SessionExternalMetadata {
-                task_summary: Some(None),
-                ..SessionExternalMetadata::default()
-            });
-        }
+    if state == SessionState::Idle
+        && let Some(listener) = take_metadata_listener()
+    {
+        listener(&SessionExternalMetadata {
+            task_summary: Some(None),
+            ..SessionExternalMetadata::default()
+        });
     }
 
     // SEAM: CC `:127-133` mirrors the transition onto the SDK event stream

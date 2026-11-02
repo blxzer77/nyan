@@ -893,10 +893,9 @@ async fn run_query(input: QueryRunInput<'_>) -> Result<QueryEngineOutcome, Strin
     if crate::utils::env_utils::is_nyan_write_enabled()
         && crate::utils::file_history::file_history_enabled()
         && crate::utils::session_storage::is_session_write_enabled()
+        && let Some(store) = context.app_store.store.as_ref()
     {
-        if let Some(store) = context.app_store.store.as_ref() {
-            crate::utils::file_history::file_history_make_snapshot(store, &base.turn_id).await;
-        }
+        crate::utils::file_history::file_history_make_snapshot(store, &base.turn_id).await;
     }
     let mut outcome = QueryEngineOutcome::default();
     let max_attempts = crate::utils::process_env::var("MAX_STRUCTURED_OUTPUT_RETRIES")
@@ -998,10 +997,8 @@ async fn run_query(input: QueryRunInput<'_>) -> Result<QueryEngineOutcome, Strin
                         }
                     }
                     history.push(message.clone());
-                    if stream_json {
-                        if let Some(value) = stream_message_value(&message) {
-                            emit_output(output_sink, value);
-                        }
+                    if stream_json && let Some(value) = stream_message_value(&message) {
+                        emit_output(output_sink, value);
                     }
                 }
                 // CC claude.ts:2229-2248 / QueryEngine.ts:718-726: the last
@@ -1107,15 +1104,14 @@ async fn run_query(input: QueryRunInput<'_>) -> Result<QueryEngineOutcome, Strin
                 .max_budget_usd
                 .as_deref()
                 .and_then(|value| value.parse::<f64>().ok())
+                && crate::cost_tracker::get_total_cost() >= max_budget_usd
             {
-                if crate::cost_tracker::get_total_cost() >= max_budget_usd {
-                    handle.abort_controller.abort();
-                    outcome.reason = "max_budget_usd".to_string();
-                    outcome
-                        .errors
-                        .push(format!("Reached maximum budget (${max_budget_usd})"));
-                    break;
-                }
+                handle.abort_controller.abort();
+                outcome.reason = "max_budget_usd".to_string();
+                outcome
+                    .errors
+                    .push(format!("Reached maximum budget (${max_budget_usd})"));
+                break;
             }
         }
 

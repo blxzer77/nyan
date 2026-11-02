@@ -441,12 +441,12 @@ pub async fn execute_prompt_suggestion(cache_safe_params: CacheSafeParams) {
         cache_safe_params.clone(),
     )
     .await;
-    if let Err(error) = &result {
-        if !abort_controller.is_aborted() {
-            crate::utils::debug::log_for_debugging(&format!(
-                "Prompt suggestion generation failed: {error}"
-            ));
-        }
+    if let Err(error) = &result
+        && !abort_controller.is_aborted()
+    {
+        crate::utils::debug::log_for_debugging(&format!(
+            "Prompt suggestion generation failed: {error}"
+        ));
     }
     if let Ok(Some(generated)) = result {
         let suggestion = generated.suggestion.clone();

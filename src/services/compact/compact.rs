@@ -809,15 +809,14 @@ fn annotate_boundary_with_preserved_segment(
     anchor_uuid: &str,
     kept: &[Message],
 ) -> SystemMessage {
-    if let (Some(head), Some(tail)) = (kept.first(), kept.last()) {
-        if let SystemMessage::CompactBoundary {
+    if let (Some(head), Some(tail)) = (kept.first(), kept.last())
+        && let SystemMessage::CompactBoundary {
             compact_metadata, ..
         } = &mut boundary
-        {
-            compact_metadata.get_or_insert_default().preserved_segment = Some(serde_json::json!({
-                "headUuid": head.uuid(), "tailUuid": tail.uuid(), "anchorUuid": anchor_uuid,
-            }));
-        }
+    {
+        compact_metadata.get_or_insert_default().preserved_segment = Some(serde_json::json!({
+            "headUuid": head.uuid(), "tailUuid": tail.uuid(), "anchorUuid": anchor_uuid,
+        }));
     }
     boundary
 }

@@ -274,10 +274,10 @@ pub fn ThemePicker<'a>(
         },
     );
     // CC :132-134 `onFocus` — Select also fires it for the default focus.
-    if let Some(value) = state.navigation.take_focus_change() {
-        if let Some(setting) = ThemeSetting::from_setting_value(&value) {
-            theme_control.set_preview_theme(setting);
-        }
+    if let Some(value) = state.navigation.take_focus_change()
+        && let Some(setting) = ThemeSetting::from_setting_value(&value)
+    {
+        theme_control.set_preview_theme(setting);
     }
     // CC :135-138 `onChange`.
     if let Some(value) = events.take_accepted() {

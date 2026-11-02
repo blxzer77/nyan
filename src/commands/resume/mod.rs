@@ -608,11 +608,9 @@ fn build_file_history_snapshot_chain(
             .get("isSnapshotUpdate")
             .and_then(|value| value.as_bool())
             == Some(true);
-        if is_update {
-            if let Some(index) = index_by_message_id.get(message_id).copied() {
-                snapshots[index] = snapshot.clone();
-                continue;
-            }
+        if is_update && let Some(index) = index_by_message_id.get(message_id).copied() {
+            snapshots[index] = snapshot.clone();
+            continue;
         }
 
         index_by_message_id.insert(message_id.to_string(), snapshots.len());

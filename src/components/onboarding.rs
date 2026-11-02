@@ -365,10 +365,10 @@ fn OnboardingExitBinding(
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
     let state = crate::hooks::use_exit::use_exit_on_ctrl_cd_with_keybindings(&mut hooks, true);
-    if let Some(mut target) = props.exit_state {
-        if target.get() != state {
-            target.set(state);
-        }
+    if let Some(mut target) = props.exit_state
+        && target.get() != state
+    {
+        target.set(state);
     }
     element! { View(width: 0u32, height: 0u32) }
 }

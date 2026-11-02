@@ -1721,10 +1721,10 @@ mod runtime {
                     break resolve_legacy_sse_endpoint(url, endpoint)?;
                 }
                 "message" => {
-                    if let Some(data) = event.data.as_deref() {
-                        if let Some(message) = parse_mcp_rx_message(name, data) {
-                            initial_messages.push(message);
-                        }
+                    if let Some(data) = event.data.as_deref()
+                        && let Some(message) = parse_mcp_rx_message(name, data)
+                    {
+                        initial_messages.push(message);
                     }
                 }
                 _ => {}
@@ -2076,19 +2076,15 @@ mod runtime {
                         }
                         Err(_) => None,
                     };
-                if token_changed
+                if (token_changed
                     || current_token
                         .as_deref()
-                        .is_some_and(|now| now != sent_token)
+                        .is_some_and(|now| now != sent_token))
+                    && let Some(current_token) = current_token
+                    && let Ok(service) =
+                        serve_claude_ai_proxy_http_with_token(name, proxy_url, current_token).await
                 {
-                    if let Some(current_token) = current_token {
-                        if let Ok(service) =
-                            serve_claude_ai_proxy_http_with_token(name, proxy_url, current_token)
-                                .await
-                        {
-                            return Ok(service);
-                        }
-                    }
+                    return Ok(service);
                 }
                 Err(error)
             }
@@ -2316,27 +2312,26 @@ mod runtime {
         error: &anyhow::Error,
     ) -> Option<(String, Option<String>)> {
         for cause in error.chain() {
-            if let Some(error) = cause.downcast_ref::<StreamableHttpError<reqwest::Error>>() {
-                if let Some(challenge) = streamable_http_challenge_from_error(error) {
-                    return Some(challenge);
-                }
+            if let Some(error) = cause.downcast_ref::<StreamableHttpError<reqwest::Error>>()
+                && let Some(challenge) = streamable_http_challenge_from_error(error)
+            {
+                return Some(challenge);
             }
-            if let Some(error) = cause.downcast_ref::<McpRemoteAuthHttpError>() {
-                if let Some(header) = error.www_authenticate.clone() {
-                    return Some((header.clone(), extract_www_auth_scope_param(&header)));
-                }
+            if let Some(error) = cause.downcast_ref::<McpRemoteAuthHttpError>()
+                && let Some(header) = error.www_authenticate.clone()
+            {
+                return Some((header.clone(), extract_www_auth_scope_param(&header)));
             }
             if let Some(ClientInitializeError::TransportError { error, .. }) =
                 cause.downcast_ref::<ClientInitializeError>()
+                && let Some(challenge) = streamable_http_challenge_from_dynamic_error(error)
             {
-                if let Some(challenge) = streamable_http_challenge_from_dynamic_error(error) {
-                    return Some(challenge);
-                }
+                return Some(challenge);
             }
-            if let Some(ServiceError::TransportSend(error)) = cause.downcast_ref::<ServiceError>() {
-                if let Some(challenge) = streamable_http_challenge_from_dynamic_error(error) {
-                    return Some(challenge);
-                }
+            if let Some(ServiceError::TransportSend(error)) = cause.downcast_ref::<ServiceError>()
+                && let Some(challenge) = streamable_http_challenge_from_dynamic_error(error)
+            {
+                return Some(challenge);
             }
         }
         None
@@ -2349,35 +2344,31 @@ mod runtime {
             {
                 return true;
             }
-            if let Some(error) = cause.downcast_ref::<McpRemoteAuthHttpError>() {
-                if error.status == 403
-                    && error
-                        .www_authenticate
-                        .as_deref()
-                        .is_some_and(|header| header.contains("insufficient_scope"))
-                {
-                    return true;
-                }
+            if let Some(error) = cause.downcast_ref::<McpRemoteAuthHttpError>()
+                && error.status == 403
+                && error
+                    .www_authenticate
+                    .as_deref()
+                    .is_some_and(|header| header.contains("insufficient_scope"))
+            {
+                return true;
             }
             if let Some(ClientInitializeError::TransportError { error, .. }) =
                 cause.downcast_ref::<ClientInitializeError>()
+                && let Some(StreamableHttpError::InsufficientScope(_)) =
+                    error
+                        .error
+                        .downcast_ref::<StreamableHttpError<reqwest::Error>>()
             {
-                if let Some(StreamableHttpError::InsufficientScope(_)) =
-                    error
-                        .error
-                        .downcast_ref::<StreamableHttpError<reqwest::Error>>()
-                {
-                    return true;
-                }
+                return true;
             }
-            if let Some(ServiceError::TransportSend(error)) = cause.downcast_ref::<ServiceError>() {
-                if let Some(StreamableHttpError::InsufficientScope(_)) =
+            if let Some(ServiceError::TransportSend(error)) = cause.downcast_ref::<ServiceError>()
+                && let Some(StreamableHttpError::InsufficientScope(_)) =
                     error
                         .error
                         .downcast_ref::<StreamableHttpError<reqwest::Error>>()
-                {
-                    return true;
-                }
+            {
+                return true;
             }
         }
         false
@@ -2392,8 +2383,7 @@ mod runtime {
     ) -> anyhow::Result<()> {
         if let Some((www_authenticate_header, required_scope)) =
             streamable_http_challenge_from_anyhow(error)
-        {
-            if let Err(record_error) =
+            && let Err(record_error) =
                 crate::services::mcp::auth::record_mcp_www_authenticate_challenge(
                     name,
                     config,
@@ -2402,16 +2392,14 @@ mod runtime {
                     &www_authenticate_header,
                     required_scope.as_deref(),
                 )
+        {
+            if record_error
+                .downcast_ref::<crate::constants::oauth::OAuthCredentialSideEffectsUnavailable>()
+                .is_some()
             {
-                if record_error
-                    .downcast_ref::<crate::constants::oauth::OAuthCredentialSideEffectsUnavailable>(
-                    )
-                    .is_some()
-                {
-                    return Err(record_error);
-                }
-                tracing::debug!(server = name, error = %record_error, "failed to persist MCP WWW-Authenticate challenge");
+                return Err(record_error);
             }
+            tracing::debug!(server = name, error = %record_error, "failed to persist MCP WWW-Authenticate challenge");
         }
         Ok(())
     }
@@ -2505,18 +2493,17 @@ mod runtime {
 
     pub(super) fn is_auth_error(error: &anyhow::Error) -> bool {
         for cause in error.chain() {
-            if let Some(error) = cause.downcast_ref::<McpRemoteAuthHttpError>() {
-                if matches!(error.status, 401 | 403) {
-                    return true;
-                }
+            if let Some(error) = cause.downcast_ref::<McpRemoteAuthHttpError>()
+                && matches!(error.status, 401 | 403)
+            {
+                return true;
             }
-            if let Some(error) = cause.downcast_ref::<reqwest::Error>() {
-                if error
+            if let Some(error) = cause.downcast_ref::<reqwest::Error>()
+                && error
                     .status()
                     .is_some_and(|status| matches!(status.as_u16(), 401 | 403))
-                {
-                    return true;
-                }
+            {
+                return true;
             }
             if matches!(
                 cause.downcast_ref::<StreamableHttpError<reqwest::Error>>(),
@@ -4691,22 +4678,21 @@ rl.on('line', line => {
                     break;
                 }
                 request.extend_from_slice(&chunk[..count]);
-                if expected_length.is_none() {
-                    if let Some(header_end) =
+                if expected_length.is_none()
+                    && let Some(header_end) =
                         request.windows(4).position(|window| window == b"\r\n\r\n")
-                    {
-                        let headers = String::from_utf8_lossy(&request[..header_end]);
-                        let content_length = headers
-                            .lines()
-                            .find_map(|line| {
-                                let (name, value) = line.split_once(':')?;
-                                name.eq_ignore_ascii_case("content-length")
-                                    .then(|| value.trim().parse::<usize>().ok())
-                                    .flatten()
-                            })
-                            .unwrap_or_default();
-                        expected_length = Some(header_end + 4 + content_length);
-                    }
+                {
+                    let headers = String::from_utf8_lossy(&request[..header_end]);
+                    let content_length = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().ok())
+                                .flatten()
+                        })
+                        .unwrap_or_default();
+                    expected_length = Some(header_end + 4 + content_length);
                 }
                 if expected_length.is_some_and(|length| request.len() >= length) {
                     break;

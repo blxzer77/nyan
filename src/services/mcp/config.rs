@@ -342,26 +342,26 @@ fn is_mcp_server_denied_with_settings(
     }
 
     if let Some(config) = config {
-        if let Some(server_command) = scoped_server_command_array(config) {
-            if denied.iter().any(|entry| {
+        if let Some(server_command) = scoped_server_command_array(config)
+            && denied.iter().any(|entry| {
                 entry
                     .server_command
                     .as_ref()
                     .is_some_and(|command| command_arrays_match(command, &server_command))
-            }) {
-                return true;
-            }
+            })
+        {
+            return true;
         }
 
-        if let Some(server_url) = scoped_server_url(config) {
-            if denied.iter().any(|entry| {
+        if let Some(server_url) = scoped_server_url(config)
+            && denied.iter().any(|entry| {
                 entry
                     .server_url
                     .as_ref()
                     .is_some_and(|pattern| url_matches_pattern(server_url, pattern))
-            }) {
-                return true;
-            }
+            })
+        {
+            return true;
         }
     }
 

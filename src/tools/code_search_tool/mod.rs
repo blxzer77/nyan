@@ -213,16 +213,15 @@ impl crate::tool::ToolCall for CodeSearchTool {
                 error_code: 1,
             };
         }
-        if let Some(value) = args.get("max_results") {
-            if value
+        if let Some(value) = args.get("max_results")
+            && value
                 .as_u64()
                 .is_none_or(|value| !(1..=30).contains(&value))
-            {
-                return crate::tool::ValidationResult::Error {
-                    message: "max_results must be between 1 and 30".to_string(),
-                    error_code: 1,
-                };
-            }
+        {
+            return crate::tool::ValidationResult::Error {
+                message: "max_results must be between 1 and 30".to_string(),
+                error_code: 1,
+            };
         }
         crate::tool::ValidationResult::Ok
     }

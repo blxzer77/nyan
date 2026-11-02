@@ -541,15 +541,12 @@ pub fn It2SetupPrompt<'a>(
                     if matches!(
                         current_step,
                         It2SetupStep::Initial | It2SetupStep::InstallFailed | It2SetupStep::Failed
-                    ) {
-                        if let Some(option) = options.get(focused_index.get()) {
-                            if let Some(action) =
-                                It2SetupAction::from_value(&option.value, current_step)
-                            {
-                                pending_action.set(Some(action));
-                                event.stop_propagation();
-                            }
-                        }
+                    ) && let Some(option) = options.get(focused_index.get())
+                        && let Some(action) =
+                            It2SetupAction::from_value(&option.value, current_step)
+                    {
+                        pending_action.set(Some(action));
+                        event.stop_propagation();
                     }
                 }
                 KeyCode::Up | KeyCode::Char('k')

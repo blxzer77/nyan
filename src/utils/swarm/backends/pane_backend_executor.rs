@@ -156,10 +156,11 @@ impl PaneBackendExecutor {
                 }
             };
             let inside_tmux = super::detection::is_inside_tmux().await;
-            if pane.is_first_teammate && inside_tmux {
-                if let Some(backend) = self.tmux_backend.as_ref() {
-                    backend.enable_pane_border_status(None, false).await?;
-                }
+            if pane.is_first_teammate
+                && inside_tmux
+                && let Some(backend) = self.tmux_backend.as_ref()
+            {
+                backend.enable_pane_border_status(None, false).await?;
             }
             let command = build_pane_spawn_command(&config, context, &agent_id, color);
             match self.backend_type {

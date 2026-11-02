@@ -118,10 +118,10 @@ const AGENTS_MEMORY_FILE: &str = "AGENTS.md";
 
 pub fn discover_claude_md_files() -> Vec<ClaudeMdFile> {
     #[cfg(not(test))]
-    if let Ok(cache) = MEMORY_FILES_CACHE.read() {
-        if let Some(files) = cache.as_ref() {
-            return files.clone();
-        }
+    if let Ok(cache) = MEMORY_FILES_CACHE.read()
+        && let Some(files) = cache.as_ref()
+    {
+        return files.clone();
     }
 
     let additional_dirs = crate::bootstrap::state::get_additional_directories_for_claude_md();

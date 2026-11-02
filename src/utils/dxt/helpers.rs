@@ -477,10 +477,10 @@ pub fn generate_extension_id(manifest: &Value, prefix: Option<&str>) -> String {
         let mut output = String::new();
         for c in value.to_lowercase().chars() {
             let c = if whitespace(c) { '-' } else { c };
-            if c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | '.') {
-                if c != '-' || !output.ends_with('-') {
-                    output.push(c);
-                }
+            if (c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | '.'))
+                && (c != '-' || !output.ends_with('-'))
+            {
+                output.push(c);
             }
         }
         output.trim_matches('-').to_owned()

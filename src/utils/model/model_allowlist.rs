@@ -115,10 +115,11 @@ pub fn is_model_allowed(model: &str) -> bool {
     }
 
     for entry in &normalized_allowlist {
-        if !is_model_family_alias(entry) && is_model_alias(entry) {
-            if parse_user_specified_model(entry).to_ascii_lowercase() == normalized_model {
-                return true;
-            }
+        if !is_model_family_alias(entry)
+            && is_model_alias(entry)
+            && parse_user_specified_model(entry).to_ascii_lowercase() == normalized_model
+        {
+            return true;
         }
     }
 

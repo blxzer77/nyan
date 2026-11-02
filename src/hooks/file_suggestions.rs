@@ -50,12 +50,11 @@ static IGNORE_PATTERNS_CACHE: LazyLock<IgnorePatternsCache> = LazyLock::new(|| M
 /// `hasPatterns ? ig : null`, so the caller can skip the filter entirely.
 fn load_ripgrep_ignore_patterns(repo_root: &Path, cwd: &Path) -> Option<Arc<Gitignore>> {
     let cache_key = format!("{}:{}", repo_root.display(), cwd.display());
-    if let Ok(cache) = IGNORE_PATTERNS_CACHE.lock() {
-        if let Some((key, patterns)) = cache.as_ref() {
-            if key == &cache_key {
-                return patterns.clone();
-            }
-        }
+    if let Ok(cache) = IGNORE_PATTERNS_CACHE.lock()
+        && let Some((key, patterns)) = cache.as_ref()
+        && key == &cache_key
+    {
+        return patterns.clone();
     }
 
     // CC `[...new Set([repoRoot, cwd])]` — one pass when the cwd is the root.
@@ -328,10 +327,11 @@ pub fn start_background_cache_refresh() {
 async fn indexed_paths() -> Vec<String> {
     let generation = CACHE_GENERATION.load(Ordering::Acquire);
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    if let Ok(cache) = FILE_CACHE.lock() {
-        if cache.cwd == cwd && cache.loaded_at.is_some_and(|at| at.elapsed() < CACHE_TTL) {
-            return cache.paths.clone();
-        }
+    if let Ok(cache) = FILE_CACHE.lock()
+        && cache.cwd == cwd
+        && cache.loaded_at.is_some_and(|at| at.elapsed() < CACHE_TTL)
+    {
+        return cache.paths.clone();
     }
 
     let settings = get_initial_settings();
@@ -366,12 +366,12 @@ async fn indexed_paths() -> Vec<String> {
     paths.extend(all_files);
     paths.sort();
     paths.dedup();
-    if CACHE_GENERATION.load(Ordering::Acquire) == generation {
-        if let Ok(mut cache) = FILE_CACHE.lock() {
-            cache.cwd = cwd;
-            cache.paths = paths.clone();
-            cache.loaded_at = Some(Instant::now());
-        }
+    if CACHE_GENERATION.load(Ordering::Acquire) == generation
+        && let Ok(mut cache) = FILE_CACHE.lock()
+    {
+        cache.cwd = cwd;
+        cache.paths = paths.clone();
+        cache.loaded_at = Some(Instant::now());
     }
     paths
 }

@@ -148,22 +148,22 @@ fn log_error_impl(error: LogError) -> io::Result<()> {
         .filter(|stack| !stack.is_empty())
         .unwrap_or(&error.message);
     let mut context = String::new();
-    if let Some(axios) = &error.axios {
-        if let Some(url) = axios.url.as_deref().filter(|url| !url.is_empty()) {
-            let mut parts = vec![format!("url={url}")];
-            if let Some(status) = axios.status {
-                parts.push(format!("status={status}"));
-            }
-            if let Some(message) = axios
-                .data
-                .as_ref()
-                .and_then(extract_server_message)
-                .filter(|message| !message.is_empty())
-            {
-                parts.push(format!("body={message}"));
-            }
-            context = format!("[{}] ", parts.join(","));
+    if let Some(axios) = &error.axios
+        && let Some(url) = axios.url.as_deref().filter(|url| !url.is_empty())
+    {
+        let mut parts = vec![format!("url={url}")];
+        if let Some(status) = axios.status {
+            parts.push(format!("status={status}"));
         }
+        if let Some(message) = axios
+            .data
+            .as_ref()
+            .and_then(extract_server_message)
+            .filter(|message| !message.is_empty())
+        {
+            parts.push(format!("body={message}"));
+        }
+        context = format!("[{}] ", parts.join(","));
     }
     log_for_debugging_with_level(
         &format!("{}: {context}{error_str}", error.name),

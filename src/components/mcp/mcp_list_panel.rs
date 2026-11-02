@@ -193,12 +193,11 @@ fn status_icon(status: McpServerConnectionType) -> &'static str {
 }
 
 fn server_status_text(server: &ServerInfo) -> String {
-    if server.official_client_type() == McpServerConnectionType::Pending {
-        if let (Some(attempt), Some(max)) =
+    if server.official_client_type() == McpServerConnectionType::Pending
+        && let (Some(attempt), Some(max)) =
             (server.reconnect_attempt, server.max_reconnect_attempts)
-        {
-            return format!("reconnecting ({attempt}/{max})…");
-        }
+    {
+        return format!("reconnecting ({attempt}/{max})…");
     }
     status_text(server.official_client_type(), None).to_string()
 }

@@ -262,20 +262,18 @@ impl Project {
                     stop_reason,
                     usage,
                 } => {
-                    if let Some(entries) = queues.get_mut(&path) {
-                        if let Some((entry, _)) = entries.iter_mut().rev().find(|(entry, _)| {
+                    if let Some(entries) = queues.get_mut(&path)
+                        && let Some((entry, _)) = entries.iter_mut().rev().find(|(entry, _)| {
                             entry.get("uuid").and_then(serde_json::Value::as_str) == Some(&uuid)
                                 && entry.get("type").and_then(serde_json::Value::as_str)
                                     == Some("assistant")
-                        }) {
-                            if let Some(message) = entry
-                                .get_mut("message")
-                                .and_then(serde_json::Value::as_object_mut)
-                            {
-                                message.insert("stop_reason".to_string(), stop_reason);
-                                message.insert("usage".to_string(), usage);
-                            }
-                        }
+                        })
+                        && let Some(message) = entry
+                            .get_mut("message")
+                            .and_then(serde_json::Value::as_object_mut)
+                    {
+                        message.insert("stop_reason".to_string(), stop_reason);
+                        message.insert("usage".to_string(), usage);
                     }
                 }
                 ProjectWriteCommand::AppendEntryToFile { path, entry, reply } => {
@@ -560,10 +558,10 @@ pub fn remove_transcript_message(
                 .rev()
                 .find(|uuid| loaded.leaf_uuids.contains(*uuid))
                 .cloned();
-            if let Ok(mut meta) = get_project().current_session_meta.write() {
-                if meta.last_message_uuid.as_deref() == Some(target_uuid.as_str()) {
-                    meta.last_message_uuid = parent_uuid;
-                }
+            if let Ok(mut meta) = get_project().current_session_meta.write()
+                && meta.last_message_uuid.as_deref() == Some(target_uuid.as_str())
+            {
+                meta.last_message_uuid = parent_uuid;
             }
         }
         Ok(())
@@ -1059,14 +1057,13 @@ fn agent_transcript_entry_to_message(
                     .unwrap_or(&serde_json::Value::Null),
                 entry.get("isMeta").and_then(|value| value.as_bool()) == Some(true),
             );
-            if let Some(tool_use_result) = entry.get("toolUseResult").cloned() {
-                if let Some(crate::types::message::UserContent::ToolResult(result)) =
+            if let Some(tool_use_result) = entry.get("toolUseResult").cloned()
+                && let Some(crate::types::message::UserContent::ToolResult(result)) =
                     content.iter_mut().find(|content| {
                         matches!(content, crate::types::message::UserContent::ToolResult(_))
                     })
-                {
-                    result.tool_use_result = Some(tool_use_result);
-                }
+            {
+                result.tool_use_result = Some(tool_use_result);
             }
             Some(crate::types::message::Message::User(
                 crate::types::message::UserMessage {
@@ -2417,16 +2414,16 @@ fn process_transcript_load_line(
         return;
     }
 
-    if compact_boundary_marker_is_in_search_bound(line) {
-        if let Some(line_has_preserved_segment) = parse_compact_boundary_line(line) {
-            if line_has_preserved_segment {
-                *has_preserved_segment = true;
-            } else {
-                out.clear();
-                *boundary_start_offset = line_start_offset;
-                *has_preserved_segment = false;
-                *last_attr_snapshot = None;
-            }
+    if compact_boundary_marker_is_in_search_bound(line)
+        && let Some(line_has_preserved_segment) = parse_compact_boundary_line(line)
+    {
+        if line_has_preserved_segment {
+            *has_preserved_segment = true;
+        } else {
+            out.clear();
+            *boundary_start_offset = line_start_offset;
+            *has_preserved_segment = false;
+            *last_attr_snapshot = None;
         }
     }
 
@@ -2654,12 +2651,12 @@ fn find_post_boundary_content(content: &str) -> &str {
             line_end
         };
 
-        if line.contains("compact_boundary") {
-            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
-                if is_compact_boundary(&entry) && extract_preserved_segment(&entry).is_none() {
-                    last_boundary_end = Some(next_start);
-                }
-            }
+        if line.contains("compact_boundary")
+            && let Ok(entry) = serde_json::from_str::<serde_json::Value>(line)
+            && is_compact_boundary(&entry)
+            && extract_preserved_segment(&entry).is_none()
+        {
+            last_boundary_end = Some(next_start);
         }
         byte_offset = next_start;
     }
@@ -2730,15 +2727,15 @@ pub fn load_session_structured_from_path(path: &Path) -> LoadedSession {
                 .get("parentUuid")
                 .and_then(|v| v.as_str())
                 .and_then(|parent_uuid| progress_bridge.get(parent_uuid).cloned());
-            if let Some(parent) = bridged_parent {
-                if let Some(object) = entry.as_object_mut() {
-                    object.insert(
-                        "parentUuid".to_string(),
-                        parent
-                            .map(serde_json::Value::String)
-                            .unwrap_or(serde_json::Value::Null),
-                    );
-                }
+            if let Some(parent) = bridged_parent
+                && let Some(object) = entry.as_object_mut()
+            {
+                object.insert(
+                    "parentUuid".to_string(),
+                    parent
+                        .map(serde_json::Value::String)
+                        .unwrap_or(serde_json::Value::Null),
+                );
             }
         }
 
@@ -3018,15 +3015,15 @@ fn apply_snip_removals(session: &mut LoadedSession) {
         }
 
         let resolved_parent = resolve_snip_parent(&parent_uuid, &to_delete, &mut deleted_parent);
-        if let Some(message) = session.messages.get_mut(&uuid) {
-            if let Some(object) = message.as_object_mut() {
-                object.insert(
-                    "parentUuid".to_string(),
-                    resolved_parent
-                        .map(serde_json::Value::String)
-                        .unwrap_or(serde_json::Value::Null),
-                );
-            }
+        if let Some(message) = session.messages.get_mut(&uuid)
+            && let Some(object) = message.as_object_mut()
+        {
+            object.insert(
+                "parentUuid".to_string(),
+                resolved_parent
+                    .map(serde_json::Value::String)
+                    .unwrap_or(serde_json::Value::Null),
+            );
         }
     }
 
@@ -3265,10 +3262,10 @@ fn recover_orphaned_parallel_tool_results(
                 continue;
             };
             for tool_result_uuid in tool_results {
-                if !seen.contains(tool_result_uuid) {
-                    if let Some(tool_result) = session.messages.get(tool_result_uuid) {
-                        orphaned_tool_results.push(tool_result.clone());
-                    }
+                if !seen.contains(tool_result_uuid)
+                    && let Some(tool_result) = session.messages.get(tool_result_uuid)
+                {
+                    orphaned_tool_results.push(tool_result.clone());
                 }
             }
         }
@@ -3314,10 +3311,10 @@ fn recover_orphaned_parallel_tool_results(
             .and_then(|v| v.as_str())
             .map(String::from);
         result.push(message);
-        if let Some(uuid) = uuid {
-            if let Some(recovered) = inserts.remove(&uuid) {
-                result.extend(recovered);
-            }
+        if let Some(uuid) = uuid
+            && let Some(recovered) = inserts.remove(&uuid)
+        {
+            result.extend(recovered);
         }
     }
     result
@@ -3532,14 +3529,14 @@ pub fn resolve_session_file_path(
         let project_dir = find_project_dir(&canonical);
         if let Some(ref pd) = project_dir {
             let file_path = pd.join(&file_name);
-            if let Ok(meta) = std::fs::metadata(&file_path) {
-                if meta.len() > 0 {
-                    return Some(ResolvedSessionFile {
-                        file_path,
-                        project_path: Some(canonical.clone()),
-                        file_size: meta.len(),
-                    });
-                }
+            if let Ok(meta) = std::fs::metadata(&file_path)
+                && meta.len() > 0
+            {
+                return Some(ResolvedSessionFile {
+                    file_path,
+                    project_path: Some(canonical.clone()),
+                    file_size: meta.len(),
+                });
             }
         }
 
@@ -3554,14 +3551,14 @@ pub fn resolve_session_file_path(
                 continue;
             };
             let file_path = project_dir.join(&file_name);
-            if let Ok(meta) = std::fs::metadata(&file_path) {
-                if meta.len() > 0 {
-                    return Some(ResolvedSessionFile {
-                        file_path,
-                        project_path: Some(worktree_path),
-                        file_size: meta.len(),
-                    });
-                }
+            if let Ok(meta) = std::fs::metadata(&file_path)
+                && meta.len() > 0
+            {
+                return Some(ResolvedSessionFile {
+                    file_path,
+                    project_path: Some(worktree_path),
+                    file_size: meta.len(),
+                });
             }
         }
 
@@ -3578,14 +3575,14 @@ pub fn resolve_session_file_path(
             continue;
         }
         let file_path = entry.path().join(&file_name);
-        if let Ok(meta) = std::fs::metadata(&file_path) {
-            if meta.len() > 0 {
-                return Some(ResolvedSessionFile {
-                    file_path,
-                    project_path: None,
-                    file_size: meta.len(),
-                });
-            }
+        if let Ok(meta) = std::fs::metadata(&file_path)
+            && meta.len() > 0
+        {
+            return Some(ResolvedSessionFile {
+                file_path,
+                project_path: None,
+                file_size: meta.len(),
+            });
         }
     }
 
@@ -4081,11 +4078,10 @@ impl SidechainTranscriptRecorder {
             .parked_assistant
             .as_mut()
             .map(|parked| &mut parked.message)
+            && assistant.uuid == uuid
         {
-            if assistant.uuid == uuid {
-                assistant.stop_reason = stop_reason;
-                assistant.usage = usage;
-            }
+            assistant.stop_reason = stop_reason;
+            assistant.usage = usage;
         }
         self.flush();
     }
@@ -4639,10 +4635,10 @@ fn typed_message_entry(
                 if let Some(origin) = &message.origin {
                     envelope.insert("origin".to_string(), origin.clone());
                 }
-                if let Some(metadata) = &message.summarize_metadata {
-                    if let Ok(value) = serde_json::to_value(metadata) {
-                        envelope.insert("summarizeMetadata".to_string(), value);
-                    }
+                if let Some(metadata) = &message.summarize_metadata
+                    && let Ok(value) = serde_json::to_value(metadata)
+                {
+                    envelope.insert("summarizeMetadata".to_string(), value);
                 }
             }
             Some((entry, entry_uuid))
@@ -4972,10 +4968,10 @@ fn insert_message_chain(
 
         append_entry(project_path, session_id, &entry)?;
 
-        if is_chain_participant(msg) {
-            if let Some(uuid) = msg.get("uuid").and_then(|v| v.as_str()) {
-                parent_uuid = Some(uuid.to_string());
-            }
+        if is_chain_participant(msg)
+            && let Some(uuid) = msg.get("uuid").and_then(|v| v.as_str())
+        {
+            parent_uuid = Some(uuid.to_string());
         }
     }
 
@@ -5053,10 +5049,10 @@ pub fn save_tag(project_path: &str, session_id: &str, tag: &str) -> anyhow::Resu
     });
     let path = active_session_file_path(project_path, session_id);
     append_entry_to_file(&path, &entry)?;
-    if session_id == crate::bootstrap::state::get_session_id() {
-        if let Ok(mut meta) = get_project().current_session_meta.write() {
-            meta.tag = (!tag.is_empty()).then(|| tag.to_string());
-        }
+    if session_id == crate::bootstrap::state::get_session_id()
+        && let Ok(mut meta) = get_project().current_session_meta.write()
+    {
+        meta.tag = (!tag.is_empty()).then(|| tag.to_string());
     }
     Ok(())
 }
@@ -5117,10 +5113,10 @@ pub fn save_agent_color(
             "sessionId": session_id,
         }),
     )?;
-    if session_id == crate::bootstrap::state::get_session_id() {
-        if let Ok(mut meta) = get_project().current_session_meta.write() {
-            meta.agent_color = Some(agent_color.to_string());
-        }
+    if session_id == crate::bootstrap::state::get_session_id()
+        && let Ok(mut meta) = get_project().current_session_meta.write()
+    {
+        meta.agent_color = Some(agent_color.to_string());
     }
     // CC :2853 logEvent('tengu_agent_color_set', {}) is covered by the
     // established analytics exclusion; local persistence/cache remain live.
@@ -5364,12 +5360,12 @@ pub fn link_session_to_pr(
             "timestamp": chrono::Utc::now().to_rfc3339(),
         }),
     )?;
-    if session_id == crate::bootstrap::state::get_session_id() {
-        if let Ok(mut meta) = get_project().current_session_meta.write() {
-            meta.pr_number = Some(pr_number);
-            meta.pr_url = Some(pr_url.to_string());
-            meta.pr_repository = Some(pr_repository.to_string());
-        }
+    if session_id == crate::bootstrap::state::get_session_id()
+        && let Ok(mut meta) = get_project().current_session_meta.write()
+    {
+        meta.pr_number = Some(pr_number);
+        meta.pr_url = Some(pr_url.to_string());
+        meta.pr_repository = Some(pr_repository.to_string());
     }
     Ok(())
 }
@@ -5560,14 +5556,14 @@ fn refresh_cache_from_tail(
         for line in tail_str.lines().rev() {
             // custom-title
             if line.starts_with("{\"type\":\"custom-title\"") {
-                if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
-                    if let Some(title) = entry.get("customTitle").and_then(|v| v.as_str()) {
-                        cache.custom_title = if title.is_empty() {
-                            None
-                        } else {
-                            Some(title.to_string())
-                        };
-                    }
+                if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line)
+                    && let Some(title) = entry.get("customTitle").and_then(|v| v.as_str())
+                {
+                    cache.custom_title = if title.is_empty() {
+                        None
+                    } else {
+                        Some(title.to_string())
+                    };
                 }
                 break;
             }
@@ -5576,14 +5572,14 @@ fn refresh_cache_from_tail(
 
     for line in tail_str.lines().rev() {
         if line.starts_with("{\"type\":\"tag\"") {
-            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(tag) = entry.get("tag").and_then(|v| v.as_str()) {
-                    cache.tag = if tag.is_empty() {
-                        None
-                    } else {
-                        Some(tag.to_string())
-                    };
-                }
+            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line)
+                && let Some(tag) = entry.get("tag").and_then(|v| v.as_str())
+            {
+                cache.tag = if tag.is_empty() {
+                    None
+                } else {
+                    Some(tag.to_string())
+                };
             }
             break;
         }
@@ -5664,13 +5660,13 @@ pub fn apply_preserved_segment_relinks(session: &mut LoadedSession) {
         }
 
         // ── Relink: head.parentUuid = anchorUuid ──
-        if let Some(head_msg) = session.messages.get_mut(&seg.head_uuid) {
-            if let Some(obj) = head_msg.as_object_mut() {
-                obj.insert(
-                    "parentUuid".to_string(),
-                    serde_json::Value::String(seg.anchor_uuid.clone()),
-                );
-            }
+        if let Some(head_msg) = session.messages.get_mut(&seg.head_uuid)
+            && let Some(obj) = head_msg.as_object_mut()
+        {
+            obj.insert(
+                "parentUuid".to_string(),
+                serde_json::Value::String(seg.anchor_uuid.clone()),
+            );
         }
 
         let uuids_to_reparent: Vec<String> = session
@@ -5684,13 +5680,13 @@ pub fn apply_preserved_segment_relinks(session: &mut LoadedSession) {
             .collect();
 
         for uuid in &uuids_to_reparent {
-            if let Some(msg) = session.messages.get_mut(uuid) {
-                if let Some(obj) = msg.as_object_mut() {
-                    obj.insert(
-                        "parentUuid".to_string(),
-                        serde_json::Value::String(seg.tail_uuid.clone()),
-                    );
-                }
+            if let Some(msg) = session.messages.get_mut(uuid)
+                && let Some(obj) = msg.as_object_mut()
+            {
+                obj.insert(
+                    "parentUuid".to_string(),
+                    serde_json::Value::String(seg.tail_uuid.clone()),
+                );
             }
         }
 
@@ -5701,16 +5697,16 @@ pub fn apply_preserved_segment_relinks(session: &mut LoadedSession) {
             if msg.get("type").and_then(|v| v.as_str()) != Some("assistant") {
                 continue;
             }
-            if let Some(obj) = msg.as_object_mut() {
-                if let Some(message_obj) = obj.get_mut("message").and_then(|m| m.as_object_mut()) {
-                    let zeroed_usage = serde_json::json!({
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cache_creation_input_tokens": 0,
-                        "cache_read_input_tokens": 0,
-                    });
-                    message_obj.insert("usage".to_string(), zeroed_usage);
-                }
+            if let Some(obj) = msg.as_object_mut()
+                && let Some(message_obj) = obj.get_mut("message").and_then(|m| m.as_object_mut())
+            {
+                let zeroed_usage = serde_json::json!({
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                });
+                message_obj.insert("usage".to_string(), zeroed_usage);
             }
         }
     }

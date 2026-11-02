@@ -230,10 +230,10 @@ pub fn truncate_to_lines(input: &str, max_lines: usize) -> String {
         };
         out.push(line.to_string());
     }
-    if lines.next().is_some() {
-        if let Some(last) = out.last_mut() {
-            last.push('…');
-        }
+    if lines.next().is_some()
+        && let Some(last) = out.last_mut()
+    {
+        last.push('…');
     }
     out.join("\n")
 }

@@ -107,11 +107,11 @@ pub fn get_assistant_message_content_length(message: &AssistantMessage) -> usize
 pub fn token_count_with_estimation(messages: &[Message]) -> i64 {
     let mut anchor: Option<(usize, &TokenUsage)> = None;
     for (index, message) in messages.iter().enumerate().rev() {
-        if let Message::Assistant(assistant) = message {
-            if let Some(usage) = assistant.usage.as_ref() {
-                anchor = Some((index, usage));
-                break;
-            }
+        if let Message::Assistant(assistant) = message
+            && let Some(usage) = assistant.usage.as_ref()
+        {
+            anchor = Some((index, usage));
+            break;
         }
     }
 

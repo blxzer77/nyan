@@ -355,13 +355,14 @@ pub(crate) fn validate_edit_input(
     {
         return Err(validation_error(error.to_string(), 0));
     }
-    if context.agent_id.is_some() && full_path == crate::memdir::paths::get_auto_mem_entrypoint() {
-        if let Err(error) = crate::memdir::memdir::validate_agent_memory_index_update(
+    if context.agent_id.is_some()
+        && full_path == crate::memdir::paths::get_auto_mem_entrypoint()
+        && let Err(error) = crate::memdir::memdir::validate_agent_memory_index_update(
             &file_content,
             &updated_settings,
-        ) {
-            return Err(validation_error(error, 0));
-        }
+        )
+    {
+        return Err(validation_error(error, 0));
     }
 
     Ok(EditValidationOk {
@@ -697,20 +698,20 @@ impl crate::tool::ToolCall for FileEditTool {
                 return edit_error(error.to_string(), dynamic_skill_dirs);
             }
 
-            if crate::utils::file_history::file_history_enabled() {
-                if let Some(store) = context.app_store.store.as_ref() {
-                    crate::utils::file_history::file_history_track_edit(
-                        store,
-                        &full_path.display().to_string(),
-                        // The ENVELOPE uuid — CC passes `parentMessage.uuid`
-                        // (`FileWriteTool.ts:261`), which is what
-                        // `fileHistoryRewind` matches on (`fileHistory.ts:367`).
-                        parent_message
-                            .map(|message| message.uuid.as_str())
-                            .unwrap_or_default(),
-                    )
-                    .await;
-                }
+            if crate::utils::file_history::file_history_enabled()
+                && let Some(store) = context.app_store.store.as_ref()
+            {
+                crate::utils::file_history::file_history_track_edit(
+                    store,
+                    &full_path.display().to_string(),
+                    // The ENVELOPE uuid — CC passes `parentMessage.uuid`
+                    // (`FileWriteTool.ts:261`), which is what
+                    // `fileHistoryRewind` matches on (`fileHistory.ts:367`).
+                    parent_message
+                        .map(|message| message.uuid.as_str())
+                        .unwrap_or_default(),
+                )
+                .await;
             }
 
             // Final await above. Do not yield between this re-resolution,
@@ -771,13 +772,12 @@ impl crate::tool::ToolCall for FileEditTool {
 
             if context.agent_id.is_some()
                 && full_path == crate::memdir::paths::get_auto_mem_entrypoint()
-            {
-                if let Err(error) = crate::memdir::memdir::validate_agent_memory_index_update(
+                && let Err(error) = crate::memdir::memdir::validate_agent_memory_index_update(
                     &original_file,
                     &updated_file,
-                ) {
-                    return edit_error(error, dynamic_skill_dirs);
-                }
+                )
+            {
+                return edit_error(error, dynamic_skill_dirs);
             }
             if let Err(error) =
                 crate::memdir::write_guard::check_memory_content(&full_path, &updated_file)

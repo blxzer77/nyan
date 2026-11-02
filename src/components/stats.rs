@@ -1051,11 +1051,11 @@ fn stats_styled_line(line: &str, chart: bool, theme: Theme) -> AnyElement<'stati
             CHART_TONE_RESET => None,
             _ => {
                 let tone = forced_tone.unwrap_or_else(|| stats_glyph_tone(character, chart));
-                if let Some((last_tone, text)) = runs.last_mut() {
-                    if *last_tone == tone {
-                        text.push(character);
-                        continue;
-                    }
+                if let Some((last_tone, text)) = runs.last_mut()
+                    && *last_tone == tone
+                {
+                    text.push(character);
+                    continue;
                 }
                 runs.push((tone, character.to_string()));
                 forced_tone

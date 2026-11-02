@@ -301,10 +301,10 @@ pub fn remove_dangerous_permissions(
 ) -> ToolPermissionContext {
     let mut updated = context.clone();
     for permission in dangerous_permissions {
-        if is_permission_update_destination(permission.source) {
-            if let Some(rules) = updated.always_allow_rules.get_mut(&permission.source) {
-                rules.retain(|rule| rule != &permission.rule_value);
-            }
+        if is_permission_update_destination(permission.source)
+            && let Some(rules) = updated.always_allow_rules.get_mut(&permission.source)
+        {
+            rules.retain(|rule| rule != &permission.rule_value);
         }
     }
     updated

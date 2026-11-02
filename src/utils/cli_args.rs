@@ -91,12 +91,12 @@ where
             index += 1;
             continue;
         }
-        if arg == flag_name {
-            if let Some(value) = args.get(index + 1).filter(|value| !value.starts_with('-')) {
-                values.push(value.clone());
-                index += 2;
-                continue;
-            }
+        if arg == flag_name
+            && let Some(value) = args.get(index + 1).filter(|value| !value.starts_with('-'))
+        {
+            values.push(value.clone());
+            index += 2;
+            continue;
         }
         index += 1;
     }

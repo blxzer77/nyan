@@ -214,10 +214,10 @@ impl ProcessEnv {
     fn capture_from(variables: impl IntoIterator<Item = (OsString, OsString)>) -> Self {
         let mut table = EnvTable::default();
         for (key, value) in variables {
-            if let Some((key, value)) = normalize_assignment(&key, &value) {
-                if table.position(&key).is_none() {
-                    table.insert(key, value);
-                }
+            if let Some((key, value)) = normalize_assignment(&key, &value)
+                && table.position(&key).is_none()
+            {
+                table.insert(key, value);
             }
         }
         let startup = Arc::new(table);

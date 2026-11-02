@@ -223,18 +223,18 @@ static ORIGINAL_CWD: LazyLock<RwLock<PathBuf>> = LazyLock::new(|| {
     // CLAUDE_CONFIG_DIR.
 
     #[cfg(test)]
-    if let Some(pinned) = crate::utils::process_env::var("NYAN_TEST_PROJECT_DIR") {
-        if !pinned.is_empty() {
-            let pinned = PathBuf::from(pinned);
-            return RwLock::new(PathBuf::from(
-                pinned
-                    .canonicalize()
-                    .unwrap_or(pinned)
-                    .to_string_lossy()
-                    .nfc()
-                    .collect::<String>(),
-            ));
-        }
+    if let Some(pinned) = crate::utils::process_env::var("NYAN_TEST_PROJECT_DIR")
+        && !pinned.is_empty()
+    {
+        let pinned = PathBuf::from(pinned);
+        return RwLock::new(PathBuf::from(
+            pinned
+                .canonicalize()
+                .unwrap_or(pinned)
+                .to_string_lossy()
+                .nfc()
+                .collect::<String>(),
+        ));
     }
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     // CC bootstrap/state.ts:271-274 normalizes both realpath and fallback cwd.
@@ -617,10 +617,8 @@ pub fn get_session_project_dir() -> Option<PathBuf> {
 /// previous id as `parentSessionId` for analytics lineage.
 pub fn regenerate_session_id(set_current_as_parent: bool) -> String {
     let previous = get_session_id();
-    if set_current_as_parent {
-        if let Ok(mut slot) = PARENT_SESSION_ID.write() {
-            *slot = Some(previous.clone());
-        }
+    if set_current_as_parent && let Ok(mut slot) = PARENT_SESSION_ID.write() {
+        *slot = Some(previous.clone());
     }
     crate::utils::plans::clear_plan_slug(Some(&previous));
     let next = uuid::Uuid::new_v4().to_string();
@@ -1037,15 +1035,15 @@ pub fn clear_registered_hooks() {
 /// Maps to: CC `bootstrap/state.ts:1446-1462#clearRegisteredPluginHooks`.
 pub fn clear_registered_plugin_hooks() {
     let _turn = crate::state::store::enter_store_turn_segment();
-    if let Ok(mut slot) = REGISTERED_HOOKS.write() {
-        if let Some(current) = slot.as_mut() {
-            current.retain(|_, matchers| {
-                matchers.retain(|matcher| matcher.plugin_root.is_none());
-                !matchers.is_empty()
-            });
-            if current.is_empty() {
-                *slot = None;
-            }
+    if let Ok(mut slot) = REGISTERED_HOOKS.write()
+        && let Some(current) = slot.as_mut()
+    {
+        current.retain(|_, matchers| {
+            matchers.retain(|matcher| matcher.plugin_root.is_none());
+            !matchers.is_empty()
+        });
+        if current.is_empty() {
+            *slot = None;
         }
     }
 }

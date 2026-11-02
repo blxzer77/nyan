@@ -55,10 +55,10 @@ impl Hook for RemoteOAuthAbortCleanup {}
 
 impl Drop for RemoteOAuthAbortCleanup {
     fn drop(&mut self) {
-        if let Ok(mut handle) = self.handle.lock() {
-            if let Some(handle) = handle.take() {
-                handle.abort();
-            }
+        if let Ok(mut handle) = self.handle.lock()
+            && let Some(handle) = handle.take()
+        {
+            handle.abort();
         }
     }
 }
@@ -515,11 +515,11 @@ pub fn MCPRemoteServerMenu<'a>(
                 // handler lifetime is the source unmountedRef guard: disposal
                 // drops this continuation and its timeout before either runs.
                 let raw = copy.await.expect("clipboard process task panicked");
-                if !raw.is_empty() {
-                    if let Err(error) = stdout.write_control_sequence_and_wait(raw).await {
-                        crate::utils::debug::log_for_debugging(&error.to_string());
-                        return;
-                    }
+                if !raw.is_empty()
+                    && let Err(error) = stdout.write_control_sequence_and_wait(raw).await
+                {
+                    crate::utils::debug::log_for_debugging(&error.to_string());
+                    return;
                 }
                 url_copied.set(true);
                 let generation = copy_timeout_generation.get().wrapping_add(1);
@@ -571,11 +571,11 @@ pub fn MCPRemoteServerMenu<'a>(
                             event.stop_propagation();
                         }
                         KeyCode::Char('c') if !url_copied.get() => {
-                            if manual_callback_submit.read().is_none() {
-                                if let Some(url) = { authorization_url.read().clone() } {
-                                    copy_url_action_for_events(url);
-                                    event.stop_propagation();
-                                }
+                            if manual_callback_submit.read().is_none()
+                                && let Some(url) = { authorization_url.read().clone() }
+                            {
+                                copy_url_action_for_events(url);
+                                event.stop_propagation();
                             }
                         }
                         KeyCode::Esc => {

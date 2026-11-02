@@ -466,13 +466,12 @@ fn debug_filter_from_argv(argv: &[String]) -> Option<&str> {
         if let Some(value) = arg.strip_prefix("--debug=") {
             return (!value.is_empty()).then_some(value);
         }
-        if arg == "--debug" || arg == "-d" {
-            if let Some(next) = argv.get(index + 1) {
-                if !next.starts_with('-') {
-                    // Commander `-d [filter]`: next non-flag token is filter.
-                    return Some(next.as_str());
-                }
-            }
+        if (arg == "--debug" || arg == "-d")
+            && let Some(next) = argv.get(index + 1)
+            && !next.starts_with('-')
+        {
+            // Commander `-d [filter]`: next non-flag token is filter.
+            return Some(next.as_str());
         }
     }
     None

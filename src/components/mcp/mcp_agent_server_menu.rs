@@ -40,10 +40,10 @@ impl Hook for AgentOAuthAbortCleanup {}
 
 impl Drop for AgentOAuthAbortCleanup {
     fn drop(&mut self) {
-        if let Ok(mut handle) = self.handle.lock() {
-            if let Some(handle) = handle.take() {
-                handle.abort();
-            }
+        if let Ok(mut handle) = self.handle.lock()
+            && let Some(handle) = handle.take()
+        {
+            handle.abort();
         }
     }
 }

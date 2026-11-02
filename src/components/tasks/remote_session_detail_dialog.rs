@@ -63,24 +63,23 @@ pub fn format_tool_use_summary(name: &str, input: &serde_json::Value) -> String 
     let Some(object) = input.as_object() else {
         return name.to_string();
     };
-    if name == crate::tools::ask_user_question_tool::prompt::ASK_USER_QUESTION_TOOL_NAME {
-        if let Some(first) = object
+    if name == crate::tools::ask_user_question_tool::prompt::ASK_USER_QUESTION_TOOL_NAME
+        && let Some(first) = object
             .get("questions")
             .and_then(|value| value.as_array())
             .and_then(|values| values.first())
             .and_then(|value| value.as_object())
-        {
-            let question = first
-                .get("question")
-                .and_then(|value| value.as_str())
-                .filter(|value| !value.is_empty())
-                .or_else(|| first.get("header").and_then(|value| value.as_str()));
-            if let Some(question) = question {
-                return format!(
-                    "Answer in browser: {}",
-                    truncate_to_width(&collapse_whitespace(question), 50)
-                );
-            }
+    {
+        let question = first
+            .get("question")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .or_else(|| first.get("header").and_then(|value| value.as_str()));
+        if let Some(question) = question {
+            return format!(
+                "Answer in browser: {}",
+                truncate_to_width(&collapse_whitespace(question), 50)
+            );
         }
     }
     object

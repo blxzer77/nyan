@@ -161,15 +161,13 @@ pub async fn fetch_git_diff_from(cwd: &Path) -> Option<GitDiffResult> {
 
     if let Some((0, shortstat)) =
         git_output(cwd, &["--no-optional-locks", "diff", "HEAD", "--shortstat"]).await
+        && let Some(stats) = parse_shortstat(&shortstat)
+        && stats.files_count > MAX_FILES_FOR_DETAILS
     {
-        if let Some(stats) = parse_shortstat(&shortstat) {
-            if stats.files_count > MAX_FILES_FOR_DETAILS {
-                return Some(GitDiffResult {
-                    stats,
-                    ..GitDiffResult::default()
-                });
-            }
-        }
+        return Some(GitDiffResult {
+            stats,
+            ..GitDiffResult::default()
+        });
     }
 
     let (code, numstat) =
@@ -183,11 +181,11 @@ pub async fn fetch_git_diff_from(cwd: &Path) -> Option<GitDiffResult> {
     } = parse_git_numstat(&numstat);
 
     let remaining_slots = MAX_FILES.saturating_sub(per_file_stats.len());
-    if remaining_slots > 0 {
-        if let Some(untracked) = fetch_untracked_files(cwd, remaining_slots).await {
-            stats.files_count += untracked.len();
-            per_file_stats.extend(untracked);
-        }
+    if remaining_slots > 0
+        && let Some(untracked) = fetch_untracked_files(cwd, remaining_slots).await
+    {
+        stats.files_count += untracked.len();
+        per_file_stats.extend(untracked);
     }
 
     Some(GitDiffResult {
@@ -330,16 +328,15 @@ pub fn parse_git_diff(stdout: &str) -> BTreeMap<String, Vec<StructuredDiffHunk>>
             if is_diff_metadata(line) {
                 continue;
             }
-            if let Some(hunk) = current_hunk.as_mut() {
-                if line_count < MAX_LINES_PER_FILE
-                    && (line.starts_with('+')
-                        || line.starts_with('-')
-                        || line.starts_with(' ')
-                        || line.is_empty())
-                {
-                    hunk.lines.push(line.to_string());
-                    line_count += 1;
-                }
+            if let Some(hunk) = current_hunk.as_mut()
+                && line_count < MAX_LINES_PER_FILE
+                && (line.starts_with('+')
+                    || line.starts_with('-')
+                    || line.starts_with(' ')
+                    || line.is_empty())
+            {
+                hunk.lines.push(line.to_string());
+                line_count += 1;
             }
         }
         if let Some(hunk) = current_hunk {

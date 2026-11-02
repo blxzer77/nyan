@@ -406,11 +406,10 @@ fn memory_activity_since(memory_dir: &Path, since_ms: u64) -> (Option<u64>, usiz
             } else if file_type.is_file()
                 && path.extension().and_then(|extension| extension.to_str()) == Some("md")
                 && path.file_name().and_then(|name| name.to_str()) != Some("MEMORY.md")
+                && let Some(mtime) = mtime_ms(&path).filter(|mtime| *mtime > since_ms)
             {
-                if let Some(mtime) = mtime_ms(&path).filter(|mtime| *mtime > since_ms) {
-                    *count += 1;
-                    *newest = Some(newest.map_or(mtime, |current| current.max(mtime)));
-                }
+                *count += 1;
+                *newest = Some(newest.map_or(mtime, |current| current.max(mtime)));
             }
         }
     }

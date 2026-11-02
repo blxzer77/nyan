@@ -758,11 +758,11 @@ fn grep_output_with_context(
             let mut total_matches = 0.0_f64;
             let mut file_count = 0usize;
             for line in &final_count_lines {
-                if let Some((_, count_str)) = line.rsplit_once(':') {
-                    if let Some(count) = javascript_parse_int_base10(count_str) {
-                        total_matches += count;
-                        file_count += 1;
-                    }
+                if let Some((_, count_str)) = line.rsplit_once(':')
+                    && let Some(count) = javascript_parse_int_base10(count_str)
+                {
+                    total_matches += count;
+                    file_count += 1;
                 }
             }
             let completion_note = tool_io.completion_notes.then(|| {

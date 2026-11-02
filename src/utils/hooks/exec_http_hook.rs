@@ -292,15 +292,16 @@ pub async fn exec_http_hook_with_policy(
     // resolves the target, and a corporate proxy on a private IP must not be
     // blocked. Nyan checks the target before connecting, where CC guards
     // the connection's DNS lookup.
-    if sandbox_proxy.is_none() && !env_proxy_active {
-        if let Err(error) = validate_ssrf_preflight(&url) {
-            return ExecHttpHookResult {
-                ok: false,
-                body: String::new(),
-                error: Some(error),
-                ..Default::default()
-            };
-        }
+    if sandbox_proxy.is_none()
+        && !env_proxy_active
+        && let Err(error) = validate_ssrf_preflight(&url)
+    {
+        return ExecHttpHookResult {
+            ok: false,
+            body: String::new(),
+            error: Some(error),
+            ..Default::default()
+        };
     }
 
     let headers =

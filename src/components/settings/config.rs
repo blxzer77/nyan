@@ -3029,10 +3029,10 @@ mod tests {
                 if !text.contains(&format!("keys={sent} ")) {
                     continue;
                 }
-                if let Some((Some(marker), _)) = batches.get(batch) {
-                    if !text.contains(marker) {
-                        continue;
-                    }
+                if let Some((Some(marker), _)) = batches.get(batch)
+                    && !text.contains(marker)
+                {
+                    continue;
                 }
                 canvases.push(canvas);
                 let Some((_, next)) = batches.get(batch) else {
@@ -3681,17 +3681,15 @@ mod tests {
         // Observe events only after the real Config child has had its turn.
         // No app:interrupt handler is registered: source Settings owns C/D.
         hooks.use_propagated_terminal_events(move |event| {
-            if let TerminalEvent::Key(key) = event.event() {
-                if key.kind != KeyEventKind::Release
-                    && key.modifiers.contains(KeyModifiers::CONTROL)
-                {
-                    if let KeyCode::Char(c @ ('c' | 'd')) = key.code {
-                        let mut next = forwarded.read().clone();
-                        next.push(c);
-                        forwarded.set(next);
-                        event.stop_propagation();
-                    }
-                }
+            if let TerminalEvent::Key(key) = event.event()
+                && key.kind != KeyEventKind::Release
+                && key.modifiers.contains(KeyModifiers::CONTROL)
+                && let KeyCode::Char(c @ ('c' | 'd')) = key.code
+            {
+                let mut next = forwarded.read().clone();
+                next.push(c);
+                forwarded.set(next);
+                event.stop_propagation();
             }
         });
         element! {

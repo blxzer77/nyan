@@ -179,29 +179,29 @@ pub fn PluginOptionsDialog(
     if let Some(confirm) = pending.get() {
         pending.set(None);
         let index = current_field_index.get();
-        if let Some(field) = fields.get(index).filter(|field| !field.is_empty()) {
-            if confirm || index + 1 < fields.len() {
-                let mut collected = values.read().clone();
-                collected.insert(
-                    field.clone(),
-                    String::from_utf16_lossy(&current_input.read()),
+        if let Some(field) = fields.get(index).filter(|field| !field.is_empty())
+            && (confirm || index + 1 < fields.len())
+        {
+            let mut collected = values.read().clone();
+            collected.insert(
+                field.clone(),
+                String::from_utf16_lossy(&current_input.read()),
+            );
+            if confirm && index + 1 == fields.len() {
+                (props.on_save)(build_final_values(
+                    &fields,
+                    &collected,
+                    &props.config_schema,
+                    props.initial_values.as_ref(),
+                ));
+            } else {
+                values.set(collected);
+                current_field_index.set(index + 1);
+                current_input.set(
+                    fields
+                        .get(index + 1)
+                        .map_or_else(Vec::new, |k| initial_for(k)),
                 );
-                if confirm && index + 1 == fields.len() {
-                    (props.on_save)(build_final_values(
-                        &fields,
-                        &collected,
-                        &props.config_schema,
-                        props.initial_values.as_ref(),
-                    ));
-                } else {
-                    values.set(collected);
-                    current_field_index.set(index + 1);
-                    current_input.set(
-                        fields
-                            .get(index + 1)
-                            .map_or_else(Vec::new, |k| initial_for(k)),
-                    );
-                }
             }
         }
     }

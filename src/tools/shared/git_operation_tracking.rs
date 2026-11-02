@@ -144,19 +144,19 @@ pub fn detect_git_operation(command: &str, output: &str) -> DetectedGitOperation
     let mut result = DetectedGitOperation::default();
     let commit = GIT_COMMIT_RE.is_match(command);
     let cherry_pick = GIT_CHERRY_PICK_RE.is_match(command);
-    if commit || cherry_pick {
-        if let Some(sha) = parse_git_commit_id(output) {
-            result.commit = Some(GitCommitSummary {
-                sha: sha.chars().take(6).collect(),
-                kind: if cherry_pick {
-                    CommitKind::CherryPicked
-                } else if GIT_AMEND_RE.is_match(command) {
-                    CommitKind::Amended
-                } else {
-                    CommitKind::Committed
-                },
-            });
-        }
+    if (commit || cherry_pick)
+        && let Some(sha) = parse_git_commit_id(output)
+    {
+        result.commit = Some(GitCommitSummary {
+            sha: sha.chars().take(6).collect(),
+            kind: if cherry_pick {
+                CommitKind::CherryPicked
+            } else if GIT_AMEND_RE.is_match(command) {
+                CommitKind::Amended
+            } else {
+                CommitKind::Committed
+            },
+        });
     }
 
     if GIT_PUSH_RE.is_match(command) {

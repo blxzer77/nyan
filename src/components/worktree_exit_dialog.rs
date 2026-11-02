@@ -132,10 +132,10 @@ pub fn WorktreeExitDialog<'a>(
                         .set((focused_index.get() + 1).min(options.len().saturating_sub(1)));
                 }
                 KeyCode::Enter => {
-                    if let Some(option) = options.get(focused_index.get()) {
-                        if let Some(action) = worktree_exit_action_from_value(&option.value) {
-                            pending_action.set(Some(action));
-                        }
+                    if let Some(option) = options.get(focused_index.get())
+                        && let Some(action) = worktree_exit_action_from_value(&option.value)
+                    {
+                        pending_action.set(Some(action));
                     }
                 }
                 _ => {}

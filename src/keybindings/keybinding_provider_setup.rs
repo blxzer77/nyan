@@ -196,10 +196,10 @@ fn use_chord_interceptor(hooks: &mut Hooks, runtime: &KeybindingRuntime) {
     hooks.use_terminal_events({
         let runtime = runtime.clone();
         move |event| {
-            if let TerminalEvent::Key(key_event) = &event {
-                if let Some(keystroke) = key_event_to_keystroke(key_event) {
-                    runtime.observe_keystroke(&keystroke);
-                }
+            if let TerminalEvent::Key(key_event) = &event
+                && let Some(keystroke) = key_event_to_keystroke(key_event)
+            {
+                runtime.observe_keystroke(&keystroke);
             }
         }
     });

@@ -79,21 +79,21 @@ impl Walker<'_> {
                 .get_or_insert_with(|| format!("syntax tree deeper than {MAX_DEPTH} levels"));
             return;
         }
-        if let Some((kind, name_node)) = definition(self.language, node, self.src) {
-            if let Some(name) = self.text_of(name_node) {
-                self.definition_names.insert(name_node.id());
-                self.out.symbols.push(SymbolRecord {
-                    name: name.clone(),
-                    kind: kind.to_string(),
-                    start_line: node.start_position().row + 1,
-                    end_line: end_line(node),
-                    parent: self.stack.last().map(|(parent, _)| parent.clone()),
-                });
-                self.stack.push((name, kind));
-                self.visit_children(node, depth);
-                self.stack.pop();
-                return;
-            }
+        if let Some((kind, name_node)) = definition(self.language, node, self.src)
+            && let Some(name) = self.text_of(name_node)
+        {
+            self.definition_names.insert(name_node.id());
+            self.out.symbols.push(SymbolRecord {
+                name: name.clone(),
+                kind: kind.to_string(),
+                start_line: node.start_position().row + 1,
+                end_line: end_line(node),
+                parent: self.stack.last().map(|(parent, _)| parent.clone()),
+            });
+            self.stack.push((name, kind));
+            self.visit_children(node, depth);
+            self.stack.pop();
+            return;
         }
         self.record_reference(node);
         self.visit_children(node, depth);

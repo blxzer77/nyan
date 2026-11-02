@@ -415,12 +415,12 @@ fn extract_find_paths(args: &[String]) -> Vec<String> {
                 continue;
             }
             found_non_global_flag = true;
-            if path_flags.contains(&arg.as_str()) || is_newer_variant(arg) {
-                if let Some(next) = args.get(index + 1) {
-                    paths.push(next.clone());
-                    index += 2;
-                    continue;
-                }
+            if (path_flags.contains(&arg.as_str()) || is_newer_variant(arg))
+                && let Some(next) = args.get(index + 1)
+            {
+                paths.push(next.clone());
+                index += 2;
+                continue;
             }
             index += 1;
             continue;

@@ -495,10 +495,9 @@ mod tests {
                 kind,
                 ..
             }) = event
+                && kind != KeyEventKind::Release
             {
-                if kind != KeyEventKind::Release {
-                    search.handle_edit_key(&code, &modifiers);
-                }
+                search.handle_edit_key(&code, &modifiers);
             }
         });
         element! { Text(content: format!("{}|{}", search.text().replace('\n', "↵"), search.offset())) }

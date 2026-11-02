@@ -1242,12 +1242,10 @@ impl anthropic_sdk::HttpMiddleware for ResolvedFetch {
         Box::pin(async move {
             if self.inject_client_request_id
                 && !request.headers().contains_key(CLIENT_REQUEST_ID_HEADER)
-            {
-                if let Ok(id) =
+                && let Ok(id) =
                     reqwest::header::HeaderValue::from_str(&uuid::Uuid::new_v4().to_string())
-                {
-                    request.headers_mut().insert(CLIENT_REQUEST_ID_HEADER, id);
-                }
+            {
+                request.headers_mut().insert(CLIENT_REQUEST_ID_HEADER, id);
             }
             // `headers.get` is a ByteString (one char per byte); `id ? ... : ''`
             // omits an empty preset.

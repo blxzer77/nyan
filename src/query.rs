@@ -696,10 +696,9 @@ async fn maybe_make_file_history_snapshot(params: &QueryParams) {
     if matches!(params.query_source, QuerySource::Prompt)
         && crate::utils::env_utils::is_nyan_write_enabled()
         && crate::utils::file_history::file_history_enabled()
+        && let Some(store) = params.tool_use_context.app_store.store.as_ref()
     {
-        if let Some(store) = params.tool_use_context.app_store.store.as_ref() {
-            crate::utils::file_history::file_history_make_snapshot(store, &params.turn_id).await;
-        }
+        crate::utils::file_history::file_history_make_snapshot(store, &params.turn_id).await;
     }
 }
 
@@ -1012,16 +1011,14 @@ where
             crate::services::compact::micro_compact::PendingCacheEdits,
         > = None;
 
-        if content_replacement_state_changed {
-            if let Some(state) = content_replacement_state.clone() {
-                if event_tx
-                    .send(QueryEvent::ContentReplacementStateUpdate(state))
-                    .await
-                    .is_err()
-                {
-                    return Ok(transitions::Terminal::new("aborted_streaming"));
-                }
-            }
+        if content_replacement_state_changed
+            && let Some(state) = content_replacement_state.clone()
+            && event_tx
+                .send(QueryEvent::ContentReplacementStateUpdate(state))
+                .await
+                .is_err()
+        {
+            return Ok(transitions::Terminal::new("aborted_streaming"));
         }
 
         if !retrying_model_fallback {
@@ -1367,25 +1364,25 @@ where
                     {
                         return Ok(transitions::Terminal::new("aborted_streaming"));
                     }
-                    if !fallback_retry_used {
-                        if let Some(fallback) = model_fallback_from_error(&error) {
-                            fallback_retry_used = true;
-                            messages_for_query =
-                                strip_signature_blocks_for_model_fallback_retry(messages_for_query);
-                            current_model_override = Some(fallback.fallback_model.clone());
-                            if event_tx
-                                .send(QueryEvent::Message(model_fallback_warning_message(
-                                    &params.turn_id,
-                                    &fallback.original_model,
-                                    &fallback.fallback_model,
-                                )))
-                                .await
-                                .is_err()
-                            {
-                                return Ok(transitions::Terminal::new("aborted_streaming"));
-                            }
-                            continue;
+                    if !fallback_retry_used
+                        && let Some(fallback) = model_fallback_from_error(&error)
+                    {
+                        fallback_retry_used = true;
+                        messages_for_query =
+                            strip_signature_blocks_for_model_fallback_retry(messages_for_query);
+                        current_model_override = Some(fallback.fallback_model.clone());
+                        if event_tx
+                            .send(QueryEvent::Message(model_fallback_warning_message(
+                                &params.turn_id,
+                                &fallback.original_model,
+                                &fallback.fallback_model,
+                            )))
+                            .await
+                            .is_err()
+                        {
+                            return Ok(transitions::Terminal::new("aborted_streaming"));
                         }
+                        continue;
                     }
                     return Ok(yield_query_model_error(&event_tx, &params, &error, &[]).await);
                 }
@@ -1511,8 +1508,7 @@ where
                                                 "",
                                                 "",
                                             )
-                                        {
-                                            if event_tx
+                                            && event_tx
                                                 .send(QueryEvent::ModelMessage(Message::Assistant(
                                                     history_partial,
                                                 )))
@@ -1521,7 +1517,6 @@ where
                                             {
                                                 return Ok(transitions::Terminal::new("aborted_streaming"));
                                             }
-                                        }
                                         if let Some(executor) = streaming_tool_executor.as_mut() {
                                             // Maps to CC `query.ts` abort branch consuming
                                             // `streamingToolExecutor.getRemainingResults()`
@@ -1555,19 +1550,17 @@ where
                                                 {
                                                     return Ok(transitions::Terminal::new("aborted_streaming"));
                                                 }
-                                                if let Some(progress) = update.progress {
-                                                    if event_tx.send(QueryEvent::ToolProgress(progress)).await.is_err() {
+                                                if let Some(progress) = update.progress
+                                                    && event_tx.send(QueryEvent::ToolProgress(progress)).await.is_err() {
                                                         return Ok(transitions::Terminal::new("aborted_streaming"));
                                                     }
-                                                }
-                                                if let Some(message) = update.message {
-                                                    if emit_tool_result_renderable_message(&event_tx, message)
+                                                if let Some(message) = update.message
+                                                    && emit_tool_result_renderable_message(&event_tx, message)
                                                         .await
                                                         .is_err()
                                                     {
                                                         return Ok(transitions::Terminal::new("aborted_streaming"));
                                                     }
-                                                }
                                                 if let Some(user_message) = update.tool_result {
                                                     if let Some(tool_use_id) = model_tool_result_tool_use_id(&user_message) {
                                                         processed_tool_use_ids.insert(tool_use_id);
@@ -1582,15 +1575,14 @@ where
                                                         return Ok(transitions::Terminal::new("aborted_streaming"));
                                                     }
                                                 }
-                                                if let Some(model_message) = update.model_message {
-                                                    if event_tx
+                                                if let Some(model_message) = update.model_message
+                                                    && event_tx
                                                         .send(QueryEvent::ModelMessage(model_message))
                                                         .await
                                                         .is_err()
                                                     {
                                                         return Ok(transitions::Terminal::new("aborted_streaming"));
                                                     }
-                                                }
                                             }
                                         }
                                         for missing in crate::services::tools::tool_execution::yield_missing_tool_result_blocks(
@@ -1784,8 +1776,8 @@ where
                                 // Maps to CC `StreamingToolExecutor` promise wakeups:
                                 // worker progress/completion should wake the query loop
                                 // even when the Anthropic stream is temporarily idle.
-                                if let Some(executor) = streaming_tool_executor.as_mut() {
-                                    if let Some(terminal) = drain_streaming_executor_updates(
+                                if let Some(executor) = streaming_tool_executor.as_mut()
+                                    && let Some(terminal) = drain_streaming_executor_updates(
                                         executor,
                                         &abort_controller,
                                         &event_tx,
@@ -1800,7 +1792,6 @@ where
                                     {
                                         return Ok(terminal);
                                     }
-                                }
                                 continue;
                             },
                             item = stream.recv() => match item {
@@ -1891,8 +1882,7 @@ where
                         assistant_content.push(content);
                         if let (Some(executor), Some(tool_use)) =
                             (streaming_tool_executor.as_mut(), maybe_streaming_tool_use)
-                        {
-                            if streaming_executor_tool_use_ids.insert(tool_use.id.0.clone()) {
+                            && streaming_executor_tool_use_ids.insert(tool_use.id.0.clone()) {
                                 // Maps to CC `REPL.tsx:3910` `setStreamingToolUses`:
                                 // the block is in the transcript now, but its id
                                 // does not reach `inProgressToolUseIDs` until the
@@ -1910,7 +1900,6 @@ where
                                     partial_streaming_assistant_message(assistant_content.clone()),
                                 );
                             }
-                        }
                     }
                 },
                 crate::services::api::claude::QueryModelStreamItem::CompletedContent(item) => {
@@ -2353,8 +2342,7 @@ where
                                 &streaming_text_buffer,
                                 &streaming_thinking_buffer,
                             )
-                        {
-                            if event_tx
+                            && event_tx
                                 .send(QueryEvent::ModelMessage(Message::Assistant(
                                     history_partial,
                                 )))
@@ -2363,7 +2351,6 @@ where
                             {
                                 return Ok(transitions::Terminal::new("aborted_streaming"));
                             }
-                        }
                         if streaming_tool_executor.is_some() {
                             abort_controller.abort();
                         }
@@ -2427,8 +2414,8 @@ where
                 }
             }
 
-            if let Some(executor) = streaming_tool_executor.as_mut() {
-                if let Some(terminal) = drain_streaming_executor_updates(
+            if let Some(executor) = streaming_tool_executor.as_mut()
+                && let Some(terminal) = drain_streaming_executor_updates(
                     executor,
                     &abort_controller,
                     &event_tx,
@@ -2440,9 +2427,8 @@ where
                     &mut streaming_deferred_model_messages,
                 )
                 .await
-                {
-                    return Ok(terminal);
-                }
+            {
+                return Ok(terminal);
             }
         }
 
@@ -2508,12 +2494,11 @@ where
             // AssistantToolUseMessage.tsx:120-121), never from row re-yields.
             if let Some(executor) = streaming_tool_executor.as_mut() {
                 for tool_use in &tool_use_blocks {
-                    if streaming_executor_tool_use_ids.insert(tool_use.id.0.clone()) {
-                        if let Some(owner) =
+                    if streaming_executor_tool_use_ids.insert(tool_use.id.0.clone())
+                        && let Some(owner) =
                             assistant_message_for_tool_use(&assistant_messages, &tool_use.id.0)
-                        {
-                            executor.add_tool(tool_use.clone(), owner.clone());
-                        }
+                    {
+                        executor.add_tool(tool_use.clone(), owner.clone());
                     }
                 }
             }
@@ -2620,14 +2605,13 @@ where
             // Maps to CC `query.ts` yielding the previous iteration's
             // `pendingToolUseSummary` after model streaming and before the
             // no-tool-use terminal/continuation branch.
-            if let Ok(Some(summary)) = summary_task.await {
-                if event_tx
+            if let Ok(Some(summary)) = summary_task.await
+                && event_tx
                     .send(QueryEvent::ToolUseSummary(summary))
                     .await
                     .is_err()
-                {
-                    return Ok(transitions::Terminal::new("aborted_streaming"));
-                }
+            {
+                return Ok(transitions::Terminal::new("aborted_streaming"));
             }
         }
 
@@ -2653,13 +2637,12 @@ where
                     {
                         return Ok(transitions::Terminal::new("aborted_streaming"));
                     }
-                    if let Some(message) = update.message {
-                        if emit_tool_result_renderable_message(&event_tx, message)
+                    if let Some(message) = update.message
+                        && emit_tool_result_renderable_message(&event_tx, message)
                             .await
                             .is_err()
-                        {
-                            return Ok(transitions::Terminal::new("aborted_streaming"));
-                        }
+                    {
+                        return Ok(transitions::Terminal::new("aborted_streaming"));
                     }
                     if let Some(user_message) = update.tool_result {
                         if let Some(tool_use_id) = model_tool_result_tool_use_id(&user_message) {
@@ -3081,13 +3064,13 @@ where
                 // state before draining queued work after any pause/resume.
                 let mut updates = Vec::new();
                 updates.append(&mut streaming_deferred_updates);
-                if !updates.iter().any(|update| update.blocked_on_permission) {
-                    if let Some(executor) = streaming_tool_executor.as_mut() {
-                        executor.sync_tool_use_context(tool_use_context.clone());
-                        let remaining_updates = executor.get_remaining_results();
-                        tool_use_context = executor.get_updated_context();
-                        updates.extend(remaining_updates);
-                    }
+                if !updates.iter().any(|update| update.blocked_on_permission)
+                    && let Some(executor) = streaming_tool_executor.as_mut()
+                {
+                    executor.sync_tool_use_context(tool_use_context.clone());
+                    let remaining_updates = executor.get_remaining_results();
+                    tool_use_context = executor.get_updated_context();
+                    updates.extend(remaining_updates);
                 }
                 updates
             } else {
@@ -3135,22 +3118,20 @@ where
                         return Ok(transitions::Terminal::new("aborted_tools"));
                     }
                 }
-                if let Some(progress) = update.progress {
-                    if event_tx
+                if let Some(progress) = update.progress
+                    && event_tx
                         .send(QueryEvent::ToolProgress(progress))
                         .await
                         .is_err()
-                    {
-                        return Ok(transitions::Terminal::new("aborted_tools"));
-                    }
+                {
+                    return Ok(transitions::Terminal::new("aborted_tools"));
                 }
-                if let Some(message) = update.message {
-                    if emit_tool_result_renderable_message(&event_tx, message)
+                if let Some(message) = update.message
+                    && emit_tool_result_renderable_message(&event_tx, message)
                         .await
                         .is_err()
-                    {
-                        return Ok(transitions::Terminal::new("aborted_tools"));
-                    }
+                {
+                    return Ok(transitions::Terminal::new("aborted_tools"));
                 }
                 if let Some(user_message) = update.tool_result {
                     if let Some(tool_use_id) = model_tool_result_tool_use_id(&user_message) {
@@ -3273,13 +3254,12 @@ where
                             let failed = crate::services::tools::tool_execution::permission_check_error_result(
                                 &permission_error_identity.0, &permission_error_identity.1, assistant_for_tool, &error,
                             );
-                            if let Some(message) = failed.message {
-                                if emit_tool_result_renderable_message(&event_tx, message)
+                            if let Some(message) = failed.message
+                                && emit_tool_result_renderable_message(&event_tx, message)
                                     .await
                                     .is_err()
-                                {
-                                    return Ok(transitions::Terminal::new("aborted_tools"));
-                                }
+                            {
+                                return Ok(transitions::Terminal::new("aborted_tools"));
                             }
                             if let Some(user_message) = failed.tool_result {
                                 processed_tool_use_ids.insert(permission_error_identity.0);
@@ -3472,20 +3452,18 @@ where
                                 // is checked before returning `{ reason:
                                 // 'aborted_tools' }`.
                                 let next_turn_count_on_abort = turn_count.saturating_add(1);
-                                if let Some(max_turns) = params.max_turns {
-                                    if next_turn_count_on_abort > max_turns {
-                                        if let Err(terminal) = emit_max_turns_reached(
-                                            &event_tx,
-                                            &params.turn_id,
-                                            max_turns,
-                                            next_turn_count_on_abort,
-                                            "aborted_tools",
-                                        )
-                                        .await
-                                        {
-                                            return Ok(terminal);
-                                        }
-                                    }
+                                if let Some(max_turns) = params.max_turns
+                                    && next_turn_count_on_abort > max_turns
+                                    && let Err(terminal) = emit_max_turns_reached(
+                                        &event_tx,
+                                        &params.turn_id,
+                                        max_turns,
+                                        next_turn_count_on_abort,
+                                        "aborted_tools",
+                                    )
+                                    .await
+                                {
+                                    return Ok(terminal);
                                 }
                                 return Ok(transitions::Terminal::new("aborted_tools"));
                             }
@@ -3508,90 +3486,83 @@ where
                 // it in the actor first makes every SDK/user amendment compare
                 // equal to itself and incorrectly records `userModified=false`.
 
-                if using_streaming_tool_execution {
-                    if let Some(executor) = streaming_tool_executor.as_mut() {
-                        current_tool_use_context
-                            .update_permission_context(permission_context.clone());
-                        current_tool_use_context.messages = messages_for_query.clone();
-                        install_tool_progress_sink(&mut current_tool_use_context, &event_tx);
-                        executor.sync_tool_use_context(current_tool_use_context.clone());
-                        let continuation_updates = executor
-                            .continue_after_permission(
-                                permission_request.clone(),
-                                response.clone(),
-                                current_tool_use_context,
-                            )
-                            .await;
-                        tool_use_context = executor.get_updated_context();
-                        permission_context = tool_use_context.tool_permission_context.clone();
-                        if event_tx
-                            .send(QueryEvent::PermissionContextUpdate(
-                                permission_context.clone(),
-                            ))
-                            .await
-                            .is_err()
+                if using_streaming_tool_execution
+                    && let Some(executor) = streaming_tool_executor.as_mut()
+                {
+                    current_tool_use_context.update_permission_context(permission_context.clone());
+                    current_tool_use_context.messages = messages_for_query.clone();
+                    install_tool_progress_sink(&mut current_tool_use_context, &event_tx);
+                    executor.sync_tool_use_context(current_tool_use_context.clone());
+                    let continuation_updates = executor
+                        .continue_after_permission(
+                            permission_request.clone(),
+                            response.clone(),
+                            current_tool_use_context,
+                        )
+                        .await;
+                    tool_use_context = executor.get_updated_context();
+                    permission_context = tool_use_context.tool_permission_context.clone();
+                    if event_tx
+                        .send(QueryEvent::PermissionContextUpdate(
+                            permission_context.clone(),
+                        ))
+                        .await
+                        .is_err()
+                    {
+                        return Ok(transitions::Terminal::new("aborted_tools"));
+                    }
+                    for continuation_update in continuation_updates {
+                        if let Some(progress) = continuation_update.progress
+                            && event_tx
+                                .send(QueryEvent::ToolProgress(progress))
+                                .await
+                                .is_err()
                         {
                             return Ok(transitions::Terminal::new("aborted_tools"));
                         }
-                        for continuation_update in continuation_updates {
-                            if let Some(progress) = continuation_update.progress {
-                                if event_tx
-                                    .send(QueryEvent::ToolProgress(progress))
-                                    .await
-                                    .is_err()
-                                {
-                                    return Ok(transitions::Terminal::new("aborted_tools"));
-                                }
-                            }
-                            if let Some(message) = continuation_update.message {
-                                if emit_tool_result_renderable_message(&event_tx, message)
-                                    .await
-                                    .is_err()
-                                {
-                                    return Ok(transitions::Terminal::new("aborted_tools"));
-                                }
-                            }
-                            if let Some(user_message) = continuation_update.tool_result {
-                                if let Some(tool_use_id) =
-                                    model_tool_result_tool_use_id(&user_message)
-                                {
-                                    processed_tool_use_ids.insert(tool_use_id);
-                                }
-                                if event_tx
-                                    .send(QueryEvent::ModelMessage(Message::User(
-                                        user_message.clone(),
-                                    )))
-                                    .await
-                                    .is_err()
-                                {
-                                    return Ok(transitions::Terminal::new("aborted_tools"));
-                                }
-                                tool_results.push(user_message);
-                            }
-                            if let Some(model_message) = continuation_update.model_message {
-                                if matches!(
-                                    &model_message,
-                                    Message::Attachment(attachment)
-                                        if attachment.attachment_type()
-                                            == "hook_stopped_continuation"
-                                ) {
-                                    should_prevent_continuation = true;
-                                }
-                                if event_tx
-                                    .send(QueryEvent::ModelMessage(model_message.clone()))
-                                    .await
-                                    .is_err()
-                                {
-                                    return Ok(transitions::Terminal::new("aborted_tools"));
-                                }
-                                append_tool_update_to_tool_results(
-                                    model_message,
-                                    &mut tool_results,
-                                );
-                            }
+                        if let Some(message) = continuation_update.message
+                            && emit_tool_result_renderable_message(&event_tx, message)
+                                .await
+                                .is_err()
+                        {
+                            return Ok(transitions::Terminal::new("aborted_tools"));
                         }
-                        continue;
+                        if let Some(user_message) = continuation_update.tool_result {
+                            if let Some(tool_use_id) = model_tool_result_tool_use_id(&user_message)
+                            {
+                                processed_tool_use_ids.insert(tool_use_id);
+                            }
+                            if event_tx
+                                .send(QueryEvent::ModelMessage(Message::User(
+                                    user_message.clone(),
+                                )))
+                                .await
+                                .is_err()
+                            {
+                                return Ok(transitions::Terminal::new("aborted_tools"));
+                            }
+                            tool_results.push(user_message);
+                        }
+                        if let Some(model_message) = continuation_update.model_message {
+                            if matches!(
+                                &model_message,
+                                Message::Attachment(attachment)
+                                    if attachment.attachment_type()
+                                        == "hook_stopped_continuation"
+                            ) {
+                                should_prevent_continuation = true;
+                            }
+                            if event_tx
+                                .send(QueryEvent::ModelMessage(model_message.clone()))
+                                .await
+                                .is_err()
+                            {
+                                return Ok(transitions::Terminal::new("aborted_tools"));
+                            }
+                            append_tool_update_to_tool_results(model_message, &mut tool_results);
+                        }
                     }
+                    continue;
                 }
 
                 let parent_assistant_message = assistant_message_for_tool_use(
@@ -3645,13 +3616,12 @@ where
                     append_tool_update_to_tool_results(model_message, &mut tool_results);
                 }
 
-                if let Some(tool_result) = result.message {
-                    if emit_tool_result_renderable_message(&event_tx, tool_result)
+                if let Some(tool_result) = result.message
+                    && emit_tool_result_renderable_message(&event_tx, tool_result)
                         .await
                         .is_err()
-                    {
-                        return Ok(transitions::Terminal::new("aborted_tools"));
-                    }
+                {
+                    return Ok(transitions::Terminal::new("aborted_tools"));
                 }
 
                 // The model-visible primary tool_result precedes supplemental
@@ -3777,20 +3747,18 @@ where
                 return Ok(transitions::Terminal::new("aborted_tools"));
             }
             let next_turn_count_on_abort = turn_count.saturating_add(1);
-            if let Some(max_turns) = params.max_turns {
-                if next_turn_count_on_abort > max_turns {
-                    if let Err(terminal) = emit_max_turns_reached(
-                        &event_tx,
-                        &params.turn_id,
-                        max_turns,
-                        next_turn_count_on_abort,
-                        "aborted_tools",
-                    )
-                    .await
-                    {
-                        return Ok(terminal);
-                    }
-                }
+            if let Some(max_turns) = params.max_turns
+                && next_turn_count_on_abort > max_turns
+                && let Err(terminal) = emit_max_turns_reached(
+                    &event_tx,
+                    &params.turn_id,
+                    max_turns,
+                    next_turn_count_on_abort,
+                    "aborted_tools",
+                )
+                .await
+            {
+                return Ok(terminal);
             }
             return Ok(transitions::Terminal::new("aborted_tools"));
         }
@@ -3815,12 +3783,12 @@ where
 
         max_output_tokens_recovery_count = 0;
 
-        if let Some(tracking) = auto_compact_tracking.as_mut() {
-            if tracking.compacted {
-                // Maps to CC `tracking.turnCounter++` after tool execution and
-                // before the recursive query-loop state update.
-                tracking.turn_counter = tracking.turn_counter.saturating_add(1);
-            }
+        if let Some(tracking) = auto_compact_tracking.as_mut()
+            && tracking.compacted
+        {
+            // Maps to CC `tracking.turnCounter++` after tool execution and
+            // before the recursive query-loop state update.
+            tracking.turn_counter = tracking.turn_counter.saturating_add(1);
         }
 
         // Maps to CC `query.ts:1560-1578`: drain the queued-command snapshot
@@ -3904,21 +3872,21 @@ where
         }
 
         let next_turn_count = turn_count.saturating_add(1);
-        if let Some(max_turns) = params.max_turns {
-            if next_turn_count > max_turns {
-                if let Err(terminal) = emit_max_turns_reached(
-                    &event_tx,
-                    &params.turn_id,
-                    max_turns,
-                    next_turn_count,
-                    "aborted_streaming",
-                )
-                .await
-                {
-                    return Ok(terminal);
-                }
-                return Ok(transitions::Terminal::new("max_turns"));
+        if let Some(max_turns) = params.max_turns
+            && next_turn_count > max_turns
+        {
+            if let Err(terminal) = emit_max_turns_reached(
+                &event_tx,
+                &params.turn_id,
+                max_turns,
+                next_turn_count,
+                "aborted_streaming",
+            )
+            .await
+            {
+                return Ok(terminal);
             }
+            return Ok(transitions::Terminal::new("max_turns"));
         }
 
         // Maps to CC `messages = [...messagesForQuery, ...assistantMessages,
@@ -4708,13 +4676,12 @@ async fn drain_streaming_executor_updates(
             {
                 return Some(transitions::Terminal::new("aborted_streaming"));
             }
-            if let Some(message) = update.message.clone() {
-                if emit_tool_result_renderable_message(event_tx, message)
+            if let Some(message) = update.message.clone()
+                && emit_tool_result_renderable_message(event_tx, message)
                     .await
                     .is_err()
-                {
-                    return Some(transitions::Terminal::new("aborted_streaming"));
-                }
+            {
+                return Some(transitions::Terminal::new("aborted_streaming"));
             }
             if streaming_permission_requests_sent.insert(permission_request.tool_use_id.clone())
                 && event_tx
@@ -4770,22 +4737,20 @@ async fn process_streaming_completed_tool_update(
     {
         return Some(transitions::Terminal::new("aborted_streaming"));
     }
-    if let Some(progress) = update.progress {
-        if event_tx
+    if let Some(progress) = update.progress
+        && event_tx
             .send(QueryEvent::ToolProgress(progress))
             .await
             .is_err()
-        {
-            return Some(transitions::Terminal::new("aborted_streaming"));
-        }
+    {
+        return Some(transitions::Terminal::new("aborted_streaming"));
     }
-    if let Some(message) = update.message {
-        if emit_tool_result_renderable_message(event_tx, message)
+    if let Some(message) = update.message
+        && emit_tool_result_renderable_message(event_tx, message)
             .await
             .is_err()
-        {
-            return Some(transitions::Terminal::new("aborted_streaming"));
-        }
+    {
+        return Some(transitions::Terminal::new("aborted_streaming"));
     }
     if let Some(user_message) = update.tool_result {
         if let Some(tool_use_id) = model_tool_result_tool_use_id(&user_message) {
@@ -9196,10 +9161,11 @@ mod tests {
             track_in_progress(&mut in_progress, &event);
             if let QueryEvent::ModelMessage(crate::types::message::Message::User(user)) = event {
                 for content in user.content {
-                    if let crate::types::message::UserContent::ToolResult(result) = content {
-                        if result.is_error && result.content == "Interrupted by user" {
-                            tool_result_ids.insert(result.tool_use_id.0);
-                        }
+                    if let crate::types::message::UserContent::ToolResult(result) = content
+                        && result.is_error
+                        && result.content == "Interrupted by user"
+                    {
+                        tool_result_ids.insert(result.tool_use_id.0);
                     }
                 }
             }
@@ -11093,12 +11059,11 @@ mod tests {
         assert_eq!(terminal.reason, "completed");
         let mut text_messages = Vec::new();
         while let Ok(event) = event_rx.try_recv() {
-            if let QueryEvent::Message(message) = event {
-                if let Some(text) = model_assistant_text(&message) {
-                    if !model_is_api_error(&message) {
-                        text_messages.push((message.uuid().to_string(), text.to_string()));
-                    }
-                }
+            if let QueryEvent::Message(message) = event
+                && let Some(text) = model_assistant_text(&message)
+                && !model_is_api_error(&message)
+            {
+                text_messages.push((message.uuid().to_string(), text.to_string()));
             }
         }
         // Maps to CC `handleMessageFromStream`: text_delta updates the
@@ -13646,10 +13611,10 @@ mod tests {
                         }
                     };
                     while let Ok(event) = event_rx.try_recv() {
-                        if let QueryEvent::Row(message) = event {
-                            if let Some(result) = row_user_tool_result(&message) {
-                                statuses.push(result.derived_status());
-                            }
+                        if let QueryEvent::Row(message) = event
+                            && let Some(result) = row_user_tool_result(&message)
+                        {
+                            statuses.push(result.derived_status());
                         }
                     }
                     (terminal, statuses)
@@ -13804,11 +13769,10 @@ mod tests {
                                 Ok(QueryEvent::Row(message)) => {
                                     // Old `tool_use_id: Some(..)` guard ⇔
                                     // non-empty id.
-                                    if let Some(result) = row_user_tool_result(&message) {
-                                        if !result.tool_use_id.0.is_empty() {
+                                    if let Some(result) = row_user_tool_result(&message)
+                                        && !result.tool_use_id.0.is_empty() {
                                             tool_result_ids.push(result.tool_use_id.0.clone());
                                         }
-                                    }
                                 }
                                 Ok(QueryEvent::PermissionContextUpdate(context)) => {
                                     context_updates.push(context);
@@ -13821,10 +13785,10 @@ mod tests {
                     while let Ok(event) = event_rx.try_recv() {
                         match event {
                             QueryEvent::Row(message) => {
-                                if let Some(result) = row_user_tool_result(&message) {
-                                    if !result.tool_use_id.0.is_empty() {
-                                        tool_result_ids.push(result.tool_use_id.0.clone());
-                                    }
+                                if let Some(result) = row_user_tool_result(&message)
+                                    && !result.tool_use_id.0.is_empty()
+                                {
+                                    tool_result_ids.push(result.tool_use_id.0.clone());
                                 }
                             }
                             QueryEvent::PermissionContextUpdate(context) => {

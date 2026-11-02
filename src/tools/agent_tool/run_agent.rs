@@ -548,10 +548,8 @@ fn agent_permission_context_for_run(
         PermissionMode::BypassPermissions | PermissionMode::AcceptEdits
     ) || (parent.mode == PermissionMode::Auto
         && crate::utils::permissions::permission_setup::is_transcript_classifier_feature_enabled());
-    if !parent_mode_wins {
-        if let Some(mode) = agent_permission_mode {
-            context.mode = mode;
-        }
+    if !parent_mode_wins && let Some(mode) = agent_permission_mode {
+        context.mode = mode;
     }
     // Maps to CC `tools/AgentTool/runAgent.ts:465-478`: this is replacement, not a merge.
     // Parent approvals from user/project/local/flag/policy/command/session must
@@ -1197,10 +1195,10 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
                 event,
                 ttft_ms,
             }) => {
-                if event.get("type").and_then(serde_json::Value::as_str) == Some("message_start") {
-                    if let Some(ttft_ms) = ttft_ms {
-                        agent_tool_use_context.api_metrics_sink.push(ttft_ms);
-                    }
+                if event.get("type").and_then(serde_json::Value::as_str) == Some("message_start")
+                    && let Some(ttft_ms) = ttft_ms
+                {
+                    agent_tool_use_context.api_metrics_sink.push(ttft_ms);
                 }
             }
             // C3c-3: `Message` carries a whole model message (the seam's CC

@@ -146,13 +146,13 @@ pub fn get_coordinator_user_context(
         ));
     }
 
-    if let Some(scratchpad_dir) = scratchpad_dir {
-        if crate::utils::permissions::filesystem::is_scratchpad_enabled() {
-            content.push_str(&format!(
+    if let Some(scratchpad_dir) = scratchpad_dir
+        && crate::utils::permissions::filesystem::is_scratchpad_enabled()
+    {
+        content.push_str(&format!(
                 "\n\nScratchpad directory: {}\nWorkers can read and write here without permission prompts. Use this for durable cross-worker knowledge — structure files however fits the work.",
                 scratchpad_dir.display()
             ));
-        }
     }
 
     BTreeMap::from([("workerToolsContext".to_string(), content)])

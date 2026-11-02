@@ -498,13 +498,13 @@ fn finish_result(
         finalize(&mut result);
     }
 
-    if let Ok(mut status) = inner.status.lock() {
-        if matches!(
+    if let Ok(mut status) = inner.status.lock()
+        && matches!(
             *status,
             ShellCommandStatus::Running | ShellCommandStatus::Backgrounded
-        ) {
-            *status = ShellCommandStatus::Completed;
-        }
+        )
+    {
+        *status = ShellCommandStatus::Completed;
     }
     if let Ok(mut state) = inner.result.lock() {
         state.value = Some(result);

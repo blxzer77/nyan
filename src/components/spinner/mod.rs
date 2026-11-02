@@ -1013,15 +1013,13 @@ pub fn SpinnerWithVerb(
         .thinking_text
         .clone()
         .or_else(|| thinking_status_text(next_thinking_status));
-    if active_thinking_status {
-        if let Some(text) = effective_thinking_text.as_mut() {
-            if let Some(suffix) = effective_effort_suffix
-                .as_deref()
-                .filter(|suffix| !suffix.is_empty())
-            {
-                text.push_str(suffix);
-            }
-        }
+    if active_thinking_status
+        && let Some(text) = effective_thinking_text.as_mut()
+        && let Some(suffix) = effective_effort_suffix
+            .as_deref()
+            .filter(|suffix| !suffix.is_empty())
+    {
+        text.push_str(suffix);
     }
     let mut thinking_width = effective_thinking_text
         .as_deref()
@@ -1071,10 +1069,8 @@ pub fn SpinnerWithVerb(
             has_running_teammates,
         });
     }
-    if show_thinking {
-        if let Some(thinking_text) = &effective_thinking_text {
-            status_parts.push(SpinnerStatusPart::Thinking(thinking_text.clone()));
-        }
+    if show_thinking && let Some(thinking_text) = &effective_thinking_text {
+        status_parts.push(SpinnerStatusPart::Thinking(thinking_text.clone()));
     }
 
     if effective_thinking_text.is_some() {

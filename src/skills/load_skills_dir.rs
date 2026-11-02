@@ -1095,10 +1095,10 @@ fn deduplicate_skills_by_file_identity(skills: Vec<SkillWithPath>) -> Vec<SkillW
     let mut seen = HashSet::new();
     for entry in skills {
         let identity = get_file_identity(&entry.file_path);
-        if let Some(identity) = identity {
-            if !seen.insert(identity) {
-                continue;
-            }
+        if let Some(identity) = identity
+            && !seen.insert(identity)
+        {
+            continue;
         }
         out.push(entry);
     }

@@ -339,13 +339,12 @@ pub fn ExitPlanModePermissionRequest<'a>(
     } else {
         build_plan_approval_options()
     };
-    if !is_empty {
-        if let Some(no) = options
+    if !is_empty
+        && let Some(no) = options
             .iter_mut()
             .find(|option| option.value == ExitPlanModePermissionOptionValue::No)
-        {
-            no.description = None;
-        }
+    {
+        no.description = None;
     }
     let option_count = options.len();
     let mut focused_index = hooks.use_state(|| 0usize);
