@@ -24,7 +24,9 @@
 //!    and execution matches master exactly.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -34,7 +36,7 @@ use crate::services::decision::{
     Answer, DecisionOutcome, DecisionPoint, DecisionProvider, DeterministicAnswer, Question,
     SafeSet,
 };
-use crate::tool::{AbortController, ToolUseContext};
+use crate::tool::ToolUseContext;
 use crate::types::message::{Message, UserContent};
 
 /// Candidate information passed into keep-shadow evaluation.
@@ -242,7 +244,7 @@ pub fn compute_keep_ordering(
 
     // 1. Accumulate oldest-first from not_needed
     let mut first_not_needed_cleared_seq_idx = None;
-    for (seq_idx, (orig_idx, candidate)) in not_needed.iter().enumerate() {
+    for (seq_idx, (_orig_idx, candidate)) in not_needed.iter().enumerate() {
         if saved >= required {
             break;
         }
@@ -313,9 +315,29 @@ pub fn write_shadow_record(record: &CompactionKeepShadowRecord) -> std::io::Resu
     Ok(())
 }
 
+/// Evaluates compaction.keep shadow mode in a boxed future so the query loop
+/// does not inline the decision provider's state machine into its own future.
+pub fn evaluate_compaction_keep_shadow<'a>(
+    messages: &'a [Message],
+    candidates: &'a [MaskCandidateInfo],
+    target: i64,
+    measured_before: i64,
+    threshold: i64,
+    context: &'a ToolUseContext,
+) -> Pin<Box<dyn Future<Output = Option<CompactionKeepShadowRecord>> + Send + 'a>> {
+    Box::pin(evaluate_compaction_keep_shadow_inner(
+        messages,
+        candidates,
+        target,
+        measured_before,
+        threshold,
+        context,
+    ))
+}
+
 /// Evaluates compaction.keep shadow mode: asks DecisionProvider (or mock),
 /// compares keep ordering with actual ordering, logs to JSONL, and returns the record.
-pub async fn evaluate_compaction_keep_shadow(
+async fn evaluate_compaction_keep_shadow_inner(
     messages: &[Message],
     candidates: &[MaskCandidateInfo],
     target: i64,

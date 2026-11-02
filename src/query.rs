@@ -1071,15 +1071,13 @@ where
                         state,
                         &mask_context,
                         &params.query_source,
-                    )
-                    .await;
+                    );
                 messages_for_query = mask_result.messages;
                 // C4: the last API usage still counts the masked bytes; carry
                 // the reduction so autocompact does not re-measure pre-mask.
                 snip_tokens_freed =
                     snip_tokens_freed.saturating_add(mask_result.anchor_tokens_freed);
                 if !mask_result.newly_replaced.is_empty() {
-                    content_replacement_state_changed = true;
                     if should_persist_content_replacements(&params.query_source) {
                         let _ = crate::utils::session_storage::record_content_replacement(
                             &mask_result.newly_replaced,

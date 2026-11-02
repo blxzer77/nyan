@@ -114,7 +114,7 @@ pub struct MicrocompactResult {
     pub compaction_info: Option<MicrocompactCompactionInfo>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct MaskResult {
     pub messages: Vec<Message>,
     pub newly_replaced: Vec<crate::utils::tool_result_storage::ContentReplacementRecord>,
@@ -228,7 +228,7 @@ struct MaskCandidate {
 /// @nyan: deterministic pre-compaction masking. It is deliberately separate
 /// from cached microcompact: this changes the model projection and therefore
 /// owns the persistent ContentReplacementState decision.
-pub async fn mask_tool_results_if_needed(
+pub fn mask_tool_results_if_needed(
     messages: Vec<Message>,
     state: &mut crate::utils::tool_result_storage::ContentReplacementState,
     context: &ToolUseContext,
@@ -354,15 +354,26 @@ pub async fn mask_tool_results_if_needed(
                 preview: c.preview.clone(),
             })
             .collect();
-        crate::services::compact::decision::evaluate_compaction_keep_shadow(
-            &messages,
-            &candidate_infos,
-            target,
-            measured_before,
-            threshold,
-            context,
-        )
-        .await;
+        let shadow_messages = messages.clone();
+        let shadow_context = context.clone();
+        let _ = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async move {
+                let _ = crate::services::compact::decision::evaluate_compaction_keep_shadow(
+                    &shadow_messages,
+                    &candidate_infos,
+                    target,
+                    measured_before,
+                    threshold,
+                    &shadow_context,
+                )
+                .await;
+            });
+        })
+        .join();
     }
 
     // C2: accumulate oldest-first until `target` (threshold minus headroom) is
@@ -861,8 +872,7 @@ mod tests {
             &mut state,
             &context,
             &QuerySource::Prompt,
-        )
-        .await;
+        );
         assert_eq!(result.masked_count, 1);
         assert!(result.masked_tokens > 0);
         assert!(state.replacements.contains_key("toolu_old"));
@@ -930,8 +940,7 @@ mod tests {
             &mut state,
             &context,
             &QuerySource::Compact,
-        )
-        .await;
+        );
         assert_eq!(result.masked_count, 0);
         assert!(result.newly_replaced.is_empty());
         assert!(state.replacements.is_empty());
@@ -1021,8 +1030,7 @@ mod tests {
             &mut state,
             &context,
             &QuerySource::Prompt,
-        )
-        .await;
+        );
 
         // Actual outcome should still have cleared candidates according to C2 status quo
         assert!(result.masked_count >= 1);
