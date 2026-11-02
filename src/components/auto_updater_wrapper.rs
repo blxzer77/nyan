@@ -10,7 +10,9 @@
 use crate::components::auto_updater::AutoUpdater;
 use crate::components::native_auto_updater::NativeAutoUpdater;
 use crate::components::package_manager_auto_updater::PackageManagerAutoUpdater;
-use crate::utils::auto_updater::{AutoUpdaterResult, InstallStatus};
+use crate::utils::auto_updater::{
+    AutoUpdaterResult, InstallStatus, auto_update_message_for_platform,
+};
 use crate::utils::config::is_auto_updater_disabled;
 use crate::utils::debug::log_for_debugging;
 use crate::utils::doctor_diagnostic::{InstallationType, get_current_installation_type};
@@ -78,6 +80,10 @@ pub fn AutoUpdaterWrapper(
     props: &AutoUpdaterWrapperProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
+    if let Some(message) = auto_update_message_for_platform(std::env::consts::OS) {
+        return element! { Text(content: message.to_string(), wrap: TextWrap::Wrap) }.into_any();
+    }
+
     // Maps to: CC AutoUpdaterWrapper.tsx:28-33 — `useState<boolean | null>(null)`
     // for both flags; the mount probe below fills them in.
     let use_native_installer = hooks.use_state(|| Option::<bool>::None);
@@ -154,6 +160,7 @@ pub fn AutoUpdaterWrapper(
             #(child)
         }
     }
+    .into_any()
 }
 
 // `should_show_auto_updater` is defined by its CC owner, the Notifications
