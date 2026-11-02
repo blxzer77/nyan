@@ -110,11 +110,37 @@ fn provider() -> Arc<DecisionProvider> {
     if let Some(provider) = test_override::get() {
         return provider;
     }
-    Arc::new(DecisionProvider::from_nyan(
-        &crate::utils::settings::get_initial_settings()
-            .nyan
-            .unwrap_or_default(),
-    ))
+    cached_provider(provider_settings())
+}
+
+type ProviderCache = std::sync::Mutex<
+    Option<(
+        crate::utils::settings::nyan::DecisionSettings,
+        Arc<DecisionProvider>,
+    )>,
+>;
+
+/// @nyan: one provider per distinct `DecisionSettings`, so repeated shadow
+/// calls share its backend (connection pool, prewarm) instead of rebuilding it.
+/// Keyed by the settings value: when settings change, the next call sees a
+/// different value and rebuilds. Only reached once a shadow switch is on, so
+/// the default-off path never touches it.
+fn cached_provider(
+    settings: crate::utils::settings::nyan::DecisionSettings,
+) -> Arc<DecisionProvider> {
+    static CACHE: std::sync::OnceLock<ProviderCache> = std::sync::OnceLock::new();
+    let mut guard = CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((cached, provider)) = guard.as_ref()
+        && *cached == settings
+    {
+        return Arc::clone(provider);
+    }
+    let provider = Arc::new(DecisionProvider::new(settings.clone()));
+    *guard = Some((settings, Arc::clone(&provider)));
+    provider
 }
 
 /// Log path for one memory point.
@@ -1222,5 +1248,20 @@ mod tests {
             .map(|file| file.path.display().to_string())
             .collect();
         assert_eq!(names, vec!["/m/b.md", "/m/c.md"]);
+    }
+
+    #[test]
+    fn cached_provider_is_reused_until_settings_change() {
+        use crate::utils::settings::nyan::DecisionSettings;
+        let a = DecisionSettings::default();
+        let first = cached_provider(a.clone());
+        assert!(Arc::ptr_eq(&first, &cached_provider(a.clone())));
+        let b = DecisionSettings {
+            enabled: Some(!a.enabled()),
+            ..a.clone()
+        };
+        let third = cached_provider(b.clone());
+        assert!(!Arc::ptr_eq(&first, &third));
+        assert!(Arc::ptr_eq(&third, &cached_provider(b)));
     }
 }

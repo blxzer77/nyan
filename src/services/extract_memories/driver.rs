@@ -154,11 +154,18 @@ fn spawn_turn_shadow(messages: &[Message], due: bool, turns_since: u32, token_de
 
 /// @nyan (C4): `memory.type` / `memory.duplicate` shadow comparison around one
 /// memory-agent run. Returns `None` (no directory walk, no allocation) when both
-/// switches are off.
-fn snapshot_before_memory_run() -> Option<Vec<crate::services::memory_decision::MemoryFileSnapshot>>
-{
-    crate::services::memory_decision::types_or_duplicates_enabled()
-        .then(crate::services::memory_decision::snapshot_memory_files)
+/// switches are off. When on, the directory walk runs on the blocking pool so
+/// the async worker never does file IO; it still finishes before the memory
+/// agent starts, so the snapshot is a true pre-run view.
+async fn snapshot_before_memory_run()
+-> Option<Vec<crate::services::memory_decision::MemoryFileSnapshot>> {
+    if !crate::services::memory_decision::types_or_duplicates_enabled() {
+        return None;
+    }
+    // A failed blocking task only drops this shadow comparison.
+    tokio::task::spawn_blocking(crate::services::memory_decision::snapshot_memory_files)
+        .await
+        .ok()
 }
 
 fn spawn_memory_file_shadow(
@@ -169,7 +176,9 @@ fn spawn_memory_file_shadow(
         return;
     };
     shadow::spawn_detached(async move {
-        let after = shadow::snapshot_memory_files();
+        let Ok(after) = tokio::task::spawn_blocking(shadow::snapshot_memory_files).await else {
+            return;
+        };
         let changed = shadow::changed_since(&before, &after);
         if changed.is_empty() {
             return;
@@ -236,7 +245,8 @@ pub(crate) async fn extract_if_due_with_deps<D: crate::query::deps::QueryDeps>(
     let Some(_gate) = try_memory_agent_gate() else {
         return ExtractStatus::Skipped(ExtractSkipReason::Busy);
     };
-    let shadow_before = snapshot_before_memory_run();
+    // Boxed so the snapshot adds one pointer to this future, not its state.
+    let shadow_before = Box::pin(snapshot_before_memory_run()).await;
     let outcome = super::run_extract_memories_with_deps(
         context,
         cache_safe_params,
@@ -321,7 +331,8 @@ pub(crate) async fn extract_before_compact_with_deps<D: crate::query::deps::Quer
         let fresh = progress().cursor.clone();
         if fresh.message_uuid.is_some() { fresh } else { cursor }
     };
-    let shadow_before = snapshot_before_memory_run();
+    // Boxed so the snapshot adds one pointer to this future, not its state.
+    let shadow_before = Box::pin(snapshot_before_memory_run()).await;
     let outcome = super::run_extract_memories_with_deps(
         context.clone(),
         cache_safe_params,
