@@ -2372,11 +2372,11 @@ mod tests {
 
         assert_eq!(collapsed_rows.len(), 1);
         assert_eq!(
-            log_selector_title_count(ViewMode::List, collapsed_rows.get(0), &displayed_logs, 1,),
+            log_selector_title_count(ViewMode::List, collapsed_rows.first(), &displayed_logs, 1,),
             " (1 of 2)"
         );
         assert_eq!(
-            log_selector_title_count(ViewMode::Search, collapsed_rows.get(0), &displayed_logs, 1,),
+            log_selector_title_count(ViewMode::Search, collapsed_rows.first(), &displayed_logs, 1,),
             ""
         );
         assert_eq!(log_selector_title_count(ViewMode::List, None, &[], 1), "");
@@ -2862,7 +2862,7 @@ mod tests {
                 .starts_with("    ")
         );
         assert_eq!(
-            expand_collapse_hint(rows.get(0), &["shared".to_string()]),
+            expand_collapse_hint(rows.first(), &["shared".to_string()]),
             Some("← to collapse")
         );
         assert_eq!(
