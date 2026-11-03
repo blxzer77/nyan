@@ -215,7 +215,7 @@ pub struct SettingsJson {
     /// I/O). A single top-level key keeps the strict settings schema honest and
     /// gives each feature a shared off switch. See `settings/nyan.rs`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub nyan: Option<super::nyan::NyanSettings>,
+    pub nyan: Option<Box<super::nyan::NyanSettings>>,
 }
 
 // ════════════════════════════════════════════════════════════
