@@ -274,6 +274,39 @@ mod tests {
     }
 
     #[test]
+    fn decision_profile_rejects_local_and_profiles_without_structured_output() {
+        let mut settings = settings();
+        let nyan = settings.nyan.as_mut().unwrap();
+        nyan.models
+            .as_mut()
+            .unwrap()
+            .get_mut("main")
+            .unwrap()
+            .capabilities
+            .as_mut()
+            .unwrap()
+            .structured_output = None;
+        assert_eq!(
+            validate_decision_profile(nyan, "main").unwrap_err(),
+            ProfileResolutionError::InvalidDecisionProfile("main".to_string())
+        );
+
+        nyan.models
+            .as_mut()
+            .unwrap()
+            .get_mut("local")
+            .unwrap()
+            .capabilities
+            .as_mut()
+            .unwrap()
+            .structured_output = Some(true);
+        assert_eq!(
+            validate_decision_profile(nyan, "local").unwrap_err(),
+            ProfileResolutionError::UnsupportedProvider(ProviderKind::Vllm)
+        );
+    }
+
+    #[test]
     fn rejects_unsupported_and_incomplete_profiles_without_defaults() {
         let settings = settings();
         let nyan = settings.nyan.as_ref().unwrap();
