@@ -16,9 +16,7 @@
 //! Anthropic settings are read from the environment or explicit `--settings`.
 
 use crate::constants::api_limits::API_MAX_MEDIA_PER_REQUEST;
-use crate::types::message::{StreamEvent, SystemApiErrorMessage};
-use crate::types::tools::Tool;
-use crate::utils::betas::{
+use crate::services::provider::anthropic::betas::{
     ADVISOR_BETA_HEADER, CONTEXT_MANAGEMENT_BETA_HEADER, EFFORT_BETA_HEADER,
     PROMPT_CACHING_SCOPE_BETA_HEADER, REDACT_THINKING_BETA_HEADER, STRUCTURED_OUTPUTS_BETA_HEADER,
     TASK_BUDGETS_BETA_HEADER, TOOL_SEARCH_BETA_HEADER_3P, get_bedrock_extra_body_params_betas,
@@ -26,6 +24,8 @@ use crate::utils::betas::{
     model_supports_structured_outputs, should_include_first_party_only_betas,
     should_use_global_cache_scope,
 };
+use crate::types::message::{StreamEvent, SystemApiErrorMessage};
+use crate::types::tools::Tool;
 use crate::utils::content_array::insert_block_after_tool_results;
 use crate::utils::context::{CAPPED_DEFAULT_MAX_TOKENS, get_model_max_output_tokens};
 use crate::utils::effort::{EffortValue, model_supports_effort, resolve_applied_effort};
@@ -2555,11 +2555,11 @@ fn build_sdk_message_request_options(
         }
         let mut headers = base.headers.take().unwrap_or_default();
         if let Some((name, value)) =
-            crate::services::api::request_headers::anthropic_beta_header(&plan.betas)
+            crate::services::provider::anthropic::headers::anthropic_beta_header(&plan.betas)
         {
             headers.insert(name, Some(value));
         }
-        crate::services::api::request_headers::override_header_if_configured(
+        crate::services::provider::anthropic::headers::override_header_if_configured(
             &mut headers,
             "anthropic-beta",
         );
@@ -2885,12 +2885,14 @@ pub async fn query_model_streaming_items(
     thinking_config: &ThinkingConfig,
     options: &Options,
 ) -> anyhow::Result<Vec<ClaudeStreamItem>> {
-    let client = super::client::get_anthropic_client(super::client::GetAnthropicClientOptions {
-        api_key: None,
-        max_retries: 2,
-        model: Some(options.model.clone()),
-        source: Some(options.query_source.clone()),
-    })
+    let client = crate::services::provider::anthropic::client::get_anthropic_client(
+        crate::services::provider::anthropic::client::GetAnthropicClientOptions {
+            api_key: None,
+            max_retries: 2,
+            model: Some(options.model.clone()),
+            source: Some(options.query_source.clone()),
+        },
+    )
     .await?
     .build()?;
     let beta_capture = {
@@ -3626,9 +3628,9 @@ pub async fn query_model_with_streaming(
 }
 
 /// The provider dispatch's boxed event stream
-/// ([`crate::services::api::client::BetaMessageEventStream`]): SSE for the
+/// ([`crate::services::provider::anthropic::client::BetaMessageEventStream`]): SSE for the
 /// core, Vertex and Foundry, Smithy EventStream for Bedrock.
-type SdkMessageStream = crate::services::api::client::BetaMessageEventStream;
+type SdkMessageStream = crate::services::provider::anthropic::client::BetaMessageEventStream;
 
 async fn open_sdk_message_stream_with_retry(
     messages: &[Message],
@@ -3689,21 +3691,22 @@ async fn open_sdk_message_stream_with_retry(
                 super::api_trace::set_current_trace(Some(attempt_trace.clone()));
                 let attempt_options =
                     streaming_attempt_options_from_retry_context(&base_options, &retry_context);
-                let client =
-                    super::client::get_anthropic_client(super::client::GetAnthropicClientOptions {
+                let client = crate::services::provider::anthropic::client::get_anthropic_client(
+                    crate::services::provider::anthropic::client::GetAnthropicClientOptions {
                         api_key: None,
                         max_retries: 0,
                         model: Some(attempt_options.model.clone()),
                         source: Some(attempt_options.query_source.clone()),
-                    })
-                    .await
-                    .map_err(crate::services::api::with_retry::RetryableError::Other)?
-                    .build()
-                    .map_err(|error| {
-                        crate::services::api::with_retry::RetryableError::Other(anyhow::Error::new(
-                            error,
-                        ))
-                    })?;
+                    },
+                )
+                .await
+                .map_err(crate::services::api::with_retry::RetryableError::Other)?
+                .build()
+                .map_err(|error| {
+                    crate::services::api::with_retry::RetryableError::Other(anyhow::Error::new(
+                        error,
+                    ))
+                })?;
                 let SdkMessageCreatePlan {
                     mut params,
                     private_body_overrides,
@@ -4639,21 +4642,22 @@ async fn execute_non_streaming_request_with_initial_consecutive_529_errors(
             let model = get_client_model.clone();
             let source = get_client_source.clone();
             async move {
-                let client =
-                    super::client::get_anthropic_client(super::client::GetAnthropicClientOptions {
+                let client = crate::services::provider::anthropic::client::get_anthropic_client(
+                    crate::services::provider::anthropic::client::GetAnthropicClientOptions {
                         api_key: None,
                         max_retries: 0,
                         model: Some(model),
                         source: Some(source),
-                    })
-                    .await
-                    .map_err(crate::services::api::with_retry::RetryableError::Other)?
-                    .build()
-                    .map_err(|error| {
-                        crate::services::api::with_retry::RetryableError::Other(anyhow::Error::new(
-                            error,
-                        ))
-                    })?;
+                    },
+                )
+                .await
+                .map_err(crate::services::api::with_retry::RetryableError::Other)?
+                .build()
+                .map_err(|error| {
+                    crate::services::api::with_retry::RetryableError::Other(anyhow::Error::new(
+                        error,
+                    ))
+                })?;
                 *client_slot.lock().map_err(|_| {
                     crate::services::api::with_retry::RetryableError::Other(anyhow::anyhow!(
                         "non-streaming API client slot lock poisoned"
@@ -7015,7 +7019,7 @@ mod tests {
         crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
         crate::utils::process_env::remove("CLAUDE_CODE_USE_FOUNDRY");
         crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
         crate::services::analytics::growthbook::reset_growth_book();
         // CC `betas.ts:270-277`: SDK / print-mode sessions keep thinking
         // summaries (no redact-thinking beta), which is what lets
@@ -7075,7 +7079,9 @@ mod tests {
             .and_then(|headers| headers.get("anthropic-beta"))
             .and_then(|value| value.as_deref())
             .expect("anthropic-beta header");
-        assert!(beta_header.contains(crate::utils::betas::CLAUDE_CODE_20250219_BETA_HEADER));
+        assert!(beta_header.contains(
+            crate::services::provider::anthropic::betas::CLAUDE_CODE_20250219_BETA_HEADER
+        ));
         assert!(beta_header.contains(CONTEXT_MANAGEMENT_BETA_HEADER));
         assert!(beta_header.contains(EFFORT_BETA_HEADER));
         assert!(beta_header.contains(STRUCTURED_OUTPUTS_BETA_HEADER));
@@ -7118,7 +7124,7 @@ mod tests {
         );
 
         crate::utils::process_env::remove("CLAUDE_CODE_EXTRA_BODY");
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
     }
 
     #[test]
@@ -7142,7 +7148,7 @@ mod tests {
             crate::utils::process_env::remove(key);
         }
         crate::services::analytics::growthbook::reset_growth_book();
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
         let mut gate_off = crate::utils::config::GlobalConfig::default();
         gate_off.cached_growth_book_features = Some(std::collections::HashMap::from([(
             "tengu_tool_pear".to_string(),
@@ -7232,7 +7238,7 @@ mod tests {
         crate::utils::process_env::remove("CLAUDE_CODE_EXTRA_BODY");
 
         crate::utils::process_env::set("CLAUDE_CODE_USE_VERTEX", "1");
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
         let unsupported_provider =
             build_sdk_request_options_plan(&messages, &ThinkingConfig::Disabled, &[], &options)
                 .unwrap();
@@ -7249,7 +7255,7 @@ mod tests {
         crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
 
         crate::utils::process_env::set("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "1");
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
         let kill_bypass =
             build_sdk_request_options_plan(&messages, &ThinkingConfig::Disabled, &[], &options)
                 .unwrap();
@@ -7261,7 +7267,7 @@ mod tests {
         );
 
         crate::utils::process_env::set("DISABLE_INTERLEAVED_THINKING", "1");
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
         options.model = "claude-haiku-4-5".to_string();
         let empty_base =
             build_sdk_request_options_plan(&messages, &ThinkingConfig::Disabled, &[], &options)
@@ -7300,7 +7306,7 @@ mod tests {
             crate::utils::process_env::remove(key);
         }
         crate::utils::config::set_test_global_config(None);
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
     }
 
     #[test]
@@ -7321,7 +7327,7 @@ mod tests {
             crate::utils::process_env::remove(key);
         }
         crate::services::analytics::growthbook::reset_growth_book();
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
         let mut gate_on = crate::utils::config::GlobalConfig::default();
         gate_on.cached_growth_book_features = Some(std::collections::HashMap::from([(
             "tengu_tool_pear".to_string(),
@@ -7398,7 +7404,7 @@ mod tests {
             1
         );
 
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
         let mut gate_off = crate::utils::config::GlobalConfig::default();
         gate_off.cached_growth_book_features = Some(std::collections::HashMap::from([(
             "tengu_tool_pear".to_string(),
@@ -7441,7 +7447,7 @@ mod tests {
             "ANTHROPIC_BETAS",
             format!("{0},{0}", STRUCTURED_OUTPUTS_BETA_HEADER),
         );
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
         let first = build_sdk_request_options_plan(
             &messages,
             &ThinkingConfig::Disabled,
@@ -7488,7 +7494,7 @@ mod tests {
 
         crate::utils::process_env::remove("ANTHROPIC_BETAS");
         crate::utils::config::set_test_global_config(None);
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
     }
 
     #[test]
@@ -7511,7 +7517,7 @@ mod tests {
         crate::utils::config::set_test_global_config(Some(
             crate::utils::config::GlobalConfig::default(),
         ));
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
 
         let messages = vec![Message::User(UserMessage {
             uuid: uuid::Uuid::new_v4().to_string(),
@@ -7545,7 +7551,7 @@ mod tests {
 
         crate::utils::process_env::set("CLAUDE_CODE_USE_BEDROCK", "1");
         crate::utils::process_env::set("ANTHROPIC_BETAS", TOOL_SEARCH_BETA_HEADER_3P);
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
         let options = Options::new(
             "claude-sonnet-4-20250514".to_string(),
             "repl_main_thread".to_string(),
@@ -7575,7 +7581,7 @@ mod tests {
             crate::utils::process_env::remove(key);
         }
         crate::utils::config::set_test_global_config(None);
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
     }
 
     #[test]
@@ -7625,7 +7631,10 @@ mod tests {
             .and_then(|value| value.as_deref())
             .expect("anthropic-beta header");
 
-        assert!(beta_header.contains(crate::utils::betas::TOOL_SEARCH_BETA_HEADER_1P));
+        assert!(
+            beta_header
+                .contains(crate::services::provider::anthropic::betas::TOOL_SEARCH_BETA_HEADER_1P)
+        );
     }
 
     #[test]
@@ -7694,7 +7703,10 @@ mod tests {
             .and_then(|headers| headers.get("anthropic-beta"))
             .and_then(|value| value.as_deref())
             .expect("anthropic-beta header");
-        assert!(beta_header.contains(crate::utils::betas::TOOL_SEARCH_BETA_HEADER_1P));
+        assert!(
+            beta_header
+                .contains(crate::services::provider::anthropic::betas::TOOL_SEARCH_BETA_HEADER_1P)
+        );
 
         let mut settled_options = pending_options.clone();
         settled_options.has_pending_mcp_servers = Some(false);
@@ -7726,7 +7738,7 @@ mod tests {
         crate::utils::process_env::remove("ENABLE_TOOL_SEARCH");
         crate::utils::process_env::remove("DISABLE_INTERLEAVED_THINKING");
         crate::utils::process_env::remove("CLAUDE_CODE_EXTRA_BODY");
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
         let messages = vec![Message::User(UserMessage {
             uuid: uuid::Uuid::new_v4().to_string(),
             timestamp: chrono::Utc::now(),
@@ -7767,9 +7779,17 @@ mod tests {
             .and_then(|headers| headers.get("anthropic-beta"))
             .and_then(|value| value.as_deref())
             .unwrap_or_default();
-        assert!(!beta_header.contains(crate::utils::betas::TOOL_SEARCH_BETA_HEADER_3P));
-        assert!(!beta_header.contains(crate::utils::betas::CONTEXT_1M_BETA_HEADER));
-        assert!(!beta_header.contains(crate::utils::betas::INTERLEAVED_THINKING_BETA_HEADER));
+        assert!(
+            !beta_header
+                .contains(crate::services::provider::anthropic::betas::TOOL_SEARCH_BETA_HEADER_3P)
+        );
+        assert!(
+            !beta_header
+                .contains(crate::services::provider::anthropic::betas::CONTEXT_1M_BETA_HEADER)
+        );
+        assert!(!beta_header.contains(
+            crate::services::provider::anthropic::betas::INTERLEAVED_THINKING_BETA_HEADER
+        ));
 
         let anthropic_beta = request_options
             .json_body_patches
@@ -7785,12 +7805,20 @@ mod tests {
             .iter()
             .filter_map(|value| value.as_str())
             .collect::<Vec<_>>();
-        assert!(beta_strings.contains(&crate::utils::betas::TOOL_SEARCH_BETA_HEADER_3P));
-        assert!(beta_strings.contains(&crate::utils::betas::CONTEXT_1M_BETA_HEADER));
-        assert!(beta_strings.contains(&crate::utils::betas::INTERLEAVED_THINKING_BETA_HEADER));
+        assert!(
+            beta_strings
+                .contains(&crate::services::provider::anthropic::betas::TOOL_SEARCH_BETA_HEADER_3P)
+        );
+        assert!(
+            beta_strings
+                .contains(&crate::services::provider::anthropic::betas::CONTEXT_1M_BETA_HEADER)
+        );
+        assert!(beta_strings.contains(
+            &crate::services::provider::anthropic::betas::INTERLEAVED_THINKING_BETA_HEADER
+        ));
 
         crate::utils::process_env::remove("CLAUDE_CODE_USE_BEDROCK");
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
     }
 
     #[test]

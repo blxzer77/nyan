@@ -18,7 +18,6 @@ pub mod auto_updater;
 pub mod aws_auth_status_manager;
 pub mod background;
 pub mod bash;
-pub mod betas;
 pub mod browser;
 pub mod buffered_writer;
 pub mod build_profile;

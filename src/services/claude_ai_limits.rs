@@ -472,8 +472,8 @@ pub async fn check_quota_status() {
     }
 
     let model = crate::utils::model::model::get_small_fast_model();
-    let client = match crate::services::api::client::get_anthropic_client(
-        crate::services::api::client::GetAnthropicClientOptions {
+    let client = match crate::services::provider::anthropic::client::get_anthropic_client(
+        crate::services::provider::anthropic::client::GetAnthropicClientOptions {
             api_key: None,
             max_retries: 0,
             model: Some(model.clone()),
@@ -502,7 +502,7 @@ pub async fn check_quota_status() {
 
 /// Maps to CC `services/claudeAiLimits.ts:199-218` `makeTestQuery()`.
 async fn make_test_query(
-    client: &crate::services::api::client::ClientBuildOutput,
+    client: &crate::services::provider::anthropic::client::ClientBuildOutput,
     model: &str,
 ) -> Result<
     anthropic_sdk::core::response::ApiResponse<
@@ -510,7 +510,7 @@ async fn make_test_query(
     >,
     anthropic_sdk::ApiError,
 > {
-    let betas = crate::utils::betas::get_model_betas(model);
+    let betas = crate::services::provider::anthropic::betas::get_model_betas(model);
     let params = anthropic_sdk::resources::beta::messages::BetaMessageCreateParams {
         model: model.to_string(),
         max_tokens: 1,

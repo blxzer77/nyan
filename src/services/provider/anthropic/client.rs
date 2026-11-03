@@ -187,8 +187,10 @@ pub async fn get_anthropic_client(
     let client_app = env.var("CLAUDE_AGENT_SDK_CLIENT_APP").truthy();
     let custom_headers = get_custom_headers(&env);
 
-    let mut default_headers = crate::services::api::request_headers::common_headers();
-    for (name, value) in crate::services::api::request_headers::anthropic_adapter_headers(&env) {
+    let mut default_headers = crate::services::provider::anthropic::headers::common_headers();
+    for (name, value) in
+        crate::services::provider::anthropic::headers::anthropic_adapter_headers(&env)
+    {
         default_headers.insert(name, value);
     }
 
@@ -237,7 +239,7 @@ pub async fn get_anthropic_client(
     if !is_claude_ai_subscriber() {
         configure_api_key_headers(&mut default_headers, &env).await;
     }
-    crate::services::api::request_headers::apply_configured_overrides(&mut default_headers);
+    crate::services::provider::anthropic::headers::apply_configured_overrides(&mut default_headers);
 
     // Maps to: CC services/api/client.ts:140 `buildFetch(fetchOverride, source)`.
     let resolved_fetch = build_fetch(source);

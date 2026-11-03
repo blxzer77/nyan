@@ -60,6 +60,8 @@ pub struct ModelRequest {
     pub tools: Vec<ToolSpec>,
     pub tool_choice: ToolChoice,
     pub thinking: ThinkingPreference,
+    /// Reasoning-effort hint; adapters map it or drop it per capability.
+    pub effort: Option<Effort>,
     pub max_output_tokens: u32,
     pub temperature: Option<f64>,
     pub structured_output: Option<JsonSchemaOutput>,
@@ -253,7 +255,6 @@ pub struct CachePolicy {
     pub enabled: bool,
     /// Do not extend the cache with this request's tail (fork / side query).
     pub skip_write: bool,
-    pub effort: Option<Effort>,
 }
 
 // ---------------------------------------------------------------------------
@@ -522,6 +523,7 @@ mod tests {
                 name: "Read".into(),
             },
             thinking: ThinkingPreference::Budget { tokens: Some(100) },
+            effort: Some(Effort::Named("high".into())),
             max_output_tokens: 1000,
             temperature: None,
             structured_output: None,

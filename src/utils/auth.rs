@@ -686,7 +686,7 @@ pub fn save_oauth_tokens_if_needed(tokens: &ClaudeAiOAuthTokensSnapshot) -> anyh
             anyhow::bail!("Failed to save OAuth tokens")
         }
     });
-    crate::utils::betas::clear_betas_caches();
+    crate::services::provider::anthropic::betas::clear_betas_caches();
     crate::utils::tool_schema_cache::clear_tool_schema_cache();
     update_result
 }
@@ -1770,10 +1770,10 @@ mod tests {
         let original = br#"{"claudeAiOauth":{"accessToken":"old-access","refreshToken":"old-refresh","expiresAt":1,"scopes":["user:inference"]}}"#;
         std::fs::write(&credentials_path, original).unwrap();
 
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
         let raw_model = format!("claude-sonnet-4-6-oauth-gate-{}", std::process::id());
         assert!(
-            crate::utils::betas::get_all_model_betas(&raw_model)
+            crate::services::provider::anthropic::betas::get_all_model_betas(&raw_model)
                 .iter()
                 .any(|beta| beta == "oauth-gate-cache-sentinel")
         );
@@ -1806,13 +1806,13 @@ mod tests {
         );
         assert_eq!(std::fs::read(&credentials_path).unwrap(), original);
         assert!(
-            crate::utils::betas::get_all_model_betas(&raw_model)
+            crate::services::provider::anthropic::betas::get_all_model_betas(&raw_model)
                 .iter()
                 .any(|beta| beta == "oauth-gate-cache-sentinel")
         );
         assert!(crate::utils::tool_schema_cache::get_tool_schema_cache().contains_key("Read"));
 
-        crate::utils::betas::clear_betas_caches();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
         crate::utils::tool_schema_cache::clear_tool_schema_cache();
         let _ = std::fs::remove_dir_all(dir);
     }

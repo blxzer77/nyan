@@ -61,7 +61,7 @@ pub fn perform_logout(clear_onboarding: bool) -> anyhow::Result<()> {
 /// operation.
 pub fn clear_auth_related_caches() {
     crate::utils::auth::clear_api_key_helper_cache();
-    crate::utils::betas::clear_betas_caches();
+    crate::services::provider::anthropic::betas::clear_betas_caches();
     crate::utils::tool_schema_cache::clear_tool_schema_cache();
 }
 

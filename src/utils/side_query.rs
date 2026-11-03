@@ -158,7 +158,7 @@ impl Default for SideQueryOptions {
 /// Build beta list for a side_query request.
 /// Maps to: CC `sideQuery` `betas` construction (+ STRUCTURED_OUTPUTS when applicable).
 pub fn side_query_betas_for_request(model: &str, has_output_format: bool) -> Vec<String> {
-    use crate::utils::betas::{
+    use crate::services::provider::anthropic::betas::{
         STRUCTURED_OUTPUTS_BETA_HEADER, get_model_betas, model_supports_structured_outputs,
     };
     let mut betas = get_model_betas(model);
@@ -210,8 +210,8 @@ pub async fn side_query(opts: SideQueryOptions) -> anyhow::Result<Message> {
     let max_retries = opts.max_retries.unwrap_or(2);
 
     // Maps to: CC `getAnthropicClient({ maxRetries, model, source: 'side_query' })`.
-    let client = crate::services::api::client::get_anthropic_client(
-        crate::services::api::client::GetAnthropicClientOptions {
+    let client = crate::services::provider::anthropic::client::get_anthropic_client(
+        crate::services::provider::anthropic::client::GetAnthropicClientOptions {
             api_key: None,
             max_retries,
             model: Some(opts.model.clone()),
@@ -597,10 +597,12 @@ mod tests {
 
     #[test]
     fn structured_outputs_beta_pushed_only_when_format_and_model_support() {
-        use crate::utils::betas::STRUCTURED_OUTPUTS_BETA_HEADER;
+        use crate::services::provider::anthropic::betas::STRUCTURED_OUTPUTS_BETA_HEADER;
         let with_format = side_query_betas_for_request("claude-sonnet-4-6", true);
         // Support depends on provider env; if supported, header must appear.
-        if crate::utils::betas::model_supports_structured_outputs("claude-sonnet-4-6") {
+        if crate::services::provider::anthropic::betas::model_supports_structured_outputs(
+            "claude-sonnet-4-6",
+        ) {
             assert!(
                 with_format
                     .iter()
@@ -619,7 +621,9 @@ mod tests {
                 .iter()
                 .filter(|b| *b == STRUCTURED_OUTPUTS_BETA_HEADER)
                 .count();
-        if crate::utils::betas::model_supports_structured_outputs("claude-sonnet-4-6") {
+        if crate::services::provider::anthropic::betas::model_supports_structured_outputs(
+            "claude-sonnet-4-6",
+        ) {
             assert!(
                 only_from_format || without.iter().any(|b| b == STRUCTURED_OUTPUTS_BETA_HEADER)
             );

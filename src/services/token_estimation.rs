@@ -10,12 +10,12 @@ use serde_json::Value;
 
 async fn count_tokens_client(
     model: &str,
-) -> Option<crate::services::api::client::AnthropicClientHandle> {
+) -> Option<crate::services::provider::anthropic::client::AnthropicClientHandle> {
     // The binary installs this during startup; library/test callers can enter
     // this API boundary directly.
     crate::utils::tls_provider::install_crypto_provider();
-    crate::services::api::client::get_anthropic_client(
-        crate::services::api::client::GetAnthropicClientOptions {
+    crate::services::provider::anthropic::client::get_anthropic_client(
+        crate::services::provider::anthropic::client::GetAnthropicClientOptions {
             max_retries: 1,
             model: Some(model.to_string()),
             source: Some("count_tokens".to_string()),
@@ -54,14 +54,15 @@ fn has_thinking_blocks(
 /// (`utils/model/bedrock.ts:96-100`), not the handle's, which carries the
 /// small-fast-model override when `model` is that model.
 async fn count_tokens_with_bedrock(
-    handle: &crate::services::api::client::AnthropicClientHandle,
+    handle: &crate::services::provider::anthropic::client::AnthropicClientHandle,
     model: &str,
     messages: &[anthropic_sdk::resources::beta::messages::BetaMessageParam],
     tools: &[anthropic_sdk::resources::beta::messages::BetaToolUnion],
     betas: &[String],
     contains_thinking: bool,
 ) -> Option<usize> {
-    let crate::services::api::client::ProviderConfig::Bedrock { auth, .. } = &handle.provider
+    let crate::services::provider::anthropic::client::ProviderConfig::Bedrock { auth, .. } =
+        &handle.provider
     else {
         return None;
     };
@@ -102,12 +103,12 @@ async fn count_tokens_with_bedrock(
         .truthy()
         .or_else(|| crate::utils::process_env::var("AWS_ENDPOINT_URL_BEDROCK_RUNTIME").truthy())
         .unwrap_or_else(|| format!("https://bedrock-runtime.{region}.amazonaws.com"));
-    let response = crate::services::api::client::send_bedrock_request(
+    let response = crate::services::provider::anthropic::client::send_bedrock_request(
         reqwest::Method::POST,
         &endpoint,
         &format!(
             "/model/{}/count-tokens",
-            crate::services::api::client::aws_uri_encode(&model_id)
+            crate::services::provider::anthropic::client::aws_uri_encode(&model_id)
         ),
         request_body,
         &region,
@@ -347,7 +348,7 @@ pub async fn count_messages_tokens_with_api(
     let normalized_model = crate::utils::model::model::normalize_model_string_for_api(&model);
     let provider = crate::utils::model::providers::get_api_provider();
     let contains_thinking = has_thinking_blocks(&messages);
-    let mut betas = crate::utils::betas::get_model_betas(&model);
+    let mut betas = crate::services::provider::anthropic::betas::get_model_betas(&model);
     if provider == crate::utils::model::providers::ApiProvider::Vertex {
         betas.retain(|beta| {
             matches!(
@@ -602,15 +603,17 @@ mod tests {
             EnvVarGuard::unset("AWS_DEFAULT_REGION"),
             EnvVarGuard::set("ANTHROPIC_BEDROCK_BASE_URL", &endpoint),
         ];
-        let handle = crate::services::api::client::get_anthropic_client(
-            crate::services::api::client::GetAnthropicClientOptions {
+        let handle = crate::services::provider::anthropic::client::get_anthropic_client(
+            crate::services::provider::anthropic::client::GetAnthropicClientOptions {
                 model: Some("us.anthropic.claude-test".to_string()),
                 ..Default::default()
             },
         )
         .await
         .unwrap();
-        let crate::services::api::client::ProviderConfig::Bedrock { region, .. } = &handle.provider
+        let crate::services::provider::anthropic::client::ProviderConfig::Bedrock {
+            region, ..
+        } = &handle.provider
         else {
             panic!("Bedrock expected: {:?}", handle.provider);
         };
