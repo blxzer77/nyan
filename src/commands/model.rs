@@ -133,7 +133,10 @@ fn handle_select_output_from_selection(
 }
 
 fn handle_cancel_output_for(model: Option<&str>) -> String {
-    format!("Kept model as {}", render_model_label(model))
+    match model {
+        None if !has_main_profile() => NO_MAIN_PROFILE_PROMPT.to_string(),
+        _ => format!("Kept model as {}", render_model_label(model)),
+    }
 }
 
 /// Maps to: CC `ModelPickerWrapper` `handleCancel` when AppState has no
@@ -373,7 +376,8 @@ mod tests {
         );
         assert_eq!(
             handle_cancel_output(),
-            format!("Kept model as {}", render_model_label(None))
+            NO_MAIN_PROFILE_PROMPT,
+            "with no main profile the cancel message is the prompt alone"
         );
     }
 
