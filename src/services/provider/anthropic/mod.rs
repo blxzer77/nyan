@@ -6,6 +6,7 @@
 //! the adapter contract in `services::provider::adapter`.
 
 pub mod betas;
+pub mod cache;
 pub mod client;
 pub mod credential;
 pub mod headers;
