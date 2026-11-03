@@ -234,7 +234,7 @@ jobs:
     name: windows-check
     needs: policy
     if: needs.policy.result == 'success' && needs.policy.outputs.docs_only != 'true' && needs.policy.outputs.windows_required == 'true'
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 45
     steps:
       - name: Check out source
