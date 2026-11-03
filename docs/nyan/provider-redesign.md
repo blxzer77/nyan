@@ -188,9 +188,9 @@ pub struct ModelCapabilities {
 
 ### 3.3 Pi Agent 模型元数据：来源、格式、许可证和更新
 
-采用 [badlogic/pi-mono（当前仓库重定向到 earendil-works/pi）](https://github.com/badlogic/pi-mono) 的 `packages/ai` 模型目录作为首个外部元数据来源。Pi 仓库（canonical 为 earendil-works/pi，读取 SHA `1f8604f8`）为 MIT，版权行 `Copyright (c) 2025 Mario Zechner`。nyan 整体项目许可证为 AGPL-3.0-only；引入 MIT 的快照/必要来源材料不改变 nyan 的整体许可证，但必须在根目录 `NOTICE` 中保留对应版权声明、许可证文本和来源 commit。nyan 不复制 Pi runtime，仅引入生成后的数据快照。
+采用 [badlogic/pi-mono（当前仓库重定向到 earendil-works/pi）](https://github.com/badlogic/pi-mono) 的 `packages/ai` 模型目录作为首个外部元数据来源。Pi 仓库（canonical 为 earendil-works/pi，读取 SHA `1f8604f8`）为 MIT，版权行 `Copyright (c) 2025 Mario Zechner`。nyan 整体项目许可证为 AGPL-3.0-only；引入 MIT 的快照/必要来源材料不改变 nyan 的整体许可证，首批只在根目录 `NOTICE` 中保留 Pi 与 models.dev 的版权声明、许可证文本和来源 commit。nyan 不复制 Pi runtime，仅引入生成后的数据快照。
 
-Pi 的通用模型数据主要来自 [models.dev](https://github.com/anomalyco/models.dev)，当前 Pi source adapter 读取 models.dev v2 experimental catalog，再叠加 Pi 自己的 provider/family 修正和手写模型定义。Pi 还合并了 OpenRouter、Vercel、NVIDIA、Radius 等来源（只读调研时确认，这些来源的许可证本文未核实，见 §十一）。因此“借用 Pi 元数据”不是把 models.dev 当作 nyan 的运行时 API。两者都是 MIT：models.dev 仓库 LICENSE 为 MIT（`Copyright (c) 2025 models.dev`，读取 SHA `9dfbad27`），未发现单独的数据许可证。Pi 快照派生自 models.dev 并叠加 Pi 自己的修正，因此 NOTICE 必须同时列出两家的版权声明。MIT 只覆盖代码和各自维护的内容，不覆盖模型厂商的服务条款和权重许可证；这些单独记录，不推断为 MIT。
+Pi 的通用模型数据主要来自 [models.dev](https://github.com/anomalyco/models.dev)，当前 Pi source adapter 读取 models.dev v2 experimental catalog，再叠加 Pi 自己的 provider/family 修正和手写模型定义。Pi 还合并了 OpenRouter、Vercel、NVIDIA、Radius 等来源；首批 NOTICE 不单独声明这些来源，未来实际引入其内容时再核实许可证和版权。因此“借用 Pi 元数据”不是把 models.dev 当作 nyan 的运行时 API。两者都是 MIT：models.dev 仓库 LICENSE 为 MIT（`Copyright (c) 2025 models.dev`，读取 SHA `9dfbad27`），未发现单独的数据许可证。Pi 快照派生自 models.dev 并叠加 Pi 自己的修正，因此首批 NOTICE 列出 Pi 与 models.dev 两家的版权声明。MIT 只覆盖代码和各自维护的内容，不覆盖模型厂商的服务条款和权重许可证；这些单独记录，不推断为 MIT。
 
 Pi 的元数据结构可直接覆盖 nyan 的核心字段：
 
@@ -383,7 +383,7 @@ credential reference 只引用来源，不把 secret 写入 settings：
 - `internal/auth/claude/filename.go`、`internal/auth/codex/filename.go` 按 provider/account identity 生成文件名，保留 legacy filename fallback；这说明多账户隔离应在 provider owner 中完成，而不是由统一 broker 猜 token 格式。
 - CLIProxyAPI 是 Go gateway/proxy，不作为 nyan 的运行时依赖；nyan 只借鉴“provider-specific OAuth + per-account file store + refresh owner”的边界。
 
-Pi、OpenCode、CLIProxyAPI 均为 MIT（LICENSE 读取 SHA：Pi `1f8604f8`，CLIProxyAPI `be2563ff`，OpenCode `d0747317`）；nyan 不复制其实现，引用的设计和存储模式在实现 PR 的 NOTICE 中保留来源与版权行。
+首批 NOTICE 只保留 Pi 与 models.dev 的版权声明和许可证材料；OpenCode、CLIProxyAPI 仅作设计参考，nyan 不复制其实现或数据。若未来实际引入其它来源，再单独核实许可证并更新 NOTICE。
 
 **OpenCode 参考（认证方式）**：
 - `opencode auth login` 的方法类型为 key、command、external、oauth（`packages/cli/src/commands/handlers/auth/login.ts:40-56`）。
@@ -555,7 +555,7 @@ nyan 没有用户，因此实现阶段直接删除旧入口：
 
 | 风险 | 影响 | 防护 |
 |---|---|---|
-| Pi catalog 上游字段/许可证变化 | 能力或分发合规错误 | pin commit/schema/hash；显式更新 PR；NOTICE 保留版权声明；schema breaking 必须人工审查 |
+| Pi catalog 上游字段/许可证变化 | 能力或分发合规错误 | pin commit/schema/hash；显式更新 PR；NOTICE 首批只保留 Pi 与 models.dev 版权声明；schema breaking 必须人工审查 |
 | 缺 contextWindow | 请求 overflow 或错误 compaction | profile 解析直接失败；不使用旧 200k/default/probe |
 | provider rate-limit 语义不同 | 重试过多、重复请求、错误切 provider | adapter-specific policy；只在未输出时 retry；跨 provider 只走显式列表 |
 | Chat/Responses 混淆 | tool/continuation 丢失 | 独立 protocol adapter 和 contract fixture；profile 明确协议 |
@@ -571,9 +571,7 @@ nyan 没有用户，因此实现阶段直接删除旧入口：
 
 ## 十一、仍需用户拍板的问题
 
-决策 1–23 已覆盖原先的元数据形态、更新节奏、覆盖范围、首批 OAuth、凭据存储、商业判定、重试默认、Gemini 顺序和本地 fallback；Anthropic OAuth、聚合网关归类和重试上限已从本节删除。剩余待拍板：
-
-1. **Pi 其它数据源的许可证**：Pi 快照合并了 OpenRouter、Vercel、NVIDIA、Radius 等来源，本文只核实了 Pi 与 models.dev 为 MIT。这些来源的许可证和版权声明需在 PR 2 写入 NOTICE 前逐一核实，或决定不引入这些来源。
+决策 1–23 已覆盖元数据形态、更新节奏、覆盖范围、首批 OAuth、凭据存储、商业判定、重试默认、Gemini 顺序和本地 fallback。本版暂无剩余待拍板问题；Anthropic 仅 API key、聚合网关归类、重试硬上限和首批 NOTICE 范围均以正文决策为准。
 
 ## 十二、验收标准
 
