@@ -70,6 +70,15 @@ pub struct ModelRequest {
     /// for routing hints; it never changes message content.
     pub query_source: String,
     pub agent_id: Option<String>,
+    /// The model must not call several tools in one turn.
+    pub disable_parallel_tools: bool,
+    /// Deferrable tools the conversation has already loaded through tool
+    /// search; an adapter that defers tools must send these in full.
+    pub discovered_tools: Vec<String>,
+    /// More tools may still arrive (MCP servers connecting), so an adapter
+    /// must not conclude that tool search has nothing to defer.
+    pub tools_pending: bool,
+    pub client: ClientContext,
     /// Per-protocol extras that have no neutral meaning (Anthropic cached
     /// microcompact edits, provider-executed tool schemas, ...). An adapter
     /// reads only entries tagged with its own protocol.
@@ -247,6 +256,14 @@ pub type Effort = crate::utils::effort::EffortValue;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JsonSchemaOutput {
     pub schema: Value,
+}
+
+/// How the client is running; adapters that must identify the client to the
+/// provider read it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ClientContext {
+    pub non_interactive: bool,
+    pub has_append_system_prompt: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -533,6 +550,10 @@ mod tests {
             },
             query_source: "repl_main_thread".into(),
             agent_id: None,
+            disable_parallel_tools: false,
+            discovered_tools: Vec::new(),
+            tools_pending: false,
+            client: ClientContext::default(),
             extensions: vec![ProviderState {
                 protocol: Protocol::AnthropicMessages,
                 data: serde_json::json!({"k": 1}),
