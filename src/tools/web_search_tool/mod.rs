@@ -1143,7 +1143,24 @@ mod tests {
     #[test]
     fn web_search_model_profile_matches_official_haiku_experiment_shape() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("ANTHROPIC_SMALL_FAST_MODEL", "claude-haiku-test");
+        let root = std::env::temp_dir().join(format!(
+            "nyan-web-search-profile-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("settings.json"),
+            r#"{
+                "nyan": {
+                    "providers": {"anthropic": {"kind": "anthropic", "protocol": "anthropicMessages"}},
+                    "models": {"main": {"provider": "anthropic", "model": "claude-haiku-test", "capabilities": {"contextWindow": 200000, "maxOutputTokens": 8192}}},
+                    "selection": {"main": "main"}
+                }
+            }"#,
+        )
+        .unwrap();
+        let _config_dir = crate::utils::test_env::EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        crate::utils::settings::settings_cache::reset_settings_cache();
         crate::utils::process_env::set("MAX_THINKING_TOKENS", "2048");
         let config = crate::utils::config::GlobalConfig::default();
 
@@ -1164,6 +1181,7 @@ mod tests {
         let (haiku_model, haiku_thinking, haiku_tool_choice) =
             web_search_model_profile(true, &config);
         assert_eq!(haiku_model, "claude-haiku-test");
+        assert_eq!(haiku_model, main_model);
         assert_eq!(
             haiku_thinking,
             crate::utils::thinking::ThinkingConfig::Disabled
@@ -1173,8 +1191,9 @@ mod tests {
             Some(serde_json::json!({"type": "tool", "name": "web_search"}))
         );
 
-        crate::utils::process_env::remove("ANTHROPIC_SMALL_FAST_MODEL");
         crate::utils::process_env::remove("MAX_THINKING_TOKENS");
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

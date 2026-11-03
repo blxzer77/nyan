@@ -30,7 +30,7 @@ pub fn input_schema() -> &'static crate::utils::zod::Schema {
             (
                 "setting",
                 zod::string().describe(
-                    "The setting key (e.g., \"theme\", \"language\", \"permissions.defaultMode\")",
+                    "The setting key (e.g., \"theme\", \"model\", \"permissions.defaultMode\")",
                 ),
             ),
             (

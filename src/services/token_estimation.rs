@@ -565,11 +565,11 @@ mod tests {
 
     /// CC's side clients take `getAWSRegion()` (`utils/model/bedrock.ts:50-56,
     /// 96-100`): the inference-profile lookup and the count are signed for
-    /// `AWS_REGION` even when the handle, built for the small fast model,
-    /// carries `ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION`. The lookup is
-    /// memoized (`:141`), so a second count sends only the count.
+    /// `AWS_REGION`. The removed `ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION` is no
+    /// longer read. The lookup is memoized (`:141`), so a second count sends
+    /// only the count.
     #[tokio::test]
-    async fn bedrock_side_calls_sign_for_the_aws_region_not_the_small_fast_override() {
+    async fn bedrock_side_calls_sign_for_the_aws_region() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let endpoint = format!("http://{}", listener.local_addr().unwrap());
@@ -600,8 +600,6 @@ mod tests {
             EnvVarGuard::set("AWS_SECRET_ACCESS_KEY", "secret"),
             EnvVarGuard::set("AWS_REGION", "us-west-2"),
             EnvVarGuard::unset("AWS_DEFAULT_REGION"),
-            EnvVarGuard::set("ANTHROPIC_SMALL_FAST_MODEL", "us.anthropic.claude-test"),
-            EnvVarGuard::set("ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION", "eu-west-3"),
             EnvVarGuard::set("ANTHROPIC_BEDROCK_BASE_URL", &endpoint),
         ];
         let handle = crate::services::api::client::get_anthropic_client(
@@ -612,12 +610,11 @@ mod tests {
         )
         .await
         .unwrap();
-        // The handle does carry the override, so the region below is not it.
         let crate::services::api::client::ProviderConfig::Bedrock { region, .. } = &handle.provider
         else {
             panic!("Bedrock expected: {:?}", handle.provider);
         };
-        assert_eq!(region, "eu-west-3");
+        assert_eq!(region, "us-west-2");
 
         let messages = [anthropic_sdk::resources::beta::messages::BetaMessageParam {
             role: "user".to_string(),
