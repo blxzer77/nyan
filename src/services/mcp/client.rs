@@ -5113,6 +5113,22 @@ rl.on('line', line => {
         let _foundry = EnvVarGuard::unset("CLAUDE_CODE_USE_FOUNDRY");
         let _skip_auth = EnvVarGuard::set("CLAUDE_CODE_SKIP_BEDROCK_AUTH", "1");
         let _endpoint = EnvVarGuard::set("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", &endpoint);
+        // Token counting needs a selected main profile to exist; the Bedrock
+        // endpoint above supplies the count, so the profile's own key and URL
+        // are unused here.
+        let _count_key = EnvVarGuard::set("NYAN_MCP_TEST_KEY", "sk-unused-by-bedrock");
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        crate::services::provider::anthropic::target::install_test_main_profile(
+            "https://unused.invalid",
+            "NYAN_MCP_TEST_KEY",
+        );
+        struct ResetSettings;
+        impl Drop for ResetSettings {
+            fn drop(&mut self) {
+                crate::utils::settings::settings_cache::reset_settings_cache();
+            }
+        }
+        let _reset_settings = ResetSettings;
         let previous_model = crate::bootstrap::state::get_main_loop_model_override();
         crate::bootstrap::state::set_main_loop_model_override(Some(Some(
             "anthropic.claude-sonnet-4-5-20250929-v1:0".to_string(),
