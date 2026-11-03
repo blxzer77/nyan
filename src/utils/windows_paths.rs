@@ -71,21 +71,105 @@ pub fn git_bash_discovery_source() -> &'static str {
     }
 }
 
+/// Normalize raw CLAUDE_CODE_GIT_BASH_PATH value, handling quotes, POSIX
+/// paths (`/c/...`, `//server/...`), Cygwin paths (`/cygdrive/...`), and UNC paths.
+pub fn normalize_git_bash_path_str(raw: &str) -> PathBuf {
+    let trimmed = raw.trim().trim_matches(|c| c == '"' || c == '\'');
+    let converted = posix_path_to_windows_path(trimmed);
+    PathBuf::from(converted)
+}
+
+/// Validate that a path exists, is an executable binary, and is bash.
+pub fn validate_git_bash_executable(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Err(format!(
+            "CLAUDE_CODE_GIT_BASH_PATH file does not exist: \"{}\"",
+            path.display()
+        ));
+    }
+    if path.is_dir() {
+        return Err(format!(
+            "CLAUDE_CODE_GIT_BASH_PATH is a directory, not a file: \"{}\"",
+            path.display()
+        ));
+    }
+    #[cfg(windows)]
+    {
+        let is_exe = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"));
+        if !is_exe {
+            return Err(format!(
+                "CLAUDE_CODE_GIT_BASH_PATH is not an executable file (.exe): \"{}\"",
+                path.display()
+            ));
+        }
+    }
+    let file_stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("");
+    if !file_stem.eq_ignore_ascii_case("bash") {
+        return Err(format!(
+            "CLAUDE_CODE_GIT_BASH_PATH does not point to bash (expected bash.exe, got \"{}\")",
+            path.display()
+        ));
+    }
+
+    #[cfg(windows)]
+    {
+        let mut command = std::process::Command::new(path);
+        crate::utils::subprocess_env::apply_process_env_std(&mut command);
+        command.arg("--version");
+        command.stdin(std::process::Stdio::null());
+        command.stdout(std::process::Stdio::piped());
+        command.stderr(std::process::Stdio::piped());
+        match command.output() {
+            Ok(output) => {
+                if !output.status.success() {
+                    return Err(format!(
+                        "CLAUDE_CODE_GIT_BASH_PATH at \"{}\" exited with failure code when run with --version",
+                        path.display()
+                    ));
+                }
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if !stdout.to_ascii_lowercase().contains("bash") {
+                    return Err(format!(
+                        "CLAUDE_CODE_GIT_BASH_PATH at \"{}\" is not GNU bash",
+                        path.display()
+                    ));
+                }
+            }
+            Err(err) => {
+                return Err(format!(
+                    "CLAUDE_CODE_GIT_BASH_PATH at \"{}\" failed to execute: {err}",
+                    path.display()
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Maps to CC `findGitBashPath()` without process exit: callers surface the
 /// official installation message as an execution error.
 pub fn find_git_bash_path() -> Result<PathBuf, String> {
-    if let Some(path) = crate::utils::process_env::var_os("CLAUDE_CODE_GIT_BASH_PATH")
+    if let Some(raw_os) = crate::utils::process_env::var_os("CLAUDE_CODE_GIT_BASH_PATH")
         .as_deref()
         .truthy()
     {
-        let path = PathBuf::from(path);
-        if executable_exists(&path) {
-            return Ok(path);
+        let raw_str = raw_os.to_string_lossy();
+        let mut path = normalize_git_bash_path_str(&raw_str);
+        if !path.is_file() && path.extension().is_none() {
+            let with_exe = path.with_extension("exe");
+            if with_exe.is_file() {
+                path = with_exe;
+            }
         }
-        return Err(format!(
-            "nyan was unable to find CLAUDE_CODE_GIT_BASH_PATH path \"{}\"",
-            path.display()
-        ));
+        validate_git_bash_executable(&path)?;
+        return Ok(path);
     }
 
     for git in [
@@ -129,7 +213,7 @@ pub fn find_git_bash_path() -> Result<PathBuf, String> {
         }
     }
 
-    Err("nyan on Windows requires git-bash (https://git-scm.com/downloads/win). If installed but not in PATH, set environment variable pointing to your bash.exe, similar to: CLAUDE_CODE_GIT_BASH_PATH=C:\\Program Files\\Git\\bin\\bash.exe".to_string())
+    Err("nyan on Windows requires Git for Windows (Git Bash). Install it from https://git-scm.com/downloads/win, or set CLAUDE_CODE_GIT_BASH_PATH to your bash.exe path (e.g. C:\\Program Files\\Git\\bin\\bash.exe).".to_string())
 }
 
 #[cfg(test)]
@@ -155,6 +239,63 @@ mod tests {
         );
         assert_eq!(posix_path_to_windows_path("/c/Users/foo"), r"C:\Users\foo");
         assert_eq!(posix_path_to_windows_path("/cygdrive/d/work"), r"D:\work");
+    }
+
+    #[test]
+    fn normalize_git_bash_path_handles_drives_unc_and_posix() {
+        assert_eq!(
+            normalize_git_bash_path_str(r"C:\Program Files\Git\bin\bash.exe"),
+            PathBuf::from(r"C:\Program Files\Git\bin\bash.exe")
+        );
+        assert_eq!(
+            normalize_git_bash_path_str("C:/Program Files/Git/bin/bash.exe"),
+            PathBuf::from(r"C:\Program Files\Git\bin\bash.exe")
+        );
+        assert_eq!(
+            normalize_git_bash_path_str("/c/Program Files/Git/bin/bash.exe"),
+            PathBuf::from(r"C:\Program Files\Git\bin\bash.exe")
+        );
+        assert_eq!(
+            normalize_git_bash_path_str("/cygdrive/d/Git/bin/bash.exe"),
+            PathBuf::from(r"D:\Git\bin\bash.exe")
+        );
+        assert_eq!(
+            normalize_git_bash_path_str(r"\\server\share\Git\bin\bash.exe"),
+            PathBuf::from(r"\\server\share\Git\bin\bash.exe")
+        );
+        assert_eq!(
+            normalize_git_bash_path_str("//server/share/Git/bin/bash.exe"),
+            PathBuf::from(r"\\server\share\Git\bin\bash.exe")
+        );
+        assert_eq!(
+            normalize_git_bash_path_str("\"C:\\Program Files\\Git\\bin\\bash.exe\""),
+            PathBuf::from(r"C:\Program Files\Git\bin\bash.exe")
+        );
+    }
+
+    #[test]
+    fn validate_git_bash_executable_reports_clear_errors() {
+        let nonexistent = Path::new("C:/nonexistent/path/bash.exe");
+        let err = validate_git_bash_executable(nonexistent).unwrap_err();
+        assert!(err.contains("does not exist"), "unexpected error: {err}");
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "nyan-bash-validate-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let err = validate_git_bash_executable(&temp_dir).unwrap_err();
+        assert!(err.contains("is a directory"), "unexpected error: {err}");
+
+        let not_bash = temp_dir.join("sh.exe");
+        std::fs::write(&not_bash, b"mock").unwrap();
+        let err = validate_git_bash_executable(&not_bash).unwrap_err();
+        assert!(
+            err.contains("does not point to bash"),
+            "unexpected error: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
     #[cfg(windows)]
@@ -197,5 +338,64 @@ mod tests {
             String::from_utf8_lossy(&run.output.stdout).trim(),
             "nyan-windows-git-bash-smoke"
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_smoke_claude_code_git_bash_path_runtime_validation() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let discovered = find_git_bash_path().unwrap_or_else(|error| {
+            panic!("Git Bash is unavailable on the Windows runner: {error}")
+        });
+
+        // 1. Exact path override
+        {
+            let _override = EnvVarGuard::set(
+                "CLAUDE_CODE_GIT_BASH_PATH",
+                discovered.display().to_string(),
+            );
+            assert_eq!(git_bash_discovery_source(), "CLAUDE_CODE_GIT_BASH_PATH");
+            let found =
+                find_git_bash_path().expect("valid CLAUDE_CODE_GIT_BASH_PATH should resolve");
+            assert_eq!(found, discovered);
+        }
+
+        // 2. POSIX path conversion override
+        {
+            let posix = windows_path_to_posix_path(&discovered.display().to_string());
+            let _override = EnvVarGuard::set("CLAUDE_CODE_GIT_BASH_PATH", posix);
+            let found =
+                find_git_bash_path().expect("POSIX CLAUDE_CODE_GIT_BASH_PATH should resolve");
+            assert_eq!(found, discovered);
+        }
+
+        // 3. Forward-slash path override
+        {
+            let forward = discovered.display().to_string().replace('\\', "/");
+            let _override = EnvVarGuard::set("CLAUDE_CODE_GIT_BASH_PATH", forward);
+            let found = find_git_bash_path()
+                .expect("Forward-slash CLAUDE_CODE_GIT_BASH_PATH should resolve");
+            assert_eq!(found, discovered);
+        }
+
+        // 4. Invalid nonexistent path override
+        {
+            let _override = EnvVarGuard::set(
+                "CLAUDE_CODE_GIT_BASH_PATH",
+                r"C:\nonexistent\tools\bash.exe",
+            );
+            let err = find_git_bash_path().unwrap_err();
+            assert!(err.contains("does not exist"), "unexpected error: {err}");
+        }
+
+        // 5. Invalid directory path override
+        {
+            let _override = EnvVarGuard::set(
+                "CLAUDE_CODE_GIT_BASH_PATH",
+                discovered.parent().unwrap().display().to_string(),
+            );
+            let err = find_git_bash_path().unwrap_err();
+            assert!(err.contains("is a directory"), "unexpected error: {err}");
+        }
     }
 }

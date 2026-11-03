@@ -62,12 +62,26 @@ fn git_bash_startup_notification_for_platform(
     platform: &str,
     available: bool,
 ) -> Option<Notification> {
+    git_bash_startup_notification_with_detail(platform, available, None)
+}
+
+fn git_bash_startup_notification_with_detail(
+    platform: &str,
+    available: bool,
+    detail: Option<&str>,
+) -> Option<Notification> {
     if platform != "windows" || available {
         return None;
     }
+    let text = match detail {
+        Some(detail) => format!(
+            "Windows requires Git for Windows (Git Bash): {detail}. Install it or set CLAUDE_CODE_GIT_BASH_PATH to your bash.exe path."
+        ),
+        None => "Windows requires Git for Windows (Git Bash). Install it or set CLAUDE_CODE_GIT_BASH_PATH to your bash.exe path.".to_string(),
+    };
     Some(Notification::text(
         "windows-git-bash-unavailable",
-        "Windows requires Git for Windows (Git Bash). Install it or set CLAUDE_CODE_GIT_BASH_PATH to your bash.exe path.",
+        text,
         NotificationPriority::Low,
     ))
 }
@@ -89,12 +103,15 @@ pub fn startup_notifications_with_gate(
         notifications.push(notification);
     }
     #[cfg(target_os = "windows")]
-    let git_bash_available = crate::utils::windows_paths::find_git_bash_path().is_ok();
+    let git_bash_status = crate::utils::windows_paths::find_git_bash_path();
     #[cfg(not(target_os = "windows"))]
-    let git_bash_available = true;
-    if let Some(notification) =
-        git_bash_startup_notification_for_platform(platform, git_bash_available)
-    {
+    let git_bash_status: Result<std::path::PathBuf, String> =
+        Ok(std::path::PathBuf::from("/bin/bash"));
+    let git_bash_notification = match &git_bash_status {
+        Ok(_) => None,
+        Err(err) => git_bash_startup_notification_with_detail(platform, false, Some(err)),
+    };
+    if let Some(notification) = git_bash_notification {
         notifications.push(notification);
     }
     if let Some(message) = sandbox_unavailable_message_for_platform(
