@@ -711,7 +711,7 @@ mod persistence_tests {
     fn add_rules_matches_official_real_validation_failure_preserves_existing_rules() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let fixture = Fixture::new();
-        fixture.write(json!({"model":42,"permissions":{"allow":["Read(src/**)"]},"custom":"keep"}));
+        fixture.write(json!({"fastMode":"not-a-bool","permissions":{"allow":["Read(src/**)"]},"custom":"keep"}));
         fixture.assert_official_validation_failure_boundary();
         assert!(add_permission_rules_to_settings(
             &[PermissionRuleValue::new("Bash", Some("ls".into()))],
@@ -720,7 +720,7 @@ mod persistence_tests {
         ));
         assert_eq!(
             fixture.read(),
-            json!({"model":42,
+            json!({"fastMode":"not-a-bool",
             "permissions":{"allow":["Read(src/**)","Bash(ls)"]},"custom":"keep"})
         );
         assert!(get_settings_for_source(SettingSource::User).is_none());
