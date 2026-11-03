@@ -6,6 +6,14 @@ on:
     - cron: '0 3 * * 1'
   workflow_dispatch:
 
+# Branch push and PR creation use the MODEL_METADATA_BOT_TOKEN secret instead of
+# github.token: PRs opened with github.token do not trigger pull_request workflows,
+# so CI would never run on the weekly PR and it could not pass the Merge gate.
+# The secret must be a fine-grained PAT or GitHub App token scoped to this
+# repository only, with:
+#   - Contents: read and write (push the update branch)
+#   - Pull requests: read and write (open the PR)
+# Read-only upstream lookups keep using github.token.
 permissions:
   contents: write
   pull-requests: write
@@ -22,6 +30,15 @@ jobs:
       PI_REVIEWED_MODELS_DEV_BLOB: 3928dc438813e96998ac5f644bad0beb4fe6f303
       PI_REVIEWED_PROVIDERS_INDEX_BLOB: 60b29cbd570bc8b6a68c575079c7712f13c9925e
     steps:
+      - name: Require MODEL_METADATA_BOT_TOKEN
+        env:
+          BOT_TOKEN: ${{ secrets.MODEL_METADATA_BOT_TOKEN }}
+        run: |
+          if [ -z "$BOT_TOKEN" ]; then
+            echo "::error title=Missing repository secret::MODEL_METADATA_BOT_TOKEN is not set. Add a fine-grained PAT or GitHub App token for blxzer77/nyan with Contents and Pull requests read/write under Settings > Secrets and variables > Actions." >&2
+            exit 1
+          fi
+
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -76,7 +93,7 @@ jobs:
       - name: Create pull request if updated
         if: steps.git-diff.outputs.has_diff == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.MODEL_METADATA_BOT_TOKEN }}
           GH_REPO: ${{ github.repository }}
           PI_COMMIT: ${{ steps.upstream.outputs.pi_commit }}
           MODELS_DEV_VERSION: ${{ steps.upstream.outputs.models_dev_version }}
