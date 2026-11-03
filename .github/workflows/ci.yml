@@ -244,6 +244,14 @@ jobs:
           persist-credentials: false
       - name: Set up Rust
         uses: ./.github/actions/setup-rust
+      - name: Restore Windows build cache
+        id: windows-target-cache
+        uses: actions/cache/restore@d4323d4df104b026a6aa633fdb11d772146be0bf
+        with:
+          path: target
+          key: windows-target-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            windows-target-${{ runner.os }}-${{ runner.arch }}-
       - name: Prepare pinned ripgrep
         shell: pwsh
         env:
@@ -299,6 +307,12 @@ jobs:
         env:
           USE_BUILTIN_RIPGREP: '1'
         run: cargo test --locked --lib windows_smoke -- --nocapture
+      - name: Save Windows build cache on master
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master' && steps.windows-target-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@d4323d4df104b026a6aa633fdb11d772146be0bf
+        with:
+          path: target
+          key: ${{ steps.windows-target-cache.outputs.cache-primary-key }}
 
   gate:
     name: Merge gate
