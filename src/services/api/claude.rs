@@ -589,15 +589,8 @@ pub fn get_api_metadata() -> ApiMetadata {
         "device_id".to_string(),
         JsonValue::String(crate::utils::config::get_or_create_user_id()),
     );
-    // Only include OAuth account UUID when actively using OAuth authentication
-    extra.insert(
-        "account_uuid".to_string(),
-        JsonValue::String(
-            crate::utils::auth::get_oauth_account_info()
-                .and_then(|account| account.account_uuid)
-                .unwrap_or_default(),
-        ),
-    );
+    // The OAuth account UUID is always empty: there is no OAuth account.
+    extra.insert("account_uuid".to_string(), JsonValue::String(String::new()));
     extra.insert(
         "session_id".to_string(),
         JsonValue::String(crate::bootstrap::state::get_session_id()),

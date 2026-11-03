@@ -338,10 +338,10 @@ pub fn limits_from_error_headers(headers: &HashMap<String, String>) -> ClaudeAiL
     limits
 }
 
+/// Unified quota headers exist only for claude.ai subscriptions, which nyan
+/// does not support, so only an active internal mock is ever processed.
 fn should_process_rate_limits() -> bool {
-    crate::services::rate_limit_mocking::should_process_rate_limits(
-        crate::utils::auth::is_claude_ai_subscriber(),
-    )
+    crate::services::rate_limit_mocking::should_process_rate_limits(false)
 }
 
 fn cache_extra_usage_disabled_reason(headers: &HashMap<String, String>) {

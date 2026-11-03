@@ -136,14 +136,11 @@ fn should_1h_cache_ttl(query_source: Option<&str>) -> bool {
 
 /// Maps to CC `should1hCacheTTL` eligibility:
 /// `USER_TYPE === 'ant' || (isClaudeAISubscriber() && !currentLimits.isUsingOverage)`.
+/// There is no claude.ai subscriber, so only the internal audience qualifies.
 fn prompt_cache_1h_user_eligible() -> bool {
-    if crate::utils::build_profile::has_internal_capability(
+    crate::utils::build_profile::has_internal_capability(
         crate::utils::build_profile::InternalCapability::Api,
-    ) {
-        return true;
-    }
-    crate::utils::auth::is_claude_ai_subscriber()
-        && !crate::services::claude_ai_limits::current_limits().is_using_overage
+    )
 }
 
 /// Maps to CC `getFeatureValue_CACHED_MAY_BE_STALE('tengu_prompt_cache_1h_config', {})`
