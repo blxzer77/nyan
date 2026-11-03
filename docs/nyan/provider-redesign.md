@@ -358,7 +358,7 @@ pub trait ProviderAdapter: Send + Sync {
   "credential": { "env": "OPENAI_API_KEY" },
   "credential": { "file": "~/.nyan/keys/openai" },
   "credential": { "optionalEnv": "VLLM_API_KEY" },
-  "credential": { "oauth": "anthropic-claude-ai" },
+  "credential": { "oauth": "opencode" },
   "credential": { "oauth": "openai-codex" }
 }
 ```
