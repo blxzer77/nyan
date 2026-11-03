@@ -83,7 +83,7 @@ query loop
   → provider-specific SDK / stream parser
 ```
 
-client factory 构造 Direct、Bedrock、Foundry、Vertex 四种 Anthropic SDK client，并同时处理 header、OAuth refresh、API key、proxy、timeout 和 provider auth（`src/services/api/client.rs:1-9,152-163,184-246,291-515`）。请求 body 直接使用 `BetaMessageCreateParams`，stream parser 直接处理 Anthropic content block delta（`src/services/api/claude.rs:2027-2116,2264-2403,3010-3175`）。
+client factory 构造 Direct、Bedrock、Foundry、Vertex 四种 Anthropic SDK client，并同时处理 header、API key、proxy、timeout 和 provider auth（`src/services/api/client.rs:1-9,152-163,184-246,291-515`）。目标设计中 Anthropic credential 只使用 API key。请求 body 直接使用 `BetaMessageCreateParams`，stream parser 直接处理 Anthropic content block delta（`src/services/api/claude.rs:2027-2116,2264-2403,3010-3175`）。
 
 当前 header 已有可复用边界：
 
@@ -92,7 +92,7 @@ client factory 构造 Direct、Bedrock、Foundry、Vertex 四种 Anthropic SDK c
 - `anthropic-beta` 只由 Anthropic 请求使用（`:52-58`）；
 - `httpHeaders` 最后覆盖同名 header（`:60-82`）。
 
-OAuth、beta、cache control、Bedrock/Vertex/Foundry auth 和 Anthropic SDK 类型都必须留在 Anthropic adapter 或其 credential owner 中。`OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED=false`（`src/constants/oauth.rs:40-47`）继续只影响 Anthropic OAuth，不成为全局 provider 开关。
+Anthropic 的 beta、cache control、Bedrock/Vertex/Foundry auth 和 Anthropic SDK 类型都必须留在 Anthropic adapter；Anthropic credential owner 只处理 API key，不实现 OAuth。其它 provider 的 OAuth flow、refresh、token schema 和副作用隔离仍由各自 owner 管理，不成为全局 provider 开关。
 
 ### 1.5 子 agent 和 Decision Provider
 
@@ -119,7 +119,7 @@ OAuth、beta、cache control、Bedrock/Vertex/Foundry auth 和 Anthropic SDK 类
 13. **元数据存放**：Pi 的模型元数据以快照形式提交进仓库（checked-in resource），构建和启动时都不下载、不联网。快照附 Pi commit、models.dev 来源版本、schema version 和内容 hash。
 14. **快照更新**：每周更新一次。流程为「定时 CI 拉取上游 → 运行转换脚本 → 校验 → 有差异则开 PR」。无差异不开 PR；定时 CI 只开 PR，不自动合并。
 15. **元数据覆盖与诊断**：profile 可以覆盖快照中的所有模型元数据字段（能力、context window、max output、displayName、cost 和 input limits 等）。被覆盖的字段在 `nyan doctor` 中列出，并标明值来自 profile override。
-16. **首批 OAuth provider**：Anthropic、OpenAI（Codex）、OpenCode。实现参考 Pi Agent（Anthropic 与 OpenAI Codex 的 PKCE + loopback / device code）、OpenCode（OpenCode Console 的 device flow）和 CLIProxyAPI（每个 provider 独立模块 + 按账号的文件存储）。其它 OAuth provider 后置。
+16. **首批 OAuth provider**：OpenAI（Codex）和 OpenCode。实现参考 Pi Agent（OpenAI Codex 的 PKCE + loopback / device code）、OpenCode（OpenCode Console 的 device flow）和 CLIProxyAPI（每个 provider 独立模块 + 按账号的文件存储）。Anthropic 只支持 API key；其它 OAuth provider 后置。
 17. **凭据存储**：OAuth token 先存在 `~/.nyan` 下的 auth 文件中，权限仅本人可读（Unix 0600；Windows 验证 owner-only ACL，无法验证则拒绝使用）。系统 keychain（Windows Credential Manager、macOS Keychain、Linux secret service）后续再接。
 18. **商业 / 本地判定**：Pi 没有该字段（它的 `compat` 按 baseUrl 自动识别，只用于 wire 兼容，不用于分类）。OpenCode 按 provider 插件身份分类：Ollama、LM Studio、vLLM 使用 `createLocalProviderPlugin`，分类不检查 host，也不由用户配置。nyan 照此落地：每个 provider 有内置 `kind`，`kind` 决定 `commercial`；用户不能在配置里写 `commercial`；未列入商业集合的 kind 一律视为非商业（失败关闭）。初始商业集合为 `anthropic`、`openai`、`gemini`。
 19. **主请求重试**：默认最多重试 2 次（同 provider，且仅在未产生可见输出时，见 §7.2）。托管设置可设一个全局上限，profile 配置不能超过该上限。参考：OpenCode 会话请求最多重试 10 次、一次性调用 3 次（`packages/core/src/model-retry.ts:22-27`），两者都不是 2，这是有意收紧。
@@ -258,7 +258,7 @@ pub trait ProviderAdapter: Send + Sync {
         "kind": "anthropic",
         "protocol": "anthropicMessages",
         "baseUrl": "https://api.anthropic.com",
-        "credential": { "oauth": "anthropic-claude-ai" }
+        "credential": { "env": "ANTHROPIC_API_KEY" }
       },
       "openai": {
         "kind": "openai",
@@ -372,7 +372,7 @@ credential reference 只引用来源，不把 secret 写入 settings：
 
 **Pi Agent 参考**：
 
-- `packages/ai/src/auth/oauth/load.ts` 明确按 provider 注册 OAuth loaders：Anthropic、OpenAI Codex、OpenAI ChatGPT、GitHub Copilot、OpenRouter、Kimi Coding、Meta、xAI，以及可参数化的 Radius；每个 flow 是独立模块，不是统一 token broker。
+- `packages/ai/src/auth/oauth/load.ts` 明确按 provider 注册 OAuth loaders：OpenAI Codex、OpenAI ChatGPT、GitHub Copilot、OpenRouter、Kimi Coding、Meta、xAI，以及可参数化的 Radius；每个 flow 是独立模块，不是统一 token broker。
 - `packages/coding-agent/src/core/auth-storage.ts` 使用 `auth.json` 文件存储，以 provider id 为 key；OAuth credential 包含 access、refresh、expires，API key 支持 env indirection；写入使用锁，目录默认 0700、文件创建 mode 0600，并处理 Windows 删除 pending 的锁重试。
 - Pi 的 OAuth module 使用 PKCE、loopback callback 或手工粘贴 redirect/code；provider-specific endpoint 和 scope 位于各自的 OAuth module。
 
@@ -390,9 +390,9 @@ Pi、OpenCode、CLIProxyAPI 均为 MIT（LICENSE 读取 SHA：Pi `1f8604f8`，CL
 - 凭据存于 SQLite 的 `credential` 表，`value` 为明文 JSON，未加密；POSIX 上数据库文件 chmod 0600，Windows 依赖 profile ACL（`packages/core/src/database/database.ts:83-96`）。nyan 不照搬 SQLite，只借用“按类型存储、权限收紧”的思路。
 - OpenAI 的 "Sign in with ChatGPT" 为 PKCE + 127.0.0.1 回调 + 动态客户端注册（`packages/core/src/plugin/provider/chatgpt.ts:21-27,100-151`）。
 - OpenCode Console 为 device flow，client ID `opencode-cli`（`packages/core/src/plugin/provider/opencode.ts:24-25,93-99`）。
-- Anthropic 在 OpenCode 中没有内置 OAuth，只支持 `ANTHROPIC_API_KEY` 或外部 `claude auth login`。nyan 首批 Anthropic OAuth 需要按 Pi 的 PKCE 流程自行实现，不能直接照搬 OpenCode。
+- Anthropic 在 nyan 中只支持 `ANTHROPIC_API_KEY`；不加入 OAuth flow，也不把外部 `claude auth login` 当作 nyan 的 credential owner。
 
-**首批 OAuth 范围（决策 16）**：Anthropic（Pi 的 PKCE + loopback，手动粘贴兜底）、OpenAI Codex（Pi 的 PKCE 或 device code）、OpenCode（device flow）。每个 flow 为独立模块，token schema、refresh 和存储由 provider owner 实现。
+**首批 OAuth 范围（决策 16）**：OpenAI Codex（Pi 的 PKCE 或 device code）和 OpenCode（device flow）。每个 flow 为独立模块，token schema、refresh 和存储由 provider owner 实现；Anthropic 只支持 API key。
 
 **存储（决策 17）**：先写入 `~/.nyan/auth/<provider>.json`，目录 0700、文件 0600；参考 Pi 的做法（`auth-storage.ts:37,71,77`）使用文件锁串行化读改写。Windows 必须验证 owner-only ACL，无法验证则拒绝使用。系统 keychain 后续再接。
 
@@ -540,8 +540,8 @@ nyan 没有用户，因此实现阶段直接删除旧入口：
 |---|---|---|---|
 | 1. schema replacement + 临时 Anthropic 兼容层 | 新增 `settings.nyan.providers/models/selection`、profile scope、`kind` 枚举、无默认 provider；删除旧 `settings.model`、`ANTHROPIC_MODEL`、`modelContextWindows` 读取和 schema；保留临时内部 Anthropic profile 兼容层（决策 22），只读现有凭据来源，让请求可发送 | 无配置时清晰引导/错误（兼容层不作为默认）；旧字段不再读取；project/local 只能引用 user/managed profile，名字不存在则报错；合入后 nyan 仍能发 Anthropic 请求 | strict schema、scope 判定、删除旧调用点不完整、兼容层残留 |
 | 2. pinned model metadata + 周更 CI | 导入 Pi 快照（转换格式、Pi commit、models.dev 版本、schema version、hash）；根目录 `NOTICE` 同时列 Pi 与 models.dev；profile override 与 `nyan doctor` 展示；定时 CI 拉取上游并开 PR（决策 13–15） | 快照 hash/schema 校验；缺 contextWindow 的 profile 被拒绝；覆盖字段在 `nyan doctor` 可见；运行时无网络请求；CI 只开 PR 不合并 | 上游 schema breaking、NOTICE 漏列、周更 PR 噪声 |
-| 3. credential owner and OAuth | env/`file`/`optionalEnv`/`oauth` 引用；`~/.nyan/auth/<provider>.json`（目录 0700、文件 0600、文件锁）；首批 OAuth：Anthropic、OpenAI Codex、OpenCode（决策 16–17）；Windows owner-only ACL | env、OAuth、auth 文件 mock；ACL 无法验证时拒绝；无 secret 日志；provider 间账号隔离。PR 3 只做凭据存取和 mock 测试；真实模型请求通过的 OAuth 凭据从 PR 4 起使用 | token schema 差异、refresh 并发、Anthropic OAuth 条款（§十一） |
-| 4. request IR + Anthropic adapter | 公共 message/tool/image/thinking/usage/error IR；Anthropic client、headers、betas、Bedrock/Vertex/Foundry 接入 adapter；**删除 PR 1 的临时 Anthropic 兼容层**（决策 22） | Anthropic mock 请求与 stream fixture；OAuth gate 仍只作用 Anthropic；兼容层代码和引用已删除；沿用现有重试默认（决策 23） | cache prefix、beta、stream/tool/thinking 改变、兼容层删除遗漏 |
+| 3. credential owner and OAuth | env/`file`/`optionalEnv`/`oauth` 引用；`~/.nyan/auth/<provider>.json`（目录 0700、文件 0600、文件锁）；首批 OAuth：OpenAI Codex、OpenCode（决策 16–17）；Anthropic 只使用 API key；Windows owner-only ACL | env、OAuth、auth 文件 mock；ACL 无法验证时拒绝；无 secret 日志；provider 间账号隔离。PR 3 只做凭据存取和 mock 测试；真实模型请求从对应 provider adapter 阶段起使用 OAuth 凭据 | token schema 差异、refresh 并发、账号隔离 |
+| 4. request IR + Anthropic adapter | 公共 message/tool/image/thinking/usage/error IR；Anthropic client、headers、betas、Bedrock/Vertex/Foundry 接入 adapter；**删除 PR 1 的临时 Anthropic 兼容层**（决策 22） | Anthropic mock 请求与 stream fixture；API-key credential gate；兼容层代码和引用已删除；沿用现有重试默认（决策 23） | cache prefix、beta、stream/tool/thinking 改变、兼容层删除遗漏 |
 | 5. OpenAI adapters | **同一阶段**实现 Chat Completions 和 Responses；tools/images/streaming/structured output/usage/error | 两种协议各自 mock contract；同一 profile 不能混淆 chat/responses；未输出重试与 partialStream | 两种 wire shape、tool call streaming、retry/replay |
 | 6. Gemini adapter | 独立 PR（决策 20），紧接 OpenAI 阶段且不并行；Gemini 仍按商业 kind 处理 | Gemini parts/function/thinking fixture；错误映射 `RESOURCE_EXHAUSTED` 等 | parts 与 thinking 转换、图片 inline data |
 | 7. OpenAI-compatible local | vLLM/Ollama 只走 `openaiChat`；不做 Ollama native；本地 profile 可进 `mainFallbacks`（决策 21）；local profile 不能进 Decision Provider | local endpoint mock；`optionalEnv` 401 报 auth error；本地 profile 出现在 DP tier 时 schema 拒绝 | gateway 方言、本地 timeout |
@@ -571,12 +571,11 @@ nyan 没有用户，因此实现阶段直接删除旧入口：
 
 ## 十一、仍需用户拍板的问题
 
-决策 1–23 已覆盖原先的元数据形态、更新节奏、覆盖范围、首批 OAuth、凭据存储、商业判定、重试默认、Gemini 顺序和本地 fallback，已从本节删除。剩余待拍板：
+决策 1–23 已覆盖原先的元数据形态、更新节奏、覆盖范围、首批 OAuth、凭据存储、重试默认、Gemini 顺序和本地 fallback；Anthropic OAuth 已从本节删除。剩余待拍板：
 
-1. **Anthropic OAuth 的服务条款**：Pi 实现了 Anthropic PKCE OAuth（`packages/ai/src/auth/oauth/anthropic.ts`）；OpenCode 没有内置 Anthropic OAuth，只支持 API key 或外部 `claude auth login`。nyan 首批要做 Anthropic OAuth，是否接受其使用条款风险？这需要在 PR 3 之前确认；本文没有核实 Anthropic 的条款。
-2. **商业集合是否包含聚合网关**：初始集合为 `anthropic`、`openai`、`gemini`。OpenRouter 等聚合网关是否纳入、或按非商业处理？
-3. **托管全局重试上限的值**：决策 19 只定义了“托管可设上限”，没有定义上限默认值。是否需要一个硬上限（例如 5），防止托管设置也误设过大？
-4. **Pi 其它数据源的许可证**：Pi 快照合并了 OpenRouter、Vercel、NVIDIA、Radius 等来源，本文只核实了 Pi 与 models.dev 为 MIT。这些来源的许可证和版权声明需在 PR 2 写入 NOTICE 前逐一核实，或决定不引入这些来源。
+1. **商业集合是否包含聚合网关**：初始集合为 `anthropic`、`openai`、`gemini`。OpenRouter 等聚合网关是否纳入、或按非商业处理？
+2. **托管全局重试上限的值**：决策 19 只定义了“托管可设上限”，没有定义上限默认值。是否需要一个硬上限（例如 5），防止托管设置也误设过大？
+3. **Pi 其它数据源的许可证**：Pi 快照合并了 OpenRouter、Vercel、NVIDIA、Radius 等来源，本文只核实了 Pi 与 models.dev 为 MIT。这些来源的许可证和版权声明需在 PR 2 写入 NOTICE 前逐一核实，或决定不引入这些来源。
 
 ## 十二、验收标准
 
@@ -585,7 +584,7 @@ nyan 没有用户，因此实现阶段直接删除旧入口：
 3. profile 是唯一稳定模型引用；project 与 local settings 只能写已有 profile 名，不能写 endpoint、credential file 或 `provider/model`。
 4. 元数据快照以 checked-in 形式存在，附 Pi commit、models.dev 版本、schema version、hash；根目录 `NOTICE` 同时列出 Pi 与 models.dev 的 MIT 版权声明；运行时不联网，周更只通过 PR 生效。
 5. profile 没有 contextWindow 时解析失败；有值时预请求使用保守估算，事后使用 provider usage，不使用隐式 200k。
-6. Anthropic beta/OAuth/cache/auth 只由 Anthropic adapter 处理；OpenAI Chat/Responses、Gemini 不收到 Anthropic beta。
+6. Anthropic beta/cache/auth 只由 Anthropic adapter 处理，Anthropic 只接受 API key；OpenAI Chat/Responses、Gemini 不收到 Anthropic beta。
 7. OpenAI Chat Completions 与 Responses 在同一阶段分别通过 contract fixture；vLLM/Ollama 只使用 OpenAI-compatible，不能选择 Ollama native protocol。
 8. OAuth credential schema、refresh、storage 和 account isolation 按 provider owner 分开；Pi/CLIProxyAPI 仅为参考，不成为依赖。
 9. Windows key file ACL 无法验证时拒绝使用；日志和错误不显示 secret。
@@ -594,4 +593,4 @@ nyan 没有用户，因此实现阶段直接删除旧入口：
 12. 所有 PR 阶段可单独测试；没有迁移 PR，也没有旧字段兼容读取或自动跨 provider fallback。唯一例外是 PR 1 的临时 Anthropic 兼容层，PR 4 删除。
 13. 每个 PR 合入后 nyan 都能发送模型请求（PR 1 起由兼容层保证）。
 14. 托管设置可设全局重试上限；profile 不能超过。被覆盖的元数据字段在 `nyan doctor` 中可见。
-15. OAuth 首批仅 Anthropic、OpenAI Codex、OpenCode；token 存于 `~/.nyan/auth/`，权限仅本人可读，Windows 无法验证 ACL 时拒绝。
+15. OAuth 首批仅 OpenAI Codex、OpenCode；token 存于 `~/.nyan/auth/`，权限仅本人可读，Windows 无法验证 ACL 时拒绝；Anthropic 只支持 API key。
