@@ -1218,7 +1218,7 @@ mod tests {
         fs::write(
             root.join("settings.json"),
             serde_json::to_string_pretty(&serde_json::json!({
-                "model": "sonnet",
+                "language": "en",
                 "permissions": {
                     "allow": ["Bash(git status:*)", "Read(//tmp/**)"],
                     "deny": ["Bash(rm:*)"],
@@ -1262,7 +1262,7 @@ mod tests {
             written["permissions"]["additionalDirectories"],
             serde_json::json!(["/tmp/extra"])
         );
-        assert_eq!(written["model"], "sonnet");
+        assert_eq!(written["language"], "en");
         let _ = fs::remove_dir_all(root);
     }
 

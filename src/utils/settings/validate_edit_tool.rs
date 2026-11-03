@@ -67,7 +67,7 @@ mod tests {
         )
         .expect("valid-to-invalid must block");
         assert!(message.starts_with("nyan settings.json validation failed after edit:\n"));
-        assert!(message.contains("- model: Expected string, but received number"));
+        assert!(message.contains("- language: Expected string, but received number"));
         assert!(message.contains("Full schema:\n{\n  \"$schema\""));
         assert!(
             message.ends_with(
@@ -80,7 +80,7 @@ mod tests {
             validate_input_for_settings_file_edit(
                 &settings_path(),
                 r#"{"language": 5}"#,
-                r#"{"model": 6}"#,
+                r#"{"language": 6}"#,
                 &cwd(),
             )
             .is_none()
@@ -103,7 +103,7 @@ mod tests {
         let message = validate_input_for_settings_file_edit(
             &settings_path(),
             r#"{"language": "zh"}"#,
-            r#"{"model": "opus", "definitelyNotAClaudeSetting": true}"#,
+            r#"{"language": "zh", "definitelyNotAClaudeSetting": true}"#,
             &cwd(),
         )
         .expect("unknown key must block under .strict()");
@@ -116,7 +116,7 @@ mod tests {
         assert!(validate_input_for_settings_file_edit(
             &settings_path(),
             r#"{"language": "zh"}"#,
-            r#"{"model": "opus", "effortLevel": "ultra", "strictPluginOnlyCustomization": "skills"}"#,
+            r#"{"language": "zh", "effortLevel": "ultra", "strictPluginOnlyCustomization": "skills"}"#,
             &cwd(),
         )
         .is_none());
