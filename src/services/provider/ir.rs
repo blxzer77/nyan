@@ -68,6 +68,20 @@ pub struct ModelRequest {
     /// for routing hints; it never changes message content.
     pub query_source: String,
     pub agent_id: Option<String>,
+    /// Per-protocol extras that have no neutral meaning (Anthropic cached
+    /// microcompact edits, provider-executed tool schemas, ...). An adapter
+    /// reads only entries tagged with its own protocol.
+    pub extensions: Vec<ProviderState>,
+}
+
+impl ModelRequest {
+    /// The extension tagged for `protocol`, if any.
+    pub fn extension(&self, protocol: Protocol) -> Option<&Value> {
+        self.extensions
+            .iter()
+            .find(|state| state.protocol == protocol)
+            .map(|state| &state.data)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -91,6 +105,10 @@ pub enum UserPart {
     },
     Image {
         source: MediaSource,
+        /// Lossless wire block for a protocol that needs more than `source`
+        /// (e.g. an Anthropic image block with extra metadata). Other
+        /// adapters ignore it.
+        provider_state: Option<ProviderState>,
     },
     Document {
         media_type: String,
@@ -98,9 +116,18 @@ pub enum UserPart {
     },
     ToolResult {
         tool_call_id: String,
-        content: Vec<ToolResultPart>,
+        content: ToolResultContent,
         is_error: bool,
     },
+}
+
+/// A tool result is either one plain string or a list of typed parts. The
+/// distinction is observable on some wires, so the IR keeps it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ToolResultContent {
+    Text(String),
+    Parts(Vec<ToolResultPart>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -111,6 +138,7 @@ pub enum ToolResultPart {
     },
     Image {
         source: MediaSource,
+        provider_state: Option<ProviderState>,
     },
     Document {
         media_type: String,
@@ -162,8 +190,11 @@ pub enum AssistantPart {
         name: String,
         input: Value,
     },
+    /// Result of a provider-executed call. `name` is the server tool that
+    /// produced it (`web_search`, `advisor`).
     ServerToolResult {
         tool_call_id: String,
+        name: String,
         content: Value,
     },
 }
@@ -174,10 +205,14 @@ pub struct ToolSpec {
     pub description: String,
     /// JSON Schema for the arguments.
     pub input_schema: Value,
-    /// Ask the provider to enforce the schema when it can.
+    /// The tool asks for provider-side schema enforcement. Whether that is
+    /// honoured is the adapter's decision.
     pub strict: bool,
-    /// Defer loading the schema until the model asks for it (tool search).
-    pub defer_loading: bool,
+    /// The tool may be loaded lazily through tool search. Whether it is
+    /// actually deferred is the adapter's decision.
+    pub deferrable: bool,
+    /// The tool comes from an MCP server.
+    pub is_mcp: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -264,6 +299,7 @@ pub enum BlockStart {
     },
     ServerToolResult {
         tool_call_id: String,
+        name: String,
         content: Value,
     },
 }
@@ -467,7 +503,9 @@ mod tests {
                 Message::User {
                     parts: vec![UserPart::ToolResult {
                         tool_call_id: "c1".into(),
-                        content: vec![ToolResultPart::Text { text: "ok".into() }],
+                        content: ToolResultContent::Parts(vec![ToolResultPart::Text {
+                            text: "ok".into(),
+                        }]),
                         is_error: false,
                     }],
                 },
@@ -477,7 +515,8 @@ mod tests {
                 description: "d".into(),
                 input_schema: serde_json::json!({"type": "object"}),
                 strict: false,
-                defer_loading: false,
+                deferrable: false,
+                is_mcp: false,
             }],
             tool_choice: ToolChoice::Tool {
                 name: "Read".into(),
@@ -492,7 +531,18 @@ mod tests {
             },
             query_source: "repl_main_thread".into(),
             agent_id: None,
+            extensions: vec![ProviderState {
+                protocol: Protocol::AnthropicMessages,
+                data: serde_json::json!({"k": 1}),
+            }],
         }
+    }
+
+    #[test]
+    fn extension_is_selected_by_protocol() {
+        let request = sample_request();
+        assert!(request.extension(Protocol::AnthropicMessages).is_some());
+        assert!(request.extension(Protocol::OpenaiChat).is_none());
     }
 
     #[test]
@@ -518,7 +568,10 @@ mod tests {
 
     #[test]
     fn ir_has_no_anthropic_shaped_keys() {
-        let json = serde_json::to_string(&sample_request()).unwrap();
+        // Extensions are protocol-tagged by design; the IR body must be clean.
+        let mut request = sample_request();
+        request.extensions.clear();
+        let json = serde_json::to_string(&request).unwrap();
         for forbidden in ["cache_control", "tool_use", "anthropic", "betas"] {
             assert!(!json.contains(forbidden), "{forbidden} leaked into the IR");
         }
