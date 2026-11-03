@@ -12,12 +12,12 @@ pub const DEFAULT_SONNET_MODEL: &str = "claude-sonnet-4-6";
 /// Maps to: CC `utils/model/configs.ts` `CLAUDE_OPUS_4_6_CONFIG.firstParty`.
 pub const DEFAULT_OPUS_MODEL: &str = "claude-opus-4-6";
 
-/// Maps to: CC `utils/model/model.ts:36-38` `getSmallFastModel()`:
-/// `process.env.ANTHROPIC_SMALL_FAST_MODEL || getDefaultHaikuModel()`.
+/// Auxiliary requests (titles, summaries, web fetch) use the main profile's
+/// wire model. `ANTHROPIC_SMALL_FAST_MODEL` and the built-in Haiku default are
+/// no longer read; with no profile this is empty and the request boundary
+/// rejects it with configuration guidance.
 pub fn get_small_fast_model() -> String {
-    crate::utils::process_env::var("ANTHROPIC_SMALL_FAST_MODEL")
-        .truthy()
-        .unwrap_or_else(get_default_haiku_model)
+    get_main_loop_model()
 }
 
 /// Maps to: CC `utils/model/model.ts` `getDefaultSonnetModel()`.
@@ -554,44 +554,42 @@ mod tests {
         let _ = std::fs::remove_dir_all(&config_dir);
     }
 
-    /// CC reads exactly one env name per helper (`model.ts:36-38,131-138`),
-    /// and `process.env.X || fallback` treats an empty value as unset.
+    /// Auxiliary requests follow the main profile and never read the removed
+    /// `ANTHROPIC_SMALL_FAST_MODEL`; without a profile they stay empty.
     #[test]
-    fn default_model_helpers_read_official_env_names_with_js_truthiness() {
+    fn small_fast_model_follows_main_profile_and_ignores_legacy_env() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("ANTHROPIC_DEFAULT_SONNET_MODEL", "official-sonnet");
-        crate::utils::process_env::set("ANTHROPIC_DEFAULT_OPUS_MODEL", "official-opus");
-        crate::utils::process_env::remove("ANTHROPIC_DEFAULT_HAIKU_MODEL");
-        crate::utils::process_env::set("ANTHROPIC_SMALL_FAST_MODEL", "official-haiku");
+        let previous_override = crate::bootstrap::state::get_main_loop_model_override();
+        let root = std::env::temp_dir().join(format!(
+            "nyan-small-fast-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("settings.json"), "{}").unwrap();
+        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _legacy = EnvVarGuard::set("ANTHROPIC_SMALL_FAST_MODEL", "legacy-haiku");
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        crate::bootstrap::state::set_main_loop_model_override(None);
 
-        assert_eq!(get_default_sonnet_model(), "official-sonnet");
-        assert_eq!(get_default_opus_model(), "official-opus");
-        assert_eq!(get_small_fast_model(), "official-haiku");
+        assert_eq!(get_small_fast_model(), "");
 
-        crate::utils::process_env::set("ANTHROPIC_SMALL_FAST_MODEL", "");
-        assert_eq!(
-            get_small_fast_model(),
-            DEFAULT_HAIKU_MODEL,
-            "an empty env value is falsy in CC and must fall through"
-        );
+        std::fs::write(
+            root.join("settings.json"),
+            r#"{
+                "nyan": {
+                    "providers": {"anthropic": {"kind": "anthropic", "protocol": "anthropicMessages"}},
+                    "models": {"main": {"provider": "anthropic", "model": "claude-sonnet-4-6", "capabilities": {"contextWindow": 200000, "maxOutputTokens": 128000}}},
+                    "selection": {"main": "main"}
+                }
+            }"#,
+        )
+        .unwrap();
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        assert_eq!(get_small_fast_model(), "claude-sonnet-4-6");
 
-        crate::utils::process_env::remove("ANTHROPIC_DEFAULT_SONNET_MODEL");
-        crate::utils::process_env::remove("ANTHROPIC_DEFAULT_OPUS_MODEL");
-        crate::utils::process_env::remove("ANTHROPIC_SMALL_FAST_MODEL");
-    }
-
-    #[test]
-    fn default_model_helpers_match_current_official_first_party_defaults() {
-        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("ANTHROPIC_DEFAULT_SONNET_MODEL");
-        crate::utils::process_env::remove("ANTHROPIC_DEFAULT_OPUS_MODEL");
-        crate::utils::process_env::remove("ANTHROPIC_DEFAULT_HAIKU_MODEL");
-        crate::utils::process_env::remove("ANTHROPIC_SMALL_FAST_MODEL");
-
-        assert_eq!(get_default_sonnet_model(), DEFAULT_SONNET_MODEL);
-        assert_eq!(get_default_opus_model(), DEFAULT_OPUS_MODEL);
-        assert_eq!(get_default_haiku_model(), DEFAULT_HAIKU_MODEL);
-        assert_eq!(get_small_fast_model(), DEFAULT_HAIKU_MODEL);
+        crate::bootstrap::state::set_main_loop_model_override(previous_override);
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
