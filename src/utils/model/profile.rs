@@ -124,7 +124,11 @@ pub fn resolve_profile(
         .model
         .clone()
         .ok_or_else(|| ProfileResolutionError::MissingModel(profile_name.to_string()))?;
-    let metadata = crate::utils::model::metadata::find_model_metadata(provider_name, &model);
+    let metadata = crate::utils::model::metadata::metadata_provider_for_kind(kind).and_then(
+        |snapshot_provider| {
+            crate::utils::model::metadata::find_model_metadata(snapshot_provider, &model)
+        },
+    );
     let capabilities = model_profile.capabilities.as_ref();
     let context_window = capabilities
         .and_then(|capabilities| capabilities.context_window)
@@ -232,10 +236,44 @@ pub struct ProfileDiagnosis {
     pub fields: Vec<ProfileFieldDiagnosis>,
 }
 
-pub fn diagnose_profile(profile_name: &str, profile: &ModelProfileSettings) -> ProfileDiagnosis {
+fn profile_metadata(
+    nyan: &NyanSettings,
+    profile: &ModelProfileSettings,
+) -> Option<&'static crate::utils::model::metadata::ModelMetadataEntry> {
+    let provider = profile.provider.as_deref()?;
+    let kind = nyan.providers.as_ref()?.get(provider)?.kind?;
+    let snapshot_provider = crate::utils::model::metadata::metadata_provider_for_kind(kind)?;
+    crate::utils::model::metadata::find_model_metadata(snapshot_provider, profile.model.as_deref()?)
+}
+
+fn push_cost_field(
+    fields: &mut Vec<ProfileFieldDiagnosis>,
+    field_name: &'static str,
+    override_value: Option<f64>,
+    snapshot_value: Option<f64>,
+) {
+    if let Some(value) = override_value {
+        fields.push(ProfileFieldDiagnosis {
+            field_name,
+            value: value.to_string(),
+            is_override: true,
+        });
+    } else if let Some(value) = snapshot_value {
+        fields.push(ProfileFieldDiagnosis {
+            field_name,
+            value: value.to_string(),
+            is_override: false,
+        });
+    }
+}
+
+pub fn diagnose_profile(
+    profile_name: &str,
+    profile: &ModelProfileSettings,
+    metadata: Option<&crate::utils::model::metadata::ModelMetadataEntry>,
+) -> ProfileDiagnosis {
     let provider = profile.provider.as_deref().unwrap_or("unknown");
     let model = profile.model.as_deref().unwrap_or("unknown");
-    let metadata = crate::utils::model::metadata::find_model_metadata(provider, model);
 
     let mut fields = Vec::new();
 
@@ -243,7 +281,7 @@ pub fn diagnose_profile(profile_name: &str, profile: &ModelProfileSettings) -> P
         fields.push(ProfileFieldDiagnosis {
             field_name: "displayName",
             value: display_name.clone(),
-            is_override: metadata.is_some(),
+            is_override: true,
         });
     } else if let Some(m) = metadata {
         fields.push(ProfileFieldDiagnosis {
@@ -259,7 +297,7 @@ pub fn diagnose_profile(profile_name: &str, profile: &ModelProfileSettings) -> P
         fields.push(ProfileFieldDiagnosis {
             field_name: "contextWindow",
             value: cw.to_string(),
-            is_override: metadata.is_some(),
+            is_override: true,
         });
     } else if let Some(m) = metadata {
         fields.push(ProfileFieldDiagnosis {
@@ -273,7 +311,7 @@ pub fn diagnose_profile(profile_name: &str, profile: &ModelProfileSettings) -> P
         fields.push(ProfileFieldDiagnosis {
             field_name: "maxOutputTokens",
             value: mo.to_string(),
-            is_override: metadata.is_some(),
+            is_override: true,
         });
     } else if let Some(m) = metadata {
         fields.push(ProfileFieldDiagnosis {
@@ -287,7 +325,7 @@ pub fn diagnose_profile(profile_name: &str, profile: &ModelProfileSettings) -> P
         fields.push(ProfileFieldDiagnosis {
             field_name: "tools",
             value: tools.to_string(),
-            is_override: metadata.is_some(),
+            is_override: true,
         });
     } else if let Some(m) = metadata {
         if let Some(tools) = &m.capabilities.tools {
@@ -303,7 +341,7 @@ pub fn diagnose_profile(profile_name: &str, profile: &ModelProfileSettings) -> P
         fields.push(ProfileFieldDiagnosis {
             field_name: "thinking",
             value: thinking.to_string(),
-            is_override: metadata.is_some(),
+            is_override: true,
         });
     } else if let Some(m) = metadata {
         if let Some(thinking) = &m.capabilities.thinking {
@@ -319,7 +357,7 @@ pub fn diagnose_profile(profile_name: &str, profile: &ModelProfileSettings) -> P
         fields.push(ProfileFieldDiagnosis {
             field_name: "images",
             value: images.to_string(),
-            is_override: metadata.is_some(),
+            is_override: true,
         });
     } else if let Some(m) = metadata {
         if let Some(images) = &m.capabilities.images {
@@ -335,7 +373,7 @@ pub fn diagnose_profile(profile_name: &str, profile: &ModelProfileSettings) -> P
         fields.push(ProfileFieldDiagnosis {
             field_name: "structuredOutput",
             value: so.to_string(),
-            is_override: metadata.is_some(),
+            is_override: true,
         });
     } else if let Some(m) = metadata {
         if let Some(so) = m.capabilities.structured_output {
@@ -351,7 +389,7 @@ pub fn diagnose_profile(profile_name: &str, profile: &ModelProfileSettings) -> P
         fields.push(ProfileFieldDiagnosis {
             field_name: "streaming",
             value: streaming.to_string(),
-            is_override: metadata.is_some(),
+            is_override: true,
         });
     } else if let Some(m) = metadata {
         if let Some(streaming) = m.capabilities.streaming {
@@ -367,7 +405,7 @@ pub fn diagnose_profile(profile_name: &str, profile: &ModelProfileSettings) -> P
         fields.push(ProfileFieldDiagnosis {
             field_name: "promptCache",
             value: pc.to_string(),
-            is_override: metadata.is_some(),
+            is_override: true,
         });
     } else if let Some(m) = metadata {
         if let Some(pc) = &m.capabilities.prompt_cache {
@@ -378,6 +416,47 @@ pub fn diagnose_profile(profile_name: &str, profile: &ModelProfileSettings) -> P
             });
         }
     }
+
+    if let Some(input) = &profile.input {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "input",
+            value: input.join(","),
+            is_override: true,
+        });
+    } else if let Some(m) = metadata {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "input",
+            value: m.input.join(","),
+            is_override: false,
+        });
+    }
+
+    let cost = profile.cost.as_ref();
+    let snapshot_cost = metadata.and_then(|m| m.cost.as_ref());
+    push_cost_field(
+        &mut fields,
+        "cost.input",
+        cost.and_then(|c| c.input),
+        snapshot_cost.map(|c| c.input),
+    );
+    push_cost_field(
+        &mut fields,
+        "cost.output",
+        cost.and_then(|c| c.output),
+        snapshot_cost.map(|c| c.output),
+    );
+    push_cost_field(
+        &mut fields,
+        "cost.cacheRead",
+        cost.and_then(|c| c.cache_read),
+        snapshot_cost.and_then(|c| c.cache_read),
+    );
+    push_cost_field(
+        &mut fields,
+        "cost.cacheWrite",
+        cost.and_then(|c| c.cache_write),
+        snapshot_cost.and_then(|c| c.cache_write),
+    );
 
     ProfileDiagnosis {
         profile_name: profile_name.to_string(),
@@ -393,7 +472,7 @@ pub fn diagnose_profiles(nyan: &NyanSettings) -> Vec<ProfileDiagnosis> {
     };
     models
         .iter()
-        .map(|(name, profile)| diagnose_profile(name, profile))
+        .map(|(name, profile)| diagnose_profile(name, profile, profile_metadata(nyan, profile)))
         .collect()
 }
 
@@ -645,5 +724,51 @@ mod tests {
             .unwrap();
         assert_eq!(pure_cw.value, "1000000");
         assert!(!pure_cw.is_override);
+    }
+
+    #[test]
+    fn local_profile_does_not_inherit_snapshot_metadata_for_anthropic_model_id() {
+        let mut settings = settings();
+        let nyan = settings.nyan.as_mut().unwrap();
+        nyan.models.as_mut().unwrap().insert(
+            "local-claude".to_string(),
+            ModelProfileSettings {
+                provider: Some("local".to_string()),
+                model: Some("claude-sonnet-4-6".to_string()),
+                ..Default::default()
+            },
+        );
+        let err = resolve_profile(nyan, "local-claude").unwrap_err();
+        assert_eq!(
+            err,
+            ProfileResolutionError::MissingContextWindow("local-claude".to_string())
+        );
+    }
+
+    #[test]
+    fn cost_and_input_overrides_are_reported_with_their_source() {
+        let nyan: NyanSettings = serde_json::from_value(serde_json::json!({
+            "providers": {
+                "anthropic": {"kind": "anthropic", "protocol": "anthropicMessages"}
+            },
+            "models": {
+                "sonnet": {
+                    "provider": "anthropic",
+                    "model": "claude-sonnet-4-6",
+                    "input": ["text"],
+                    "cost": {"input": 9.5}
+                }
+            }
+        }))
+        .unwrap();
+
+        let diagnoses = diagnose_profiles(&nyan);
+        let fields = &diagnoses[0].fields;
+        let find = |name: &str| fields.iter().find(|f| f.field_name == name).unwrap();
+        assert_eq!(find("input").value, "text");
+        assert!(find("input").is_override);
+        assert_eq!(find("cost.input").value, "9.5");
+        assert!(find("cost.input").is_override);
+        assert!(!find("cost.output").is_override);
     }
 }
