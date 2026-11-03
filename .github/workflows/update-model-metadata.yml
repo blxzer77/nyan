@@ -1,0 +1,60 @@
+name: Update Model Metadata
+
+on:
+  schedule:
+    # Run weekly on Monday mornings (03:00 UTC)
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-metadata:
+    name: update-metadata
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+
+      - name: Fetch upstream and update model metadata
+        run: |
+          node scripts/update-model-metadata.mjs
+
+      - name: Check for diff
+        id: git-diff
+        run: |
+          if git diff --quiet src/utils/model/model_metadata.json; then
+            echo "has_diff=false" >> "$GITHUB_OUTPUT"
+            echo "No model metadata diff detected."
+          else
+            echo "has_diff=true" >> "$GITHUB_OUTPUT"
+            echo "Model metadata changes detected."
+          fi
+
+      - name: Create Pull Request if updated
+        if: steps.git-diff.outputs.has_diff == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          branch_name="chore/update-model-metadata-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch_name"
+          git add src/utils/model/model_metadata.json NOTICE
+          git commit -m "chore(metadata): update model metadata snapshot"
+          git push origin "$branch_name"
+          gh pr create --repo blxzer77/nyan \
+            --title "chore(metadata): update model metadata snapshot" \
+            --body "Weekly automated model metadata update from upstream Pi and models.dev. Only opens PR, do not auto-merge." \
+            --head "$branch_name" \
+            --base master

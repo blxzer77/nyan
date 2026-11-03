@@ -71,11 +71,11 @@ impl fmt::Display for ProfileResolutionError {
             ),
             Self::MissingContextWindow(profile) => write!(
                 f,
-                "Model profile {profile:?} must declare capabilities.contextWindow until the metadata snapshot lands."
+                "Model profile {profile:?} must declare capabilities.contextWindow when not provided by the metadata snapshot."
             ),
             Self::MissingMaxOutputTokens(profile) => write!(
                 f,
-                "Model profile {profile:?} must declare capabilities.maxOutputTokens until the metadata snapshot lands."
+                "Model profile {profile:?} must declare capabilities.maxOutputTokens when not provided by the metadata snapshot."
             ),
             Self::InvalidDecisionProfile(profile) => write!(
                 f,
@@ -124,12 +124,15 @@ pub fn resolve_profile(
         .model
         .clone()
         .ok_or_else(|| ProfileResolutionError::MissingModel(profile_name.to_string()))?;
+    let metadata = crate::utils::model::metadata::find_model_metadata(provider_name, &model);
     let capabilities = model_profile.capabilities.as_ref();
     let context_window = capabilities
         .and_then(|capabilities| capabilities.context_window)
+        .or_else(|| metadata.map(|m| m.context_window))
         .ok_or_else(|| ProfileResolutionError::MissingContextWindow(profile_name.to_string()))?;
     let max_output_tokens = capabilities
         .and_then(|capabilities| capabilities.max_output_tokens)
+        .or_else(|| metadata.map(|m| m.max_output_tokens))
         .ok_or_else(|| ProfileResolutionError::MissingMaxOutputTokens(profile_name.to_string()))?;
 
     if kind != ProviderKind::Anthropic {
@@ -212,6 +215,186 @@ pub fn validate_decision_profile(
         ));
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfileFieldDiagnosis {
+    pub field_name: &'static str,
+    pub value: String,
+    pub is_override: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfileDiagnosis {
+    pub profile_name: String,
+    pub provider: String,
+    pub model: String,
+    pub fields: Vec<ProfileFieldDiagnosis>,
+}
+
+pub fn diagnose_profile(profile_name: &str, profile: &ModelProfileSettings) -> ProfileDiagnosis {
+    let provider = profile.provider.as_deref().unwrap_or("unknown");
+    let model = profile.model.as_deref().unwrap_or("unknown");
+    let metadata = crate::utils::model::metadata::find_model_metadata(provider, model);
+
+    let mut fields = Vec::new();
+
+    if let Some(display_name) = &profile.display_name {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "displayName",
+            value: display_name.clone(),
+            is_override: metadata.is_some(),
+        });
+    } else if let Some(m) = metadata {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "displayName",
+            value: m.display_name.clone(),
+            is_override: false,
+        });
+    }
+
+    let caps = profile.capabilities.as_ref();
+
+    if let Some(cw) = caps.and_then(|c| c.context_window) {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "contextWindow",
+            value: cw.to_string(),
+            is_override: metadata.is_some(),
+        });
+    } else if let Some(m) = metadata {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "contextWindow",
+            value: m.context_window.to_string(),
+            is_override: false,
+        });
+    }
+
+    if let Some(mo) = caps.and_then(|c| c.max_output_tokens) {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "maxOutputTokens",
+            value: mo.to_string(),
+            is_override: metadata.is_some(),
+        });
+    } else if let Some(m) = metadata {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "maxOutputTokens",
+            value: m.max_output_tokens.to_string(),
+            is_override: false,
+        });
+    }
+
+    if let Some(tools) = caps.and_then(|c| c.tools.as_deref()) {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "tools",
+            value: tools.to_string(),
+            is_override: metadata.is_some(),
+        });
+    } else if let Some(m) = metadata {
+        if let Some(tools) = &m.capabilities.tools {
+            fields.push(ProfileFieldDiagnosis {
+                field_name: "tools",
+                value: tools.clone(),
+                is_override: false,
+            });
+        }
+    }
+
+    if let Some(thinking) = caps.and_then(|c| c.thinking.as_deref()) {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "thinking",
+            value: thinking.to_string(),
+            is_override: metadata.is_some(),
+        });
+    } else if let Some(m) = metadata {
+        if let Some(thinking) = &m.capabilities.thinking {
+            fields.push(ProfileFieldDiagnosis {
+                field_name: "thinking",
+                value: thinking.clone(),
+                is_override: false,
+            });
+        }
+    }
+
+    if let Some(images) = caps.and_then(|c| c.images.as_deref()) {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "images",
+            value: images.to_string(),
+            is_override: metadata.is_some(),
+        });
+    } else if let Some(m) = metadata {
+        if let Some(images) = &m.capabilities.images {
+            fields.push(ProfileFieldDiagnosis {
+                field_name: "images",
+                value: images.clone(),
+                is_override: false,
+            });
+        }
+    }
+
+    if let Some(so) = caps.and_then(|c| c.structured_output) {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "structuredOutput",
+            value: so.to_string(),
+            is_override: metadata.is_some(),
+        });
+    } else if let Some(m) = metadata {
+        if let Some(so) = m.capabilities.structured_output {
+            fields.push(ProfileFieldDiagnosis {
+                field_name: "structuredOutput",
+                value: so.to_string(),
+                is_override: false,
+            });
+        }
+    }
+
+    if let Some(streaming) = caps.and_then(|c| c.streaming) {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "streaming",
+            value: streaming.to_string(),
+            is_override: metadata.is_some(),
+        });
+    } else if let Some(m) = metadata {
+        if let Some(streaming) = m.capabilities.streaming {
+            fields.push(ProfileFieldDiagnosis {
+                field_name: "streaming",
+                value: streaming.to_string(),
+                is_override: false,
+            });
+        }
+    }
+
+    if let Some(pc) = caps.and_then(|c| c.prompt_cache.as_deref()) {
+        fields.push(ProfileFieldDiagnosis {
+            field_name: "promptCache",
+            value: pc.to_string(),
+            is_override: metadata.is_some(),
+        });
+    } else if let Some(m) = metadata {
+        if let Some(pc) = &m.capabilities.prompt_cache {
+            fields.push(ProfileFieldDiagnosis {
+                field_name: "promptCache",
+                value: pc.clone(),
+                is_override: false,
+            });
+        }
+    }
+
+    ProfileDiagnosis {
+        profile_name: profile_name.to_string(),
+        provider: provider.to_string(),
+        model: model.to_string(),
+        fields,
+    }
+}
+
+pub fn diagnose_profiles(nyan: &NyanSettings) -> Vec<ProfileDiagnosis> {
+    let Some(models) = &nyan.models else {
+        return Vec::new();
+    };
+    models
+        .iter()
+        .map(|(name, profile)| diagnose_profile(name, profile))
+        .collect()
 }
 
 #[cfg(test)]
@@ -345,5 +528,122 @@ mod tests {
             .unwrap_err(),
             ProfileResolutionError::MissingContextWindow("missing".to_string())
         );
+    }
+
+    #[test]
+    fn inherits_capabilities_from_metadata_snapshot_when_omitted() {
+        let nyan: NyanSettings = serde_json::from_value(serde_json::json!({
+            "providers": {
+                "anthropic": {
+                    "kind": "anthropic",
+                    "protocol": "anthropicMessages"
+                }
+            },
+            "models": {
+                "sonnet": {
+                    "provider": "anthropic",
+                    "model": "claude-sonnet-4-6"
+                }
+            },
+            "selection": {"main": "sonnet"}
+        }))
+        .unwrap();
+
+        let resolved = resolve_profile(&nyan, "sonnet").unwrap();
+        assert_eq!(resolved.profile, "sonnet");
+        assert_eq!(resolved.model, "claude-sonnet-4-6");
+        // Must come from metadata snapshot (1000000 / 128000)
+        assert_eq!(resolved.context_window, 1_000_000);
+        assert_eq!(resolved.max_output_tokens, 128_000);
+    }
+
+    #[test]
+    fn profile_capabilities_override_metadata_snapshot() {
+        let nyan: NyanSettings = serde_json::from_value(serde_json::json!({
+            "providers": {
+                "anthropic": {
+                    "kind": "anthropic",
+                    "protocol": "anthropicMessages"
+                }
+            },
+            "models": {
+                "sonnet": {
+                    "provider": "anthropic",
+                    "model": "claude-sonnet-4-6",
+                    "capabilities": {
+                        "contextWindow": 500000,
+                        "maxOutputTokens": 64000
+                    }
+                }
+            },
+            "selection": {"main": "sonnet"}
+        }))
+        .unwrap();
+
+        let resolved = resolve_profile(&nyan, "sonnet").unwrap();
+        assert_eq!(resolved.context_window, 500_000);
+        assert_eq!(resolved.max_output_tokens, 64_000);
+    }
+
+    #[test]
+    fn diagnose_profiles_detects_overrides_and_snapshot_sources() {
+        let nyan: NyanSettings = serde_json::from_value(serde_json::json!({
+            "providers": {
+                "anthropic": {
+                    "kind": "anthropic",
+                    "protocol": "anthropicMessages"
+                }
+            },
+            "models": {
+                "sonnet-overridden": {
+                    "provider": "anthropic",
+                    "model": "claude-sonnet-4-6",
+                    "displayName": "My Custom Sonnet",
+                    "capabilities": {
+                        "contextWindow": 250000
+                    }
+                },
+                "sonnet-pure": {
+                    "provider": "anthropic",
+                    "model": "claude-sonnet-4-6"
+                }
+            }
+        }))
+        .unwrap();
+
+        let diagnoses = diagnose_profiles(&nyan);
+        assert_eq!(diagnoses.len(), 2);
+
+        let overridden = diagnoses
+            .iter()
+            .find(|d| d.profile_name == "sonnet-overridden")
+            .unwrap();
+        let cw_field = overridden
+            .fields
+            .iter()
+            .find(|f| f.field_name == "contextWindow")
+            .unwrap();
+        assert_eq!(cw_field.value, "250000");
+        assert!(cw_field.is_override);
+
+        let dn_field = overridden
+            .fields
+            .iter()
+            .find(|f| f.field_name == "displayName")
+            .unwrap();
+        assert_eq!(dn_field.value, "My Custom Sonnet");
+        assert!(dn_field.is_override);
+
+        let pure = diagnoses
+            .iter()
+            .find(|d| d.profile_name == "sonnet-pure")
+            .unwrap();
+        let pure_cw = pure
+            .fields
+            .iter()
+            .find(|f| f.field_name == "contextWindow")
+            .unwrap();
+        assert_eq!(pure_cw.value, "1000000");
+        assert!(!pure_cw.is_override);
     }
 }
