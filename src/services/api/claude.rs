@@ -2628,12 +2628,11 @@ pub async fn query_model_streaming_items(
     options: &Options,
 ) -> anyhow::Result<Vec<ClaudeStreamItem>> {
     let client = crate::services::provider::anthropic::client::get_anthropic_client(
-        crate::services::provider::anthropic::client::GetAnthropicClientOptions {
-            api_key: None,
-            max_retries: 2,
-            model: Some(options.model.clone()),
-            source: Some(options.query_source.clone()),
-        },
+        crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_main_profile(
+            2,
+            Some(options.model.clone()),
+            Some(options.query_source.clone()),
+        )?,
     )
     .await?
     .build()?;
@@ -3434,12 +3433,16 @@ async fn open_sdk_message_stream_with_retry(
                 let attempt_options =
                     streaming_attempt_options_from_retry_context(&base_options, &retry_context);
                 let client = crate::services::provider::anthropic::client::get_anthropic_client(
-                    crate::services::provider::anthropic::client::GetAnthropicClientOptions {
-                        api_key: None,
-                        max_retries: 0,
-                        model: Some(attempt_options.model.clone()),
-                        source: Some(attempt_options.query_source.clone()),
-                    },
+                    crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_main_profile(
+                        0,
+                        Some(attempt_options.model.clone()),
+                        Some(attempt_options.query_source.clone()),
+                    )
+                    .map_err(|error| {
+                        crate::services::api::with_retry::RetryableError::Other(anyhow::Error::new(
+                            error,
+                        ))
+                    })?,
                 )
                 .await
                 .map_err(crate::services::api::with_retry::RetryableError::Other)?
@@ -4385,12 +4388,16 @@ async fn execute_non_streaming_request_with_initial_consecutive_529_errors(
             let source = get_client_source.clone();
             async move {
                 let client = crate::services::provider::anthropic::client::get_anthropic_client(
-                    crate::services::provider::anthropic::client::GetAnthropicClientOptions {
-                        api_key: None,
-                        max_retries: 0,
-                        model: Some(model),
-                        source: Some(source),
-                    },
+                    crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_main_profile(
+                        0,
+                        Some(model),
+                        Some(source),
+                    )
+                    .map_err(|error| {
+                        crate::services::api::with_retry::RetryableError::Other(anyhow::Error::new(
+                            error,
+                        ))
+                    })?,
                 )
                 .await
                 .map_err(crate::services::api::with_retry::RetryableError::Other)?
@@ -8251,39 +8258,29 @@ mod tests {
         assert!(matches!(adjusted.thinking, Some(ThinkingConfig::Adaptive)));
     }
 
+    /// Client construction (and so the profile / credential gate) must fail
+    /// before any request plan is built: an unconfigured provider must not cost
+    /// a plan build, and must say what to configure.
     #[tokio::test(flavor = "current_thread")]
-    async fn non_streaming_oauth_refusal_precedes_request_plan_construction() {
+    async fn missing_profile_refusal_precedes_request_plan_construction() {
         let _env_guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let config_dir = std::env::temp_dir().join(format!(
-            "nyan-non-streaming-oauth-order-{}",
+            "nyan-non-streaming-profile-order-{}",
             std::process::id()
         ));
         std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::write(
-            config_dir.join(".credentials.json"),
-            serde_json::json!({
-                "claudeAiOauth": {
-                    "accessToken": "expired-access-token",
-                    "refreshToken": "refresh-token",
-                    "expiresAt": 1,
-                    "scopes": ["user:inference"]
-                }
-            })
-            .to_string(),
-        )
-        .unwrap();
         let _guards = [
-            EnvVarGuard::unset("CLAUDE_CODE_OAUTH_TOKEN"),
             EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_dir),
-            EnvVarGuard::unset("CLAUDE_CODE_SIMPLE"),
             EnvVarGuard::unset("CLAUDE_CODE_USE_BEDROCK"),
             EnvVarGuard::unset("CLAUDE_CODE_USE_VERTEX"),
             EnvVarGuard::unset("CLAUDE_CODE_USE_FOUNDRY"),
+            // Ambient Anthropic credentials must not stand in for a profile.
+            EnvVarGuard::set("ANTHROPIC_API_KEY", "sk-ambient"),
             EnvVarGuard::set("CLAUDE_CODE_MAX_RETRIES", "0"),
         ];
-        crate::bootstrap::state::reset_auth_file_descriptor_caches_for_testing();
+        crate::utils::settings::settings_cache::reset_settings_cache();
         crate::utils::config::set_test_global_config(Some(
             crate::utils::config::GlobalConfig::default(),
         ));
@@ -8312,14 +8309,10 @@ mod tests {
         )
         .await;
 
-        assert!(
-            result
-                .expect_err("selected OAuth must hit the closed credential outlet")
-                .to_string()
-                .contains(
-                    crate::constants::oauth::OAUTH_CREDENTIAL_SIDE_EFFECTS_UNAVAILABLE_MESSAGE
-                )
-        );
+        let message = result
+            .expect_err("no profile must refuse before any request is built")
+            .to_string();
+        assert!(message.contains("settings.nyan"), "{message}");
         assert_eq!(plan_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert_eq!(
             request_options_calls.load(std::sync::atomic::Ordering::SeqCst),
@@ -8327,6 +8320,7 @@ mod tests {
         );
 
         crate::utils::config::set_test_global_config(None);
+        crate::utils::settings::settings_cache::reset_settings_cache();
         let _ = std::fs::remove_dir_all(config_dir);
     }
 

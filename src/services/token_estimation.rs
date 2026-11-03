@@ -14,16 +14,16 @@ async fn count_tokens_client(
     // The binary installs this during startup; library/test callers can enter
     // this API boundary directly.
     crate::utils::tls_provider::install_crypto_provider();
-    crate::services::provider::anthropic::client::get_anthropic_client(
-        crate::services::provider::anthropic::client::GetAnthropicClientOptions {
-            max_retries: 1,
-            model: Some(model.to_string()),
-            source: Some("count_tokens".to_string()),
-            ..Default::default()
-        },
-    )
-    .await
-    .ok()
+    let options =
+        crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_main_profile(
+            1,
+            Some(model.to_string()),
+            Some("count_tokens".to_string()),
+        )
+        .ok()?;
+    crate::services::provider::anthropic::client::get_anthropic_client(options)
+        .await
+        .ok()
 }
 
 /// Maps to: CC `services/tokenEstimation.ts#hasThinkingBlocks`.
@@ -529,9 +529,35 @@ mod tests {
         assert_eq!(rough_token_count_estimation_for_file_type("😀😀", "txt"), 1);
     }
 
+    /// Count-token calls need a selected main profile. The cloud variants take
+    /// their endpoint and credentials from their own variables, so the profile
+    /// here only has to exist; it is removed again when the guard drops.
+    struct MainProfileGuard {
+        _key: EnvVarGuard,
+    }
+
+    impl MainProfileGuard {
+        fn install() -> Self {
+            let key = EnvVarGuard::set("NYAN_TOKEN_TEST_KEY", "sk-unused-by-cloud-variants");
+            crate::utils::settings::settings_cache::reset_settings_cache();
+            crate::services::provider::anthropic::target::install_test_main_profile(
+                "https://unused.invalid",
+                "NYAN_TOKEN_TEST_KEY",
+            );
+            Self { _key: key }
+        }
+    }
+
+    impl Drop for MainProfileGuard {
+        fn drop(&mut self) {
+            crate::utils::settings::settings_cache::reset_settings_cache();
+        }
+    }
+
     #[tokio::test]
     async fn bedrock_count_tokens_uses_runtime_count_tokens_request() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
+        let _profile = MainProfileGuard::install();
         let (endpoint, server) = spawn_json_server(r#"{"inputTokens":23}"#);
         let _bedrock = EnvVarGuard::set("CLAUDE_CODE_USE_BEDROCK", "1");
         let _vertex = EnvVarGuard::unset("CLAUDE_CODE_USE_VERTEX");
@@ -663,6 +689,7 @@ mod tests {
     #[tokio::test]
     async fn vertex_count_tokens_uses_raw_predict_route() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
+        let _profile = MainProfileGuard::install();
         let (endpoint, server) = spawn_json_server(r#"{"input_tokens":19}"#);
         let _bedrock = EnvVarGuard::unset("CLAUDE_CODE_USE_BEDROCK");
         let _vertex = EnvVarGuard::set("CLAUDE_CODE_USE_VERTEX", "1");
@@ -692,6 +719,7 @@ mod tests {
     #[tokio::test]
     async fn foundry_count_tokens_uses_configured_anthropic_client() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
+        let _profile = MainProfileGuard::install();
         let (endpoint, server) = spawn_json_server(r#"{"input_tokens":17}"#);
         let _bedrock = EnvVarGuard::unset("CLAUDE_CODE_USE_BEDROCK");
         let _vertex = EnvVarGuard::unset("CLAUDE_CODE_USE_VERTEX");

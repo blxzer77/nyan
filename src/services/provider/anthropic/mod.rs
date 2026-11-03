@@ -10,4 +10,5 @@ pub mod cache;
 pub mod client;
 pub mod credential;
 pub mod headers;
+pub mod target;
 pub mod wire;

@@ -472,16 +472,23 @@ pub async fn check_quota_status() {
     }
 
     let model = crate::utils::model::model::get_small_fast_model();
-    let client = match crate::services::provider::anthropic::client::get_anthropic_client(
-        crate::services::provider::anthropic::client::GetAnthropicClientOptions {
-            api_key: None,
-            max_retries: 0,
-            model: Some(model.clone()),
-            source: Some("quota_check".to_string()),
-        },
-    )
-    .await
-    .and_then(|handle| handle.build().map_err(anyhow::Error::new))
+    let options =
+        match crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_main_profile(
+            0,
+            Some(model.clone()),
+            Some("quota_check".to_string()),
+        ) {
+            Ok(options) => options,
+            Err(error) => {
+                crate::utils::debug::log_for_debugging(&format!(
+                    "Quota status preflight skipped: {error}"
+                ));
+                return;
+            }
+        };
+    let client = match crate::services::provider::anthropic::client::get_anthropic_client(options)
+        .await
+        .and_then(|handle| handle.build().map_err(anyhow::Error::new))
     {
         Ok(client) => client,
         Err(error) => {

@@ -211,12 +211,11 @@ pub async fn side_query(opts: SideQueryOptions) -> anyhow::Result<Message> {
 
     // Maps to: CC `getAnthropicClient({ maxRetries, model, source: 'side_query' })`.
     let client = crate::services::provider::anthropic::client::get_anthropic_client(
-        crate::services::provider::anthropic::client::GetAnthropicClientOptions {
-            api_key: None,
+        crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_main_profile(
             max_retries,
-            model: Some(opts.model.clone()),
-            source: Some("side_query".to_string()),
-        },
+            Some(opts.model.clone()),
+            Some("side_query".to_string()),
+        )?,
     )
     .await?
     .build()?;
@@ -400,8 +399,7 @@ mod tests {
             let mut env = vec![
                 EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root),
                 EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1"),
-                EnvVarGuard::set("ANTHROPIC_API_KEY", "sk-ant-local-side-query-test"),
-                EnvVarGuard::set("ANTHROPIC_BASE_URL", format!("http://{address}")),
+                EnvVarGuard::set("NYAN_SIDE_QUERY_TEST_KEY", "sk-ant-local-side-query-test"),
                 EnvVarGuard::set("API_TIMEOUT_MS", "5000"),
                 EnvVarGuard::set("NO_PROXY", "*"),
                 EnvVarGuard::set("no_proxy", "*"),
@@ -418,6 +416,10 @@ mod tests {
                 env.push(EnvVarGuard::unset(key));
             }
             crate::utils::settings::settings_cache::reset_settings_cache();
+            crate::services::provider::anthropic::target::install_test_main_profile(
+                &format!("http://{address}"),
+                "NYAN_SIDE_QUERY_TEST_KEY",
+            );
             let (tx, requests) = tokio::sync::mpsc::unbounded_channel();
             let server = tokio::spawn(async move {
                 tokio::time::timeout(std::time::Duration::from_secs(10), async move {
