@@ -2946,7 +2946,6 @@ mod tests {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _model = EnvVarGuard::unset("ANTHROPIC_MODEL");
         let _opus = EnvVarGuard::set("ANTHROPIC_DEFAULT_OPUS_MODEL", "custom-opus");
         let _sonnet = EnvVarGuard::set("ANTHROPIC_DEFAULT_SONNET_MODEL", "custom-sonnet");
         let _haiku = EnvVarGuard::set("ANTHROPIC_DEFAULT_HAIKU_MODEL", "custom-haiku");

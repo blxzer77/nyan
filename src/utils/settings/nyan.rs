@@ -1538,26 +1538,14 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
         ("credential", credential.optional()),
     ]);
     let capabilities = zod::strict_object(vec![
-        (
-            "contextWindow",
-            zod::number().int().positive().optional(),
-        ),
-        (
-            "maxOutputTokens",
-            zod::number().int().positive().optional(),
-        ),
-        (
-            "tools",
-            zod::enumeration(vec!["none", "native"]).optional(),
-        ),
+        ("contextWindow", zod::number().int().positive().optional()),
+        ("maxOutputTokens", zod::number().int().positive().optional()),
+        ("tools", zod::enumeration(vec!["none", "native"]).optional()),
         (
             "thinking",
             zod::enumeration(vec!["none", "adaptive", "budgeted"]).optional(),
         ),
-        (
-            "images",
-            zod::enumeration(vec!["none", "input"]).optional(),
-        ),
+        ("images", zod::enumeration(vec!["none", "input"]).optional()),
         ("structuredOutput", zod::boolean().optional()),
         ("streaming", zod::boolean().optional()),
         (
@@ -1577,15 +1565,9 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
     ]);
     let selection = zod::strict_object(vec![
         ("main", zod::string().min(1).optional()),
-        (
-            "mainFallbacks",
-            zod::array(zod::string().min(1)).optional(),
-        ),
+        ("mainFallbacks", zod::array(zod::string().min(1)).optional()),
         ("subagent", zod::string().min(1).optional()),
-        (
-            "subagents",
-            zod::record(zod::string().min(1)).optional(),
-        ),
+        ("subagents", zod::record(zod::string().min(1)).optional()),
         ("decision", decision_selection.optional()),
     ]);
 
@@ -1741,7 +1723,7 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
         ("sync", retrieval_sync.optional()),
     ]);
 
-    let provider = zod::object(vec![
+    let web_provider = zod::object(vec![
         ("enabled", zod::boolean().optional()),
         ("apiKeyFile", zod::string().optional()),
         ("baseUrl", zod::string().optional()),
@@ -1799,7 +1781,7 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
     let web = zod::object(vec![
         (
             "providers",
-            zod::partial_record(provider_names(), provider).optional(),
+            zod::partial_record(provider_names(), web_provider).optional(),
         ),
         ("search", web_search.optional()),
         ("fetch", web_fetch.optional()),

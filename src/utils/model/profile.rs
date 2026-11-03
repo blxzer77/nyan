@@ -5,10 +5,10 @@
 
 use std::fmt;
 
+use crate::utils::settings::SettingsJson;
 use crate::utils::settings::nyan::{
     ModelProfileSettings, NyanSettings, ProviderKind, ProviderProtocol, ProviderSettings,
 };
-use crate::utils::settings::SettingsJson;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedModelProfile {
@@ -54,10 +54,9 @@ impl fmt::Display for ProfileResolutionError {
                 f,
                 "Provider {provider:?} referenced by the model profile is not defined in settings.nyan.providers."
             ),
-            Self::MissingProviderKind(provider) => write!(
-                f,
-                "Provider {provider:?} is missing its built-in kind."
-            ),
+            Self::MissingProviderKind(provider) => {
+                write!(f, "Provider {provider:?} is missing its built-in kind.")
+            }
             Self::MissingProviderProtocol(provider) => write!(
                 f,
                 "Provider {provider:?} must declare protocol or protocols."
@@ -169,9 +168,24 @@ pub fn resolve_main_profile(
     resolve_profile(nyan, profile_name)
 }
 
+pub fn resolve_model_input(
+    settings: &SettingsJson,
+    input: &str,
+) -> Result<String, ProfileResolutionError> {
+    let Some(nyan) = settings.nyan.as_ref() else {
+        return Ok(input.to_string());
+    };
+    let Some(models) = nyan.models.as_ref() else {
+        return Ok(input.to_string());
+    };
+    if !models.contains_key(input) {
+        return Ok(input.to_string());
+    }
+    resolve_profile(nyan, input).map(|profile| profile.model)
+}
+
 pub fn profile_names(nyan: Option<&NyanSettings>) -> impl Iterator<Item = &str> {
-    nyan
-        .and_then(|nyan| nyan.models.as_ref())
+    nyan.and_then(|nyan| nyan.models.as_ref())
         .into_iter()
         .flat_map(|models| models.keys().map(String::as_str))
 }
@@ -198,4 +212,105 @@ pub fn validate_decision_profile(
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn settings() -> SettingsJson {
+        serde_json::from_value(serde_json::json!({
+            "nyan": {
+                "providers": {
+                    "anthropic": {
+                        "kind": "anthropic",
+                        "protocol": "anthropicMessages"
+                    },
+                    "local": {
+                        "kind": "vllm",
+                        "protocol": "openaiChat"
+                    }
+                },
+                "models": {
+                    "main": {
+                        "provider": "anthropic",
+                        "model": "claude-sonnet-4-6",
+                        "capabilities": {
+                            "contextWindow": 200000,
+                            "maxOutputTokens": 128000,
+                            "structuredOutput": true
+                        }
+                    },
+                    "local": {
+                        "provider": "local",
+                        "model": "qwen",
+                        "capabilities": {
+                            "contextWindow": 32768,
+                            "maxOutputTokens": 4096
+                        }
+                    }
+                },
+                "selection": {"main": "main"}
+            }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn resolves_main_profile_and_profile_name_inputs() {
+        let settings = settings();
+        let resolved = resolve_main_profile(&settings).unwrap();
+        assert_eq!(resolved.profile, "main");
+        assert_eq!(resolved.model, "claude-sonnet-4-6");
+        assert_eq!(
+            resolve_model_input(&settings, "main").unwrap(),
+            "claude-sonnet-4-6"
+        );
+        assert_eq!(
+            resolve_model_input(&settings, "provider/model").unwrap(),
+            "provider/model"
+        );
+        assert!(validate_decision_profile(settings.nyan.as_ref().unwrap(), "main").is_ok());
+    }
+
+    #[test]
+    fn rejects_unsupported_and_incomplete_profiles_without_defaults() {
+        let settings = settings();
+        let nyan = settings.nyan.as_ref().unwrap();
+        assert_eq!(
+            resolve_profile(nyan, "local").unwrap_err(),
+            ProfileResolutionError::UnsupportedProvider(ProviderKind::Vllm)
+        );
+        assert_eq!(
+            resolve_main_profile(&SettingsJson::default()).unwrap_err(),
+            ProfileResolutionError::MissingSettings
+        );
+        assert_eq!(
+            resolve_profile(
+                &NyanSettings {
+                    models: Some(std::collections::BTreeMap::from([(
+                        "missing".to_string(),
+                        ModelProfileSettings {
+                            provider: Some("anthropic".to_string()),
+                            model: Some("claude".to_string()),
+                            capabilities: None,
+                            ..Default::default()
+                        },
+                    )])),
+                    providers: Some(std::collections::BTreeMap::from([(
+                        "anthropic".to_string(),
+                        ProviderSettings {
+                            kind: Some(ProviderKind::Anthropic),
+                            protocol: Some(ProviderProtocol::AnthropicMessages),
+                            ..Default::default()
+                        },
+                    )])),
+                    ..Default::default()
+                },
+                "missing"
+            )
+            .unwrap_err(),
+            ProfileResolutionError::MissingContextWindow("missing".to_string())
+        );
+    }
 }

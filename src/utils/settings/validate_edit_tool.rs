@@ -61,8 +61,8 @@ mod tests {
         // valid → invalid is blocked with the full message.
         let message = validate_input_for_settings_file_edit(
             &settings_path(),
-            r#"{"model": "opus"}"#,
-            r#"{"model": 5}"#,
+            r#"{"language": "zh"}"#,
+            r#"{"language": 5}"#,
             &cwd(),
         )
         .expect("valid-to-invalid must block");
@@ -79,7 +79,7 @@ mod tests {
         assert!(
             validate_input_for_settings_file_edit(
                 &settings_path(),
-                r#"{"model": 5}"#,
+                r#"{"language": 5}"#,
                 r#"{"model": 6}"#,
                 &cwd(),
             )
@@ -90,7 +90,7 @@ mod tests {
         assert!(
             validate_input_for_settings_file_edit(
                 std::path::Path::new("/tmp/other.json"),
-                r#"{"model": "opus"}"#,
+                r#"{"language": "zh"}"#,
                 "{ not json",
                 &cwd(),
             )
@@ -102,7 +102,7 @@ mod tests {
     fn strict_settings_schema_rejects_unknown_top_level_fields() {
         let message = validate_input_for_settings_file_edit(
             &settings_path(),
-            r#"{"model": "opus"}"#,
+            r#"{"language": "zh"}"#,
             r#"{"model": "opus", "definitelyNotAClaudeSetting": true}"#,
             &cwd(),
         )
@@ -115,7 +115,7 @@ mod tests {
         // .catch(undefined) fields degrade instead of failing the edit.
         assert!(validate_input_for_settings_file_edit(
             &settings_path(),
-            r#"{"model": "opus"}"#,
+            r#"{"language": "zh"}"#,
             r#"{"model": "opus", "effortLevel": "ultra", "strictPluginOnlyCustomization": "skills"}"#,
             &cwd(),
         )
@@ -128,7 +128,7 @@ mod tests {
         assert!(
             validate_input_for_settings_file_edit(
                 &settings_path(),
-                r#"{"model": "opus"}"#,
+                r#"{"language": "zh"}"#,
                 r#"{"env": {"PORT": 8080}}"#,
                 &cwd(),
             )
@@ -137,7 +137,7 @@ mod tests {
         // A marketplace refinement failure blocks (reserved settings name).
         let message = validate_input_for_settings_file_edit(
             &settings_path(),
-            r#"{"model": "opus"}"#,
+            r#"{"language": "zh"}"#,
             r#"{"extraKnownMarketplaces": {"agent-skills": {"source": {"source": "settings", "name": "agent-skills", "plugins": []}}}}"#,
             &cwd(),
         )

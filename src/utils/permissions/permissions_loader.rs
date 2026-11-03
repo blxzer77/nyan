@@ -600,11 +600,12 @@ mod persistence_tests {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let fixture = Fixture::new();
         for deleting in [false, true] {
-            fixture.write(json!({"model":"old","permissions":{"allow":["Read"],"deny":["Bash"]}}));
+            fixture
+                .write(json!({"language":"old","permissions":{"allow":["Read"],"deny":["Bash"]}}));
             assert_eq!(
                 get_settings_for_source(SettingSource::User)
                     .unwrap()
-                    .model
+                    .language
                     .as_deref(),
                 Some("old")
             );

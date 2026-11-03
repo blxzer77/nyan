@@ -74,31 +74,22 @@ pub fn get_default_main_loop_model() -> String {
     parse_user_specified_model(&get_default_main_loop_model_setting())
 }
 
-/// Maps to: CC `utils/model/model.ts` `getUserSpecifiedModelSetting()`.
+/// Resolve the current session override, or the configured provider profile.
 ///
-/// Official precedence is the runtime/startup bootstrap override,
-/// `ANTHROPIC_MODEL`, then settings. The override's explicit-null value stops
-/// lookup rather than falling through.
+/// The PR 1 compatibility layer deliberately does not read `ANTHROPIC_MODEL`
+/// or any removed settings fields. A missing or invalid profile stays unset so
+/// the request boundary can return the configuration guidance instead of
+/// silently selecting an Anthropic default.
 pub fn get_user_specified_model_setting() -> Option<String> {
-    let specified_model =
-        if let Some(model_override) = crate::bootstrap::state::get_main_loop_model_override() {
-            model_override
-        } else {
-            crate::utils::process_env::var("ANTHROPIC_MODEL")
-                .truthy()
-                .or_else(|| crate::utils::settings::get_initial_settings().model)
-        };
-
-    // Ignore the user-specified model if it's not in the availableModels
-    // allowlist. The source's truthiness guard also skips an empty setting.
-    if let Some(model) = specified_model.as_deref()
-        && !model.is_empty()
-        && !crate::utils::model::model_allowlist::is_model_allowed(model)
-    {
-        return None;
+    let settings = crate::utils::settings::get_initial_settings();
+    if let Some(model_override) = crate::bootstrap::state::get_main_loop_model_override() {
+        return model_override.and_then(|model| {
+            crate::utils::model::profile::resolve_model_input(&settings, &model).ok()
+        });
     }
-
-    specified_model
+    crate::utils::model::profile::resolve_main_profile(&settings)
+        .ok()
+        .map(|profile| profile.model)
 }
 
 /// Maps to: CC `utils/model/model.ts` `parseUserSpecifiedModel(...)`.
@@ -137,12 +128,10 @@ pub fn parse_user_specified_model(model_input: &str) -> String {
 
 /// Maps to: CC `utils/model/model.ts` `getMainLoopModel()`.
 pub fn get_main_loop_model() -> String {
-    if let Some(model) = get_user_specified_model_setting()
-        && !model.trim().is_empty()
-    {
-        return parse_user_specified_model(&model);
-    }
-    get_default_main_loop_model()
+    get_user_specified_model_setting()
+        .filter(|model| !model.trim().is_empty())
+        .map(|model| parse_user_specified_model(&model))
+        .unwrap_or_default()
 }
 
 /// Return the live session model without consulting settings or credentials.
@@ -152,14 +141,16 @@ pub fn get_main_loop_model() -> String {
 /// therefore stay live without introducing filesystem or keychain I/O into
 /// REPL render paths.
 pub fn get_session_main_loop_model() -> String {
+    let settings = crate::utils::settings::get_initial_settings();
     let selected = match crate::bootstrap::state::get_main_loop_model_override() {
         Some(model) => model,
         None => crate::bootstrap::state::get_initial_main_loop_model(),
     };
     selected
         .filter(|model| !model.trim().is_empty())
+        .and_then(|model| crate::utils::model::profile::resolve_model_input(&settings, &model).ok())
         .map(|model| parse_user_specified_model(&model))
-        .unwrap_or_else(get_default_main_loop_model)
+        .unwrap_or_default()
 }
 
 /// Maps to: CC `utils/model/model.ts` `getRuntimeMainLoopModel(...)`.
@@ -225,9 +216,7 @@ pub fn first_party_name_to_canonical(name: &str) -> String {
 
 /// Maps to: CC `utils/model/model.ts:279-283#getCanonicalName`.
 pub fn get_canonical_name(full_model_name: &str) -> String {
-    first_party_name_to_canonical(
-        &crate::utils::model::model_strings::resolve_overridden_model(full_model_name),
-    )
+    first_party_name_to_canonical(full_model_name)
 }
 
 /// Maps to: CC `utils/model/model.ts:616-618#normalizeModelStringForAPI`.
@@ -528,6 +517,7 @@ mod tests {
                 serde_json::json!({ "claudeAiOauth": oauth }).to_string(),
             )
             .unwrap();
+            crate::bootstrap::state::reset_auth_file_descriptor_caches_for_testing();
         };
 
         // A max subscriber on first-party: the merge is on.
@@ -551,6 +541,8 @@ mod tests {
         crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
 
         // Subscriber with tokens but no subscriptionType: fail closed.
+        let _oauth_token = EnvVarGuard::set("CLAUDE_CODE_OAUTH_TOKEN", "test-oauth-token");
+        let _unix_socket = EnvVarGuard::set("ANTHROPIC_UNIX_SOCKET", "/tmp/nyan-test.sock");
         write_credentials(serde_json::json!({
             "accessToken": "sk-ant-oat01-test",
             "refreshToken": "sk-ant-ort01-test",
@@ -569,6 +561,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::set("ANTHROPIC_DEFAULT_SONNET_MODEL", "official-sonnet");
         crate::utils::process_env::set("ANTHROPIC_DEFAULT_OPUS_MODEL", "official-opus");
+        crate::utils::process_env::remove("ANTHROPIC_DEFAULT_HAIKU_MODEL");
         crate::utils::process_env::set("ANTHROPIC_SMALL_FAST_MODEL", "official-haiku");
 
         assert_eq!(get_default_sonnet_model(), "official-sonnet");
@@ -686,110 +679,63 @@ mod tests {
         assert_eq!(resolve_skill_model_override("opus", ""), "opus");
     }
 
-    /// Maps to: CC `utils/model/model.ts:72-75` — a user-specified model that
-    /// the `availableModels` allowlist forbids is dropped, so every consumer
-    /// (main loop selection included) falls back to the default rather than
-    /// pinning a model policy has ruled out. The source's truthiness guard
-    /// leaves an empty setting alone.
     #[test]
-    fn user_specified_model_setting_drops_models_the_allowlist_forbids() {
+    fn profile_selection_resolves_the_wire_model_and_ignores_legacy_model_env() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let previous_override = crate::bootstrap::state::get_main_loop_model_override();
-        let model = EnvVarGuard::unset("ANTHROPIC_MODEL");
         let root = std::env::temp_dir().join(format!(
-            "nyan-model-allowlist-{}",
+            "nyan-model-profile-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
             root.join("settings.json"),
-            r#"{"availableModels":["haiku"]}"#,
+            r#"{
+                "nyan": {
+                    "providers": {"anthropic": {"kind": "anthropic", "protocol": "anthropicMessages"}},
+                    "models": {"main": {"provider": "anthropic", "model": "claude-sonnet-4-6", "capabilities": {"contextWindow": 200000, "maxOutputTokens": 128000}}},
+                    "selection": {"main": "main"}
+                }
+            }"#,
         )
         .unwrap();
-        let config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let haiku = EnvVarGuard::set("ANTHROPIC_DEFAULT_HAIKU_MODEL", "default-haiku");
+        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _legacy = EnvVarGuard::set("ANTHROPIC_MODEL", "legacy-model");
         crate::utils::settings::settings_cache::reset_settings_cache();
         crate::bootstrap::state::set_main_loop_model_override(None);
 
-        crate::utils::process_env::set("ANTHROPIC_MODEL", "haiku");
-        assert_eq!(get_user_specified_model_setting().as_deref(), Some("haiku"));
-        assert_eq!(get_main_loop_model(), "default-haiku");
-
-        crate::utils::process_env::set("ANTHROPIC_MODEL", "opus");
-        assert_eq!(get_user_specified_model_setting(), None);
-        assert_eq!(get_main_loop_model(), get_default_main_loop_model());
-
-        // An empty setting stays empty: the source guards the allowlist check
-        // behind a truthiness test, so it never reaches `isModelAllowed`.
-        crate::bootstrap::state::set_main_loop_model_override(Some(Some(String::new())));
-        assert_eq!(get_user_specified_model_setting().as_deref(), Some(""));
+        assert_eq!(
+            get_user_specified_model_setting().as_deref(),
+            Some("claude-sonnet-4-6")
+        );
+        assert_eq!(get_main_loop_model(), "claude-sonnet-4-6");
 
         crate::bootstrap::state::set_main_loop_model_override(previous_override);
-        drop((haiku, model, config));
         crate::utils::settings::settings_cache::reset_settings_cache();
-        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
-    fn get_main_loop_model_parses_official_env_aliases_before_defaults() {
+    fn missing_profile_stays_unset_even_when_legacy_model_env_is_present() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("ANTHROPIC_MODEL", "haiku");
-        crate::utils::process_env::set("ANTHROPIC_DEFAULT_HAIKU_MODEL", "default-haiku");
+        let previous_override = crate::bootstrap::state::get_main_loop_model_override();
+        let root = std::env::temp_dir().join(format!(
+            "nyan-model-no-profile-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("settings.json"), "{}").unwrap();
+        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _legacy = EnvVarGuard::set("ANTHROPIC_MODEL", "legacy-model");
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        crate::bootstrap::state::set_main_loop_model_override(None);
 
-        assert_eq!(get_main_loop_model(), "default-haiku");
+        assert_eq!(get_user_specified_model_setting(), None);
+        assert_eq!(get_main_loop_model(), "");
 
-        crate::utils::process_env::remove("ANTHROPIC_MODEL");
-        crate::utils::process_env::remove("ANTHROPIC_DEFAULT_HAIKU_MODEL");
-    }
-
-    #[test]
-    fn runtime_main_loop_model_matches_official_plan_mode_alias_overrides() {
-        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("ANTHROPIC_MODEL", "opusplan");
-        crate::utils::process_env::set("ANTHROPIC_DEFAULT_OPUS_MODEL", "default-opus");
-        crate::utils::process_env::set("ANTHROPIC_DEFAULT_SONNET_MODEL", "default-sonnet");
-
-        assert_eq!(get_main_loop_model(), "default-sonnet");
-        assert_eq!(
-            get_runtime_main_loop_model(
-                crate::types::permissions::PermissionMode::Plan,
-                "default-sonnet".to_string(),
-                false,
-            ),
-            "default-opus"
-        );
-        assert_eq!(
-            get_runtime_main_loop_model(
-                crate::types::permissions::PermissionMode::Plan,
-                "default-sonnet".to_string(),
-                true,
-            ),
-            "default-sonnet"
-        );
-
-        crate::utils::process_env::set("ANTHROPIC_MODEL", "haiku");
-        assert_eq!(
-            get_runtime_main_loop_model(
-                crate::types::permissions::PermissionMode::Plan,
-                "default-haiku".to_string(),
-                false,
-            ),
-            "default-sonnet"
-        );
-
-        crate::utils::process_env::remove("ANTHROPIC_MODEL");
-        crate::utils::process_env::remove("ANTHROPIC_DEFAULT_OPUS_MODEL");
-        crate::utils::process_env::remove("ANTHROPIC_DEFAULT_SONNET_MODEL");
-    }
-
-    #[test]
-    fn get_main_loop_model_prefers_anthropic_model_env() {
-        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("ANTHROPIC_MODEL", "official-main-model");
-
-        assert_eq!(get_main_loop_model(), "official-main-model");
-
-        crate::utils::process_env::remove("ANTHROPIC_MODEL");
+        crate::bootstrap::state::set_main_loop_model_override(previous_override);
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

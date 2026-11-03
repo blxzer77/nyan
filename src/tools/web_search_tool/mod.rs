@@ -879,7 +879,7 @@ mod tests {
         crate::utils::process_env::remove("CLAUDE_CODE_USE_BEDROCK");
         crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
         crate::utils::process_env::remove("CLAUDE_CODE_USE_FOUNDRY");
-        crate::utils::process_env::remove("ANTHROPIC_MODEL");
+        crate::bootstrap::state::set_main_loop_model_override(None);
         assert!(is_web_search_tool_enabled());
 
         crate::utils::process_env::set("CLAUDE_CODE_USE_BEDROCK", "1");
@@ -887,17 +887,20 @@ mod tests {
         crate::utils::process_env::remove("CLAUDE_CODE_USE_BEDROCK");
 
         crate::utils::process_env::set("CLAUDE_CODE_USE_VERTEX", "1");
-        crate::utils::process_env::set("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022");
+        crate::bootstrap::state::set_main_loop_model_override(Some(Some(
+            "claude-3-5-sonnet-20241022".to_string(),
+        )));
         assert!(!is_web_search_tool_enabled());
-        crate::utils::process_env::set("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929");
+        crate::bootstrap::state::set_main_loop_model_override(Some(Some(
+            "claude-sonnet-4-5-20250929".to_string(),
+        )));
         assert!(is_web_search_tool_enabled());
         crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
 
         crate::utils::process_env::set("CLAUDE_CODE_USE_FOUNDRY", "1");
-        crate::utils::process_env::set("ANTHROPIC_MODEL", "custom-foundry-model");
         assert!(is_web_search_tool_enabled());
         crate::utils::process_env::remove("CLAUDE_CODE_USE_FOUNDRY");
-        crate::utils::process_env::remove("ANTHROPIC_MODEL");
+        crate::bootstrap::state::set_main_loop_model_override(None);
     }
 
     // ════════════════════════════════════════════════════════
@@ -1140,7 +1143,6 @@ mod tests {
     #[test]
     fn web_search_model_profile_matches_official_haiku_experiment_shape() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("ANTHROPIC_MODEL");
         crate::utils::process_env::set("ANTHROPIC_SMALL_FAST_MODEL", "claude-haiku-test");
         crate::utils::process_env::set("MAX_THINKING_TOKENS", "2048");
         let config = crate::utils::config::GlobalConfig::default();
@@ -1173,7 +1175,6 @@ mod tests {
 
         crate::utils::process_env::remove("ANTHROPIC_SMALL_FAST_MODEL");
         crate::utils::process_env::remove("MAX_THINKING_TOKENS");
-        crate::utils::process_env::remove("ANTHROPIC_MODEL");
     }
 
     #[test]
