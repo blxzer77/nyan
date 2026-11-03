@@ -1,13 +1,23 @@
 #!/usr/bin/env node
 
 /**
- * Model metadata generation script for nyan (provider redesign PR 2).
+ * Model metadata generator for nyan (provider redesign PR 2, decisions 13-15).
  *
- * Imports and normalizes model metadata derived from Pi Agent (packages/ai)
- * and models.dev experimental v2 catalog into nyan's checked-in metadata snapshot.
+ * Converts the models.dev v2 catalog into nyan's checked-in snapshot
+ * src/utils/model/model_metadata.json. Normalization follows Pi Agent
+ * packages/ai/catalog/sources/models-dev.ts at PI_COMMIT; the logic is
+ * re-implemented here, Pi code is not executed.
  *
- * Run manually or via weekly scheduled CI:
- *   node scripts/update-model-metadata.mjs
+ * Output is deterministic (no timestamps, sorted keys), so the weekly CI job
+ * only opens a PR when models or pins actually change.
+ *
+ * The hash is SHA-256 over canonical JSON of `models` (keys sorted recursively,
+ * integral numbers written without a fraction). src/utils/model/metadata.rs
+ * recomputes the same canonical form; keep the two in sync.
+ *
+ * Usage:
+ *   node scripts/update-model-metadata.mjs [--source <url|file>] [--output <file>]
+ *     [--pi-commit <40-hex sha>] [--models-dev-version <40-hex sha>]
  */
 
 import { createHash } from "node:crypto";
@@ -18,12 +28,18 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(__dirname, "..");
 const DEFAULT_OUTPUT = resolve(ROOT_DIR, "src/utils/model/model_metadata.json");
+const NOTICE_PATH = resolve(ROOT_DIR, "NOTICE");
 const DEFAULT_URL = "https://models.dev/experimental/v2.0/api.json";
-const DEFAULT_PI_COMMIT = "1f8604f8";
-const DEFAULT_MODELS_DEV_VERSION = "9dfbad27";
+const DEFAULT_PI_COMMIT = "1f8604f84f968814fc84523557c01d704a6a8f83";
+// models.dev `dev` HEAD resolved when the catalog was fetched. The live API is
+// not commit-addressed, so this is a best-effort record, not a verified content
+// pin; the PR body states the fetch time.
+const DEFAULT_MODELS_DEV_VERSION = "c630900e53c472132194987aa702d22e392197db";
 const SCHEMA_VERSION = 1;
+// Guards against an upstream shape change silently producing an empty snapshot.
+const MIN_MODELS = 100;
 
-// Provider catalog sources aligned with Pi Agent packages/ai/catalog/providers
+// Provider catalogs in Pi Agent packages/ai/catalog/providers at PI_COMMIT.
 const PI_PROVIDERS = [
   "amazon-bedrock",
   "ant-ling",
@@ -76,7 +92,6 @@ function parseArgs() {
     source: DEFAULT_URL,
     piCommit: DEFAULT_PI_COMMIT,
     modelsDevVersion: DEFAULT_MODELS_DEV_VERSION,
-    generatedAt: undefined,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -89,8 +104,15 @@ function parseArgs() {
       options.piCommit = args[++i];
     } else if (arg === "--models-dev-version" && i + 1 < args.length) {
       options.modelsDevVersion = args[++i];
-    } else if (arg === "--generated-at" && i + 1 < args.length) {
-      options.generatedAt = args[++i];
+    }
+  }
+
+  for (const [flag, value] of [
+    ["--pi-commit", options.piCommit],
+    ["--models-dev-version", options.modelsDevVersion],
+  ]) {
+    if (!/^[0-9a-f]{40}$/.test(value)) {
+      throw new Error(`${flag} must be a full 40-character commit SHA, got ${value}`);
     }
   }
 
@@ -132,30 +154,58 @@ function normalizeCost(cost) {
   };
 }
 
-export function transformCatalog(catalog, options = {}) {
-  const result = {};
+// Canonical form shared with metadata.rs: object keys sorted, null members
+// omitted (Rust drops None fields when re-serializing), integral numbers
+// written without a fraction (JSON.stringify does this already).
+export function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .filter((key) => value[key] !== null)
+        .sort()
+        .map((key) => [key, canonicalize(value[key])]),
+    );
+  }
+  return value;
+}
+
+export function computeModelsHash(models) {
+  return createHash("sha256").update(JSON.stringify(canonicalize(models)), "utf8").digest("hex");
+}
+
+export function updateNoticeCommits(notice, piCommit, modelsDevVersion) {
+  const pins = [piCommit, modelsDevVersion];
+  const matches = notice.match(/^Commit: [0-9a-f]+$/gm) ?? [];
+  if (matches.length !== pins.length) {
+    throw new Error(`NOTICE must contain ${pins.length} "Commit:" lines, found ${matches.length}`);
+  }
+  let index = 0;
+  return notice.replace(/^Commit: [0-9a-f]+$/gm, () => `Commit: ${pins[index++]}`);
+}
+
+export function transformCatalog(catalog, options) {
+  const models = {};
 
   for (const provider of PI_PROVIDERS) {
     const providerData = catalog[provider];
-    if (!providerData || !providerData.models) continue;
+    if (!providerData?.models) continue;
 
     for (const [modelId, model] of Object.entries(providerData.models)) {
-      // Must be chat model
       if (model.type !== "chat") continue;
 
-      // Filter: must have contextWindow, maxTokens, input, reasoning, api
       const contextWindow = model.limit?.context;
       const maxOutputTokens = model.limit?.output;
       const input = model.modalities?.input;
-      const reasoningSupported = model.capabilities?.reasoning !== undefined;
+      const reasoning = model.capabilities?.reasoning;
       const hasApi = model.api && Object.keys(model.api).length > 0;
 
-      if (!contextWindow || !maxOutputTokens || !input || !reasoningSupported || !hasApi) {
+      // Same required set as the Rust validator; a missing field drops the entry.
+      if (!contextWindow || !maxOutputTokens || !input?.length || reasoning === undefined || !hasApi) {
         continue;
       }
 
       const hasImage = input.some((x) => x === "image" || x.startsWith("image/"));
-      const isReasoning = model.capabilities?.reasoning?.supported === true;
       const toolsSupported = model.capabilities?.tools?.supported === true;
       const structuredOutput = model.capabilities?.structured_output === true;
       const hasCache = !!model.capabilities?.cache;
@@ -170,7 +220,7 @@ export function transformCatalog(catalog, options = {}) {
           contextWindow,
           maxOutputTokens,
           tools: toolsSupported ? "native" : "none",
-          thinking: isReasoning ? "adaptive" : "none",
+          thinking: reasoning?.supported === true ? "adaptive" : "none",
           images: hasImage ? "input" : "none",
           structuredOutput,
           streaming: true,
@@ -179,39 +229,27 @@ export function transformCatalog(catalog, options = {}) {
         cost: normalizeCost(model.cost),
         input: [...input],
       };
+      models[`${provider}/${modelId}`] = entry;
 
-      result[`${provider}/${modelId}`] = entry;
-
-      // Also add alias for gemini if provider is google
+      // nyan's provider kind is "gemini"; Pi files the same models under "google".
       if (provider === "google") {
-        result[`gemini/${modelId}`] = {
-          ...entry,
-          provider: "gemini",
-        };
+        models[`gemini/${modelId}`] = { ...entry, provider: "gemini" };
       }
     }
   }
 
-  // Sort keys alphabetically for deterministic output
-  const sortedKeys = Object.keys(result).sort();
-  const sortedModels = {};
-  for (const key of sortedKeys) {
-    sortedModels[key] = result[key];
+  const sorted = Object.fromEntries(Object.keys(models).sort().map((key) => [key, models[key]]));
+  const count = Object.keys(sorted).length;
+  if (count < MIN_MODELS) {
+    throw new Error(`Only ${count} runnable models after transform; expected at least ${MIN_MODELS}`);
   }
-
-  // Hash is SHA-256 of the JSON serialization of sorted models
-  const modelsJson = JSON.stringify(sortedModels);
-  const hash = createHash("sha256").update(modelsJson, "utf8").digest("hex");
-
-  const generatedAt = options.generatedAt || new Date().toISOString();
 
   return {
     schemaVersion: SCHEMA_VERSION,
-    piCommit: options.piCommit || DEFAULT_PI_COMMIT,
-    modelsDevVersion: options.modelsDevVersion || DEFAULT_MODELS_DEV_VERSION,
-    generatedAt,
-    hash,
-    models: sortedModels,
+    piCommit: options.piCommit,
+    modelsDevVersion: options.modelsDevVersion,
+    hash: computeModelsHash(sorted),
+    models: sorted,
   };
 }
 
@@ -220,14 +258,12 @@ async function main() {
   console.log(`Loading model catalog from ${options.source}...`);
   const rawCatalog = await loadSourceData(options.source);
 
-  console.log("Transforming models...");
   const snapshot = transformCatalog(rawCatalog, options);
-
-  const modelCount = Object.keys(snapshot.models).length;
-  console.log(`Generated metadata for ${modelCount} models with hash ${snapshot.hash}`);
-
   writeFileSync(options.output, JSON.stringify(snapshot, null, 2) + "\n", "utf8");
-  console.log(`Written snapshot to ${options.output}`);
+  console.log(`Wrote ${Object.keys(snapshot.models).length} models to ${options.output}, hash ${snapshot.hash}`);
+
+  const notice = readFileSync(NOTICE_PATH, "utf8");
+  writeFileSync(NOTICE_PATH, updateNoticeCommits(notice, options.piCommit, options.modelsDevVersion), "utf8");
 }
 
 if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
