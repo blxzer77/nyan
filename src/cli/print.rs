@@ -784,10 +784,21 @@ async fn handle_control_request(
                 .get("model")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("default");
-            let model = if requested == "default" {
-                crate::utils::model::model::get_default_main_loop_model()
+            let settings = crate::utils::settings::get_initial_settings();
+            let resolved = if requested == "default" {
+                crate::utils::model::profile::resolve_main_profile(&settings)
+                    .map(|profile| profile.model)
+                    .map_err(|error| error.to_string())
             } else {
-                requested.to_string()
+                crate::utils::model::profile::resolve_model_input(&settings, requested)
+                    .map_err(|error| error.to_string())
+            };
+            let model = match resolved {
+                Ok(model) => model,
+                Err(error) => {
+                    control_error(&control.request_id, &error);
+                    return false;
+                }
             };
             // CC `print.ts:2939-2940`: `activeUserSpecifiedModel = model` and
             // `setMainLoopModelOverride(model)`, so `getMainLoopModel()`

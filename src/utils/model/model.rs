@@ -560,10 +560,8 @@ mod tests {
     fn small_fast_model_follows_main_profile_and_ignores_legacy_env() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let previous_override = crate::bootstrap::state::get_main_loop_model_override();
-        let root = std::env::temp_dir().join(format!(
-            "nyan-small-fast-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("nyan-small-fast-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("settings.json"), "{}").unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
