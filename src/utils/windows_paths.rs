@@ -398,4 +398,117 @@ mod tests {
             assert!(err.contains("is a directory"), "unexpected error: {err}");
         }
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_smoke_git_worktree_bash_and_path_conversion() {
+        let bash = find_git_bash_path().unwrap_or_else(|error| {
+            panic!("Git Bash is unavailable on the Windows runner: {error}")
+        });
+        let temp_dir = std::env::temp_dir().join(format!(
+            "nyan-worktree-smoke-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        let main_repo = temp_dir.join("main_repo");
+        std::fs::create_dir_all(&main_repo).expect("create main repo directory");
+
+        let run_cmd = |dir: &Path, program: &str, args: &[&str]| {
+            let output = std::process::Command::new(program)
+                .args(args)
+                .current_dir(dir)
+                .output()
+                .unwrap_or_else(|e| panic!("Failed to run {program} {args:?}: {e}"));
+            assert!(
+                output.status.success(),
+                "{program} {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&output.stderr)
+            );
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        };
+
+        run_cmd(&main_repo, "git", &["init"]);
+        run_cmd(
+            &main_repo,
+            "git",
+            &["config", "user.email", "smoke@example.com"],
+        );
+        run_cmd(&main_repo, "git", &["config", "user.name", "Smoke Test"]);
+        let initial_file = main_repo.join("README.md");
+        std::fs::write(&initial_file, "# Smoke Test").expect("write initial file");
+        run_cmd(&main_repo, "git", &["add", "README.md"]);
+        run_cmd(&main_repo, "git", &["commit", "-m", "initial commit"]);
+
+        let worktree_dir = temp_dir.join("worktree_feature");
+        run_cmd(
+            &main_repo,
+            "git",
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feature-worktree",
+                worktree_dir.to_str().unwrap(),
+            ],
+        );
+        assert!(worktree_dir.is_dir(), "worktree directory was created");
+
+        let worktree_str = worktree_dir.display().to_string();
+        let posix_worktree = windows_path_to_posix_path(&worktree_str);
+        assert!(
+            posix_worktree.starts_with('/'),
+            "POSIX worktree path must start with /: {posix_worktree}"
+        );
+        let roundtrip_windows = posix_path_to_windows_path(&posix_worktree);
+        assert!(
+            roundtrip_windows.eq_ignore_ascii_case(&worktree_str),
+            "Round-trip path mismatch: expected {worktree_str}, got {roundtrip_windows}"
+        );
+
+        let script =
+            "pwd -P && git rev-parse --show-toplevel && printf 'worktree-bash-smoke-ok\\n'";
+        let run = crate::utils::shell::run_command_streaming(
+            &bash.display().to_string(),
+            &["-lc", script],
+            std::time::Duration::from_secs(10),
+            Some(&worktree_dir),
+            &crate::tool::AbortController::default(),
+            None,
+        )
+        .unwrap_or_else(|error| panic!("Git Bash worktree smoke failed to start: {error}"));
+        assert!(!run.timed_out, "Git Bash worktree smoke timed out");
+        assert!(
+            run.output.status.success(),
+            "Git Bash worktree smoke failed: {}",
+            String::from_utf8_lossy(&run.output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&run.output.stdout);
+        let lines: Vec<&str> = stdout
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
+        assert!(
+            lines.iter().any(|line| *line == "worktree-bash-smoke-ok"),
+            "Expected success marker in worktree output: {stdout}"
+        );
+
+        let bash_cwd_posix = lines[0];
+        let bash_cwd_windows = posix_path_to_windows_path(bash_cwd_posix);
+        assert!(
+            Path::new(&bash_cwd_windows).exists(),
+            "Converted Windows path from Git Bash pwd must exist: {bash_cwd_windows}"
+        );
+
+        let git_toplevel_posix = lines[1];
+        let git_toplevel_windows = posix_path_to_windows_path(git_toplevel_posix);
+        assert!(
+            Path::new(&git_toplevel_windows).exists(),
+            "Converted Windows path from git rev-parse must exist: {git_toplevel_windows}"
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
 }
