@@ -45,7 +45,7 @@ pub fn dispatch(config: &CliConfig) -> Option<i32> {
         return Some(1);
     }
 
-    // Preserves historical ant-only / feature-gated messaging where useful,
+    // Preserve historical ant-only / feature-gated messaging where useful,
     // but unify on `Unimplemented:` for incomplete commander surface.
     let reasons = config.unimplemented_reasons();
     if !reasons.is_empty() {
@@ -53,7 +53,7 @@ pub fn dispatch(config: &CliConfig) -> Option<i32> {
     }
 
     if config.subcommand.as_deref() == Some("doctor") {
-        return Some(run_doctor_cli(config));
+        return Some(run_doctor_cli());
     }
 
     // Maps to CC `cli/print.ts`: print/SDK mode owns the query lifetime and
@@ -66,7 +66,7 @@ pub fn dispatch(config: &CliConfig) -> Option<i32> {
     None
 }
 
-fn run_doctor_cli(_config: &CliConfig) -> i32 {
+fn run_doctor_cli() -> i32 {
     let diagnostic = crate::utils::doctor_diagnostic::get_doctor_diagnostic();
     println!("Diagnostics");
     println!(
