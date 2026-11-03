@@ -2011,6 +2011,9 @@ fn build_sdk_message_create_plan(
     // ].filter(Boolean))` — the two leading blocks are what the server's
     // Claude Code cache policy prefix-matches on; `filter(Boolean)` drops the
     // header when attribution is disabled (empty string).
+    // The attribution header and CLI prefix below are Anthropic cache-policy
+    // blocks; the neutral request must carry only what the caller supplied.
+    let caller_system_prompt = system_prompt;
     let system_prompt = std::iter::once(crate::constants::system::get_attribution_header(
         &fingerprint,
     ))
@@ -2164,7 +2167,7 @@ fn build_sdk_message_create_plan(
 
     let request = build_model_request(
         &api_messages,
-        &system_prompt,
+        caller_system_prompt,
         request_tools,
         messages,
         options,
@@ -5616,6 +5619,33 @@ mod tests {
             prompt_block["cache_control"]["type"],
             serde_json::json!("ephemeral")
         );
+    }
+
+    #[test]
+    fn neutral_request_carries_only_the_callers_system_prompt() {
+        let messages = vec![wire_test_user_message("hello")];
+        let mut options = Options::new(
+            "claude-sonnet-4-20250514".to_string(),
+            "repl_main_thread".to_string(),
+        );
+        options.enable_prompt_caching = Some(true);
+        let system_prompt = vec!["System A".to_string(), "System B".to_string()];
+
+        let plan = build_sdk_message_create_plan(
+            &messages,
+            &system_prompt,
+            &ThinkingConfig::Disabled,
+            &[],
+            &options,
+        )
+        .expect("plan builds");
+
+        // The Anthropic body gains attribution and CLI-prefix blocks; the
+        // neutral request must not, or every other adapter would send them.
+        assert_eq!(plan.request.system, system_prompt);
+        let body = serde_json::to_string(&plan.request).unwrap();
+        assert!(!body.contains("x-anthropic-billing-header"), "{body}");
+        assert!(!body.contains("cache_control"), "{body}");
     }
 
     #[test]
