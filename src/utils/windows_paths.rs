@@ -74,7 +74,7 @@ pub fn git_bash_discovery_source() -> &'static str {
 /// Normalize raw CLAUDE_CODE_GIT_BASH_PATH value, handling quotes, POSIX
 /// paths (`/c/...`, `//server/...`), Cygwin paths (`/cygdrive/...`), and UNC paths.
 pub fn normalize_git_bash_path_str(raw: &str) -> PathBuf {
-    let trimmed = raw.trim().trim_matches(|c| c == '"' || c == '\'');
+    let trimmed = raw.trim().trim_matches(['"', '\'']);
     let converted = posix_path_to_windows_path(trimmed);
     PathBuf::from(converted)
 }
@@ -279,7 +279,7 @@ mod tests {
         let err = validate_git_bash_executable(nonexistent).unwrap_err();
         assert!(err.contains("does not exist"), "unexpected error: {err}");
 
-        let temp_dir = std::env::temp_dir().join(format!(
+        let temp_dir = crate::utils::node_os::tmpdir().join(format!(
             "nyan-bash-validate-{}",
             uuid::Uuid::new_v4().simple()
         ));
@@ -405,7 +405,7 @@ mod tests {
         let bash = find_git_bash_path().unwrap_or_else(|error| {
             panic!("Git Bash is unavailable on the Windows runner: {error}")
         });
-        let temp_dir = std::env::temp_dir().join(format!(
+        let temp_dir = crate::utils::node_os::tmpdir().join(format!(
             "nyan-worktree-smoke-{}",
             uuid::Uuid::new_v4().simple()
         ));

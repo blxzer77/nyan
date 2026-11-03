@@ -318,8 +318,11 @@ mod windows_acl {
         }
 
         let user_sid = current_user_sid()?;
-        let ace_sid = unsafe { std::ptr::addr_of!(allowed_ace.SidStart) };
-        if unsafe { EqualSid(ace_sid.cast(), user_sid.as_ptr().cast()) } == 0 {
+        let ace_sid = std::ptr::addr_of!(allowed_ace.SidStart)
+            .cast_mut()
+            .cast::<core::ffi::c_void>();
+        let user_sid_ptr = user_sid.as_ptr().cast_mut().cast::<core::ffi::c_void>();
+        if unsafe { EqualSid(ace_sid, user_sid_ptr) } == 0 {
             return Err(io::Error::other("ACE SID does not match current user SID"));
         }
 
@@ -564,8 +567,8 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn windows_smoke_plaintext_credentials_new_file_has_owner_only_acl() {
-        let path =
-            std::env::temp_dir().join(format!("nyan-cred-acl-windows-new-{}", std::process::id()));
+        let path = crate::utils::node_os::tmpdir()
+            .join(format!("nyan-cred-acl-windows-new-{}", std::process::id()));
         let _ = std::fs::remove_file(&path);
         persist_credential_file(&path, "fresh secret", apply_windows_credential_acl)
             .expect("Windows credential ACL should secure new credential file");

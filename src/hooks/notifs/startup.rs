@@ -60,28 +60,12 @@ fn auto_update_startup_notification_for_platform(
 
 fn git_bash_startup_notification_for_platform(
     platform: &str,
-    available: bool,
+    unavailable_reason: Option<&str>,
 ) -> Option<Notification> {
-    git_bash_startup_notification_with_detail(platform, available, None)
-}
-
-fn git_bash_startup_notification_with_detail(
-    platform: &str,
-    available: bool,
-    detail: Option<&str>,
-) -> Option<Notification> {
-    if platform != "windows" || available {
-        return None;
-    }
-    let text = match detail {
-        Some(detail) => format!(
-            "Windows requires Git for Windows (Git Bash): {detail}. Install it or set CLAUDE_CODE_GIT_BASH_PATH to your bash.exe path."
-        ),
-        None => "Windows requires Git for Windows (Git Bash). Install it or set CLAUDE_CODE_GIT_BASH_PATH to your bash.exe path.".to_string(),
-    };
+    let reason = unavailable_reason.filter(|_| platform == "windows")?;
     Some(Notification::text(
         "windows-git-bash-unavailable",
-        text,
+        reason,
         NotificationPriority::Low,
     ))
 }
@@ -103,15 +87,12 @@ pub fn startup_notifications_with_gate(
         notifications.push(notification);
     }
     #[cfg(target_os = "windows")]
-    let git_bash_status = crate::utils::windows_paths::find_git_bash_path();
+    let git_bash_reason = crate::utils::windows_paths::find_git_bash_path().err();
     #[cfg(not(target_os = "windows"))]
-    let git_bash_status: Result<std::path::PathBuf, String> =
-        Ok(std::path::PathBuf::from("/bin/bash"));
-    let git_bash_notification = match &git_bash_status {
-        Ok(_) => None,
-        Err(err) => git_bash_startup_notification_with_detail(platform, false, Some(err)),
-    };
-    if let Some(notification) = git_bash_notification {
+    let git_bash_reason: Option<String> = None;
+    if let Some(notification) =
+        git_bash_startup_notification_for_platform(platform, git_bash_reason.as_deref())
+    {
         notifications.push(notification);
     }
     if let Some(message) = sandbox_unavailable_message_for_platform(
@@ -164,16 +145,14 @@ mod tests {
 
     #[test]
     fn windows_git_bash_startup_notification_is_low_priority_and_platform_gated() {
-        let notification = git_bash_startup_notification_for_platform("windows", false)
-            .expect("missing Git Bash should produce a startup notification");
+        let reason = "CLAUDE_CODE_GIT_BASH_PATH file does not exist: \"C:\\x\\bash.exe\"";
+        let notification = git_bash_startup_notification_for_platform("windows", Some(reason))
+            .expect("unavailable Git Bash should produce a startup notification");
         assert_eq!(notification.key, "windows-git-bash-unavailable");
-        assert_eq!(
-            notification.text,
-            "Windows requires Git for Windows (Git Bash). Install it or set CLAUDE_CODE_GIT_BASH_PATH to your bash.exe path."
-        );
+        assert_eq!(notification.text, reason);
         assert_eq!(notification.priority, NotificationPriority::Low);
-        assert!(git_bash_startup_notification_for_platform("windows", true).is_none());
-        assert!(git_bash_startup_notification_for_platform("linux", false).is_none());
+        assert!(git_bash_startup_notification_for_platform("windows", None).is_none());
+        assert!(git_bash_startup_notification_for_platform("linux", Some(reason)).is_none());
     }
 
     #[test]
