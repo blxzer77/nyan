@@ -9,5 +9,6 @@ pub mod model_allowlist;
 pub mod model_options;
 pub mod model_strings;
 pub mod model_support_overrides;
+pub mod profile;
 pub mod providers;
 pub mod validate_model;
