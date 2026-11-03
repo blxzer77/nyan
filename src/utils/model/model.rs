@@ -74,6 +74,39 @@ pub fn get_default_main_loop_model() -> String {
     parse_user_specified_model(&get_default_main_loop_model_setting())
 }
 
+/// Shown wherever the default model would otherwise name an Anthropic model
+/// and no main profile is selected. Matches the request-path error text.
+pub const NO_MAIN_PROFILE_PROMPT: &str =
+    "no model profile configured — set settings.nyan.selection.main";
+
+/// Display text for the default model: the resolved default when a main
+/// profile is selected, otherwise a prompt to configure one. Display only;
+/// request and `set_model` paths resolve through profiles and never call this.
+pub fn default_model_display() -> String {
+    render_default_model_setting_for_audience_display(
+        crate::utils::build_profile::build_audience(),
+    )
+}
+
+/// Audience-parameterized form of [`default_model_display`]. The audience is
+/// taken explicitly so the External and ant option lists keep their split
+/// when a profile is present.
+pub fn render_default_model_setting_for_audience_display(
+    audience: crate::utils::build_profile::BuildAudience,
+) -> String {
+    if has_main_profile() {
+        render_default_model_setting(&get_default_main_loop_model_setting_for_audience(audience))
+    } else {
+        NO_MAIN_PROFILE_PROMPT.to_string()
+    }
+}
+
+/// True when a main model profile is selected and resolves.
+pub fn has_main_profile() -> bool {
+    let settings = crate::utils::settings::get_initial_settings();
+    crate::utils::model::profile::resolve_main_profile(&settings).is_ok()
+}
+
 /// Resolve the current session override, or the configured provider profile.
 ///
 /// The PR 1 compatibility layer deliberately does not read `ANTHROPIC_MODEL`

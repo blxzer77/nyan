@@ -13,7 +13,8 @@ use crate::utils::model::model::{
     get_canonical_name, get_claude_ai_user_default_model_description, get_default_haiku_model,
     get_default_opus_model, get_default_sonnet_model, get_marketing_name_for_model,
     get_opus_46_pricing_suffix, get_user_specified_model_setting, is_opus_1m_merge_enabled,
-    render_default_model_setting,
+    NO_MAIN_PROFILE_PROMPT, has_main_profile, render_default_model_setting,
+    render_default_model_setting_for_audience_display,
 };
 use crate::utils::model::model_strings::get_model_strings;
 use crate::utils::model::providers::{ApiProvider, get_api_provider};
@@ -87,6 +88,15 @@ pub fn get_default_option_for_user_for_audience(
     audience: crate::utils::build_profile::BuildAudience,
     fast_mode: bool,
 ) -> ModelOption {
+    // No main profile: name no model. The row tells the user what to configure.
+    if !has_main_profile() {
+        return ModelOption::new(
+            None,
+            "Default (recommended)",
+            NO_MAIN_PROFILE_PROMPT.to_string(),
+        );
+    }
+
     if crate::utils::build_profile::audience_has_internal_capability(
         audience,
         crate::utils::build_profile::InternalCapability::Models,
@@ -94,9 +104,7 @@ pub fn get_default_option_for_user_for_audience(
         // CC gates this branch and `getDefaultMainLoopModelSetting()`'s ant
         // branch on the same `USER_TYPE === 'ant'`, so they take the audience
         // together.
-        let current_model = render_default_model_setting(
-            &crate::utils::model::model::get_default_main_loop_model_setting_for_audience(audience),
-        );
+        let current_model = render_default_model_setting_for_audience_display(audience);
         return ModelOption::new(
             None,
             "Default (recommended)",
@@ -122,11 +130,7 @@ pub fn get_default_option_for_user_for_audience(
             // `get_default_main_loop_model_setting()` resolves the COMPILED
             // audience, so under `--features anthropic_internal` a caller
             // asking for the External option still saw the ant default model.
-            render_default_model_setting(
-                &crate::utils::model::model::get_default_main_loop_model_setting_for_audience(
-                    audience
-                )
-            ),
+            render_default_model_setting_for_audience_display(audience),
             tier_3_15_suffix()
         ),
     )
@@ -800,7 +804,7 @@ mod tests {
         );
         assert_eq!(
             options[0].description,
-            "Use the default model (currently Sonnet 4.6) · $3/$15 per Mtok"
+            "no model profile configured — set settings.nyan.selection.main"
         );
         assert_eq!(
             options[1].description,
@@ -1056,11 +1060,7 @@ mod tests {
         );
         assert_eq!(
             options[0].description,
-            "Use the default model for Ants (currently Opus 4.6 1M)"
-        );
-        assert_eq!(
-            options[0].description_for_model.as_deref(),
-            Some("Default model (currently Opus 4.6 1M)")
+            "no model profile configured — set settings.nyan.selection.main"
         );
         assert_eq!(
             options[1].description,
