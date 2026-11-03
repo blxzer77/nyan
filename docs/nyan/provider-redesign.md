@@ -121,12 +121,12 @@ Anthropic 的 beta、cache control、Bedrock/Vertex/Foundry auth 和 Anthropic S
 15. **元数据覆盖与诊断**：profile 可以覆盖快照中的所有模型元数据字段（能力、context window、max output、displayName、cost 和 input limits 等）。被覆盖的字段在 `nyan doctor` 中列出，并标明值来自 profile override。
 16. **首批 OAuth provider**：OpenAI（Codex）和 OpenCode。实现参考 Pi Agent（OpenAI Codex 的 PKCE + loopback / device code）、OpenCode（OpenCode Console 的 device flow）和 CLIProxyAPI（每个 provider 独立模块 + 按账号的文件存储）。Anthropic 只支持 API key；其它 OAuth provider 后置。
 17. **凭据存储**：OAuth token 先存在 `~/.nyan` 下的 auth 文件中，权限仅本人可读（Unix 0600；Windows 验证 owner-only ACL，无法验证则拒绝使用）。系统 keychain（Windows Credential Manager、macOS Keychain、Linux secret service）后续再接。
-18. **商业 / 本地判定**：Pi 没有该字段（它的 `compat` 按 baseUrl 自动识别，只用于 wire 兼容，不用于分类）。OpenCode 按 provider 插件身份分类：Ollama、LM Studio、vLLM 使用 `createLocalProviderPlugin`，分类不检查 host，也不由用户配置。nyan 照此落地：每个 provider 有内置 `kind`，`kind` 决定 `commercial`；用户不能在配置里写 `commercial`；未列入商业集合的 kind 一律视为非商业（失败关闭）。初始商业集合为 `anthropic`、`openai`、`gemini`。
-19. **主请求重试**：默认最多重试 2 次（同 provider，且仅在未产生可见输出时，见 §7.2）。托管设置可设一个全局上限，profile 配置不能超过该上限。参考：OpenCode 会话请求最多重试 10 次、一次性调用 3 次（`packages/core/src/model-retry.ts:22-27`），两者都不是 2，这是有意收紧。
+18. **商业 / 本地判定**：Pi 没有该字段（它的 `compat` 按 baseUrl 自动识别，只用于 wire 兼容，不用于分类）。OpenCode 按 provider 插件身份分类：Ollama、LM Studio、vLLM 使用 `createLocalProviderPlugin`，分类不检查 host，也不由用户配置。nyan 照此落地：每个 provider 有内置 `kind`，`kind` 决定 `commercial`；用户不能在配置里写 `commercial`；未列入商业集合的 kind 一律视为非商业（失败关闭）。初始商业集合为 `anthropic`、`openai`、`gemini` 以及聚合网关 kind（包括 OpenRouter、中转等商业 gateway）。聚合网关即使上游模型属于本地或非商业，也按商业 provider 处理。
+19. **主请求重试**：统一重试控制器默认最多重试 2 次（同 provider，且仅在未产生可见输出时，见 §7.2）；托管设置的全局上限默认是 2，硬上限是 5，profile 配置不能超过该全局上限。PR 8 前的过渡行为见决策 23。参考：OpenCode 会话请求最多重试 10 次、一次性调用 3 次（`packages/core/src/model-retry.ts:22-27`），nyan 的统一控制器有意收紧为上述上限。
 20. **Gemini 单独 PR**：Gemini adapter 紧接 OpenAI 阶段之后单独一个 PR（PR 6），不与 OpenAI 并行。
 21. **本地模型可进主 fallback**：vLLM / Ollama profile 可以显式写入 `selection.mainFallbacks`。本地 profile 永远不能进入 Decision Provider。
 22. **临时 Anthropic 兼容层**：PR 1 保留一个临时的内部 Anthropic profile 兼容层，保证每个 PR 合入后 nyan 都能发请求。它是决策 4（无默认 provider）的唯一例外：只读取 Anthropic 现有凭据来源，不读取已删除的旧字段，不写入用户配置。PR 4（Anthropic adapter）落地时删除。
-23. **过渡期重试行为**：PR 4 沿用现有 Anthropic 重试行为（`CLAUDE_CODE_MAX_RETRIES` 默认 10，529 上限 3，不改动）。PR 5（OpenAI）和 PR 6（Gemini）不新增自动重试，重试次数为 0，错误直接返回，直到 PR 8 统一重试控制器落地；PR 7 的本地 OpenAI-compatible 路径同样为 0。PR 8 把 Anthropic 默认从 10 降到 2，这是行为变更，必须在 PR 8 描述中写明。
+23. **过渡期重试行为**：PR 4 沿用现有 Anthropic 重试行为（`CLAUDE_CODE_MAX_RETRIES` 默认 10，529 上限 3，不改动）。PR 5（OpenAI）和 PR 6（Gemini）不新增自动重试，重试次数为 0，错误直接返回，直到 PR 8 统一重试控制器落地；PR 7 的本地 OpenAI-compatible 路径同样为 0。PR 8 把 Anthropic 默认从 10 降到 2，并启用托管全局硬上限 5，这是行为变更，必须在 PR 8 描述中写明。
 
 ## 三、目标抽象
 
@@ -221,7 +221,7 @@ Pi 还支持 provider 自己的 `refreshModels()` 动态目录和用户 `models.
 | protocol | 覆盖 | 阶段 | 关键差异 |
 |---|---|---|---|
 | `anthropicMessages` | Anthropic API、Anthropic-compatible gateway、Bedrock/Vertex/Foundry 的 Anthropic wire 变体 | Anthropic adapter 阶段 | system blocks、thinking、tool schema、beta、cache control、SSE/专用 transport |
-| `openaiChat` | OpenAI Chat Completions、OpenRouter、vLLM、Ollama OpenAI-compatible endpoint | OpenAI 阶段 | `messages` content parts、tool calls、JSON response format、usage/finish reason |
+| `openaiChat` | OpenAI Chat Completions、OpenRouter/中转等商业聚合网关、vLLM、Ollama OpenAI-compatible endpoint | OpenAI 阶段 | `messages` content parts、tool calls、JSON response format、usage/finish reason |
 | `openaiResponses` | OpenAI Responses API 与兼容 Responses endpoint | OpenAI 阶段，与 `openaiChat` 同 PR | `input` items、response output items、reasoning、background/continuation 语义 |
 | `gemini` | Gemini API / Vertex Gemini | 后续独立阶段 | `contents`/`parts`、function call、thought parts、inline data |
 
@@ -348,7 +348,7 @@ pub trait ProviderAdapter: Send + Sync {
 - profile 可以覆盖 Pi snapshot 的全部模型元数据字段；覆盖值必须经 schema 校验，不能把未声明能力自动设为 true。被覆盖的字段在 `nyan doctor` 中列出（决策 15）。
 - profile 定义只能写在 user 或 managed settings。project/local settings 只能写 profile 名、选择关系和 policy，不得写 `baseUrl`、`credential.file`、secret、OAuth client data 或任意新的 provider ID。
 - `commercial` 不是配置字段。provider 的 `kind` 决定商业属性（决策 18），用户写入 `commercial` 会被 schema 拒绝。
-- `kind` 是内置枚举（如 `anthropic`、`openai`、`gemini`、`vllm`、`ollama`）。未知 `kind` 在 schema 阶段报错，不作为自定义 provider 处理。
+- `kind` 是内置枚举（如 `anthropic`、`openai`、`gemini`、`vllm`、`ollama`，以及 OpenRouter/中转等聚合网关 kind）。未知 `kind` 在 schema 阶段报错，不作为自定义 provider 处理。聚合网关 kind 属于商业集合。
 - `mainFallbacks` 可以包含本地 profile（决策 21）；Decision Provider 的 tier 不能包含。
 
 ### 4.2 Credential 引用与 OAuth owner
@@ -500,8 +500,8 @@ partialStream
 
 ### 7.2 默认重试规则
 
-- 同一 provider 的**请求尚未产生可见输出**时，才允许对明确的 transient/rate-limited/overloaded 错误重试；默认最多 2 次（决策 19），指数退避 + jitter，并受 `maxRetryDelay` 限制。托管设置可设全局上限，profile 不能超过；
-- 过渡期行为见决策 23：PR 4 沿用现有 Anthropic 默认 10 次，PR 5–7 为 0 次，PR 8 统一为 2 次；
+- 同一 provider 的**请求尚未产生可见输出**时，才允许对明确的 transient/rate-limited/overloaded 错误重试；统一控制器默认最多 2 次（决策 19），指数退避 + jitter，并受 `maxRetryDelay` 限制。托管设置可设全局上限，但不得超过硬上限 5；profile 不能超过该全局上限；
+- 过渡期行为见决策 23：PR 4 沿用现有 Anthropic 默认 10 次，PR 5–7 为 0 次，PR 8 统一为默认 2 次并启用硬上限 5；
 - 优先尊重标准 `Retry-After`；provider adapter 可解析自己的 reset headers，但不能把某家 header 当成通用协议；
 - 一旦流已经产生 normalized output，连接失败返回 `partialStream`，不自动重放整个请求，避免重复工具调用和重复副作用；
 - 400/401/403/404、能力不支持、上下文溢出和 schema 错误不重试；
@@ -545,7 +545,7 @@ nyan 没有用户，因此实现阶段直接删除旧入口：
 | 5. OpenAI adapters | **同一阶段**实现 Chat Completions 和 Responses；tools/images/streaming/structured output/usage/error | 两种协议各自 mock contract；同一 profile 不能混淆 chat/responses；未输出重试与 partialStream | 两种 wire shape、tool call streaming、retry/replay |
 | 6. Gemini adapter | 独立 PR（决策 20），紧接 OpenAI 阶段且不并行；Gemini 仍按商业 kind 处理 | Gemini parts/function/thinking fixture；错误映射 `RESOURCE_EXHAUSTED` 等 | parts 与 thinking 转换、图片 inline data |
 | 7. OpenAI-compatible local | vLLM/Ollama 只走 `openaiChat`；不做 Ollama native；本地 profile 可进 `mainFallbacks`（决策 21）；local profile 不能进 Decision Provider | local endpoint mock；`optionalEnv` 401 报 auth error；本地 profile 出现在 DP tier 时 schema 拒绝 | gateway 方言、本地 timeout |
-| 8. retry/fallback/health | normalized errors、各 adapter rate-limit policy、统一重试控制器（默认 2 次，托管全局上限）、显式 fallback 列表；禁止隐式跨 provider。**行为变更**：Anthropic 默认重试从 10 降到 2，写入 PR 描述（决策 19、23） | 429/Retry-After/529/503/stream partial fixture；空 fallback 不切 provider；switch receipt；托管上限生效 | 重复工具调用、provider header drift、默认值变更影响 |
+| 8. retry/fallback/health | normalized errors、各 adapter rate-limit policy、统一重试控制器（默认 2 次，托管全局硬上限 5）、显式 fallback 列表；禁止隐式跨 provider。**行为变更**：Anthropic 默认重试从 10 降到 2，写入 PR 描述（决策 19、23） | 429/Retry-After/529/503/stream partial fixture；空 fallback 不切 provider；switch receipt；托管上限生效且不得超过 5 | 重复工具调用、provider header drift、默认值变更影响 |
 | 9. selector and subagent | profile-only picker、main/session CLI、`inherit` snapshot、per-agent profile、按 §5.2 优先级解析、project scope enforcement | 无默认 provider；临时 `provider/model` 会话结束即丢弃；子 agent capability validation；优先级用例全部通过 | session snapshot、优先级回归 |
 | 10. commercial Decision Provider | `fast/accurate` tier 绑定商业 kind 的 profile；拒绝本地 profile；保留 off/shadow/active | local profile schema rejection；down/timeout 回确定性路径；fallback 仍只商业 | classifier 费用/延迟、来源隐私 |
 
@@ -571,11 +571,9 @@ nyan 没有用户，因此实现阶段直接删除旧入口：
 
 ## 十一、仍需用户拍板的问题
 
-决策 1–23 已覆盖原先的元数据形态、更新节奏、覆盖范围、首批 OAuth、凭据存储、重试默认、Gemini 顺序和本地 fallback；Anthropic OAuth 已从本节删除。剩余待拍板：
+决策 1–23 已覆盖原先的元数据形态、更新节奏、覆盖范围、首批 OAuth、凭据存储、商业判定、重试默认、Gemini 顺序和本地 fallback；Anthropic OAuth、聚合网关归类和重试上限已从本节删除。剩余待拍板：
 
-1. **商业集合是否包含聚合网关**：初始集合为 `anthropic`、`openai`、`gemini`。OpenRouter 等聚合网关是否纳入、或按非商业处理？
-2. **托管全局重试上限的值**：决策 19 只定义了“托管可设上限”，没有定义上限默认值。是否需要一个硬上限（例如 5），防止托管设置也误设过大？
-3. **Pi 其它数据源的许可证**：Pi 快照合并了 OpenRouter、Vercel、NVIDIA、Radius 等来源，本文只核实了 Pi 与 models.dev 为 MIT。这些来源的许可证和版权声明需在 PR 2 写入 NOTICE 前逐一核实，或决定不引入这些来源。
+1. **Pi 其它数据源的许可证**：Pi 快照合并了 OpenRouter、Vercel、NVIDIA、Radius 等来源，本文只核实了 Pi 与 models.dev 为 MIT。这些来源的许可证和版权声明需在 PR 2 写入 NOTICE 前逐一核实，或决定不引入这些来源。
 
 ## 十二、验收标准
 
@@ -592,5 +590,5 @@ nyan 没有用户，因此实现阶段直接删除旧入口：
 11. 429/overload/5xx 的 retry 使用 adapter-specific 语义；stream 已产生输出后不重放；跨 provider 只在显式 fallback 列表中发生。
 12. 所有 PR 阶段可单独测试；没有迁移 PR，也没有旧字段兼容读取或自动跨 provider fallback。唯一例外是 PR 1 的临时 Anthropic 兼容层，PR 4 删除。
 13. 每个 PR 合入后 nyan 都能发送模型请求（PR 1 起由兼容层保证）。
-14. 托管设置可设全局重试上限；profile 不能超过。被覆盖的元数据字段在 `nyan doctor` 中可见。
+14. 托管设置的全局重试上限默认 2、硬上限 5；profile 不能超过该上限。被覆盖的元数据字段在 `nyan doctor` 中可见。
 15. OAuth 首批仅 OpenAI Codex、OpenCode；token 存于 `~/.nyan/auth/`，权限仅本人可读，Windows 无法验证 ACL 时拒绝；Anthropic 只支持 API key。
