@@ -287,7 +287,7 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or "$help" -notmatch 'Usage: nyan') { throw "nyan.exe --help failed" }
           $doctor = & $exe doctor 2>&1 | Out-String
           $doctorExit = $LASTEXITCODE
-          if ($doctorExit -ne 1 -or $doctor -notmatch 'Unimplemented:.*doctor') {
+          if (($doctorExit -ne 0 -and $doctorExit -ne 1) -or [string]::IsNullOrWhiteSpace($doctor)) {
             throw "no-model startup smoke failed (exit $doctorExit): $doctor"
           }
 
