@@ -161,7 +161,7 @@ Job 会下载固定版本的 MSVC `ripgrep`，校验 SHA256，运行 `vendor/rip
 
 - [x] Windows RSS 通过 `GetProcessMemoryInfo` 实现，避免 `process_rss_bytes()` 恒为 0。（#27）
 - [x] 用 Job Object 替代仅依赖 `taskkill /T /F` 的进程树管理，并验证后台任务、超时、取消和孙进程。（#31）
-- [x] 补 Windows ACL、junction/symlink、文件锁和共享删除的测试（部分完成，#30、#35、#37）。
+- [ ] 补 Windows ACL、junction/symlink、文件锁和共享删除的测试（部分完成，#30、#35、#37）。
   - 已有：junction 不能逃逸工作目录（`src/utils/permissions/filesystem.rs`）；junction/symlink 解析（`windows_link_tests.rs`）；独占句柄下 Write/Edit 报错且不截断（`file_write_tool`、`file_edit_tool`）；共享删除 unlink/rename（`src/utils/fs_operations/tests.rs:191`，用 `share_mode(0x7)` 即 FILE_SHARE_DELETE）；Windows 凭据文件 owner-only DACL 生效断言（`SE_DACL_PROTECTED`、单用户 ACE、access mask 与 SID 校验，#37）。
   - 缺口：共享删除只测允许删除/重命名成功的路径，未测被拒绝路径；file symlink 测试在无 SeCreateSymbolicLinkPrivilege 的 runner 上直接跳过（只打印原因），不算覆盖。
 - [ ] 为 Windows 增加 release zip、SHA256、可选签名和 SmartScreen 限制说明；实现后再接自动更新。

@@ -318,10 +318,9 @@ jobs:
           git -C $repo commit -m 'smoke'
           $wt = Join-Path $wtRoot 'wt'
           git -C $repo worktree add -b feature-wt $wt
-          $bash = 'C:\Program Files\Git\bin\bash.exe'
-          if (-not (Test-Path $bash)) {
-            $bash = (Get-Command bash.exe).Source
-          }
+          $gitExe = (Get-Command git.exe).Source
+          $bash = Join-Path (Split-Path (Split-Path $gitExe -Parent) -Parent) 'bin\bash.exe'
+          if (-not (Test-Path $bash)) { throw "Git for Windows bash.exe not found next to $gitExe" }
           $posixPath = $wt.Replace('\', '/')
           $out = & $bash -lc "cd '$posixPath' && pwd -P && git rev-parse --show-toplevel && printf 'worktree-ci-ok\n'"
           Write-Host "Worktree Git Bash smoke output:"
