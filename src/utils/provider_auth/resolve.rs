@@ -256,6 +256,44 @@ mod tests {
         }
     }
 
+    /// The new credential path must not reach the inherited Anthropic OAuth
+    /// code or its compile-time gate; those stay untouched until the Anthropic
+    /// adapter replaces them.
+    #[test]
+    fn provider_auth_does_not_depend_on_the_legacy_anthropic_oauth_path() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/utils/provider_auth");
+        let forbidden = [
+            "OAUTH_CREDENTIAL_SIDE_EFFECTS",
+            "crate::services::oauth",
+            "crate::utils::auth",
+            "claude_ai_oauth",
+            "ClaudeAiOAuth",
+        ];
+        let mut stack = vec![root];
+        let mut scanned = 0;
+        while let Some(path) = stack.pop() {
+            for entry in std::fs::read_dir(&path).unwrap() {
+                let entry = entry.unwrap().path();
+                if entry.is_dir() {
+                    stack.push(entry);
+                } else if entry.extension().is_some_and(|ext| ext == "rs") {
+                    let text = std::fs::read_to_string(&entry).unwrap();
+                    // Production code only: the test modules name the patterns.
+                    let code = text.split("#[cfg(test)]\nmod tests").next().unwrap();
+                    for pattern in forbidden {
+                        let hit = code
+                            .lines()
+                            .filter(|line| !line.trim_start().starts_with("//"))
+                            .any(|line| line.contains(pattern));
+                        assert!(!hit, "{} references {pattern}", entry.display());
+                    }
+                    scanned += 1;
+                }
+            }
+        }
+        assert!(scanned >= 8, "scanned only {scanned} files");
+    }
+
     #[test]
     fn anthropic_can_never_use_oauth() {
         for oauth in ["openai-codex", "opencode", "anthropic", "claude-ai"] {
