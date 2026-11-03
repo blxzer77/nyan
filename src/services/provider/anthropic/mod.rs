@@ -8,3 +8,4 @@
 pub mod betas;
 pub mod client;
 pub mod headers;
+pub mod wire;
