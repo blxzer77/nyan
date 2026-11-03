@@ -5,6 +5,7 @@
 //! commits) request/stream translation. Callers outside this module see only
 //! the adapter contract in `services::provider::adapter`.
 
+pub mod adapter;
 pub mod betas;
 pub mod cache;
 pub mod client;
