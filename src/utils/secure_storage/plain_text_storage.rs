@@ -26,6 +26,44 @@ fn apply_windows_credential_acl(path: &Path) -> io::Result<()> {
     }
 }
 
+#[cfg(windows)]
+fn replace_credential_file(temporary: &Path, dest: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::{
+        Foundation::GetLastError,
+        Storage::FileSystem::{MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW},
+    };
+
+    let temporary = temporary
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let dest = dest
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    if unsafe {
+        MoveFileExW(
+            temporary.as_ptr(),
+            dest.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    } == 0
+    {
+        return Err(io::Error::from_raw_os_error(
+            unsafe { GetLastError() } as i32
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn replace_credential_file(temporary: &Path, dest: &Path) -> io::Result<()> {
+    std::fs::rename(temporary, dest)
+}
+
 fn persist_credential_file(
     dest: &Path,
     serialized: &str,
@@ -60,7 +98,7 @@ fn persist_credential_file(
         let _ = std::fs::remove_file(&temporary);
         return Err(error);
     }
-    if let Err(error) = std::fs::rename(&temporary, dest) {
+    if let Err(error) = replace_credential_file(&temporary, dest) {
         let _ = std::fs::remove_file(&temporary);
         return Err(CredentialPersistenceError::Write(error));
     }
@@ -409,13 +447,14 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn windows_smoke_plaintext_credentials_get_owner_only_acl() {
+    fn windows_smoke_plaintext_credentials_replace_existing_file_with_owner_only_acl() {
         let path =
             std::env::temp_dir().join(format!("nyan-cred-acl-windows-{}", std::process::id()));
         let _ = std::fs::remove_file(&path);
-        persist_credential_file(&path, "secret", apply_windows_credential_acl)
-            .expect("Windows credential ACL should be applied");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "secret");
+        std::fs::write(&path, "old secret").unwrap();
+        persist_credential_file(&path, "new secret", apply_windows_credential_acl)
+            .expect("Windows credential ACL should replace the existing file");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new secret");
         let _ = std::fs::remove_file(&path);
     }
 }
