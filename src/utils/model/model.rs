@@ -82,15 +82,8 @@ pub const NO_MAIN_PROFILE_PROMPT: &str =
 /// Display text for the default model: the resolved default when a main
 /// profile is selected, otherwise a prompt to configure one. Display only;
 /// request and `set_model` paths resolve through profiles and never call this.
-pub fn default_model_display() -> String {
-    render_default_model_setting_for_audience_display(
-        crate::utils::build_profile::build_audience(),
-    )
-}
-
-/// Audience-parameterized form of [`default_model_display`]. The audience is
-/// taken explicitly so the External and ant option lists keep their split
-/// when a profile is present.
+/// The audience is explicit so the External and ant option lists keep their
+/// split when a profile is present.
 pub fn render_default_model_setting_for_audience_display(
     audience: crate::utils::build_profile::BuildAudience,
 ) -> String {

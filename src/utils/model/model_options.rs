@@ -10,10 +10,10 @@ use crate::bootstrap::state::get_initial_main_loop_model;
 use crate::utils::auth::{is_claude_ai_subscriber, is_max_subscriber, is_team_premium_subscriber};
 use crate::utils::model::check_1m_access::{check_opus_1m_access, check_sonnet_1m_access};
 use crate::utils::model::model::{
-    get_canonical_name, get_claude_ai_user_default_model_description, get_default_haiku_model,
-    get_default_opus_model, get_default_sonnet_model, get_marketing_name_for_model,
-    get_opus_46_pricing_suffix, get_user_specified_model_setting, is_opus_1m_merge_enabled,
-    NO_MAIN_PROFILE_PROMPT, has_main_profile, render_default_model_setting,
+    NO_MAIN_PROFILE_PROMPT, get_canonical_name, get_claude_ai_user_default_model_description,
+    get_default_haiku_model, get_default_opus_model, get_default_sonnet_model,
+    get_marketing_name_for_model, get_opus_46_pricing_suffix, get_user_specified_model_setting,
+    has_main_profile, is_opus_1m_merge_enabled, render_default_model_setting,
     render_default_model_setting_for_audience_display,
 };
 use crate::utils::model::model_strings::get_model_strings;
