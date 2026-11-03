@@ -2,7 +2,7 @@
 
 use super::{SecureStorageBackend, SecureStorageData, SecureStorageUpdate};
 use std::{
-    io,
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 
@@ -31,16 +31,38 @@ fn persist_credential_file(
     serialized: &str,
     apply_acl: impl FnOnce(&Path) -> io::Result<()>,
 ) -> Result<(), CredentialPersistenceError> {
-    std::fs::write(dest, serialized).map_err(CredentialPersistenceError::Write)?;
+    let parent = dest.parent().unwrap_or_else(|| Path::new("."));
+    let temporary = parent.join(format!(
+        ".nyan-credentials-{}.tmp",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o600))
-            .map_err(CredentialPersistenceError::Write)?;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
     }
-    if let Err(error) = apply_acl(dest) {
-        let _ = std::fs::remove_file(dest);
-        return Err(CredentialPersistenceError::Acl(error));
+    let mut file = options
+        .open(&temporary)
+        .map_err(CredentialPersistenceError::Write)?;
+
+    let result = (|| {
+        apply_acl(&temporary).map_err(CredentialPersistenceError::Acl)?;
+        file.write_all(serialized.as_bytes())
+            .map_err(CredentialPersistenceError::Write)?;
+        file.flush().map_err(CredentialPersistenceError::Write)?;
+        file.sync_all().map_err(CredentialPersistenceError::Write)
+    })();
+    drop(file);
+
+    if let Err(error) = result {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error);
+    }
+    if let Err(error) = std::fs::rename(&temporary, dest) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(CredentialPersistenceError::Write(error));
     }
     Ok(())
 }
@@ -57,7 +79,7 @@ mod windows_acl {
             GetTokenInformation, InitializeAcl, PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY,
             TOKEN_USER, TokenUser,
         },
-        Storage::FileSystem::{FILE_GENERIC_READ, FILE_GENERIC_WRITE},
+        Storage::FileSystem::{DELETE, FILE_GENERIC_READ, FILE_GENERIC_WRITE},
         System::Threading::{GetCurrentProcess, OpenProcessToken},
     };
 
@@ -135,7 +157,7 @@ mod windows_acl {
         if unsafe { InitializeAcl(acl, acl_size as u32, ACL_REVISION) } == 0 {
             return Err(last_error());
         }
-        let access_mask = FILE_GENERIC_READ | FILE_GENERIC_WRITE;
+        let access_mask = DELETE | FILE_GENERIC_READ | FILE_GENERIC_WRITE;
         if unsafe {
             windows_sys::Win32::Security::AddAccessAllowedAce(
                 acl,
@@ -370,17 +392,19 @@ mod tests {
     }
 
     #[test]
-    fn credential_file_rejects_mocked_acl_failure_without_leaving_secret() {
+    fn credential_file_rejects_mocked_acl_failure_and_preserves_old_file() {
         let path = std::env::temp_dir().join(format!("nyan-cred-acl-mock-{}", std::process::id()));
         let _ = std::fs::remove_file(&path);
-        let result = persist_credential_file(&path, "secret", |_| {
+        std::fs::write(&path, "old secret").unwrap();
+        let result = persist_credential_file(&path, "new secret", |_| {
             Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "ACL denied",
             ))
         });
         assert!(matches!(result, Err(CredentialPersistenceError::Acl(_))));
-        assert!(!path.exists());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "old secret");
+        let _ = std::fs::remove_file(&path);
     }
 
     #[cfg(windows)]
