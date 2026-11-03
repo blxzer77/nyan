@@ -9,7 +9,7 @@
 
 use std::fmt;
 
-use super::credential::{ApiKey, CredentialGateError, EnvSource, ProcessEnv, resolve_api_key};
+use super::credential::{ApiKey, CredentialGateError, resolve_api_key};
 use crate::utils::model::profile::{ProfileResolutionError, ResolvedModelProfile};
 use crate::utils::settings::SettingsJson;
 
@@ -21,7 +21,7 @@ pub struct AnthropicTarget {
     pub api_key: Option<ApiKey>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub enum TargetError {
     Profile(ProfileResolutionError),
     Credential(CredentialGateError),
@@ -57,11 +57,8 @@ fn clean_base_url(base_url: Option<&str>) -> Option<String> {
 }
 
 /// Build the target for an already-resolved profile.
-pub fn target_for_profile(
-    profile: &ResolvedModelProfile,
-    env: &dyn EnvSource,
-) -> Result<AnthropicTarget, TargetError> {
-    let api_key = resolve_api_key(&profile.provider, profile.credential.as_ref(), env)?;
+pub fn target_for_profile(profile: &ResolvedModelProfile) -> Result<AnthropicTarget, TargetError> {
+    let api_key = resolve_api_key(&profile.provider, profile.credential.as_ref())?;
     Ok(AnthropicTarget {
         profile: profile.profile.clone(),
         provider: profile.provider.clone(),
@@ -75,7 +72,7 @@ pub fn target_for_profile(
 /// second source of Anthropic credentials.
 pub fn resolve_main_target(settings: &SettingsJson) -> Result<AnthropicTarget, TargetError> {
     let profile = crate::utils::model::profile::resolve_main_profile(settings)?;
-    target_for_profile(&profile, &ProcessEnv)
+    target_for_profile(&profile)
 }
 
 /// Same as [`resolve_main_target`] against the live settings.
@@ -143,13 +140,12 @@ pub(crate) fn install_test_main_profile(base_url: &str, env_name: &str) {
 mod tests {
     use super::*;
     use crate::utils::settings::nyan::{CredentialReference, ProviderKind};
-    use std::collections::HashMap;
+    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
 
-    struct Env(HashMap<&'static str, &'static str>);
-    impl EnvSource for Env {
-        fn var(&self, name: &str) -> Option<String> {
-            self.0.get(name).map(|v| v.to_string())
-        }
+    fn lock() -> crate::utils::test_env::TestEnvGuard<'static> {
+        TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn profile(
@@ -177,18 +173,19 @@ mod tests {
 
     #[test]
     fn target_takes_base_url_and_key_from_the_profile_only() {
-        // The ambient variables the compat layer used to read are present and
-        // must be ignored.
-        let env = Env(HashMap::from([
-            ("MY_KEY", "sk-profile"),
-            ("ANTHROPIC_API_KEY", "sk-ambient"),
-            ("ANTHROPIC_AUTH_TOKEN", "tok-ambient"),
-            ("ANTHROPIC_BASE_URL", "https://ambient.example"),
-        ]));
-        let target = target_for_profile(
-            &profile(Some(env_ref("MY_KEY")), Some(" https://gw.example/ ")),
-            &env,
-        )
+        let _lock = lock();
+        // The ambient variables the compat layer used to read are really
+        // present in the process and must be ignored.
+        let _guards = [
+            EnvVarGuard::set("NYAN_TARGET_TEST_KEY", "sk-profile"),
+            EnvVarGuard::set("ANTHROPIC_API_KEY", "sk-ambient"),
+            EnvVarGuard::set("ANTHROPIC_AUTH_TOKEN", "tok-ambient"),
+            EnvVarGuard::set("ANTHROPIC_BASE_URL", "https://ambient.example"),
+        ];
+        let target = target_for_profile(&profile(
+            Some(env_ref("NYAN_TARGET_TEST_KEY")),
+            Some(" https://gw.example/ "),
+        ))
         .unwrap();
         assert_eq!(target.api_key.unwrap().expose(), "sk-profile");
         assert_eq!(target.base_url.as_deref(), Some("https://gw.example"));
@@ -196,8 +193,9 @@ mod tests {
 
     #[test]
     fn missing_credential_is_a_clear_error_not_an_ambient_fallback() {
-        let env = Env(HashMap::from([("ANTHROPIC_API_KEY", "sk-ambient")]));
-        let error = target_for_profile(&profile(None, None), &env).unwrap_err();
+        let _lock = lock();
+        let _ambient = EnvVarGuard::set("ANTHROPIC_API_KEY", "sk-ambient");
+        let error = target_for_profile(&profile(None, None)).unwrap_err();
         assert!(matches!(
             error,
             TargetError::Credential(CredentialGateError::NotConfigured { .. })
@@ -207,21 +205,20 @@ mod tests {
 
     #[test]
     fn unset_key_variable_names_the_variable() {
-        let error = target_for_profile(
-            &profile(Some(env_ref("MY_KEY")), None),
-            &Env(HashMap::new()),
-        )
-        .unwrap_err();
-        assert!(error.to_string().contains("MY_KEY"));
+        let _lock = lock();
+        let _unset = EnvVarGuard::unset("NYAN_TARGET_TEST_UNSET");
+        let error = target_for_profile(&profile(Some(env_ref("NYAN_TARGET_TEST_UNSET")), None))
+            .unwrap_err();
+        assert!(error.to_string().contains("NYAN_TARGET_TEST_UNSET"));
     }
 
     #[test]
     fn blank_base_url_means_the_sdk_default() {
-        let target = target_for_profile(
-            &profile(Some(env_ref("K")), Some("  ")),
-            &Env(HashMap::from([("K", "x")])),
-        )
-        .unwrap();
+        let _lock = lock();
+        let _key = EnvVarGuard::set("NYAN_TARGET_TEST_KEY2", "x");
+        let target =
+            target_for_profile(&profile(Some(env_ref("NYAN_TARGET_TEST_KEY2")), Some("  ")))
+                .unwrap();
         assert_eq!(target.base_url, None);
     }
 

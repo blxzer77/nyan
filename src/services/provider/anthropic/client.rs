@@ -1368,23 +1368,11 @@ mod tests {
     use super::*;
 
     fn target_with_key(key: &str, base_url: Option<&str>) -> AnthropicTarget {
-        use super::super::credential::{EnvSource, resolve_api_key};
-        struct One(String);
-        impl EnvSource for One {
-            fn var(&self, _name: &str) -> Option<String> {
-                Some(self.0.clone())
-            }
-        }
-        let credential = crate::utils::settings::nyan::CredentialReference {
-            env: Some("K".to_string()),
-            ..Default::default()
-        };
         AnthropicTarget {
             profile: "main".to_string(),
             provider: "anthropic".to_string(),
             base_url: base_url.map(str::to_string),
-            api_key: resolve_api_key("anthropic", Some(&credential), &One(key.to_string()))
-                .unwrap(),
+            api_key: Some(super::super::credential::ApiKey::for_test(key)),
         }
     }
     use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};

@@ -244,23 +244,16 @@ mod tests {
     }
 
     fn adapter_for(base_url: &str) -> AnthropicAdapter {
-        use crate::services::provider::anthropic::credential::{EnvSource, resolve_api_key};
-        struct Key;
-        impl EnvSource for Key {
-            fn var(&self, _: &str) -> Option<String> {
-                Some("sk-adapter".into())
-            }
-        }
-        let credential = crate::utils::settings::nyan::CredentialReference {
-            env: Some("K".into()),
-            ..Default::default()
-        };
         AnthropicAdapter::new(
             AnthropicTarget {
                 profile: "main".into(),
                 provider: "anthropic".into(),
                 base_url: Some(base_url.to_string()),
-                api_key: resolve_api_key("anthropic", Some(&credential), &Key).unwrap(),
+                api_key: Some(
+                    crate::services::provider::anthropic::credential::ApiKey::for_test(
+                        "sk-adapter",
+                    ),
+                ),
             },
             Some("test".into()),
         )
