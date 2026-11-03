@@ -269,7 +269,7 @@ fn tool_spec(tool: &Tool) -> ToolSpec {
         description: tool.description.clone(),
         input_schema: tool.input_schema.clone(),
         strict: tool.strict == Some(true),
-        deferrable: tool.is_mcp || crate::tools::tool_search_tool::prompt::is_deferred_tool(tool),
+        deferrable: crate::tools::tool_search_tool::prompt::is_deferred_tool(tool),
         is_mcp: tool.is_mcp,
     }
 }

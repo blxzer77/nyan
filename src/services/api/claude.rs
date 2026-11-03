@@ -49,10 +49,8 @@ use std::collections::HashMap;
 /// Serialized query source string from `constants/query_source.rs`.
 type ApiQuerySource = crate::constants::query_source::QuerySourceString;
 
-use crate::services::provider::anthropic::cache::record_cache_ttl_usage;
-pub use crate::services::provider::anthropic::cache::{
-    CacheControl, CacheTtlUsage, get_cache_control, get_prompt_caching_enabled,
-    last_cache_ttl_usage_for,
+use crate::services::provider::anthropic::cache::{
+    CacheControl, get_cache_control, get_prompt_caching_enabled, record_cache_ttl_usage,
 };
 /// Maps to: CC `services/api/claude.ts` `import type { CacheScope } from '../../utils/api.js'`.
 pub use crate::utils::api::CacheScope;
