@@ -145,20 +145,22 @@ Job 会下载固定版本的 MSVC `ripgrep`，校验 SHA256，运行 `vendor/rip
 
 ### P0：发布前必须完成
 
-- [x] 发布包提供并验证 `vendor/ripgrep/x64-win32/rg.exe`；修复 Global Search 的直接 `rg` 调用，使其复用统一 resolver。
-- [x] 发布说明和启动诊断明确要求 Git for Windows/Git Bash；验证 `CLAUDE_CODE_GIT_BASH_PATH`、盘符、UNC、worktree 和基本 Bash 命令。
-- [x] Windows `--version`、`--help`、一次无模型启动冒烟通过；release 构建实际产出并可执行，而不只是 `cargo check`。
-- [x] Windows sandbox 默认明确显示 unavailable；不能把普通 Bash 执行宣称为 sandboxed。涉及不可信代码时给出降级提示。
+- [x] 发布包提供并验证 `vendor/ripgrep/x64-win32/rg.exe`；修复 Global Search 的直接 `rg` 调用，使其复用统一 resolver。（#26、#28）
+- [x] 发布说明和启动诊断明确要求 Git for Windows/Git Bash；验证 `CLAUDE_CODE_GIT_BASH_PATH`、盘符、UNC、worktree 和基本 Bash 命令。（#28、#29）
+- [x] Windows `--version`、`--help`、一次无模型启动冒烟通过；release 构建实际产出并可执行，而不只是 `cargo check`。（#28）
+- [x] Windows sandbox 默认明确显示 unavailable；不能把普通 Bash 执行宣称为 sandboxed。涉及不可信代码时给出降级提示。（#27）
 - [ ] 凭据方案至少做出明确选择：首发若暂时使用 plaintext，必须限制 config 目录 ACL、显示 warning，并在发布说明中明确风险；更好的最小方案是 Credential Manager/DPAPI。
-- [x] 自动更新/安装器 UI 不得显示“可更新但实际 no-op”；首发改为手动下载提示，或完成一个可验证的 Windows installer/update path。
-- [x] 在 Windows runner 至少运行一组定向 runtime smoke：Git Bash shell、PowerShell tool、`rg.exe --version`、Global Search、超时/杀进程树、路径转换。
+- [x] 自动更新/安装器 UI 不得显示“可更新但实际 no-op”；首发改为手动下载提示，或完成一个可验证的 Windows installer/update path。（#27）
+- [x] 在 Windows runner 至少运行一组定向 runtime smoke：Git Bash shell、PowerShell tool、`rg.exe --version`、Global Search、超时/杀进程树、路径转换。（#28、#31）
 
 ### P1：首发后尽快补齐
 
-- [x] Windows RSS 通过 `GetProcessMemoryInfo` 实现，避免 `process_rss_bytes()` 恒为 0。
-- [x] 用 Job Object 替代仅依赖 `taskkill /T /F` 的进程树管理，并验证后台任务、超时、取消和孙进程。
+- [x] Windows RSS 通过 `GetProcessMemoryInfo` 实现，避免 `process_rss_bytes()` 恒为 0。（#27）
+- [x] 用 Job Object 替代仅依赖 `taskkill /T /F` 的进程树管理，并验证后台任务、超时、取消和孙进程。（#31）
 - [ ] 补 Windows ACL、junction/symlink、文件锁和共享删除的测试。
+  - #30 已完成 junction/symlink、文件锁和共享删除 smoke；Windows ACL 专项测试仍未补齐，故暂不勾选。
 - [ ] 为 Windows 增加 release zip、SHA256、可选签名和 SmartScreen 限制说明；实现后再接自动更新。
+  - #32 已完成 SHA256 校验和 SmartScreen 限制文档；代码签名方案待定，自动更新仍未实现，故暂不勾选。
 
 ### 明确不列入“最小可用”
 
