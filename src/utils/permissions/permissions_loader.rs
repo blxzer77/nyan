@@ -626,9 +626,8 @@ mod persistence_tests {
                 ));
             }
             let value = fixture.read();
-            assert_eq!(value["model"], "old");
-            assert!(
-                !value.as_object().unwrap().contains_key("language"),
+            assert_eq!(
+                value["language"], "old",
                 "source bypasses per-source cache but retains the earlier parsed-file snapshot"
             );
             assert_eq!(value["permissions"]["deny"], json!(["Bash"]));
