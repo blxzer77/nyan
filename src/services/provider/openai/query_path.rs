@@ -467,6 +467,38 @@ async fn a_cut_stream_after_output_is_reported_and_never_replayed() {
 }
 
 #[tokio::test]
+async fn the_anthropic_only_entry_points_refuse_an_openai_profile_instead_of_sending() {
+    // `side_query` serves the permission classifier, the explainer and model
+    // validation. It is still Anthropic-only; with an OpenAI main profile it
+    // must say so, and above all must not put an Anthropic-shaped request on
+    // the wire to the OpenAI endpoint or with the OpenAI key.
+    let mock = MockOpenAi::start(vec![Reply::sse_data([chat_chunk(
+        json!({"content": "unexpected"}),
+        json!("stop"),
+    )])])
+    .await;
+    let _env = Env::new(&mock.base_url, ProviderProtocol::OpenaiChat);
+
+    let error = crate::utils::side_query::side_query(crate::utils::side_query::SideQueryOptions {
+        model: "gpt-5".to_string(),
+        messages: vec![crate::utils::side_query::user_text_message("Hi")],
+        max_tokens: Some(1),
+        max_retries: Some(0),
+        query_source: "model_validation".to_string(),
+        ..Default::default()
+    })
+    .await
+    .expect_err("side_query must not serve an OpenAI profile");
+    assert!(
+        error
+            .to_string()
+            .contains("cannot be served by the Anthropic client"),
+        "{error}"
+    );
+    assert!(mock.requests().is_empty(), "nothing was sent");
+}
+
+#[tokio::test]
 async fn a_missing_key_is_reported_as_configuration_not_sent() {
     let mock = MockOpenAi::start(vec![]).await;
     let _env = Env::new(&mock.base_url, ProviderProtocol::OpenaiChat);
