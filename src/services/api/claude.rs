@@ -3524,8 +3524,9 @@ async fn open_main_stream_with_fallbacks(
                 None,
                 None,
             ));
-        let receipt =
-            crate::services::provider::retry::SwitchReceipt::new(&from, &next, kind, status, request_id);
+        let receipt = crate::services::provider::retry::SwitchReceipt::new(
+            &from, &next, kind, status, request_id,
+        );
         super::api_trace::emit_current(
             "provider_switch",
             serde_json::to_value(&receipt).unwrap_or_default(),
@@ -3670,10 +3671,9 @@ async fn open_sdk_message_stream_with_retry(
                         .abort_signal
                         .clone()
                         .unwrap_or_else(anthropic_sdk::AbortSignal::new);
-                    let protocol = crate::services::provider::adapter::ResolvedTarget::from_profile(
-                        &profile,
-                    )
-                    .protocol;
+                    let protocol =
+                        crate::services::provider::adapter::ResolvedTarget::from_profile(&profile)
+                            .protocol;
                     let opened = match profile.protocol {
                         crate::utils::settings::nyan::ProviderProtocol::Gemini => {
                             crate::services::provider::gemini::open_stream(
@@ -3688,7 +3688,9 @@ async fn open_sdk_message_stream_with_retry(
                             .await
                         }
                     }
-                    .map_err(|error| provider_error_to_retryable(error, protocol, &limits))?;
+                    .map_err(|error| {
+                        provider_error_to_retryable(error, protocol, &limits)
+                    })?;
                     super::api_trace::emit(
                         &attempt_trace,
                         "http_sent",

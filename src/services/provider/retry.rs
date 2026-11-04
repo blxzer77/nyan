@@ -440,8 +440,13 @@ mod tests {
 
     #[test]
     fn the_managed_cap_is_two_by_default_and_never_above_five() {
-        for (asked, cap) in [(None, 2), (Some(0), 0), (Some(3), 3), (Some(5), 5), (Some(9), 5)]
-        {
+        for (asked, cap) in [
+            (None, 2),
+            (Some(0), 0),
+            (Some(3), 3),
+            (Some(5), 5),
+            (Some(9), 5),
+        ] {
             assert_eq!(global_cap_from(Some(&settings(asked, None))), cap);
         }
         // Raising the cap to 9 still lets a profile reach only 5.
@@ -653,7 +658,10 @@ mod tests {
         let cancel = Cancel::new();
         let silent: EventStream = Box::pin(futures::stream::pending());
         let result = commit_first_output(silent, &cancel, Some(Duration::from_millis(20))).await;
-        assert_eq!(result.err().map(|e| e.kind), Some(ProviderErrorKind::Transport));
+        assert_eq!(
+            result.err().map(|e| e.kind),
+            Some(ProviderErrorKind::Transport)
+        );
     }
 
     #[tokio::test]
@@ -663,6 +671,131 @@ mod tests {
         let wait = tokio::spawn(async move { commit_first_output(silent, &cancel, None).await });
         handle.abort();
         let result = wait.await.unwrap();
-        assert_eq!(result.err().map(|e| e.kind), Some(ProviderErrorKind::Aborted));
+        assert_eq!(
+            result.err().map(|e| e.kind),
+            Some(ProviderErrorKind::Aborted)
+        );
+    }
+
+    fn sample_profile(
+        name: &str,
+        provider: &str,
+        protocol: crate::utils::settings::nyan::ProviderProtocol,
+    ) -> ResolvedModelProfile {
+        ResolvedModelProfile {
+            profile: name.into(),
+            provider: provider.into(),
+            provider_kind: crate::utils::settings::nyan::ProviderKind::Openai,
+            protocol,
+            model: "model-x".into(),
+            context_window: 100_000,
+            max_output_tokens: 4_000,
+            capabilities: Default::default(),
+            base_url: None,
+            credential: None,
+            compat: None,
+        }
+    }
+
+    #[test]
+    fn fallback_chain_is_empty_when_no_fallbacks_are_configured() {
+        let nyan = NyanSettings::default();
+        let primary = sample_profile(
+            "main",
+            "openai",
+            crate::utils::settings::nyan::ProviderProtocol::OpenaiChat,
+        );
+        let (chain, skipped) = fallback_chain(&nyan, &primary);
+        assert!(chain.is_empty());
+        assert!(skipped.is_empty());
+    }
+
+    #[test]
+    fn fallback_chain_drops_self_and_duplicates_and_records_unresolvable_entries() {
+        use crate::utils::settings::nyan::{
+            ModelCapabilities, ModelProfileSettings, ProviderSettings, SelectionSettings,
+        };
+        use std::collections::BTreeMap;
+
+        let mut providers = BTreeMap::new();
+        providers.insert(
+            "p1".into(),
+            ProviderSettings {
+                kind: Some(crate::utils::settings::nyan::ProviderKind::Openai),
+                protocols: Some(vec![
+                    crate::utils::settings::nyan::ProviderProtocol::OpenaiChat,
+                ]),
+                ..Default::default()
+            },
+        );
+        let mut models = BTreeMap::new();
+        models.insert(
+            "fb1".into(),
+            ModelProfileSettings {
+                provider: Some("p1".into()),
+                model: Some("gpt-4o".into()),
+                capabilities: Some(ModelCapabilities {
+                    context_window: Some(128_000),
+                    max_output_tokens: Some(4_096),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+        let nyan = NyanSettings {
+            providers: Some(providers),
+            models: Some(models),
+            selection: Some(SelectionSettings {
+                main_fallbacks: Some(vec![
+                    "main".into(),        // drops self
+                    "fb1".into(),         // valid
+                    "fb1".into(),         // drops duplicate
+                    "nonexistent".into(), // skipped with reason
+                ]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let primary = sample_profile(
+            "main",
+            "openai",
+            crate::utils::settings::nyan::ProviderProtocol::OpenaiChat,
+        );
+        let (chain, skipped) = fallback_chain(&nyan, &primary);
+        assert_eq!(chain.len(), 1);
+        assert_eq!(chain[0].profile, "fb1");
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].0, "nonexistent");
+    }
+
+    #[test]
+    fn switch_receipt_carries_only_safe_metadata_and_formats_a_notice() {
+        let from = sample_profile(
+            "main",
+            "anthropic",
+            crate::utils::settings::nyan::ProviderProtocol::AnthropicMessages,
+        );
+        let to = sample_profile(
+            "fb1",
+            "openai",
+            crate::utils::settings::nyan::ProviderProtocol::OpenaiChat,
+        );
+        let receipt = SwitchReceipt::new(
+            &from,
+            &to,
+            ProviderErrorKind::RateLimited,
+            Some(429),
+            Some("req_123".into()),
+        );
+        assert_eq!(receipt.from_profile, "main");
+        assert_eq!(receipt.to_profile, "fb1");
+        assert_eq!(receipt.from_protocol, Protocol::AnthropicMessages);
+        assert_eq!(receipt.to_protocol, Protocol::OpenaiChat);
+        assert_eq!(receipt.status, Some(429));
+        assert_eq!(receipt.request_id.as_deref(), Some("req_123"));
+
+        let notice = receipt.notice();
+        assert!(notice.contains("Switched from profile \"main\" to fallback profile \"fb1\""));
+        assert!(notice.contains("RateLimited failure (HTTP 429)"));
     }
 }

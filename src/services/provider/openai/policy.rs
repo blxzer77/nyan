@@ -88,7 +88,10 @@ mod tests {
     #[test]
     fn server_errors_are_repeated_and_client_errors_are_not() {
         let server = ProviderError::new(ProviderErrorKind::Transient { retryable: true }, "x");
-        assert_eq!(OpenAiPolicy.classify(&server), Verdict::Retry { wait: None });
+        assert_eq!(
+            OpenAiPolicy.classify(&server),
+            Verdict::Retry { wait: None }
+        );
         for kind in [
             ProviderErrorKind::Unauthorized,
             ProviderErrorKind::InvalidRequest,
