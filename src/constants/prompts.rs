@@ -105,13 +105,21 @@ pub fn get_system_prompt_with_settings(
     prompt.push(get_simple_tone_and_style_section());
     prompt.push(get_output_efficiency_section());
 
+    // Boundary separating truly static CLI instructions from session/project-scoped content.
+    // In Anthropic 1P global cache scope, all blocks before this boundary are marked CacheScope::Global.
+    // All providers strip/filter this boundary marker from the wire text.
+    prompt.push(SYSTEM_PROMPT_DYNAMIC_BOUNDARY.to_string());
+
     use crate::constants::system_prompt_sections::{
         dangerous_uncached_system_prompt_section, resolve_system_prompt_sections,
         system_prompt_section,
     };
 
-    // Static sections that remain stable across sessions, directories, and worktrees.
-    let static_sections = vec![
+    // Session-stable sections: project-level settings, memory, model overrides, output styles.
+    // Placed after the global boundary so they do not bust the cross-session global cache
+    // (e.g. dynamic writes to MEMORY.md, model/skill differences), while remaining stable
+    // within the session for prefix caching.
+    let session_sections = vec![
         system_prompt_section("session_guidance", || {
             get_session_specific_guidance_section(&enabled_tools, &skill_tool_commands)
         }),
@@ -131,17 +139,15 @@ pub fn get_system_prompt_with_settings(
         system_prompt_section("brief", get_brief_section),
     ];
     prompt.extend(
-        resolve_system_prompt_sections(static_sections)
+        resolve_system_prompt_sections(session_sections)
             .into_iter()
             .flatten(),
     );
 
-    prompt.push(SYSTEM_PROMPT_DYNAMIC_BOUNDARY.to_string());
-
-    // Volatile / dynamic sections moved to the system tail (per Pi Agent model).
-    // Moving cwd, scratchpad, and MCP instructions to the suffix prevents directory
-    // or runtime shifts from invalidating the large static prefix above.
-    let dynamic_sections = vec![
+    // Volatile tail sections: scratchpad, MCP instructions, environment info (cwd, git).
+    // Placed at the very end of the system prompt (per Pi Agent model) so cwd, git changes,
+    // and MCP server reloads never bust the session prefix.
+    let volatile_sections = vec![
         system_prompt_section("scratchpad", get_scratchpad_instructions),
         // Maps to CC `prompts.ts:513-520`: when the delta mechanism announces
         // MCP instructions via persisted attachments, the per-turn recompute is
@@ -169,7 +175,7 @@ pub fn get_system_prompt_with_settings(
         }),
     ];
     prompt.extend(
-        resolve_system_prompt_sections(dynamic_sections)
+        resolve_system_prompt_sections(volatile_sections)
             .into_iter()
             .flatten(),
     );
@@ -1080,11 +1086,11 @@ mod tests {
             .position(|section| section == SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
             .expect("boundary section");
 
+        assert!(boundary_idx < language_idx);
         assert!(language_idx < output_style_idx);
         assert!(output_style_idx < summarize_idx);
         assert!(summarize_idx < token_budget_idx);
-        assert!(token_budget_idx < boundary_idx);
-        assert!(boundary_idx < env_idx);
+        assert!(token_budget_idx < env_idx);
         assert!(prompt[language_idx].contains("Always respond in French"));
         assert!(prompt[output_style_idx].contains("# Explanatory Style Active"));
     }
@@ -1116,6 +1122,10 @@ mod tests {
         crate::utils::process_env::remove("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE");
         crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_AUTO_MEMORY");
 
+        let boundary_idx = prompt
+            .iter()
+            .position(|section| section == SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+            .expect("boundary section");
         let memory_idx = prompt
             .iter()
             .position(|section| section.starts_with("# auto memory"))
@@ -1124,6 +1134,7 @@ mod tests {
             .iter()
             .position(|section| section.starts_with("# Environment"))
             .expect("env section");
+        assert!(boundary_idx < memory_idx);
         assert!(memory_idx < env_idx);
         assert!(prompt[memory_idx].contains("## Types of memory"));
         assert!(prompt[memory_idx].contains("## Before recommending from memory"));
@@ -1562,9 +1573,10 @@ mod tests {
         );
     }
 
-    /// Verifies that all static sections (including session guidance, memory, language,
-    /// output style, token budget) precede the dynamic boundary, and all volatile/dynamic
-    /// contents (scratchpad, MCP instructions, environment cwd/git info) succeed it.
+    /// Verifies the three-stage system prompt structure:
+    /// 1. Static core instructions precede `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` (marked Global in 1P).
+    /// 2. Session-stable sections (guidance, memory, styles, token budget) follow the boundary.
+    /// 3. Volatile tail sections (scratchpad, MCP instructions, environment cwd/git info) are at the very end.
     #[test]
     fn system_prompt_places_all_dynamic_content_after_cache_boundary() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
@@ -1609,6 +1621,21 @@ mod tests {
         assert!(doing_tasks_pos < boundary_pos);
         assert!(using_tools_pos < boundary_pos);
 
+        // Session-stable sections (such as token budget) must be placed AFTER the boundary
+        // but BEFORE the volatile environment section at the tail.
+        let token_budget_pos = prompt
+            .iter()
+            .position(|s| s == TOKEN_BUDGET_SECTION)
+            .expect("token budget section");
+        assert!(
+            token_budget_pos > boundary_pos,
+            "Session-stable sections must be placed after the boundary"
+        );
+        assert!(
+            token_budget_pos < env_pos,
+            "Session-stable sections must precede the volatile tail"
+        );
+
         // Check that none of the sections before boundary contain timestamps.
         for section in &prompt[..boundary_pos] {
             assert!(!section.contains("Today's date is"));
@@ -1617,38 +1644,118 @@ mod tests {
         }
     }
 
-    /// Verifies byte-level prefix stability between turn 1 and turn 2:
-    /// even if working directory or environment changes between calls, the static
-    /// prefix before the dynamic boundary is 100% byte-for-byte identical.
+    /// Verifies byte-level prefix stability between turns and across directories:
+    ///
+    /// 1. With auto-memory disabled (or identically unprimed):
+    ///    The static prefix before `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` is 100% byte-for-byte identical
+    ///    across different working directories.
+    ///
+    /// 2. With auto-memory enabled and divergent MEMORY.md files between directories:
+    ///    Because `memory` is placed in the session-stable segment *after* the dynamic boundary,
+    ///    divergent memory files between projects/directories do NOT bust the cross-session
+    ///    global static prefix (`prompt[..boundary]` remains 100% byte-identical).
+    ///    The memory variation is entirely contained in the session segment after the boundary.
     #[test]
     fn system_prompt_prefix_is_byte_identical_across_different_directories() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
-        let _memory = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
 
-        let tools = crate::tools::get_all_base_tools();
-        let prompt_dir_a =
-            get_system_prompt(&tools, "claude-sonnet-4-6", &["/path/a".to_string()], &[]);
-        let prompt_dir_b =
-            get_system_prompt(&tools, "claude-sonnet-4-6", &["/path/b".to_string()], &[]);
+        // Case 1: Memory disabled — static prefix before boundary is identical.
+        {
+            let _memory = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
+            let tools = crate::tools::get_all_base_tools();
+            let prompt_dir_a =
+                get_system_prompt(&tools, "claude-sonnet-4-6", &["/path/a".to_string()], &[]);
+            let prompt_dir_b =
+                get_system_prompt(&tools, "claude-sonnet-4-6", &["/path/b".to_string()], &[]);
 
-        let boundary_a = prompt_dir_a
-            .iter()
-            .position(|s| s == SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+            let boundary_a = prompt_dir_a
+                .iter()
+                .position(|s| s == SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+                .unwrap();
+            let boundary_b = prompt_dir_b
+                .iter()
+                .position(|s| s == SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+                .unwrap();
+
+            assert_eq!(boundary_a, boundary_b);
+            assert_eq!(
+                prompt_dir_a[..boundary_a],
+                prompt_dir_b[..boundary_b],
+                "static prompt prefix before boundary must be 100% byte-for-byte identical"
+            );
+
+            // However, the dynamic suffix contains the directory difference.
+            assert_ne!(prompt_dir_a[boundary_a..], prompt_dir_b[boundary_b..]);
+        }
+
+        // Case 2: Memory enabled — divergent project memory does NOT bust the prefix before boundary.
+        {
+            let temp_a = TestDir::new();
+            let temp_b = TestDir::new();
+            std::fs::write(
+                temp_a.path().join("MEMORY.md"),
+                "- [Topic A](a.md) — info A\n",
+            )
             .unwrap();
-        let boundary_b = prompt_dir_b
-            .iter()
-            .position(|s| s == SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+            std::fs::write(
+                temp_b.path().join("MEMORY.md"),
+                "- [Topic B](b.md) — info B\n",
+            )
             .unwrap();
 
-        assert_eq!(boundary_a, boundary_b);
-        assert_eq!(
-            prompt_dir_a[..boundary_a],
-            prompt_dir_b[..boundary_b],
-            "static prompt prefix before boundary must be 100% byte-for-byte identical"
-        );
+            let _memory_gate = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
+            let tools = crate::tools::get_all_base_tools();
 
-        // However, the dynamic suffix contains the directory difference.
-        assert_ne!(prompt_dir_a[boundary_a..], prompt_dir_b[boundary_b..]);
+            let prompt_a = {
+                let _override = EnvVarGuard::set(
+                    "CLAUDE_COWORK_MEMORY_PATH_OVERRIDE",
+                    temp_a.path().display().to_string(),
+                );
+                get_system_prompt(&tools, "claude-sonnet-4-6", &[], &[])
+            };
+
+            let prompt_b = {
+                let _override = EnvVarGuard::set(
+                    "CLAUDE_COWORK_MEMORY_PATH_OVERRIDE",
+                    temp_b.path().display().to_string(),
+                );
+                get_system_prompt(&tools, "claude-sonnet-4-6", &[], &[])
+            };
+
+            let boundary_a = prompt_a
+                .iter()
+                .position(|s| s == SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+                .expect("boundary in prompt a");
+            let boundary_b = prompt_b
+                .iter()
+                .position(|s| s == SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+                .expect("boundary in prompt b");
+
+            assert_eq!(boundary_a, boundary_b);
+            // Prefix before boundary remains 100% byte-for-byte identical even with distinct memory!
+            assert_eq!(
+                prompt_a[..boundary_a],
+                prompt_b[..boundary_b],
+                "static prefix before boundary must remain byte-identical even when memory differs"
+            );
+
+            // The memory section is positioned AFTER boundary in both prompts.
+            let mem_a = prompt_a
+                .iter()
+                .position(|s| s.starts_with("# auto memory"))
+                .expect("memory in prompt a");
+            let mem_b = prompt_b
+                .iter()
+                .position(|s| s.starts_with("# auto memory"))
+                .expect("memory in prompt b");
+            assert!(mem_a > boundary_a);
+            assert!(mem_b > boundary_b);
+
+            // And the memory difference lives strictly in the post-boundary suffix.
+            assert_ne!(prompt_a[boundary_a..], prompt_b[boundary_b..]);
+            assert!(prompt_a[mem_a].contains("Topic A"));
+            assert!(prompt_b[mem_b].contains("Topic B"));
+        }
     }
 }
