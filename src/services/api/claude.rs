@@ -3342,8 +3342,7 @@ pub async fn query_model_with_streaming(
 }
 
 /// False only when the selected main profile resolves and speaks another
-/// protocol. An unresolvable profile counts as Anthropic so the existing error
-/// path reports what is missing.
+/// protocol, or when resolution fails.
 fn main_profile_is_anthropic() -> bool {
     crate::utils::model::profile::resolve_main_profile(
         &crate::utils::settings::get_initial_settings(),
@@ -3351,7 +3350,7 @@ fn main_profile_is_anthropic() -> bool {
     .map(|profile| {
         profile.protocol == crate::utils::settings::nyan::ProviderProtocol::AnthropicMessages
     })
-    .unwrap_or(true)
+    .unwrap_or(false)
 }
 
 /// The neutral request for a non-Anthropic provider: the same history
@@ -3470,7 +3469,7 @@ async fn open_main_stream_with_fallbacks(
         .map(|profile| {
             profile.protocol == crate::utils::settings::nyan::ProviderProtocol::AnthropicMessages
         })
-        .unwrap_or(true);
+        .unwrap_or(false);
     let mut last_error = match open_sdk_message_stream_with_retry(
         messages,
         system_prompt,
@@ -3688,9 +3687,7 @@ async fn open_sdk_message_stream_with_retry(
                             .await
                         }
                     }
-                    .map_err(|error| {
-                        provider_error_to_retryable(error, protocol, &limits)
-                    })?;
+                    .map_err(|error| provider_error_to_retryable(error, protocol, &limits))?;
                     super::api_trace::emit(
                         &attempt_trace,
                         "http_sent",
@@ -8662,6 +8659,25 @@ mod tests {
         );
 
         crate::utils::config::set_test_global_config(None);
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        let _ = std::fs::remove_dir_all(config_dir);
+    }
+
+    #[test]
+    fn main_profile_is_anthropic_returns_false_when_resolution_fails() {
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
+        let config_dir = std::env::temp_dir().join(format!(
+            "nyan-profile-anthropic-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let _guards = [
+            EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_dir),
+            EnvVarGuard::unset("ANTHROPIC_API_KEY"),
+        ];
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        // When profile resolution fails, main_profile_is_anthropic must evaluate to false
+        assert!(!main_profile_is_anthropic());
         crate::utils::settings::settings_cache::reset_settings_cache();
         let _ = std::fs::remove_dir_all(config_dir);
     }

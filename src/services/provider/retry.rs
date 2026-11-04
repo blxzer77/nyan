@@ -191,10 +191,7 @@ pub fn policy_for(protocol: Protocol) -> &'static dyn RatePolicy {
     match protocol {
         Protocol::AnthropicMessages => &super::anthropic::policy::AnthropicPolicy,
         Protocol::OpenaiChat | Protocol::OpenaiResponses => &super::openai::policy::OpenAiPolicy,
-        // @nyan PR 6: Gemini's policy (RESOURCE_EXHAUSTED, retryDelay hints)
-        // replaces this arm when the Gemini adapter lands; whichever of PR 6 /
-        // PR 8 merges second wires it.
-        Protocol::Gemini => &StandardPolicy,
+        Protocol::Gemini => &super::gemini::policy::GeminiPolicy,
     }
 }
 
@@ -589,6 +586,13 @@ mod tests {
         assert_eq!(
             policy_for(Protocol::Gemini).classify(&quota),
             Verdict::Retry { wait: None }
+        );
+        // Gemini recognizes its own quota and billing exhaustion signals.
+        let mut gemini_quota = limited(None);
+        gemini_quota.message = "Resource has been exhausted: quota exceeded".into();
+        assert_eq!(
+            policy_for(Protocol::Gemini).classify(&gemini_quota),
+            Verdict::SwitchOnly
         );
     }
 
