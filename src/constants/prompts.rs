@@ -1646,15 +1646,15 @@ mod tests {
 
     /// Verifies byte-level prefix stability between turns and across directories:
     ///
-    /// 1. With auto-memory disabled (or identically unprimed):
+    /// 1. With auto-memory disabled:
     ///    The static prefix before `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` is 100% byte-for-byte identical
     ///    across different working directories.
     ///
-    /// 2. With auto-memory enabled and divergent MEMORY.md files between directories:
+    /// 2. With auto-memory enabled and divergent memory project directories:
     ///    Because `memory` is placed in the session-stable segment *after* the dynamic boundary,
-    ///    divergent memory files between projects/directories do NOT bust the cross-session
-    ///    global static prefix (`prompt[..boundary]` remains 100% byte-identical).
-    ///    The memory variation is entirely contained in the session segment after the boundary.
+    ///    different project memory persistence paths do NOT bust the cross-session global static prefix
+    ///    (`prompt[..boundary]` remains 100% byte-identical).
+    ///    The memory path variations are entirely contained in the session segment after the boundary.
     #[test]
     fn system_prompt_prefix_is_byte_identical_across_different_directories() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
@@ -1689,20 +1689,10 @@ mod tests {
             assert_ne!(prompt_dir_a[boundary_a..], prompt_dir_b[boundary_b..]);
         }
 
-        // Case 2: Memory enabled — divergent project memory does NOT bust the prefix before boundary.
+        // Case 2: Memory enabled — divergent project memory paths do NOT bust the prefix before boundary.
         {
             let temp_a = TestDir::new();
             let temp_b = TestDir::new();
-            std::fs::write(
-                temp_a.path().join("MEMORY.md"),
-                "- [Topic A](a.md) — info A\n",
-            )
-            .unwrap();
-            std::fs::write(
-                temp_b.path().join("MEMORY.md"),
-                "- [Topic B](b.md) — info B\n",
-            )
-            .unwrap();
 
             let _memory_gate = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
             let tools = crate::tools::get_all_base_tools();
@@ -1733,7 +1723,7 @@ mod tests {
                 .expect("boundary in prompt b");
 
             assert_eq!(boundary_a, boundary_b);
-            // Prefix before boundary remains 100% byte-for-byte identical even with distinct memory!
+            // Prefix before boundary remains 100% byte-for-byte identical even with distinct memory paths!
             assert_eq!(
                 prompt_a[..boundary_a],
                 prompt_b[..boundary_b],
@@ -1752,10 +1742,10 @@ mod tests {
             assert!(mem_a > boundary_a);
             assert!(mem_b > boundary_b);
 
-            // And the memory difference lives strictly in the post-boundary suffix.
+            // And the memory path difference lives strictly in the post-boundary suffix.
             assert_ne!(prompt_a[boundary_a..], prompt_b[boundary_b..]);
-            assert!(prompt_a[mem_a].contains("Topic A"));
-            assert!(prompt_b[mem_b].contains("Topic B"));
+            assert!(prompt_a[mem_a].contains(&temp_a.path().display().to_string()));
+            assert!(prompt_b[mem_b].contains(&temp_b.path().display().to_string()));
         }
     }
 }
