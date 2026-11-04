@@ -104,34 +104,45 @@ pub fn get_system_prompt_with_settings(
     }
     prompt.push(get_simple_tone_and_style_section());
     prompt.push(get_output_efficiency_section());
-    if should_use_global_cache_scope() {
-        prompt.push(SYSTEM_PROMPT_DYNAMIC_BOUNDARY.to_string());
-    }
 
     use crate::constants::system_prompt_sections::{
         dangerous_uncached_system_prompt_section, resolve_system_prompt_sections,
         system_prompt_section,
     };
-    let dynamic_sections = vec![
+
+    // Static sections that remain stable across sessions, directories, and worktrees.
+    let static_sections = vec![
         system_prompt_section("session_guidance", || {
             get_session_specific_guidance_section(&enabled_tools, &skill_tool_commands)
         }),
         system_prompt_section("memory", get_memory_prompt_section),
         system_prompt_section("ant_model_override", get_ant_model_override_section),
-        // Maps to CC `prompts.ts:499-501` `computeSimpleEnvInfo(model,
-        // additionalWorkingDirectories)`.
-        system_prompt_section("env_info_simple", || {
-            Some(compute_simple_env_info(
-                model,
-                additional_working_directories,
-            ))
-        }),
         system_prompt_section("language", || {
             get_language_section(settings.language.as_deref())
         }),
         system_prompt_section("output_style", || {
             get_output_style_section(output_style_config.as_ref())
         }),
+        system_prompt_section("frc", || get_function_result_clearing_section(model)),
+        system_prompt_section("summarize_tool_results", || {
+            Some(SUMMARIZE_TOOL_RESULTS_SECTION.to_string())
+        }),
+        system_prompt_section("token_budget", || Some(TOKEN_BUDGET_SECTION.to_string())),
+        system_prompt_section("brief", get_brief_section),
+    ];
+    prompt.extend(
+        resolve_system_prompt_sections(static_sections)
+            .into_iter()
+            .flatten(),
+    );
+
+    prompt.push(SYSTEM_PROMPT_DYNAMIC_BOUNDARY.to_string());
+
+    // Volatile / dynamic sections moved to the system tail (per Pi Agent model).
+    // Moving cwd, scratchpad, and MCP instructions to the suffix prevents directory
+    // or runtime shifts from invalidating the large static prefix above.
+    let dynamic_sections = vec![
+        system_prompt_section("scratchpad", get_scratchpad_instructions),
         // Maps to CC `prompts.ts:513-520`: when the delta mechanism announces
         // MCP instructions via persisted attachments, the per-turn recompute is
         // skipped (gate checked inside the compute so a mid-session flip does
@@ -147,13 +158,15 @@ pub fn get_system_prompt_with_settings(
             },
             "MCP servers connect/disconnect between turns",
         ),
-        system_prompt_section("scratchpad", get_scratchpad_instructions),
-        system_prompt_section("frc", || get_function_result_clearing_section(model)),
-        system_prompt_section("summarize_tool_results", || {
-            Some(SUMMARIZE_TOOL_RESULTS_SECTION.to_string())
+        // Maps to CC `prompts.ts:499-501` `computeSimpleEnvInfo(model,
+        // additionalWorkingDirectories)`. Placed at the end of the system
+        // prompt so cwd/git changes never bust prefix caching.
+        system_prompt_section("env_info_simple", || {
+            Some(compute_simple_env_info(
+                model,
+                additional_working_directories,
+            ))
         }),
-        system_prompt_section("token_budget", || Some(TOKEN_BUDGET_SECTION.to_string())),
-        system_prompt_section("brief", get_brief_section),
     ];
     prompt.extend(
         resolve_system_prompt_sections(dynamic_sections)
@@ -1062,10 +1075,16 @@ mod tests {
             .position(|section| section == TOKEN_BUDGET_SECTION)
             .expect("token budget section");
 
-        assert!(env_idx < language_idx);
+        let boundary_idx = prompt
+            .iter()
+            .position(|section| section == SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+            .expect("boundary section");
+
         assert!(language_idx < output_style_idx);
         assert!(output_style_idx < summarize_idx);
         assert!(summarize_idx < token_budget_idx);
+        assert!(token_budget_idx < boundary_idx);
+        assert!(boundary_idx < env_idx);
         assert!(prompt[language_idx].contains("Always respond in French"));
         assert!(prompt[output_style_idx].contains("# Explanatory Style Active"));
     }
@@ -1541,5 +1560,95 @@ mod tests {
                 .iter()
                 .any(|section| section.contains("/<skill-name>"))
         );
+    }
+
+    /// Verifies that all static sections (including session guidance, memory, language,
+    /// output style, token budget) precede the dynamic boundary, and all volatile/dynamic
+    /// contents (scratchpad, MCP instructions, environment cwd/git info) succeed it.
+    #[test]
+    fn system_prompt_places_all_dynamic_content_after_cache_boundary() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
+        crate::utils::process_env::remove("CLAUDE_CODE_USE_GLOBAL_CACHE_SCOPE");
+        crate::utils::process_env::remove("ANTHROPIC_USE_GLOBAL_CACHE_SCOPE");
+        let _memory = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
+
+        let tools = crate::tools::get_all_base_tools();
+        let prompt = get_system_prompt(
+            &tools,
+            "claude-sonnet-4-6",
+            &["/extra/dir".to_string()],
+            &[],
+        );
+
+        let boundary_pos = prompt
+            .iter()
+            .position(|s| s == SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+            .expect("dynamic boundary must be present in system prompt");
+
+        let env_pos = prompt
+            .iter()
+            .position(|s| s.starts_with("# Environment"))
+            .expect("environment section must be present");
+
+        // Environment (cwd, git, platform) must be AFTER the dynamic boundary.
+        assert!(
+            env_pos > boundary_pos,
+            "Environment section at {env_pos} must be placed after dynamic boundary at {boundary_pos}"
+        );
+
+        // Core prompt instructions must be BEFORE the dynamic boundary.
+        let doing_tasks_pos = prompt
+            .iter()
+            .position(|s| s.starts_with("# Doing tasks"))
+            .expect("doing tasks section");
+        let using_tools_pos = prompt
+            .iter()
+            .position(|s| s.starts_with("# Using your tools"))
+            .expect("using tools section");
+        assert!(doing_tasks_pos < boundary_pos);
+        assert!(using_tools_pos < boundary_pos);
+
+        // Check that none of the sections before boundary contain timestamps.
+        for section in &prompt[..boundary_pos] {
+            assert!(!section.contains("Today's date is"));
+            assert!(!section.contains("Current date:"));
+            assert!(!section.contains("\nDate: "));
+        }
+    }
+
+    /// Verifies byte-level prefix stability between turn 1 and turn 2:
+    /// even if working directory or environment changes between calls, the static
+    /// prefix before the dynamic boundary is 100% byte-for-byte identical.
+    #[test]
+    fn system_prompt_prefix_is_byte_identical_across_different_directories() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
+        let _memory = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
+
+        let tools = crate::tools::get_all_base_tools();
+        let prompt_dir_a =
+            get_system_prompt(&tools, "claude-sonnet-4-6", &["/path/a".to_string()], &[]);
+        let prompt_dir_b =
+            get_system_prompt(&tools, "claude-sonnet-4-6", &["/path/b".to_string()], &[]);
+
+        let boundary_a = prompt_dir_a
+            .iter()
+            .position(|s| s == SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+            .unwrap();
+        let boundary_b = prompt_dir_b
+            .iter()
+            .position(|s| s == SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+            .unwrap();
+
+        assert_eq!(boundary_a, boundary_b);
+        assert_eq!(
+            prompt_dir_a[..boundary_a],
+            prompt_dir_b[..boundary_b],
+            "static prompt prefix before boundary must be 100% byte-for-byte identical"
+        );
+
+        // However, the dynamic suffix contains the directory difference.
+        assert_ne!(prompt_dir_a[boundary_a..], prompt_dir_b[boundary_b..]);
     }
 }
