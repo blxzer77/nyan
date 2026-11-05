@@ -269,6 +269,126 @@ const SOURCE_PRIORITY: [AgentDefinitionSource; 6] = [
     AgentDefinitionSource::PolicySettings,
 ];
 
+fn normalize_path_for_comparison(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// Discovers project agent directories: checks `.nyan/agents` walking up from cwd to home/git_root.
+/// Strictly does NOT read `.claude/agents`.
+fn get_project_nyan_agent_dirs(cwd: &Path) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let home = crate::utils::node_os::homedir();
+    let home = home.canonicalize().unwrap_or(home);
+    let git_root = crate::utils::git::find_git_root(cwd);
+    let mut current = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+
+    loop {
+        if normalize_path_for_comparison(&current) == normalize_path_for_comparison(&home) {
+            break;
+        }
+
+        let candidate = current.join(".nyan").join("agents");
+        if candidate.is_dir() {
+            dirs.push(candidate);
+        }
+
+        if let Some(git_root) = &git_root
+            && normalize_path_for_comparison(&current) == normalize_path_for_comparison(git_root)
+        {
+            break;
+        }
+
+        if !current.pop() {
+            break;
+        }
+    }
+
+    dirs
+}
+
+/// Loads agent markdown files only from `~/.nyan/agents` (user) and `.nyan/agents` (project).
+/// Project agents require workspace trust (untrusted => do not load, print mode untrusted => skip).
+fn load_agent_markdown_files(cwd: &Path) -> Vec<crate::utils::markdown_config_loader::MarkdownFile> {
+    let user_dir = crate::utils::env_utils::get_claude_config_home_dir().join("agents");
+    let managed_dir = crate::utils::settings::managed_path::get_managed_file_path()
+        .join(".claude")
+        .join("agents");
+
+    // Project agents are gated by workspace trust: untrusted => do not load.
+    let is_trusted = crate::utils::config::check_has_trust_dialog_accepted()
+        || crate::utils::config::is_path_trusted(cwd);
+
+    let mut project_dirs = if is_trusted {
+        get_project_nyan_agent_dirs(cwd)
+    } else {
+        Vec::new()
+    };
+
+    if is_trusted
+        && let (Some(git_root), Some(canonical_root)) = (
+            crate::utils::git::find_git_root(cwd),
+            crate::utils::git::find_canonical_git_root(cwd),
+        )
+        && normalize_path_for_comparison(&git_root)
+            != normalize_path_for_comparison(&canonical_root)
+    {
+        let worktree_subdir = git_root.join(".nyan").join("agents");
+        let worktree_has_subdir = project_dirs.iter().any(|directory| {
+            normalize_path_for_comparison(directory)
+                == normalize_path_for_comparison(&worktree_subdir)
+        });
+        if !worktree_has_subdir {
+            let main_subdir = canonical_root.join(".nyan").join("agents");
+            if !project_dirs.iter().any(|directory| {
+                normalize_path_for_comparison(directory)
+                    == normalize_path_for_comparison(&main_subdir)
+            }) {
+                project_dirs.push(main_subdir);
+            }
+        }
+    }
+
+    let customization_locked =
+        crate::utils::settings::plugin_only_policy::is_restricted_to_plugin_only("agents");
+    let mut files = Vec::new();
+    files.extend(crate::utils::markdown_config_loader::load_markdown_files_from_dir(
+        &managed_dir,
+        crate::utils::markdown_config_loader::MarkdownConfigSource::PolicySettings,
+    ));
+    if crate::utils::settings::constants::is_setting_source_enabled(
+        crate::utils::settings::constants::SettingSource::User,
+    ) && !customization_locked
+    {
+        files.extend(crate::utils::markdown_config_loader::load_markdown_files_from_dir(
+            &user_dir,
+            crate::utils::markdown_config_loader::MarkdownConfigSource::UserSettings,
+        ));
+    }
+    if crate::utils::settings::constants::is_setting_source_enabled(
+        crate::utils::settings::constants::SettingSource::Project,
+    ) && !customization_locked
+    {
+        for project_dir in project_dirs {
+            files.extend(crate::utils::markdown_config_loader::load_markdown_files_from_dir(
+                &project_dir,
+                crate::utils::markdown_config_loader::MarkdownConfigSource::ProjectSettings,
+            ));
+        }
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    files
+        .into_iter()
+        .filter(|file| {
+            let key = file
+                .file_path
+                .canonicalize()
+                .unwrap_or_else(|_| file.file_path.clone());
+            seen.insert(normalize_path_for_comparison(&key))
+        })
+        .collect()
+}
+
 /// Maps to CC `getAgentDefinitionsWithOverrides(cwd)`.
 pub fn get_agent_definitions_with_overrides(cwd: &Path) -> AgentDefinitionsResult {
     let built_in_agents = get_built_in_agents();
@@ -291,9 +411,7 @@ pub fn get_agent_definitions_with_overrides(cwd: &Path) -> AgentDefinitionsResul
         };
     }
 
-    // CC :308 `loadMarkdownFilesForSubdir('agents', cwd)`.
-    let markdown_files =
-        crate::utils::markdown_config_loader::load_markdown_files_for_subdir("agents", cwd);
+    let markdown_files = load_agent_markdown_files(cwd);
     let audience = crate::utils::build_profile::build_audience();
     let mut custom_agents = Vec::new();
     let mut failed_files = Vec::new();
@@ -398,31 +516,18 @@ pub fn get_active_agents_from_list(all_agents: &[AgentDefinition]) -> Vec<AgentD
 }
 
 /// Maps to CC `loadAgentsDir.ts#hasRequiredMcpServers`.
-pub fn has_required_mcp_servers(agent: &AgentDefinition, available_servers: &[String]) -> bool {
-    let Some(required) = agent.required_mcp_servers.as_ref() else {
-        return true;
-    };
-    if required.is_empty() {
-        return true;
-    }
-    required.iter().all(|pattern| {
-        let needle = pattern.to_lowercase();
-        available_servers
-            .iter()
-            .any(|server| server.to_lowercase().contains(&needle))
-    })
+/// Since requiredMcpServers is removed in nyan (Decision 5), all agents satisfy requirements.
+pub fn has_required_mcp_servers(_agent: &AgentDefinition, _available_servers: &[String]) -> bool {
+    true
 }
 
 /// Maps to CC `loadAgentsDir.ts#filterAgentsByMcpRequirements`.
+/// Since requiredMcpServers is removed in nyan (Decision 5), returns all agents without filtering.
 pub fn filter_agents_by_mcp_requirements(
     agents: &[AgentDefinition],
-    available_servers: &[String],
+    _available_servers: &[String],
 ) -> Vec<AgentDefinition> {
-    agents
-        .iter()
-        .filter(|agent| has_required_mcp_servers(agent, available_servers))
-        .cloned()
-        .collect()
+    agents.to_vec()
 }
 
 /// Check for and initialize agent memory from project snapshots.
@@ -545,24 +650,6 @@ pub fn parse_agent_from_json(
         None => None,
         Some(value) => Some(parse_effort_json_value(value)?),
     };
-    let permission_mode = match object.get("permissionMode") {
-        None => None,
-        Some(value) => Some(match value.as_str()? {
-            "default" => PermissionMode::Default,
-            "acceptEdits" => PermissionMode::AcceptEdits,
-            "plan" => PermissionMode::Plan,
-            "dontAsk" => PermissionMode::DontAsk,
-            "bypassPermissions" => PermissionMode::BypassPermissions,
-            // CC PERMISSION_MODES includes 'auto' when TRANSCRIPT_CLASSIFIER
-            // is on (types/permissions.ts:33-38) — ON in production builds.
-            "auto" => PermissionMode::Auto,
-            _ => return None,
-        }),
-    };
-    let mcp_servers = match object.get("mcpServers") {
-        None => None,
-        Some(value) => Some(parse_agent_mcp_servers_from_json_value(value)?),
-    };
     let hooks = match object.get("hooks") {
         None => None,
         Some(value) => Some(parse_hooks_config_json_value(value)?),
@@ -620,8 +707,8 @@ pub fn parse_agent_from_json(
     agent.skills = skills.filter(|skills| !skills.is_empty());
     agent.model = model;
     agent.effort = effort;
-    agent.permission_mode = permission_mode;
-    agent.mcp_servers = mcp_servers.filter(|servers| !servers.is_empty());
+    agent.permission_mode = None;
+    agent.mcp_servers = None;
     agent.hooks = hooks;
     agent.max_turns = max_turns;
     agent.initial_prompt = initial_prompt.filter(|prompt| !prompt.is_empty());
@@ -757,34 +844,12 @@ fn parse_agent_from_markdown(
     // field undefined, and the construction spread keeps the field only when
     // `length > 0`. The JSON path's all-or-nothing aggregation
     // (`parse_agent_mcp_servers_from_json_value`) must NOT be used here.
-    agent.mcp_servers = frontmatter
-        .get("mcpServers")
-        .and_then(serde_json::Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(parse_agent_mcp_server_spec_json)
-                .collect::<Vec<_>>()
-        })
-        .filter(|servers| !servers.is_empty());
+    // Decision 5: removed permissionMode, inline mcpServers, requiredMcpServers
+    agent.mcp_servers = None;
     agent.hooks = frontmatter
         .get("hooks")
         .and_then(parse_hooks_config_json_value);
-    agent.permission_mode = frontmatter
-        .get("permissionMode")
-        .and_then(serde_json::Value::as_str)
-        // CC :638-640 includes-check is EXACT (no trim).
-        .and_then(|value| match value {
-            "default" => Some(PermissionMode::Default),
-            "acceptEdits" => Some(PermissionMode::AcceptEdits),
-            "plan" => Some(PermissionMode::Plan),
-            "dontAsk" => Some(PermissionMode::DontAsk),
-            "bypassPermissions" => Some(PermissionMode::BypassPermissions),
-            // CC PERMISSION_MODES includes 'auto' when TRANSCRIPT_CLASSIFIER
-            // is on (types/permissions.ts:33-38) — ON in production builds.
-            "auto" => Some(PermissionMode::Auto),
-            _ => None,
-        });
+    agent.permission_mode = None;
     agent.max_turns = crate::utils::frontmatter_parser::parse_positive_int_from_frontmatter(
         frontmatter.get("maxTurns"),
     );
@@ -1049,19 +1114,21 @@ mod tests {
         ]
     }
 
-    /// CC `markdownConfigLoader.ts:238` stops the project walk at
-    /// `homedir()`: an agents directory above the home directory is never
-    /// read.
+    /// Stops the project walk at `homedir()`: an agents directory above the home directory is never read.
+    /// In nyan, project agents live in `.nyan/agents` and require workspace trust.
     #[test]
     fn project_walk_stops_at_homedir() {
         let root = temp_dir("home-stop");
         let home = root.join("home");
         let cwd = home.join("project");
         let agent = |name: &str| format!("---\nname: {name}\ndescription: d\n---\nBody");
-        write_file(&cwd.join(".claude/agents/inside.md"), &agent("inside"));
-        write_file(&root.join(".claude/agents/above.md"), &agent("above"));
+        write_file(&cwd.join(".nyan/agents/inside.md"), &agent("inside"));
+        write_file(&root.join(".nyan/agents/above.md"), &agent("above"));
+        // Also verify .claude/agents is NOT read
+        write_file(&cwd.join(".claude/agents/claude_inside.md"), &agent("claude_inside"));
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
         let _env = pin_loader_env(&home, &root.join("config"));
         let result = get_agent_definitions_with_overrides(&cwd);
 
@@ -1072,6 +1139,46 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(names.contains(&"inside"), "{names:?}");
         assert!(!names.contains(&"above"), "{names:?}");
+        assert!(!names.contains(&"claude_inside"), "{names:?}");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn project_agents_require_workspace_trust() {
+        let root = temp_dir("trust-gate");
+        let home = root.join("home");
+        let cwd = home.join("project");
+        let agent = |name: &str| format!("---\nname: {name}\ndescription: d\n---\nBody");
+        write_file(&cwd.join(".nyan/agents/project_agent.md"), &agent("project_agent"));
+        let config_home = root.join("config");
+        write_file(&config_home.join("agents/user_agent.md"), &agent("user_agent"));
+
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::config::reset_trust_dialog_accepted_cache_for_testing();
+        crate::bootstrap::state::set_session_trust_accepted(false);
+        let _env = pin_loader_env(&home, &config_home);
+
+        // When untrusted, project agents are NOT loaded, but user agents ARE loaded.
+        let result = get_agent_definitions_with_overrides(&cwd);
+        let names = result
+            .active_agents
+            .iter()
+            .map(|agent| agent.agent_type.as_str())
+            .collect::<Vec<_>>();
+        assert!(!names.contains(&"project_agent"), "{names:?}");
+        assert!(names.contains(&"user_agent"), "{names:?}");
+
+        // When trusted, project agents ARE loaded.
+        let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
+        let result = get_agent_definitions_with_overrides(&cwd);
+        let names = result
+            .active_agents
+            .iter()
+            .map(|agent| agent.agent_type.as_str())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"project_agent"), "{names:?}");
+        assert!(names.contains(&"user_agent"), "{names:?}");
+
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1108,17 +1215,8 @@ mod tests {
             shouty.effort,
             Some(crate::utils::effort::EffortValue::Named("high".to_string()))
         );
-        // The invalid element `7` is skipped; valid siblings survive.
-        assert_eq!(
-            shouty.mcp_servers.as_ref().map(|servers| servers
-                .iter()
-                .map(|spec| match spec {
-                    AgentMcpServerSpec::Reference(name) => name.as_str(),
-                    AgentMcpServerSpec::Inline { name, .. } => name.as_str(),
-                })
-                .collect::<Vec<_>>()),
-            Some(vec!["docs", "other"])
-        );
+        // mcpServers is removed per Decision 5
+        assert_eq!(shouty.mcp_servers, None);
 
         let numeric = result
             .active_agents
@@ -1130,7 +1228,6 @@ mod tests {
             numeric.effort,
             Some(crate::utils::effort::EffortValue::Numeric(3))
         );
-        // All elements invalid → empty result → `length > 0` omits the field.
         assert_eq!(numeric.mcp_servers, None);
         let _ = fs::remove_dir_all(root);
     }
@@ -1190,22 +1287,11 @@ mod tests {
                 .map(|items| items.iter().map(String::as_str).collect::<Vec<_>>()),
             Some(vec!["audit", "docs"])
         );
-        let mcp_servers = reviewer.mcp_servers.as_ref().expect("mcp servers");
-        assert!(matches!(
-            &mcp_servers[0],
-            AgentMcpServerSpec::Reference(name) if name == "docs"
-        ));
-        assert!(matches!(
-            &mcp_servers[1],
-            AgentMcpServerSpec::Inline { name, config }
-                if name == "local-agent"
-                    && config.scope == crate::services::mcp::types::ConfigScope::Dynamic
-                    && config.command.as_deref() == Some("node")
-                    && config.args == vec!["server.js"]
-        ));
+        // mcp_servers and permission_mode removed per Decision 5
+        assert_eq!(reviewer.mcp_servers, None);
         let hooks = reviewer.hooks.as_ref().expect("frontmatter hooks");
         assert_eq!(hooks["Stop"][0].hooks[0].command, "echo stop");
-        assert_eq!(reviewer.permission_mode, Some(PermissionMode::Plan));
+        assert_eq!(reviewer.permission_mode, None);
         assert_eq!(
             reviewer.effort,
             Some(crate::utils::effort::EffortValue::Named("high".to_string()))

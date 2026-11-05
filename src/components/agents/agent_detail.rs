@@ -213,7 +213,7 @@ mod tests {
         }
         .render(Some(100))
         .to_string();
-        assert!(text.contains(".claude/agents/reviewer.md"));
+        assert!(text.contains(".nyan/agents/reviewer.md"));
         assert!(text.contains("Tools: Read"));
         assert!(text.contains("Unrecognized: Missing"));
         assert!(text.contains("Model: @heavy:high"));

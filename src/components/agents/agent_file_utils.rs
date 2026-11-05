@@ -81,7 +81,7 @@ fn agent_directory(
     match source {
         AgentFileSource::UserSettings => Ok(config_home.join("agents")),
         AgentFileSource::ProjectSettings | AgentFileSource::LocalSettings => {
-            Ok(cwd.join(".claude").join("agents"))
+            Ok(cwd.join(".nyan").join("agents"))
         }
         AgentFileSource::PolicySettings => Ok(
             crate::utils::settings::managed_path::get_managed_file_path()

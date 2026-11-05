@@ -127,28 +127,23 @@ pub fn resolve_agent_tools(
     let mut resolved = Vec::<Tool>::new();
     let mut valid_tools = Vec::<String>::new();
     let mut invalid_tools = Vec::<String>::new();
-    let mut allowed_agent_types: Option<Vec<String>> = None;
+    let allowed_agent_types: Option<Vec<String>> = None;
     for spec in agent_tools {
         let parsed =
             crate::utils::permissions::permission_rule_parser::permission_rule_value_from_string(
                 spec,
             );
         if parsed.tool_name == crate::tools::agent_tool::constants::AGENT_TOOL_NAME {
-            if let Some(rule_content) = parsed.rule_content.as_deref() {
-                allowed_agent_types = Some(
-                    rule_content
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect(),
-                );
+            valid_tools.push(spec.clone());
+            if let Some(tool) = allowed_available
+                .iter()
+                .find(|tool| tool.name == parsed.tool_name)
+            {
+                if !resolved.iter().any(|existing| existing.name == tool.name) {
+                    resolved.push(tool.clone());
+                }
             }
-            // Sub-agents: Agent is metadata-only (excluded by filter). Main
-            // thread: fall through so Agent stays in the pool when listed.
-            if !is_main_thread {
-                valid_tools.push(spec.clone());
-                continue;
-            }
+            continue;
         }
         if let Some(tool) = allowed_available
             .iter()
@@ -224,7 +219,8 @@ fn is_custom_agent_disallowed_tool(name: &str) -> bool {
 fn is_async_agent_allowed_tool(name: &str) -> bool {
     matches!(
         name,
-        crate::tools::file_read_tool::prompt::FILE_READ_TOOL_NAME
+        crate::tools::agent_tool::constants::AGENT_TOOL_NAME
+            | crate::tools::file_read_tool::prompt::FILE_READ_TOOL_NAME
             | crate::tools::web_search_tool::prompt::WEB_SEARCH_TOOL_NAME
             | crate::tools::todo_write_tool::constants::TODO_WRITE_TOOL_NAME
             | crate::tools::grep_tool::prompt::GREP_TOOL_NAME

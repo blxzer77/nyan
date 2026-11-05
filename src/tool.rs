@@ -1304,6 +1304,8 @@ pub struct ToolUseContext {
     pub agent_type: Option<String>,
     pub require_can_use_tool: bool,
     pub preserve_tool_use_results: bool,
+    /// Subagent nesting depth (main session = 0, child subagent = parent depth + 1).
+    pub subagent_depth: usize,
     /// Last successfully validated StructuredOutput payload for headless/SDK
     /// result projection. Out-of-band: never enters Anthropic prompt content.
     pub structured_output: Option<serde_json::Value>,
@@ -1453,6 +1455,7 @@ impl ToolUseContext {
             agent_type: None,
             require_can_use_tool: false,
             preserve_tool_use_results: false,
+            subagent_depth: 0,
             structured_output: None,
             cwd_override: None,
             query_tracking: None,

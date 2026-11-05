@@ -30,8 +30,15 @@ pub fn PermissionRequestTitle(
         View(flex_direction: FlexDirection::Column) {
             View(flex_direction: FlexDirection::Row, column_gap: 1u32) {
                 Text(content: props.title.clone(), color: color, weight: Weight::Bold, wrap: TextWrap::NoWrap)
-                #(props.worker_badge.as_ref().map(|badge| element! {
-                    Text(content: format!("· @{}", badge.name), dim: true, wrap: TextWrap::NoWrap)
+                #(props.worker_badge.as_ref().map(|badge| {
+                    let display_badge = if badge.name.starts_with('[') {
+                        format!("· {}", badge.name)
+                    } else {
+                        format!("· @{}", badge.name)
+                    };
+                    element! {
+                        Text(content: display_badge, dim: true, wrap: TextWrap::NoWrap)
+                    }
                 }))
             }
             #(props.subtitle.as_ref().map(|subtitle| element! {

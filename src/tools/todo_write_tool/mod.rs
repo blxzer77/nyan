@@ -101,9 +101,9 @@ impl TodoWriteOutput {
                 std::sync::Arc::make_mut(&mut state.todos).insert(todo_key.clone(), stored);
             });
         }
-        // Maps to: CC TodoWriteTool.call verificationNudgeNeeded gate.
+        // Maps to: review agent nudge needed gate.
         let verification_nudge_needed =
-            crate::tools::agent_tool::built_in_agents::is_verification_agent_enabled_readonly()
+            crate::tools::agent_tool::built_in_agents::is_review_agent_enabled()
                 && crate::utils::feature_flags::feature_enabled(
                     crate::utils::feature_flags::FeatureFlag::HiveEvidence,
                 )
@@ -113,7 +113,10 @@ impl TodoWriteOutput {
                 && !todos.iter().any(|item| {
                     item.get("content")
                         .and_then(|v| v.as_str())
-                        .is_some_and(|content| content.to_ascii_lowercase().contains("verif"))
+                        .is_some_and(|content| {
+                            let lower = content.to_ascii_lowercase();
+                            lower.contains("verif") || lower.contains("review")
+                        })
                 });
         Self {
             old_todos,
@@ -161,8 +164,8 @@ const TODO_WRITE_BASE_RESULT: &str = "Todos have been modified successfully. Ens
 fn todo_write_tool_result_content(output: &TodoWriteOutput) -> String {
     if output.verification_nudge_needed {
         format!(
-            "{TODO_WRITE_BASE_RESULT}\n\nNOTE: You just closed out 3+ tasks and none of them was a verification step. Before writing your final summary, spawn the verification agent (subagent_type=\"{}\"). You cannot self-assign PARTIAL by listing caveats in your summary — only the verifier issues a verdict.",
-            crate::tools::agent_tool::constants::VERIFICATION_AGENT_TYPE
+            "{TODO_WRITE_BASE_RESULT}\n\nNOTE: You just closed out 3+ tasks and none of them was a verification step. Before writing your final summary, spawn the review agent (subagent_type=\"{}\"). You cannot self-assign PARTIAL by listing caveats in your summary — only the verifier issues a verdict.",
+            crate::tools::agent_tool::constants::REVIEW_AGENT_TYPE
         )
     } else {
         TODO_WRITE_BASE_RESULT.to_string()
@@ -410,7 +413,7 @@ mod tests {
         assert!(content.starts_with(TODO_WRITE_BASE_RESULT));
         assert!(content.contains(&format!(
             "subagent_type=\"{}\"",
-            crate::tools::agent_tool::constants::VERIFICATION_AGENT_TYPE
+            crate::tools::agent_tool::constants::REVIEW_AGENT_TYPE
         )));
         assert!(content.ends_with("only the verifier issues a verdict."));
     }

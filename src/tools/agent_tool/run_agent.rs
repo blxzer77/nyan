@@ -516,43 +516,23 @@ fn release_agent_registrations(agent_id: &str, root_context: &ToolUseContext) {
 /// (sync agents show prompts, async agents don't).
 fn agent_should_avoid_permission_prompts(
     can_show_permission_prompts: Option<bool>,
-    agent_permission_mode: Option<PermissionMode>,
-    is_async: bool,
+    _agent_permission_mode: Option<PermissionMode>,
+    _is_async: bool,
 ) -> bool {
     if let Some(can_show) = can_show_permission_prompts {
         return !can_show;
     }
-    if agent_permission_mode == Some(PermissionMode::Bubble) {
-        return false;
-    }
-    is_async
+    // Nyan Decision 5: Background subagents can prompt, silent auto-deny is deleted.
+    false
 }
 
-/// Maps to: CC `runAgent.ts` `agentGetAppState` permission-mode override.
+/// Nyan Decision 5: Subagents always use the main session's current permission mode and rules.
 fn agent_permission_context_for_run(
     parent: &crate::tool::ToolPermissionContext,
-    agent_permission_mode: Option<PermissionMode>,
+    _agent_permission_mode: Option<PermissionMode>,
     allowed_tools: Option<&[String]>,
 ) -> crate::tool::ToolPermissionContext {
     let mut context = parent.clone();
-    // Maps to CC `runAgent.ts:421-434`: the RUNTIME context only overrides
-    // when the agent DEFINES a permissionMode, and never against a parent in
-    // `bypassPermissions`, `acceptEdits`, or (under TRANSCRIPT_CLASSIFIER)
-    // `auto`. An agent without one keeps the parent mode — the
-    // `?? 'acceptEdits'` fallback lives solely in AgentTool.tsx:838-841's
-    // workerPermissionContext, which feeds assembleToolPool (the tool POOL),
-    // never the runtime context.
-    let parent_mode_wins = matches!(
-        parent.mode,
-        PermissionMode::BypassPermissions | PermissionMode::AcceptEdits
-    ) || (parent.mode == PermissionMode::Auto
-        && crate::utils::permissions::permission_setup::is_transcript_classifier_feature_enabled());
-    if !parent_mode_wins && let Some(mode) = agent_permission_mode {
-        context.mode = mode;
-    }
-    // Maps to CC `tools/AgentTool/runAgent.ts:465-478`: this is replacement, not a merge.
-    // Parent approvals from user/project/local/flag/policy/command/session must
-    // not leak when an explicit child allowlist is supplied.
     if let Some(allowed_tools) = allowed_tools {
         let cli_rules = parent
             .always_allow_rules
@@ -835,10 +815,8 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
         Some(tools) => tools,
         None => {
             let mut worker_pool_context = input.context.tool_permission_context.clone();
-            worker_pool_context.mode = input
-                .agent_definition
-                .permission_mode
-                .unwrap_or(PermissionMode::AcceptEdits);
+            // Nyan Decision 5: Subagents use main session's current permission mode and rules
+            worker_pool_context.mode = input.context.tool_permission_context.mode;
             // Maps to: CC AgentTool.tsx:838-845 synchronous assembleToolPool.
             // A4: our eager Agent schema additionally reads plugin promises;
             // source tool metadata is lazy. Keep that existing native catalog
@@ -862,8 +840,13 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
     let resolved_tools = if input.use_exact_tools {
         available_tools.clone()
     } else {
-        resolve_agent_tools(input.agent_definition, &available_tools, is_async, false)
-            .resolved_tools
+        let mut tools = resolve_agent_tools(input.agent_definition, &available_tools, is_async, false)
+            .resolved_tools;
+        // At max depth, take away the Agent tool for fresh subagents
+        if input.context.subagent_depth + 1 >= crate::tools::agent_tool::constants::max_subagent_spawn_depth() {
+            tools.retain(|tool| tool.name != crate::tools::agent_tool::constants::AGENT_TOOL_NAME);
+        }
+        tools
     };
     // Maps to: CC `runAgent.ts:504-506` appState permission-directory keys.
     let app_state = input.context.get_app_state();
@@ -1075,6 +1058,7 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
     agent_tool_use_context.fast_mode = Some(false);
     agent_tool_use_context.channel_permission_callbacks =
         input.context.channel_permission_callbacks.clone();
+    agent_tool_use_context.subagent_depth = input.context.subagent_depth + 1;
     // Maps to CC `runAgent.ts:716-719`: preserve tool use results for
     // subagents with viewable transcripts (in-process teammates).
     if input.preserve_tool_use_results {
@@ -1781,15 +1765,21 @@ async fn ask_parent_for_agent_permission(
     // Maps to: CC `inProcessRunner.ts:229-232` `workerBadge: identity.color ?
     // { name: identity.agentName, color: identity.color } : undefined` — the
     // standard leader-dialog leg carries the asking teammate's badge.
-    let worker_badge = teammate.as_ref().and_then(|identity| {
-        identity
-            .color
-            .clone()
-            .map(|color| crate::types::permissions::PermissionWorkerBadge {
-                name: identity.agent_name.clone(),
-                color: Some(color),
+    // Nyan Decision 5: Background subagent permission requests bubble up to main session with [agent_name].
+    let worker_badge = teammate
+        .as_ref()
+        .map(|identity| crate::types::permissions::PermissionWorkerBadge {
+            name: identity.agent_name.clone(),
+            color: identity.color.clone(),
+        })
+        .or_else(|| {
+            context.agent_type.as_ref().map(|agent_type| {
+                crate::types::permissions::PermissionWorkerBadge {
+                    name: format!("[{agent_type}]"),
+                    color: None,
+                }
             })
-    });
+        });
     context
         .interactive_permission_sink
         .ask(

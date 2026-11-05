@@ -231,6 +231,52 @@ pub struct AgentOutput {
     pub session_url: Option<String>,
 }
 
+static ACTIVE_SUBAGENTS_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+pub fn active_subagents_count() -> usize {
+    ACTIVE_SUBAGENTS_COUNT.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+pub fn reset_active_subagents_count_for_testing() {
+    ACTIVE_SUBAGENTS_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// RAII guard that tracks concurrently running subagents (Decision 7).
+#[derive(Debug)]
+pub struct SubagentConcurrencyGuard(bool);
+
+impl SubagentConcurrencyGuard {
+    pub fn try_acquire() -> Result<Self, String> {
+        let max = constants::max_concurrent_subagents();
+        let mut current = ACTIVE_SUBAGENTS_COUNT.load(std::sync::atomic::Ordering::SeqCst);
+        loop {
+            if current >= max {
+                return Err(format!(
+                    "Concurrent subagent limit of {max} reached. Please wait for running agents to complete; do not retry immediately."
+                ));
+            }
+            match ACTIVE_SUBAGENTS_COUNT.compare_exchange_weak(
+                current,
+                current + 1,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            ) {
+                Ok(_) => return Ok(Self(true)),
+                Err(actual) => current = actual,
+            }
+        }
+    }
+}
+
+impl Drop for SubagentConcurrencyGuard {
+    fn drop(&mut self) {
+        if self.0 {
+            ACTIVE_SUBAGENTS_COUNT.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+}
+
 /// Behavioral half of CC `AgentTool` — dispatched via `crate::tool::ToolCall`.
 pub(crate) struct AgentTool;
 
@@ -990,6 +1036,7 @@ fn continue_backgrounded_agent(
     model_override: Option<&str>,
     context: &crate::tool::ToolUseContext,
     worktree_info: Option<crate::utils::worktree::AgentWorktreeInfo>,
+    concurrency_guard: SubagentConcurrencyGuard,
 ) -> crate::tool::ToolResult {
     let cleanup_metadata = WorktreeCleanupMetadata::new(
         &backgrounded.agent_id,
@@ -1051,6 +1098,7 @@ fn continue_backgrounded_agent(
     );
 
     handle.spawn(async move {
+        let _guard = concurrency_guard;
         crate::utils::agent_context::run_with_agent_context(agent_context, || async move {
             let result = run_agent::run_agent(run_agent::RunAgentInput {
                 agent_definition: &background_agent,
@@ -1433,7 +1481,32 @@ fn selected_agent_definition(
                     .to_string(),
             );
         }
-        return Ok((fork_subagent::fork_agent_definition(), true));
+
+        // Nyan Decision 6: fork only takes effect if the resolved model is inherit / same profile as parent.
+        // Otherwise silently fall back to fresh.
+        let model_override = input_string(args, "model");
+        let parent_model = context
+            .main_loop_model
+            .clone()
+            .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
+
+        let is_same_profile = match model_override {
+            None => true,
+            Some(model) if model.eq_ignore_ascii_case("inherit") => true,
+            Some(model) => {
+                let resolved = crate::utils::model::agent::get_agent_model(
+                    None,
+                    &parent_model,
+                    Some(model),
+                    Some(context.tool_permission_context.mode),
+                );
+                resolved == parent_model
+            }
+        };
+
+        if is_same_profile {
+            return Ok((fork_subagent::fork_agent_definition(), true));
+        }
     }
     let requested = requested_subagent_type.unwrap_or("general-purpose");
     // Maps to CC `AgentTool.tsx:504-505` `const allAgents =
@@ -1441,22 +1514,8 @@ fn selected_agent_definition(
     // definitions snapshot, not a fresh disk read. A mid-turn edit to an agent
     // file must not change which agents this turn can spawn.
     let active_agents = &context.agent_definitions.active_agents;
-    // Maps to CC `AgentTool.tsx:506-514`: `const { allowedAgentTypes } =
-    // toolUseContext.options.agentDefinitions` narrows the candidate set BEFORE
-    // `filterDeniedAgents`, so an `Agent(x,y)` restriction reaches execution and
-    // not only the prompt listing. `allAgents` below stays unrestricted, exactly
-    // as CC's `agentExistsButDenied` lookup does. The field is the parent's:
-    // `runAgent.ts:687` hands the whole `agentDefinitions` object to subagent
-    // contexts, so a subagent still sees the main thread's restriction while its
-    // own `Agent(x)` frontmatter shapes only its tool pool (`runAgent.ts:501`).
-    let candidate_agents = match context.agent_definitions.allowed_agent_types.as_ref() {
-        Some(allowed) => active_agents
-            .iter()
-            .filter(|agent| allowed.contains(&agent.agent_type))
-            .cloned()
-            .collect::<Vec<_>>(),
-        None => active_agents.clone(),
-    };
+    // Nyan Decision 5: removed Agent(type) restriction
+    let candidate_agents = active_agents.clone();
     // Maps to CC `AgentTool.tsx:507-515` selected-agent filtering via
     // `permissions.ts#filterDeniedAgents` and `getDenyRuleForAgent`.
     let agents = crate::utils::permissions::permissions::filter_denied_agents(
@@ -1646,6 +1705,7 @@ fn launch_background_agent(
     parent_tool_use_id: Option<&str>,
     worktree_info: Option<crate::utils::worktree::AgentWorktreeInfo>,
     plan: AgentSpawnPlan,
+    concurrency_guard: SubagentConcurrencyGuard,
 ) -> crate::tool::ToolResult {
     let cleanup_metadata =
         WorktreeCleanupMetadata::new(&agent_id, &agent_definition.agent_type, description);
@@ -1707,6 +1767,7 @@ fn launch_background_agent(
     );
 
     handle.spawn(async move {
+        let _guard = concurrency_guard;
         crate::utils::agent_context::run_with_agent_context(agent_context, || async move {
             let result = run_agent::run_agent(run_agent::RunAgentInput {
                 agent_definition: &background_agent,
@@ -2108,15 +2169,24 @@ impl crate::tool::ToolCall for AgentTool {
             let requested_isolation = input_string(args, "isolation");
             let explicit_cwd = input_string(args, "cwd");
 
+            // Nyan Decision 7: Max subagent nesting depth check
+            let max_depth = constants::max_subagent_spawn_depth();
+            if context.subagent_depth >= max_depth {
+                return agent_tool_error(format!(
+                    "Maximum subagent nesting depth of {max_depth} reached. Complete your task directly using your tools."
+                ));
+            }
+
+            // Nyan Decision 7: Max concurrent subagents check
+            let concurrency_guard = match SubagentConcurrencyGuard::try_acquire() {
+                Ok(guard) => guard,
+                Err(error) => return agent_tool_error(error),
+            };
+
             let (agent_definition, is_fork_path) = match selected_agent_definition(args, context) {
                 Ok(selected) => selected,
                 Err(error) => return agent_tool_error(error),
             };
-            if let Err(error) =
-                validate_required_mcp_servers_for_agent(&agent_definition, context).await
-            {
-                return agent_tool_error(error);
-            }
             let effective_isolation =
                 effective_isolation_for_agent_tool(requested_isolation, &agent_definition);
             // Not-implemented notice, not a validation rule. Unreachable on an
@@ -2248,6 +2318,7 @@ impl crate::tool::ToolCall for AgentTool {
                     Some(&request.tool_use_id),
                     worktree_info,
                     spawn_plan,
+                    concurrency_guard,
                 );
             }
             // Everything below is CC's SYNCHRONOUS branch (`:1045-1150`). It is
@@ -2474,6 +2545,7 @@ impl crate::tool::ToolCall for AgentTool {
                         model_override,
                         &run_context,
                         worktree_info,
+                        concurrency_guard,
                     )
                 }
                 Err(error) => {
