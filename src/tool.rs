@@ -859,6 +859,8 @@ pub struct ToolUseContextOptions {
     pub debug: bool,
     pub verbose: bool,
     pub main_loop_model: Option<String>,
+    /// Profile `main_loop_model` belongs to; `None` is the session's main profile.
+    pub main_loop_profile: Option<String>,
     pub tools: Vec<crate::types::tools::Tool>,
     pub thinking_config: Option<crate::utils::thinking::ThinkingConfig>,
     pub mcp_state: crate::state::app_state_store::McpState,
@@ -1278,6 +1280,8 @@ pub struct ToolUseContext {
     /// Maps to official `ToolUseContext.options.mainLoopModel`, consumed by
     /// compact/autocompact thresholds and nested agent runtime options.
     pub main_loop_model: Option<String>,
+    /// Profile `main_loop_model` belongs to; `None` is the session's main profile.
+    pub main_loop_profile: Option<String>,
     /// Maps to official `ToolUseContext.options.thinkingConfig`.
     pub thinking_config: Option<crate::utils::thinking::ThinkingConfig>,
     /// Maps to CC `ToolUseContext.getAppState().fastMode` snapshot at query start.
@@ -1439,6 +1443,7 @@ impl ToolUseContext {
             refresh_tools: RefreshToolsCallback::default(),
             tools: crate::tools::get_tools(&tool_permission_context),
             main_loop_model: None,
+            main_loop_profile: None,
             thinking_config: None,
             fast_mode: None,
             effort_value: None,
@@ -1617,6 +1622,7 @@ impl ToolUseContext {
             debug: self.debug,
             verbose: self.verbose,
             main_loop_model: self.main_loop_model.clone(),
+            main_loop_profile: self.main_loop_profile.clone(),
             tools: self.tools.clone(),
             thinking_config: self.thinking_config.clone(),
             mcp_state: self.mcp_state.clone(),
@@ -1636,6 +1642,7 @@ impl ToolUseContext {
         self.debug = options.debug;
         self.verbose = options.verbose;
         self.main_loop_model = options.main_loop_model;
+        self.main_loop_profile = options.main_loop_profile;
         self.tools = options.tools;
         self.thinking_config = options.thinking_config;
         self.mcp_state = options.mcp_state;
@@ -1687,6 +1694,31 @@ impl ToolUseContext {
     pub fn with_tools(mut self, tools: Vec<Tool>) -> Self {
         self.tools = tools;
         self
+    }
+
+    /// What a request made from this session inherits (`inherit`, `@tier` with
+    /// nothing to name): its current model, effort and profile.
+    pub fn parent_selection(&self) -> crate::utils::model::agent::ParentSelection {
+        crate::utils::model::agent::ParentSelection {
+            model: self
+                .main_loop_model
+                .clone()
+                .unwrap_or_else(crate::utils::model::model::get_main_loop_model),
+            effort: self.effort_value,
+            profile: self.main_loop_profile.clone(),
+        }
+    }
+
+    /// Name of the profile this session's requests go through: the one it was
+    /// switched to, else `selection.main`.
+    pub fn effective_profile_name(&self) -> Option<String> {
+        self.main_loop_profile.clone().or_else(|| {
+            crate::utils::settings::get_initial_settings()
+                .nyan
+                .as_deref()
+                .and_then(|nyan| nyan.selection.as_ref())
+                .and_then(|selection| selection.main.clone())
+        })
     }
 
     pub fn with_main_loop_model(mut self, main_loop_model: impl Into<String>) -> Self {

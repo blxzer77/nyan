@@ -1059,13 +1059,10 @@ pub async fn classify_yolo_action(
 /// Classifier utility model resolves to @main by default (design §1).
 fn get_classifier_model() -> String {
     let settings = crate::utils::settings::get_initial_settings();
-    let nyan = settings.nyan.as_deref();
-    let main_model = crate::utils::model::model::get_main_loop_model();
     crate::utils::model::agent::resolve_utility_model_and_effort(
         "classifier",
-        &main_model,
-        None,
-        nyan,
+        &crate::utils::model::agent::ParentSelection::configured(),
+        settings.nyan.as_deref(),
     )
     .model
 }

@@ -231,6 +231,8 @@ pub struct TaskBudgetParam {
 #[derive(Debug, Clone)]
 pub struct Options {
     pub model: String,
+    /// Profile `model` belongs to; `None` is the session's main profile.
+    pub profile: Option<String>,
     pub is_non_interactive_session: bool,
     pub query_source: ApiQuerySource,
     pub agents: Vec<AgentDefinition>,
@@ -1664,6 +1666,7 @@ impl Options {
     pub fn new(model: String, query_source: ApiQuerySource) -> Self {
         Self {
             model,
+            profile: None,
             is_non_interactive_session: false,
             query_source,
             agents: Vec::new(),
@@ -1692,6 +1695,21 @@ impl Options {
             cached_mc_pinned_edits: Vec::new(),
             abort_signal: None,
         }
+    }
+
+    /// Options for a utility role (title, summary, ...): the model, effort and
+    /// profile its selection resolves to (design §1).
+    pub fn for_utility(role: &str, query_source: ApiQuerySource) -> Self {
+        let settings = crate::utils::settings::get_initial_settings();
+        let resolved = crate::utils::model::agent::resolve_utility_model_and_effort(
+            role,
+            &crate::utils::model::agent::ParentSelection::configured(),
+            settings.nyan.as_deref(),
+        );
+        let mut options = Self::new(resolved.model, query_source);
+        options.effort_value = resolved.effort;
+        options.profile = resolved.profile;
+        options
     }
 }
 
@@ -3497,9 +3515,13 @@ type SdkMessageStream = crate::services::provider::adapter::EventStream;
 
 /// The selected main profile as an adapter target, with the model of this
 /// attempt (a retry may have switched it).
-fn resolved_target_for(model: &str) -> crate::services::provider::adapter::ResolvedTarget {
-    let mut resolved = crate::utils::model::profile::resolve_main_profile(
+fn resolved_target_for(
+    model: &str,
+    profile: Option<&str>,
+) -> crate::services::provider::adapter::ResolvedTarget {
+    let mut resolved = crate::utils::model::profile::resolve_request_profile(
         &crate::utils::settings::get_initial_settings(),
+        profile,
     )
     .map(|profile| crate::services::provider::adapter::ResolvedTarget::from_profile(&profile))
     .unwrap_or_else(|_| crate::services::provider::adapter::ResolvedTarget {
@@ -3573,7 +3595,10 @@ async fn open_main_stream_with_fallbacks(
         beta_capture,
     } = *request;
     let settings = crate::utils::settings::get_initial_settings();
-    let primary = crate::utils::model::profile::resolve_main_profile(&settings);
+    let primary = crate::utils::model::profile::resolve_request_profile(
+        &settings,
+        options.profile.as_deref(),
+    );
     let primary_is_anthropic = primary
         .as_ref()
         .map(|profile| {
@@ -3853,7 +3878,8 @@ async fn open_sdk_message_stream_with_retry(
                 apply_sdk_private_body_overrides(&mut request_options, &private_body_overrides);
 
                 let message_count = params.messages.len();
-                let resolved = resolved_target_for(&attempt_options.model);
+                let resolved =
+                    resolved_target_for(&attempt_options.model, attempt_options.profile.as_deref());
                 let adapter = crate::services::provider::anthropic::adapter::AnthropicAdapter::new(
                     target,
                     Some(attempt_options.query_source.clone()),
@@ -4510,7 +4536,10 @@ async fn execute_non_streaming_fallback_to_assistant(
     initial_consecutive_529_errors: Option<u32>,
 ) -> anyhow::Result<AssistantMessage> {
     let settings = crate::utils::settings::get_initial_settings();
-    let profile = crate::utils::model::profile::resolve_main_profile(&settings);
+    let profile = crate::utils::model::profile::resolve_request_profile(
+        &settings,
+        options.profile.as_deref(),
+    );
     if let Ok(profile) = profile
         && profile.protocol != crate::utils::settings::nyan::ProviderProtocol::AnthropicMessages
     {
@@ -4535,6 +4564,7 @@ async fn execute_non_streaming_fallback_to_assistant(
     // into the typed assistant item yielded by the query generator.
     let result = execute_non_streaming_request_with_initial_consecutive_529_errors(
         &options.model,
+        options.profile.as_deref(),
         &options.query_source,
         options.fallback_model.as_deref(),
         thinking_config,
@@ -4695,6 +4725,7 @@ fn stream_error_is_529(error: &anyhow::Error) -> bool {
 ///
 pub async fn execute_non_streaming_request(
     model: &str,
+    profile: Option<&str>,
     source: &str,
     fallback_model: Option<&str>,
     thinking_config: &ThinkingConfig,
@@ -4702,6 +4733,7 @@ pub async fn execute_non_streaming_request(
 ) -> anyhow::Result<serde_json::Value> {
     execute_non_streaming_request_with_initial_consecutive_529_errors(
         model,
+        profile,
         source,
         fallback_model,
         thinking_config,
@@ -4716,6 +4748,7 @@ pub async fn execute_non_streaming_request(
 
 async fn execute_non_streaming_request_with_initial_consecutive_529_errors(
     model: &str,
+    profile: Option<&str>,
     source: &str,
     fallback_model: Option<&str>,
     thinking_config: &ThinkingConfig,
@@ -4743,15 +4776,18 @@ async fn execute_non_streaming_request_with_initial_consecutive_529_errors(
     let get_client_slot = std::sync::Arc::clone(&client_slot);
     let get_client_model = model.to_string();
     let get_client_source = source.to_string();
+    let get_client_profile = profile.map(str::to_string);
 
     let result = crate::services::api::with_retry::with_retry(
         move || {
             let client_slot = std::sync::Arc::clone(&get_client_slot);
             let model = get_client_model.clone();
             let source = get_client_source.clone();
+            let profile = get_client_profile.clone();
             async move {
                 let client = crate::services::provider::anthropic::client::get_anthropic_client(
-                    crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_main_profile(
+                    crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_profile(
+                        profile.as_deref(),
                         0,
                         Some(model),
                         Some(source),
@@ -5031,9 +5067,10 @@ fn build_non_streaming_request_body(
 
 /// Maps to: CC services/api/claude.ts:3241-3291
 ///
-/// Convenience wrapper for small/fast model queries (historically Haiku, now
-/// may be Sonnet depending on configuration). Uses queryModelWithoutStreaming
-/// internally with thinking disabled and no tools.
+/// Convenience wrapper for small/fast model queries (historically Haiku). The
+/// caller picks the utility role's model through [`Options::for_utility`]; this
+/// uses queryModelWithoutStreaming internally with thinking disabled and no
+/// tools.
 ///
 pub async fn query_haiku(
     system_prompt: &SystemPrompt,
@@ -5042,8 +5079,7 @@ pub async fn query_haiku(
     options: &Options,
 ) -> anyhow::Result<AssistantMessage> {
     let messages = single_user_prompt_messages(user_prompt);
-    let single_shot_options =
-        single_shot_query_options(options, Some(get_small_fast_model()), output_format);
+    let single_shot_options = single_shot_query_options(options, None, output_format);
 
     query_model_without_streaming(
         &messages,
@@ -8714,6 +8750,7 @@ mod tests {
         let request_options_calls = std::sync::atomic::AtomicUsize::new(0);
         let result = execute_non_streaming_request_with_initial_consecutive_529_errors(
             "claude-sonnet-4-20250514",
+            None,
             "repl_main_thread",
             None,
             &ThinkingConfig::Disabled,

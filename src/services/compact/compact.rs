@@ -1119,14 +1119,9 @@ fn compact_summary_resolution(
     context: &crate::tool::ToolUseContext,
 ) -> crate::utils::model::agent::ResolvedAgentModel {
     let settings = crate::utils::settings::get_initial_settings();
-    let parent_model = context
-        .main_loop_model
-        .clone()
-        .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
     crate::utils::model::agent::resolve_utility_model_and_effort(
         "compaction",
-        &parent_model,
-        context.effort_value,
+        &context.parent_selection(),
         settings.nyan.as_deref(),
     )
 }
@@ -1163,7 +1158,8 @@ fn compact_fork_params(
     let summary_model = summary_resolution.model.clone();
     let mut summary_context = context.clone();
     summary_context.main_loop_model = Some(summary_model.clone());
-    summary_context.effort_value = Some(summary_resolution.effort);
+    summary_context.main_loop_profile = summary_resolution.profile.clone();
+    summary_context.effort_value = summary_resolution.effort;
     crate::utils::forked_agent::ForkedAgentParams {
         prompt_messages: vec![Message::User(summary_request)],
         cache_safe_params: crate::utils::forked_agent::CacheSafeParams {
@@ -1254,7 +1250,8 @@ async fn stream_compact_summary_fallback(
     options.is_non_interactive_session = context.is_non_interactive_session;
     options.has_append_system_prompt = context.append_system_prompt.is_some();
     options.max_output_tokens_override = Some(compact_summary_max_output_tokens(&model));
-    options.effort_value = Some(summary_resolution.effort);
+    options.effort_value = summary_resolution.effort;
+    options.profile = summary_resolution.profile.clone();
     // API request descriptors are narrower than ToolUseContext agent
     // definitions. The text-only compact fallback exposes no agent tools.
     options.agents = Vec::new();

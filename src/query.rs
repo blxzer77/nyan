@@ -4468,6 +4468,7 @@ fn build_call_model_request(
     );
     let mut options =
         crate::services::api::claude::Options::new(model, query_source.as_api_source().to_string());
+    options.profile = tool_use_context.main_loop_profile.clone();
     options.query_source = query_source.as_api_source().to_string();
     // Maps to CC `services/api/claude.ts:697` `agentId?: AgentId // Only set
     // for subagents`, sourced the way `query.ts:588-590` sources the dump key:

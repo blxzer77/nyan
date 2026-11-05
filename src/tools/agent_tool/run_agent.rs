@@ -689,27 +689,22 @@ fn agent_read_file_state(
     }
 }
 
-/// Resolves the effective effort for this agent run along the unified resolution chain.
-fn effective_agent_effort(
+/// The model, effort and profile this agent run resolves to, along the unified
+/// chain: call parameter, agent definition, `selection.subagents.<type>`,
+/// `selection.subagent`, then the type default.
+fn resolve_agent_selection(
     agent_definition: &AgentDefinition,
     model_override: Option<&str>,
     context: &ToolUseContext,
-) -> Option<crate::utils::effort::Effort> {
-    let parent_model = context
-        .main_loop_model
-        .clone()
-        .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
+) -> crate::utils::model::agent::ResolvedAgentModel {
     let settings = crate::utils::settings::get_initial_settings();
-    let nyan = settings.nyan.as_deref();
-    let resolved = crate::utils::model::agent::resolve_subagent_model_and_effort(
+    crate::utils::model::agent::resolve_subagent_model_and_effort(
         model_override,
         agent_definition.model.as_deref(),
         &agent_definition.agent_type,
-        &parent_model,
-        context.effort_value,
-        nyan,
-    );
-    Some(resolved.effort)
+        &context.parent_selection(),
+        settings.nyan.as_deref(),
+    )
 }
 
 pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutcome> {
@@ -739,7 +734,9 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
             description: input.description.map(ToOwned::to_owned),
         },
     );
-    let model = resolve_agent_model(input.agent_definition, input.model_override, input.context);
+    let selection =
+        resolve_agent_selection(input.agent_definition, input.model_override, input.context);
+    let model = selection.model.clone();
     let caller_prompt_messages = input.prompt_messages.clone().unwrap_or_else(|| {
         vec![Message::User(crate::types::message::UserMessage {
             uuid: uuid::Uuid::new_v4().to_string(),
@@ -1004,6 +1001,7 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
     agent_options.commands = std::sync::Arc::new(Vec::new());
     agent_options.tools = resolved_tools;
     agent_options.main_loop_model = Some(model);
+    agent_options.main_loop_profile = selection.profile.clone();
     // Maps to CC `runAgent.ts:679-684`: "For fork children (useExactTools),
     // inherit thinking config to match the parent's API request prefix for
     // prompt cache hits. For regular sub-agents, disable thinking to control
@@ -1073,8 +1071,7 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
         .agent_definition
         .critical_system_reminder_experimental
         .clone();
-    agent_tool_use_context.effort_value =
-        effective_agent_effort(input.agent_definition, input.model_override, input.context);
+    agent_tool_use_context.effort_value = selection.effort;
     agent_tool_use_context.fast_mode = Some(false);
     agent_tool_use_context.channel_permission_callbacks =
         input.context.channel_permission_callbacks.clone();
@@ -1990,29 +1987,6 @@ fn forward_subagent_progress_from_message(
     }
 }
 
-/// Resolves the effective model for this agent run along the unified resolution chain.
-pub fn resolve_agent_model(
-    agent_definition: &AgentDefinition,
-    model_override: Option<&str>,
-    context: &ToolUseContext,
-) -> String {
-    let parent_model = context
-        .main_loop_model
-        .clone()
-        .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
-    let settings = crate::utils::settings::get_initial_settings();
-    let nyan = settings.nyan.as_deref();
-    crate::utils::model::agent::resolve_subagent_model_and_effort(
-        model_override,
-        agent_definition.model.as_deref(),
-        &agent_definition.agent_type,
-        &parent_model,
-        context.effort_value,
-        nyan,
-    )
-    .model
-}
-
 /// Maps to: CC `runAgent.ts:906-933` `getAgentSystemPrompt`.
 /// The existing Option-valued provider carrier represents unavailable prompts
 /// with None; successful empty strings remain successful. Dynamic thrown JS
@@ -2300,33 +2274,39 @@ mod tests {
         );
     }
 
-    #[test]
-    fn effective_agent_effort_prefers_explicit_effort_then_inherits_parent() {
+    fn general_agent(model: Option<&str>) -> AgentDefinition {
         let mut agent = AgentDefinition::new(
             "general-purpose",
             "Use general",
             AgentDefinitionSource::ProjectSettings,
         );
-        let context =
-            ToolUseContext::default().with_effort_value(Some(crate::utils::effort::Effort::High));
-        // Default inherits parent effort
-        assert_eq!(
-            effective_agent_effort(&agent, None, &context),
-            Some(crate::utils::effort::Effort::High)
-        );
+        agent.model = model.map(str::to_string);
+        agent
+    }
 
-        // Explicit effort on agent definition model ref (ref:effort format)
-        agent.model = Some("inherit:max".to_string());
+    #[test]
+    fn effort_prefers_the_explicit_layer_then_inherits_the_parent() {
+        use crate::utils::effort::Effort;
+        let context = ToolUseContext::default()
+            .with_main_loop_model("parent-model")
+            .with_effort_value(Some(Effort::High));
+        let effort = |agent: &AgentDefinition, model_override: Option<&str>| {
+            resolve_agent_selection(agent, model_override, &context).effort
+        };
+        // No layer names a model: inherit, with the parent's effort.
+        assert_eq!(effort(&general_agent(None), None), Some(Effort::High));
+        // `ref:effort` on the agent definition.
         assert_eq!(
-            effective_agent_effort(&agent, None, &context),
-            Some(crate::utils::effort::Effort::Max)
+            effort(&general_agent(Some("inherit:max")), None),
+            Some(Effort::Max)
         );
-
-        // Tool override with explicit effort takes precedence
+        // The call parameter beats the agent definition.
         assert_eq!(
-            effective_agent_effort(&agent, Some(":off"), &context),
-            Some(crate::utils::effort::Effort::Off)
+            effort(&general_agent(Some("inherit:max")), Some(":off")),
+            Some(Effort::Off)
         );
+        // A temporary model takes the model default, not the parent's depth.
+        assert_eq!(effort(&general_agent(Some("provider/other")), None), None);
     }
 
     #[test]
@@ -2334,25 +2314,32 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
 
         let context = ToolUseContext::default().with_main_loop_model("parent-sonnet-model");
-        let mut agent = AgentDefinition::new(
-            "general-purpose",
-            "Use general",
-            AgentDefinitionSource::ProjectSettings,
-        );
-        agent.model = Some("provider/fast-model".to_string());
+        let model = |agent: &AgentDefinition, model_override: Option<&str>| {
+            resolve_agent_selection(agent, model_override, &context).model
+        };
+        let agent = general_agent(Some("provider/fast-model"));
         assert_eq!(
-            resolve_agent_model(&agent, Some("provider/override-model"), &context),
+            model(&agent, Some("provider/override-model")),
             "provider/override-model"
         );
+        assert_eq!(model(&agent, None), "provider/fast-model");
         assert_eq!(
-            resolve_agent_model(&agent, None, &context),
-            "provider/fast-model"
-        );
-        agent.model = Some("inherit".to_string());
-        assert_eq!(
-            resolve_agent_model(&agent, None, &context),
+            model(&general_agent(Some("inherit")), None),
             "parent-sonnet-model"
         );
+    }
+
+    #[test]
+    fn an_inheriting_agent_follows_the_parents_profile() {
+        let mut context = ToolUseContext::default().with_main_loop_model("parent-model");
+        context.main_loop_profile = Some("deep".to_string());
+        let inherited = resolve_agent_selection(&general_agent(None), None, &context);
+        assert_eq!(inherited.model, "parent-model");
+        assert_eq!(inherited.profile.as_deref(), Some("deep"));
+        // A temporary model leaves the parent's profile behind.
+        let temporary =
+            resolve_agent_selection(&general_agent(Some("provider/other")), None, &context);
+        assert_eq!(temporary.profile, None);
     }
 
     #[test]

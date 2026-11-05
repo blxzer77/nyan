@@ -208,34 +208,21 @@ fn text_block(text: impl Into<String>) -> TextBlockParam {
 /// do not bypass this for side calls).
 pub async fn side_query(opts: SideQueryOptions) -> anyhow::Result<Message> {
     let settings = crate::utils::settings::get_initial_settings();
-    let main_model = crate::utils::model::model::get_main_loop_model();
     let utility = crate::utils::model::agent::resolve_utility_model_and_effort(
         "side_query",
-        &main_model,
-        None,
+        &crate::utils::model::agent::ParentSelection::configured(),
         settings.nyan.as_deref(),
     );
+    // A caller that names no model, or the utility model itself, runs on the
+    // utility selection; any other model id is the caller's own choice and goes
+    // through the main profile as before.
     let use_utility_selection = opts.model.trim().is_empty() || opts.model == utility.model;
-    let profile = if use_utility_selection {
-        utility
-            .profile
-            .as_deref()
-            .map(|name| {
-                crate::utils::model::profile::resolve_profile(
-                    settings
-                        .nyan
-                        .as_deref()
-                        .expect("utility profile requires nyan settings"),
-                    name,
-                )
-            })
-            .transpose()?
-            .unwrap_or(crate::utils::model::profile::resolve_main_profile(
-                &settings,
-            )?)
-    } else {
-        crate::utils::model::profile::resolve_main_profile(&settings)?
-    };
+    let profile = crate::utils::model::profile::resolve_request_profile(
+        &settings,
+        use_utility_selection
+            .then_some(utility.profile.as_deref())
+            .flatten(),
+    )?;
     let request_model = if use_utility_selection {
         utility.model.clone()
     } else {
@@ -253,7 +240,8 @@ pub async fn side_query(opts: SideQueryOptions) -> anyhow::Result<Message> {
 
     // Maps to: CC `getAnthropicClient({ maxRetries, model, source: 'side_query' })`.
     let client = crate::services::provider::anthropic::client::get_anthropic_client(
-        crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_main_profile(
+        crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_profile(
+            Some(profile.profile.as_str()),
             max_retries,
             Some(request_model.clone()),
             Some("side_query".to_string()),

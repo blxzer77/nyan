@@ -15,13 +15,10 @@ pub const DEFAULT_OPUS_MODEL: &str = "claude-opus-4-6";
 /// Auxiliary requests use the utility model resolution which defaults to @light (design §1).
 pub fn get_small_fast_model() -> String {
     let settings = crate::utils::settings::get_initial_settings();
-    let nyan = settings.nyan.as_deref();
-    let main_model = get_main_loop_model();
     crate::utils::model::agent::resolve_utility_model_and_effort(
         "side_query",
-        &main_model,
-        None,
-        nyan,
+        &crate::utils::model::agent::ParentSelection::configured(),
+        settings.nyan.as_deref(),
     )
     .model
 }

@@ -127,32 +127,45 @@ fn log_outcome(label: &str, outcome: &ExtractOutcome) {
     }
 }
 
+/// The model, effort and profile the extraction fork runs on, as the context
+/// it runs in plus the dedicated model to name. The model is `Some` exactly
+/// when the fork cannot share the session's prompt prefix, which is when it is
+/// a different model or routed through a different profile.
+fn memory_fork(
+    settings: &crate::utils::settings::nyan::MemorySettings,
+    context: &ToolUseContext,
+) -> (ToolUseContext, Option<String>) {
+    let memory = memory_resolution(settings, context);
+    let dedicated = memory.model != context.parent_selection().model
+        || memory
+            .profile
+            .as_ref()
+            .is_some_and(|profile| context.effective_profile_name().as_ref() != Some(profile));
+    let mut fork = context.clone();
+    fork.effort_value = memory.effort;
+    fork.main_loop_profile = memory.profile;
+    (fork, dedicated.then_some(memory.model))
+}
+
 fn memory_resolution(
     settings: &crate::utils::settings::nyan::MemorySettings,
     context: &ToolUseContext,
 ) -> crate::utils::model::agent::ResolvedAgentModel {
     let initial_settings = crate::utils::settings::get_initial_settings();
     let nyan = initial_settings.nyan.as_deref();
-    let parent_model = context
-        .main_loop_model
-        .clone()
-        .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
-    if let Some(spec) = settings.extract_model.as_deref() {
-        crate::utils::model::agent::resolve_subagent_model_and_effort(
+    let parent = context.parent_selection();
+    match settings.extract_model.as_deref() {
+        // The dedicated model reads like any other `ref[:effort]` spec.
+        Some(spec) => crate::utils::model::agent::resolve_subagent_model_and_effort(
             Some(spec),
             None,
             "general-purpose",
-            &parent_model,
-            context.effort_value,
+            &parent,
             nyan,
-        )
-    } else {
-        crate::utils::model::agent::resolve_utility_model_and_effort(
-            "memory",
-            &parent_model,
-            context.effort_value,
-            nyan,
-        )
+        ),
+        None => {
+            crate::utils::model::agent::resolve_utility_model_and_effort("memory", &parent, nyan)
+        }
     }
 }
 
@@ -278,16 +291,14 @@ pub(crate) async fn extract_if_due_with_deps<D: crate::query::deps::QueryDeps>(
     };
     // Boxed so the snapshot adds one pointer to this future, not its state.
     let shadow_before = Box::pin(snapshot_before_memory_run()).await;
-    let memory = memory_resolution(&settings, &context);
-    let mut extraction_context = context.clone();
-    extraction_context.effort_value = Some(memory.effort);
+    let (extraction_context, extract_model) = memory_fork(&settings, &context);
     let outcome = super::run_extract_memories_with_deps(
         extraction_context,
         cache_safe_params,
         messages,
         cursor,
         read_index(),
-        Some(memory.model),
+        extract_model,
         settings.extract_max_turns(),
         // Background extraction is bounded by the same ceiling as the forced
         // path so a wedged fork cannot hold the gate forever.
@@ -371,16 +382,14 @@ pub(crate) async fn extract_before_compact_with_deps<D: crate::query::deps::Quer
     };
     // Boxed so the snapshot adds one pointer to this future, not its state.
     let shadow_before = Box::pin(snapshot_before_memory_run()).await;
-    let memory = memory_resolution(&settings, context);
-    let mut extraction_context = context.clone();
-    extraction_context.effort_value = Some(memory.effort);
+    let (extraction_context, extract_model) = memory_fork(&settings, context);
     let outcome = super::run_extract_memories_with_deps(
         extraction_context,
         cache_safe_params,
         messages.to_vec(),
         cursor,
         read_index(),
-        Some(memory.model),
+        extract_model,
         settings.extract_max_turns(),
         remaining,
         deps,

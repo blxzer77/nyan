@@ -381,6 +381,24 @@ pub fn resolve_main_profile(
     resolve_profile(nyan, profile_name)
 }
 
+/// The profile a request is routed through: the one it names, else the session's
+/// main profile.
+pub fn resolve_request_profile(
+    settings: &SettingsJson,
+    profile: Option<&str>,
+) -> Result<ResolvedModelProfile, ProfileResolutionError> {
+    match profile {
+        Some(name) => {
+            let nyan = settings
+                .nyan
+                .as_ref()
+                .ok_or(ProfileResolutionError::MissingSettings)?;
+            resolve_profile(nyan, name)
+        }
+        None => resolve_main_profile(settings),
+    }
+}
+
 /// Resolves a tier ref (`@main`, `@light`, `@heavy`) or profile name to an effective profile name.
 /// `light` and `heavy` fall back to `main` if not explicitly configured (design §1).
 pub fn resolve_selection_profile_name<'a>(
