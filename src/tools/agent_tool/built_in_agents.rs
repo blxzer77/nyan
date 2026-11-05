@@ -10,16 +10,22 @@ use super::built_in::{
 use super::load_agents_dir::AgentDefinition;
 
 /// Maps to CC `areExplorePlanAgentsEnabled()`.
+///
+/// Maps to: CC `builtInAgents.ts:13-20` `areExplorePlanAgentsEnabled` —
+/// `feature('BUILTIN_EXPLORE_PLAN_AGENTS')` is ON in production builds
+/// (`scripts/build.ts:44`), then the `tengu_amber_stoat` GrowthBook gate
+/// (fallback true). GrowthBook delivery is out of scope for this port
+/// (user ruling): the gate lives as a hardcoded switch-table entry.
 pub fn are_explore_plan_agents_enabled() -> bool {
-    true
+    crate::utils::feature_flags::feature_enabled(
+        crate::utils::feature_flags::FeatureFlag::BuiltinExplorePlanAgents,
+    )
 }
 
-/// Whether review agent is enabled (always true as a core built-in agent in nyan).
-pub fn is_review_agent_enabled() -> bool {
-    true
-}
-
-/// Returns the built-in agents: general-purpose, explore, plan, review.
+/// Maps to CC `getBuiltInAgents()` (`builtInAgents.ts:22-72`), cut down to
+/// nyan's four: general-purpose, Explore, Plan and review. The statusline and
+/// claude-code-guide agents are gone, and review replaces verification
+/// unconditionally.
 pub fn get_built_in_agents() -> Vec<AgentDefinition> {
     // Maps to official SDK/non-interactive escape hatch.
     if crate::utils::env_utils::is_env_truthy(
@@ -29,22 +35,27 @@ pub fn get_built_in_agents() -> Vec<AgentDefinition> {
         return Vec::new();
     }
 
-    vec![
-        general_purpose_agent(),
-        explore_agent(),
-        plan_agent(),
-        review_agent(),
-    ]
+    let mut agents = vec![general_purpose_agent()];
+    if are_explore_plan_agents_enabled() {
+        agents.extend([explore_agent(), plan_agent()]);
+    }
+    agents.push(review_agent());
+    agents
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::bootstrap::state::IsInteractiveGuard;
+    use crate::tools::agent_tool::load_agents_dir::AgentDefinitionSource;
     use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
 
+    /// Pins every input `getBuiltInAgents()` reads: the one variable, and the
+    /// session's interactivity — `IS_INTERACTIVE` together with its
+    /// `cfg(test)`-only env overrides (`bootstrap/state.rs`), so an ambient
+    /// `CLAUDE_CODE_NON_INTERACTIVE` cannot turn the interactive case headless.
+    /// The caller holds `TEST_ENV_LOCK`.
     fn pin_inputs(
-        entrypoint: Option<&str>,
         disable_built_in_agents: Option<&str>,
         non_interactive: bool,
     ) -> (Vec<EnvVarGuard>, IsInteractiveGuard) {
@@ -53,7 +64,6 @@ mod tests {
             None => EnvVarGuard::unset(key),
         };
         let env = vec![
-            pin("CLAUDE_CODE_ENTRYPOINT", entrypoint),
             pin(
                 "CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS",
                 disable_built_in_agents,
@@ -68,10 +78,10 @@ mod tests {
     }
 
     #[test]
-    fn built_in_agents_returns_four_nyan_builtins() {
+    fn built_in_agents_are_exactly_the_four_nyan_types() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let agents = {
-            let _inputs = pin_inputs(None, None, false);
+            let _inputs = pin_inputs(None, false);
             get_built_in_agents()
         };
         assert_eq!(
@@ -81,19 +91,39 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["general-purpose", "Explore", "Plan", "review"]
         );
+        assert!(
+            agents
+                .iter()
+                .all(|agent| agent.source == AgentDefinitionSource::BuiltIn)
+        );
+    }
+
+    #[test]
+    fn removed_builtins_are_not_registered() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let agents = {
+            let _inputs = pin_inputs(None, false);
+            get_built_in_agents()
+        };
+        for removed in ["statusline-setup", "claude-code-guide", "verification"] {
+            assert!(
+                agents.iter().all(|agent| agent.agent_type != removed),
+                "{removed} must not be a built-in agent"
+            );
+        }
     }
 
     #[test]
     fn built_in_agents_honor_noninteractive_sdk_disable_gate() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let disabled = {
-            let _inputs = pin_inputs(None, Some("true"), true);
+            let _inputs = pin_inputs(Some("true"), true);
             get_built_in_agents()
         };
         assert!(disabled.is_empty());
 
         let interactive = {
-            let _inputs = pin_inputs(None, Some("true"), false);
+            let _inputs = pin_inputs(Some("true"), false);
             get_built_in_agents()
         };
         assert_eq!(interactive.len(), 4);
@@ -103,7 +133,7 @@ mod tests {
     fn built_in_agent_registry_assembles_expected_agent_modules() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let agents = {
-            let _inputs = pin_inputs(None, None, false);
+            let _inputs = pin_inputs(None, false);
             get_built_in_agents()
         };
         let review = agents
@@ -112,11 +142,16 @@ mod tests {
             .unwrap();
         assert_eq!(review.color.as_deref(), Some("red"));
         assert!(review.background);
+        // Review is read-only: it cannot edit, write, or spawn agents.
+        let disallowed = review.disallowed_tools.as_deref().unwrap_or_default();
+        assert!(disallowed.iter().any(|tool| tool == "Agent"));
+        assert!(disallowed.iter().any(|tool| tool == "Edit"));
+        assert!(disallowed.iter().any(|tool| tool == "Write"));
 
-        let general = agents
+        let explore = agents
             .iter()
-            .find(|agent| agent.agent_type == "general-purpose")
+            .find(|agent| agent.agent_type == "Explore")
             .unwrap();
-        assert_eq!(general.agent_type, "general-purpose");
+        assert!(explore.omit_claude_md);
     }
 }
