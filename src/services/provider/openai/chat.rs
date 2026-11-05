@@ -295,7 +295,7 @@ pub fn build_body(target: &ResolvedTarget, request: &ModelRequest, compat: &Comp
         }
     }
     if target.capabilities.thinking
-        && let Some(effort) = reasoning_effort(request)
+        && let Some(effort) = reasoning_effort(request, target)
     {
         body["reasoning_effort"] = json!(effort);
     }
@@ -332,6 +332,14 @@ pub fn build_body(target: &ResolvedTarget, request: &ModelRequest, compat: &Comp
         };
         apply_anthropic_cache_control(&mut messages, body.get_mut("tools"), &cache_control);
         body["messages"] = json!(messages);
+    }
+
+    if let Some(serde_json::Value::Object(extra)) = &target.extra {
+        if let Some(obj) = body.as_object_mut() {
+            for (k, v) in extra {
+                obj.insert(k.clone(), v.clone());
+            }
+        }
     }
 
     body

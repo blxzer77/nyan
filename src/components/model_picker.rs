@@ -184,18 +184,11 @@ pub(crate) fn model_supports_max_effort(value: &str) -> bool {
 }
 
 fn model_effort_level_from_name(level: &str) -> Option<ModelEffortLevel> {
-    Some(match level {
-        "low" => ModelEffortLevel::Low,
-        "medium" => ModelEffortLevel::Medium,
-        "high" => ModelEffortLevel::High,
-        "xhigh" => ModelEffortLevel::Xhigh,
-        "max" => ModelEffortLevel::Max,
-        _ => return None,
-    })
+    Effort::from_str_loose(level)
 }
 
 fn effort_level_from_label(level: &str) -> ModelEffortLevel {
-    model_effort_level_from_name(level).unwrap_or(ModelEffortLevel::High)
+    model_effort_level_from_name(level).unwrap_or(Effort::Medium)
 }
 
 /// Maps to: CC `components/ModelPicker.tsx` initializing effort from
@@ -203,32 +196,17 @@ fn effort_level_from_label(level: &str) -> ModelEffortLevel {
 pub(crate) fn model_effort_from_value(
     value: Option<&crate::utils::effort::EffortValue>,
 ) -> ModelEffortLevel {
-    value
-        .map(crate::utils::effort::convert_effort_value_to_level)
-        .map(effort_level_from_label)
-        .unwrap_or(ModelEffortLevel::High)
+    value.copied().unwrap_or(Effort::Medium)
 }
 
 /// Maps to: CC `components/ModelPicker.tsx`:132-133
 /// `getDefaultEffortLevelForOption(...)`.
-pub(crate) fn default_effort_level_for_option(value: &str) -> ModelEffortLevel {
-    resolve_option_model(value)
-        .as_deref()
-        .and_then(crate::utils::effort::get_default_effort_for_model)
-        .as_ref()
-        .map(crate::utils::effort::convert_effort_value_to_level)
-        .map(effort_level_from_label)
-        .unwrap_or(ModelEffortLevel::High)
+pub(crate) fn default_effort_level_for_option(_value: &str) -> ModelEffortLevel {
+    Effort::Medium
 }
 
-pub(crate) fn displayed_effort(effort: ModelEffortLevel, focused_value: &str) -> ModelEffortLevel {
-    if effort == ModelEffortLevel::Max && !model_supports_max_effort(focused_value) {
-        ModelEffortLevel::High
-    } else if effort == ModelEffortLevel::Xhigh && !model_supports_xhigh_effort(focused_value) {
-        ModelEffortLevel::High
-    } else {
-        effort
-    }
+pub(crate) fn displayed_effort(effort: ModelEffortLevel, _focused_value: &str) -> ModelEffortLevel {
+    effort
 }
 
 /// Maps to: CC `utils/ultracode.ts#modelSupportsXhighEffort` as consumed by
@@ -241,46 +219,17 @@ pub(crate) fn model_supports_xhigh_effort(value: &str) -> bool {
 
 /// Maps to: CC `components/ModelPicker.tsx` `cycleEffortLevel` / `lmg`.
 ///
-/// Official cycle starts from `getEligibleEffortLevels` (`mQe` / `AU`) and
-/// then drops `max` / `xhigh` unless the focused model supports them.
+/// Cycles through the four unified effort levels: `off < medium < high < max`.
 pub(crate) fn cycle_effort(
     current: ModelEffortLevel,
     direction: KeyCode,
-    focused_value: &str,
+    _focused_value: &str,
 ) -> ModelEffortLevel {
-    if !model_supports_effort(focused_value) {
-        return current;
-    }
-    let include_max = model_supports_max_effort(focused_value);
-    let include_xhigh = model_supports_xhigh_effort(focused_value);
-    let resolved = resolve_option_model(focused_value).unwrap_or_default();
-    let levels: Vec<ModelEffortLevel> =
-        crate::utils::ultracode::get_eligible_effort_levels(&resolved)
-            .into_iter()
-            .filter(|level| {
-                (*level != "max" || include_max) && (*level != "xhigh" || include_xhigh)
-            })
-            .filter_map(model_effort_level_from_name)
-            .collect();
-    let levels = if levels.is_empty() {
-        vec![
-            ModelEffortLevel::Low,
-            ModelEffortLevel::Medium,
-            ModelEffortLevel::High,
-        ]
-    } else {
-        levels
-    };
-    let normalized_current = displayed_effort(current, focused_value);
+    let levels = Effort::ALL;
     let current_index = levels
         .iter()
-        .position(|level| *level == normalized_current)
-        .unwrap_or_else(|| {
-            levels
-                .iter()
-                .position(|level| *level == ModelEffortLevel::High)
-                .unwrap_or(0)
-        });
+        .position(|level| *level == current)
+        .unwrap_or(1);
     match direction {
         KeyCode::Right => levels[(current_index + 1) % levels.len()],
         KeyCode::Left => levels[(current_index + levels.len() - 1) % levels.len()],
@@ -292,22 +241,20 @@ pub(crate) fn cycle_effort(
 /// gate (`hasToggledEffort && modelSupportsEffort`).
 pub(crate) fn selected_picker_effort(
     effort: ModelEffortLevel,
-    selected_value: &str,
+    _selected_value: &str,
     has_toggled: bool,
 ) -> Option<ModelEffortLevel> {
-    if !has_toggled || !model_supports_effort(selected_value) {
+    if !has_toggled {
         return None;
     }
     Some(effort)
 }
 
-/// Maps to: CC ModelPicker `handleSelect` / `bt` — persist persistable
-/// levels (`w5e`) and write `AppState.effortValue` / `sessionEffort`.
-/// @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
+/// Enter only changes the current session.
 pub(crate) fn apply_model_picker_selection(
     state: &mut crate::state::app_state_store::AppState,
     model: Option<String>,
-    selected_value: &str,
+    _selected_value: &str,
     picked_effort: ModelEffortLevel,
     has_toggled_effort: bool,
 ) -> bool {
@@ -315,57 +262,17 @@ pub(crate) fn apply_model_picker_selection(
         && state.fast_mode
         && !crate::utils::fast_mode::is_fast_mode_supported_by_model(model.as_deref());
     state.main_loop_model = model.clone();
-    // @nyan offset: CC persists a picker choice to user settings `model`
-    // (`/model` promises "this session and future Claude Code sessions"), but
-    // this port wrote only `effortLevel`, so a pick was forgotten on restart.
-    // `Value::Null` deletes the key, restoring the default option.
-    let _ = crate::utils::settings::update_settings_for_source(
-        crate::utils::settings::SettingSource::User,
-        &serde_json::Map::from_iter([(
-            "model".to_string(),
-            model.as_ref().map_or(serde_json::Value::Null, |value| {
-                serde_json::Value::String(value.clone())
-            }),
-        )]),
-    );
+    crate::bootstrap::state::set_main_loop_model_override(model.clone().map(Some));
+    if let Some(ref m) = model {
+        crate::utils::session_storage::save_session_model(m);
+    }
     state.main_loop_model_for_session = None;
     if fast_mode_disabled {
         state.fast_mode = false;
     }
-    let picked = crate::utils::effort::EffortValue::Named(picked_effort.label().to_string());
-    let model_default = crate::utils::effort::EffortValue::Named(
-        default_effort_level_for_option(selected_value)
-            .label()
-            .to_string(),
-    );
-    let prior_persisted = crate::utils::settings::get_settings_for_source(
-        crate::utils::settings::SettingSource::User,
-    )
-    .and_then(|settings| settings.effort_level);
-    let effort_level = crate::utils::effort::resolve_picker_effort_persistence(
-        Some(&picked),
-        &model_default,
-        prior_persisted.as_deref(),
-        has_toggled_effort,
-    );
-    if let Some(value) = effort_level.as_ref()
-        && let Some(persistable) = crate::utils::effort::to_persistable_effort(Some(value))
-    {
-        let _ = crate::utils::settings::update_settings_for_source(
-            crate::utils::settings::SettingSource::User,
-            &serde_json::Map::from_iter([(
-                "effortLevel".to_string(),
-                serde_json::Value::String(persistable),
-            )]),
-        );
-    }
-    state.effort_value = effort_level;
-    if has_toggled_effort && model_supports_effort(selected_value) {
-        // An explicit picker adjustment has the same session semantics as an
-        // explicit `/effort <level>`: it exits ultracode and lets the chosen
-        // level override launch-pinned model defaults.
-        crate::utils::ultracode::unpin_launch_effort();
-        state.ultracode = false;
+    if has_toggled_effort {
+        state.effort_value = Some(picked_effort);
+        crate::utils::session_storage::save_session_effort(picked_effort);
     }
     fast_mode_disabled
 }

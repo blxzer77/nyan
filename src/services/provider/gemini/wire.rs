@@ -10,8 +10,8 @@ use serde_json::Value;
 
 use crate::services::provider::adapter::ResolvedTarget;
 use crate::services::provider::ir::{
-    AssistantPart, Effort, MediaSource, Message, ModelRequest, SYSTEM_BOUNDARY, ThinkingPreference,
-    ToolChoice, ToolResultContent, ToolResultPart, ToolSpec,
+    AssistantPart, Effort, MediaSource, Message, ModelRequest, SYSTEM_BOUNDARY, ToolChoice,
+    ToolResultContent, ToolResultPart, ToolSpec,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -576,59 +576,30 @@ pub fn build_request(request: &ModelRequest, target: &ResolvedTarget) -> Generat
         gen_config.response_schema = Some(structured.schema.clone());
     }
 
-    if is_gemini_3 {
-        match request.thinking {
-            ThinkingPreference::Disabled => {}
-            ThinkingPreference::Adaptive | ThinkingPreference::Budget { .. } => {
-                let level = match &request.effort {
-                    Some(Effort::Named(name)) => match name.to_ascii_lowercase().as_str() {
-                        "minimal" => "MINIMAL",
-                        "low" => "LOW",
-                        "medium" => "MEDIUM",
-                        "high" | "xhigh" | "max" => "HIGH",
-                        _ => "HIGH",
-                    },
-                    Some(Effort::Numeric(n)) => match n {
-                        0..=2_048 => "LOW",
-                        2_049..=16_384 => "MEDIUM",
-                        _ => "HIGH",
-                    },
-                    None => match request.thinking {
-                        ThinkingPreference::Budget {
-                            tokens: Some(tokens),
-                        } => match tokens {
-                            0..=2_048 => "LOW",
-                            2_049..=16_384 => "MEDIUM",
-                            _ => "HIGH",
-                        },
-                        _ => "HIGH",
-                    },
-                };
-                gen_config.thinking_config = Some(ThinkingConfig {
-                    thinking_budget: None,
-                    thinking_level: Some(level.to_string()),
-                    include_thoughts: Some(true),
-                });
-            }
-        }
-    } else {
-        match request.thinking {
-            ThinkingPreference::Disabled => {}
-            ThinkingPreference::Adaptive => {
-                gen_config.thinking_config = Some(ThinkingConfig {
-                    thinking_budget: Some(-1),
-                    thinking_level: None,
-                    include_thoughts: None,
-                });
-            }
-            ThinkingPreference::Budget { tokens } => {
-                let budget = tokens.map(|t| t as i32).unwrap_or(0);
-                gen_config.thinking_config = Some(ThinkingConfig {
-                    thinking_budget: Some(budget),
-                    thinking_level: None,
-                    include_thoughts: None,
-                });
-            }
+    if target.capabilities.thinking && request.effort.is_thinking() {
+        if is_gemini_3 {
+            let level = match request.effort {
+                crate::utils::effort::Effort::Medium => "MEDIUM",
+                crate::utils::effort::Effort::High | crate::utils::effort::Effort::Max => "HIGH",
+                crate::utils::effort::Effort::Off => "OFF",
+            };
+            gen_config.thinking_config = Some(ThinkingConfig {
+                thinking_budget: None,
+                thinking_level: Some(level.to_string()),
+                include_thoughts: Some(true),
+            });
+        } else {
+            let budget = match request.effort {
+                crate::utils::effort::Effort::Off => 0,
+                crate::utils::effort::Effort::Medium => 8192,
+                crate::utils::effort::Effort::High => 24576,
+                crate::utils::effort::Effort::Max => -1,
+            };
+            gen_config.thinking_config = Some(ThinkingConfig {
+                thinking_budget: Some(budget),
+                thinking_level: None,
+                include_thoughts: Some(true),
+            });
         }
     }
 

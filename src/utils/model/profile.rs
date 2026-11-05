@@ -38,6 +38,8 @@ pub struct ResolvedModelProfile {
     pub credential: Option<CredentialReference>,
     pub compat: Option<OpenaiCompatSettings>,
     pub cache_retention: CacheRetention,
+    pub effort: Option<crate::utils::effort::Effort>,
+    pub extra: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -359,6 +361,8 @@ pub fn resolve_profile(
         credential: provider.credential.clone(),
         compat: provider.compat.clone(),
         cache_retention: model_profile.cache_retention(),
+        effort: model_profile.effort,
+        extra: model_profile.extra.clone(),
     })
 }
 
@@ -374,6 +378,44 @@ pub fn resolve_main_profile(
         .as_ref()
         .and_then(|selection| selection.main.as_deref())
         .ok_or(ProfileResolutionError::MissingSelection)?;
+    resolve_profile(nyan, profile_name)
+}
+
+/// Resolves a tier ref (`@main`, `@light`, `@heavy`) or profile name to an effective profile name.
+/// `light` and `heavy` fall back to `main` if not explicitly configured (design §1).
+pub fn resolve_selection_profile_name<'a>(
+    selection: &'a crate::utils::settings::nyan::SelectionSettings,
+    model_ref: &'a str,
+) -> Result<&'a str, ProfileResolutionError> {
+    match model_ref {
+        "@main" => selection
+            .main
+            .as_deref()
+            .ok_or(ProfileResolutionError::MissingSelection),
+        "@light" => selection
+            .light
+            .as_deref()
+            .or_else(|| selection.main.as_deref())
+            .ok_or(ProfileResolutionError::MissingSelection),
+        "@heavy" => selection
+            .heavy
+            .as_deref()
+            .or_else(|| selection.main.as_deref())
+            .ok_or(ProfileResolutionError::MissingSelection),
+        other => Ok(other),
+    }
+}
+
+/// Resolve a tier reference (`@main`, `@light`, `@heavy`) or explicit profile name to its profile.
+pub fn resolve_ref_profile(
+    nyan: &NyanSettings,
+    model_ref: &str,
+) -> Result<ResolvedModelProfile, ProfileResolutionError> {
+    let selection = nyan
+        .selection
+        .as_ref()
+        .ok_or(ProfileResolutionError::MissingSelection)?;
+    let profile_name = resolve_selection_profile_name(selection, model_ref)?;
     resolve_profile(nyan, profile_name)
 }
 

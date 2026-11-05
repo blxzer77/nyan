@@ -26,7 +26,7 @@ use serde_json::Value;
 use super::adapter::{Cancel, OpenedStream, ProviderAdapter, ResolvedTarget};
 use super::ir::{
     Effort, MediaSource, ModelRequest, ProviderError, ProviderErrorKind, SYSTEM_BOUNDARY,
-    ThinkingPreference, ToolResultContent, ToolResultPart, ToolSpec,
+    ToolResultContent, ToolResultPart, ToolSpec,
 };
 use crate::utils::model::profile::ResolvedModelProfile;
 #[cfg(test)]
@@ -199,34 +199,27 @@ pub(crate) fn system_text(request: &ModelRequest) -> Option<String> {
 /// OpenAI `reasoning_effort` / `reasoning.effort` for the request, or `None`
 /// when nothing should be sent.
 ///
-/// Only a request that asks for thinking sends it. A named effort passes
-/// through when OpenAI defines it; `max`/`xhigh` are Anthropic-side names with
-/// no portable OpenAI equivalent and are sent as `high`. A token budget has no
-/// OpenAI counterpart, so it is bucketed. Adaptive without an effort leaves the
-/// model's own default.
-pub(crate) fn reasoning_effort(request: &ModelRequest) -> Option<&'static str> {
-    if request.thinking == ThinkingPreference::Disabled {
+/// Per design §2:
+/// - off -> None
+/// - medium -> "medium"
+/// - high -> "high"
+/// - max -> "xhigh" if supported (e.g. o3, gpt-5, or xhigh in model id) else "high".
+/// Fixes the previous bug where high/xhigh/max all clamped to high.
+pub(crate) fn reasoning_effort(request: &ModelRequest, target: &ResolvedTarget) -> Option<&'static str> {
+    if !target.capabilities.thinking || request.effort.is_off() {
         return None;
     }
-    match &request.effort {
-        Some(Effort::Named(name)) => match name.to_ascii_lowercase().as_str() {
-            "minimal" => Some("minimal"),
-            "low" => Some("low"),
-            "medium" => Some("medium"),
-            "high" | "xhigh" | "max" => Some("high"),
-            _ => None,
-        },
-        Some(Effort::Numeric(_)) => None,
-        None => match request.thinking {
-            ThinkingPreference::Budget {
-                tokens: Some(tokens),
-            } => Some(match tokens {
-                0..=2_048 => "low",
-                2_049..=16_384 => "medium",
-                _ => "high",
-            }),
-            _ => None,
-        },
+    match request.effort {
+        Effort::Off => None,
+        Effort::Medium => Some("medium"),
+        Effort::High => Some("high"),
+        Effort::Max => {
+            if crate::utils::effort::model_supports_xhigh_effort(&target.model) {
+                Some("xhigh")
+            } else {
+                Some("high")
+            }
+        }
     }
 }
 
@@ -307,7 +300,7 @@ mod tests {
         CachePolicy, ClientContext, Message, ToolChoice, UserPart,
     };
 
-    fn request(thinking: ThinkingPreference, effort: Option<Effort>) -> ModelRequest {
+    fn request(effort: Effort) -> ModelRequest {
         ModelRequest {
             model: "m".into(),
             system: vec![
@@ -321,7 +314,6 @@ mod tests {
             }],
             tools: vec![],
             tool_choice: ToolChoice::Auto,
-            thinking,
             effort,
             max_output_tokens: 100,
             temperature: None,
@@ -337,50 +329,48 @@ mod tests {
         }
     }
 
+    fn test_target(model: &str, thinking: bool) -> ResolvedTarget {
+        ResolvedTarget {
+            profile: "p".into(),
+            provider: "pr".into(),
+            protocol: super::Protocol::OpenaiChat,
+            model: model.into(),
+            context_window: 100_000,
+            max_output_tokens: 4096,
+            capabilities: crate::utils::model::profile::ResolvedCapabilities {
+                thinking,
+                ..Default::default()
+            },
+            cache_retention: crate::utils::settings::nyan::CacheRetention::None,
+            effort: None,
+            extra: None,
+        }
+    }
+
     #[test]
     fn system_text_drops_the_boundary_marker_and_empty_blocks() {
-        let r = request(ThinkingPreference::Disabled, None);
+        let r = request(Effort::Off);
         assert_eq!(system_text(&r).as_deref(), Some("a\n\nb"));
     }
 
     #[test]
     fn effort_is_sent_only_when_thinking_is_requested_and_openai_defines_it() {
-        let named = |n: &str| Some(Effort::Named(n.into()));
-        assert_eq!(
-            reasoning_effort(&request(ThinkingPreference::Disabled, named("high"))),
-            None
-        );
-        for (given, sent) in [("low", "low"), ("medium", "medium"), ("max", "high")] {
-            assert_eq!(
-                reasoning_effort(&request(ThinkingPreference::Adaptive, named(given))),
-                Some(sent)
-            );
-        }
-        assert_eq!(
-            reasoning_effort(&request(ThinkingPreference::Adaptive, named("weird"))),
-            None
-        );
-        assert_eq!(
-            reasoning_effort(&request(ThinkingPreference::Adaptive, None)),
-            None
-        );
-        assert_eq!(
-            reasoning_effort(&request(
-                ThinkingPreference::Budget {
-                    tokens: Some(1_000)
-                },
-                None
-            )),
-            Some("low")
-        );
-        assert_eq!(
-            reasoning_effort(&request(
-                ThinkingPreference::Budget {
-                    tokens: Some(30_000)
-                },
-                None
-            )),
-            Some("high")
-        );
+        let thinking_target = test_target("o1", true);
+        let xhigh_target = test_target("o3-mini", true);
+        let no_thinking_target = test_target("gpt-4o", false);
+
+        // Off produces None
+        assert_eq!(reasoning_effort(&request(Effort::Off), &thinking_target), None);
+
+        // Non-thinking capability produces None without error
+        assert_eq!(reasoning_effort(&request(Effort::High), &no_thinking_target), None);
+
+        // Medium and High
+        assert_eq!(reasoning_effort(&request(Effort::Medium), &thinking_target), Some("medium"));
+        assert_eq!(reasoning_effort(&request(Effort::High), &thinking_target), Some("high"));
+
+        // Max clamps to high unless model supports xhigh
+        assert_eq!(reasoning_effort(&request(Effort::Max), &thinking_target), Some("high"));
+        assert_eq!(reasoning_effort(&request(Effort::Max), &xhigh_target), Some("xhigh"));
     }
 }

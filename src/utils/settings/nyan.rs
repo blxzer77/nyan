@@ -1448,11 +1448,21 @@ pub struct ModelProfileSettings {
     pub retry: Option<RetrySettings>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_retention: Option<CacheRetention>,
+    /// Optional reasoning depth for this profile (`off` | `medium` | `high` | `max`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<crate::utils::effort::Effort>,
+    /// Optional extra JSON object merged into the provider wire request body (design §3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra: Option<serde_json::Value>,
 }
 
 impl ModelProfileSettings {
     pub fn cache_retention(&self) -> CacheRetention {
         self.cache_retention.unwrap_or_default()
+    }
+
+    pub fn effort(&self) -> Option<crate::utils::effort::Effort> {
+        self.effort
     }
 }
 
@@ -1501,11 +1511,17 @@ pub struct SelectionSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub main: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub light: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heavy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub main_fallbacks: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subagent: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subagents: Option<BTreeMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub utility: Option<BTreeMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decision: Option<SelectionDecisionSettings>,
 }

@@ -353,7 +353,7 @@ async fn side_query_neutral(
     opts: SideQueryOptions,
 ) -> anyhow::Result<Message> {
     use crate::services::provider::ir::{
-        ClientContext, JsonSchemaOutput, MediaSource, ModelRequest, ThinkingPreference, ToolChoice,
+        ClientContext, Effort, JsonSchemaOutput, MediaSource, ModelRequest, ToolChoice,
         ToolResultContent, ToolSpec, UserPart,
     };
 
@@ -558,12 +558,9 @@ async fn side_query_neutral(
         }
     };
 
-    let thinking = match &opts.thinking {
-        Some(SideQueryThinking::Disabled) => ThinkingPreference::Disabled,
-        Some(SideQueryThinking::Enabled { budget_tokens }) => ThinkingPreference::Budget {
-            tokens: Some((*budget_tokens).max(0) as u32),
-        },
-        None => ThinkingPreference::Disabled,
+    let effort = match &opts.thinking {
+        Some(SideQueryThinking::Disabled) | None => Effort::Off,
+        Some(SideQueryThinking::Enabled { .. }) => profile.effort.unwrap_or(Effort::Medium),
     };
 
     let request = ModelRequest {
@@ -572,8 +569,7 @@ async fn side_query_neutral(
         messages,
         tools,
         tool_choice,
-        thinking,
-        effort: None,
+        effort,
         max_output_tokens: opts.max_tokens.unwrap_or(1024).max(1) as u32,
         temperature: opts.temperature,
         structured_output: opts.output_format.as_ref().map(|schema| JsonSchemaOutput {

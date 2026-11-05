@@ -194,9 +194,6 @@ pub struct SettingsJson {
     pub show_clear_context_on_plan_accept: Option<bool>,
     pub agent: Option<String>,
     pub company_announcements: Option<Vec<String>>,
-    pub effort_level: Option<String>,
-    /// Session seed consumed at startup by the 2.1.198 ultracode chain.
-    pub ultracode: Option<bool>,
 
     pub voice_enabled: Option<bool>,
     pub assistant: Option<bool>,
@@ -1053,19 +1050,6 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 ),
             ),
             (
-                "effortLevel",
-                zod::enumeration(vec!["low", "medium", "high", "xhigh", "max"])
-                .optional()
-                .catch_undefined()
-                .describe("Persisted effort level for supported models."),
-            ),
-            (
-                "ultracode",
-                zod::boolean()
-                    .optional()
-                    .describe("Start this session with ultracode enabled."),
-            ),
-            (
                 "advisorModel",
                 zod::string()
                     .optional()
@@ -1679,20 +1663,6 @@ mod zod_schema_tests {
         .expect("invalid raw value swallowed by catch");
         assert!(swallowed.get("strictPluginOnlyCustomization").is_none());
         assert_eq!(swallowed["language"], "zh");
-
-        let effort = crate::utils::zod::safe_parse(
-            settings_schema(),
-            &serde_json::json!({"effortLevel": "ultra"}),
-        )
-        .expect("invalid effort level swallowed");
-        assert!(effort.get("effortLevel").is_none());
-        // @nyan: persist `max` as a production effortLevel (CC 2.1.88: ant-only).
-        let max = crate::utils::zod::safe_parse(
-            settings_schema(),
-            &serde_json::json!({"effortLevel": "max"}),
-        )
-        .expect("max is a production effortLevel");
-        assert_eq!(max["effortLevel"], "max");
     }
 
     /// Maps to: CC `extraKnownMarketplaces` `.check` — a settings-sourced

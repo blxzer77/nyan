@@ -262,6 +262,13 @@ fn strip_project_profile_definitions(
     errors
 }
 
+fn is_explicit_profile_name(ref_str: &str) -> bool {
+    !ref_str.is_empty()
+        && ref_str != "inherit"
+        && !ref_str.starts_with('@')
+        && !ref_str.contains('/')
+}
+
 fn selected_profile_names(settings: &SettingsJson) -> Vec<String> {
     let Some(selection) = settings
         .nyan
@@ -272,33 +279,113 @@ fn selected_profile_names(settings: &SettingsJson) -> Vec<String> {
     };
     let mut names = Vec::new();
     if let Some(name) = selection.main.as_ref() {
-        names.push(name.clone());
+        if is_explicit_profile_name(name) {
+            names.push(name.clone());
+        }
+    }
+    if let Some(name) = selection.light.as_ref() {
+        if is_explicit_profile_name(name) {
+            names.push(name.clone());
+        }
+    }
+    if let Some(name) = selection.heavy.as_ref() {
+        if is_explicit_profile_name(name) {
+            names.push(name.clone());
+        }
     }
     if let Some(fallbacks) = selection.main_fallbacks.as_ref() {
-        names.extend(fallbacks.iter().cloned());
-    }
-    if let Some(name) = selection.subagent.as_ref()
-        && name != "inherit"
-    {
-        names.push(name.clone());
-    }
-    if let Some(subagents) = selection.subagents.as_ref() {
         names.extend(
-            subagents
-                .values()
-                .filter(|name| name.as_str() != "inherit")
+            fallbacks
+                .iter()
+                .filter(|n| is_explicit_profile_name(n))
                 .cloned(),
         );
     }
+    if let Some(spec) = selection.subagent.as_ref() {
+        let (r_ref, _) = crate::utils::effort::parse_model_ref_and_effort(spec);
+        if is_explicit_profile_name(r_ref) {
+            names.push(r_ref.to_string());
+        }
+    }
+    if let Some(subagents) = selection.subagents.as_ref() {
+        for spec in subagents.values() {
+            let (r_ref, _) = crate::utils::effort::parse_model_ref_and_effort(spec);
+            if is_explicit_profile_name(r_ref) {
+                names.push(r_ref.to_string());
+            }
+        }
+    }
+    if let Some(utility) = selection.utility.as_ref() {
+        for spec in utility.values() {
+            let (r_ref, _) = crate::utils::effort::parse_model_ref_and_effort(spec);
+            if is_explicit_profile_name(r_ref) {
+                names.push(r_ref.to_string());
+            }
+        }
+    }
     if let Some(decision) = selection.decision.as_ref() {
         if let Some(name) = decision.fast.as_ref() {
-            names.push(name.clone());
+            if is_explicit_profile_name(name) {
+                names.push(name.clone());
+            }
         }
         if let Some(name) = decision.accurate.as_ref() {
-            names.push(name.clone());
+            if is_explicit_profile_name(name) {
+                names.push(name.clone());
+            }
         }
     }
     names
+}
+
+fn validate_merged_selection_profiles(settings: &SettingsJson) -> Vec<ValidationError> {
+    let Some(nyan) = settings.nyan.as_ref() else {
+        return Vec::new();
+    };
+    let Some(selection) = nyan.selection.as_ref() else {
+        return Vec::new();
+    };
+    let Some(models) = nyan.models.as_ref() else {
+        return Vec::new();
+    };
+    let mut errors = Vec::new();
+    let check = |slot: &str, val: &str, errors: &mut Vec<ValidationError>| {
+        let (r_ref, _) = crate::utils::effort::parse_model_ref_and_effort(val);
+        if is_explicit_profile_name(r_ref) && !models.contains_key(r_ref) {
+            errors.push(ValidationError {
+                file: None,
+                path: format!("nyan.selection.{slot}"),
+                message: format!("model profile {r_ref:?} is not defined in settings.nyan.models"),
+                expected: None,
+                invalid_value: Some(val.to_string()),
+                doc_link: None,
+                suggestion: None,
+            });
+        }
+    };
+    if let Some(main) = selection.main.as_deref() {
+        check("main", main, &mut errors);
+    }
+    if let Some(light) = selection.light.as_deref() {
+        check("light", light, &mut errors);
+    }
+    if let Some(heavy) = selection.heavy.as_deref() {
+        check("heavy", heavy, &mut errors);
+    }
+    if let Some(subagent) = selection.subagent.as_deref() {
+        check("subagent", subagent, &mut errors);
+    }
+    if let Some(subagents) = selection.subagents.as_ref() {
+        for (agent_type, spec) in subagents {
+            check(&format!("subagents.{agent_type}"), spec, &mut errors);
+        }
+    }
+    if let Some(utility) = selection.utility.as_ref() {
+        for (role, spec) in utility {
+            check(&format!("utility.{role}"), spec, &mut errors);
+        }
+    }
+    errors
 }
 
 /// A decision tier may name only a commercial profile (design §5.3). A tier that
@@ -460,6 +547,9 @@ pub fn load_settings_from_disk() -> SettingsWithErrors {
 
     let tier_errors = strip_local_decision_tiers(&mut merged);
     collect_errors(&tier_errors, &mut all_errors, &mut seen_errors);
+
+    let selection_profile_errors = validate_merged_selection_profiles(&merged);
+    collect_errors(&selection_profile_errors, &mut all_errors, &mut seen_errors);
 
     SettingsWithErrors {
         settings: merged,

@@ -17,21 +17,16 @@ use crate::components::design_system::pane::Pane;
 use crate::hooks::use_main_loop_model::use_main_loop_model;
 use crate::state::app_state::use_app_state_maybe_outside_of_provider;
 use crate::state::store::AppStore;
-use crate::utils::effort::{EffortValue, get_displayed_effort_level, get_effort_env_override};
+use crate::utils::effort::{EffortValue, get_displayed_effort_level};
 use crate::utils::theme::Theme;
 use crate::utils::thinking::get_rainbow_color;
-use crate::utils::ultracode::{
-    XHIGH_EFFORT_WARNING, get_eligible_effort_levels, has_org_restricted_higher_effort,
-    is_launch_effort_pinned, is_ultracode_active, is_ultracode_available,
-    should_confirm_effort_cache_break,
-};
 use iocraft::prelude::*;
 
-const FULL_TRACK_WIDTH: usize = 42;
+const FULL_TRACK_WIDTH: usize = 36;
 const MIN_TRACK_WIDTH: usize = 14;
-const TRIANGLE_POSITIONS: &[usize] = &[1, 10, 20, 30, 40];
-const LABEL_SPACERS: &[usize] = &[5, 5, 5, 6];
-const DEFAULT_FOCUS_INDEX: usize = 3;
+const TRIANGLE_POSITIONS: &[usize] = &[1, 10, 20, 30];
+const LABEL_SPACERS: &[usize] = &[5, 5, 5];
+const DEFAULT_FOCUS_INDEX: usize = 1;
 const SHIMMER_HIGHLIGHT: Color = Color::Rgb {
     r: 0xd0,
     g: 0xb4,
@@ -43,6 +38,7 @@ const ULTRACODE_VIOLET: Color = Color::Rgb {
     b: 240,
 };
 const ANIMATION_TICK_MS: u64 = 100;
+const MAX_EFFORT_WARNING: &str = "Max effort uses maximum reasoning depth.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SliderLevelColor {
@@ -63,8 +59,8 @@ pub struct SliderLevel {
 
 const SLIDER_LEVELS: &[SliderLevel] = &[
     SliderLevel {
-        value: "low",
-        label: "low",
+        value: "off",
+        label: "off",
         color: SliderLevelColor::Warning,
     },
     SliderLevel {
@@ -76,11 +72,6 @@ const SLIDER_LEVELS: &[SliderLevel] = &[
         value: "high",
         label: "high",
         color: SliderLevelColor::Permission,
-    },
-    SliderLevel {
-        value: "xhigh",
-        label: "xhigh",
-        color: SliderLevelColor::AutoAcceptShimmer,
     },
     SliderLevel {
         value: "max",
@@ -142,38 +133,7 @@ fn build_base_geometry(level_count: usize) -> (Vec<SliderLevel>, usize, Vec<usiz
 /// Maps to: CC `getSliderGeometry` (`Qac` / 2.1.241 `wbs`).
 pub fn get_slider_geometry(model: &str) -> SliderGeometry {
     let (base_levels, base_width, base_triangles, base_spacers) =
-        build_base_geometry(get_eligible_effort_levels(model).len());
-    let cap_note = has_org_restricted_higher_effort(model)
-        .then(|| "Higher effort levels are restricted by your organization.".to_string());
-    if is_ultracode_available(Some(model)) {
-        let divider_col = base_width + 3;
-        let mut levels = base_levels;
-        levels.push(SliderLevel {
-            value: "ultracode",
-            label: "ultracode",
-            color: SliderLevelColor::VioletRipple,
-        });
-        let ultracode_label_start = divider_col + 4;
-        let mut spacers = base_spacers;
-        spacers.push(ultracode_label_start.saturating_sub(base_width));
-        let mut triangle_positions = base_triangles;
-        triangle_positions.push(divider_col + 8);
-        return SliderGeometry {
-            label_starts: compute_label_starts(&levels, &spacers),
-            levels,
-            width: divider_col + 17,
-            triangle_positions,
-            spacers,
-            track_chars: format!(
-                "{}┆{}",
-                repeat_safe('─', base_width + 1),
-                repeat_safe('─', 18)
-            ),
-            accent_start: Some(base_width + 2),
-            sublabel: Some(("xhigh + workflows".to_string(), divider_col)),
-            cap_note,
-        };
-    }
+        build_base_geometry(SLIDER_LEVELS.len());
     SliderGeometry {
         label_starts: compute_label_starts(&base_levels, &base_spacers),
         levels: base_levels,
@@ -183,11 +143,11 @@ pub fn get_slider_geometry(model: &str) -> SliderGeometry {
         track_chars: repeat_safe('─', base_width),
         accent_start: None,
         sublabel: None,
-        cap_note,
+        cap_note: None,
     }
 }
 
-/// Values currently on the slider, including ultracode when the official gate is on.
+/// Values currently on the slider.
 pub fn slider_values(model: &str) -> Vec<&'static str> {
     get_slider_geometry(model)
         .levels
@@ -196,37 +156,14 @@ pub fn slider_values(model: &str) -> Vec<&'static str> {
         .collect()
 }
 
-/// Maps to: CC `hAc` initial slider index.
+/// Initial slider index based on current effort.
 pub fn initial_focus_index(
     geometry: &SliderGeometry,
     model: &str,
     effort: Option<&EffortValue>,
-    ultracode: bool,
+    _ultracode: bool,
 ) -> usize {
-    if is_ultracode_active(model, effort, ultracode)
-        && let Some(index) = geometry
-            .levels
-            .iter()
-            .position(|level| level.value == "ultracode")
-    {
-        return index;
-    }
-    let effective = match get_effort_env_override() {
-        Some(None) => None,
-        Some(Some(value)) => Some(value),
-        None => (!is_launch_effort_pinned(model))
-            .then(|| effort.cloned())
-            .flatten(),
-    };
-    if let Some(EffortValue::Named(level)) = &effective
-        && let Some(index) = geometry
-            .levels
-            .iter()
-            .position(|entry| entry.value == level.as_str())
-    {
-        return index;
-    }
-    let displayed = get_displayed_effort_level(model, effective.as_ref());
+    let displayed = get_displayed_effort_level(model, effort);
     geometry
         .levels
         .iter()
@@ -606,7 +543,7 @@ pub fn EffortPicker<'a>(
     }
 
     let faster_smarter_gap = geometry.width.saturating_sub(6 + 7);
-    let warning = (selected_value == "max").then_some(XHIGH_EFFORT_WARNING);
+    let warning = (selected_value == "max").then_some(MAX_EFFORT_WARNING);
     let tick_value = tick.get();
 
     element! {
@@ -685,35 +622,32 @@ mod tests {
     use crate::utils::theme;
 
     #[test]
-    fn slider_geometry_matches_official_five_stop_ladder() {
-        let geometry = get_slider_geometry("claude-opus-4-7");
+    fn slider_geometry_matches_official_four_stop_ladder() {
+        let geometry = get_slider_geometry("any-model");
         let values: Vec<_> = geometry.levels.iter().map(|level| level.value).collect();
-        assert_eq!(values, ["low", "medium", "high", "xhigh", "max"]);
-        assert_eq!(geometry.width, 42);
-        assert_eq!(geometry.triangle_positions, vec![1usize, 10, 20, 30, 40]);
-        assert_eq!(geometry.label_starts, vec![0usize, 8, 19, 28, 39]);
-        assert_eq!(geometry.spacers, vec![5usize, 5, 5, 6]);
-        assert_eq!(geometry.track_chars.chars().count(), 42);
+        assert_eq!(values, ["off", "medium", "high", "max"]);
+        assert_eq!(geometry.width, 36);
+        assert_eq!(geometry.triangle_positions, vec![1usize, 10, 20, 30]);
+        assert_eq!(geometry.spacers, vec![5usize, 5, 5]);
+        assert_eq!(geometry.track_chars.chars().count(), 36);
         assert!(!values.contains(&"ultracode"));
     }
 
     #[test]
     fn initial_focus_follows_named_effort_then_displayed_default() {
-        let _lock = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_EFFORT_LEVEL");
-        let geometry = get_slider_geometry("claude-opus-4-7");
+        let geometry = get_slider_geometry("any-model");
         assert_eq!(
             initial_focus_index(
                 &geometry,
-                "claude-opus-4-7",
-                Some(&EffortValue::Named("xhigh".into())),
+                "any-model",
+                Some(&EffortValue::High),
                 false
             ),
-            3
+            2
         );
         assert_eq!(
-            initial_focus_index(&geometry, "claude-opus-4-7", None, false),
-            3
+            initial_focus_index(&geometry, "any-model", None, false),
+            1
         );
     }
 
@@ -721,7 +655,7 @@ mod tests {
     fn picker_renders_official_horizontal_slider_not_a_list() {
         let mut initial = crate::state::app_state_store::AppState::default();
         initial.main_loop_model = Some("claude-opus-4-7".to_string());
-        initial.effort_value = Some(EffortValue::Named("high".into()));
+        initial.effort_value = Some(EffortValue::High);
         let canvas = element! {
             ContextProvider(value: Context::owned(*theme::current())) {
                 crate::state::app_state::AppStateProvider(

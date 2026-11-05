@@ -6,13 +6,11 @@ use crate::utils::effort::{EffortValue, get_displayed_effort_level, model_suppor
 /// Maps to: CC `components/EffortIndicator.ts#effortLevelToSymbol`.
 pub fn effort_level_to_symbol(level: &str) -> &'static str {
     match level {
-        "low" => EFFORT_LOW,
+        "off" | "low" => EFFORT_LOW,
         "medium" => EFFORT_MEDIUM,
         "high" => EFFORT_HIGH,
         "xhigh" => EFFORT_XHIGH,
         "max" => EFFORT_MAX,
-        // Defensive parity: remote config can supply unknown values; CC falls
-        // back to the high-effort symbol rather than rendering undefined.
         _ => EFFORT_HIGH,
     }
 }

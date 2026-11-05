@@ -11,11 +11,9 @@ use crate::types::message::{
     AssistantContent, Message as NyanMessage, ToolResult, ToolResultContentBlock, UserContent,
 };
 use crate::types::tools::Tool;
-use crate::utils::thinking::ThinkingConfig;
-
 use super::ir::{
     AssistantPart, CachePolicy, ClientContext, Effort, JsonSchemaOutput, MediaSource, Message,
-    ModelRequest, Protocol, ProviderState, ThinkingPreference, ToolChoice, ToolResultContent,
+    ModelRequest, Protocol, ProviderState, ToolChoice, ToolResultContent,
     ToolResultPart, ToolSpec, UserPart,
 };
 
@@ -29,8 +27,7 @@ pub struct RequestParams {
     pub temperature: Option<f64>,
     pub tool_choice: ToolChoice,
     pub disable_parallel_tools: bool,
-    pub thinking: ThinkingConfig,
-    pub effort: Option<Effort>,
+    pub effort: Effort,
     pub output_schema: Option<serde_json::Value>,
     pub enable_prompt_caching: bool,
     pub skip_cache_write: bool,
@@ -310,21 +307,12 @@ pub fn build_request(
         .collect();
     strip_excess_media(&mut ir_messages, API_MAX_MEDIA_PER_REQUEST);
 
-    let thinking = match params.thinking {
-        ThinkingConfig::Disabled => ThinkingPreference::Disabled,
-        ThinkingConfig::Adaptive => ThinkingPreference::Adaptive,
-        ThinkingConfig::Enabled { budget_tokens } => ThinkingPreference::Budget {
-            tokens: budget_tokens.map(|tokens| tokens.clamp(0, u32::MAX as i64) as u32),
-        },
-    };
-
     ModelRequest {
         model: params.model,
         system: system.to_vec(),
         messages: ir_messages,
         tools: tools.iter().map(tool_spec).collect(),
         tool_choice: params.tool_choice,
-        thinking,
         effort: params.effort,
         max_output_tokens: params.max_output_tokens,
         temperature: params.temperature,

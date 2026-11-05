@@ -123,12 +123,19 @@ impl ProviderAdapter for GeminiAdapter {
                 self.target.base_url, target.model
             );
             let wire_body = wire::build_request(request, target);
-            let body = serde_json::to_value(&wire_body).map_err(|e| {
+            let mut body = serde_json::to_value(&wire_body).map_err(|e| {
                 ProviderError::new(
                     ProviderErrorKind::InvalidRequest,
                     format!("failed to serialize request: {e}"),
                 )
             })?;
+            if let Some(serde_json::Value::Object(extra)) = &target.extra {
+                if let Some(obj) = body.as_object_mut() {
+                    for (k, v) in extra {
+                        obj.insert(k.clone(), v.clone());
+                    }
+                }
+            }
             let headers = self.headers();
             let opened = post_stream_classified(
                 &url,

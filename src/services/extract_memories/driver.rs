@@ -127,6 +127,20 @@ fn log_outcome(label: &str, outcome: &ExtractOutcome) {
     }
 }
 
+fn memory_model(settings: &crate::utils::settings::nyan::MemorySettings) -> Option<String> {
+    settings.extract_model.clone().or_else(|| {
+        let initial_settings = crate::utils::settings::get_initial_settings();
+        let nyan = initial_settings.nyan.as_deref();
+        let parent_model = crate::utils::model::model::get_main_loop_model();
+        Some(crate::utils::model::agent::resolve_utility_model_and_effort(
+            "memory",
+            &parent_model,
+            None,
+            nyan,
+        ).model)
+    })
+}
+
 fn read_index() -> String {
     std::fs::read_to_string(crate::memdir::paths::get_auto_mem_entrypoint()).unwrap_or_default()
 }
@@ -255,7 +269,7 @@ pub(crate) async fn extract_if_due_with_deps<D: crate::query::deps::QueryDeps>(
         messages,
         cursor,
         read_index(),
-        settings.extract_model.clone(),
+        memory_model(&settings),
         settings.extract_max_turns(),
         // Background extraction is bounded by the same ceiling as the forced
         // path so a wedged fork cannot hold the gate forever.
@@ -345,7 +359,7 @@ pub(crate) async fn extract_before_compact_with_deps<D: crate::query::deps::Quer
         messages.to_vec(),
         cursor,
         read_index(),
-        settings.extract_model.clone(),
+        memory_model(&settings),
         settings.extract_max_turns(),
         remaining,
         deps,

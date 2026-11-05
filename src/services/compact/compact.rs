@@ -1116,11 +1116,19 @@ fn validate_compact_summary_assistant(
 }
 
 fn compact_summary_model(context: &crate::tool::ToolUseContext) -> String {
-    crate::utils::settings::get_initial_settings()
-        .nyan
-        .and_then(|settings| settings.compaction().model)
-        .or_else(|| context.main_loop_model.clone())
-        .unwrap_or_else(crate::utils::model::model::get_main_loop_model)
+    let settings = crate::utils::settings::get_initial_settings();
+    let nyan = settings.nyan.as_deref();
+    let parent_model = context
+        .main_loop_model
+        .clone()
+        .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
+    crate::utils::model::agent::resolve_utility_model_and_effort(
+        "compaction",
+        &parent_model,
+        context.effort_value,
+        nyan,
+    )
+    .model
 }
 
 fn compact_summary_max_output_tokens(model: &str) -> u32 {

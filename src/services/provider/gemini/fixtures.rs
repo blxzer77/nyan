@@ -14,8 +14,8 @@ use super::wire;
 use crate::services::provider::adapter::{Cancel, ResolvedTarget};
 use crate::services::provider::ir::{
     AssistantPart, BlockStart, Delta, Effort, JsonSchemaOutput, MediaSource, Message, ModelRequest,
-    Protocol, ProviderErrorKind, SYSTEM_BOUNDARY, StopReason, StreamEventKind, ThinkingPreference,
-    ToolChoice, ToolResultContent, ToolResultPart, ToolSpec, Usage, UserPart,
+    Protocol, ProviderErrorKind, SYSTEM_BOUNDARY, StopReason, StreamEventKind, ToolChoice,
+    ToolResultContent, ToolResultPart, ToolSpec, Usage, UserPart,
 };
 use crate::services::provider::openai::adapter::Machine;
 use crate::services::provider::openai::transport::Frame;
@@ -63,6 +63,8 @@ fn test_target() -> ResolvedTarget {
             streaming: true,
         },
         cache_retention: Default::default(),
+        effort: None,
+        extra: None,
     }
 }
 
@@ -73,8 +75,7 @@ fn minimal_request(messages: Vec<Message>) -> ModelRequest {
         messages,
         tools: Vec::new(),
         tool_choice: ToolChoice::Auto,
-        thinking: ThinkingPreference::Disabled,
-        effort: None,
+        effort: Effort::Off,
         max_output_tokens: 4096,
         temperature: None,
         structured_output: None,
@@ -265,7 +266,7 @@ fn test_wire_structured_output_and_thinking_budget() {
     req.structured_output = Some(JsonSchemaOutput {
         schema: json!({ "type": "object" }),
     });
-    req.thinking = ThinkingPreference::Budget { tokens: Some(2048) };
+    req.effort = Effort::Medium;
     req.temperature = Some(0.7);
 
     let wire = wire::build_request(&req, &target);
@@ -281,7 +282,7 @@ fn test_wire_structured_output_and_thinking_budget() {
     );
 
     let think = gen_config.thinking_config.expect("thinking_config present");
-    assert_eq!(think.thinking_budget, Some(2048));
+    assert_eq!(think.thinking_budget, Some(8192));
 }
 
 #[test]

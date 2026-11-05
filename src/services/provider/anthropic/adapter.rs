@@ -216,7 +216,7 @@ mod tests {
 
     fn ir_request() -> ModelRequest {
         use crate::services::provider::ir::{
-            CachePolicy, ClientContext, Message, ThinkingPreference, ToolChoice, UserPart,
+            CachePolicy, ClientContext, Effort, Message, ToolChoice, UserPart,
         };
         ModelRequest {
             model: "claude-sonnet-4-6".into(),
@@ -226,8 +226,7 @@ mod tests {
             }],
             tools: vec![],
             tool_choice: ToolChoice::Auto,
-            thinking: ThinkingPreference::Disabled,
-            effort: None,
+            effort: Effort::Off,
             max_output_tokens: 1024,
             temperature: None,
             structured_output: None,

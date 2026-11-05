@@ -26,6 +26,8 @@ pub struct ResolvedTarget {
     /// undeclared capability is a "no".
     pub capabilities: crate::utils::model::profile::ResolvedCapabilities,
     pub cache_retention: crate::utils::settings::nyan::CacheRetention,
+    pub effort: Option<crate::utils::effort::Effort>,
+    pub extra: Option<serde_json::Value>,
 }
 
 impl ResolvedTarget {
@@ -48,6 +50,8 @@ impl ResolvedTarget {
             max_output_tokens: profile.max_output_tokens,
             capabilities: profile.capabilities,
             cache_retention: profile.cache_retention,
+            effort: profile.effort,
+            extra: profile.extra.clone(),
         }
     }
 }

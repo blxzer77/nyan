@@ -1058,21 +1058,18 @@ pub async fn classify_yolo_action(
         }
     }
 }
-/// Maps to: CC `yoloClassifier.ts:1334-1347` `getClassifierModel`.
+/// Classifier utility model resolves to @main by default (design §1).
 fn get_classifier_model() -> String {
-    if has_internal_capability(InternalCapability::Permissions)
-        && let Some(model) = crate::utils::process_env::var("CLAUDE_CODE_AUTO_MODE_MODEL").truthy()
-    {
-        return model;
-    }
-    let config = crate::services::analytics::growthbook::get_feature_value_cached_may_be_stale(
-        "tengu_auto_mode_config",
-        AutoModeConfig::default(),
-    );
-    config
-        .model
-        .filter(|m| !m.is_empty())
-        .unwrap_or_else(crate::utils::model::model::get_main_loop_model)
+    let settings = crate::utils::settings::get_initial_settings();
+    let nyan = settings.nyan.as_deref();
+    let main_model = crate::utils::model::model::get_main_loop_model();
+    crate::utils::model::agent::resolve_utility_model_and_effort(
+        "classifier",
+        &main_model,
+        None,
+        nyan,
+    )
+    .model
 }
 /// Maps to: CC `yoloClassifier.ts:1353-1369` `resolveTwoStageClassifier`.
 fn resolve_two_stage_classifier() -> Option<Value> {

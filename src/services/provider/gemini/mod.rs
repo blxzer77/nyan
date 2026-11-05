@@ -63,8 +63,15 @@ pub async fn execute_non_streaming(
         target.base_url, resolved.model
     );
     let headers = adapter.headers();
-    let body = serde_json::to_value(wire::build_request(request, &resolved))
+    let mut body = serde_json::to_value(wire::build_request(request, &resolved))
         .map_err(|e| invalid(e.to_string()))?;
+    if let Some(serde_json::Value::Object(extra)) = &resolved.extra {
+        if let Some(obj) = body.as_object_mut() {
+            for (k, v) in extra {
+                obj.insert(k.clone(), v.clone());
+            }
+        }
+    }
 
     let (_headers_map, request_id, json_response) = post_json_classified(
         &url,

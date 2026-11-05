@@ -249,7 +249,7 @@ pub fn build_body(target: &ResolvedTarget, request: &ModelRequest, backend: Back
         body["parallel_tool_calls"] = json!(!request.disable_parallel_tools);
     }
     if target.capabilities.thinking {
-        if let Some(effort) = reasoning_effort(request) {
+        if let Some(effort) = reasoning_effort(request, target) {
             body["reasoning"] = json!({"effort": effort, "summary": "auto"});
         }
     }
@@ -271,6 +271,13 @@ pub fn build_body(target: &ResolvedTarget, request: &ModelRequest, backend: Back
         && target.cache_retention == crate::utils::settings::nyan::CacheRetention::Long
     {
         body["prompt_cache_retention"] = json!("24h");
+    }
+    if let Some(serde_json::Value::Object(extra)) = &target.extra {
+        if let Some(obj) = body.as_object_mut() {
+            for (k, v) in extra {
+                obj.insert(k.clone(), v.clone());
+            }
+        }
     }
     body
 }

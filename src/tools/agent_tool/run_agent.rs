@@ -690,17 +690,27 @@ fn agent_read_file_state(
     }
 }
 
-/// Maps to CC `runAgent(...)` foreground path.
-/// Maps to CC `runAgent.ts#createSubagentContext` `effortValue =
-/// agentDefinition.effort !== undefined ? agentDefinition.effort : state.effortValue`.
+/// Resolves the effective effort for this agent run along the unified resolution chain.
 fn effective_agent_effort(
     agent_definition: &AgentDefinition,
+    model_override: Option<&str>,
     context: &ToolUseContext,
-) -> Option<crate::utils::effort::EffortValue> {
-    agent_definition
-        .effort
+) -> Option<crate::utils::effort::Effort> {
+    let parent_model = context
+        .main_loop_model
         .clone()
-        .or_else(|| context.effort_value.clone())
+        .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
+    let settings = crate::utils::settings::get_initial_settings();
+    let nyan = settings.nyan.as_deref();
+    let resolved = crate::utils::model::agent::resolve_subagent_model_and_effort(
+        model_override,
+        agent_definition.model.as_deref(),
+        &agent_definition.agent_type,
+        &parent_model,
+        context.effort_value,
+        nyan,
+    );
+    Some(resolved.effort)
 }
 
 pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutcome> {
@@ -1065,7 +1075,7 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
         .critical_system_reminder_experimental
         .clone();
     agent_tool_use_context.effort_value =
-        effective_agent_effort(input.agent_definition, input.context);
+        effective_agent_effort(input.agent_definition, input.model_override, input.context);
     agent_tool_use_context.fast_mode = Some(false);
     agent_tool_use_context.channel_permission_callbacks =
         input.context.channel_permission_callbacks.clone();
@@ -1981,7 +1991,7 @@ fn forward_subagent_progress_from_message(
     }
 }
 
-/// Maps to CC `runAgent.ts` call to `utils/model/agent.ts#getAgentModel`.
+/// Resolves the effective model for this agent run along the unified resolution chain.
 pub fn resolve_agent_model(
     agent_definition: &AgentDefinition,
     model_override: Option<&str>,
@@ -1991,12 +2001,17 @@ pub fn resolve_agent_model(
         .main_loop_model
         .clone()
         .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
-    get_agent_model(
-        agent_definition.model.as_deref(),
-        &parent_model,
+    let settings = crate::utils::settings::get_initial_settings();
+    let nyan = settings.nyan.as_deref();
+    crate::utils::model::agent::resolve_subagent_model_and_effort(
         model_override,
-        Some(context.tool_permission_context.mode),
+        agent_definition.model.as_deref(),
+        &agent_definition.agent_type,
+        &parent_model,
+        context.effort_value,
+        nyan,
     )
+    .model
 }
 
 /// Maps to: CC `runAgent.ts:906-933` `getAgentSystemPrompt`.
@@ -2287,24 +2302,32 @@ mod tests {
     }
 
     #[test]
-    fn effective_agent_effort_prefers_agent_definition_over_parent_context() {
+    fn effective_agent_effort_prefers_explicit_effort_then_inherits_parent() {
         let mut agent = AgentDefinition::new(
-            "custom",
-            "Use custom",
+            "general-purpose",
+            "Use general",
             AgentDefinitionSource::ProjectSettings,
         );
         let context = ToolUseContext::default().with_effort_value(Some(
-            crate::utils::effort::EffortValue::Named("low".to_string()),
+            crate::utils::effort::Effort::High,
         ));
+        // Default inherits parent effort
         assert_eq!(
-            effective_agent_effort(&agent, &context),
-            Some(crate::utils::effort::EffortValue::Named("low".to_string()))
+            effective_agent_effort(&agent, None, &context),
+            Some(crate::utils::effort::Effort::High)
         );
 
-        agent.effort = Some(crate::utils::effort::EffortValue::Named("high".to_string()));
+        // Explicit effort on agent definition model ref (ref:effort format)
+        agent.model = Some("inherit:max".to_string());
         assert_eq!(
-            effective_agent_effort(&agent, &context),
-            Some(crate::utils::effort::EffortValue::Named("high".to_string()))
+            effective_agent_effort(&agent, None, &context),
+            Some(crate::utils::effort::Effort::Max)
+        );
+
+        // Tool override with explicit effort takes precedence
+        assert_eq!(
+            effective_agent_effort(&agent, Some(":off"), &context),
+            Some(crate::utils::effort::Effort::Off)
         );
     }
 
@@ -2314,13 +2337,19 @@ mod tests {
 
         let context = ToolUseContext::default().with_main_loop_model("parent-sonnet-model");
         let mut agent = AgentDefinition::new(
-            "custom",
-            "Use custom",
+            "general-purpose",
+            "Use general",
             AgentDefinitionSource::ProjectSettings,
         );
-        agent.model = Some("haiku".to_string());
-        assert!(resolve_agent_model(&agent, Some("opus"), &context).contains("opus"));
-        assert!(resolve_agent_model(&agent, None, &context).contains("haiku"));
+        agent.model = Some("provider/fast-model".to_string());
+        assert_eq!(
+            resolve_agent_model(&agent, Some("provider/override-model"), &context),
+            "provider/override-model"
+        );
+        assert_eq!(
+            resolve_agent_model(&agent, None, &context),
+            "provider/fast-model"
+        );
         agent.model = Some("inherit".to_string());
         assert_eq!(
             resolve_agent_model(&agent, None, &context),
