@@ -331,13 +331,60 @@ fn test_wire_gemini_3_thinking_level_and_effort_mapping() {
         assert_eq!(think.thinking_budget, None);
     }
 
-    // Off disables thinking without sending a thinking configuration.
+    // Off clamps to the lowest level every Gemini 3 text model lists, and asks
+    // for no thought summaries.
     req.effort = Effort::Off;
     let wire = wire::build_request(&req, &target);
+    let think = wire
+        .generation_config
+        .as_ref()
+        .and_then(|g| g.thinking_config.as_ref())
+        .expect("thinking_config present");
+    assert_eq!(think.thinking_level.as_deref(), Some("LOW"));
+    assert_eq!(think.include_thoughts, None);
+    assert_eq!(think.thinking_budget, None);
+}
+
+#[test]
+fn test_wire_gemini_25_thinking_budget_follows_effort_and_clamps_off() {
+    let mut target = test_target();
+    let mut req = minimal_request(vec![Message::User {
+        parts: vec![UserPart::Text {
+            text: "Solve math".into(),
+        }],
+    }]);
+    let budget = |req: &ModelRequest, target: &ResolvedTarget| {
+        let wire = wire::build_request(req, target);
+        let think = wire
+            .generation_config
+            .and_then(|g| g.thinking_config)
+            .expect("thinking_config present");
+        assert_eq!(think.thinking_level, None);
+        (think.thinking_budget, think.include_thoughts)
+    };
+
+    for (effort, expected) in [
+        (Effort::Medium, Some(8192)),
+        (Effort::High, Some(24576)),
+        (Effort::Max, Some(-1)),
+    ] {
+        req.effort = effort;
+        assert_eq!(budget(&req, &target), (expected, Some(true)));
+    }
+
+    // Off is budget 0 on Flash, and the 128-token floor on Pro (which rejects 0).
+    req.effort = Effort::Off;
+    assert_eq!(budget(&req, &target), (Some(0), None));
+    target.model = "gemini-2.5-pro".into();
+    assert_eq!(budget(&req, &target), (Some(128), None));
+
+    // A model without the thinking capability gets no thinking configuration.
+    target.capabilities.thinking = false;
+    req.effort = Effort::High;
     assert!(
-        wire.generation_config
-            .as_ref()
-            .and_then(|g| g.thinking_config.as_ref())
+        wire::build_request(&req, &target)
+            .generation_config
+            .and_then(|g| g.thinking_config)
             .is_none()
     );
 }

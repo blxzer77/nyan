@@ -15,7 +15,6 @@
 use crate::utils::effort::Effort;
 pub use crate::utils::effort::parse_model_ref_and_effort;
 use crate::utils::model::profile::{resolve_profile, resolve_selection_profile_name};
-use crate::utils::settings::get_initial_settings;
 use crate::utils::settings::nyan::NyanSettings;
 
 /// Resolved model and effort for a subagent or utility task.
@@ -186,26 +185,6 @@ pub fn resolve_utility_model_and_effort(
     let spec = configured_spec.unwrap_or_else(|| default_utility_spec(role));
     let (r_ref, effort) = parse_model_ref_and_effort(spec);
     resolve_spec_to_agent_model(r_ref, effort, parent_model, parent_effort, nyan)
-}
-
-/// Backward-compatible wrapper for agent model resolution.
-pub fn get_agent_model(
-    agent_model: Option<&str>,
-    parent_model: &str,
-    tool_specified_model: Option<&str>,
-    agent_type: Option<&str>,
-) -> String {
-    let settings = get_initial_settings();
-    let nyan = settings.nyan.as_deref();
-    resolve_subagent_model_and_effort(
-        tool_specified_model,
-        agent_model,
-        agent_type.unwrap_or("general-purpose"),
-        parent_model,
-        None,
-        nyan,
-    )
-    .model
 }
 
 pub fn get_agent_model_display(model: Option<&str>) -> String {

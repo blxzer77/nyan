@@ -176,10 +176,6 @@ pub(crate) fn model_supports_effort(value: &str) -> bool {
         .is_some_and(crate::utils::effort::model_supports_effort)
 }
 
-fn model_effort_level_from_name(level: &str) -> Option<ModelEffortLevel> {
-    Effort::from_str_loose(level)
-}
-
 /// Maps to: CC `components/ModelPicker.tsx` initializing effort from
 /// `AppState.effortValue` / `sessionEffort`.
 pub(crate) fn model_effort_from_value(value: Option<&Effort>) -> ModelEffortLevel {
@@ -763,7 +759,10 @@ mod tests {
             text.contains("Sonnet 4.6 for long sessions"),
             "canvas=\n{text}"
         );
-        assert!(text.contains("● High effort (default)"), "canvas=\n{text}");
+        assert!(
+            text.contains("◐ Medium effort (default)"),
+            "canvas=\n{text}"
+        );
         assert!(text.contains("← → to adjust"), "canvas=\n{text}");
         assert_eq!(ModelEffortLevel::Off.symbol(), "○");
         assert_eq!(ModelEffortLevel::Off.title_label(), "Off");

@@ -86,7 +86,7 @@ pub fn execute_effort(args: &str) -> EffortCommandResult {
         ));
     };
 
-    crate::utils::session_storage::save_session_effort(effort);
+    let _ = crate::utils::session_storage::save_session_effort(effort);
 
     EffortCommandResult::with_update(
         format!(

@@ -23,7 +23,6 @@ use crate::types::permissions::{
     PermissionRequest,
 };
 use crate::types::tools::Tool;
-use crate::utils::model::agent::get_agent_model;
 use crate::utils::thinking::ThinkingConfig;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;

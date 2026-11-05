@@ -158,32 +158,6 @@ pub fn get_effort_description(effort: Effort) -> &'static str {
     get_effort_level_description(effort.as_str())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpusDefaultEffortConfig {
-    pub enabled: bool,
-    pub dialog_title: String,
-    pub dialog_description: String,
-}
-
-pub fn get_opus_default_effort_config() -> OpusDefaultEffortConfig {
-    OpusDefaultEffortConfig {
-        enabled: true,
-        dialog_title: "We recommend medium effort for Opus".to_string(),
-        dialog_description: "Effort determines how much reasoning the model uses for a task."
-            .to_string(),
-    }
-}
-
-/// Global settings and environment overrides no longer participate in effort.
-/// The session resolver supplies the active value at the call site.
-pub fn get_initial_effort_setting() -> Option<Effort> {
-    None
-}
-
-pub fn resolve_applied_effort(_model: &str, effort: Option<&Effort>) -> Option<Effort> {
-    effort.copied()
-}
-
 /// Split a model spec in `ref[:effort]` format.
 ///
 /// Per design §1:

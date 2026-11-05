@@ -250,6 +250,38 @@ pub fn is_gemini_3_or_newer(model_id: &str) -> bool {
     false
 }
 
+/// Gemini 3 takes a discrete `thinkingLevel`, Gemini 2.5 a `thinkingBudget`.
+/// `off` is clamped to the lowest setting the family accepts: `LOW` (the one
+/// level every Gemini 3 text model lists) and budget 0 (128 on Pro, which does
+/// not accept 0). `max` on 2.5 is the dynamic budget (-1).
+fn thinking_config(effort: Effort, is_gemini_3: bool, model: &str) -> ThinkingConfig {
+    let include_thoughts = effort.is_thinking().then_some(true);
+    if is_gemini_3 {
+        let level = match effort {
+            Effort::Off => "LOW",
+            Effort::Medium => "MEDIUM",
+            Effort::High | Effort::Max => "HIGH",
+        };
+        return ThinkingConfig {
+            thinking_budget: None,
+            thinking_level: Some(level.to_string()),
+            include_thoughts,
+        };
+    }
+    let budget = match effort {
+        Effort::Off if model.to_ascii_lowercase().contains("pro") => 128,
+        Effort::Off => 0,
+        Effort::Medium => 8192,
+        Effort::High => 24576,
+        Effort::Max => -1,
+    };
+    ThinkingConfig {
+        thinking_budget: Some(budget),
+        thinking_level: None,
+        include_thoughts,
+    }
+}
+
 fn build_tool_config(choice: &ToolChoice) -> Option<ToolConfig> {
     let config = match choice {
         ToolChoice::Auto => FunctionCallingConfig {
@@ -576,31 +608,9 @@ pub fn build_request(request: &ModelRequest, target: &ResolvedTarget) -> Generat
         gen_config.response_schema = Some(structured.schema.clone());
     }
 
-    if target.capabilities.thinking && request.effort.is_thinking() {
-        if is_gemini_3 {
-            let level = match request.effort {
-                crate::utils::effort::Effort::Medium => "MEDIUM",
-                crate::utils::effort::Effort::High | crate::utils::effort::Effort::Max => "HIGH",
-                crate::utils::effort::Effort::Off => "OFF",
-            };
-            gen_config.thinking_config = Some(ThinkingConfig {
-                thinking_budget: None,
-                thinking_level: Some(level.to_string()),
-                include_thoughts: Some(true),
-            });
-        } else {
-            let budget = match request.effort {
-                crate::utils::effort::Effort::Off => 0,
-                crate::utils::effort::Effort::Medium => 8192,
-                crate::utils::effort::Effort::High => 24576,
-                crate::utils::effort::Effort::Max => -1,
-            };
-            gen_config.thinking_config = Some(ThinkingConfig {
-                thinking_budget: Some(budget),
-                thinking_level: None,
-                include_thoughts: Some(true),
-            });
-        }
+    if target.capabilities.thinking {
+        gen_config.thinking_config =
+            Some(thinking_config(request.effort, is_gemini_3, &target.model));
     }
 
     let generation_config = if gen_config != GenerationConfig::default() {

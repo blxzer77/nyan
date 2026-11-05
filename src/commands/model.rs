@@ -408,7 +408,10 @@ mod tests {
             text.contains("Sonnet 4.6 for long sessions"),
             "canvas=\n{text}"
         );
-        assert!(text.contains("● High effort (default)"), "canvas=\n{text}");
+        assert!(
+            text.contains("◐ Medium effort (default)"),
+            "canvas=\n{text}"
+        );
         assert!(
             !text.contains("Use /fast to turn on Fast mode"),
             "no fast-mode notice should render when ModelPickerWrapper does not enable showFastModeNotice; canvas=\n{text}"
@@ -453,12 +456,12 @@ mod tests {
             key(KeyCode::Right),
             key(KeyCode::Enter),
         ]);
-        // The unified picker cycles High → Max.
+        // The unified picker starts at the Medium default and cycles Medium → High.
         assert_eq!(
             selected,
             vec![handle_select_output(
                 &options[1],
-                Some(ModelEffortLevel::Max)
+                Some(ModelEffortLevel::High)
             )]
         );
     }

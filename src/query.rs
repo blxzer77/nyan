@@ -80,13 +80,10 @@ pub struct QueryParams {
 
 impl QueryParams {
     /// Ensure the seeded ToolUseContext is ready for the actor.
-    /// Fills tools from permission context when empty, and default effort.
+    /// Fills tools from permission context when empty.
     pub fn ensure_tool_use_context_ready(&mut self) {
         if self.tool_use_context.tools.is_empty() {
             self.tool_use_context.tools = self.default_tool_pool();
-        }
-        if self.tool_use_context.effort_value.is_none() {
-            self.tool_use_context.effort_value = crate::utils::effort::get_initial_effort_setting();
         }
     }
 
@@ -4418,7 +4415,6 @@ fn query_tool_use_context(
         .with_resume_restore_stores(resume_restore_stores.clone())
         .with_mcp_state(mcp_state.clone())
         .with_content_replacement_state(content_replacement_state)
-        .with_effort_value(crate::utils::effort::get_initial_effort_setting())
         .with_messages(messages);
     if app_store.store.is_some() {
         let isolate_writes = !app_store.writable || app_store.avoid_permission_prompts_overlay;
@@ -4497,10 +4493,7 @@ fn build_call_model_request(
         .is_some_and(|prompt| !prompt.is_empty());
     // Maps to CC `query.ts` `fallbackModel: toolUseContext.options.fallbackModel`.
     options.fallback_model = tool_use_context.fallback_model.clone();
-    options.effort_value = tool_use_context
-        .effort_value
-        .clone()
-        .or_else(crate::utils::effort::get_initial_effort_setting);
+    options.effort_value = tool_use_context.effort_value;
     options.fast_mode = tool_use_context
         .fast_mode
         .map(|enabled| enabled && crate::utils::fast_mode::is_fast_mode_enabled());

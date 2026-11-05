@@ -554,7 +554,6 @@ pub fn EffortPicker<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::test_env::TEST_ENV_LOCK;
     use crate::utils::theme;
 
     #[test]

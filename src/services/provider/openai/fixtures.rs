@@ -221,7 +221,7 @@ async fn chat_request_reaches_the_wire_with_the_key_path_and_body() {
     assert_eq!(body["stream"], true);
     assert_eq!(body["stream_options"], json!({"include_usage": true}));
     assert_eq!(body["max_completion_tokens"], 4_000);
-    assert_eq!(body["reasoning_effort"], "low");
+    assert_eq!(body["reasoning_effort"], "medium");
     assert_eq!(
         body["messages"][0],
         json!({"role": "system", "content": "You are a test."})
@@ -477,7 +477,7 @@ async fn responses_request_reaches_the_wire_with_the_key_path_and_body() {
     assert_eq!(body["max_output_tokens"], 4_000);
     assert_eq!(
         body["reasoning"],
-        json!({"effort": "low", "summary": "auto"})
+        json!({"effort": "medium", "summary": "auto"})
     );
     assert_eq!(
         body["input"][0],
