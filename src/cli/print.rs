@@ -1599,13 +1599,7 @@ fn sdk_model_infos() -> Vec<serde_json::Value> {
             ]);
             if crate::utils::effort::model_supports_effort(&resolved) {
                 info.insert("supportsEffort".to_string(), true.into());
-                let mut levels = vec!["low", "medium", "high"];
-                if crate::utils::effort::model_supports_xhigh_effort(&resolved) {
-                    levels.push("xhigh");
-                }
-                if crate::utils::effort::model_supports_max_effort(&resolved) {
-                    levels.push("max");
-                }
+                let levels = vec!["off", "medium", "high", "max"];
                 info.insert(
                     "supportedEffortLevels".to_string(),
                     serde_json::json!(levels),

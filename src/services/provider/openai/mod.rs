@@ -333,7 +333,7 @@ mod tests {
         ResolvedTarget {
             profile: "p".into(),
             provider: "pr".into(),
-            protocol: super::Protocol::OpenaiChat,
+            protocol: crate::services::provider::ir::Protocol::OpenaiChat,
             model: model.into(),
             context_window: 100_000,
             max_output_tokens: 4096,

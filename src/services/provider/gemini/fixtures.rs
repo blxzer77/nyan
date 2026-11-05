@@ -308,33 +308,18 @@ fn test_wire_gemini_3_thinking_level_and_effort_mapping() {
     let mut target = test_target();
     target.model = "gemini-3.8-flash".into();
 
-    // 1. Adaptive with no effort hint defaults to HIGH for Gemini 3
     let mut req = minimal_request(vec![Message::User {
         parts: vec![UserPart::Text {
             text: "Solve math".into(),
         }],
     }]);
-    req.thinking = ThinkingPreference::Adaptive;
-    let wire = wire::build_request(&req, &target);
-    let think = wire
-        .generation_config
-        .as_ref()
-        .and_then(|g| g.thinking_config.as_ref())
-        .expect("thinking_config present");
-    assert_eq!(think.thinking_level.as_deref(), Some("HIGH"));
-    assert_eq!(think.include_thoughts, Some(true));
-    assert_eq!(think.thinking_budget, None);
 
-    // 2. Named efforts: minimal, low, medium, high, and clamp xhigh/max to HIGH
-    for (name, expected) in [
-        ("minimal", "MINIMAL"),
-        ("low", "LOW"),
-        ("medium", "MEDIUM"),
-        ("high", "HIGH"),
-        ("xhigh", "HIGH"),
-        ("max", "HIGH"),
+    for (effort, expected) in [
+        (Effort::Medium, "MEDIUM"),
+        (Effort::High, "HIGH"),
+        (Effort::Max, "HIGH"),
     ] {
-        req.effort = Some(Effort::Named(name.into()));
+        req.effort = effort;
         let wire = wire::build_request(&req, &target);
         let think = wire
             .generation_config
@@ -346,25 +331,8 @@ fn test_wire_gemini_3_thinking_level_and_effort_mapping() {
         assert_eq!(think.thinking_budget, None);
     }
 
-    // 3. Budget preference mapped to discrete levels for Gemini 3
-    req.effort = None;
-    for (tokens, expected) in [(1000, "LOW"), (4096, "MEDIUM"), (32768, "HIGH")] {
-        req.thinking = ThinkingPreference::Budget {
-            tokens: Some(tokens),
-        };
-        let wire = wire::build_request(&req, &target);
-        let think = wire
-            .generation_config
-            .as_ref()
-            .and_then(|g| g.thinking_config.as_ref())
-            .expect("thinking_config present");
-        assert_eq!(think.thinking_level.as_deref(), Some(expected));
-        assert_eq!(think.include_thoughts, Some(true));
-        assert_eq!(think.thinking_budget, None);
-    }
-
-    // 4. Disabled thinking produces no thinking_config
-    req.thinking = ThinkingPreference::Disabled;
+    // Off disables thinking without sending a thinking configuration.
+    req.effort = Effort::Off;
     let wire = wire::build_request(&req, &target);
     assert!(
         wire.generation_config

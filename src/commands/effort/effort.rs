@@ -16,13 +16,11 @@ use crate::utils::effort::{Effort, get_effort_description};
 pub struct EffortCommandResult {
     pub message: String,
     pub effort_update: Option<Option<Effort>>,
-    pub ultracode: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EffortCall {
     OpenPicker,
-    ConfirmArgs(String),
     Result(EffortCommandResult),
 }
 
@@ -30,7 +28,7 @@ impl EffortCall {
     pub fn into_result(self) -> Option<EffortCommandResult> {
         match self {
             Self::Result(result) => Some(result),
-            Self::OpenPicker | Self::ConfirmArgs(_) => None,
+            Self::OpenPicker => None,
         }
     }
 }
@@ -40,7 +38,6 @@ impl EffortCommandResult {
         Self {
             message: message.into(),
             effort_update: None,
-            ultracode: false,
         }
     }
 
@@ -48,7 +45,6 @@ impl EffortCommandResult {
         Self {
             message: message.into(),
             effort_update: Some(value),
-            ultracode: false,
         }
     }
 }

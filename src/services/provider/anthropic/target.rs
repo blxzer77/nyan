@@ -210,6 +210,8 @@ mod tests {
             credential,
             compat: None,
             cache_retention: Default::default(),
+            effort: None,
+            extra: None,
         }
     }
 

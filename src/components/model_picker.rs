@@ -12,6 +12,7 @@ use crate::keybindings::keybinding_context::KeybindingRuntime;
 use crate::keybindings::types::ContextName;
 use crate::keybindings::use_keybinding::{KeybindingHandlers, use_keybindings};
 use crate::state::store::AppStore;
+use crate::utils::effort::Effort;
 use crate::utils::theme::Theme;
 use iocraft::prelude::*;
 
@@ -175,26 +176,14 @@ pub(crate) fn model_supports_effort(value: &str) -> bool {
         .is_some_and(crate::utils::effort::model_supports_effort)
 }
 
-/// Maps to: CC `utils/effort.ts#modelSupportsMaxEffort` as consumed by
-/// `components/ModelPicker.tsx`:125-127.
-pub(crate) fn model_supports_max_effort(value: &str) -> bool {
-    resolve_option_model(value)
-        .as_deref()
-        .is_some_and(crate::utils::effort::model_supports_max_effort)
-}
-
 fn model_effort_level_from_name(level: &str) -> Option<ModelEffortLevel> {
     Effort::from_str_loose(level)
-}
-
-fn effort_level_from_label(level: &str) -> ModelEffortLevel {
-    model_effort_level_from_name(level).unwrap_or(Effort::Medium)
 }
 
 /// Maps to: CC `components/ModelPicker.tsx` initializing effort from
 /// `AppState.effortValue` / `sessionEffort`.
 pub(crate) fn model_effort_from_value(
-    value: Option<&crate::utils::effort::EffortValue>,
+    value: Option<&Effort>,
 ) -> ModelEffortLevel {
     value.copied().unwrap_or(Effort::Medium)
 }
@@ -207,14 +196,6 @@ pub(crate) fn default_effort_level_for_option(_value: &str) -> ModelEffortLevel 
 
 pub(crate) fn displayed_effort(effort: ModelEffortLevel, _focused_value: &str) -> ModelEffortLevel {
     effort
-}
-
-/// Maps to: CC `utils/ultracode.ts#modelSupportsXhighEffort` as consumed by
-/// ModelPicker effort cycling.
-pub(crate) fn model_supports_xhigh_effort(value: &str) -> bool {
-    resolve_option_model(value)
-        .as_deref()
-        .is_some_and(crate::utils::effort::model_supports_xhigh_effort)
 }
 
 /// Maps to: CC `components/ModelPicker.tsx` `cycleEffortLevel` / `lmg`.
@@ -261,18 +242,14 @@ pub(crate) fn apply_model_picker_selection(
     let fast_mode_disabled = crate::utils::fast_mode::is_fast_mode_enabled()
         && state.fast_mode
         && !crate::utils::fast_mode::is_fast_mode_supported_by_model(model.as_deref());
-    state.main_loop_model = model.clone();
-    crate::bootstrap::state::set_main_loop_model_override(model.clone().map(Some));
-    if let Some(ref m) = model {
-        crate::utils::session_storage::save_session_model(m);
-    }
-    state.main_loop_model_for_session = None;
+    state.main_loop_model_for_session = model.clone();
+    let _ = crate::utils::session_storage::save_session_model(model.as_deref());
     if fast_mode_disabled {
         state.fast_mode = false;
     }
     if has_toggled_effort {
         state.effort_value = Some(picked_effort);
-        crate::utils::session_storage::save_session_effort(picked_effort);
+        let _ = crate::utils::session_storage::save_session_effort(picked_effort);
     }
     fast_mode_disabled
 }
@@ -363,12 +340,6 @@ struct ModelPickerView {
     fast_mode_is_on: bool,
     exit_pending: bool,
     exit_key_name: Option<String>,
-}
-
-impl Default for ModelEffortLevel {
-    fn default() -> Self {
-        Self::High
-    }
 }
 
 fn focused_model_label(options: &[SelectOptionData], focused_index: usize) -> Option<&str> {
@@ -688,7 +659,6 @@ pub(crate) fn ModelPicker<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::test_env::TEST_ENV_LOCK;
     use crate::utils::theme;
 
     fn render_picker(props: ModelPickerProps) -> String {
@@ -714,12 +684,6 @@ mod tests {
 
     #[test]
     fn model_picker_options_and_effort_cycle_match_official_shape() {
-        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_ALWAYS_ENABLE_EFFORT");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_BEDROCK");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_FOUNDRY");
-
         let options = model_picker_options(120);
         assert_eq!(
             options
@@ -734,16 +698,16 @@ mod tests {
             ModelEffortLevel::Max
         );
         assert_eq!(
-            cycle_effort(ModelEffortLevel::Xhigh, KeyCode::Right, "opus"),
-            ModelEffortLevel::Max
+            cycle_effort(ModelEffortLevel::Max, KeyCode::Right, "opus"),
+            ModelEffortLevel::Off
         );
         assert_eq!(
             cycle_effort(ModelEffortLevel::High, KeyCode::Right, "sonnet"),
             ModelEffortLevel::Max
         );
         assert_eq!(
-            cycle_effort(ModelEffortLevel::Xhigh, KeyCode::Right, "sonnet"),
-            ModelEffortLevel::Max
+            cycle_effort(ModelEffortLevel::Max, KeyCode::Right, "sonnet"),
+            ModelEffortLevel::Off
         );
         assert_eq!(
             displayed_effort(ModelEffortLevel::Max, "sonnet"),
@@ -752,10 +716,7 @@ mod tests {
         assert!(model_supports_effort(MODEL_NO_PREFERENCE));
         assert!(model_supports_effort("sonnet"));
         assert!(model_supports_effort("opus"));
-        assert!(!model_supports_effort("haiku"));
-        assert!(model_supports_max_effort("opus"));
-        assert!(model_supports_max_effort("sonnet"));
-        assert!(!model_supports_max_effort("haiku"));
+        assert!(model_supports_effort("haiku"));
         assert_eq!(
             selected_picker_effort(ModelEffortLevel::Max, "sonnet", true),
             Some(ModelEffortLevel::Max)
@@ -766,7 +727,6 @@ mod tests {
         );
 
         let mut state = crate::state::app_state_store::AppState::default();
-        state.ultracode = true;
         apply_model_picker_selection(
             &mut state,
             Some("sonnet".to_string()),
@@ -776,32 +736,19 @@ mod tests {
         );
         assert_eq!(
             state.effort_value,
-            Some(crate::utils::effort::EffortValue::Named("max".to_string()))
+            Some(Effort::Max)
         );
-        assert!(!state.ultracode);
     }
 
     #[test]
-    fn model_picker_renders_unsupported_effort_for_haiku_like_official() {
-        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_ALWAYS_ENABLE_EFFORT");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_BEDROCK");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_FOUNDRY");
-
+    fn model_picker_keeps_the_unified_effort_control_for_any_model() {
         let text = render_picker(ModelPickerProps {
             initial: Some("haiku".to_string()),
             ..ModelPickerProps::default()
         });
 
-        assert!(
-            text.contains("Effort not supported for Haiku"),
-            "canvas=\n{text}"
-        );
-        assert!(
-            !text.contains("High effort"),
-            "Haiku should not show adjustable effort; canvas=\n{text}"
-        );
+        assert!(text.contains("effort"), "canvas=\n{text}");
+        assert!(text.contains("← → to adjust"), "canvas=\n{text}");
     }
 
     #[test]
@@ -823,8 +770,8 @@ mod tests {
         );
         assert!(text.contains("● High effort (default)"), "canvas=\n{text}");
         assert!(text.contains("← → to adjust"), "canvas=\n{text}");
-        assert_eq!(ModelEffortLevel::Xhigh.symbol(), "◉");
-        assert_eq!(ModelEffortLevel::Xhigh.title_label(), "xHigh");
+        assert_eq!(ModelEffortLevel::Off.symbol(), "○");
+        assert_eq!(ModelEffortLevel::Off.title_label(), "Off");
         assert_eq!(ModelEffortLevel::Max.symbol(), "◈");
         assert_eq!(ModelEffortLevel::Max.title_label(), "Max");
         assert!(

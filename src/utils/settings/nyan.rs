@@ -1740,6 +1740,11 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
             "cacheRetention",
             zod::enumeration(vec!["short", "long", "none", "5m", "1h"]).optional(),
         ),
+        (
+            "effort",
+            zod::enumeration(vec!["off", "medium", "high", "max"]).optional(),
+        ),
+        ("extra", zod::any().optional()),
     ]);
     let decision_selection = zod::strict_object(vec![
         ("fast", zod::string().min(1).optional()),
@@ -1747,9 +1752,12 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
     ]);
     let selection = zod::strict_object(vec![
         ("main", zod::string().min(1).optional()),
+        ("light", zod::string().min(1).optional()),
+        ("heavy", zod::string().min(1).optional()),
         ("mainFallbacks", zod::array(zod::string().min(1)).optional()),
         ("subagent", zod::string().min(1).optional()),
         ("subagents", zod::record(zod::string().min(1)).optional()),
+        ("utility", zod::record(zod::string().min(1)).optional()),
         ("decision", decision_selection.optional()),
     ]);
 
@@ -2551,6 +2559,35 @@ mod tests {
             DecisionMode::Shadow
         );
         assert_eq!(settings.tool_io().read_batch_max(), 0);
+    }
+
+    #[test]
+    fn schema_accepts_tiers_utility_and_profile_effort_extra() {
+        let value = json!({
+            "providers": {
+                "p": {"kind": "anthropic", "protocol": "anthropicMessages"}
+            },
+            "models": {
+                "main": {
+                    "provider": "p",
+                    "model": "claude-sonnet-4-6",
+                    "effort": "max",
+                    "extra": {"custom_field": {"enabled": true}}
+                }
+            },
+            "selection": {
+                "main": "main",
+                "light": "main",
+                "heavy": "main",
+                "utility": {"title": "main:high"}
+            }
+        });
+        let parsed = crate::utils::zod::safe_parse(&nyan_settings_schema(), &value)
+            .expect("tiered selection and profile additions are valid");
+        assert_eq!(parsed["models"]["main"]["effort"], "max");
+        assert_eq!(parsed["models"]["main"]["extra"]["custom_field"]["enabled"], true);
+        assert_eq!(parsed["selection"]["light"], "main");
+        assert_eq!(parsed["selection"]["utility"]["title"], "main:high");
     }
 
     #[test]

@@ -126,6 +126,26 @@ impl ProviderAdapter for AnthropicAdapter {
                 ProviderError::new(ProviderErrorKind::InvalidRequest, error.to_string())
             })?;
 
+            let mut params = wire.params;
+            if let Some(serde_json::Value::Object(extra)) = &target.extra {
+                let mut body = serde_json::to_value(&params).map_err(|error| {
+                    ProviderError::new(
+                        ProviderErrorKind::InvalidRequest,
+                        format!("failed to serialize Anthropic request: {error}"),
+                    )
+                })?;
+                if let Some(object) = body.as_object_mut() {
+                    for (key, value) in extra {
+                        object.insert(key.clone(), value.clone());
+                    }
+                }
+                params = serde_json::from_value(body).map_err(|error| {
+                    ProviderError::new(
+                        ProviderErrorKind::InvalidRequest,
+                        format!("invalid Anthropic profile extra: {error}"),
+                    )
+                })?;
+            }
             let mut options = wire.options;
             if options.signal.is_none() {
                 options.signal = Some(cancel.clone());
@@ -133,7 +153,7 @@ impl ProviderAdapter for AnthropicAdapter {
             let response = client
                 .beta()
                 .messages()
-                .create_stream_with_response_and_options(&wire.params, Some(&options))
+                .create_stream_with_response_and_options(&params, Some(&options))
                 .await
                 .map_err(|error| provider_error(&error))?;
 
@@ -211,6 +231,8 @@ mod tests {
             max_output_tokens: 64_000,
             capabilities: Default::default(),
             cache_retention: Default::default(),
+            effort: None,
+            extra: None,
         }
     }
 

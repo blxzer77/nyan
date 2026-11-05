@@ -1115,9 +1115,10 @@ fn validate_compact_summary_assistant(
     Ok(summary)
 }
 
-fn compact_summary_model(context: &crate::tool::ToolUseContext) -> String {
+fn compact_summary_resolution(
+    context: &crate::tool::ToolUseContext,
+) -> crate::utils::model::agent::ResolvedAgentModel {
     let settings = crate::utils::settings::get_initial_settings();
-    let nyan = settings.nyan.as_deref();
     let parent_model = context
         .main_loop_model
         .clone()
@@ -1126,9 +1127,12 @@ fn compact_summary_model(context: &crate::tool::ToolUseContext) -> String {
         "compaction",
         &parent_model,
         context.effort_value,
-        nyan,
+        settings.nyan.as_deref(),
     )
-    .model
+}
+
+fn compact_summary_model(context: &crate::tool::ToolUseContext) -> String {
+    compact_summary_resolution(context).model
 }
 
 fn compact_summary_max_output_tokens(model: &str) -> u32 {
@@ -1155,9 +1159,11 @@ fn compact_fork_params(
             }
         },
     );
-    let summary_model = compact_summary_model(context);
+    let summary_resolution = compact_summary_resolution(context);
+    let summary_model = summary_resolution.model.clone();
     let mut summary_context = context.clone();
     summary_context.main_loop_model = Some(summary_model.clone());
+    summary_context.effort_value = Some(summary_resolution.effort);
     crate::utils::forked_agent::ForkedAgentParams {
         prompt_messages: vec![Message::User(summary_request)],
         cache_safe_params: crate::utils::forked_agent::CacheSafeParams {
@@ -1237,8 +1243,8 @@ async fn stream_compact_summary_fallback(
     let mut api_messages =
         strip_reinjected_attachments(strip_images_from_messages(&after_boundary));
     api_messages.push(Message::User(summary_request));
-    let app_state = context.get_app_state();
-    let model = compact_summary_model(context);
+    let summary_resolution = compact_summary_resolution(context);
+    let model = summary_resolution.model.clone();
     let mut options = crate::services::api::claude::Options::new(
         model.clone(),
         crate::constants::query_source::QuerySource::Compact
@@ -1248,7 +1254,7 @@ async fn stream_compact_summary_fallback(
     options.is_non_interactive_session = context.is_non_interactive_session;
     options.has_append_system_prompt = context.append_system_prompt.is_some();
     options.max_output_tokens_override = Some(compact_summary_max_output_tokens(&model));
-    options.effort_value = app_state.and_then(|state| state.effort_value.clone());
+    options.effort_value = Some(summary_resolution.effort);
     // API request descriptors are narrower than ToolUseContext agent
     // definitions. The text-only compact fallback exposes no agent tools.
     options.agents = Vec::new();

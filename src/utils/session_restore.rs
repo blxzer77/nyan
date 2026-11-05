@@ -105,6 +105,9 @@ pub struct ResumeLoadResult {
     pub pr_url: Option<String>,
     pub pr_repository: Option<String>,
     pub full_path: Option<String>,
+    /// Last session-scoped model/effort events, when present in the transcript.
+    pub session_model: Option<Option<String>>,
+    pub session_effort: Option<Option<crate::utils::effort::Effort>>,
     /// Rust typed restore-store payloads derived at the same load boundary.
     pub skill_restore: crate::utils::conversation::SkillRestoreState,
     pub read_file_state: Vec<crate::utils::query_helpers::ReadFileStateEntry>,
@@ -153,6 +156,8 @@ impl TryFrom<&crate::commands::resume::ResumeTarget> for ResumeLoadResult {
             pr_url: metadata.pr_url.clone(),
             pr_repository: metadata.pr_repository.clone(),
             full_path: metadata.full_path.clone(),
+            session_model: None,
+            session_effort: None,
             skill_restore: metadata.skill_restore.clone(),
             read_file_state: metadata.read_file_state.clone(),
             bash_tools: metadata.bash_tools.clone(),
@@ -175,6 +180,8 @@ pub struct ProcessedResume {
     pub restored_agent_def: Option<Arc<crate::tools::agent_tool::load_agents_dir::AgentDefinition>>,
     pub agent_definitions: Arc<crate::tools::agent_tool::load_agents_dir::AgentDefinitionsResult>,
     pub resume_restore_stores: Arc<ResumeRestoreStores>,
+    pub session_model: Option<Option<String>>,
+    pub session_effort: Option<Option<crate::utils::effort::Effort>>,
     restored_agent_type: Option<String>,
     restored_file_history: Option<Arc<crate::utils::file_history::FileHistoryState>>,
 }
@@ -190,6 +197,12 @@ impl ProcessedResume {
             .map(|agent| agent.agent_type.clone());
         state.standalone_agent_context =
             self.resume_restore_stores.standalone_agent_context.clone();
+        if let Some(model) = self.session_model.as_ref() {
+            state.main_loop_model_for_session = model.clone();
+        }
+        if let Some(effort) = self.session_effort.as_ref() {
+            state.effort_value = effort.clone();
+        }
         if let Some(file_history) = self.restored_file_history.as_ref() {
             state.file_history = file_history.clone();
         }
@@ -381,6 +394,16 @@ pub fn process_resumed_conversation(
         })?;
     }
 
+    if let (Some(path), Some(session_id)) = (result.full_path.as_deref(), result.session_id.as_deref()) {
+        let loaded = crate::utils::session_storage::load_session_structured_from_path(Path::new(path));
+        if let Some(model) = loaded.session_models.get(session_id) {
+            result.session_model = Some(model.clone());
+        }
+        if let Some(effort) = loaded.session_efforts.get(session_id) {
+            result.session_effort = Some(effort.clone());
+        }
+    }
+
     Ok(ProcessedResume::from_load_result(
         result,
         current_agent_definition,
@@ -482,6 +505,8 @@ impl ProcessedResume {
             restored_agent_def,
             agent_definitions,
             resume_restore_stores,
+            session_model: result.session_model,
+            session_effort: result.session_effort,
             restored_agent_type,
             restored_file_history,
         }

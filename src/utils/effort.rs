@@ -24,8 +24,28 @@ pub enum Effort {
     Max,
 }
 
-pub type EffortValue = Effort;
+/// Legacy frontmatter value retained for the agent-loader surface owned by
+/// PR9b. Runtime model selection and provider requests use [`Effort`] only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum EffortValue {
+    Named(String),
+    Numeric(i64),
+}
+
+impl EffortValue {
+    pub fn as_str(&self) -> String {
+        match self {
+            Self::Named(value) => value.clone(),
+            Self::Numeric(value) => value.to_string(),
+        }
+    }
+}
+
 pub type ModelEffortLevel = Effort;
+
+/// Effort names accepted by the still-unmigrated agent frontmatter parser.
+pub const EFFORT_LEVELS: &[&str] = &["off", "medium", "high", "max"];
 
 impl Effort {
     pub const ALL: [Effort; 4] = [Effort::Off, Effort::Medium, Effort::High, Effort::Max];
@@ -92,6 +112,37 @@ impl fmt::Display for Effort {
     }
 }
 
+/// Parse the legacy agent-frontmatter value without consulting global effort
+/// settings. PR9b removes this parser together with the independent field.
+pub fn parse_effort_value(value: &str) -> Option<EffortValue> {
+    if value.is_empty() {
+        return None;
+    }
+    let lower = value.to_ascii_lowercase();
+    if EFFORT_LEVELS.contains(&lower.as_str()) {
+        return Some(EffortValue::Named(lower));
+    }
+    let trimmed = lower.trim_start();
+    let (sign, digits) = match trimmed.as_bytes().first().copied() {
+        Some(b'-') => (-1_i128, &trimmed[1..]),
+        Some(b'+') => (1_i128, &trimmed[1..]),
+        _ => (1_i128, trimmed),
+    };
+    let digits = digits
+        .bytes()
+        .take_while(u8::is_ascii_digit)
+        .collect::<Vec<_>>();
+    if digits.is_empty() {
+        return None;
+    }
+    let number = digits.into_iter().try_fold(0_i128, |value, digit| {
+        value
+            .checked_mul(10)?
+            .checked_add((digit - b'0') as i128)
+    })? * sign;
+    i64::try_from(number).ok().map(EffortValue::Numeric)
+}
+
 /// Description of each effort level.
 pub fn get_effort_level_description(level: &str) -> &'static str {
     match level {
@@ -105,6 +156,32 @@ pub fn get_effort_level_description(level: &str) -> &'static str {
 
 pub fn get_effort_description(effort: Effort) -> &'static str {
     get_effort_level_description(effort.as_str())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpusDefaultEffortConfig {
+    pub enabled: bool,
+    pub dialog_title: String,
+    pub dialog_description: String,
+}
+
+pub fn get_opus_default_effort_config() -> OpusDefaultEffortConfig {
+    OpusDefaultEffortConfig {
+        enabled: true,
+        dialog_title: "We recommend medium effort for Opus".to_string(),
+        dialog_description:
+            "Effort determines how much reasoning the model uses for a task.".to_string(),
+    }
+}
+
+/// Global settings and environment overrides no longer participate in effort.
+/// The session resolver supplies the active value at the call site.
+pub fn get_initial_effort_setting() -> Option<Effort> {
+    None
+}
+
+pub fn resolve_applied_effort(_model: &str, effort: Option<&Effort>) -> Option<Effort> {
+    effort.copied()
 }
 
 /// Split a model spec in `ref[:effort]` format.
@@ -131,10 +208,6 @@ pub fn parse_model_ref_and_effort(spec: &str) -> (&str, Option<Effort>) {
 }
 
 pub fn model_supports_effort(_model: &str) -> bool {
-    true
-}
-
-pub fn model_supports_max_effort(_model: &str) -> bool {
     true
 }
 

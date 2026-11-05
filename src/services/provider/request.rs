@@ -348,8 +348,7 @@ mod tests {
             temperature: None,
             tool_choice: ToolChoice::Auto,
             disable_parallel_tools: false,
-            thinking: ThinkingConfig::Disabled,
-            effort: None,
+            effort: Effort::Medium,
             output_schema: None,
             enable_prompt_caching: true,
             skip_cache_write: false,
@@ -460,20 +459,12 @@ mod tests {
     }
 
     #[test]
-    fn thinking_config_maps_to_preference() {
+    fn effort_is_carried_into_the_provider_request() {
         let mut p = params();
-        p.thinking = ThinkingConfig::Enabled {
-            budget_tokens: Some(2048),
-        };
+        p.effort = Effort::Max;
         assert_eq!(
-            build_request(&[], &[], &[], Vec::new(), p).thinking,
-            ThinkingPreference::Budget { tokens: Some(2048) }
-        );
-        let mut p = params();
-        p.thinking = ThinkingConfig::Adaptive;
-        assert_eq!(
-            build_request(&[], &[], &[], Vec::new(), p).thinking,
-            ThinkingPreference::Adaptive
+            build_request(&[], &[], &[], Vec::new(), p).effort,
+            Effort::Max
         );
     }
 

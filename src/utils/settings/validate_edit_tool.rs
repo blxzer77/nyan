@@ -116,7 +116,7 @@ mod tests {
         assert!(validate_input_for_settings_file_edit(
             &settings_path(),
             r#"{"language": "zh"}"#,
-            r#"{"language": "zh", "effortLevel": "ultra", "strictPluginOnlyCustomization": "skills"}"#,
+            r#"{"language": "zh", "strictPluginOnlyCustomization": "skills"}"#,
             &cwd(),
         )
         .is_none());

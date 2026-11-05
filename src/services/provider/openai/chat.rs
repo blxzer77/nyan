@@ -800,7 +800,7 @@ impl ChatStream {
 mod tests {
     use super::*;
     use crate::services::provider::ir::{
-        CachePolicy, ClientContext, JsonSchemaOutput, ThinkingPreference, ToolSpec,
+        CachePolicy, ClientContext, Effort, JsonSchemaOutput, ToolSpec,
     };
     use crate::utils::model::profile::ResolvedCapabilities;
     use crate::utils::settings::nyan::ProviderKind;
@@ -825,6 +825,8 @@ mod tests {
             max_output_tokens: 8_000,
             capabilities,
             cache_retention: Default::default(),
+            effort: None,
+            extra: None,
         }
     }
 
@@ -845,8 +847,7 @@ mod tests {
             messages,
             tools: vec![],
             tool_choice: ToolChoice::Auto,
-            thinking: ThinkingPreference::Disabled,
-            effort: None,
+            effort: Effort::Off,
             max_output_tokens: 32_000,
             temperature: None,
             structured_output: None,
@@ -934,8 +935,7 @@ mod tests {
     #[test]
     fn thinking_effort_and_temperature_follow_the_declared_capabilities() {
         let mut r = request(vec![user_text("hi")]);
-        r.thinking = ThinkingPreference::Adaptive;
-        r.effort = Some(crate::services::provider::ir::Effort::Named("high".into()));
+        r.effort = Effort::High;
         r.temperature = Some(0.2);
         let reasoning = build_body(&target(all()), &r);
         assert_eq!(reasoning["reasoning_effort"], "high");

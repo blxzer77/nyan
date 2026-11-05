@@ -208,8 +208,38 @@ fn text_block(text: impl Into<String>) -> TextBlockParam {
 /// do not bypass this for side calls).
 pub async fn side_query(opts: SideQueryOptions) -> anyhow::Result<Message> {
     let settings = crate::utils::settings::get_initial_settings();
-    let profile = crate::utils::model::profile::resolve_main_profile(&settings)?;
+    let main_model = crate::utils::model::model::get_main_loop_model();
+    let utility = crate::utils::model::agent::resolve_utility_model_and_effort(
+        "side_query",
+        &main_model,
+        None,
+        settings.nyan.as_deref(),
+    );
+    let use_utility_selection =
+        opts.model.trim().is_empty() || opts.model == utility.model;
+    let profile = if use_utility_selection {
+        utility
+            .profile
+            .as_deref()
+            .map(|name| {
+                crate::utils::model::profile::resolve_profile(
+                    settings.nyan.as_deref().expect("utility profile requires nyan settings"),
+                    name,
+                )
+            })
+            .transpose()?
+            .unwrap_or(crate::utils::model::profile::resolve_main_profile(&settings)?)
+    } else {
+        crate::utils::model::profile::resolve_main_profile(&settings)?
+    };
+    let request_model = if use_utility_selection {
+        utility.model.clone()
+    } else {
+        opts.model.clone()
+    };
     if profile.protocol != crate::utils::settings::nyan::ProviderProtocol::AnthropicMessages {
+        let mut opts = opts;
+        opts.model = request_model;
         return side_query_neutral(profile, opts).await;
     }
 
@@ -221,7 +251,7 @@ pub async fn side_query(opts: SideQueryOptions) -> anyhow::Result<Message> {
     let client = crate::services::provider::anthropic::client::get_anthropic_client(
         crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_main_profile(
             max_retries,
-            Some(opts.model.clone()),
+            Some(request_model.clone()),
             Some("side_query".to_string()),
         )?,
     )
@@ -230,7 +260,7 @@ pub async fn side_query(opts: SideQueryOptions) -> anyhow::Result<Message> {
 
     // Maps to: CC `const betas = [...getModelBetas(model)]` (+ structured-outputs
     // beta when output_format is set and modelSupportsStructuredOutputs).
-    let betas = side_query_betas_for_request(&opts.model, opts.output_format.is_some());
+    let betas = side_query_betas_for_request(&request_model, opts.output_format.is_some());
 
     // Extract first user message text for fingerprint.
     let message_text = extract_first_user_message_text(&opts.messages);
@@ -266,11 +296,32 @@ pub async fn side_query(opts: SideQueryOptions) -> anyhow::Result<Message> {
             // CC: budget_tokens: Math.min(thinking, max_tokens - 1)
             budget_tokens: (*budget_tokens).min(max_tokens.saturating_sub(1)),
         }),
-        None => None,
+        None => match profile.effort {
+            Some(crate::utils::effort::Effort::Off) => Some(ThinkingConfig::Disabled),
+            Some(_) => Some(ThinkingConfig::Enabled {
+                budget_tokens: max_tokens.saturating_sub(1) as i64,
+            }),
+            None => None,
+        },
     };
+    let output_effort = (opts.thinking.is_none())
+        .then(|| profile.effort.filter(|effort| !effort.is_off()))
+        .flatten()
+        .map(|effort| match effort {
+            crate::utils::effort::Effort::Medium => {
+                anthropic_sdk::resources::messages::Effort::Medium
+            }
+            crate::utils::effort::Effort::High => {
+                anthropic_sdk::resources::messages::Effort::High
+            }
+            crate::utils::effort::Effort::Max => {
+                anthropic_sdk::resources::messages::Effort::Max
+            }
+            crate::utils::effort::Effort::Off => unreachable!("off was filtered"),
+        });
 
     // Maps to: CC `normalizeModelStringForAPI(model)`.
-    let normalized_model = normalize_model_string_for_api(&opts.model);
+    let normalized_model = normalize_model_string_for_api(&request_model);
     // Maps to: CC `metadata: getAPIMetadata()`.
     let meta = get_api_metadata();
 
@@ -298,7 +349,7 @@ pub async fn side_query(opts: SideQueryOptions) -> anyhow::Result<Message> {
         // Maps to: CC `...(output_format && { output_config: { format: output_format } })`.
         output_config: opts.output_format.as_ref().map(|schema| {
             anthropic_sdk::resources::messages::OutputConfig {
-                effort: None,
+                effort: output_effort.clone(),
                 format: Some(anthropic_sdk::resources::messages::JsonOutputFormat {
                     schema: schema.clone(),
                     type_name: "json_schema".to_string(),

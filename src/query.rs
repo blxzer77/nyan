@@ -6418,12 +6418,12 @@ mod tests {
         // Maps to: nested agents write effort onto ToolUseContext before
         // spawn_query (formerly QueryRuntimeOptions.effort_value).
         let context = crate::tool::ToolUseContext::default().with_effort_value(Some(
-            crate::utils::effort::EffortValue::Named("low".to_string()),
+            crate::utils::effort::Effort::Off,
         ));
 
         assert_eq!(
             context.effort_value,
-            Some(crate::utils::effort::EffortValue::Named("low".to_string()))
+            Some(crate::utils::effort::Effort::Off)
         );
     }
 
@@ -8336,9 +8336,7 @@ mod tests {
             .with_non_interactive_session(true)
             .with_cwd_override(Some(std::path::PathBuf::from("/tmp/agent-cwd")))
             .with_critical_system_reminder_experimental(Some("Stay focused".to_string()))
-            .with_effort_value(Some(crate::utils::effort::EffortValue::Named(
-                "medium".to_string(),
-            )))
+            .with_effort_value(Some(crate::utils::effort::Effort::Medium))
             .with_fast_mode(Some(false));
 
         let request = build_call_model_request(
@@ -8360,9 +8358,7 @@ mod tests {
         );
         assert_eq!(
             request.options.effort_value,
-            Some(crate::utils::effort::EffortValue::Named(
-                "medium".to_string()
-            ))
+            Some(crate::utils::effort::Effort::Medium)
         );
         assert!(request.options.is_non_interactive_session);
         assert_eq!(request.options.fast_mode, Some(false));

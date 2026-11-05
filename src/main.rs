@@ -333,7 +333,6 @@ fn build_initial_app_state_with_thinking(
 
     initial.effort_value =
         cli.effort.as_deref().and_then(crate::utils::effort::Effort::from_str_loose);
-    initial.ultracode = false;
 
     let loaded_permission_rules =
         crate::utils::permissions::permissions_loader::load_all_permission_rules_from_disk();
@@ -2618,7 +2617,7 @@ mod tests {
         assert_eq!(state.main_loop_model.as_deref(), Some("sonnet"));
         assert_eq!(
             state.effort_value,
-            Some(crate::utils::effort::EffortValue::Named("medium".into()))
+            Some(crate::utils::effort::Effort::Medium)
         );
         assert!(state.verbose);
         assert_eq!(

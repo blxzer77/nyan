@@ -17,7 +17,7 @@ use crate::components::design_system::pane::Pane;
 use crate::hooks::use_main_loop_model::use_main_loop_model;
 use crate::state::app_state::use_app_state_maybe_outside_of_provider;
 use crate::state::store::AppStore;
-use crate::utils::effort::{EffortValue, get_displayed_effort_level};
+use crate::utils::effort::{Effort, get_displayed_effort_level};
 use crate::utils::theme::Theme;
 use crate::utils::thinking::get_rainbow_color;
 use iocraft::prelude::*;
@@ -32,11 +32,6 @@ const SHIMMER_HIGHLIGHT: Color = Color::Rgb {
     g: 0xb4,
     b: 0xff,
 };
-const ULTRACODE_VIOLET: Color = Color::Rgb {
-    r: 140,
-    g: 80,
-    b: 240,
-};
 const ANIMATION_TICK_MS: u64 = 100;
 const MAX_EFFORT_WARNING: &str = "Max effort uses maximum reasoning depth.";
 
@@ -47,7 +42,6 @@ pub enum SliderLevelColor {
     Permission,
     AutoAcceptShimmer,
     RainbowAnimated,
-    VioletRipple,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -131,7 +125,7 @@ fn build_base_geometry(level_count: usize) -> (Vec<SliderLevel>, usize, Vec<usiz
 }
 
 /// Maps to: CC `getSliderGeometry` (`Qac` / 2.1.241 `wbs`).
-pub fn get_slider_geometry(model: &str) -> SliderGeometry {
+pub fn get_slider_geometry(_model: &str) -> SliderGeometry {
     let (base_levels, base_width, base_triangles, base_spacers) =
         build_base_geometry(SLIDER_LEVELS.len());
     SliderGeometry {
@@ -160,8 +154,7 @@ pub fn slider_values(model: &str) -> Vec<&'static str> {
 pub fn initial_focus_index(
     geometry: &SliderGeometry,
     model: &str,
-    effort: Option<&EffortValue>,
-    _ultracode: bool,
+    effort: Option<&Effort>,
 ) -> usize {
     let displayed = get_displayed_effort_level(model, effort);
     geometry
@@ -184,7 +177,6 @@ fn theme_color(theme: &Theme, color: SliderLevelColor) -> Option<Color> {
         SliderLevelColor::Permission => Some(theme.permission),
         SliderLevelColor::AutoAcceptShimmer => Some(theme.auto_accept),
         SliderLevelColor::RainbowAnimated => None,
-        SliderLevelColor::VioletRipple => Some(ULTRACODE_VIOLET),
     }
 }
 
@@ -239,27 +231,12 @@ fn slider_level_label(
     reduced: bool,
 ) -> AnyElement<'static> {
     if !selected {
-        if level.color == SliderLevelColor::VioletRipple {
-            return element! {
-                Text(content: level.label.to_string(), color: ULTRACODE_VIOLET)
-            }
-            .into_any();
-        }
         return element! {
             Text(content: level.label.to_string(), dim: true)
         }
         .into_any();
     }
     match level.color {
-        SliderLevelColor::VioletRipple => element! {
-            Text(
-                content: level.label.to_string(),
-                weight: Weight::Bold,
-                color: Color::Rgb { r: 255, g: 255, b: 255 },
-                background_color: ULTRACODE_VIOLET,
-            )
-        }
-        .into_any(),
         SliderLevelColor::RainbowAnimated => rainbow_label(level.label, theme, tick),
         SliderLevelColor::AutoAcceptShimmer => shimmer_label(level.label, theme, tick, reduced),
         color => element! {
@@ -281,36 +258,14 @@ fn track_row(geometry: &SliderGeometry, selected_index: usize) -> AnyElement<'st
         .unwrap_or(0)
         .min(geometry.track_chars.chars().count().saturating_sub(1));
     let chars: Vec<char> = geometry.track_chars.chars().collect();
-    let accent_start = geometry.accent_start.unwrap_or(chars.len());
     let left: String = chars.iter().take(triangle_col).collect();
     let right: String = chars.iter().skip(triangle_col + 1).collect();
-    let left_plain_end = left.chars().count().min(accent_start);
-    let left_plain: String = left.chars().take(left_plain_end).collect();
-    let left_accent: String = left.chars().skip(left_plain_end).collect();
-    let triangle_in_accent = triangle_col >= accent_start;
-    let right_plain_len = accent_start.saturating_sub(triangle_col + 1);
-    let right_plain: String = right.chars().take(right_plain_len).collect();
-    let right_accent: String = right.chars().skip(right_plain_len).collect();
 
     element! {
         View(flex_direction: FlexDirection::Row) {
-            Text(content: left_plain, dim: true)
-            #(if !left_accent.is_empty() {
-                Some(element! { Text(content: left_accent, color: ULTRACODE_VIOLET) })
-            } else {
-                None
-            })
-            Text(
-                content: "▲".to_string(),
-                weight: Weight::Bold,
-                color: triangle_in_accent.then_some(ULTRACODE_VIOLET),
-            )
-            Text(content: right_plain, dim: true)
-            #(if !right_accent.is_empty() {
-                Some(element! { Text(content: right_accent, color: ULTRACODE_VIOLET) })
-            } else {
-                None
-            })
+            Text(content: left, dim: true)
+            Text(content: "▲".to_string(), weight: Weight::Bold)
+            Text(content: right, dim: true)
         }
     }
     .into_any()
@@ -381,11 +336,9 @@ fn apply_picker_effort(value: &str, store: Option<&AppStore>, model: &str) -> St
 }
 
 /// Maps to: CC `components/EffortPicker.tsx#EffortPicker` (`NSg`).
-/// Official `NSg` reads effort (`fk`), `cacheMissAckedAtOutputTokens`,
-/// `ultracode` via `useAppState` (`Ht`), and the model via `useMainLoopModel`
-/// (`wC`). Confirm applies through `W8t`/`Zvr` (`Zi()` + persist) and then
-/// `onDone(message)`. Callers only supply host completion plus `/effort
-/// <level>` confirm args and the `getMessages` emptiness flag.
+/// The picker edits the current session's effort and reports completion through
+/// the host callback. Callers only supply the optional `/effort <level>` argument
+/// and the conversation-state flag used by the surrounding picker contract.
 #[component]
 pub fn EffortPicker<'a>(
     props: &mut EffortPickerProps<'a>,
@@ -406,12 +359,6 @@ pub fn EffortPicker<'a>(
     let effort =
         use_app_state_maybe_outside_of_provider(&mut hooks, |state| state.effort_value.clone())
             .flatten();
-    let ultracode = use_app_state_maybe_outside_of_provider(&mut hooks, |state| state.ultracode)
-        .unwrap_or(false);
-    let acked_output_tokens = use_app_state_maybe_outside_of_provider(&mut hooks, |state| {
-        state.cache_miss_acked_at_output_tokens
-    })
-    .unwrap_or(-1);
     let model = use_main_loop_model(
         main_loop_model.as_deref(),
         main_loop_model_for_session.as_deref(),
@@ -421,7 +368,7 @@ pub fn EffortPicker<'a>(
         .map(|store| store.clone());
     let geometry = get_slider_geometry(&model);
     let option_count = geometry.levels.len();
-    let initial = initial_focus_index(&geometry, &model, effort.as_ref(), ultracode);
+    let initial = initial_focus_index(&geometry, &model, effort.as_ref());
     let mut pending_confirm = hooks.use_state(|| props.args.clone());
     let mut confirmed = hooks.use_state(|| false);
     let mut cancelled = hooks.use_state(|| false);
@@ -499,7 +446,7 @@ pub fn EffortPicker<'a>(
         if props.args.is_some() {
             let current = effort
                 .as_ref()
-                .map(EffortValue::as_str)
+                .map(|effort| effort.as_str().to_string())
                 .unwrap_or_else(|| "auto".into());
             (props.on_cancel_args)(format!("Kept effort level as {current}"));
         }
@@ -516,19 +463,8 @@ pub fn EffortPicker<'a>(
     let selected = { pending_selection.read().clone() };
     if let Some(value) = selected {
         pending_selection.set(None);
-        let new_effort = normalize_effort_picker_arg(&value, &model).flatten();
-        if should_confirm_effort_cache_break(
-            new_effort.as_ref(),
-            effort.as_ref(),
-            &model,
-            acked_output_tokens,
-            props.has_conversation_messages,
-        ) {
-            pending_confirm.set(Some(value));
-        } else {
-            let message = apply_picker_effort(&value, store.as_ref(), &model);
-            (props.on_select)(message);
-        }
+        let message = apply_picker_effort(&value, store.as_ref(), &model);
+        (props.on_select)(message);
     }
     let pending = pending_confirm.read().clone();
     if let Some(value) = pending {
@@ -630,7 +566,6 @@ mod tests {
         assert_eq!(geometry.triangle_positions, vec![1usize, 10, 20, 30]);
         assert_eq!(geometry.spacers, vec![5usize, 5, 5]);
         assert_eq!(geometry.track_chars.chars().count(), 36);
-        assert!(!values.contains(&"ultracode"));
     }
 
     #[test]
@@ -640,13 +575,12 @@ mod tests {
             initial_focus_index(
                 &geometry,
                 "any-model",
-                Some(&EffortValue::High),
-                false
+                Some(&Effort::High),
             ),
             2
         );
         assert_eq!(
-            initial_focus_index(&geometry, "any-model", None, false),
+            initial_focus_index(&geometry, "any-model", None),
             1
         );
     }
@@ -655,7 +589,7 @@ mod tests {
     fn picker_renders_official_horizontal_slider_not_a_list() {
         let mut initial = crate::state::app_state_store::AppState::default();
         initial.main_loop_model = Some("claude-opus-4-7".to_string());
-        initial.effort_value = Some(EffortValue::High);
+        initial.effort_value = Some(Effort::High);
         let canvas = element! {
             ContextProvider(value: Context::owned(*theme::current())) {
                 crate::state::app_state::AppStateProvider(
@@ -675,7 +609,7 @@ mod tests {
             "canvas=\n{text}"
         );
         assert!(
-            text.contains("low     medium     high     xhigh      max"),
+            text.contains("off     medium     high     max"),
             "canvas=\n{text}"
         );
         assert!(text.contains('▲'), "canvas=\n{text}");

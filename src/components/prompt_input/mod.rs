@@ -436,7 +436,7 @@ fn restore_stash_or_clear(
     }
 }
 
-/// Maps to PromptInput.tsx `handleModelSelect`: model changes clear the
+/// Maps to PromptInput.tsx `handleModelSelect`: model changes update the
 /// session override and disable Fast mode when the selected model cannot use it.
 /// Effort apply is official ModelPicker `handleSelect` / `bt`.
 fn apply_prompt_model_selection(
@@ -3844,8 +3844,8 @@ mod tests {
             false,
         ));
         assert!(!state.fast_mode);
-        assert_eq!(state.main_loop_model.as_deref(), Some("sonnet"));
-        assert!(state.main_loop_model_for_session.is_none());
+        assert_eq!(state.main_loop_model.as_deref(), Some("opus"));
+        assert_eq!(state.main_loop_model_for_session.as_deref(), Some("sonnet"));
     }
 
     #[test]
@@ -4342,11 +4342,11 @@ mod tests {
         );
         assert_eq!(
             max_effort_store.get().effort_value,
-            Some(crate::utils::effort::EffortValue::Named("max".to_string())),
+            Some(crate::utils::effort::Effort::Max),
             "ModelPicker High → Max on Opus 4.6 must apply Max to AppState"
         );
         assert_eq!(
-            max_effort_store.get().main_loop_model.as_deref(),
+            max_effort_store.get().main_loop_model_for_session.as_deref(),
             Some("opus[1m]")
         );
 

@@ -805,7 +805,7 @@ impl ResponsesStream {
 mod tests {
     use super::*;
     use crate::services::provider::ir::{
-        CachePolicy, ClientContext, Effort, JsonSchemaOutput, MediaSource, ThinkingPreference,
+        CachePolicy, ClientContext, Effort, JsonSchemaOutput, MediaSource,
         ToolSpec,
     };
     use crate::utils::model::profile::ResolvedCapabilities;
@@ -820,6 +820,8 @@ mod tests {
             max_output_tokens: 8_000,
             capabilities,
             cache_retention: Default::default(),
+            effort: None,
+            extra: None,
         }
     }
 
@@ -840,8 +842,7 @@ mod tests {
             messages,
             tools: vec![],
             tool_choice: ToolChoice::Auto,
-            thinking: ThinkingPreference::Disabled,
-            effort: None,
+            effort: Effort::Off,
             max_output_tokens: 32_000,
             temperature: None,
             structured_output: None,
@@ -914,8 +915,7 @@ mod tests {
         r.tools = vec![tool()];
         r.tool_choice = ToolChoice::Any;
         r.disable_parallel_tools = true;
-        r.thinking = ThinkingPreference::Adaptive;
-        r.effort = Some(Effort::Named("medium".into()));
+        r.effort = Effort::Medium;
         let body = build_body(&target(all()), &r, Backend::Api);
         assert_eq!(body["tools"][0]["strict"], false);
         assert_eq!(body["tools"][0]["name"], "Read");

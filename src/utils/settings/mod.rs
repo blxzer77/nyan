@@ -385,6 +385,14 @@ fn validate_merged_selection_profiles(settings: &SettingsJson) -> Vec<Validation
             check(&format!("utility.{role}"), spec, &mut errors);
         }
     }
+    if let Some(decision) = selection.decision.as_ref() {
+        if let Some(fast) = decision.fast.as_deref() {
+            check("decision.fast", fast, &mut errors);
+        }
+        if let Some(accurate) = decision.accurate.as_deref() {
+            check("decision.accurate", accurate, &mut errors);
+        }
+    }
     errors
 }
 
@@ -891,6 +899,47 @@ mod tests {
     use crate::utils::settings::constants::get_setting_source_display_name_capitalized;
     use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK, TestEnvLock};
     use std::fs;
+
+    #[test]
+    fn selection_profile_validation_covers_tiers_subagents_utility_and_decision() {
+        let settings = SettingsJson {
+            nyan: Some(crate::utils::settings::nyan::NyanSettings {
+                models: Some(std::collections::BTreeMap::from([(
+                    "main".to_string(),
+                    crate::utils::settings::nyan::ModelProfileSettings::default(),
+                )])),
+                selection: Some(crate::utils::settings::nyan::SelectionSettings {
+                    main: Some("main".to_string()),
+                    light: Some("missing-light".to_string()),
+                    heavy: Some("@heavy".to_string()),
+                    subagent: Some("missing-subagent".to_string()),
+                    subagents: Some(std::collections::BTreeMap::from([(
+                        "explore".to_string(),
+                        "missing-explore:high".to_string(),
+                    ])),
+                    utility: Some(std::collections::BTreeMap::from([(
+                        "title".to_string(),
+                        "missing-title:medium".to_string(),
+                    ])),
+                    decision: Some(crate::utils::settings::nyan::SelectionDecisionSettings {
+                        fast: Some("missing-fast".to_string()),
+                        accurate: None,
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let errors = validate_merged_selection_profiles(&settings);
+        let paths = errors.iter().map(|error| error.path.as_str()).collect::<Vec<_>>();
+        assert!(paths.contains(&"nyan.selection.light"));
+        assert!(paths.contains(&"nyan.selection.subagent"));
+        assert!(paths.contains(&"nyan.selection.subagents.explore"));
+        assert!(paths.contains(&"nyan.selection.utility.title"));
+        assert!(paths.contains(&"nyan.selection.decision.fast"));
+        assert!(!paths.contains(&"nyan.selection.heavy"));
+    }
 
     #[test]
     fn auto_mode_config_matches_official_trusted_source_order_and_alias() {

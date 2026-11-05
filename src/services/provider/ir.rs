@@ -548,8 +548,7 @@ mod tests {
             tool_choice: ToolChoice::Tool {
                 name: "Read".into(),
             },
-            thinking: ThinkingPreference::Budget { tokens: Some(100) },
-            effort: Some(Effort::Named("high".into())),
+            effort: Effort::High,
             max_output_tokens: 1000,
             temperature: None,
             structured_output: None,

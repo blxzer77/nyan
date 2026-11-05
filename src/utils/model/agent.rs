@@ -26,6 +26,11 @@ pub struct ResolvedAgentModel {
     pub profile: Option<String>,
 }
 
+/// Default model reference used by displays that do not have an agent type.
+pub fn get_default_subagent_model() -> &'static str {
+    "inherit"
+}
+
 /// Default subagent spec string by agent type name.
 pub fn default_subagent_spec(agent_type: &str) -> &'static str {
     match agent_type.trim().to_ascii_lowercase().as_str() {
@@ -66,6 +71,13 @@ fn resolve_spec_to_agent_model(
     }
 
     let selection = nyan.and_then(|n| n.selection.as_ref());
+    if selection.is_none() && r_ref.starts_with('@') {
+        return ResolvedAgentModel {
+            model: parent_model.to_string(),
+            effort: explicit_effort.or(parent_effort).unwrap_or(default_effort),
+            profile: None,
+        };
+    }
     let profile_name = if let Some(sel) = selection {
         resolve_selection_profile_name(sel, r_ref).unwrap_or(r_ref)
     } else {

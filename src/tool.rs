@@ -1284,7 +1284,7 @@ pub struct ToolUseContext {
     pub fast_mode: Option<bool>,
     /// Maps to CC `AppState.effortValue` as observed by
     /// `runAgent.ts#createSubagentContext` for nested agent effort fallback.
-    pub effort_value: Option<crate::utils::effort::EffortValue>,
+    pub effort_value: Option<crate::utils::effort::Effort>,
     /// Maps to CC `ToolUseContext.getAppState().mcp`: live MCP clients,
     /// discovered tools, prompts, and resources used by dynamic MCP tools.
     pub mcp_state: crate::state::app_state_store::McpState,
@@ -1709,7 +1709,7 @@ impl ToolUseContext {
 
     pub fn with_effort_value(
         mut self,
-        effort_value: Option<crate::utils::effort::EffortValue>,
+        effort_value: Option<crate::utils::effort::Effort>,
     ) -> Self {
         self.effort_value = effort_value;
         self

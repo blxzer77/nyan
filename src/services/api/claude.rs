@@ -28,7 +28,7 @@ use crate::types::message::{StreamEvent, SystemApiErrorMessage};
 use crate::types::tools::Tool;
 use crate::utils::content_array::insert_block_after_tool_results;
 use crate::utils::context::{CAPPED_DEFAULT_MAX_TOKENS, get_model_max_output_tokens};
-use crate::utils::effort::{EffortValue, model_supports_effort, resolve_applied_effort};
+use crate::utils::effort::{Effort, model_supports_effort};
 use crate::utils::model::model::{
     get_default_opus_model, get_default_sonnet_model, get_main_loop_model, get_small_fast_model,
     normalize_model_string_for_api,
@@ -243,7 +243,7 @@ pub struct Options {
     pub enable_prompt_caching: Option<bool>,
     pub skip_cache_write: Option<bool>,
     pub temperature_override: Option<f64>,
-    pub effort_value: Option<EffortValue>,
+    pub effort_value: Option<Effort>,
     /// Maps to: CC `services/api/claude.ts:694` `mcpTools: Tools`.
     ///
     /// **Write-only, exactly as in CC.** The only producer is `query.ts:689`
@@ -464,9 +464,9 @@ pub fn get_extra_body_params(
 /// Configure effort parameters for API request.
 /// Mutates the output config and betas in-place.
 pub fn configure_effort_params(
-    effort_value: Option<&EffortValue>,
+    effort: Option<&Effort>,
     output_config: &mut OutputConfig,
-    extra_body_params: &mut serde_json::Map<String, JsonValue>,
+    _extra_body_params: &mut serde_json::Map<String, JsonValue>,
     betas: &mut Vec<String>,
     model: &str,
 ) {
@@ -474,36 +474,17 @@ pub fn configure_effort_params(
         return;
     }
 
-    match effort_value {
-        None => {
-            betas.push(EFFORT_BETA_HEADER.to_string());
-        }
-        Some(EffortValue::Named(level)) => {
-            output_config.insert("effort".to_string(), JsonValue::String(level.clone()));
-            betas.push(EFFORT_BETA_HEADER.to_string());
-        }
-        Some(EffortValue::Numeric(value)) => {
-            // Numeric effort override - ant-only (uses anthropic_internal)
-            if crate::utils::build_profile::has_internal_capability(
-                crate::utils::build_profile::InternalCapability::Api,
-            ) {
-                let existing = extra_body_params
-                    .get("anthropic_internal")
-                    .cloned()
-                    .unwrap_or(JsonValue::Object(serde_json::Map::new()));
-                if let JsonValue::Object(mut internal) = existing {
-                    internal.insert(
-                        "effort_override".to_string(),
-                        JsonValue::Number(serde_json::Number::from(*value)),
-                    );
-                    extra_body_params.insert(
-                        "anthropic_internal".to_string(),
-                        JsonValue::Object(internal),
-                    );
-                }
-            }
-        }
+    let Some(effort) = effort else {
+        return;
+    };
+    if effort.is_off() {
+        return;
     }
+    output_config.insert(
+        "effort".to_string(),
+        JsonValue::String(effort.as_str().to_string()),
+    );
+    betas.push(EFFORT_BETA_HEADER.to_string());
 }
 
 // ---------------------------------------------------------------------------
@@ -2223,7 +2204,18 @@ fn build_sdk_message_create_plan(
     let max_tokens = options
         .max_output_tokens_override
         .unwrap_or_else(|| get_max_output_tokens_for_model(&options.model));
-    let sdk_thinking = local_thinking_config_to_sdk(thinking_config, &options.model, max_tokens);
+    let effective_thinking_config = match options.effort_value {
+        Some(Effort::Off) => ThinkingConfig::Disabled,
+        Some(_) => ThinkingConfig::Enabled {
+            budget_tokens: Some(max_thinking_tokens_for_model(&options.model, max_tokens) as i64),
+        },
+        None => thinking_config.clone(),
+    };
+    let sdk_thinking = local_thinking_config_to_sdk(
+        &effective_thinking_config,
+        &options.model,
+        max_tokens,
+    );
     let temperature = if matches!(
         &sdk_thinking,
         anthropic_sdk::resources::messages::ThinkingConfig::Disabled
@@ -2294,7 +2286,7 @@ fn build_sdk_message_create_plan(
         request_tools,
         messages,
         options,
-        thinking_config,
+        &effective_thinking_config,
         max_tokens,
     );
 
@@ -2353,8 +2345,10 @@ fn build_model_request(
                 .and_then(|value| value.get("disable_parallel_tool_use"))
                 .and_then(JsonValue::as_bool)
                 .unwrap_or(false),
-            thinking: thinking_config.clone(),
-            effort: options.effort_value.clone(),
+            effort: options.effort_value.unwrap_or_else(|| match thinking_config {
+                ThinkingConfig::Disabled => Effort::Off,
+                ThinkingConfig::Adaptive | ThinkingConfig::Enabled { .. } => Effort::Medium,
+            }),
             output_schema: options.output_format.as_ref().map(|format| {
                 format
                     .get("schema")
@@ -2655,10 +2649,8 @@ fn params_from_context(
     };
     let mut output_config = take_extra_body_output_config(&mut extra_body_params);
 
-    let applied_effort =
-        resolve_applied_effort(&capture.original_model, options.effort_value.as_ref());
     configure_effort_params(
-        applied_effort.as_ref(),
+        options.effort_value.as_ref(),
         &mut output_config,
         &mut extra_body_params,
         &mut betas,
@@ -2680,7 +2672,18 @@ fn params_from_context(
     let max_tokens = options
         .max_output_tokens_override
         .unwrap_or_else(|| get_max_output_tokens_for_model(&options.model));
-    let sdk_thinking = local_thinking_config_to_sdk(thinking_config, &options.model, max_tokens);
+    let effective_thinking_config = match options.effort_value {
+        Some(Effort::Off) => ThinkingConfig::Disabled,
+        Some(_) => ThinkingConfig::Enabled {
+            budget_tokens: Some(max_thinking_tokens_for_model(&options.model, max_tokens) as i64),
+        },
+        None => thinking_config.clone(),
+    };
+    let sdk_thinking = local_thinking_config_to_sdk(
+        &effective_thinking_config,
+        &options.model,
+        max_tokens,
+    );
     let has_thinking = !matches!(
         sdk_thinking,
         anthropic_sdk::resources::messages::ThinkingConfig::Disabled
@@ -3517,6 +3520,8 @@ fn resolved_target_for(model: &str) -> crate::services::provider::adapter::Resol
         max_output_tokens: 0,
         capabilities: Default::default(),
         cache_retention: Default::default(),
+        effort: None,
+        extra: None,
     });
     resolved.model = model.to_string();
     resolved
@@ -7246,7 +7251,7 @@ mod tests {
             "claude-sonnet-4-6".to_string(),
             "repl_main_thread".to_string(),
         );
-        options.effort_value = Some(EffortValue::Named("high".to_string()));
+        options.effort_value = Some(Effort::High);
         options.output_format = Some(serde_json::json!({
             "type": "json_schema",
             "schema": { "type": "object" }
@@ -8506,7 +8511,7 @@ mod tests {
         let mut output_config = serde_json::Map::new();
         let mut extra = serde_json::Map::new();
         let mut betas = Vec::new();
-        let effort = EffortValue::Named("high".to_string());
+        let effort = Effort::High;
 
         configure_effort_params(
             Some(&effort),
@@ -8531,7 +8536,7 @@ mod tests {
         let mut betas = Vec::new();
 
         configure_effort_params(
-            Some(&EffortValue::Named("high".to_string())),
+            Some(&Effort::High),
             &mut output_config,
             &mut extra,
             &mut betas,
