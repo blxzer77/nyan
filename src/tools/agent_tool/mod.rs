@@ -241,9 +241,10 @@ pub fn reset_active_subagents_count_for_testing() {
     ACTIVE_SUBAGENTS_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
 }
 
-/// RAII guard that tracks concurrently running subagents (Decision 7).
+/// @nyan: RAII slot in the process-wide cap on concurrently running subagents
+/// (`NYAN_MAX_CONCURRENT_SUBAGENTS`, default 20).
 #[derive(Debug)]
-pub struct SubagentConcurrencyGuard(bool);
+pub struct SubagentConcurrencyGuard;
 
 impl SubagentConcurrencyGuard {
     pub fn try_acquire() -> Result<Self, String> {
@@ -261,7 +262,7 @@ impl SubagentConcurrencyGuard {
                 std::sync::atomic::Ordering::SeqCst,
                 std::sync::atomic::Ordering::SeqCst,
             ) {
-                Ok(_) => return Ok(Self(true)),
+                Ok(_) => return Ok(Self),
                 Err(actual) => current = actual,
             }
         }
@@ -270,9 +271,7 @@ impl SubagentConcurrencyGuard {
 
 impl Drop for SubagentConcurrencyGuard {
     fn drop(&mut self) {
-        if self.0 {
-            ACTIVE_SUBAGENTS_COUNT.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-        }
+        ACTIVE_SUBAGENTS_COUNT.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -1202,6 +1201,33 @@ fn live_tool_permission_context(
         .map(|state| std::sync::Arc::clone(&state.tool_permission_context))
 }
 
+/// Whether a fork may run on `model_override`: no override, `inherit`, or a
+/// model that resolves to the parent session's own model.
+///
+/// The comparison is on the resolved model, the same one `run_agent` ends up
+/// using, so a profile alias that names the parent's model still forks.
+fn fork_model_matches_parent(
+    model_override: Option<&str>,
+    context: &crate::tool::ToolUseContext,
+) -> bool {
+    let Some(model) = truthy(model_override) else {
+        return true;
+    };
+    if model.eq_ignore_ascii_case("inherit") {
+        return true;
+    }
+    let parent_model = context
+        .main_loop_model
+        .clone()
+        .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
+    crate::utils::model::agent::get_agent_model(
+        None,
+        &parent_model,
+        Some(model),
+        Some(context.tool_permission_context.mode),
+    ) == parent_model
+}
+
 /// Maps to CC `AgentTool.tsx:483` `const isForkPath = effectiveType ===
 /// undefined` — the second tuple member, so every downstream `isForkPath`
 /// branch (`:641`, `:727`, `:867`, `:887`, `:899`, `:904`, `:907`, `:908`)
@@ -1266,29 +1292,10 @@ fn selected_agent_definition(
             );
         }
 
-        // Nyan Decision 6: fork only takes effect if the resolved model is inherit / same profile as parent.
-        // Otherwise silently fall back to fresh.
-        let model_override = input_string(args, "model");
-        let parent_model = context
-            .main_loop_model
-            .clone()
-            .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
-
-        let is_same_profile = match model_override {
-            None => true,
-            Some(model) if model.eq_ignore_ascii_case("inherit") => true,
-            Some(model) => {
-                let resolved = crate::utils::model::agent::get_agent_model(
-                    None,
-                    &parent_model,
-                    Some(model),
-                    Some(context.tool_permission_context.mode),
-                );
-                resolved == parent_model
-            }
-        };
-
-        if is_same_profile {
+        // @nyan: a fork replays the parent's conversation, which only another
+        // model of the same profile can read. Any other model falls through
+        // to a fresh `general-purpose` agent below, silently.
+        if fork_model_matches_parent(input_string(args, "model"), context) {
             return Ok((fork_subagent::fork_agent_definition(), true));
         }
     }
@@ -1298,12 +1305,11 @@ fn selected_agent_definition(
     // definitions snapshot, not a fresh disk read. A mid-turn edit to an agent
     // file must not change which agents this turn can spawn.
     let active_agents = &context.agent_definitions.active_agents;
-    // Nyan Decision 5: removed Agent(type) restriction
-    let candidate_agents = active_agents.clone();
     // Maps to CC `AgentTool.tsx:507-515` selected-agent filtering via
-    // `permissions.ts#filterDeniedAgents` and `getDenyRuleForAgent`.
+    // `permissions.ts#filterDeniedAgents` and `getDenyRuleForAgent`. The
+    // `Agent(type)` allow-list narrowing CC applies before this is gone.
     let agents = crate::utils::permissions::permissions::filter_denied_agents(
-        &candidate_agents,
+        active_agents,
         &context.tool_permission_context,
         constants::AGENT_TOOL_NAME,
         |agent| agent.agent_type.as_str(),
@@ -1914,7 +1920,10 @@ impl crate::tool::ToolCall for AgentTool {
             let requested_isolation = input_string(args, "isolation");
             let explicit_cwd = input_string(args, "cwd");
 
-            // Nyan Decision 7: Max subagent nesting depth check
+            // @nyan: nesting depth cap. Fresh agents at the cap are not given the
+            // Agent tool at all (`run_agent.rs#remove_agent_tool_at_max_depth`);
+            // a fork keeps the full tool list for cache identity, so its call
+            // is refused here instead.
             let max_depth = constants::max_subagent_spawn_depth();
             if context.subagent_depth >= max_depth {
                 return agent_tool_error(format!(
@@ -1922,7 +1931,8 @@ impl crate::tool::ToolCall for AgentTool {
                 ));
             }
 
-            // Nyan Decision 7: Max concurrent subagents check
+            // @nyan: concurrent-subagent cap, held until the agent finishes.
+            // Resume does not go through here, so it can exceed the cap.
             let concurrency_guard = match SubagentConcurrencyGuard::try_acquire() {
                 Ok(guard) => guard,
                 Err(error) => return agent_tool_error(error),
@@ -3692,6 +3702,45 @@ mod tests {
             )
             .map(|(agent, is_fork_path)| (agent.agent_type, is_fork_path))
             .unwrap(),
+            ("general-purpose".to_string(), false)
+        );
+    }
+
+    #[test]
+    fn fork_model_matches_parent_only_for_inherit_or_the_parents_own_model() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let mut context = crate::tool::ToolUseContext::default();
+        context.main_loop_model = Some("parent-model".to_string());
+
+        assert!(fork_model_matches_parent(None, &context));
+        assert!(fork_model_matches_parent(Some(""), &context));
+        assert!(fork_model_matches_parent(Some("inherit"), &context));
+        assert!(fork_model_matches_parent(Some("INHERIT"), &context));
+        assert!(fork_model_matches_parent(Some("parent-model"), &context));
+        assert!(!fork_model_matches_parent(Some("other-model"), &context));
+    }
+
+    #[test]
+    fn a_fork_with_a_different_model_falls_back_to_a_fresh_general_purpose_agent() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let _fork_gate = fork_subagent::fork_gate_environment();
+        let mut context = context_with_agent_definitions(vec![
+            crate::tools::agent_tool::built_in::general_purpose_agent::general_purpose_agent(),
+        ]);
+        context.main_loop_model = Some("parent-model".to_string());
+        let select = |model: &str| {
+            selected_agent_definition(
+                &serde_json::json!({"description": "d", "prompt": "p", "model": model}),
+                &context,
+            )
+            .map(|(agent, is_fork_path)| (agent.agent_type, is_fork_path))
+            .unwrap()
+        };
+
+        assert_eq!(select("inherit"), ("fork".to_string(), true));
+        assert_eq!(select("parent-model"), ("fork".to_string(), true));
+        assert_eq!(
+            select("other-model"),
             ("general-purpose".to_string(), false)
         );
     }
