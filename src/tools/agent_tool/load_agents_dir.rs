@@ -1084,6 +1084,56 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
+    /// A sparse worktree (no `.nyan/agents` of its own) falls back to the main
+    /// checkout's directory, but only for a trusted workspace.
+    #[test]
+    fn sparse_worktree_falls_back_to_the_main_checkouts_project_agents() {
+        let root = temp_dir("worktree-fallback");
+        let main = root.join("main");
+        let worktree = root.join("worktree");
+        let worktree_git_dir = main.join(".git/worktrees/worktree");
+        fs::create_dir_all(&worktree_git_dir).expect("worktree git dir");
+        fs::create_dir_all(&worktree).expect("worktree");
+        write_file(
+            &main.join(".nyan/agents/shared.md"),
+            "---\nname: shared\ndescription: d\n---\nBody",
+        );
+        write_file(
+            &main.join(".claude/agents/legacy.md"),
+            "---\nname: legacy\ndescription: d\n---\nBody",
+        );
+        write_file(
+            &worktree.join(".git"),
+            &format!("gitdir: {}\n", worktree_git_dir.display()),
+        );
+        write_file(&worktree_git_dir.join("commondir"), "../..\n");
+        write_file(
+            &worktree_git_dir.join("gitdir"),
+            &format!("{}\n", worktree.join(".git").display()),
+        );
+
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::config::reset_trust_dialog_accepted_cache_for_testing();
+        crate::bootstrap::state::set_session_trust_accepted(false);
+        let _env = pin_loader_env(&root, &root.join("config"));
+        let names = |result: AgentDefinitionsResult| {
+            result
+                .active_agents
+                .into_iter()
+                .map(|agent| agent.agent_type)
+                .collect::<Vec<_>>()
+        };
+
+        let untrusted = names(get_agent_definitions_with_overrides(&worktree));
+        assert!(!untrusted.contains(&"shared".to_string()), "{untrusted:?}");
+
+        let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
+        let trusted = names(get_agent_definitions_with_overrides(&worktree));
+        assert!(trusted.contains(&"shared".to_string()), "{trusted:?}");
+        assert!(!trusted.contains(&"legacy".to_string()), "{trusted:?}");
+        let _ = fs::remove_dir_all(root);
+    }
+
     /// Markdown effort uses the lenient `parseEffortValue` while removed agent
     /// fields remain ignored by the frontmatter loader.
     #[test]
@@ -1200,6 +1250,48 @@ mod tests {
             result.failed_files[0].error,
             "Missing required \"description\" field in frontmatter"
         );
+    }
+
+    /// `permissionMode`, `mcpServers` and `requiredMcpServers` are not agent
+    /// fields in nyan: a file that still carries them loads normally and the
+    /// keys change nothing, on both the markdown and the `--agents` JSON path.
+    #[test]
+    fn removed_frontmatter_fields_are_ignored_not_rejected() {
+        let root = temp_dir("removed-fields");
+        let config_home = root.join("config");
+        write_file(
+            &config_home.join("agents/legacy.md"),
+            "---\nname: legacy\ndescription: Old definition\npermissionMode: bypassPermissions\nrequiredMcpServers:\n  - docs\nmcpServers:\n  - docs\ntools: Read, Agent(worker)\n---\nBody",
+        );
+
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _env = pin_loader_env(&root, &config_home);
+        let result = get_agent_definitions_with_overrides(&root);
+
+        assert!(result.failed_files.is_empty(), "{:?}", result.failed_files);
+        let legacy = result
+            .active_agents
+            .iter()
+            .find(|agent| agent.agent_type == "legacy")
+            .expect("legacy agent still loads");
+        // `Agent(worker)` stays a plain tool entry; it no longer narrows which
+        // agent types may be spawned.
+        assert_eq!(
+            legacy.tools.as_deref(),
+            Some(&["Read".to_string(), "Agent(worker)".to_string()][..])
+        );
+
+        let json = serde_json::json!({
+            "description": "From json",
+            "prompt": "Body",
+            "permissionMode": "bypassPermissions",
+            "mcpServers": ["docs"],
+        });
+        let from_json =
+            parse_agent_from_json("json-agent", &json, AgentDefinitionSource::FlagSettings)
+                .expect("json agent still parses");
+        assert_eq!(from_json.when_to_use, "From json");
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -1590,15 +1682,16 @@ mod tests {
             "---\nname: reviewer\ndescription: User description\n---\nUser",
         );
         write_file(
-            &cwd.join(".claude/agents/reviewer.md"),
+            &cwd.join(".nyan/agents/reviewer.md"),
             "---\nname: reviewer\ndescription: Nested project description\n---\nNested",
         );
         write_file(
-            &root.join("repo/.claude/agents/reviewer.md"),
+            &root.join("repo/.nyan/agents/reviewer.md"),
             "---\nname: reviewer\ndescription: Root project description\n---\nRoot",
         );
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
         let _env = pin_loader_env(&root, &config_home);
         // `get_managed_file_path` honours the override in every test build.
         let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &managed_root);
@@ -1610,6 +1703,28 @@ mod tests {
             .expect("reviewer active agent");
         assert_eq!(reviewer.when_to_use, "Managed description");
         assert_eq!(reviewer.source, AgentDefinitionSource::PolicySettings);
+        // Every tier is loaded, in managed < user < nested < root order.
+        let descriptions = result
+            .all_agents
+            .iter()
+            .filter(|agent| agent.agent_type == "reviewer")
+            .map(|agent| (agent.source, agent.when_to_use.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            descriptions,
+            vec![
+                (AgentDefinitionSource::PolicySettings, "Managed description"),
+                (AgentDefinitionSource::UserSettings, "User description"),
+                (
+                    AgentDefinitionSource::ProjectSettings,
+                    "Nested project description"
+                ),
+                (
+                    AgentDefinitionSource::ProjectSettings,
+                    "Root project description"
+                ),
+            ]
+        );
 
         let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "true");
         let simple = get_agent_definitions_with_overrides(&cwd);
