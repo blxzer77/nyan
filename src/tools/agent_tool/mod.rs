@@ -3243,6 +3243,77 @@ mod tests {
         ));
     }
 
+    async fn call_with_basic_input(
+        context: &crate::tool::ToolUseContext,
+    ) -> crate::tool::ToolResult {
+        use crate::tool::ToolCall;
+        let request = crate::utils::permissions::permissions::mock_permission_request_with_input(
+            "perm-agent".to_string(),
+            "toolu_agent".to_string(),
+            "Agent".to_string(),
+            "nested".to_string(),
+            serde_json::json!({
+                "description": "nested",
+                "prompt": "inspect",
+                "subagent_type": "general-purpose"
+            }),
+            crate::types::permissions::PermissionMode::Default,
+        );
+        AgentTool
+            .call(&request.input, &request, context, None, None, None)
+            .await
+    }
+
+    fn assert_agent_tool_error(result: crate::tool::ToolResult, expected: &str) {
+        assert!(matches!(
+            result.data,
+            crate::tool::ToolOutput::Composed { content, status, .. }
+                if status == crate::types::message::ToolResultStatus::Error
+                    && content.contains(expected)
+        ));
+    }
+
+    #[tokio::test]
+    async fn agent_tool_refuses_a_spawn_at_the_nesting_depth_cap() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let _depth = EnvVarGuard::set("NYAN_MAX_SUBAGENT_SPAWN_DEPTH", "3");
+        reset_active_subagents_count_for_testing();
+        let mut context = context_with_agent_definitions(vec![
+            crate::tools::agent_tool::built_in::general_purpose_agent::general_purpose_agent(),
+        ]);
+        context.subagent_depth = 3;
+
+        assert_agent_tool_error(
+            call_with_basic_input(&context).await,
+            "Maximum subagent nesting depth of 3 reached",
+        );
+        assert_eq!(
+            active_subagents_count(),
+            0,
+            "a refused spawn must not hold a concurrency slot"
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_tool_refuses_a_spawn_when_all_concurrency_slots_are_taken() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let _limit = EnvVarGuard::set("NYAN_MAX_CONCURRENT_SUBAGENTS", "1");
+        reset_active_subagents_count_for_testing();
+        let held = SubagentConcurrencyGuard::try_acquire().expect("the only slot");
+        let context = context_with_agent_definitions(vec![
+            crate::tools::agent_tool::built_in::general_purpose_agent::general_purpose_agent(),
+        ]);
+
+        assert_agent_tool_error(
+            call_with_basic_input(&context).await,
+            "Concurrent subagent limit of 1 reached",
+        );
+        assert_eq!(active_subagents_count(), 1, "the held slot is untouched");
+
+        drop(held);
+        assert_eq!(active_subagents_count(), 0);
+    }
+
     fn assistant_text_message(text: &str) -> crate::types::message::Message {
         crate::types::message::Message::Assistant(crate::types::message::AssistantMessage {
             uuid: uuid::Uuid::new_v4().to_string(),

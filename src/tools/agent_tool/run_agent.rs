@@ -504,6 +504,10 @@ fn resolve_agent_selection(
     )
 }
 
+/// @nyan: a fresh agent whose own depth (`parent_depth + 1`) reaches the cap
+/// is the last level that may run, so it is not given the Agent tool at all;
+/// `AgentTool::call` refuses any spawn that still gets through (a fork keeps
+/// the full tool list for cache identity).
 fn remove_agent_tool_at_max_depth(tools: &mut Vec<Tool>, parent_depth: usize) {
     if parent_depth + 1 >= crate::tools::agent_tool::constants::max_subagent_spawn_depth() {
         tools.retain(|tool| tool.name != crate::tools::agent_tool::constants::AGENT_TOOL_NAME);
@@ -1856,6 +1860,48 @@ mod tests {
                 .map(|tool| tool.name.as_str())
                 .collect::<Vec<_>>(),
             vec!["Agent", "Read"]
+        );
+    }
+
+    #[test]
+    fn the_depth_cap_stops_a_chain_of_nested_spawns_at_the_configured_level() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _depth = EnvVarGuard::set("NYAN_MAX_SUBAGENT_SPAWN_DEPTH", "3");
+        let pool = || vec![tool("Agent"), tool("Read")];
+        let has_agent = |tools: &[Tool]| tools.iter().any(|tool| tool.name == "Agent");
+
+        // Main session is depth 0; every spawn runs one level deeper than its
+        // caller, and the level that reaches the cap loses the Agent tool.
+        let mut context = ToolUseContext::default();
+        let mut levels = Vec::new();
+        for _ in 0..4 {
+            let mut tools = pool();
+            remove_agent_tool_at_max_depth(&mut tools, context.subagent_depth);
+            levels.push((context.subagent_depth + 1, has_agent(&tools)));
+            context.subagent_depth += 1;
+        }
+
+        assert_eq!(
+            levels,
+            vec![(1, true), (2, true), (3, false), (4, false)],
+            "levels 1 and 2 may still spawn; level 3 is the cap"
+        );
+    }
+
+    #[test]
+    fn a_lower_depth_cap_from_the_environment_applies() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _depth = EnvVarGuard::set("NYAN_MAX_SUBAGENT_SPAWN_DEPTH", "1");
+        let mut tools = vec![tool("Agent"), tool("Read")];
+
+        remove_agent_tool_at_max_depth(&mut tools, 0);
+
+        assert_eq!(
+            tools
+                .iter()
+                .map(|tool| tool.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Read"]
         );
     }
 
