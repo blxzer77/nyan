@@ -181,15 +181,6 @@ pub fn parse_model_ref_and_effort(spec: &str) -> (&str, Option<Effort>) {
     (trimmed, None)
 }
 
-pub fn model_supports_effort(_model: &str) -> bool {
-    true
-}
-
-pub fn model_supports_xhigh_effort(model: &str) -> bool {
-    let lower = model.to_ascii_lowercase();
-    lower.contains("o3") || lower.contains("gpt-5") || lower.contains("xhigh")
-}
-
 pub fn get_displayed_effort_level(_model: &str, app_state_effort: Option<&Effort>) -> &'static str {
     app_state_effort.copied().unwrap_or(Effort::Medium).as_str()
 }

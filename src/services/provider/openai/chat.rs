@@ -894,13 +894,9 @@ mod tests {
             body["messages"][1],
             json!({"role": "user", "content": "hi"})
         );
-        for absent in [
-            "tools",
-            "tool_choice",
-            "reasoning_effort",
-            "temperature",
-            "response_format",
-        ] {
+        // `off` on gpt-5 clamps to its lowest tier rather than being left out.
+        assert_eq!(body["reasoning_effort"], "minimal");
+        for absent in ["tools", "tool_choice", "temperature", "response_format"] {
             assert!(
                 body.get(absent).is_none(),
                 "{absent} must not be sent: {body}"

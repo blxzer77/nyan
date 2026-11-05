@@ -1,7 +1,7 @@
 //! Maps to: CC `components/EffortIndicator.ts`.
 
 use crate::constants::figures::{EFFORT_HIGH, EFFORT_LOW, EFFORT_MAX, EFFORT_MEDIUM};
-use crate::utils::effort::{Effort, get_displayed_effort_level, model_supports_effort};
+use crate::utils::effort::{Effort, get_displayed_effort_level};
 
 /// Maps to: CC `components/EffortIndicator.ts#effortLevelToSymbol`.
 pub fn effort_level_to_symbol(level: &str) -> &'static str {
@@ -15,15 +15,9 @@ pub fn effort_level_to_symbol(level: &str) -> &'static str {
 }
 
 /// Maps to: CC `components/EffortIndicator.ts#getEffortNotificationText`.
-pub fn get_effort_notification_text(effort_value: Option<&Effort>, model: &str) -> Option<String> {
-    if !model_supports_effort(model) {
-        return None;
-    }
+pub fn get_effort_notification_text(effort_value: Option<&Effort>, model: &str) -> String {
     let level = get_displayed_effort_level(model, effort_value);
-    Some(format!(
-        "{} {level} · /effort",
-        effort_level_to_symbol(level)
-    ))
+    format!("{} {level} · /effort", effort_level_to_symbol(level))
 }
 
 #[cfg(test)]
@@ -43,15 +37,15 @@ mod tests {
     fn effort_notification_text_uses_the_session_value_without_global_overrides() {
         assert_eq!(
             get_effort_notification_text(Some(&Effort::Medium), "any-model"),
-            Some(format!("{EFFORT_MEDIUM} medium · /effort"))
+            format!("{EFFORT_MEDIUM} medium · /effort")
         );
         assert_eq!(
             get_effort_notification_text(None, "any-model"),
-            Some(format!("{EFFORT_MEDIUM} medium · /effort"))
+            format!("{EFFORT_MEDIUM} medium · /effort")
         );
         assert_eq!(
             get_effort_notification_text(Some(&Effort::Off), "any-model"),
-            Some(format!("{EFFORT_LOW} off · /effort"))
+            format!("{EFFORT_LOW} off · /effort")
         );
     }
 }

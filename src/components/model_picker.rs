@@ -7,7 +7,6 @@
 
 use crate::components::custom_select::{Select, SelectLayout, SelectOptionData};
 use crate::components::design_system::pane::Pane;
-use crate::constants::figures::EFFORT_LOW;
 use crate::keybindings::keybinding_context::KeybindingRuntime;
 use crate::keybindings::types::ContextName;
 use crate::keybindings::use_keybinding::{KeybindingHandlers, use_keybindings};
@@ -153,27 +152,6 @@ pub(crate) fn visible_from_index(
         .saturating_add(1)
         .saturating_sub(visible_count)
         .min(count.saturating_sub(visible_count))
-}
-
-/// Maps to: CC `components/ModelPicker.tsx`:324-330 `resolveOptionModel(...)`.
-fn resolve_option_model(value: &str) -> Option<String> {
-    if value.is_empty() {
-        return None;
-    }
-    if value == MODEL_NO_PREFERENCE {
-        return Some(crate::utils::model::model::get_default_main_loop_model());
-    }
-    Some(crate::utils::model::model::parse_user_specified_model(
-        value,
-    ))
-}
-
-/// Maps to: CC `utils/effort.ts#modelSupportsEffort` as consumed by
-/// `components/ModelPicker.tsx`:122-124.
-pub(crate) fn model_supports_effort(value: &str) -> bool {
-    resolve_option_model(value)
-        .as_deref()
-        .is_some_and(crate::utils::effort::model_supports_effort)
 }
 
 /// Maps to: CC `components/ModelPicker.tsx` initializing effort from
@@ -336,12 +314,6 @@ struct ModelPickerView {
     exit_key_name: Option<String>,
 }
 
-fn focused_model_label(options: &[SelectOptionData], focused_index: usize) -> Option<&str> {
-    options
-        .get(focused_index)
-        .map(|option| option.label.as_str())
-}
-
 fn render_model_picker_content(props: &ModelPickerView, theme: Theme) -> AnyElement<'static> {
     let count = props.options.len();
     let focused_index = props.focused_index.min(count.saturating_sub(1));
@@ -350,7 +322,6 @@ fn render_model_picker_content(props: &ModelPickerView, theme: Theme) -> AnyElem
         .get(focused_index)
         .map(|option| option.value.as_str())
         .unwrap_or(MODEL_NO_PREFERENCE);
-    let focused_label = focused_model_label(&props.options, focused_index);
     let visible_option_count = count.min(MODEL_PICKER_VISIBLE_COUNT).max(1);
     let visible_from = props
         .visible_from_index
@@ -358,7 +329,6 @@ fn render_model_picker_content(props: &ModelPickerView, theme: Theme) -> AnyElem
     let hidden_count = count.saturating_sub(visible_option_count);
     let display_effort = displayed_effort(props.effort, focused_value);
     let focused_default_effort = default_effort_level_for_option(focused_value);
-    let supports_effort = model_supports_effort(focused_value);
     let header_text = props
         .header_text
         .clone()
@@ -408,27 +378,16 @@ fn render_model_picker_content(props: &ModelPickerView, theme: Theme) -> AnyElem
                     })
                 }
                 View(margin_bottom: 1u32, flex_direction: FlexDirection::Column) {
-                    #(if supports_effort {
-                        element! {
-                            View(flex_direction: FlexDirection::Row) {
-                                Text(content: display_effort.symbol().to_string(), color: theme.claude, wrap: TextWrap::NoWrap)
-                                Text(content: format!(" {} effort", display_effort.title_label()), dim: true, wrap: TextWrap::NoWrap)
-                                #(if display_effort == focused_default_effort {
-                                    Some(element! { Text(content: " (default) ".to_string(), dim: true, wrap: TextWrap::NoWrap) })
-                                } else {
-                                    Some(element! { Text(content: " ".to_string(), dim: true, wrap: TextWrap::NoWrap) })
-                                })
-                                Text(content: "← → to adjust".to_string(), color: theme.subtle, wrap: TextWrap::NoWrap)
-                            }
-                        }.into_any()
-                    } else {
-                        element! {
-                            View(flex_direction: FlexDirection::Row) {
-                                Text(content: EFFORT_LOW.to_string(), color: theme.subtle, wrap: TextWrap::NoWrap)
-                                Text(content: format!(" Effort not supported{}", focused_label.map(|label| format!(" for {label}")).unwrap_or_default()), color: theme.subtle, wrap: TextWrap::NoWrap)
-                            }
-                        }.into_any()
-                    })
+                    View(flex_direction: FlexDirection::Row) {
+                        Text(content: display_effort.symbol().to_string(), color: theme.claude, wrap: TextWrap::NoWrap)
+                        Text(content: format!(" {} effort", display_effort.title_label()), dim: true, wrap: TextWrap::NoWrap)
+                        #(if display_effort == focused_default_effort {
+                            Some(element! { Text(content: " (default) ".to_string(), dim: true, wrap: TextWrap::NoWrap) })
+                        } else {
+                            Some(element! { Text(content: " ".to_string(), dim: true, wrap: TextWrap::NoWrap) })
+                        })
+                        Text(content: "← → to adjust".to_string(), color: theme.subtle, wrap: TextWrap::NoWrap)
+                    }
                 }
                 #(if props.show_fast_mode_notice {
                     Some(element! {
@@ -707,10 +666,6 @@ mod tests {
             displayed_effort(ModelEffortLevel::Max, "sonnet"),
             ModelEffortLevel::Max
         );
-        assert!(model_supports_effort(MODEL_NO_PREFERENCE));
-        assert!(model_supports_effort("sonnet"));
-        assert!(model_supports_effort("opus"));
-        assert!(model_supports_effort("haiku"));
         assert_eq!(
             selected_picker_effort(ModelEffortLevel::Max, "sonnet", true),
             Some(ModelEffortLevel::Max)

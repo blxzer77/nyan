@@ -891,7 +891,12 @@ mod tests {
             json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hi"}]})
         );
         assert!(body.get("prompt_cache_key").is_some());
-        for absent in ["tools", "reasoning", "text", "temperature"] {
+        // `off` on gpt-5 clamps to its lowest tier rather than being left out.
+        assert_eq!(
+            body["reasoning"],
+            json!({"effort": "minimal", "summary": "auto"})
+        );
+        for absent in ["tools", "text", "temperature"] {
             assert!(body.get(absent).is_none(), "{absent}: {body}");
         }
     }
