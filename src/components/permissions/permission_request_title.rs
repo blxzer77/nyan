@@ -71,4 +71,21 @@ mod tests {
         assert!(text.contains("/very/long/path"), "canvas=\n{text}");
         assert!(text.contains("· @agent-a"), "canvas=\n{text}");
     }
+
+    #[test]
+    fn bracketed_subagent_badge_is_not_prefixed_with_at() {
+        let text = element! {
+            ContextProvider(value: Context::owned(*theme::current())) {
+                PermissionRequestTitle(
+                    title: "Bash command".to_string(),
+                    worker_badge: Some(WorkerBadgeProps { name: "[Explore]".to_string(), color: None }),
+                )
+            }
+        }
+        .render(Some(80))
+        .to_string();
+
+        assert!(text.contains("· [Explore]"), "canvas=\n{text}");
+        assert!(!text.contains("@["), "canvas=\n{text}");
+    }
 }

@@ -139,9 +139,8 @@ pub fn create_subagent_context(
         .clone()
         .or_else(|| parent.app_store.store.clone());
     let has_get_app_state_override = get_app_state.is_some();
-    // Nyan Decision 5: Subagents bubble permission prompts up to the main session;
-    // silent auto-deny for subagents is removed. Only explicit overlay can enable it.
-    let avoid_prompts = avoid_permission_prompts_overlay.unwrap_or(false);
+    let avoid_prompts = avoid_permission_prompts_overlay
+        .unwrap_or(!has_get_app_state_override && !share_abort_controller);
     let abort_controller = abort_controller.unwrap_or_else(|| {
         if share_abort_controller {
             parent.abort_controller.clone()
@@ -180,7 +179,6 @@ pub fn create_subagent_context(
         child.messages = messages;
     }
     child.abort_controller = abort_controller;
-    child.subagent_depth = parent.subagent_depth + 1;
     child.app_store.writable = share_set_app_state;
     child.app_store.avoid_permission_prompts_overlay = avoid_prompts;
     // Same CC line (`forkedAgent.ts:362-374`), on the object the permission
@@ -918,7 +916,7 @@ mod tests {
     }
 
     #[test]
-    fn default_subagent_gets_child_abort_linked_to_parent_without_silent_deny() {
+    fn default_subagent_gets_child_abort_linked_to_parent() {
         let parent = ToolUseContext::with_permission_context(ToolPermissionContext::default());
         let child = create_subagent_context(&parent, SubagentContextOverrides::default());
 
@@ -928,7 +926,7 @@ mod tests {
             child.abort_controller.is_aborted(),
             "parent abort must propagate to child-linked controller"
         );
-        assert!(!child.app_store.avoid_permission_prompts_overlay);
+        assert!(child.app_store.avoid_permission_prompts_overlay);
         assert!(child.local_denial_tracking.is_some());
     }
 

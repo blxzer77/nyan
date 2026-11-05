@@ -27,7 +27,6 @@ use crate::tasks::in_process_teammate_task::{
 use crate::tool::{AbortController, ToolUseContext};
 use crate::tools::agent_tool::load_agents_dir::AgentDefinition;
 use crate::types::message::{Message, UserContent, UserMessage};
-use crate::types::permissions::PermissionMode;
 use crate::utils::teammate_context::TeammateContext;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -1473,6 +1472,7 @@ pub async fn run_in_process_teammate(config: InProcessRunnerConfig) -> anyhow::R
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::permissions::PermissionMode;
     use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
 
     fn identity(name: &str) -> TeammateIdentity {

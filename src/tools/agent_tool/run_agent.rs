@@ -19,8 +19,7 @@ use crate::services::api::claude::SystemPrompt;
 use crate::tool::{ToolCallProgressFn, ToolUseContext};
 use crate::types::message::{AssistantContent, Message, TokenUsage, UserContent};
 use crate::types::permissions::{
-    PermissionBehavior, PermissionMode, PermissionPromptChoice, PermissionPromptResponse,
-    PermissionRequest,
+    PermissionPromptChoice, PermissionPromptResponse, PermissionRequest,
 };
 use crate::types::tools::Tool;
 use crate::utils::thinking::ThinkingConfig;
@@ -335,20 +334,17 @@ fn release_agent_registrations(agent_id: &str, root_context: &ToolUseContext) {
     }
 }
 
-/// Maps to: CC `runAgent.ts:436-445` `shouldAvoidPrompts` — the exact ternary
-/// chain: explicit `canShowPermissionPrompts` wins when provided
-/// (`!canShowPermissionPrompts`); otherwise `bubble` mode always shows prompts
-/// (they surface on the parent terminal); otherwise the `isAsync` default
-/// (sync agents show prompts, async agents don't).
+/// Differs from CC `runAgent.ts:436-445` `shouldAvoidPrompts`: nyan has no
+/// `isAsync` default, so a background agent's permission request is shown on
+/// the main session like a foreground one. Only an explicit
+/// `canShowPermissionPrompts: false` still avoids prompts.
 fn agent_should_avoid_permission_prompts(can_show_permission_prompts: Option<bool>) -> bool {
-    if let Some(can_show) = can_show_permission_prompts {
-        return !can_show;
-    }
-    // Nyan Decision 5: Background subagents can prompt, silent auto-deny is deleted.
-    false
+    can_show_permission_prompts == Some(false)
 }
 
-/// Nyan Decision 5: Subagents always use the main session's current permission mode and rules.
+/// Subagents run under the main session's current permission mode and rules;
+/// `allowed_tools` (SDK `allowedTools`) only replaces the session-scope allow
+/// rules.
 fn agent_permission_context_for_run(
     parent: &crate::tool::ToolPermissionContext,
     allowed_tools: Option<&[String]>,
@@ -630,16 +626,12 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
     }
     // Maps to CC `runAgent.ts:292-296` `availableTools` — the caller-computed
     // pool when provided. `None` runs the same workerTools computation CC's
-    // AgentTool.tsx performs at 838-845 (`assembleToolPool` under a pool
-    // context whose mode is `permissionMode ?? 'acceptEdits'`, separate from
-    // the runtime context which keeps the parent mode when the agent defines
-    // none).
+    // AgentTool.tsx performs at 838-845 (`assembleToolPool`), under the main
+    // session's current permission context: agents have no `permissionMode`.
     let available_tools = match input.available_tools.clone() {
         Some(tools) => tools,
         None => {
-            let mut worker_pool_context = input.context.tool_permission_context.clone();
-            // Nyan Decision 5: Subagents use main session's current permission mode and rules
-            worker_pool_context.mode = input.context.tool_permission_context.mode;
+            let worker_pool_context = input.context.tool_permission_context.clone();
             // Maps to: CC AgentTool.tsx:838-845 synchronous assembleToolPool.
             // A4: our eager Agent schema additionally reads plugin promises;
             // source tool metadata is lazy. Keep that existing native catalog
@@ -1490,12 +1482,12 @@ fn available_tools_for_agent(
 /// event already match that: `repl.rs:4051` only queues a dialog,
 /// `query_engine.rs:925` only asks the SDK resolver.
 ///
-/// The prompt is skipped in exactly the two cases CC skips it:
-/// `shouldAvoidPermissionPrompts` — set for async agents by
-/// `runAgent.ts:446-451` and consumed by `permissions.ts:932-952`, which denies
-/// with `decisionReason: { type: 'asyncAgent' }` rather than waiting for a
-/// terminal nobody is watching — and a context with no dialog leg at all
+/// The prompt is skipped in two cases: an explicit
+/// `canShowPermissionPrompts: false` (`shouldAvoidPermissionPrompts`, consumed
+/// by `permissions.ts:932-952`) and a context with no dialog leg at all
 /// (print/SDK, tests), where CC has no `setToolUseConfirmQueue` to close over.
+/// Unlike CC, a background agent is not skipped: its request is shown on the
+/// main session.
 ///
 /// A skipped prompt is a Deny carrying [`PermissionRequest::message`] — the
 /// SYSTEM decision `toolExecution.ts:1023` gives the model — not a hang.
@@ -1517,14 +1509,11 @@ async fn resolve_agent_permission_request(
 /// (CC `hooks/useCanUseTool.tsx:189-327`): raise the parent terminal's dialog
 /// and leave the subagent's call pending until the user answers.
 ///
-/// `None` means CC would not have shown a dialog either:
+/// `None` means no dialog is shown:
 ///
-/// - `should_avoid_permission_prompts` — `runAgent.ts:446-451` sets it for
-///   every async agent (and `forkedAgent.ts:362-374` for isolated forks), and
-///   `permissions.ts:932-952` converts the ask into
-///   `{ behavior: 'deny', decisionReason: { type: 'asyncAgent' } }` *before*
-///   `useCanUseTool` ever reaches its switch. Nobody is watching the terminal
-///   for a background agent, and CC does not park on one.
+/// - `should_avoid_permission_prompts` — only an explicit
+///   `canShowPermissionPrompts: false` sets it for an agent; the main session
+///   is watched, so background agents are not auto-denied.
 /// - no sink installed — the context has no dialog leg (print/SDK headless,
 ///   direct test callers). CC's equivalent is `getCanUseToolFn`'s no-prompt-tool
 ///   arm (`cli/print.ts:4276-4293`), a bare `hasPermissionsToUseTool` whose
@@ -1582,7 +1571,8 @@ async fn ask_parent_for_agent_permission(
     // Maps to: CC `inProcessRunner.ts:229-232` `workerBadge: identity.color ?
     // { name: identity.agentName, color: identity.color } : undefined` — the
     // standard leader-dialog leg carries the asking teammate's badge.
-    // Nyan Decision 5: Background subagent permission requests bubble up to main session with [agent_name].
+    // @nyan: any other subagent's ask reaches the main session tagged
+    // `[agent_type]` (no colour), so the user can tell who is asking.
     let worker_badge = teammate
         .as_ref()
         .map(
@@ -1830,6 +1820,7 @@ mod tests {
     use crate::types::message::{
         AssistantContent, AssistantMessage, StopReason, ToolResult, ToolUseBlock, UserMessage,
     };
+    use crate::types::permissions::{PermissionBehavior, PermissionMode};
     use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
     use std::io::Write;
 
@@ -2393,12 +2384,10 @@ mod tests {
     }
 
     #[test]
-    fn async_agent_ask_is_denied_without_raising_a_dialog_like_official() {
-        // Maps to: CC `runAgent.ts:446-451` setting `shouldAvoidPermissionPrompts`
-        // for an async agent, and `permissions.ts:932-952` converting the ask to
-        // `{ behavior: 'deny', decisionReason: { type: 'asyncAgent' } }` before
-        // `useCanUseTool` reaches its switch. Nobody is watching the terminal for
-        // a background agent, so CC never queues one — and never parks on one.
+    fn agent_ask_with_prompts_disabled_is_denied_without_raising_a_dialog() {
+        // An explicit `canShowPermissionPrompts: false` (the only way left to
+        // set `shouldAvoidPermissionPrompts` on an agent) denies the ask before
+        // any dialog is queued on the main session.
         let (confirm_tx, confirm_rx) = async_channel::unbounded();
         let mut context = context_with_bash_tool();
         context.interactive_permission_sink =
@@ -2433,8 +2422,48 @@ mod tests {
         drop(context);
         assert!(
             answered.join().expect("prompt answerer panicked").is_none(),
-            "an async agent must not queue a prompt on the parent terminal"
+            "an agent with prompts disabled must not queue a prompt on the main session"
         );
+    }
+
+    #[test]
+    fn background_agent_ask_raises_the_main_session_dialog_tagged_with_the_agent_name() {
+        let (confirm_tx, confirm_rx) = async_channel::unbounded();
+        let mut context = context_with_bash_tool();
+        context.agent_type = Some("Explore".to_string());
+        context.interactive_permission_sink =
+            crate::hooks::tool_permission::handlers::interactive_handler::create_repl_interactive_permission_sink(
+                confirm_tx,
+            );
+        let answered = answer_first_queued_prompt(
+            confirm_rx,
+            PermissionPromptResponse::new(PermissionPromptChoice::Deny),
+        );
+        // Background agents get the same permission context as foreground
+        // ones: `agent_should_avoid_permission_prompts(None)` is false.
+        let mut agent_permission_context = crate::tool::ToolPermissionContext::default();
+        agent_permission_context.should_avoid_permission_prompts =
+            agent_should_avoid_permission_prompts(None);
+
+        let response = futures::executor::block_on(resolve_agent_permission_request(
+            &bash_permission_request(),
+            &context,
+            &agent_permission_context,
+        ));
+        drop(context);
+
+        let queued = answered
+            .join()
+            .expect("prompt answerer panicked")
+            .expect("a background agent's ask must reach the main session");
+        assert_eq!(
+            queued
+                .worker_badge
+                .as_ref()
+                .map(|badge| badge.name.as_str()),
+            Some("[Explore]")
+        );
+        assert_eq!(response.choice, PermissionPromptChoice::Deny);
     }
 
     #[test]
