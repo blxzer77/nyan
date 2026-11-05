@@ -63,7 +63,6 @@ fn test_target() -> ResolvedTarget {
             streaming: true,
         },
         cache_retention: Default::default(),
-        effort: None,
         extra: None,
     }
 }
@@ -283,6 +282,42 @@ fn test_wire_structured_output_and_thinking_budget() {
 
     let think = gen_config.thinking_config.expect("thinking_config present");
     assert_eq!(think.thinking_budget, Some(8192));
+}
+
+#[tokio::test]
+async fn a_profiles_extra_reaches_the_gemini_request_body() {
+    let _env = env("fake-api-key");
+    let server = MockGemini::start(vec![Reply::sse_data(vec![json!({
+        "candidates": [{
+            "content": {"parts": [{"text": "ok"}]},
+            "finishReason": "STOP"
+        }],
+        "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1}
+    })])])
+    .await;
+    super::install_test_main_profile(&server.base_url, "TEST_GEMINI_KEY", Default::default());
+    let mut profile = crate::utils::model::profile::resolve_main_profile(
+        &crate::utils::settings::get_initial_settings(),
+    )
+    .unwrap();
+    profile.extra = Some(json!({
+        "generationConfig": {"temperature": 0.1},
+        "safetySettings": [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}]
+    }));
+    let req = minimal_request(vec![Message::User {
+        parts: vec![UserPart::Text { text: "Hi".into() }],
+    }]);
+
+    let opened = super::open_stream(&profile, &req, &Cancel::new())
+        .await
+        .unwrap();
+    let _: Vec<_> = opened.events.collect().await;
+
+    let sent = &server.requests()[0].body;
+    // The profile's key replaces the computed one whole, and adds new ones.
+    assert_eq!(sent["generationConfig"], json!({"temperature": 0.1}));
+    assert_eq!(sent["safetySettings"][0]["threshold"], "BLOCK_NONE");
+    assert!(sent.get("contents").is_some(), "the request body is kept");
 }
 
 #[test]

@@ -272,13 +272,7 @@ pub fn build_body(target: &ResolvedTarget, request: &ModelRequest, backend: Back
     {
         body["prompt_cache_retention"] = json!("24h");
     }
-    if let Some(serde_json::Value::Object(extra)) = &target.extra {
-        if let Some(obj) = body.as_object_mut() {
-            for (k, v) in extra {
-                obj.insert(k.clone(), v.clone());
-            }
-        }
-    }
+    crate::services::provider::adapter::merge_extra(&mut body, target.extra.as_ref());
     body
 }
 
@@ -819,7 +813,6 @@ mod tests {
             max_output_tokens: 8_000,
             capabilities,
             cache_retention: Default::default(),
-            effort: None,
             extra: None,
         }
     }
@@ -899,6 +892,19 @@ mod tests {
         for absent in ["tools", "text", "temperature"] {
             assert!(body.get(absent).is_none(), "{absent}: {body}");
         }
+    }
+
+    #[test]
+    fn profile_extra_is_merged_last_into_the_responses_body() {
+        let mut with_extra = target(all());
+        with_extra.extra = Some(json!({
+            "max_output_tokens": 77,
+            "service_tier": "flex"
+        }));
+        let body = build_body(&with_extra, &request(vec![user_text("hi")]), Backend::Api);
+        assert_eq!(body["max_output_tokens"], 77);
+        assert_eq!(body["service_tier"], "flex");
+        assert_eq!(body["model"], "gpt-5");
     }
 
     #[test]

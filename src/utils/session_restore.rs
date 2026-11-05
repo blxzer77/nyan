@@ -1021,6 +1021,87 @@ mod tests {
     }
 
     #[test]
+    fn a_resumed_session_gets_its_last_model_and_effort_back() {
+        use crate::utils::effort::Effort;
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let previous_session_id = crate::bootstrap::state::get_session_id();
+        let previous_project_dir = crate::bootstrap::state::get_session_project_dir();
+        let root =
+            std::env::temp_dir().join(format!("nyan-resume-model-effort-{}", uuid::Uuid::new_v4()));
+        let project_dir = root.join("project-dir");
+        let session_id = "resume-model-effort-session";
+        let path = project_dir.join(format!("{session_id}.jsonl"));
+        std::fs::create_dir_all(&project_dir).unwrap();
+        let line = |value: serde_json::Value| format!("{value}\n");
+        let user = json!({
+            "type": "user", "uuid": "root", "parentUuid": null,
+            "timestamp": "2026-07-12T00:00:00Z", "sessionId": session_id,
+            "message": {"role": "user", "content": "hi"}
+        });
+        // Events as `save_session_model` / `save_session_effort` write them: the
+        // later entry of each kind wins, and a model of `null` is a cleared choice.
+        let transcript = [
+            line(user.clone()),
+            line(json!({"type": "model-change", "sessionId": session_id, "model": "opus"})),
+            line(json!({"type": "effort-change", "sessionId": session_id, "effort": "max"})),
+            line(json!({"type": "model-change", "sessionId": session_id, "model": "haiku"})),
+            line(json!({"type": "effort-change", "sessionId": session_id, "effort": "off"})),
+        ]
+        .concat();
+        std::fs::write(&path, transcript).unwrap();
+        let target = |path: &std::path::Path, entries: Vec<serde_json::Value>| {
+            crate::commands::resume::ResumeTarget {
+                session_id: session_id.to_string(),
+                project_path: None,
+                entries,
+                turn_interruption_state: crate::utils::conversation::TurnInterruptionState::None,
+                metadata: crate::commands::resume::ResumeMetadata {
+                    session_id: Some(session_id.to_string()),
+                    full_path: Some(path.display().to_string()),
+                    ..crate::commands::resume::ResumeMetadata::default()
+                },
+                entrypoint: Some(crate::types::command::ResumeEntrypoint::CliFlag),
+            }
+        };
+        let resume = |target: &crate::commands::resume::ResumeTarget| {
+            let loaded = ResumeLoadResult::try_from(target).unwrap();
+            let processed = process_resumed_conversation(
+                loaded,
+                None,
+                Arc::new(
+                    crate::tools::agent_tool::load_agents_dir::AgentDefinitionsResult::default(),
+                ),
+            )
+            .unwrap();
+            // The configured model must not be what a resume restores.
+            let mut state = crate::state::app_state_store::AppState {
+                main_loop_model: Some("configured".to_string()),
+                effort_value: Some(Effort::High),
+                ..Default::default()
+            };
+            processed.apply_to_app_state(&mut state);
+            state
+        };
+
+        let state = resume(&target(&path, vec![user.clone()]));
+        assert_eq!(state.main_loop_model_for_session.as_deref(), Some("haiku"));
+        assert_eq!(state.effort_value, Some(Effort::Off));
+        // The configured selection stays as the configured one.
+        assert_eq!(state.main_loop_model.as_deref(), Some("configured"));
+
+        // A session that never recorded either leaves the state as launch set it.
+        let quiet_path = project_dir.join("quiet.jsonl");
+        std::fs::write(&quiet_path, line(user.clone())).unwrap();
+        let state = resume(&target(&quiet_path, vec![user]));
+        assert_eq!(state.main_loop_model_for_session, None);
+        assert_eq!(state.effort_value, Some(Effort::High));
+
+        crate::utils::session_storage::clear_session_metadata();
+        crate::bootstrap::state::switch_session(previous_session_id, previous_project_dir);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn processed_resume_restores_agent_object_and_model_before_mount() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let previous_override = crate::bootstrap::state::get_main_loop_model_override();

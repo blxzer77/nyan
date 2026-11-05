@@ -67,7 +67,6 @@ fn resolved(protocol: Protocol) -> ResolvedTarget {
         max_output_tokens: 8_000,
         capabilities: all(),
         cache_retention: Default::default(),
-        effort: None,
         extra: None,
     }
 }

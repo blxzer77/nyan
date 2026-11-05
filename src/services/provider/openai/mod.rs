@@ -414,7 +414,6 @@ mod tests {
                 ..Default::default()
             },
             cache_retention: crate::utils::settings::nyan::CacheRetention::None,
-            effort: None,
             extra: None,
         }
     }

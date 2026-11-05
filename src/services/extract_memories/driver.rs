@@ -784,4 +784,77 @@ mod tests {
         );
         assert_eq!(progress_for_test().turns_since_extract, 0);
     }
+
+    fn memory_settings(
+        extract_model: Option<&str>,
+    ) -> crate::utils::settings::nyan::MemorySettings {
+        crate::utils::settings::nyan::MemorySettings {
+            extract_model: extract_model.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    fn install_light_and_main() {
+        crate::utils::settings::settings_cache::install_test_settings(
+            serde_json::from_value(serde_json::json!({
+                "nyan": {
+                    "providers": {"p": {"kind": "anthropic", "protocol": "anthropicMessages"}},
+                    "models": {
+                        "main": {"provider": "p", "model": "claude-sonnet-4-6",
+                            "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}},
+                        "fast": {"provider": "p", "model": "claude-haiku-4-5", "effort": "off",
+                            "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}}
+                    },
+                    "selection": {"main": "main", "light": "fast"}
+                }
+            }))
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn the_memory_fork_shares_the_session_prefix_only_when_it_runs_the_same_selection() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        install_light_and_main();
+
+        // Default role is `@light`, a different model and profile: a dedicated fork.
+        let session = ToolUseContext::default().with_main_loop_model("claude-sonnet-4-6");
+        let (fork, model) = memory_fork(&memory_settings(None), &session);
+        assert_eq!(model.as_deref(), Some("claude-haiku-4-5"));
+        assert_eq!(fork.main_loop_profile.as_deref(), Some("fast"));
+        assert_eq!(fork.effort_value, Some(crate::utils::effort::Effort::Off));
+        // The session itself is untouched.
+        assert_eq!(session.main_loop_profile, None);
+
+        // The memory role pointed at the session's own profile shares the prefix.
+        let (fork, model) = memory_fork(&memory_settings(Some("main")), &session);
+        assert_eq!(model, None);
+        assert_eq!(fork.main_loop_profile.as_deref(), Some("main"));
+
+        // `inherit` is the session, wherever the session runs.
+        let (fork, model) = memory_fork(&memory_settings(Some("inherit")), &session);
+        assert_eq!(model, None);
+        assert_eq!(fork.main_loop_profile, None);
+
+        crate::utils::settings::settings_cache::reset_settings_cache();
+    }
+
+    #[test]
+    fn the_same_model_id_under_another_profile_is_still_a_dedicated_fork() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        install_light_and_main();
+
+        // The session switched to `fast`; the model id matches the memory model,
+        // but a request through another profile cannot share the prefix.
+        let mut session = ToolUseContext::default().with_main_loop_model("claude-sonnet-4-6");
+        session.main_loop_profile = Some("fast".to_string());
+        let (_, model) = memory_fork(&memory_settings(Some("main")), &session);
+        assert_eq!(model.as_deref(), Some("claude-sonnet-4-6"));
+
+        crate::utils::settings::settings_cache::reset_settings_cache();
+    }
 }

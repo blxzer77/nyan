@@ -21,7 +21,7 @@ use super::client::{GetAnthropicClientOptions, get_anthropic_client};
 use super::target::AnthropicTarget;
 use super::wire::{StreamNormalizer, provider_error};
 use crate::services::provider::adapter::{
-    Cancel, EventStream, OpenedStream, ProviderAdapter, ResolvedTarget,
+    Cancel, EventStream, OpenedStream, ProviderAdapter, ResolvedTarget, merge_extra,
 };
 use crate::services::provider::ir::{
     Capability, CapabilityError, ModelRequest, Protocol, ProviderError, ProviderErrorKind,
@@ -127,18 +127,14 @@ impl ProviderAdapter for AnthropicAdapter {
             })?;
 
             let mut params = wire.params;
-            if let Some(serde_json::Value::Object(extra)) = &target.extra {
+            if target.extra.is_some() {
                 let mut body = serde_json::to_value(&params).map_err(|error| {
                     ProviderError::new(
                         ProviderErrorKind::InvalidRequest,
                         format!("failed to serialize Anthropic request: {error}"),
                     )
                 })?;
-                if let Some(object) = body.as_object_mut() {
-                    for (key, value) in extra {
-                        object.insert(key.clone(), value.clone());
-                    }
-                }
+                merge_extra(&mut body, target.extra.as_ref());
                 params = serde_json::from_value(body).map_err(|error| {
                     ProviderError::new(
                         ProviderErrorKind::InvalidRequest,
@@ -231,7 +227,6 @@ mod tests {
             max_output_tokens: 64_000,
             capabilities: Default::default(),
             cache_retention: Default::default(),
-            effort: None,
             extra: None,
         }
     }
@@ -338,6 +333,59 @@ mod tests {
         assert!(adapter.validate(&target("m"), &zero).is_err());
 
         assert!(adapter.validate(&target("m"), &ir_request()).is_ok());
+    }
+
+    #[tokio::test]
+    async fn profile_extra_reaches_the_wire_body_and_wins_over_computed_fields() {
+        let (_lock, _env) = env();
+        let mock = MockAnthropic::start(vec![Reply::Sse(message_stream(StreamSpec {
+            text: Some("ok"),
+            ..StreamSpec::default()
+        }))])
+        .await;
+        let adapter = adapter_for(&mock.base_url);
+        adapter.prepare(wire("claude-sonnet-4-6"));
+        let mut with_extra = target("claude-sonnet-4-6");
+        with_extra.extra = Some(json!({
+            "max_tokens": 256,
+            "metadata": {"user_id": "profile-user"},
+            "top_k": 5
+        }));
+        let cancel = anthropic_sdk::AbortSignal::new();
+        let opened = adapter
+            .send(&with_extra, &ir_request(), &cancel)
+            .await
+            .expect("stream opens");
+        let _: Vec<_> = opened.events.collect().await;
+
+        let sent = &mock.requests()[0].body;
+        // `extra` is applied last, so it replaces what the request computed...
+        assert_eq!(sent["max_tokens"], 256);
+        // ...and carries fields the request never had.
+        assert_eq!(sent["metadata"], json!({"user_id": "profile-user"}));
+        assert_eq!(sent["top_k"], 5);
+        // Everything it did not touch is intact.
+        assert_eq!(sent["model"], "claude-sonnet-4-6");
+        assert_eq!(sent["stream"], true);
+    }
+
+    #[tokio::test]
+    async fn profile_extra_that_breaks_the_request_shape_is_a_request_error_not_a_panic() {
+        let (_lock, _env) = env();
+        let mock = MockAnthropic::start(vec![]).await;
+        let adapter = adapter_for(&mock.base_url);
+        adapter.prepare(wire("claude-sonnet-4-6"));
+        let mut broken = target("claude-sonnet-4-6");
+        broken.extra = Some(json!({"max_tokens": "not a number"}));
+        let cancel = anthropic_sdk::AbortSignal::new();
+        let error = adapter
+            .send(&broken, &ir_request(), &cancel)
+            .await
+            .err()
+            .expect("an invalid extra must be refused");
+        assert_eq!(error.kind, ProviderErrorKind::InvalidRequest);
+        assert!(error.message.contains("profile extra"), "{}", error.message);
+        assert!(mock.requests().is_empty(), "nothing may be sent");
     }
 
     #[tokio::test]

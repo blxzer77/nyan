@@ -334,13 +334,7 @@ pub fn build_body(target: &ResolvedTarget, request: &ModelRequest, compat: &Comp
         body["messages"] = json!(messages);
     }
 
-    if let Some(serde_json::Value::Object(extra)) = &target.extra {
-        if let Some(obj) = body.as_object_mut() {
-            for (k, v) in extra {
-                obj.insert(k.clone(), v.clone());
-            }
-        }
-    }
+    crate::services::provider::adapter::merge_extra(&mut body, target.extra.as_ref());
 
     body
 }
@@ -825,7 +819,6 @@ mod tests {
             max_output_tokens: 8_000,
             capabilities,
             cache_retention: Default::default(),
-            effort: None,
             extra: None,
         }
     }
@@ -902,6 +895,22 @@ mod tests {
                 "{absent} must not be sent: {body}"
             );
         }
+    }
+
+    #[test]
+    fn profile_extra_is_merged_last_into_the_chat_body() {
+        let mut with_extra = target(all());
+        with_extra.extra = Some(json!({
+            "max_completion_tokens": 123,
+            "chat_template_kwargs": {"enable_thinking": false}
+        }));
+        let body = build_body(&with_extra, &request(vec![user_text("hi")]));
+        assert_eq!(body["max_completion_tokens"], 123);
+        assert_eq!(
+            body["chat_template_kwargs"],
+            json!({"enable_thinking": false})
+        );
+        assert_eq!(body["model"], "gpt-5");
     }
 
     #[test]

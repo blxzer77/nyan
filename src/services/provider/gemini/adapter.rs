@@ -9,7 +9,9 @@ use serde_json::Value;
 use super::errors;
 use super::target::{GeminiAuth, GeminiTarget};
 use super::wire::{self, GenerateContentResponse};
-use crate::services::provider::adapter::{Cancel, OpenedStream, ProviderAdapter, ResolvedTarget};
+use crate::services::provider::adapter::{
+    Cancel, OpenedStream, ProviderAdapter, ResolvedTarget, merge_extra,
+};
 use crate::services::provider::ir::{
     BlockStart, Capability, CapabilityError, Delta, Message, ModelRequest, Protocol, ProviderError,
     ProviderErrorKind, StopReason, StreamEventKind, ToolResultContent, ToolResultPart, Usage,
@@ -129,13 +131,7 @@ impl ProviderAdapter for GeminiAdapter {
                     format!("failed to serialize request: {e}"),
                 )
             })?;
-            if let Some(serde_json::Value::Object(extra)) = &target.extra {
-                if let Some(obj) = body.as_object_mut() {
-                    for (k, v) in extra {
-                        obj.insert(k.clone(), v.clone());
-                    }
-                }
-            }
+            merge_extra(&mut body, target.extra.as_ref());
             let headers = self.headers();
             let opened = post_stream_classified(
                 &url,

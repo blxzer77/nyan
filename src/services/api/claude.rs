@@ -3533,7 +3533,6 @@ fn resolved_target_for(
         max_output_tokens: 0,
         capabilities: Default::default(),
         cache_retention: Default::default(),
-        effort: None,
         extra: None,
     });
     resolved.model = model.to_string();
@@ -9898,5 +9897,46 @@ mod raw_image_tests {
             metadata.get("json_owner_metadata"),
             Some(&serde_json::json!(123))
         );
+    }
+
+    #[test]
+    fn a_utility_role_picks_its_model_effort_and_profile_from_selection() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::utils::settings::settings_cache::install_test_settings(
+            serde_json::from_value(serde_json::json!({
+                "nyan": {
+                    "providers": {"p": {"kind": "anthropic", "protocol": "anthropicMessages"}},
+                    "models": {
+                        "main": {"provider": "p", "model": "claude-sonnet-4-6", "effort": "high",
+                            "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}},
+                        "fast": {"provider": "p", "model": "claude-haiku-4-5", "effort": "off",
+                            "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}}
+                    },
+                    "selection": {
+                        "main": "main",
+                        "light": "fast",
+                        "utility": {"summary": "main:medium"}
+                    }
+                }
+            }))
+            .unwrap(),
+        );
+
+        // Unconfigured roles default to `@light`.
+        let title = Options::for_utility("title", "generate_session_title".to_string());
+        assert_eq!(title.model, "claude-haiku-4-5");
+        assert_eq!(title.profile.as_deref(), Some("fast"));
+        assert_eq!(title.effort_value, Some(Effort::Off));
+        assert_eq!(title.query_source, "generate_session_title");
+
+        // A configured role beats the default, and its `:effort` beats the profile's.
+        let summary = Options::for_utility("summary", "tool_use_summary_generation".to_string());
+        assert_eq!(summary.model, "claude-sonnet-4-6");
+        assert_eq!(summary.profile.as_deref(), Some("main"));
+        assert_eq!(summary.effort_value, Some(Effort::Medium));
+
+        crate::utils::settings::settings_cache::reset_settings_cache();
     }
 }

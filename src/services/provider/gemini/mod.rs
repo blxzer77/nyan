@@ -15,7 +15,9 @@ pub mod fixtures;
 #[cfg(test)]
 pub mod mock;
 
-use crate::services::provider::adapter::{Cancel, OpenedStream, ProviderAdapter, ResolvedTarget};
+use crate::services::provider::adapter::{
+    Cancel, OpenedStream, ProviderAdapter, ResolvedTarget, merge_extra,
+};
 use crate::services::provider::ir::{ModelRequest, ProviderError, ProviderErrorKind};
 use crate::utils::model::profile::ResolvedModelProfile;
 
@@ -65,13 +67,7 @@ pub async fn execute_non_streaming(
     let headers = adapter.headers();
     let mut body = serde_json::to_value(wire::build_request(request, &resolved))
         .map_err(|e| invalid(e.to_string()))?;
-    if let Some(serde_json::Value::Object(extra)) = &resolved.extra {
-        if let Some(obj) = body.as_object_mut() {
-            for (k, v) in extra {
-                obj.insert(k.clone(), v.clone());
-            }
-        }
-    }
+    merge_extra(&mut body, resolved.extra.as_ref());
 
     let (_headers_map, request_id, json_response) = post_json_classified(
         &url,

@@ -4494,7 +4494,14 @@ fn build_call_model_request(
         .is_some_and(|prompt| !prompt.is_empty());
     // Maps to CC `query.ts` `fallbackModel: toolUseContext.options.fallbackModel`.
     options.fallback_model = tool_use_context.fallback_model.clone();
-    options.effort_value = tool_use_context.effort_value;
+    // A session effort (`/effort`, `/model`, `--effort`, a resumed session)
+    // wins; without one the profile the request goes through decides.
+    options.effort_value = tool_use_context.effort_value.or_else(|| {
+        crate::utils::model::profile::profile_default_effort(
+            &crate::utils::settings::get_initial_settings(),
+            options.profile.as_deref(),
+        )
+    });
     options.fast_mode = tool_use_context
         .fast_mode
         .map(|enabled| enabled && crate::utils::fast_mode::is_fast_mode_enabled());

@@ -3079,4 +3079,56 @@ mod tests {
         context.mark_complete("cancel");
         assert_eq!(observed.lock().unwrap().last().copied(), Some(false));
     }
+
+    fn two_profile_settings() -> crate::utils::settings::SettingsJson {
+        serde_json::from_value(serde_json::json!({
+            "nyan": {
+                "providers": {"p": {"kind": "anthropic", "protocol": "anthropicMessages"}},
+                "models": {
+                    "main": {"provider": "p", "model": "claude-sonnet-4-6",
+                        "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}},
+                    "deep": {"provider": "p", "model": "claude-opus-4-6",
+                        "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}}
+                },
+                "selection": {"main": "main"}
+            }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_context_hands_its_model_effort_and_profile_to_what_inherits_it() {
+        let _lock = crate::utils::test_env::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::utils::settings::settings_cache::install_test_settings(two_profile_settings());
+
+        let mut context = ToolUseContext::default()
+            .with_main_loop_model("claude-opus-4-6")
+            .with_effort_value(Some(crate::utils::effort::Effort::Max));
+        context.main_loop_profile = Some("deep".to_string());
+        let parent = context.parent_selection();
+        assert_eq!(parent.model, "claude-opus-4-6");
+        assert_eq!(parent.effort, Some(crate::utils::effort::Effort::Max));
+        assert_eq!(parent.profile.as_deref(), Some("deep"));
+        assert_eq!(context.effective_profile_name().as_deref(), Some("deep"));
+
+        // A session that never switched runs on `selection.main`.
+        let plain = ToolUseContext::default().with_main_loop_model("claude-sonnet-4-6");
+        assert_eq!(plain.parent_selection().profile, None);
+        assert_eq!(plain.effective_profile_name().as_deref(), Some("main"));
+
+        crate::utils::settings::settings_cache::reset_settings_cache();
+    }
+
+    #[test]
+    fn the_selected_profile_survives_the_options_round_trip_a_subagent_context_makes() {
+        let mut context = ToolUseContext::default().with_main_loop_model("m");
+        context.main_loop_profile = Some("deep".to_string());
+        let options = context.options();
+        assert_eq!(options.main_loop_profile.as_deref(), Some("deep"));
+        let mut other = ToolUseContext::default();
+        other.apply_options(options);
+        assert_eq!(other.main_loop_profile.as_deref(), Some("deep"));
+    }
 }
