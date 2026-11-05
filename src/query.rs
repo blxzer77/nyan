@@ -6417,9 +6417,8 @@ mod tests {
     fn tool_use_context_seed_carries_effort_for_nested_agents() {
         // Maps to: nested agents write effort onto ToolUseContext before
         // spawn_query (formerly QueryRuntimeOptions.effort_value).
-        let context = crate::tool::ToolUseContext::default().with_effort_value(Some(
-            crate::utils::effort::Effort::Off,
-        ));
+        let context = crate::tool::ToolUseContext::default()
+            .with_effort_value(Some(crate::utils::effort::Effort::Off));
 
         assert_eq!(
             context.effort_value,

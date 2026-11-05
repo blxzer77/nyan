@@ -14,8 +14,8 @@ use super::mock::{MockOpenAi, Recorded, Reply};
 use super::target::{Compat, OpenAiAuth, OpenAiTarget};
 use crate::services::provider::adapter::{Cancel, ProviderAdapter, ResolvedTarget};
 use crate::services::provider::ir::{
-    AssistantPart, BlockStart, CachePolicy, ClientContext, Delta, Effort, Message, ModelRequest, Protocol,
-    ProviderError, ProviderErrorKind, StopReason, StreamEventKind, ToolChoice,
+    AssistantPart, BlockStart, CachePolicy, ClientContext, Delta, Effort, Message, ModelRequest,
+    Protocol, ProviderError, ProviderErrorKind, StopReason, StreamEventKind, ToolChoice,
     ToolResultContent, ToolSpec, UserPart,
 };
 use crate::utils::model::profile::ResolvedCapabilities;

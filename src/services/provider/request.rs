@@ -6,16 +6,16 @@
 //! here; anything shaped by one protocol (cache markers, betas, tool-search
 //! deferral, system-block splitting) is left to that protocol's adapter.
 
+use super::ir::{
+    AssistantPart, CachePolicy, ClientContext, Effort, JsonSchemaOutput, MediaSource, Message,
+    ModelRequest, Protocol, ProviderState, ToolChoice, ToolResultContent, ToolResultPart, ToolSpec,
+    UserPart,
+};
 use crate::constants::api_limits::API_MAX_MEDIA_PER_REQUEST;
 use crate::types::message::{
     AssistantContent, Message as NyanMessage, ToolResult, ToolResultContentBlock, UserContent,
 };
 use crate::types::tools::Tool;
-use super::ir::{
-    AssistantPart, CachePolicy, ClientContext, Effort, JsonSchemaOutput, MediaSource, Message,
-    ModelRequest, Protocol, ProviderState, ToolChoice, ToolResultContent,
-    ToolResultPart, ToolSpec, UserPart,
-};
 
 /// Everything the query layer decides about one call, before any wire format.
 #[derive(Debug, Clone)]

@@ -2308,9 +2308,8 @@ mod tests {
             "Use general",
             AgentDefinitionSource::ProjectSettings,
         );
-        let context = ToolUseContext::default().with_effort_value(Some(
-            crate::utils::effort::Effort::High,
-        ));
+        let context =
+            ToolUseContext::default().with_effort_value(Some(crate::utils::effort::Effort::High));
         // Default inherits parent effort
         assert_eq!(
             effective_agent_effort(&agent, None, &context),

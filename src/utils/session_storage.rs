@@ -5910,7 +5910,8 @@ mod tests {
 
     #[test]
     fn session_model_and_effort_events_are_last_wins_and_preserve_clears() {
-        let path = std::env::temp_dir().join(format!("nyan-session-events-{}.jsonl", Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("nyan-session-events-{}.jsonl", Uuid::new_v4()));
         fs::write(
             &path,
             concat!(

@@ -394,8 +394,11 @@ pub fn process_resumed_conversation(
         })?;
     }
 
-    if let (Some(path), Some(session_id)) = (result.full_path.as_deref(), result.session_id.as_deref()) {
-        let loaded = crate::utils::session_storage::load_session_structured_from_path(Path::new(path));
+    if let (Some(path), Some(session_id)) =
+        (result.full_path.as_deref(), result.session_id.as_deref())
+    {
+        let loaded =
+            crate::utils::session_storage::load_session_structured_from_path(Path::new(path));
         if let Some(model) = loaded.session_models.get(session_id) {
             result.session_model = Some(model.clone());
         }

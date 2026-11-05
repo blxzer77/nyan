@@ -182,9 +182,7 @@ fn model_effort_level_from_name(level: &str) -> Option<ModelEffortLevel> {
 
 /// Maps to: CC `components/ModelPicker.tsx` initializing effort from
 /// `AppState.effortValue` / `sessionEffort`.
-pub(crate) fn model_effort_from_value(
-    value: Option<&Effort>,
-) -> ModelEffortLevel {
+pub(crate) fn model_effort_from_value(value: Option<&Effort>) -> ModelEffortLevel {
     value.copied().unwrap_or(Effort::Medium)
 }
 
@@ -734,10 +732,7 @@ mod tests {
             ModelEffortLevel::Max,
             true,
         );
-        assert_eq!(
-            state.effort_value,
-            Some(Effort::Max)
-        );
+        assert_eq!(state.effort_value, Some(Effort::Max));
     }
 
     #[test]

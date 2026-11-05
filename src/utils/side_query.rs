@@ -215,20 +215,24 @@ pub async fn side_query(opts: SideQueryOptions) -> anyhow::Result<Message> {
         None,
         settings.nyan.as_deref(),
     );
-    let use_utility_selection =
-        opts.model.trim().is_empty() || opts.model == utility.model;
+    let use_utility_selection = opts.model.trim().is_empty() || opts.model == utility.model;
     let profile = if use_utility_selection {
         utility
             .profile
             .as_deref()
             .map(|name| {
                 crate::utils::model::profile::resolve_profile(
-                    settings.nyan.as_deref().expect("utility profile requires nyan settings"),
+                    settings
+                        .nyan
+                        .as_deref()
+                        .expect("utility profile requires nyan settings"),
                     name,
                 )
             })
             .transpose()?
-            .unwrap_or(crate::utils::model::profile::resolve_main_profile(&settings)?)
+            .unwrap_or(crate::utils::model::profile::resolve_main_profile(
+                &settings,
+            )?)
     } else {
         crate::utils::model::profile::resolve_main_profile(&settings)?
     };
@@ -311,12 +315,8 @@ pub async fn side_query(opts: SideQueryOptions) -> anyhow::Result<Message> {
             crate::utils::effort::Effort::Medium => {
                 anthropic_sdk::resources::messages::Effort::Medium
             }
-            crate::utils::effort::Effort::High => {
-                anthropic_sdk::resources::messages::Effort::High
-            }
-            crate::utils::effort::Effort::Max => {
-                anthropic_sdk::resources::messages::Effort::Max
-            }
+            crate::utils::effort::Effort::High => anthropic_sdk::resources::messages::Effort::High,
+            crate::utils::effort::Effort::Max => anthropic_sdk::resources::messages::Effort::Max,
             crate::utils::effort::Effort::Off => unreachable!("off was filtered"),
         });
 

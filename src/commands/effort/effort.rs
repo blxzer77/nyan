@@ -52,7 +52,11 @@ impl EffortCommandResult {
 pub fn usage_text() -> String {
     let mut text = "Usage: /effort [off|medium|high|max]\n\nEffort levels:\n".to_string();
     for level in Effort::ALL {
-        text.push_str(&format!("- {}: {}\n", level.as_str(), get_effort_description(level)));
+        text.push_str(&format!(
+            "- {}: {}\n",
+            level.as_str(),
+            get_effort_description(level)
+        ));
     }
     text
 }

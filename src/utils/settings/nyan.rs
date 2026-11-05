@@ -2585,7 +2585,10 @@ mod tests {
         let parsed = crate::utils::zod::safe_parse(&nyan_settings_schema(), &value)
             .expect("tiered selection and profile additions are valid");
         assert_eq!(parsed["models"]["main"]["effort"], "max");
-        assert_eq!(parsed["models"]["main"]["extra"]["custom_field"]["enabled"], true);
+        assert_eq!(
+            parsed["models"]["main"]["extra"]["custom_field"]["enabled"],
+            true
+        );
         assert_eq!(parsed["selection"]["light"], "main");
         assert_eq!(parsed["selection"]["utility"]["title"], "main:high");
     }

@@ -4346,7 +4346,10 @@ mod tests {
             "ModelPicker High → Max on Opus 4.6 must apply Max to AppState"
         );
         assert_eq!(
-            max_effort_store.get().main_loop_model_for_session.as_deref(),
+            max_effort_store
+                .get()
+                .main_loop_model_for_session
+                .as_deref(),
             Some("opus[1m]")
         );
 

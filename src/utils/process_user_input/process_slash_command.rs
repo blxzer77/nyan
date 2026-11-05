@@ -2061,9 +2061,7 @@ mod tests {
             local_output(&result),
             format!(
                 "<local-command-stdout>{}</local-command-stdout>",
-                crate::commands::effort::effort::usage_text(
-                    &crate::utils::model::model::get_main_loop_model()
-                )
+                crate::commands::effort::effort::usage_text()
             )
         );
         assert_eq!(

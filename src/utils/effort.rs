@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use crate::constants::figures::{EFFORT_HIGH, EFFORT_LOW, EFFORT_MAX, EFFORT_MEDIUM};
 
 /// Unified thinking / reasoning effort level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Effort {
     Off,
@@ -136,9 +138,7 @@ pub fn parse_effort_value(value: &str) -> Option<EffortValue> {
         return None;
     }
     let number = digits.into_iter().try_fold(0_i128, |value, digit| {
-        value
-            .checked_mul(10)?
-            .checked_add((digit - b'0') as i128)
+        value.checked_mul(10)?.checked_add((digit - b'0') as i128)
     })? * sign;
     i64::try_from(number).ok().map(EffortValue::Numeric)
 }
@@ -169,8 +169,8 @@ pub fn get_opus_default_effort_config() -> OpusDefaultEffortConfig {
     OpusDefaultEffortConfig {
         enabled: true,
         dialog_title: "We recommend medium effort for Opus".to_string(),
-        dialog_description:
-            "Effort determines how much reasoning the model uses for a task.".to_string(),
+        dialog_description: "Effort determines how much reasoning the model uses for a task."
+            .to_string(),
     }
 }
 
@@ -237,10 +237,7 @@ mod tests {
 
     #[test]
     fn parse_model_ref_and_effort_splits_only_valid_effort_suffixes() {
-        assert_eq!(
-            parse_model_ref_and_effort(""),
-            ("", None)
-        );
+        assert_eq!(parse_model_ref_and_effort(""), ("", None));
         assert_eq!(
             parse_model_ref_and_effort(":high"),
             ("inherit", Some(Effort::High))
@@ -266,10 +263,7 @@ mod tests {
             ("inherit", Some(Effort::High))
         );
         // Models with colons in ID must not be split if suffix is not a valid effort
-        assert_eq!(
-            parse_model_ref_and_effort("qwen3:32b"),
-            ("qwen3:32b", None)
-        );
+        assert_eq!(parse_model_ref_and_effort("qwen3:32b"), ("qwen3:32b", None));
         assert_eq!(
             parse_model_ref_and_effort("ollama/qwen3:32b:max"),
             ("ollama/qwen3:32b", Some(Effort::Max))

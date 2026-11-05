@@ -12,8 +12,8 @@
 //!   - Otherwise temporary provider/model -> Effort::Medium.
 //! - CC legacy aliases (haiku/sonnet/opus, alias_matches_parent_tier, Bedrock prefixing) are removed.
 
-pub use crate::utils::effort::parse_model_ref_and_effort;
 use crate::utils::effort::Effort;
+pub use crate::utils::effort::parse_model_ref_and_effort;
 use crate::utils::model::profile::{resolve_profile, resolve_selection_profile_name};
 use crate::utils::settings::get_initial_settings;
 use crate::utils::settings::nyan::NyanSettings;
@@ -218,11 +218,11 @@ pub fn get_agent_model_display(model: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
     use crate::utils::settings::nyan::{
         ModelCapabilities, ModelProfileSettings, ProviderKind, ProviderProtocol, ProviderSettings,
         SelectionSettings,
     };
+    use std::collections::BTreeMap;
 
     fn test_nyan_settings() -> NyanSettings {
         let mut providers = BTreeMap::new();
@@ -288,12 +288,14 @@ mod tests {
             main: Some("main-profile".to_string()),
             light: Some("fast-profile".to_string()),
             heavy: Some("deep-profile".to_string()),
-            subagents: Some(BTreeMap::from([
-                ("review".to_string(), "deep-profile:high".to_string()),
-            ])),
-            utility: Some(BTreeMap::from([
-                ("title".to_string(), "fast-profile:off".to_string()),
-            ])),
+            subagents: Some(BTreeMap::from([(
+                "review".to_string(),
+                "deep-profile:high".to_string(),
+            )])),
+            utility: Some(BTreeMap::from([(
+                "title".to_string(),
+                "fast-profile:off".to_string(),
+            )])),
             ..Default::default()
         };
 
@@ -428,17 +430,24 @@ mod tests {
         let parent_effort = Some(Effort::Medium);
 
         // Configured in test_nyan_settings: title -> fast-profile:off
-        let title = resolve_utility_model_and_effort("title", parent_model, parent_effort, Some(&nyan));
+        let title =
+            resolve_utility_model_and_effort("title", parent_model, parent_effort, Some(&nyan));
         assert_eq!(title.model, "claude-haiku-4-5");
         assert_eq!(title.effort, Effort::Off);
 
         // Unconfigured compaction -> default @main -> main-profile (with its configured effort Effort::High)
-        let compaction = resolve_utility_model_and_effort("compaction", parent_model, parent_effort, Some(&nyan));
+        let compaction = resolve_utility_model_and_effort(
+            "compaction",
+            parent_model,
+            parent_effort,
+            Some(&nyan),
+        );
         assert_eq!(compaction.model, "claude-sonnet-4-6");
         assert_eq!(compaction.effort, Effort::High);
 
         // Unconfigured summary -> default @light -> fast-profile (with its configured effort Effort::Off)
-        let summary = resolve_utility_model_and_effort("summary", parent_model, parent_effort, Some(&nyan));
+        let summary =
+            resolve_utility_model_and_effort("summary", parent_model, parent_effort, Some(&nyan));
         assert_eq!(summary.model, "claude-haiku-4-5");
         assert_eq!(summary.effort, Effort::Off);
     }

@@ -903,7 +903,7 @@ mod tests {
     #[test]
     fn selection_profile_validation_covers_tiers_subagents_utility_and_decision() {
         let settings = SettingsJson {
-            nyan: Some(crate::utils::settings::nyan::NyanSettings {
+            nyan: Some(Box::new(crate::utils::settings::nyan::NyanSettings {
                 models: Some(std::collections::BTreeMap::from([(
                     "main".to_string(),
                     crate::utils::settings::nyan::ModelProfileSettings::default(),
@@ -916,11 +916,11 @@ mod tests {
                     subagents: Some(std::collections::BTreeMap::from([(
                         "explore".to_string(),
                         "missing-explore:high".to_string(),
-                    ])),
+                    )])),
                     utility: Some(std::collections::BTreeMap::from([(
                         "title".to_string(),
                         "missing-title:medium".to_string(),
-                    ])),
+                    )])),
                     decision: Some(crate::utils::settings::nyan::SelectionDecisionSettings {
                         fast: Some("missing-fast".to_string()),
                         accurate: None,
@@ -928,11 +928,14 @@ mod tests {
                     ..Default::default()
                 }),
                 ..Default::default()
-            }),
+            })),
             ..Default::default()
         };
         let errors = validate_merged_selection_profiles(&settings);
-        let paths = errors.iter().map(|error| error.path.as_str()).collect::<Vec<_>>();
+        let paths = errors
+            .iter()
+            .map(|error| error.path.as_str())
+            .collect::<Vec<_>>();
         assert!(paths.contains(&"nyan.selection.light"));
         assert!(paths.contains(&"nyan.selection.subagent"));
         assert!(paths.contains(&"nyan.selection.subagents.explore"));

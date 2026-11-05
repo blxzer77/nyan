@@ -187,11 +187,12 @@ impl SkillContextModifier {
         // `if (effort !== undefined)` — presence, not truthiness.
         if let Some(effort) = self.effort.as_ref() {
             context.effort_value = match effort {
-                crate::utils::effort::EffortValue::Named(value) =>
-                    crate::utils::effort::Effort::from_str_loose(value),
-                crate::utils::effort::EffortValue::Numeric(_) => Some(
-                    crate::utils::effort::Effort::Medium,
-                ),
+                crate::utils::effort::EffortValue::Named(value) => {
+                    crate::utils::effort::Effort::from_str_loose(value)
+                }
+                crate::utils::effort::EffortValue::Numeric(_) => {
+                    Some(crate::utils::effort::Effort::Medium)
+                }
             };
         }
     }

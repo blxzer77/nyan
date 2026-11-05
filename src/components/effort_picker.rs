@@ -572,17 +572,10 @@ mod tests {
     fn initial_focus_follows_named_effort_then_displayed_default() {
         let geometry = get_slider_geometry("any-model");
         assert_eq!(
-            initial_focus_index(
-                &geometry,
-                "any-model",
-                Some(&Effort::High),
-            ),
+            initial_focus_index(&geometry, "any-model", Some(&Effort::High),),
             2
         );
-        assert_eq!(
-            initial_focus_index(&geometry, "any-model", None),
-            1
-        );
+        assert_eq!(initial_focus_index(&geometry, "any-model", None), 1);
     }
 
     #[test]

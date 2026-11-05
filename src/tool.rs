@@ -1707,10 +1707,7 @@ impl ToolUseContext {
         self
     }
 
-    pub fn with_effort_value(
-        mut self,
-        effort_value: Option<crate::utils::effort::Effort>,
-    ) -> Self {
+    pub fn with_effort_value(mut self, effort_value: Option<crate::utils::effort::Effort>) -> Self {
         self.effort_value = effort_value;
         self
     }

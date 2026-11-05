@@ -2211,11 +2211,8 @@ fn build_sdk_message_create_plan(
         },
         None => thinking_config.clone(),
     };
-    let sdk_thinking = local_thinking_config_to_sdk(
-        &effective_thinking_config,
-        &options.model,
-        max_tokens,
-    );
+    let sdk_thinking =
+        local_thinking_config_to_sdk(&effective_thinking_config, &options.model, max_tokens);
     let temperature = if matches!(
         &sdk_thinking,
         anthropic_sdk::resources::messages::ThinkingConfig::Disabled
@@ -2345,10 +2342,12 @@ fn build_model_request(
                 .and_then(|value| value.get("disable_parallel_tool_use"))
                 .and_then(JsonValue::as_bool)
                 .unwrap_or(false),
-            effort: options.effort_value.unwrap_or_else(|| match thinking_config {
-                ThinkingConfig::Disabled => Effort::Off,
-                ThinkingConfig::Adaptive | ThinkingConfig::Enabled { .. } => Effort::Medium,
-            }),
+            effort: options
+                .effort_value
+                .unwrap_or_else(|| match thinking_config {
+                    ThinkingConfig::Disabled => Effort::Off,
+                    ThinkingConfig::Adaptive | ThinkingConfig::Enabled { .. } => Effort::Medium,
+                }),
             output_schema: options.output_format.as_ref().map(|format| {
                 format
                     .get("schema")
@@ -2679,11 +2678,8 @@ fn params_from_context(
         },
         None => thinking_config.clone(),
     };
-    let sdk_thinking = local_thinking_config_to_sdk(
-        &effective_thinking_config,
-        &options.model,
-        max_tokens,
-    );
+    let sdk_thinking =
+        local_thinking_config_to_sdk(&effective_thinking_config, &options.model, max_tokens);
     let has_thinking = !matches!(
         sdk_thinking,
         anthropic_sdk::resources::messages::ThinkingConfig::Disabled

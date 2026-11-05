@@ -278,7 +278,7 @@ pub(crate) async fn extract_if_due_with_deps<D: crate::query::deps::QueryDeps>(
     };
     // Boxed so the snapshot adds one pointer to this future, not its state.
     let shadow_before = Box::pin(snapshot_before_memory_run()).await;
-    let memory = memory_resolution(&settings, context);
+    let memory = memory_resolution(&settings, &context);
     let mut extraction_context = context.clone();
     extraction_context.effort_value = Some(memory.effort);
     let outcome = super::run_extract_memories_with_deps(

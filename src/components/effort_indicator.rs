@@ -15,10 +15,7 @@ pub fn effort_level_to_symbol(level: &str) -> &'static str {
 }
 
 /// Maps to: CC `components/EffortIndicator.ts#getEffortNotificationText`.
-pub fn get_effort_notification_text(
-    effort_value: Option<&Effort>,
-    model: &str,
-) -> Option<String> {
+pub fn get_effort_notification_text(effort_value: Option<&Effort>, model: &str) -> Option<String> {
     if !model_supports_effort(model) {
         return None;
     }

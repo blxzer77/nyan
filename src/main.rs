@@ -331,8 +331,10 @@ fn build_initial_app_state_with_thinking(
         settings.fast_mode_per_session_opt_in,
     );
 
-    initial.effort_value =
-        cli.effort.as_deref().and_then(crate::utils::effort::Effort::from_str_loose);
+    initial.effort_value = cli
+        .effort
+        .as_deref()
+        .and_then(crate::utils::effort::Effort::from_str_loose);
 
     let loaded_permission_rules =
         crate::utils::permissions::permissions_loader::load_all_permission_rules_from_disk();

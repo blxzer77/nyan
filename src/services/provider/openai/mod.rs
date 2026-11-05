@@ -205,7 +205,10 @@ pub(crate) fn system_text(request: &ModelRequest) -> Option<String> {
 /// - high -> "high"
 /// - max -> "xhigh" if supported (e.g. o3, gpt-5, or xhigh in model id) else "high".
 /// Fixes the previous bug where high/xhigh/max all clamped to high.
-pub(crate) fn reasoning_effort(request: &ModelRequest, target: &ResolvedTarget) -> Option<&'static str> {
+pub(crate) fn reasoning_effort(
+    request: &ModelRequest,
+    target: &ResolvedTarget,
+) -> Option<&'static str> {
     if !target.capabilities.thinking || request.effort.is_off() {
         return None;
     }
@@ -360,17 +363,35 @@ mod tests {
         let no_thinking_target = test_target("gpt-4o", false);
 
         // Off produces None
-        assert_eq!(reasoning_effort(&request(Effort::Off), &thinking_target), None);
+        assert_eq!(
+            reasoning_effort(&request(Effort::Off), &thinking_target),
+            None
+        );
 
         // Non-thinking capability produces None without error
-        assert_eq!(reasoning_effort(&request(Effort::High), &no_thinking_target), None);
+        assert_eq!(
+            reasoning_effort(&request(Effort::High), &no_thinking_target),
+            None
+        );
 
         // Medium and High
-        assert_eq!(reasoning_effort(&request(Effort::Medium), &thinking_target), Some("medium"));
-        assert_eq!(reasoning_effort(&request(Effort::High), &thinking_target), Some("high"));
+        assert_eq!(
+            reasoning_effort(&request(Effort::Medium), &thinking_target),
+            Some("medium")
+        );
+        assert_eq!(
+            reasoning_effort(&request(Effort::High), &thinking_target),
+            Some("high")
+        );
 
         // Max clamps to high unless model supports xhigh
-        assert_eq!(reasoning_effort(&request(Effort::Max), &thinking_target), Some("high"));
-        assert_eq!(reasoning_effort(&request(Effort::Max), &xhigh_target), Some("xhigh"));
+        assert_eq!(
+            reasoning_effort(&request(Effort::Max), &thinking_target),
+            Some("high")
+        );
+        assert_eq!(
+            reasoning_effort(&request(Effort::Max), &xhigh_target),
+            Some("xhigh")
+        );
     }
 }

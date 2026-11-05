@@ -805,8 +805,7 @@ impl ResponsesStream {
 mod tests {
     use super::*;
     use crate::services::provider::ir::{
-        CachePolicy, ClientContext, Effort, JsonSchemaOutput, MediaSource,
-        ToolSpec,
+        CachePolicy, ClientContext, Effort, JsonSchemaOutput, MediaSource, ToolSpec,
     };
     use crate::utils::model::profile::ResolvedCapabilities;
 
