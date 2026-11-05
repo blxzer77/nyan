@@ -2745,7 +2745,6 @@ mod tests {
                     active_agents: vec![agent.as_ref().clone()],
                     all_agents: vec![agent.as_ref().clone()],
                     failed_files: Vec::new(),
-                    allowed_agent_types: None,
                 },
             ),
             main_thread_agent_definition: Some(agent.clone()),

@@ -130,7 +130,7 @@ pub fn get_actual_relative_agent_file_path(
         }
         AgentDefinitionSource::FlagSettings => "CLI argument".to_string(),
         AgentDefinitionSource::ProjectSettings => PathBuf::from(".")
-            .join(".claude")
+            .join(".nyan")
             .join("agents")
             .join(format!(
                 "{}.md",

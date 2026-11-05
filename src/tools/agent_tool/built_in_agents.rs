@@ -106,11 +106,17 @@ mod tests {
             let _inputs = pin_inputs(None, None, false);
             get_built_in_agents()
         };
-        let review = agents.iter().find(|agent| agent.agent_type == "review").unwrap();
+        let review = agents
+            .iter()
+            .find(|agent| agent.agent_type == "review")
+            .unwrap();
         assert_eq!(review.color.as_deref(), Some("red"));
         assert!(review.background);
 
-        let general = agents.iter().find(|agent| agent.agent_type == "general-purpose").unwrap();
+        let general = agents
+            .iter()
+            .find(|agent| agent.agent_type == "general-purpose")
+            .unwrap();
         assert_eq!(general.agent_type, "general-purpose");
     }
 }

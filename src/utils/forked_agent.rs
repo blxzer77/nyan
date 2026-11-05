@@ -918,7 +918,7 @@ mod tests {
     }
 
     #[test]
-    fn default_subagent_gets_child_abort_linked_to_parent() {
+    fn default_subagent_gets_child_abort_linked_to_parent_without_silent_deny() {
         let parent = ToolUseContext::with_permission_context(ToolPermissionContext::default());
         let child = create_subagent_context(&parent, SubagentContextOverrides::default());
 
@@ -928,7 +928,7 @@ mod tests {
             child.abort_controller.is_aborted(),
             "parent abort must propagate to child-linked controller"
         );
-        assert!(child.app_store.avoid_permission_prompts_overlay);
+        assert!(!child.app_store.avoid_permission_prompts_overlay);
         assert!(child.local_denial_tracking.is_some());
     }
 

@@ -17,8 +17,6 @@
 
 use super::agent_memory::AgentMemoryScope;
 use super::built_in_agents::get_built_in_agents;
-use crate::services::mcp::types::ScopedMcpServerConfig;
-use crate::types::permissions::PermissionMode;
 use crate::utils::status_notice_helpers::{AgentDefinitionSnapshot, AgentDefinitionsSnapshot};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -31,19 +29,6 @@ pub enum AgentDefinitionSource {
     ProjectSettings,
     FlagSettings,
     PolicySettings,
-}
-
-/// Maps to CC `loadAgentsDir.ts#AgentMcpServerSpec`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AgentMcpServerSpec {
-    /// Reference to an existing configured MCP server by name.
-    Reference(String),
-    /// Inline agent-specific MCP server definition. Official marks these as
-    /// `scope: 'dynamic'` and cleans them up when the agent exits.
-    Inline {
-        name: String,
-        config: ScopedMcpServerConfig,
-    },
 }
 
 /// Maps to CC `loadAgentsDir.ts:127` `pendingSnapshotUpdate?: { snapshotTimestamp: string }`.
@@ -105,14 +90,8 @@ pub struct AgentDefinition {
     pub omit_claude_md: bool,
     /// Maps to CC `BaseAgentDefinition.criticalSystemReminder_EXPERIMENTAL`.
     pub critical_system_reminder_experimental: Option<String>,
-    /// Maps to CC `BaseAgentDefinition.mcpServers`.
-    pub mcp_servers: Option<Vec<AgentMcpServerSpec>>,
     /// Maps to CC `BaseAgentDefinition.hooks`.
     pub hooks: Option<crate::services::hooks::HooksConfig>,
-    /// Maps to CC `BaseAgentDefinition.requiredMcpServers`.
-    pub required_mcp_servers: Option<Vec<String>>,
-    /// Maps to CC `BaseAgentDefinition.permissionMode`.
-    pub permission_mode: Option<PermissionMode>,
     /// Maps to CC `BaseAgentDefinition.maxTurns`.
     pub max_turns: Option<u32>,
     /// Maps to CC `BaseAgentDefinition.background`.
@@ -190,10 +169,7 @@ impl AgentDefinition {
             color: None,
             omit_claude_md: false,
             critical_system_reminder_experimental: None,
-            mcp_servers: None,
             hooks: None,
-            required_mcp_servers: None,
-            permission_mode: None,
             max_turns: None,
             background: false,
             initial_prompt: None,
@@ -224,24 +200,6 @@ pub struct AgentDefinitionsResult {
     pub all_agents: Vec<AgentDefinition>,
     /// Maps to CC `AgentDefinitionsResult.failedFiles`.
     pub failed_files: Vec<FailedAgentFile>,
-    /// Maps to CC `loadAgentsDir.ts:190` `allowedAgentTypes?: string[]` — the
-    /// `Agent(type1,type2)` narrowing a main-thread agent's frontmatter
-    /// declares.
-    ///
-    /// Declared on the result type but never produced by the loader: CC's only
-    /// producer is `agentToolUtils.ts:190-197` (`resolveAgentTools` parsing the
-    /// tool spec), and the only site that puts it on an `agentDefinitions`
-    /// object is `REPL.tsx:3206-3208`, which shallow-copies the memo's value
-    /// onto the per-turn `toolUseContext.options.agentDefinitions`. So
-    /// `AppState.agentDefinitions` never carries it (`AppStateStore.ts:505`) —
-    /// only a per-turn context does.
-    /// Structural census (no other producer exists):
-    /// `ast-grep --lang ts -p '({ allowedAgentTypes: $V })' --selector pair` →
-    /// `claude.ts:1241`, `api.ts:175`, `query.ts:683`; `--lang tsx` →
-    /// `REPL.tsx:1208`, `:1219`; shorthand form
-    /// `-p '({ allowedAgentTypes })' --selector shorthand_property_identifier`
-    /// → `agentToolUtils.ts:223`, `REPL.tsx:3207`.
-    pub allowed_agent_types: Option<Vec<String>>,
 }
 
 impl From<AgentDefinitionsResult> for AgentDefinitionsSnapshot {
@@ -308,7 +266,9 @@ fn get_project_nyan_agent_dirs(cwd: &Path) -> Vec<PathBuf> {
 
 /// Loads agent markdown files only from `~/.nyan/agents` (user) and `.nyan/agents` (project).
 /// Project agents require workspace trust (untrusted => do not load, print mode untrusted => skip).
-fn load_agent_markdown_files(cwd: &Path) -> Vec<crate::utils::markdown_config_loader::MarkdownFile> {
+fn load_agent_markdown_files(
+    cwd: &Path,
+) -> Vec<crate::utils::markdown_config_loader::MarkdownFile> {
     let user_dir = crate::utils::env_utils::get_claude_config_home_dir().join("agents");
     let managed_dir = crate::utils::settings::managed_path::get_managed_file_path()
         .join(".claude")
@@ -351,28 +311,34 @@ fn load_agent_markdown_files(cwd: &Path) -> Vec<crate::utils::markdown_config_lo
     let customization_locked =
         crate::utils::settings::plugin_only_policy::is_restricted_to_plugin_only("agents");
     let mut files = Vec::new();
-    files.extend(crate::utils::markdown_config_loader::load_markdown_files_from_dir(
-        &managed_dir,
-        crate::utils::markdown_config_loader::MarkdownConfigSource::PolicySettings,
-    ));
+    files.extend(
+        crate::utils::markdown_config_loader::load_markdown_files_from_dir(
+            &managed_dir,
+            crate::utils::markdown_config_loader::MarkdownConfigSource::PolicySettings,
+        ),
+    );
     if crate::utils::settings::constants::is_setting_source_enabled(
         crate::utils::settings::constants::SettingSource::User,
     ) && !customization_locked
     {
-        files.extend(crate::utils::markdown_config_loader::load_markdown_files_from_dir(
-            &user_dir,
-            crate::utils::markdown_config_loader::MarkdownConfigSource::UserSettings,
-        ));
+        files.extend(
+            crate::utils::markdown_config_loader::load_markdown_files_from_dir(
+                &user_dir,
+                crate::utils::markdown_config_loader::MarkdownConfigSource::UserSettings,
+            ),
+        );
     }
     if crate::utils::settings::constants::is_setting_source_enabled(
         crate::utils::settings::constants::SettingSource::Project,
     ) && !customization_locked
     {
         for project_dir in project_dirs {
-            files.extend(crate::utils::markdown_config_loader::load_markdown_files_from_dir(
-                &project_dir,
-                crate::utils::markdown_config_loader::MarkdownConfigSource::ProjectSettings,
-            ));
+            files.extend(
+                crate::utils::markdown_config_loader::load_markdown_files_from_dir(
+                    &project_dir,
+                    crate::utils::markdown_config_loader::MarkdownConfigSource::ProjectSettings,
+                ),
+            );
         }
     }
 
@@ -405,9 +371,6 @@ pub fn get_agent_definitions_with_overrides(cwd: &Path) -> AgentDefinitionsResul
             active_agents,
             all_agents,
             failed_files: Vec::new(),
-            // CC's loader returns object literals without `allowedAgentTypes`;
-            // only `REPL.tsx:3206-3208` ever sets it.
-            allowed_agent_types: None,
         };
     }
 
@@ -489,9 +452,6 @@ pub fn get_agent_definitions_with_overrides(cwd: &Path) -> AgentDefinitionsResul
         active_agents,
         all_agents,
         failed_files,
-        // CC's loader returns object literals without `allowedAgentTypes`;
-        // only `REPL.tsx:3206-3208` ever sets it.
-        allowed_agent_types: None,
     }
 }
 
@@ -513,21 +473,6 @@ pub fn get_active_agents_from_list(all_agents: &[AgentDefinition]) -> Vec<AgentD
         .into_iter()
         .filter_map(|agent_type| active.remove(&agent_type))
         .collect()
-}
-
-/// Maps to CC `loadAgentsDir.ts#hasRequiredMcpServers`.
-/// Since requiredMcpServers is removed in nyan (Decision 5), all agents satisfy requirements.
-pub fn has_required_mcp_servers(_agent: &AgentDefinition, _available_servers: &[String]) -> bool {
-    true
-}
-
-/// Maps to CC `loadAgentsDir.ts#filterAgentsByMcpRequirements`.
-/// Since requiredMcpServers is removed in nyan (Decision 5), returns all agents without filtering.
-pub fn filter_agents_by_mcp_requirements(
-    agents: &[AgentDefinition],
-    _available_servers: &[String],
-) -> Vec<AgentDefinition> {
-    agents.to_vec()
 }
 
 /// Check for and initialize agent memory from project snapshots.
@@ -701,14 +646,12 @@ pub fn parse_agent_from_json(
     agent.tools = parse_agent_tools_from_validated(raw_tools);
     agent.disallowed_tools =
         raw_disallowed.and_then(|tools| parse_agent_tools_from_validated(Some(tools)));
-    // CC construction spreads (:495-503): `mcpServers.length > 0` (:495),
-    // `skills.length > 0` (:500), and truthy `initialPrompt` (:503) —
-    // schema-valid empties pass zod but never reach the definition.
+    // CC construction spreads (:500-503): `skills.length > 0` (:500) and
+    // truthy `initialPrompt` (:503) — schema-valid empties pass zod but never
+    // reach the definition.
     agent.skills = skills.filter(|skills| !skills.is_empty());
     agent.model = model;
     agent.effort = effort;
-    agent.permission_mode = None;
-    agent.mcp_servers = None;
     agent.hooks = hooks;
     agent.max_turns = max_turns;
     agent.initial_prompt = initial_prompt.filter(|prompt| !prompt.is_empty());
@@ -834,22 +777,9 @@ fn parse_agent_from_markdown(
             crate::tools::agent_tool::agent_color_manager::is_valid_agent_color_name(value)
         })
         .map(ToOwned::to_owned);
-    // CC `parseAgentFromMarkdown` never reads criticalSystemReminder from
-    // frontmatter — the field exists on the TYPE (loadAgentsDir.ts:121) for
-    // built-ins/SDK/forkedAgent overrides only; a frontmatter read was an
-    // invented input surface custom markdown agents don't have in CC.
-    // Maps to: CC `loadAgentsDir.ts:693-708` + :722-724 — the markdown path
-    // is element-wise `safeParse`: an invalid item is logged and SKIPPED
-    // (valid siblings and the agent survive), a non-array value leaves the
-    // field undefined, and the construction spread keeps the field only when
-    // `length > 0`. The JSON path's all-or-nothing aggregation
-    // (`parse_agent_mcp_servers_from_json_value`) must NOT be used here.
-    // Decision 5: removed permissionMode, inline mcpServers, requiredMcpServers
-    agent.mcp_servers = None;
     agent.hooks = frontmatter
         .get("hooks")
         .and_then(parse_hooks_config_json_value);
-    agent.permission_mode = None;
     agent.max_turns = crate::utils::frontmatter_parser::parse_positive_int_from_frontmatter(
         frontmatter.get("maxTurns"),
     );
@@ -1003,43 +933,6 @@ fn parse_hooks_config_json_value(
     serde_json::from_value::<crate::services::hooks::HooksConfig>(value.clone()).ok()
 }
 
-/// CC `z.array(AgentMcpServerSpecSchema())` — any invalid element fails the
-/// whole array (and with it the agent); an EMPTY array is schema-valid (the
-/// spread's `length > 0` then leaves the field undefined — handled at the
-/// construction site). References are plain `z.string()` (no trim, no
-/// emptiness constraint).
-fn parse_agent_mcp_servers_from_json_value(
-    value: &serde_json::Value,
-) -> Option<Vec<AgentMcpServerSpec>> {
-    let items = value.as_array()?;
-    items.iter().map(parse_agent_mcp_server_spec_json).collect()
-}
-
-fn parse_agent_mcp_server_spec_json(value: &serde_json::Value) -> Option<AgentMcpServerSpec> {
-    if let Some(name) = value.as_str() {
-        return Some(AgentMcpServerSpec::Reference(name.to_string()));
-    }
-    let object = value.as_object()?;
-    // Carrier limit: CC's inline member is `z.record(name, config)` (0..N
-    // keys pass the schema; the type comment says single-name). The Rust
-    // enum carries exactly one name — multi-key/empty inline objects are a
-    // documented carrier seam, kept as the single-key projection.
-    if object.len() != 1 {
-        return None;
-    }
-    let (name, config_value) = object.iter().next()?;
-    let config =
-        serde_json::from_value::<crate::utils::config::McpServerConfig>(config_value.clone())
-            .ok()?;
-    Some(AgentMcpServerSpec::Inline {
-        name: name.to_string(),
-        config: ScopedMcpServerConfig::from_config(
-            crate::services::mcp::types::ConfigScope::Dynamic,
-            &config,
-        ),
-    })
-}
-
 /// Maps to CC `loadAgentsDir.ts` memory scope validation against
 /// `['user', 'project', 'local']`.
 fn parse_agent_memory_scope(value: &str) -> Option<AgentMemoryScope> {
@@ -1125,7 +1018,10 @@ mod tests {
         write_file(&cwd.join(".nyan/agents/inside.md"), &agent("inside"));
         write_file(&root.join(".nyan/agents/above.md"), &agent("above"));
         // Also verify .claude/agents is NOT read
-        write_file(&cwd.join(".claude/agents/claude_inside.md"), &agent("claude_inside"));
+        write_file(
+            &cwd.join(".claude/agents/claude_inside.md"),
+            &agent("claude_inside"),
+        );
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
@@ -1149,9 +1045,15 @@ mod tests {
         let home = root.join("home");
         let cwd = home.join("project");
         let agent = |name: &str| format!("---\nname: {name}\ndescription: d\n---\nBody");
-        write_file(&cwd.join(".nyan/agents/project_agent.md"), &agent("project_agent"));
+        write_file(
+            &cwd.join(".nyan/agents/project_agent.md"),
+            &agent("project_agent"),
+        );
         let config_home = root.join("config");
-        write_file(&config_home.join("agents/user_agent.md"), &agent("user_agent"));
+        write_file(
+            &config_home.join("agents/user_agent.md"),
+            &agent("user_agent"),
+        );
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::config::reset_trust_dialog_accepted_cache_for_testing();
@@ -1182,13 +1084,10 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
-    /// CC `loadAgentsDir.ts:624-626` markdown effort is the LENIENT
-    /// `parseEffortValue` (effort.ts:71-87), and :693-708/:722-724 markdown
-    /// mcpServers is element-wise safeParse-skip with a `length > 0` spread —
-    /// exercised through the production markdown load path (the JSON path's
-    /// strict rules must not leak in here).
+    /// Markdown effort uses the lenient `parseEffortValue` while removed agent
+    /// fields remain ignored by the frontmatter loader.
     #[test]
-    fn markdown_path_keeps_lenient_effort_and_skips_bad_mcp_server_elements() {
+    fn markdown_path_keeps_lenient_effort_and_ignores_removed_fields() {
         let root = temp_dir("markdown-lenient");
         let config_home = root.join("config");
         write_file(
@@ -1215,8 +1114,6 @@ mod tests {
             shouty.effort,
             Some(crate::utils::effort::EffortValue::Named("high".to_string()))
         );
-        // mcpServers is removed per Decision 5
-        assert_eq!(shouty.mcp_servers, None);
 
         let numeric = result
             .active_agents
@@ -1228,7 +1125,6 @@ mod tests {
             numeric.effort,
             Some(crate::utils::effort::EffortValue::Numeric(3))
         );
-        assert_eq!(numeric.mcp_servers, None);
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1287,11 +1183,8 @@ mod tests {
                 .map(|items| items.iter().map(String::as_str).collect::<Vec<_>>()),
             Some(vec!["audit", "docs"])
         );
-        // mcp_servers and permission_mode removed per Decision 5
-        assert_eq!(reviewer.mcp_servers, None);
         let hooks = reviewer.hooks.as_ref().expect("frontmatter hooks");
         assert_eq!(hooks["Stop"][0].hooks[0].command, "echo stop");
-        assert_eq!(reviewer.permission_mode, None);
         assert_eq!(
             reviewer.effort,
             Some(crate::utils::effort::EffortValue::Named("high".to_string()))
@@ -1381,7 +1274,6 @@ mod tests {
             agent.effort,
             Some(crate::utils::effort::EffortValue::Numeric(77))
         );
-        assert_eq!(agent.permission_mode, Some(PermissionMode::Plan));
         let hooks = agent.hooks.as_ref().expect("json hooks");
         assert_eq!(hooks["PreToolUse"][0].matcher.as_deref(), Some("Bash"));
         assert_eq!(hooks["PreToolUse"][0].hooks[0].command, "echo pre");
@@ -1404,20 +1296,10 @@ mod tests {
             Some(&["WebFetch".to_string()][..])
         );
         assert_eq!(agent.skills.as_deref(), Some(&["audit".to_string()][..]));
-        let mcp_servers = agent.mcp_servers.as_ref().expect("mcp servers");
-        assert!(matches!(&mcp_servers[0], AgentMcpServerSpec::Reference(name) if name == "docs"));
-        assert!(matches!(
-            &mcp_servers[1],
-            AgentMcpServerSpec::Inline { name, config }
-                if name == "local-agent"
-                    && config.scope == crate::services::mcp::types::ConfigScope::Dynamic
-                    && config.command.as_deref() == Some("node")
-        ));
 
         // CC AgentJsonSchema `.parse()` is ALL-OR-NOTHING: a present-but-
         // invalid field rejects the entire agent, not just the field.
         for (key, bad) in [
-            ("permissionMode", serde_json::json!("yolo")),
             ("maxTurns", serde_json::json!(0)),
             ("background", serde_json::json!("yes")),
             ("memory", serde_json::json!("global")),
@@ -1491,13 +1373,11 @@ mod tests {
         // them (hooks {} survives — objects are always truthy).
         let mut empties = value.clone();
         empties["skills"] = serde_json::json!([]);
-        empties["mcpServers"] = serde_json::json!([]);
         empties["hooks"] = serde_json::json!({});
         let empties_agent =
             parse_agent_from_json("reviewer", &empties, AgentDefinitionSource::FlagSettings)
                 .expect("schema-valid empties keep the agent");
         assert_eq!(empties_agent.skills, None);
-        assert!(empties_agent.mcp_servers.is_none());
         assert!(empties_agent.hooks.is_some());
     }
 
@@ -1661,46 +1541,6 @@ mod tests {
             Some("remote")
         );
         assert_eq!(parse("invalid", BuildAudience::AnthropicInternal), None);
-    }
-
-    #[test]
-    fn required_mcp_server_filter_matches_official_case_insensitive_patterns() {
-        let mut docs_agent = AgentDefinition::new(
-            "docs-reader",
-            "Requires docs MCP",
-            AgentDefinitionSource::ProjectSettings,
-        );
-        docs_agent.required_mcp_servers = Some(vec!["Docs".to_string(), "jira".to_string()]);
-        let plain_agent = AgentDefinition::new(
-            "plain",
-            "No MCP requirements",
-            AgentDefinitionSource::BuiltIn,
-        );
-        let available = vec!["company-docs-prod".to_string(), "jira-cloud".to_string()];
-
-        assert!(has_required_mcp_servers(&docs_agent, &available));
-        let filtered = filter_agents_by_mcp_requirements(
-            &[docs_agent.clone(), plain_agent.clone()],
-            &available,
-        );
-        assert_eq!(
-            filtered
-                .iter()
-                .map(|agent| agent.agent_type.as_str())
-                .collect::<Vec<_>>(),
-            vec!["docs-reader", "plain"]
-        );
-
-        let missing = vec!["company-docs-prod".to_string()];
-        assert!(!has_required_mcp_servers(&docs_agent, &missing));
-        let filtered = filter_agents_by_mcp_requirements(&[docs_agent, plain_agent], &missing);
-        assert_eq!(
-            filtered
-                .iter()
-                .map(|agent| agent.agent_type.as_str())
-                .collect::<Vec<_>>(),
-            vec!["plain"]
-        );
     }
 
     #[test]

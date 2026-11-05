@@ -39,8 +39,6 @@ pub struct ResolvedAgentTools {
     pub valid_tools: Vec<String>,
     pub invalid_tools: Vec<String>,
     pub resolved_tools: Vec<Tool>,
-    /// Maps to CC `ResolvedAgentTools.allowedAgentTypes` from `Agent(type1,type2)`.
-    pub allowed_agent_types: Option<Vec<String>>,
 }
 
 /// Maps to: CC `agentToolUtils.ts#filterToolsForAgent`.
@@ -71,6 +69,7 @@ pub fn resolve_agent_tools(
     available_tools: &[Tool],
     is_async: bool,
     is_main_thread: bool,
+    permission_mode: Option<PermissionMode>,
 ) -> ResolvedAgentTools {
     let disallowed_tool_names = agent_definition
         .disallowed_tools
@@ -92,12 +91,7 @@ pub fn resolve_agent_tools(
     let filtered_available: Vec<Tool> = if is_main_thread {
         available_tools.to_vec()
     } else {
-        filter_tools_for_agent(
-            available_tools,
-            is_built_in,
-            is_async,
-            agent_definition.permission_mode,
-        )
+        filter_tools_for_agent(available_tools, is_built_in, is_async, permission_mode)
     };
 
     let allowed_available: Vec<Tool> = filtered_available
@@ -111,7 +105,6 @@ pub fn resolve_agent_tools(
             valid_tools: Vec::new(),
             invalid_tools: Vec::new(),
             resolved_tools: allowed_available,
-            allowed_agent_types: None,
         };
     };
     if agent_tools.len() == 1 && agent_tools[0] == "*" {
@@ -120,14 +113,12 @@ pub fn resolve_agent_tools(
             valid_tools: Vec::new(),
             invalid_tools: Vec::new(),
             resolved_tools: allowed_available,
-            allowed_agent_types: None,
         };
     }
 
     let mut resolved = Vec::<Tool>::new();
     let mut valid_tools = Vec::<String>::new();
     let mut invalid_tools = Vec::<String>::new();
-    let allowed_agent_types: Option<Vec<String>> = None;
     for spec in agent_tools {
         let parsed =
             crate::utils::permissions::permission_rule_parser::permission_rule_value_from_string(
@@ -162,7 +153,6 @@ pub fn resolve_agent_tools(
         valid_tools,
         invalid_tools,
         resolved_tools: resolved,
-        allowed_agent_types,
     }
 }
 
@@ -570,23 +560,20 @@ mod tests {
             ],
             false,
             false,
+            None,
         );
         let names = resolved
             .resolved_tools
             .iter()
             .map(|tool| tool.name.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(names, vec!["Read", "Bash"]);
+        assert_eq!(names, vec!["Read", "Agent", "Bash"]);
         assert!(!resolved.has_wildcard);
         assert_eq!(
             resolved.valid_tools,
             vec!["Read", "Agent(general-purpose)", "Bash"]
         );
         assert_eq!(resolved.invalid_tools, vec!["TaskOutput", "Edit"]);
-        assert_eq!(
-            resolved.allowed_agent_types.as_deref(),
-            Some(&["general-purpose".to_string()][..])
-        );
     }
 
     #[test]
@@ -606,6 +593,7 @@ mod tests {
             &[tool("Read"), tool("Agent"), tool("TaskOutput")],
             false,
             true,
+            None,
         );
         let names = resolved
             .resolved_tools
@@ -613,10 +601,6 @@ mod tests {
             .map(|tool| tool.name.as_str())
             .collect::<Vec<_>>();
         assert_eq!(names, vec!["Read", "Agent", "TaskOutput"]);
-        assert_eq!(
-            resolved.allowed_agent_types.as_deref(),
-            Some(&["worker".to_string()][..])
-        );
     }
 
     #[test]
@@ -655,10 +639,15 @@ mod tests {
             tool("Agent"),
             tool("TaskOutput"),
         ];
-        // Outside the teammate scope the async whitelist rejects them all.
-        assert!(filter_tools_for_agent(&pool, false, true, None).is_empty());
-        // Agent is outside ALL_AGENT_DISALLOWED only in the internal build;
-        // the async teammate exception then re-allows it for teammates.
+        // Nested Agent is allowed outside the teammate scope; task tools need
+        // the in-process teammate exception.
+        assert_eq!(
+            filter_tools_for_agent(&pool, false, true, None)
+                .iter()
+                .map(|tool| tool.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Agent"]
+        );
         // The probe reads the teammate task-local scope (CC ALS).
         let filtered =
             crate::utils::teammate_context::run_with_teammate_context(teammate_context, async {
@@ -670,11 +659,7 @@ mod tests {
             .iter()
             .map(|tool| tool.name.as_str())
             .collect::<Vec<_>>();
-        let expected = if crate::utils::build_profile::build_audience().is_internal() {
-            vec!["TaskCreate", "SendMessage", "Agent"]
-        } else {
-            vec!["TaskCreate", "SendMessage"]
-        };
+        let expected = vec!["TaskCreate", "SendMessage", "Agent"];
         assert_eq!(names, expected);
     }
 

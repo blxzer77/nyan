@@ -225,12 +225,8 @@ pub fn load_agent_from_file(
         frontmatter.get("maxTurns"),
     );
 
-    // Maps to CC `loadPluginAgents.ts`: permissionMode, hooks, and mcpServers
-    // are intentionally not parsed for plugin agents because per-agent plugin
-    // frontmatter must not escalate install-time trust.
-    agent.permission_mode = None;
+    // Plugin agent frontmatter must not add install-time hooks.
     agent.hooks = None;
-    agent.mcp_servers = None;
 
     Some(agent)
 }
@@ -406,9 +402,7 @@ mod tests {
                 .expect("prompt")
                 .contains(&root.display().to_string())
         );
-        assert_eq!(agent.permission_mode, None);
         assert_eq!(agent.hooks, None);
-        assert_eq!(agent.mcp_servers, None);
     }
 
     #[test]

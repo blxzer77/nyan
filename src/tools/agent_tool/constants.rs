@@ -28,3 +28,27 @@ pub const ONE_SHOT_BUILTIN_AGENT_TYPES: &[&str] = &["Explore", "Plan"];
 pub fn is_one_shot_builtin_agent_type(agent_type: &str) -> bool {
     ONE_SHOT_BUILTIN_AGENT_TYPES.contains(&agent_type)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+
+    #[test]
+    fn run_limits_use_defaults_and_valid_environment_overrides() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _depth = EnvVarGuard::set("NYAN_MAX_SUBAGENT_SPAWN_DEPTH", "7");
+        let _concurrency = EnvVarGuard::set("NYAN_MAX_CONCURRENT_SUBAGENTS", "42");
+        assert_eq!(max_subagent_spawn_depth(), 7);
+        assert_eq!(max_concurrent_subagents(), 42);
+    }
+
+    #[test]
+    fn run_limits_ignore_invalid_environment_overrides() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _depth = EnvVarGuard::set("NYAN_MAX_SUBAGENT_SPAWN_DEPTH", "not-a-number");
+        let _concurrency = EnvVarGuard::set("NYAN_MAX_CONCURRENT_SUBAGENTS", "0x20");
+        assert_eq!(max_subagent_spawn_depth(), DEFAULT_MAX_SUBAGENT_SPAWN_DEPTH);
+        assert_eq!(max_concurrent_subagents(), DEFAULT_MAX_CONCURRENT_SUBAGENTS);
+    }
+}

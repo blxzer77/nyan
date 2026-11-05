@@ -784,7 +784,6 @@ mod tests {
                 active_agents: vec![agent.clone()],
                 all_agents: vec![agent],
                 failed_files: Vec::new(),
-                allowed_agent_types: None,
             },
         ))
     }

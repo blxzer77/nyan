@@ -20,19 +20,6 @@ pub struct AgentDetailProps<'a> {
     pub on_back: HandlerMut<'a, ()>,
 }
 
-fn permission_mode_name(mode: crate::types::permissions::PermissionMode) -> &'static str {
-    use crate::types::permissions::PermissionMode;
-    match mode {
-        PermissionMode::Default => "default",
-        PermissionMode::AcceptEdits => "acceptEdits",
-        PermissionMode::Plan => "plan",
-        PermissionMode::DontAsk => "dontAsk",
-        PermissionMode::BypassPermissions => "bypassPermissions",
-        PermissionMode::Auto => "auto",
-        PermissionMode::Bubble => "bubble",
-    }
-}
-
 #[component]
 pub fn AgentDetail<'a>(
     props: &mut AgentDetailProps<'a>,
@@ -165,10 +152,6 @@ pub fn AgentDetail<'a>(
                 MixedTextContent::new("Model: ").weight(Weight::Bold),
                 MixedTextContent::new(get_agent_model_display(agent.model.as_deref())),
             ])
-            #(agent.permission_mode.map(|mode| element! { MixedText(contents: vec![
-                MixedTextContent::new("Permission mode: ").weight(Weight::Bold),
-                MixedTextContent::new(permission_mode_name(mode)),
-            ]) }))
             #(memory.map(|memory| element! { MixedText(contents: vec![
                 MixedTextContent::new("Memory: ").weight(Weight::Bold), MixedTextContent::new(memory),
             ]) }))

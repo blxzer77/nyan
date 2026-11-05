@@ -2135,13 +2135,11 @@ pub type PermissionPatternMatcher = Box<dyn Fn(&str) -> bool + Send + Sync>;
 /// - `tools: Tools` → `tools` (the FULL request tool list, not the
 ///   defer-filtered one — `services/api/claude.ts:1231-1239`).
 /// - `agents: AgentDefinition[]` → `agents`.
-/// - `allowedAgentTypes?: string[]` → `allowed_agent_types`.
 #[derive(Clone, Copy)]
 pub struct ToolPromptOptions<'a> {
     pub tool_permission_context: &'a ToolPermissionContext,
     pub tools: &'a [crate::types::tools::Tool],
     pub agents: &'a [crate::tools::agent_tool::load_agents_dir::AgentDefinition],
-    pub allowed_agent_types: Option<&'a [String]>,
 }
 
 /// Behavioral half of the CC `Tool` interface.

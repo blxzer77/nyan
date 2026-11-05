@@ -132,11 +132,8 @@ Use the literal string `VERDICT: ` followed by exactly one of `PASS`, `FAIL`, `P
 
 /// Maps to nyan built-in review agent (renamed from verification).
 pub fn review_agent() -> AgentDefinition {
-    let mut agent = AgentDefinition::new(
-        "review",
-        REVIEW_WHEN_TO_USE,
-        AgentDefinitionSource::BuiltIn,
-    );
+    let mut agent =
+        AgentDefinition::new("review", REVIEW_WHEN_TO_USE, AgentDefinitionSource::BuiltIn);
     agent.color = Some("red".to_string());
     agent.background = true;
     agent.disallowed_tools = Some(vec![
@@ -148,8 +145,7 @@ pub fn review_agent() -> AgentDefinition {
     ]);
     agent.model = Some("inherit".to_string());
     agent.system_prompt = Some(REVIEW_SYSTEM_PROMPT.to_string());
-    agent.critical_system_reminder_experimental =
-        Some(REVIEW_CRITICAL_SYSTEM_REMINDER.to_string());
+    agent.critical_system_reminder_experimental = Some(REVIEW_CRITICAL_SYSTEM_REMINDER.to_string());
     agent
 }
 
