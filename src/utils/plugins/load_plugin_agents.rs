@@ -220,7 +220,6 @@ pub fn load_agent_from_file(
         .map(str::trim)
         .filter(|value| *value == "worktree")
         .map(ToOwned::to_owned);
-    agent.effort = frontmatter.get("effort").and_then(parse_effort_value);
     agent.max_turns = crate::utils::frontmatter_parser::parse_positive_int_from_frontmatter(
         frontmatter.get("maxTurns"),
     );
@@ -239,22 +238,6 @@ fn parse_model_value(value: &Value) -> Option<String> {
         Some("inherit".to_string())
     } else {
         Some(model.to_string())
-    }
-}
-
-fn parse_effort_value(value: &Value) -> Option<crate::utils::effort::EffortValue> {
-    match value {
-        Value::String(value) => crate::utils::effort::parse_effort_value(value),
-        Value::Number(number) => number
-            .as_i64()
-            .map(crate::utils::effort::EffortValue::Numeric)
-            .or_else(|| {
-                number
-                    .as_u64()
-                    .and_then(|value| i64::try_from(value).ok())
-                    .map(crate::utils::effort::EffortValue::Numeric)
-            }),
-        _ => None,
     }
 }
 
@@ -373,10 +356,6 @@ mod tests {
         assert!(agent.background);
         assert_eq!(agent.memory, Some(AgentMemoryScope::Project));
         assert_eq!(agent.isolation.as_deref(), Some("worktree"));
-        assert_eq!(
-            agent.effort,
-            Some(crate::utils::effort::EffortValue::Named("high".to_string()))
-        );
         assert_eq!(agent.max_turns, Some(3));
         let tools = agent.tools.as_ref().unwrap();
         assert_eq!(tools[0], "Read");

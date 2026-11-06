@@ -76,8 +76,6 @@ pub struct AgentDefinition {
     pub system_prompt: Option<String>,
     /// Maps to CC `BaseAgentDefinition.model`.
     pub model: Option<String>,
-    /// Maps to CC `BaseAgentDefinition.effort`.
-    pub effort: Option<crate::utils::effort::EffortValue>,
     /// Maps to CC `BaseAgentDefinition.tools`.
     pub tools: Option<Vec<String>>,
     /// Maps to CC `BaseAgentDefinition.disallowedTools`.
@@ -162,7 +160,6 @@ impl AgentDefinition {
             when_to_use: when_to_use.into(),
             system_prompt: None,
             model: None,
-            effort: None,
             tools: None,
             disallowed_tools: None,
             skills: None,
@@ -264,14 +261,15 @@ fn get_project_nyan_agent_dirs(cwd: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-/// Loads agent markdown files only from `~/.nyan/agents` (user) and `.nyan/agents` (project).
+/// Loads agent markdown files only from `<managed>/.nyan/agents` (policy),
+/// `~/.nyan/agents` (user) and `.nyan/agents` (project).
 /// Project agents require workspace trust (untrusted => do not load, print mode untrusted => skip).
 fn load_agent_markdown_files(
     cwd: &Path,
 ) -> Vec<crate::utils::markdown_config_loader::MarkdownFile> {
     let user_dir = crate::utils::env_utils::get_claude_config_home_dir().join("agents");
     let managed_dir = crate::utils::settings::managed_path::get_managed_file_path()
-        .join(".claude")
+        .join(".nyan")
         .join("agents");
 
     // Project agents are gated by workspace trust: untrusted => do not load.
@@ -591,10 +589,6 @@ pub fn parse_agent_from_json(
         None => None,
         Some(value) => Some(parse_model_json_value(value)?),
     };
-    let effort = match object.get("effort") {
-        None => None,
-        Some(value) => Some(parse_effort_json_value(value)?),
-    };
     let hooks = match object.get("hooks") {
         None => None,
         Some(value) => Some(parse_hooks_config_json_value(value)?),
@@ -651,7 +645,6 @@ pub fn parse_agent_from_json(
     // reach the definition.
     agent.skills = skills.filter(|skills| !skills.is_empty());
     agent.model = model;
-    agent.effort = effort;
     agent.hooks = hooks;
     agent.max_turns = max_turns;
     agent.initial_prompt = initial_prompt.filter(|prompt| !prompt.is_empty());
@@ -749,12 +742,6 @@ fn parse_agent_from_markdown(
             .to_string(),
     );
     agent.model = frontmatter.get("model").and_then(parse_model_json_value);
-    // Maps to: CC `loadAgentsDir.ts:624-626` — the markdown path runs the
-    // LENIENT `parseEffortValue` (effort.ts:71-87), NOT the strict JSON zod
-    // union: `effort: HIGH` lowercases to a level, `effort: "3"` parseInts.
-    agent.effort = frontmatter
-        .get("effort")
-        .and_then(parse_effort_frontmatter_value);
     agent.tools = crate::utils::markdown_config_loader::parse_agent_tools_from_frontmatter(
         frontmatter.get("tools"),
     );
@@ -859,55 +846,6 @@ fn parse_model_json_value(value: &serde_json::Value) -> Option<String> {
     } else {
         Some(model.to_string())
     }
-}
-
-/// Maps to: CC `effort.ts:71-87` `parseEffortValue` applied to a markdown
-/// frontmatter value (loadAgentsDir.ts:624-626). Lenient by design: an
-/// integer number passes directly (`typeof value === 'number'` fast path);
-/// everything else is `String(value).toLowerCase()` → named level or
-/// `parseInt` (so `HIGH` → "high", `"3"` → 3, `3.5` → "3.5" → 3).
-/// Documented seam: CC's `String(value)` also stringifies arrays
-/// (`[3]` → "3" → 3) and objects ("[object Object]" → undefined); Rust
-/// returns `None` for both container shapes — only the single-element
-/// numeric-array corner diverges.
-fn parse_effort_frontmatter_value(
-    value: &serde_json::Value,
-) -> Option<crate::utils::effort::EffortValue> {
-    match value {
-        serde_json::Value::String(text) => crate::utils::effort::parse_effort_value(text),
-        serde_json::Value::Number(number) => {
-            if let Some(int) = number.as_i64() {
-                return Some(crate::utils::effort::EffortValue::Numeric(int));
-            }
-            crate::utils::effort::parse_effort_value(&number.to_string())
-        }
-        serde_json::Value::Bool(flag) => {
-            crate::utils::effort::parse_effort_value(if *flag { "true" } else { "false" })
-        }
-        _ => None,
-    }
-}
-
-/// CC JSON zod: `z.union([z.enum(EFFORT_LEVELS), z.number().int()])` — the
-/// string arm is the EXACT four lowercase levels ("HIGH"/"3" reject the
-/// agent); the lenient `parseEffortValue` coercion belongs to the markdown
-/// path only (see [`parse_effort_frontmatter_value`]).
-fn parse_effort_json_value(value: &serde_json::Value) -> Option<crate::utils::effort::EffortValue> {
-    if let Some(level) = value.as_str() {
-        return match level {
-            "low" | "medium" | "high" | "xhigh" | "max" => {
-                crate::utils::effort::parse_effort_value(level)
-            }
-            _ => None,
-        };
-    }
-    // z.number().int(): a float rejects.
-    if value.is_i64() || value.is_u64() {
-        return value
-            .as_i64()
-            .map(crate::utils::effort::EffortValue::Numeric);
-    }
-    None
 }
 
 /// Maps to: CC `parseAgentToolsFromFrontmatter` applied to an
@@ -1134,47 +1072,39 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
-    /// Markdown effort uses the lenient `parseEffortValue` while removed agent
-    /// fields remain ignored by the frontmatter loader.
+    /// An agent's depth lives in its `model:` as `ref[:effort]`; a separate
+    /// `effort:` key is not a field, so a file carrying one still loads and the
+    /// key changes nothing, while the depth in `model:` is kept verbatim for the
+    /// selection chain to split.
     #[test]
-    fn markdown_path_keeps_lenient_effort_and_ignores_removed_fields() {
-        let root = temp_dir("markdown-lenient");
+    fn effort_frontmatter_is_not_a_field_and_model_keeps_its_effort_suffix() {
+        let root = temp_dir("markdown-effort");
         let config_home = root.join("config");
         write_file(
-            &config_home.join("agents/shouty.md"),
-            "---\nname: shouty\ndescription: Uppercase effort\neffort: HIGH\nmcpServers:\n  - docs\n  - 7\n  - other\n---\nBody",
+            &config_home.join("agents/separate.md"),
+            "---\nname: separate\ndescription: Separate effort key\nmodel: inherit\neffort: HIGH\n---\nBody",
         );
         write_file(
-            &config_home.join("agents/numeric.md"),
-            "---\nname: numeric\ndescription: Numeric-string effort\neffort: \"3\"\nmcpServers:\n  - 1\n  - 2\n---\nBody",
+            &config_home.join("agents/suffixed.md"),
+            "---\nname: suffixed\ndescription: Effort on the model\nmodel: \"@heavy:max\"\n---\nBody",
         );
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _env = pin_loader_env(&root, &config_home);
-        let _auto_memory = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
         let result = get_agent_definitions_with_overrides(&root);
 
-        let shouty = result
-            .active_agents
-            .iter()
-            .find(|agent| agent.agent_type == "shouty")
-            .expect("shouty agent survives");
-        // `HIGH` lowercases to a level; the strict JSON arm would drop it.
-        assert_eq!(
-            shouty.effort,
-            Some(crate::utils::effort::EffortValue::Named("high".to_string()))
-        );
-
-        let numeric = result
-            .active_agents
-            .iter()
-            .find(|agent| agent.agent_type == "numeric")
-            .expect("numeric agent survives");
-        // `"3"` parseInts on the markdown path (JSON rejects the string arm).
-        assert_eq!(
-            numeric.effort,
-            Some(crate::utils::effort::EffortValue::Numeric(3))
-        );
+        assert!(result.failed_files.is_empty(), "{:?}", result.failed_files);
+        let model_of = |name: &str| {
+            result
+                .active_agents
+                .iter()
+                .find(|agent| agent.agent_type == name)
+                .unwrap_or_else(|| panic!("{name} agent survives"))
+                .model
+                .clone()
+        };
+        assert_eq!(model_of("separate").as_deref(), Some("inherit"));
+        assert_eq!(model_of("suffixed").as_deref(), Some("@heavy:max"));
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1184,7 +1114,7 @@ mod tests {
         let config_home = root.join("config");
         write_file(
             &config_home.join("agents/reviewer.md"),
-            "---\nname: reviewer\ndescription: Review code changes\\nwith tests\ncolor: blue\nmodel: INHERIT\ntools: Read, Grep Bash\ndisallowedTools: Bash\nskills: audit, docs\nmemory: project\nmcpServers:\n  - docs\n  - local-agent:\n      type: stdio\n      command: node\n      args:\n        - server.js\nhooks:\n  Stop:\n    - matcher: \"\"\n      hooks:\n        - command: echo stop\n          timeout: 5\npermissionMode: plan\neffort: high\nmaxTurns: 4\nbackground: true\ninitialPrompt: Start here\nisolation: worktree\n---\nPrompt body is not executed.",
+            "---\nname: reviewer\ndescription: Review code changes\\nwith tests\ncolor: blue\nmodel: INHERIT\ntools: Read, Grep Bash\ndisallowedTools: Bash\nskills: audit, docs\nmemory: project\nmcpServers:\n  - docs\n  - local-agent:\n      type: stdio\n      command: node\n      args:\n        - server.js\nhooks:\n  Stop:\n    - matcher: \"\"\n      hooks:\n        - command: echo stop\n          timeout: 5\npermissionMode: plan\nmaxTurns: 4\nbackground: true\ninitialPrompt: Start here\nisolation: worktree\n---\nPrompt body is not executed.",
         );
         write_file(
             &config_home.join("agents/notes.md"),
@@ -1235,10 +1165,6 @@ mod tests {
         );
         let hooks = reviewer.hooks.as_ref().expect("frontmatter hooks");
         assert_eq!(hooks["Stop"][0].hooks[0].command, "echo stop");
-        assert_eq!(
-            reviewer.effort,
-            Some(crate::utils::effort::EffortValue::Named("high".to_string()))
-        );
         assert_eq!(reviewer.max_turns, Some(4));
         assert!(reviewer.background);
         assert_eq!(reviewer.initial_prompt.as_deref(), Some("Start here"));
@@ -1339,7 +1265,6 @@ mod tests {
             "disallowedTools": ["WebFetch"],
             "skills": ["audit"],
             "model": "INHERIT",
-            "effort": 77,
             "permissionMode": "plan",
             "mcpServers": [
                 "docs",
@@ -1362,10 +1287,6 @@ mod tests {
         assert_eq!(agent.system_prompt.as_deref(), Some("You review code."));
         assert_eq!(agent.source, AgentDefinitionSource::FlagSettings);
         assert_eq!(agent.model.as_deref(), Some("inherit"));
-        assert_eq!(
-            agent.effort,
-            Some(crate::utils::effort::EffortValue::Numeric(77))
-        );
         let hooks = agent.hooks.as_ref().expect("json hooks");
         assert_eq!(hooks["PreToolUse"][0].matcher.as_deref(), Some("Bash"));
         assert_eq!(hooks["PreToolUse"][0].hooks[0].command, "echo pre");
@@ -1576,26 +1497,6 @@ mod tests {
         );
     }
 
-    /// Unit test of the shared LENIENT parser only — the production markdown
-    /// path is covered by
-    /// `markdown_path_keeps_lenient_effort_and_skips_bad_mcp_server_elements`,
-    /// which feeds `parse_agent_from_markdown` end to end.
-    #[test]
-    fn lenient_effort_parser_accepts_official_levels_and_integers() {
-        assert_eq!(
-            crate::utils::effort::parse_effort_value("MEDIUM"),
-            Some(crate::utils::effort::EffortValue::Named(
-                "medium".to_string()
-            ))
-        );
-        assert_eq!(
-            crate::utils::effort::parse_effort_value("101"),
-            Some(crate::utils::effort::EffortValue::Numeric(101))
-        );
-        assert_eq!(crate::utils::effort::parse_effort_value(""), None);
-        assert_eq!(crate::utils::effort::parse_effort_value("invalid"), None);
-    }
-
     #[test]
     fn isolation_frontmatter_honors_official_external_and_internal_remote_gate() {
         use crate::utils::build_profile::BuildAudience;
@@ -1674,8 +1575,13 @@ mod tests {
         fs::create_dir_all(&cwd).expect("cwd");
         fs::create_dir_all(root.join("repo/.git")).expect("git root");
         write_file(
-            &managed_root.join(".claude/agents/reviewer.md"),
+            &managed_root.join(".nyan/agents/reviewer.md"),
             "---\nname: reviewer\ndescription: Managed description\n---\nManaged",
+        );
+        // The managed tier no longer reads `.claude/agents` either.
+        write_file(
+            &managed_root.join(".claude/agents/legacy.md"),
+            "---\nname: legacy\ndescription: Legacy managed\n---\nLegacy",
         );
         write_file(
             &config_home.join("agents/reviewer.md"),
@@ -1703,6 +1609,12 @@ mod tests {
             .expect("reviewer active agent");
         assert_eq!(reviewer.when_to_use, "Managed description");
         assert_eq!(reviewer.source, AgentDefinitionSource::PolicySettings);
+        assert!(
+            result
+                .all_agents
+                .iter()
+                .all(|agent| agent.agent_type != "legacy")
+        );
         // Every tier is loaded, in managed < user < nested < root order.
         let descriptions = result
             .all_agents

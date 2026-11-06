@@ -1202,30 +1202,35 @@ fn live_tool_permission_context(
 }
 
 /// Whether a fork may run on `model_override`: no override, `inherit`, or a
-/// model that resolves to the parent session's own model.
+/// model that resolves to the profile the parent session is routed through.
 ///
-/// The comparison is on the resolved model, the same one `run_agent` ends up
-/// using, so a profile alias that names the parent's model still forks.
-fn fork_model_matches_parent(
+/// A fork replays the parent's history, which only the parent's own profile
+/// can read, and the child runs on the parent's model, so a request that
+/// resolves to a different model (a temporary `provider/model`) is not a fork
+/// even when it routes through the same profile.
+fn fork_matches_parent_profile(
     model_override: Option<&str>,
     context: &crate::tool::ToolUseContext,
 ) -> bool {
     let Some(model) = truthy(model_override) else {
         return true;
     };
-    if model.eq_ignore_ascii_case("inherit") {
-        return true;
-    }
-    let parent_model = context
-        .main_loop_model
-        .clone()
-        .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
-    crate::utils::model::agent::get_agent_model(
-        None,
-        &parent_model,
+    let resolved = run_agent::resolve_agent_selection(
+        &fork_subagent::fork_agent_definition(),
         Some(model),
-        Some(context.tool_permission_context.mode),
-    ) == parent_model
+        context,
+    );
+    if resolved.model != context.parent_selection().model {
+        return false;
+    }
+    let settings = crate::utils::settings::get_initial_settings();
+    let routed_profile = |profile: Option<&str>| {
+        crate::utils::model::profile::resolve_request_profile(&settings, profile)
+            .ok()
+            .map(|profile| profile.profile)
+    };
+    routed_profile(resolved.profile.as_deref())
+        == routed_profile(context.main_loop_profile.as_deref())
 }
 
 /// Maps to CC `AgentTool.tsx:483` `const isForkPath = effectiveType ===
@@ -1292,10 +1297,10 @@ fn selected_agent_definition(
             );
         }
 
-        // @nyan: a fork replays the parent's conversation, which only another
-        // model of the same profile can read. Any other model falls through
-        // to a fresh `general-purpose` agent below, silently.
-        if fork_model_matches_parent(input_string(args, "model"), context) {
+        // @nyan: a fork replays the parent's conversation, which only the
+        // parent's own profile can read. Any other profile falls through to a
+        // fresh `general-purpose` agent below, silently.
+        if fork_matches_parent_profile(input_string(args, "model"), context) {
             return Ok((fork_subagent::fork_agent_definition(), true));
         }
     }
@@ -2346,7 +2351,7 @@ impl crate::tool::ToolCall for AgentTool {
                     .unwrap_or_default();
 
                 // Maps to CC `AgentTool.tsx#mapToolResultToToolResultBlockParam`
-                // one-shot built-in branch: Explore/Plan are report-only agents
+                // one-shot built-in branch: explore/plan are report-only agents
                 // and omit the SendMessage/usage trailer unless a worktree notice
                 // must be surfaced.
                 if output
@@ -3537,7 +3542,7 @@ mod tests {
         let output = crate::tool::ToolOutput::Agent(AgentOutput {
             status: "completed".to_string(),
             agent_id: Some("agent-plan".to_string()),
-            agent_type: Some("Plan".to_string()),
+            agent_type: Some("plan".to_string()),
             description: Some("plan".to_string()),
             prompt: Some("plan".to_string()),
             output_file: None,
@@ -3578,7 +3583,7 @@ mod tests {
         let output = crate::tool::ToolOutput::Agent(AgentOutput {
             status: "completed".to_string(),
             agent_id: Some("agent-plan".to_string()),
-            agent_type: Some("Plan".to_string()),
+            agent_type: Some("plan".to_string()),
             description: Some("plan".to_string()),
             prompt: Some("plan".to_string()),
             output_file: None,
@@ -3777,28 +3782,82 @@ mod tests {
         );
     }
 
-    #[test]
-    fn fork_model_matches_parent_only_for_inherit_or_the_parents_own_model() {
-        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let mut context = crate::tool::ToolUseContext::default();
-        context.main_loop_model = Some("parent-model".to_string());
-
-        assert!(fork_model_matches_parent(None, &context));
-        assert!(fork_model_matches_parent(Some(""), &context));
-        assert!(fork_model_matches_parent(Some("inherit"), &context));
-        assert!(fork_model_matches_parent(Some("INHERIT"), &context));
-        assert!(fork_model_matches_parent(Some("parent-model"), &context));
-        assert!(!fork_model_matches_parent(Some("other-model"), &context));
+    fn install_main_and_fast_profiles() {
+        crate::utils::settings::settings_cache::install_test_settings(
+            serde_json::from_value(serde_json::json!({
+                "nyan": {
+                    "providers": {"p": {"kind": "anthropic", "protocol": "anthropicMessages"}},
+                    "models": {
+                        "main": {"provider": "p", "model": "claude-sonnet-4-6",
+                            "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}},
+                        "alias": {"provider": "p", "model": "claude-sonnet-4-6",
+                            "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}},
+                        "fast": {"provider": "p", "model": "claude-haiku-4-5",
+                            "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}}
+                    },
+                    "selection": {"main": "main", "light": "fast"}
+                }
+            }))
+            .unwrap(),
+        );
     }
 
     #[test]
-    fn a_fork_with_a_different_model_falls_back_to_a_fresh_general_purpose_agent() {
-        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+    fn fork_matches_parent_profile_only_for_inherit_or_the_parents_own_profile() {
+        let _env_lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        install_main_and_fast_profiles();
+        let context =
+            crate::tool::ToolUseContext::default().with_main_loop_model("claude-sonnet-4-6");
+
+        assert!(fork_matches_parent_profile(None, &context));
+        assert!(fork_matches_parent_profile(Some(""), &context));
+        assert!(fork_matches_parent_profile(Some("inherit"), &context));
+        assert!(fork_matches_parent_profile(Some(":high"), &context));
+        // The session runs on `selection.main`; naming it, or a tier that
+        // falls back to it, is the same profile.
+        assert!(fork_matches_parent_profile(Some("main"), &context));
+        assert!(fork_matches_parent_profile(Some("@main:max"), &context));
+        // `light` is another profile, and a temporary model is not the parent's.
+        assert!(!fork_matches_parent_profile(Some("@light"), &context));
+        assert!(!fork_matches_parent_profile(Some("fast"), &context));
+        // The same model id under another profile is still another profile.
+        assert!(!fork_matches_parent_profile(Some("alias"), &context));
+        assert!(!fork_matches_parent_profile(Some("other/model"), &context));
+
+        crate::utils::settings::settings_cache::reset_settings_cache();
+    }
+
+    #[test]
+    fn a_session_switched_to_another_profile_forks_only_onto_that_profile() {
+        let _env_lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        install_main_and_fast_profiles();
+        let mut context =
+            crate::tool::ToolUseContext::default().with_main_loop_model("claude-haiku-4-5");
+        context.main_loop_profile = Some("fast".to_string());
+
+        assert!(fork_matches_parent_profile(Some("inherit"), &context));
+        assert!(fork_matches_parent_profile(Some("fast"), &context));
+        assert!(fork_matches_parent_profile(Some("@light"), &context));
+        assert!(!fork_matches_parent_profile(Some("main"), &context));
+
+        crate::utils::settings::settings_cache::reset_settings_cache();
+    }
+
+    #[test]
+    fn a_fork_onto_another_profile_falls_back_to_a_fresh_general_purpose_agent() {
+        let _env_lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _fork_gate = fork_subagent::fork_gate_environment();
-        let mut context = context_with_agent_definitions(vec![
+        install_main_and_fast_profiles();
+        let context = context_with_agent_definitions(vec![
             crate::tools::agent_tool::built_in::general_purpose_agent::general_purpose_agent(),
-        ]);
-        context.main_loop_model = Some("parent-model".to_string());
+        ])
+        .with_main_loop_model("claude-sonnet-4-6");
         let select = |model: &str| {
             selected_agent_definition(
                 &serde_json::json!({"description": "d", "prompt": "p", "model": model}),
@@ -3809,11 +3868,10 @@ mod tests {
         };
 
         assert_eq!(select("inherit"), ("fork".to_string(), true));
-        assert_eq!(select("parent-model"), ("fork".to_string(), true));
-        assert_eq!(
-            select("other-model"),
-            ("general-purpose".to_string(), false)
-        );
+        assert_eq!(select("main"), ("fork".to_string(), true));
+        assert_eq!(select("fast"), ("general-purpose".to_string(), false));
+
+        crate::utils::settings::settings_cache::reset_settings_cache();
     }
 
     /// CC `AgentTool.tsx:487-500` — a fork child keeps the Agent tool in its

@@ -78,14 +78,14 @@ mod tests {
             ContextProvider(value: Context::owned(*theme::current())) {
                 PermissionRequestTitle(
                     title: "Bash command".to_string(),
-                    worker_badge: Some(WorkerBadgeProps { name: "[Explore]".to_string(), color: None }),
+                    worker_badge: Some(WorkerBadgeProps { name: "[explore]".to_string(), color: None }),
                 )
             }
         }
         .render(Some(80))
         .to_string();
 
-        assert!(text.contains("· [Explore]"), "canvas=\n{text}");
+        assert!(text.contains("· [explore]"), "canvas=\n{text}");
         assert!(!text.contains("@["), "canvas=\n{text}");
     }
 }

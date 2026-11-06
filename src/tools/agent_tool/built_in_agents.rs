@@ -23,7 +23,7 @@ pub fn are_explore_plan_agents_enabled() -> bool {
 }
 
 /// Maps to CC `getBuiltInAgents()` (`builtInAgents.ts:22-72`), cut down to
-/// nyan's four: general-purpose, Explore, Plan and review. The statusline and
+/// nyan's four: general-purpose, explore, plan and review. The statusline and
 /// claude-code-guide agents are gone, and review replaces verification
 /// unconditionally.
 pub fn get_built_in_agents() -> Vec<AgentDefinition> {
@@ -89,7 +89,7 @@ mod tests {
                 .iter()
                 .map(|agent| agent.agent_type.as_str())
                 .collect::<Vec<_>>(),
-            vec!["general-purpose", "Explore", "Plan", "review"]
+            vec!["general-purpose", "explore", "plan", "review"]
         );
         assert!(
             agents
@@ -150,8 +150,30 @@ mod tests {
 
         let explore = agents
             .iter()
-            .find(|agent| agent.agent_type == "Explore")
+            .find(|agent| agent.agent_type == "explore")
             .unwrap();
         assert!(explore.omit_claude_md);
+    }
+
+    /// Only `general-purpose` and `plan` follow the session; `explore` and
+    /// `review` take the `@light` / `@heavy` tiers from the type defaults, so
+    /// no built-in carries a model of its own that would shadow
+    /// `selection.subagents.<type>`.
+    #[test]
+    fn built_in_agents_leave_the_model_to_the_selection_chain() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let agents = {
+            let _inputs = pin_inputs(None, false);
+            get_built_in_agents()
+        };
+        for agent in &agents {
+            assert_eq!(agent.model, None, "{}", agent.agent_type);
+        }
+        let default_spec =
+            |agent_type| crate::utils::model::agent::default_subagent_spec(agent_type);
+        assert_eq!(default_spec("general-purpose"), "inherit");
+        assert_eq!(default_spec("plan"), "inherit");
+        assert_eq!(default_spec("explore"), "@light");
+        assert_eq!(default_spec("review"), "@heavy");
     }
 }

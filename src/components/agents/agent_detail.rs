@@ -8,7 +8,7 @@ use crate::keybindings::use_keybinding::use_keybinding;
 use crate::tools::agent_tool::agent_color_manager::parse_agent_color_name;
 use crate::tools::agent_tool::agent_memory::get_memory_scope_display;
 use crate::tools::agent_tool::load_agents_dir::{AgentDefinition, AgentDefinitionSource};
-use crate::utils::model::agent::get_agent_model_display;
+use crate::utils::model::agent::{default_subagent_spec, get_agent_model_display};
 use crate::utils::theme::Theme;
 use iocraft::prelude::*;
 use std::collections::HashSet;
@@ -150,7 +150,9 @@ pub fn AgentDetail<'a>(
             #(invalid_text.map(|text| element! { Text(content: text, color: theme.warning) }))
             MixedText(contents: vec![
                 MixedTextContent::new("Model: ").weight(Weight::Bold),
-                MixedTextContent::new(get_agent_model_display(agent.model.as_deref())),
+                MixedTextContent::new(get_agent_model_display(Some(
+                    agent.model.as_deref().unwrap_or_else(|| default_subagent_spec(&agent.agent_type)),
+                ))),
             ])
             #(memory.map(|memory| element! { MixedText(contents: vec![
                 MixedTextContent::new("Memory: ").weight(Weight::Bold), MixedTextContent::new(memory),
@@ -205,7 +207,7 @@ mod tests {
 
     #[test]
     fn builtin_hides_system_prompt_and_reports_all_tools() {
-        let mut agent = AgentDefinition::new("Explore", "Explore", AgentDefinitionSource::BuiltIn);
+        let mut agent = AgentDefinition::new("explore", "Explore", AgentDefinitionSource::BuiltIn);
         agent.system_prompt = Some("hidden prompt".to_string());
         let text = element! {
             ContextProvider(value: Context::owned(*crate::utils::theme::current())) {
@@ -216,6 +218,8 @@ mod tests {
         .to_string();
         assert!(text.contains("Built-in"));
         assert!(text.contains("Tools: All tools"));
+        // `explore` carries no model; the detail shows its type default.
+        assert!(text.contains("Model: @light"), "canvas=\n{text}");
         assert!(!text.contains("hidden prompt"));
     }
 }

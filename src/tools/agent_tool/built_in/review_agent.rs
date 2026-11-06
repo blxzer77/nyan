@@ -143,7 +143,6 @@ pub fn review_agent() -> AgentDefinition {
         crate::tools::file_write_tool::prompt::FILE_WRITE_TOOL_NAME.to_string(),
         crate::tools::notebook_edit_tool::constants::NOTEBOOK_EDIT_TOOL_NAME.to_string(),
     ]);
-    agent.model = Some("inherit".to_string());
     agent.system_prompt = Some(REVIEW_SYSTEM_PROMPT.to_string());
     agent.critical_system_reminder_experimental = Some(REVIEW_CRITICAL_SYSTEM_REMINDER.to_string());
     agent
@@ -159,7 +158,8 @@ mod tests {
         assert_eq!(agent.agent_type, "review");
         assert!(agent.background);
         assert_eq!(agent.color.as_deref(), Some("red"));
-        assert_eq!(agent.model.as_deref(), Some("inherit"));
+        // No model of its own: the type default (`@heavy`) decides.
+        assert_eq!(agent.model, None);
         assert!(
             agent
                 .critical_system_reminder_experimental

@@ -22,7 +22,7 @@ pub fn max_concurrent_subagents() -> usize {
 }
 
 /// Maps to CC `tools/AgentTool/constants.ts#ONE_SHOT_BUILTIN_AGENT_TYPES`.
-pub const ONE_SHOT_BUILTIN_AGENT_TYPES: &[&str] = &["Explore", "Plan"];
+pub const ONE_SHOT_BUILTIN_AGENT_TYPES: &[&str] = &["explore", "plan"];
 
 /// Maps to CC `ONE_SHOT_BUILTIN_AGENT_TYPES.has(agentType)`.
 pub fn is_one_shot_builtin_agent_type(agent_type: &str) -> bool {

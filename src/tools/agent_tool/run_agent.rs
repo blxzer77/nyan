@@ -489,7 +489,7 @@ fn agent_read_file_state(
 /// The model, effort and profile this agent run resolves to, along the unified
 /// chain: call parameter, agent definition, `selection.subagents.<type>`,
 /// `selection.subagent`, then the type default.
-fn resolve_agent_selection(
+pub(super) fn resolve_agent_selection(
     agent_definition: &AgentDefinition,
     model_override: Option<&str>,
     context: &ToolUseContext,
@@ -567,7 +567,7 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
 
     // Maps to: CC `runAgent.ts:380-410`: explicit maps (including empty maps)
     // win over the memoized parent context. Only the implicit user context is
-    // eligible for omitClaudeMd; Explore/Plan always discard stale gitStatus.
+    // eligible for omitClaudeMd; explore/plan always discard stale gitStatus.
     let mut resolved_user_context = input
         .r#override
         .user_context
@@ -598,7 +598,7 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
     }
     if matches!(
         input.agent_definition.agent_type.as_str(),
-        "Explore" | "Plan"
+        "explore" | "plan"
     ) {
         resolved_system_context.remove("gitStatus");
     }
@@ -2476,7 +2476,7 @@ mod tests {
     fn background_agent_ask_raises_the_main_session_dialog_tagged_with_the_agent_name() {
         let (confirm_tx, confirm_rx) = async_channel::unbounded();
         let mut context = context_with_bash_tool();
-        context.agent_type = Some("Explore".to_string());
+        context.agent_type = Some("explore".to_string());
         context.interactive_permission_sink =
             crate::hooks::tool_permission::handlers::interactive_handler::create_repl_interactive_permission_sink(
                 confirm_tx,
@@ -2507,7 +2507,7 @@ mod tests {
                 .worker_badge
                 .as_ref()
                 .map(|badge| badge.name.as_str()),
-            Some("[Explore]")
+            Some("[explore]")
         );
         assert_eq!(response.choice, PermissionPromptChoice::Deny);
     }
@@ -4327,7 +4327,7 @@ mod input_contract_tests {
 
     /// The real runAgent → query → API request, with only the HTTP endpoint replaced.
     /// CC `runAgent.ts:391` preserves explicitly provided user maps, including {};
-    /// `:408-410` drops gitStatus for Explore/Plan even from an explicit system map.
+    /// `:408-410` drops gitStatus for explore/plan even from an explicit system map.
     #[tokio::test]
     // Keep the process-wide fixture environment pinned until the async request ends.
     #[allow(clippy::await_holding_lock)]
@@ -4441,7 +4441,7 @@ mod input_contract_tests {
         }));
         for (agent_type, user_context, expected_claude, expected_git) in [
             (
-                "Explore",
+                "explore",
                 BTreeMap::from([(
                     "claudeMd".to_string(),
                     "CLAUDE_OVERRIDE_SENTINEL".to_string(),
@@ -4449,7 +4449,7 @@ mod input_contract_tests {
                 true,
                 false,
             ),
-            ("Plan", BTreeMap::new(), false, false),
+            ("plan", BTreeMap::new(), false, false),
             (
                 "reviewer",
                 BTreeMap::from([(
