@@ -106,6 +106,9 @@ pub struct AgentDefinition {
     pub filename: Option<String>,
     /// Maps to CC `CustomAgentDefinition.baseDir`.
     pub base_dir: Option<PathBuf>,
+    /// @nyan: the markdown file the agent was loaded from, so /agents opens
+    /// and deletes that file instead of rebuilding a path from the name.
+    pub file_path: Option<PathBuf>,
     /// Maps to CC `PluginAgentDefinition.plugin`.
     pub plugin: Option<String>,
     /// Maps to CC `AgentDefinition.source`.
@@ -175,6 +178,7 @@ impl AgentDefinition {
             pending_snapshot_update: None,
             filename: None,
             base_dir: None,
+            file_path: None,
             plugin: None,
             source,
         }
@@ -783,6 +787,7 @@ fn parse_agent_from_markdown(
         .and_then(|stem| stem.to_str())
         .map(ToOwned::to_owned);
     agent.base_dir = Some(markdown_file.base_dir.clone());
+    agent.file_path = Some(markdown_file.file_path.clone());
     // Maps to: CC `loadAgentsDir.ts:713` markdown-only `content.trim()`.
     // ECMAScript trim includes FEFF but excludes Unicode White_Space's 0085;
     // Rust str::trim would change successful prompt bytes at both boundaries.

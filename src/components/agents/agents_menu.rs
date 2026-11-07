@@ -1,7 +1,7 @@
 //! Maps to: CC `components/agents/AgentsMenu.tsx:1-302`.
 
 use super::agent_detail::AgentDetail;
-use super::agent_file_utils::{delete_agent_from_file, get_actual_agent_file_path};
+use super::agent_file_utils::{delete_agent_from_file, get_actual_agent_file_path, is_editable};
 use super::agent_navigation_footer::AgentNavigationFooter;
 use super::agents_list::{AgentsList, AgentsListSource, ResolvedAgent, resolve_agent_overrides};
 use super::new_agent_creation::CreateAgentWizard;
@@ -10,7 +10,7 @@ use super::tool_selector::AgentToolOption;
 use crate::components::custom_select::SelectOptionData;
 use crate::components::design_system::dialog::Dialog;
 use crate::tools::agent_tool::load_agents_dir::{
-    AgentDefinition, AgentDefinitionSource, FailedAgentFile, get_active_agents_from_list,
+    AgentDefinition, FailedAgentFile, get_active_agents_from_list,
     get_agent_definitions_with_overrides,
 };
 use crate::utils::prompt_editor::{EditorResult, ExternalEditorRuntime};
@@ -28,13 +28,17 @@ enum MenuMode {
     Delete(AgentDefinition),
 }
 
-/// @nyan: only user and project agents are files the user owns; built-in,
-/// plugin, `--agents` and managed (policy) agents are view-only.
-pub(crate) fn editable(agent: &AgentDefinition) -> bool {
-    matches!(
-        agent.source,
-        AgentDefinitionSource::UserSettings | AgentDefinitionSource::ProjectSettings
-    )
+/// The file "Open in editor" hands to the external editor, or the message
+/// to show instead. A missing file is reported here because the editor
+/// runtime returns an empty result for it, indistinguishable from having no
+/// editor configured.
+fn editor_target(agent: &AgentDefinition) -> Result<PathBuf, String> {
+    let path = get_actual_agent_file_path(agent)?;
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!("File not found: {}", path.display()))
+    }
 }
 
 /// The per-agent menu: View, then Open in editor and Delete for editable
@@ -47,7 +51,7 @@ fn agent_menu_options(agent: &AgentDefinition) -> Vec<SelectOptionData> {
         ..Default::default()
     };
     let mut options = vec![option("View agent", "view")];
-    if editable(agent) {
+    if is_editable(agent) {
         options.push(option("Open in editor", "open"));
         options.push(option("Delete agent", "delete"));
     }
@@ -121,11 +125,7 @@ pub fn AgentsMenu<'a>(
             menu_error.set(None);
             match action.as_str() {
                 "view" => mode.set(MenuMode::View(agent)),
-                "open" => match get_actual_agent_file_path(
-                    &agent,
-                    &crate::bootstrap::state::get_original_cwd(),
-                    &crate::utils::env_utils::get_claude_config_home_dir(),
-                ) {
+                "open" => match editor_target(&agent) {
                     Ok(path) => {
                         let _ = editor_channel.0.try_send((agent, path));
                     }
@@ -140,11 +140,7 @@ pub fn AgentsMenu<'a>(
     let delete = { pending_delete.read().clone() };
     if let Some(agent) = delete {
         pending_delete.set(None);
-        match delete_agent_from_file(
-            &agent,
-            &crate::bootstrap::state::get_original_cwd(),
-            &crate::utils::env_utils::get_claude_config_home_dir(),
-        ) {
+        match delete_agent_from_file(&agent) {
             Ok(()) => {
                 let next = all_agents
                     .read()
@@ -175,6 +171,10 @@ pub fn AgentsMenu<'a>(
             menu_error.set(Some(message));
         } else if result.content.is_some() {
             pending_created.set(Some(format!("Opened {} in editor", agent.agent_type)));
+        } else {
+            // The file was checked before handoff, so an empty result means
+            // no editor could be resolved.
+            menu_error.set(Some("No editor found — set $VISUAL or $EDITOR".to_string()));
         }
     }
     let created = { pending_created.read().clone() };
@@ -301,6 +301,7 @@ pub fn AgentsMenu<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::agent_tool::load_agents_dir::AgentDefinitionSource;
     use futures::{StreamExt, stream};
     use std::time::Duration;
 
@@ -337,6 +338,20 @@ mod tests {
         ] {
             assert_eq!(values(source), ["view", "back"], "{source:?}");
         }
+    }
+
+    #[test]
+    fn open_in_editor_reports_a_missing_agent_file() {
+        let path = std::env::temp_dir().join(format!("nyan-missing-{}.md", uuid::Uuid::new_v4()));
+        let mut agent = custom_agent();
+        agent.file_path = Some(path.clone());
+        assert_eq!(
+            editor_target(&agent).unwrap_err(),
+            format!("File not found: {}", path.display())
+        );
+        std::fs::write(&path, "x").unwrap();
+        assert_eq!(editor_target(&agent).unwrap(), path);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

@@ -56,8 +56,7 @@ pub fn AgentDetail<'a>(
     }
 
     let cwd = crate::bootstrap::state::get_original_cwd();
-    let config_home = crate::utils::env_utils::get_claude_config_home_dir();
-    let path = get_actual_relative_agent_file_path(&agent, &cwd, &config_home);
+    let path = get_actual_relative_agent_file_path(&agent, &cwd);
     let available = |spec: &str| {
         let name =
             crate::utils::permissions::permission_rule_parser::permission_rule_value_from_string(
@@ -195,6 +194,8 @@ mod tests {
         agent.tools = Some(vec!["Read".to_string(), "Missing".to_string()]);
         agent.model = Some("@heavy:high".to_string());
         agent.color = Some("blue".to_string());
+        agent.file_path =
+            Some(crate::bootstrap::state::get_original_cwd().join(".nyan/agents/reviewer.md"));
         let text = element! {
             ContextProvider(value: Context::owned(*crate::utils::theme::current())) {
                 AgentDetail(agent: Some(agent), available_tool_names: vec!["Read".to_string()])
