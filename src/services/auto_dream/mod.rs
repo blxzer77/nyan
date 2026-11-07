@@ -825,7 +825,7 @@ mod tests {
         let (_, count) = memory_activity_since(&root, 0);
         assert_eq!(count, 2);
         // Nothing is newer than "now + 1s".
-        let now = mtime_ms(&root.join("a.md")).unwrap();
+        let now = mtime_ms(&root.join("a.md")).unwrap() + 1_000;
         let (newest, count) = memory_activity_since(&root, now);
         assert_eq!((newest, count), (None, 0));
         let _ = std::fs::remove_dir_all(root);
