@@ -263,10 +263,7 @@ fn strip_project_profile_definitions(
 }
 
 fn is_explicit_profile_name(ref_str: &str) -> bool {
-    !ref_str.is_empty()
-        && ref_str != "inherit"
-        && !ref_str.starts_with('@')
-        && !ref_str.contains('/')
+    !ref_str.is_empty() && ref_str != "inherit" && !ref_str.starts_with('@')
 }
 
 fn selected_profile_names(settings: &SettingsJson) -> Vec<String> {
