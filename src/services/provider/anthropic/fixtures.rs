@@ -336,17 +336,14 @@ async fn thinking_signature_and_tool_blocks_replay_on_the_next_request() {
     assert_eq!(tool["cache_control"]["type"], "ephemeral");
 }
 
-#[tokio::test]
-async fn cache_retention_long_profile_sends_1h_ttl_on_the_wire() {
-    use crate::utils::settings::nyan::CacheRetention;
-
+/// Sends one request under a profile with `retention` and returns the TTL on
+/// the tool, system and message breakpoints.
+async fn breakpoint_ttls(
+    retention: Option<crate::utils::settings::nyan::CacheRetention>,
+) -> [serde_json::Value; 3] {
     let mock = MockAnthropic::start(vec![Reply::Sse(message_stream(StreamSpec::default()))]).await;
     let _env = Env::new(&mock.base_url);
-    super::target::install_test_main_profile_with_retention(
-        &mock.base_url,
-        KEY_VAR,
-        Some(CacheRetention::Long),
-    );
+    super::target::install_test_main_profile_with_retention(&mock.base_url, KEY_VAR, retention);
 
     let options = Options::new(
         "claude-sonnet-4-6".to_string(),
@@ -368,26 +365,45 @@ async fn cache_retention_long_profile_sends_1h_ttl_on_the_wire() {
 
     let requests = mock.requests();
     let body = &requests[0].body;
-
-    // Tool breakpoint has ttl: "1h"
     let tool = body["tools"]
         .as_array()
         .and_then(|tools| tools.iter().find(|t| t["name"] == "Probe"))
         .expect("Probe tool on the wire");
     assert_eq!(tool["cache_control"]["type"], "ephemeral");
-    assert_eq!(tool["cache_control"]["ttl"], "1h");
-
-    // System prompt breakpoint has ttl: "1h"
     let system = body["system"].as_array().expect("system blocks");
     let cached_sys = system
         .iter()
         .find(|b| b.get("cache_control").is_some())
-        .unwrap();
-    assert_eq!(cached_sys["cache_control"]["ttl"], "1h");
-
-    // Message breakpoint has ttl: "1h"
+        .expect("cached system block");
     let msg = &body["messages"][0]["content"][0];
-    assert_eq!(msg["cache_control"]["ttl"], "1h");
+    [
+        tool["cache_control"]["ttl"].clone(),
+        cached_sys["cache_control"]["ttl"].clone(),
+        msg["cache_control"]["ttl"].clone(),
+    ]
+}
+
+#[tokio::test]
+async fn cache_retention_default_profile_sends_1h_ttl_on_the_wire() {
+    assert_eq!(breakpoint_ttls(None).await, [json!("1h"), json!("1h"), json!("1h")]);
+}
+
+#[tokio::test]
+async fn cache_retention_long_profile_sends_1h_ttl_on_the_wire() {
+    use crate::utils::settings::nyan::CacheRetention;
+    assert_eq!(
+        breakpoint_ttls(Some(CacheRetention::Long)).await,
+        [json!("1h"), json!("1h"), json!("1h")]
+    );
+}
+
+#[tokio::test]
+async fn cache_retention_short_profile_sends_explicit_5m_ttl_on_the_wire() {
+    use crate::utils::settings::nyan::CacheRetention;
+    assert_eq!(
+        breakpoint_ttls(Some(CacheRetention::Short)).await,
+        [json!("5m"), json!("5m"), json!("5m")]
+    );
 }
 
 #[tokio::test]
