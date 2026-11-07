@@ -92,7 +92,7 @@ pub fn ConfirmStepWrapper<'a>(
     if let Some((agent_type, _result)) = completed_editor {
         editor_result.set(None);
         (props.on_complete)(format!(
-            "Created agent: {agent_type} and opened in editor. If you made edits, restart to load the latest version."
+            "Created agent: {agent_type} and opened in editor"
         ));
     }
     let action = { *pending.read() };
