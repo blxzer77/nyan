@@ -2212,7 +2212,7 @@ mod sdk_mapper_tests {
                 output_sink: None,
                 permission_resolver: None,
                 handle_elicitation: crate::tool::HandleElicitationCallback::default(),
-                });
+            });
             let result = runtime.block_on(async {
                 tokio::time::timeout(
                     std::time::Duration::from_secs(15),

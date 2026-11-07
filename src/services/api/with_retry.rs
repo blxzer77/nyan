@@ -852,9 +852,8 @@ where
 
         // Maps to CC `withRetry.ts:201-211`: mock rejection occurs before
         // client construction, so mock scenarios never make a network call.
-        let mock_error = crate::services::rate_limit_mocking::check_mock_rate_limit_error(
-            &retry_context.model,
-        );
+        let mock_error =
+            crate::services::rate_limit_mocking::check_mock_rate_limit_error(&retry_context.model);
 
         // Maps to CC `withRetry.ts:217-230`: after a stale keep-alive socket,
         // behind its gate, stop pooling so the retry opens a fresh connection.

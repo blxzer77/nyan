@@ -42,9 +42,7 @@ use crate::components::base_text_input::{BaseInputState, BaseTextInput};
 use crate::components::bridge_dialog::{BridgeDialog, BridgeDialogSnapshot};
 use crate::components::global_search_dialog::GlobalSearchDialog;
 use crate::components::history_search_dialog::HistorySearchDialog;
-use crate::components::model_picker::{
-    ModelPicker, ModelPickerResult,
-};
+use crate::components::model_picker::{ModelPicker, ModelPickerResult};
 use crate::components::prompt_input::input_modes::PromptInputMode;
 use crate::components::prompt_input::prompt_input_help_menu::{
     PROMPT_INPUT_HELP_MENU_HEIGHT, PromptInputHelpMenu,
@@ -3949,7 +3947,10 @@ mod tests {
         for removed in ['t', 'o'] {
             let text = prompt_after_events(
                 false,
-                vec![key_with_modifiers(KeyCode::Char(removed), KeyModifiers::ALT)],
+                vec![key_with_modifiers(
+                    KeyCode::Char(removed),
+                    KeyModifiers::ALT,
+                )],
             );
             assert!(!text.contains("Toggle thinking mode"), "canvas=\n{text}");
             assert!(!text.contains("Fast mode"), "canvas=\n{text}");

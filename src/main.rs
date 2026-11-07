@@ -249,13 +249,7 @@ pub(crate) fn build_headless_initial_app_state(
     cli: &crate::cli::CliConfig,
 ) -> anyhow::Result<AppState> {
     let agents = resolve_agent_launch(settings, cli);
-    build_initial_app_state_with_agents(
-        settings,
-        settings_errors,
-        workspace_trusted,
-        cli,
-        &agents,
-    )
+    build_initial_app_state_with_agents(settings, settings_errors, workspace_trusted, cli, &agents)
 }
 
 /// The session's launch selection: the profile `--model` names (else the main
@@ -289,10 +283,12 @@ fn apply_launch_model_override(
         Some(spec) => Some(crate::utils::model::profile::resolve_model_ref(nyan, spec)?),
     };
     let launch = match choice {
-        Some((crate::utils::model::profile::ModelChoice::Profile(profile), effort)) => LaunchModel {
-            profile: Some(profile),
-            effort,
-        },
+        Some((crate::utils::model::profile::ModelChoice::Profile(profile), effort)) => {
+            LaunchModel {
+                profile: Some(profile),
+                effort,
+            }
+        }
         Some((crate::utils::model::profile::ModelChoice::Inherit, effort)) => LaunchModel {
             profile: None,
             effort,
@@ -1033,8 +1029,10 @@ fn Main(props: &MainProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     Ok(Some(processed)) => {
                         app_store.replace_with(|state| processed.apply_to_app_state(state));
                         if let Some(notice) = processed.missing_profile_notice() {
-                            crate::context::notifications::NotificationsWriter::new(app_store.clone())
-                                .add_notification(notice);
+                            crate::context::notifications::NotificationsWriter::new(
+                                app_store.clone(),
+                            )
+                            .add_notification(notice);
                         }
                         let mut repl_props = base_repl_props.clone();
                         repl_props.apply_processed_resume(&processed);
@@ -2692,7 +2690,10 @@ mod tests {
             crate::bootstrap::state::get_session_profile().as_deref(),
             Some("fast")
         );
-        assert_eq!(crate::utils::model::model::get_main_loop_model(), "claude-haiku-4-5");
+        assert_eq!(
+            crate::utils::model::model::get_main_loop_model(),
+            "claude-haiku-4-5"
+        );
         assert_eq!(
             launch(&["--model", "@light:max"]),
             profile("fast", Some(Effort::Max))
@@ -2715,13 +2716,20 @@ mod tests {
     fn launch_rejects_a_model_that_names_no_profile() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         install_launch_profiles();
-        for model in ["sonnet", "opus[1m]", "anthropic/claude-opus-4-6", "claude-sonnet-4-6"] {
+        for model in [
+            "sonnet",
+            "opus[1m]",
+            "anthropic/claude-opus-4-6",
+            "claude-sonnet-4-6",
+        ] {
             let cli = crate::cli::parse_cli_config(&argv(&["--model", model]));
             let error = build_interactive_launch(&SettingsJson::default(), &[], true, &cli)
                 .err()
                 .unwrap_or_else(|| panic!("{model} must be rejected"));
             assert!(
-                error.to_string().contains(&format!("Unknown model {model:?}")),
+                error
+                    .to_string()
+                    .contains(&format!("Unknown model {model:?}")),
                 "{error}"
             );
         }

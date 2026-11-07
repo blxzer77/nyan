@@ -183,7 +183,9 @@ mod tests {
         auto_mode_state::reset_for_testing();
         // The auto gate needs a supported main model. Without a profile the
         // model is unset (no Anthropic default), so pin one explicitly.
-        crate::services::provider::anthropic::target::install_test_model_profile("claude-sonnet-4-6");
+        crate::services::provider::anthropic::target::install_test_model_profile(
+            "claude-sonnet-4-6",
+        );
         let mut context = ToolPermissionContext::default();
         context = transition_into_auto_mode(&context);
         assert!(auto_mode_state::is_auto_mode_active());

@@ -5043,7 +5043,9 @@ rl.on('line', line => {
             }
         }
         let _reset_settings = ResetSettings;
-        crate::services::provider::anthropic::target::install_test_model_profile("anthropic.claude-sonnet-4-5-20250929-v1:0");
+        crate::services::provider::anthropic::target::install_test_model_profile(
+            "anthropic.claude-sonnet-4-5-20250929-v1:0",
+        );
 
         let result = process_mcp_result(
             &serde_json::json!({ "structuredContent": { "items": ["abcdef".repeat(80)] } }),

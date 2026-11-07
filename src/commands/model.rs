@@ -44,7 +44,9 @@ fn current_profile_label() -> String {
 /// Maps to: CC `ModelPickerWrapper` `handleCancel`.
 pub fn handle_cancel_output() -> String {
     match crate::bootstrap::state::get_session_profile() {
-        None if !crate::utils::model::model::has_main_profile() => NO_MAIN_PROFILE_PROMPT.to_string(),
+        None if !crate::utils::model::model::has_main_profile() => {
+            NO_MAIN_PROFILE_PROMPT.to_string()
+        }
         _ => format!("Kept model as {}", current_profile_label()),
     }
 }
@@ -249,7 +251,12 @@ mod tests {
         (0..canvas.height())
             .map(|y| {
                 (0..canvas.width())
-                    .map(|x| canvas.cell(x, y).and_then(|cell| cell.text()).unwrap_or(" "))
+                    .map(|x| {
+                        canvas
+                            .cell(x, y)
+                            .and_then(|cell| cell.text())
+                            .unwrap_or(" ")
+                    })
                     .collect::<String>()
                     .trim_end()
                     .to_string()
@@ -286,9 +293,9 @@ mod tests {
                 futures_timer::Delay::new(Duration::from_millis(30)).await;
                 Some((event, events))
             });
-            let mut render_loop = Box::pin(
-                app.mock_terminal_render_loop(MockTerminalConfig::with_events(delayed).with_size(110, 32)),
-            );
+            let mut render_loop = Box::pin(app.mock_terminal_render_loop(
+                MockTerminalConfig::with_events(delayed).with_size(110, 32),
+            ));
             let mut canvases = Vec::new();
             loop {
                 let next = crate::utils::race(render_loop.next(), async {
@@ -323,7 +330,10 @@ mod tests {
             effort,
         };
         assert_eq!(parse_args("deep"), Some(switch("deep", None)));
-        assert_eq!(parse_args("deep:off"), Some(switch("deep", Some(Effort::Off))));
+        assert_eq!(
+            parse_args("deep:off"),
+            Some(switch("deep", Some(Effort::Off)))
+        );
         assert_eq!(parse_args("@light"), Some(switch("qwen3:32b", None)));
         assert_eq!(
             parse_args("qwen3:32b:high"),
@@ -334,7 +344,10 @@ mod tests {
             let Some(ModelArgs::Message(message)) = parse_args(unknown) else {
                 panic!("{unknown} must be refused");
             };
-            assert!(message.starts_with(&format!("Unknown model {unknown:?}")), "{message}");
+            assert!(
+                message.starts_with(&format!("Unknown model {unknown:?}")),
+                "{message}"
+            );
         }
     }
 
@@ -343,7 +356,10 @@ mod tests {
         let _fixture = Fixture::new(PROFILES);
         let store = store();
         store.replace_with(|state| state.effort_value = Some(Effort::Off));
-        assert_eq!(apply_switch(Some(&store), Some("deep".into()), None), "Set model to deep");
+        assert_eq!(
+            apply_switch(Some(&store), Some("deep".into()), None),
+            "Set model to deep"
+        );
         let state = store.get();
         assert_eq!(state.main_loop_profile.as_deref(), Some("deep"));
         // `None` lets the profile's own `max` apply at request time.
@@ -363,7 +379,10 @@ mod tests {
         let store = store();
         store.replace_with(|state| state.main_loop_profile = Some("qwen3:32b".into()));
         let (text, selected) = render_after(&store, Vec::new());
-        let at = |needle: &str| text.find(needle).unwrap_or_else(|| panic!("{needle}:\n{text}"));
+        let at = |needle: &str| {
+            text.find(needle)
+                .unwrap_or_else(|| panic!("{needle}:\n{text}"))
+        };
         assert!(at("qwen3:32b") < at("main"), "{text}");
         assert!(at("main") < at("deep"), "{text}");
         assert!(text.contains("claude-sonnet-4-6 · default"), "{text}");
@@ -402,7 +421,10 @@ mod tests {
         assert_eq!(settings["nyan"]["selection"]["main"], "deep");
         assert_eq!(settings["nyan"]["models"]["deep"]["effort"], "high");
         // The rest of the profile survives the patch.
-        assert_eq!(settings["nyan"]["models"]["deep"]["model"], "claude-opus-4-6");
+        assert_eq!(
+            settings["nyan"]["models"]["deep"]["model"],
+            "claude-opus-4-6"
+        );
         assert_eq!(store.get().main_loop_profile, None);
     }
 

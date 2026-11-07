@@ -741,11 +741,19 @@ async fn model_command_routes_the_next_request_through_the_new_profile() {
         .is_some()
     {}
 
-    assert!(main.requests().is_empty(), "nothing reaches the old profile");
+    assert!(
+        main.requests().is_empty(),
+        "nothing reaches the old profile"
+    );
     let requests = deep.requests();
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].header("x-api-key"), Some("sk-fixture-deep-key"));
     assert_eq!(requests[0].body["model"], "claude-opus-4-6");
     // `:off` is the session effort, not the profile's `max`.
-    assert!(requests[0].body.get("thinking").is_none_or(|thinking| thinking["type"] == "disabled"));
+    assert!(
+        requests[0]
+            .body
+            .get("thinking")
+            .is_none_or(|thinking| thinking["type"] == "disabled")
+    );
 }

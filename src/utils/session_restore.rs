@@ -231,7 +231,9 @@ impl ProcessedResume {
                 .and_then(|agent| agent.model.as_deref())
                 .and_then(|spec| {
                     crate::utils::model::profile::resolve_model_ref(
-                        crate::utils::settings::get_initial_settings().nyan.as_deref(),
+                        crate::utils::settings::get_initial_settings()
+                            .nyan
+                            .as_deref(),
                         spec,
                     )
                     .ok()
@@ -1162,7 +1164,9 @@ mod tests {
         // effort, with a visible notice.
         let (state, processed) = resume(
             "gone",
-            &[json!({"type": "model-change", "sessionId": session_id, "profile": "removed", "effort": "max"})],
+            &[
+                json!({"type": "model-change", "sessionId": session_id, "profile": "removed", "effort": "max"}),
+            ],
         );
         assert_eq!(processed.missing_profile.as_deref(), Some("removed"));
         assert_eq!(state.main_loop_profile, None);

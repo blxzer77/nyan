@@ -58,8 +58,7 @@ pub async fn check_and_disable_auto_mode_if_needed(
         return;
     }
     let result =
-        super::permission_setup::verify_auto_mode_gate_access(tool_permission_context)
-            .await;
+        super::permission_setup::verify_auto_mode_gate_access(tool_permission_context).await;
     store.set_state(|prev| {
         let context = (result.update_context)(&prev.tool_permission_context);
         if Arc::ptr_eq(&context, &prev.tool_permission_context) && result.notification.is_none() {

@@ -2377,14 +2377,7 @@ mod tests {
         );
         // Plain `n` is text input.
         assert!(
-            handle_key_down(
-                KeyCode::Char('n'),
-                KeyModifiers::NONE,
-                &scope,
-                false,
-                false
-            )
-            .is_none()
+            handle_key_down(KeyCode::Char('n'), KeyModifiers::NONE, &scope, false, false).is_none()
         );
         // Without rows the navigation section is skipped entirely.
         let empty = scope_empty("/", 1);
@@ -2422,61 +2415,24 @@ mod tests {
 
         // A prompt suggestion is accepted; Right arrow accepts it too.
         assert!(matches!(
-            handle_key_down(
-                KeyCode::Tab,
-                KeyModifiers::NONE,
-                &empty,
-                true,
-                false
-            ),
+            handle_key_down(KeyCode::Tab, KeyModifiers::NONE, &empty, true, false),
             Some(KeyDownEffect::AcceptPromptSuggestion)
         ));
         assert!(matches!(
-            handle_key_down(
-                KeyCode::Right,
-                KeyModifiers::NONE,
-                &empty,
-                true,
-                false
-            ),
+            handle_key_down(KeyCode::Right, KeyModifiers::NONE, &empty, true, false),
             Some(KeyDownEffect::AcceptPromptSuggestion)
         ));
 
         // Shift+Tab is the mode cycle; non-empty input without rows is a no-op.
-        assert!(
-            handle_key_down(
-                KeyCode::Tab,
-                KeyModifiers::SHIFT,
-                &empty,
-                false,
-                false
-            )
-            .is_none()
-        );
+        assert!(handle_key_down(KeyCode::Tab, KeyModifiers::SHIFT, &empty, false, false).is_none());
         let typed = scope_empty("inspect", 7);
-        assert!(
-            handle_key_down(
-                KeyCode::Tab,
-                KeyModifiers::NONE,
-                &typed,
-                false,
-                false
-            )
-            .is_none()
-        );
+        assert!(handle_key_down(KeyCode::Tab, KeyModifiers::NONE, &typed, false, false).is_none());
 
         // With rows or ghost text Tab belongs to `autocomplete:accept`.
         let rows = [command_item("help")];
         let with_rows = scope("/he", 3, SuggestionKind::Command, &rows, 0, None, &[]);
         assert!(
-            handle_key_down(
-                KeyCode::Tab,
-                KeyModifiers::NONE,
-                &with_rows,
-                false,
-                false
-            )
-            .is_none()
+            handle_key_down(KeyCode::Tab, KeyModifiers::NONE, &with_rows, false, false).is_none()
         );
     }
 

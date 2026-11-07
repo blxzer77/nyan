@@ -5980,7 +5980,10 @@ mod tests {
             r#"{"type":"effort-change","sessionId":"s","effort":"high"}"#,
             r#"{"type":"model-change","sessionId":"s","profile":"deep","effort":null}"#,
         ]);
-        assert_eq!(session.session_profiles.get("s"), Some(&Some("deep".to_string())));
+        assert_eq!(
+            session.session_profiles.get("s"),
+            Some(&Some("deep".to_string()))
+        );
         // The switch settled on the profile's own effort.
         assert_eq!(session.session_efforts.get("s"), Some(&None));
 

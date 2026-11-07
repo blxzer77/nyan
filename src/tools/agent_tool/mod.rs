@@ -1810,7 +1810,9 @@ impl crate::tool::ToolCall for AgentTool {
             // anything else is refused here, before any request is made.
             if let Some(model) = truthy(model_override)
                 && let Err(error) = crate::utils::model::profile::resolve_model_ref(
-                    crate::utils::settings::get_initial_settings().nyan.as_deref(),
+                    crate::utils::settings::get_initial_settings()
+                        .nyan
+                        .as_deref(),
                     model,
                 )
             {
@@ -3851,19 +3853,20 @@ mod tests {
             crate::tools::agent_tool::built_in::general_purpose_agent::general_purpose_agent(),
         ]);
         for model in ["sonnet", "anthropic/claude-opus-4-6", "nope:high"] {
-            let request = crate::utils::permissions::permissions::mock_permission_request_with_input(
-                "perm-agent".to_string(),
-                "toolu_agent".to_string(),
-                "Agent".to_string(),
-                "nested".to_string(),
-                serde_json::json!({
-                    "description": "nested",
-                    "prompt": "inspect",
-                    "subagent_type": "general-purpose",
-                    "model": model
-                }),
-                crate::types::permissions::PermissionMode::Default,
-            );
+            let request =
+                crate::utils::permissions::permissions::mock_permission_request_with_input(
+                    "perm-agent".to_string(),
+                    "toolu_agent".to_string(),
+                    "Agent".to_string(),
+                    "nested".to_string(),
+                    serde_json::json!({
+                        "description": "nested",
+                        "prompt": "inspect",
+                        "subagent_type": "general-purpose",
+                        "model": model
+                    }),
+                    crate::types::permissions::PermissionMode::Default,
+                );
             // No mock endpoint is installed: reaching the request path would
             // fail differently (or hang), so the error text proves it stopped.
             let result = AgentTool

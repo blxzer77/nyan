@@ -178,7 +178,9 @@ impl SkillContextModifier {
         // `resolveSkillModelOverride` 1M-suffix carry is gone with the aliases).
         if let Some(model) = self.model.as_deref().filter(|model| !model.is_empty()) {
             match crate::utils::model::profile::resolve_model_ref(
-                crate::utils::settings::get_initial_settings().nyan.as_deref(),
+                crate::utils::settings::get_initial_settings()
+                    .nyan
+                    .as_deref(),
                 model,
             ) {
                 Ok((crate::utils::model::profile::ModelChoice::Profile(profile), _)) => {
@@ -187,9 +189,9 @@ impl SkillContextModifier {
                     context.main_loop_profile = Some(profile);
                 }
                 Ok((crate::utils::model::profile::ModelChoice::Inherit, _)) => {}
-                Err(error) => crate::utils::debug::log_for_debugging(&format!(
-                    "Skill model ignored: {error}"
-                )),
+                Err(error) => {
+                    crate::utils::debug::log_for_debugging(&format!("Skill model ignored: {error}"))
+                }
             }
         }
 
@@ -1283,7 +1285,10 @@ mod tests {
         SkillContextModifier::new(Vec::new(), Some("opus".to_string()), None)
             .unwrap()
             .modify_context(&mut context);
-        assert_eq!(context.main_loop_model.as_deref(), Some("claude-sonnet-4-5"));
+        assert_eq!(
+            context.main_loop_model.as_deref(),
+            Some("claude-sonnet-4-5")
+        );
         assert_eq!(context.main_loop_profile, None);
         crate::utils::settings::settings_cache::reset_settings_cache();
     }

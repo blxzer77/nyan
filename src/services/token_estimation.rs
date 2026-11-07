@@ -631,7 +631,9 @@ mod tests {
         let _foundry = EnvVarGuard::unset("CLAUDE_CODE_USE_FOUNDRY");
         let _skip_auth = EnvVarGuard::set("CLAUDE_CODE_SKIP_BEDROCK_AUTH", "1");
         let _endpoint = EnvVarGuard::set("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", &endpoint);
-        crate::services::provider::anthropic::target::install_test_model_profile("anthropic.claude-sonnet-4-5-20250929-v1:0");
+        crate::services::provider::anthropic::target::install_test_model_profile(
+            "anthropic.claude-sonnet-4-5-20250929-v1:0",
+        );
 
         assert_eq!(count_tokens_with_api("hello").await, Some(23));
         let request = server.join().unwrap();
@@ -761,7 +763,9 @@ mod tests {
         let _endpoint = EnvVarGuard::set("ANTHROPIC_VERTEX_BASE_URL", &endpoint);
         let _project = EnvVarGuard::set("ANTHROPIC_VERTEX_PROJECT_ID", "project-a");
         let _region = EnvVarGuard::set("CLOUD_ML_REGION", "us-east5");
-        crate::services::provider::anthropic::target::install_test_model_profile("claude-sonnet-4-5");
+        crate::services::provider::anthropic::target::install_test_model_profile(
+            "claude-sonnet-4-5",
+        );
 
         assert_eq!(count_tokens_with_api("hello").await, Some(19));
         let request = server.join().unwrap();
@@ -788,7 +792,9 @@ mod tests {
             format!("{endpoint}/anthropic/"),
         );
         let _api_key = EnvVarGuard::set("ANTHROPIC_FOUNDRY_API_KEY", "foundry-test-key");
-        crate::services::provider::anthropic::target::install_test_model_profile("claude-sonnet-4-5");
+        crate::services::provider::anthropic::target::install_test_model_profile(
+            "claude-sonnet-4-5",
+        );
 
         assert_eq!(count_tokens_with_api("hello").await, Some(17));
         let request = server.join().unwrap();

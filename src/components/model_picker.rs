@@ -50,7 +50,8 @@ pub(crate) fn profile_rows(
     names
         .into_iter()
         .map(|name| {
-            let settings = nyan.and_then(|nyan| crate::utils::model::profile::model_profile(nyan, name));
+            let settings =
+                nyan.and_then(|nyan| crate::utils::model::profile::model_profile(nyan, name));
             ProfileRow {
                 name: name.to_string(),
                 model: nyan
@@ -142,7 +143,11 @@ pub(crate) fn cycle_effort(current: Option<Effort>, direction: KeyCode) -> Optio
 
 /// The effort a row starts at: the session's for the current profile, else
 /// the profile's own (design §5.2: a switch never carries the old effort).
-fn initial_row_effort(row: &ProfileRow, current: Option<&str>, session: Option<Effort>) -> Option<Effort> {
+fn initial_row_effort(
+    row: &ProfileRow,
+    current: Option<&str>,
+    session: Option<Effort>,
+) -> Option<Effort> {
     if current == Some(row.name.as_str()) {
         session.or(row.effort)
     } else {
@@ -582,8 +587,14 @@ mod tests {
     fn effort_cycles_through_the_four_tiers_from_the_model_default() {
         assert_eq!(cycle_effort(None, KeyCode::Right), Some(Effort::High));
         assert_eq!(cycle_effort(None, KeyCode::Left), Some(Effort::Off));
-        assert_eq!(cycle_effort(Some(Effort::Max), KeyCode::Right), Some(Effort::Off));
-        assert_eq!(cycle_effort(Some(Effort::Off), KeyCode::Left), Some(Effort::Max));
+        assert_eq!(
+            cycle_effort(Some(Effort::Max), KeyCode::Right),
+            Some(Effort::Off)
+        );
+        assert_eq!(
+            cycle_effort(Some(Effort::Off), KeyCode::Left),
+            Some(Effort::Max)
+        );
     }
 
     #[test]
@@ -594,11 +605,19 @@ mod tests {
             effort,
         };
         assert_eq!(
-            initial_row_effort(&row("main", Some(Effort::High)), Some("main"), Some(Effort::Off)),
+            initial_row_effort(
+                &row("main", Some(Effort::High)),
+                Some("main"),
+                Some(Effort::Off)
+            ),
             Some(Effort::Off)
         );
         assert_eq!(
-            initial_row_effort(&row("alpha", Some(Effort::Max)), Some("main"), Some(Effort::Off)),
+            initial_row_effort(
+                &row("alpha", Some(Effort::Max)),
+                Some("main"),
+                Some(Effort::Off)
+            ),
             Some(Effort::Max)
         );
         assert_eq!(
@@ -631,7 +650,10 @@ mod tests {
             profile: "alpha".to_string(),
             project_main: project.map(str::to_string),
         };
-        assert_eq!(set_default_message(&outcome(None)), "Default model set to alpha");
+        assert_eq!(
+            set_default_message(&outcome(None)),
+            "Default model set to alpha"
+        );
         assert_eq!(
             set_default_message(&outcome(Some("alpha"))),
             "Default model set to alpha"

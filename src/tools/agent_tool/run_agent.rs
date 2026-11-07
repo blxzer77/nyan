@@ -493,8 +493,10 @@ pub(super) fn resolve_agent_selection(
     agent_definition: &AgentDefinition,
     model_override: Option<&str>,
     context: &ToolUseContext,
-) -> Result<crate::utils::model::agent::ResolvedAgentModel, crate::utils::model::profile::UnknownModelRef>
-{
+) -> Result<
+    crate::utils::model::agent::ResolvedAgentModel,
+    crate::utils::model::profile::UnknownModelRef,
+> {
     let settings = crate::utils::settings::get_initial_settings();
     crate::utils::model::agent::resolve_subagent_model_and_effort(
         model_override,
@@ -2148,7 +2150,8 @@ mod tests {
         assert_eq!(inherited.model, "parent-model");
         assert_eq!(inherited.profile.as_deref(), Some("deep"));
         // A model that names no profile is an error, not a temporary model.
-        let unknown = resolve_agent_selection(&general_agent(Some("provider/other")), None, &context);
+        let unknown =
+            resolve_agent_selection(&general_agent(Some("provider/other")), None, &context);
         assert!(unknown.is_err());
     }
 

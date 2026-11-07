@@ -21,7 +21,8 @@ pub async fn validate_model(model: &str) -> Result<(), String> {
 
     // CC `:39-47` — the user-supplied custom option skips the cache and the
     // live probe. @nyan: CC's model aliases are gone.
-    if crate::utils::process_env::var("ANTHROPIC_CUSTOM_MODEL_OPTION").as_deref() == Some(normalized)
+    if crate::utils::process_env::var("ANTHROPIC_CUSTOM_MODEL_OPTION").as_deref()
+        == Some(normalized)
     {
         return Ok(());
     }

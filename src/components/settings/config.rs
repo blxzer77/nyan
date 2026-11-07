@@ -3322,7 +3322,8 @@ mod tests {
         crate::utils::settings::settings_cache::reset_settings_cache();
 
         assert!(
-            text.lines().any(|line| line.contains("Model") && line.contains("deep")),
+            text.lines()
+                .any(|line| line.contains("Model") && line.contains("deep")),
             "canvas=\n{text}"
         );
         assert!(!text.contains("Select model"), "canvas=\n{text}");

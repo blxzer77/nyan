@@ -432,8 +432,13 @@ mod tests {
             );
             assert_eq!(call, Err(UnknownModelRef(spec.to_string())), "{spec}");
             // An agent definition's own unknown model does not fall through.
-            let md =
-                resolve_subagent_model_and_effort(None, Some(spec), "plan", &parent(None), Some(&nyan));
+            let md = resolve_subagent_model_and_effort(
+                None,
+                Some(spec),
+                "plan",
+                &parent(None),
+                Some(&nyan),
+            );
             assert!(md.is_err(), "{spec}");
         }
     }
@@ -446,7 +451,8 @@ mod tests {
             effort: Some(Effort::High),
             profile: Some("deep-profile".to_string()),
         };
-        let r = resolve_subagent_model_and_effort(None, None, "plan", &routed, Some(&nyan)).unwrap();
+        let r =
+            resolve_subagent_model_and_effort(None, None, "plan", &routed, Some(&nyan)).unwrap();
         assert_eq!(r.model, "claude-opus-4-6");
         assert_eq!(r.effort, Some(Effort::High));
         assert_eq!(r.profile.as_deref(), Some("deep-profile"));

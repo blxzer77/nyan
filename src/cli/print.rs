@@ -378,10 +378,7 @@ fn apply_headless_mcp_connection_attempt(
         .retain(|command| command_names.insert(command.name.clone()));
 }
 
-async fn run_stream_json(
-    config: &CliConfig,
-    schema: Option<serde_json::Value>,
-) -> i32 {
+async fn run_stream_json(config: &CliConfig, schema: Option<serde_json::Value>) -> i32 {
     let launch_cwd = match std::env::current_dir() {
         Ok(cwd) => cwd,
         Err(error) => return fail(&error.to_string()),

@@ -892,19 +892,40 @@ mod tests {
             resolve_model_ref(nyan, "fast:max"),
             Ok((profile("fast"), Some(Effort::Max)))
         );
-        assert_eq!(resolve_model_ref(nyan, "@light"), Ok((profile("fast"), None)));
+        assert_eq!(
+            resolve_model_ref(nyan, "@light"),
+            Ok((profile("fast"), None))
+        );
         // `heavy` is unset: it is `main`.
         assert_eq!(
             resolve_model_ref(nyan, "@heavy:off"),
             Ok((profile("main"), Some(Effort::Off)))
         );
-        assert_eq!(resolve_model_ref(nyan, "@main"), Ok((profile("main"), None)));
-        assert_eq!(resolve_model_ref(nyan, "inherit"), Ok((ModelChoice::Inherit, None)));
+        assert_eq!(
+            resolve_model_ref(nyan, "@main"),
+            Ok((profile("main"), None))
+        );
+        assert_eq!(
+            resolve_model_ref(nyan, "inherit"),
+            Ok((ModelChoice::Inherit, None))
+        );
         assert_eq!(
             resolve_model_ref(nyan, ":high"),
             Ok((ModelChoice::Inherit, Some(Effort::High)))
         );
-        for unknown in ["", "sonnet", "opus", "haiku", "best", "opusplan", "opus[1m]", "anthropic/claude-sonnet-4-6", "claude-sonnet-4-6", "@nope", "main:low"] {
+        for unknown in [
+            "",
+            "sonnet",
+            "opus",
+            "haiku",
+            "best",
+            "opusplan",
+            "opus[1m]",
+            "anthropic/claude-sonnet-4-6",
+            "claude-sonnet-4-6",
+            "@nope",
+            "main:low",
+        ] {
             assert_eq!(
                 resolve_model_ref(nyan, unknown),
                 Err(UnknownModelRef(unknown.to_string())),
@@ -912,7 +933,10 @@ mod tests {
             );
         }
         // No settings at all: tiers follow the session, names are unknown.
-        assert_eq!(resolve_model_ref(None, "@light"), Ok((ModelChoice::Inherit, None)));
+        assert_eq!(
+            resolve_model_ref(None, "@light"),
+            Ok((ModelChoice::Inherit, None))
+        );
         assert!(resolve_model_ref(None, "main").is_err());
     }
 
@@ -922,10 +946,16 @@ mod tests {
         let mut settings = tiered_settings();
         let nyan = settings.nyan.as_mut().unwrap();
         let fast = nyan.models.as_ref().unwrap()["fast"].clone();
-        nyan.models.as_mut().unwrap().insert("qwen3:32b".to_string(), fast);
+        nyan.models
+            .as_mut()
+            .unwrap()
+            .insert("qwen3:32b".to_string(), fast);
         let nyan = settings.nyan.as_deref();
         let profile = ModelChoice::Profile("qwen3:32b".to_string());
-        assert_eq!(resolve_model_ref(nyan, "qwen3:32b"), Ok((profile.clone(), None)));
+        assert_eq!(
+            resolve_model_ref(nyan, "qwen3:32b"),
+            Ok((profile.clone(), None))
+        );
         assert_eq!(
             resolve_model_ref(nyan, "qwen3:32b:high"),
             Ok((profile, Some(Effort::High)))

@@ -887,9 +887,13 @@ mod tests {
         crate::utils::process_env::remove("CLAUDE_CODE_USE_BEDROCK");
 
         crate::utils::process_env::set("CLAUDE_CODE_USE_VERTEX", "1");
-        crate::services::provider::anthropic::target::install_test_model_profile("claude-3-5-sonnet-20241022");
+        crate::services::provider::anthropic::target::install_test_model_profile(
+            "claude-3-5-sonnet-20241022",
+        );
         assert!(!is_web_search_tool_enabled());
-        crate::services::provider::anthropic::target::install_test_model_profile("claude-sonnet-4-5-20250929");
+        crate::services::provider::anthropic::target::install_test_model_profile(
+            "claude-sonnet-4-5-20250929",
+        );
         assert!(is_web_search_tool_enabled());
         crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
 

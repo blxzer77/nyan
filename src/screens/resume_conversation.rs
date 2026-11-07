@@ -403,8 +403,10 @@ pub fn ResumeConversation(
                         // adoption lands with Contract B (P5).
                         app_store.replace_with(|state| processed.apply_to_app_state(state));
                         if let Some(notice) = processed.missing_profile_notice() {
-                            crate::context::notifications::NotificationsWriter::new(app_store.clone())
-                                .add_notification(notice);
+                            crate::context::notifications::NotificationsWriter::new(
+                                app_store.clone(),
+                            )
+                            .add_notification(notice);
                         }
                         let mut repl_props = base_repl_props.clone();
                         repl_props.apply_processed_resume(&processed);
