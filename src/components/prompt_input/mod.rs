@@ -33,7 +33,6 @@ pub mod sandbox_prompt_footer_hint;
 pub mod shimmered_input;
 pub mod use_maybe_truncate_input;
 pub mod use_prompt_input_placeholder;
-pub mod use_show_fast_icon_hint;
 pub mod use_swarm_banner;
 pub mod utils;
 pub mod voice_indicator;

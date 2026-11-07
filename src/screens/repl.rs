@@ -5870,12 +5870,11 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             let entries_snapshot = Arc::clone(&*history_state.read());
             let main_thread_agent_definition = main_thread_agent_definition.read().clone();
             // Maps to: CC REPL.tsx:3703-3714, both checks settle before the query starts.
-            let gate_snapshot = app_store_for_mcp.get();
             tokio::join!(
                 crate::utils::permissions::bypass_permissions_killswitch::check_and_disable_bypass_permissions_if_needed(
                     &command_permission_context, &app_store_for_mcp),
                 crate::utils::permissions::bypass_permissions_killswitch::check_and_disable_auto_mode_if_needed(
-                    &command_permission_context, &app_store_for_mcp, Some(gate_snapshot.fast_mode)),
+                    &command_permission_context, &app_store_for_mcp),
             );
             let next_content_replacement_state = apply_repl_query_turn_context(
                 &mut params,
@@ -6524,12 +6523,11 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                         let main_thread_agent_definition =
                             main_thread_agent_definition_for_submit.read().clone();
                         // Maps to: CC REPL.tsx:3703-3714, both checks settle before the query starts.
-                        let gate_snapshot = app_store_for_submit.get();
                         tokio::join!(
                             crate::utils::permissions::bypass_permissions_killswitch::check_and_disable_bypass_permissions_if_needed(
                                 &command_permission_context, &app_store_for_submit),
                             crate::utils::permissions::bypass_permissions_killswitch::check_and_disable_auto_mode_if_needed(
-                                &command_permission_context, &app_store_for_submit, Some(gate_snapshot.fast_mode)),
+                                &command_permission_context, &app_store_for_submit),
                         );
                         let next_content_replacement_state = apply_repl_query_turn_context(
                             &mut params,

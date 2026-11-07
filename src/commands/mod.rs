@@ -26,7 +26,6 @@ pub mod diff;
 pub mod doctor;
 pub mod effort;
 pub mod export;
-pub mod fast;
 pub mod help;
 pub mod hooks;
 pub mod ide;

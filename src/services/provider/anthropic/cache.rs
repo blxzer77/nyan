@@ -10,9 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::utils::settings::nyan::CacheRetention;
 
 pub use crate::utils::api::CacheScope;
-use crate::utils::model::model::{
-    get_default_opus_model, get_default_sonnet_model, get_small_fast_model,
-};
+use crate::utils::model::model::get_small_fast_model;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CacheTtlUsage {
@@ -142,8 +140,9 @@ pub fn get_cache_control_with_retention(
 /// Maps to: CC services/api/claude.ts:333-356
 ///
 /// Returns whether prompt caching is enabled for the given model.
-/// Respects DISABLE_PROMPT_CACHING, DISABLE_PROMPT_CACHING_HAIKU,
-/// DISABLE_PROMPT_CACHING_SONNET, and DISABLE_PROMPT_CACHING_OPUS env vars.
+/// Respects DISABLE_PROMPT_CACHING and DISABLE_PROMPT_CACHING_HAIKU.
+/// @nyan: CC's `_SONNET` / `_OPUS` switches named the Anthropic default
+/// models, which nyan no longer has.
 pub fn get_prompt_caching_enabled(model: &str) -> bool {
     // Global disable takes precedence
     if crate::utils::env_utils::is_env_truthy(
@@ -158,26 +157,6 @@ pub fn get_prompt_caching_enabled(model: &str) -> bool {
     ) {
         let small_fast_model = get_small_fast_model();
         if model == small_fast_model {
-            return false;
-        }
-    }
-
-    // Check if we should disable for default Sonnet
-    if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("DISABLE_PROMPT_CACHING_SONNET").as_deref(),
-    ) {
-        let default_sonnet = get_default_sonnet_model();
-        if model == default_sonnet {
-            return false;
-        }
-    }
-
-    // Check if we should disable for default Opus
-    if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("DISABLE_PROMPT_CACHING_OPUS").as_deref(),
-    ) {
-        let default_opus = get_default_opus_model();
-        if model == default_opus {
             return false;
         }
     }

@@ -874,7 +874,6 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
         .critical_system_reminder_experimental
         .clone();
     agent_tool_use_context.effort_value = selection.effort;
-    agent_tool_use_context.fast_mode = Some(false);
     agent_tool_use_context.channel_permission_callbacks =
         input.context.channel_permission_callbacks.clone();
     agent_tool_use_context.subagent_depth = input.context.subagent_depth + 1;

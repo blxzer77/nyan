@@ -131,10 +131,13 @@ pub fn run(config: &CliConfig) -> i32 {
     // Maps to CC `main.tsx:3052-3071`, before `runHeadless`: the launch model
     // override, in place before any control request can read or move it. The
     // result is `runHeadless`'s `userSpecifiedModel` (`:3928,3952`).
-    let user_specified_model = crate::main::apply_headless_launch_model(
+    // @nyan: `--model` must name a profile, tier or `inherit`.
+    if let Err(error) = crate::main::apply_headless_launch_model(
         &crate::utils::settings::get_initial_settings(),
         config,
-    );
+    ) {
+        return fail(&error.to_string());
+    }
     crate::utils::workload_context::set_process_workload(config.workload.clone());
     crate::bootstrap::state::set_session_persistence_disabled(
         config.session_persistence == Some(false),
@@ -210,7 +213,7 @@ pub fn run(config: &CliConfig) -> i32 {
         if config.prompt.is_some() {
             return fail("--input-format=stream-json reads user messages from stdin");
         }
-        return runtime.block_on(run_stream_json(config, schema, user_specified_model));
+        return runtime.block_on(run_stream_json(config, schema));
     }
 
     let prompt = match read_prompt(config) {
@@ -230,7 +233,6 @@ pub fn run(config: &CliConfig) -> i32 {
             output_sink: None,
             permission_resolver: None,
             handle_elicitation: crate::tool::HandleElicitationCallback::default(),
-            user_specified_model,
         });
         crate::query_engine::ask(&mut engine, prompt, None).await
     }) {
@@ -379,7 +381,6 @@ fn apply_headless_mcp_connection_attempt(
 async fn run_stream_json(
     config: &CliConfig,
     schema: Option<serde_json::Value>,
-    user_specified_model: Option<String>,
 ) -> i32 {
     let launch_cwd = match std::env::current_dir() {
         Ok(cwd) => cwd,
@@ -455,7 +456,6 @@ async fn run_stream_json(
         output_sink: Some(QueryEngine::output_sink(json_line)),
         permission_resolver,
         handle_elicitation,
-        user_specified_model,
     });
     let engine_control = engine.control_handle();
 
@@ -784,27 +784,11 @@ async fn handle_control_request(
                 .get("model")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("default");
-            let settings = crate::utils::settings::get_initial_settings();
-            let resolved = if requested == "default" {
-                crate::utils::model::profile::resolve_main_profile(&settings)
-                    .map(|profile| profile.model)
-                    .map_err(|error| error.to_string())
-            } else {
-                crate::utils::model::profile::resolve_model_input(&settings, requested)
-                    .map_err(|error| error.to_string())
-            };
-            let model = match resolved {
-                Ok(model) => model,
-                Err(error) => {
-                    control_error(&control.request_id, &error);
-                    return false;
-                }
-            };
-            // CC `print.ts:2939-2940`: `activeUserSpecifiedModel = model` and
-            // `setMainLoopModelOverride(model)`, so `getMainLoopModel()`
-            // readers see the switch too.
-            crate::bootstrap::state::set_main_loop_model_override(Some(Some(model.clone())));
-            engine.set_model(model);
+            // @nyan: the model is a profile ref; `default` is `selection.main`.
+            if let Err(error) = set_session_profile_from_ref(requested) {
+                control_error(&control.request_id, &error);
+                return false;
+            }
             control_success(&control.request_id, None);
         }
         "set_max_thinking_tokens" => {
@@ -987,8 +971,6 @@ async fn handle_control_request(
                 control_error(&control.request_id, "settings must be an object");
                 return false;
             };
-            // CC `print.ts:3700-3702`: the model before, to detect a switch.
-            let prev_model = crate::utils::model::model::get_main_loop_model();
             let mut merged = crate::utils::settings::get_flag_settings_inline()
                 .and_then(|settings| settings.as_object().cloned())
                 .unwrap_or_default();
@@ -1000,21 +982,17 @@ async fn handle_control_request(
                 }
             }
             crate::utils::settings::set_flag_settings_inline(Some(merged.into()));
-            // `:3731-3741`: a model key moves the override, which outranks the
-            // settings cascade in `getUserSpecifiedModelSetting()`; `null`
-            // clears it. `String(incoming.model)` for anything else.
+            // CC `:3731-3741`: a model key moves the session; `null` clears it.
             if let Some(model) = incoming.get("model") {
-                crate::bootstrap::state::set_main_loop_model_override(match model {
-                    serde_json::Value::Null => None,
-                    serde_json::Value::String(model) => Some(Some(model.clone())),
-                    other => Some(Some(other.to_string())),
-                });
-            }
-            // `:3745-3752`: only a switch sets `activeUserSpecifiedModel`, to
-            // the resolved model.
-            let new_model = crate::utils::model::model::get_main_loop_model();
-            if new_model != prev_model {
-                engine.set_model(new_model);
+                let requested = match model {
+                    serde_json::Value::Null => "default".to_string(),
+                    serde_json::Value::String(model) => model.clone(),
+                    other => other.to_string(),
+                };
+                if let Err(error) = set_session_profile_from_ref(&requested) {
+                    control_error(&control.request_id, &error);
+                    return false;
+                }
             }
             control_success(&control.request_id, None);
         }
@@ -1575,27 +1553,40 @@ fn build_mcp_server_statuses(
         .collect()
 }
 
+/// Switch the headless session to the profile `requested` names (`default` is
+/// `selection.main`). Every later submit routes through it.
+fn set_session_profile_from_ref(requested: &str) -> Result<(), String> {
+    let settings = crate::utils::settings::get_initial_settings();
+    let profile = if requested.trim() == "default" {
+        None
+    } else {
+        match crate::utils::model::profile::resolve_model_ref(settings.nyan.as_deref(), requested)
+            .map_err(|error| error.to_string())?
+        {
+            (crate::utils::model::profile::ModelChoice::Profile(profile), _) => Some(profile),
+            (crate::utils::model::profile::ModelChoice::Inherit, _) => {
+                crate::bootstrap::state::get_session_profile()
+            }
+        }
+    };
+    crate::bootstrap::state::set_session_profile(profile);
+    Ok(())
+}
+
+/// Maps to CC `print.ts` `supportedModels`: the configured profiles.
 fn sdk_model_infos() -> Vec<serde_json::Value> {
-    crate::components::model_picker::model_picker_options(usize::MAX)
-        .into_iter()
-        .map(|option| {
-            let value = if option.value == crate::components::model_picker::MODEL_NO_PREFERENCE {
-                "default".to_string()
-            } else {
-                option.value
-            };
-            let resolved = if value == "default" {
-                crate::utils::model::model::get_default_main_loop_model()
-            } else {
-                crate::utils::model::model::parse_user_specified_model(&value)
-            };
+    let settings = crate::utils::settings::get_initial_settings();
+    let nyan = settings.nyan.as_deref();
+    crate::utils::model::profile::profile_names(nyan)
+        .map(|name| {
+            let model = nyan
+                .and_then(|nyan| crate::utils::model::profile::resolve_profile(nyan, name).ok())
+                .map(|profile| profile.model)
+                .unwrap_or_default();
             let mut info = serde_json::Map::from_iter([
-                ("value".to_string(), serde_json::json!(value)),
-                ("displayName".to_string(), serde_json::json!(option.label)),
-                (
-                    "description".to_string(),
-                    serde_json::json!(option.description.unwrap_or_default()),
-                ),
+                ("value".to_string(), serde_json::json!(name)),
+                ("displayName".to_string(), serde_json::json!(name)),
+                ("description".to_string(), serde_json::json!(model)),
             ]);
             // Adapters clamp the unified tiers per model, so every model takes all four.
             info.insert("supportsEffort".to_string(), true.into());
@@ -1603,11 +1594,8 @@ fn sdk_model_infos() -> Vec<serde_json::Value> {
                 "supportedEffortLevels".to_string(),
                 serde_json::json!(["off", "medium", "high", "max"]),
             );
-            if crate::utils::thinking::model_supports_adaptive_thinking(&resolved) {
+            if crate::utils::thinking::model_supports_adaptive_thinking(&model) {
                 info.insert("supportsAdaptiveThinking".to_string(), true.into());
-            }
-            if crate::utils::fast_mode::is_fast_mode_supported_by_model(Some(&value)) {
-                info.insert("supportsFastMode".to_string(), true.into());
             }
             info.into()
         })
@@ -2947,34 +2935,45 @@ mod tests {
         ));
     }
 
-    /// CC `main.tsx:3052-3071` then `print.ts:1220`, `:2932-2940` and
-    /// `:3700-3752`: the launch model is the override and
-    /// `activeUserSpecifiedModel` before any control request; `set_model`
-    /// moves both; `apply_flag_settings` moves the override and sets
-    /// `activeUserSpecifiedModel` to the resolved model, only on a switch.
+    fn install_print_profiles() {
+        crate::utils::settings::settings_cache::install_test_settings(
+            serde_json::from_value(serde_json::json!({
+                "nyan": {
+                    "providers": {"p": {"kind": "anthropic", "protocol": "anthropicMessages"}},
+                    "models": {
+                        "main": {"provider": "p", "model": "claude-sonnet-4-6",
+                            "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}},
+                        "fast": {"provider": "p", "model": "claude-haiku-4-5",
+                            "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}}
+                    },
+                    "selection": {"main": "main"}
+                }
+            }))
+            .unwrap(),
+        );
+    }
+
+    /// `--model`, `set_model` and `apply_flag_settings` all move the session
+    /// profile; an unknown model is refused and changes nothing.
     #[tokio::test]
-    async fn model_controls_move_the_main_loop_model_like_cc() {
+    async fn model_controls_move_the_session_profile() {
         use crate::utils::model::model::get_main_loop_model;
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _opus = EnvVarGuard::set("ANTHROPIC_DEFAULT_OPUS_MODEL", "custom-opus");
-        let _sonnet = EnvVarGuard::set("ANTHROPIC_DEFAULT_SONNET_MODEL", "custom-sonnet");
-        let _haiku = EnvVarGuard::set("ANTHROPIC_DEFAULT_HAIKU_MODEL", "custom-haiku");
-        let original_override = crate::bootstrap::state::get_main_loop_model_override();
+        install_print_profiles();
         let original_flags = crate::utils::settings::get_flag_settings_inline();
 
         let cli = CliConfig {
-            model: Some("haiku".to_string()),
+            model: Some("fast".to_string()),
             ..CliConfig::default()
         };
-        let user_specified_model = crate::main::apply_headless_launch_model(
+        crate::main::apply_headless_launch_model(
             &crate::utils::settings::types::SettingsJson::default(),
             &cli,
-        );
-        assert_eq!(user_specified_model.as_deref(), Some("haiku"));
-        // No submit yet: a control request already sees the launch model.
-        assert_eq!(get_main_loop_model(), "custom-haiku");
+        )
+        .unwrap();
+        assert_eq!(get_main_loop_model(), "claude-haiku-4-5");
 
         let mut engine = QueryEngine::new(crate::query_engine::QueryEngineConfig {
             cli_config: cli,
@@ -2984,9 +2983,7 @@ mod tests {
             output_sink: None,
             permission_resolver: None,
             handle_elicitation: crate::tool::HandleElicitationCallback::default(),
-            user_specified_model,
         });
-        assert_eq!(engine.user_specified_model_for_test(), Some("haiku"));
         let bridge = SdkControlBridge::default();
         let mut initialized = true;
         let control = |request| ControlInput {
@@ -2995,41 +2992,35 @@ mod tests {
         };
 
         handle_control_request(
-            control(serde_json::json!({"subtype": "set_model", "model": "opus"})),
+            control(serde_json::json!({"subtype": "set_model", "model": "default"})),
             &mut initialized,
             &mut engine,
             &bridge,
         )
         .await;
-        assert_eq!(engine.user_specified_model_for_test(), Some("opus"));
-        assert_eq!(get_main_loop_model(), "custom-opus");
+        assert_eq!(get_main_loop_model(), "claude-sonnet-4-6");
 
         handle_control_request(
-            control(serde_json::json!({"subtype": "apply_flag_settings", "settings": {"model": "sonnet"}})),
+            control(serde_json::json!({"subtype": "set_model", "model": "sonnet"})),
             &mut initialized,
             &mut engine,
             &bridge,
         )
         .await;
-        assert_eq!(get_main_loop_model(), "custom-sonnet");
+        assert_eq!(get_main_loop_model(), "claude-sonnet-4-6");
+        assert_eq!(crate::bootstrap::state::get_session_profile(), None);
+
+        handle_control_request(
+            control(serde_json::json!({"subtype": "apply_flag_settings", "settings": {"model": "fast"}})),
+            &mut initialized,
+            &mut engine,
+            &bridge,
+        )
+        .await;
         assert_eq!(
-            engine.user_specified_model_for_test(),
-            Some("custom-sonnet")
+            crate::bootstrap::state::get_session_profile().as_deref(),
+            Some("fast")
         );
-
-        // No switch: `activeUserSpecifiedModel` stays.
-        engine.set_model("kept".to_string());
-        handle_control_request(
-            control(serde_json::json!({"subtype": "apply_flag_settings", "settings": {"model": "sonnet"}})),
-            &mut initialized,
-            &mut engine,
-            &bridge,
-        )
-        .await;
-        assert_eq!(engine.user_specified_model_for_test(), Some("kept"));
-
-        // `null` clears the override; on a switch the new model is adopted.
-        engine.set_model("custom-sonnet".to_string());
         handle_control_request(
             control(
                 serde_json::json!({"subtype": "apply_flag_settings", "settings": {"model": null}}),
@@ -3039,17 +3030,10 @@ mod tests {
             &bridge,
         )
         .await;
-        assert_eq!(
-            crate::bootstrap::state::get_main_loop_model_override(),
-            None
-        );
-        assert_eq!(
-            engine.user_specified_model_for_test(),
-            Some(get_main_loop_model().as_str())
-        );
+        assert_eq!(crate::bootstrap::state::get_session_profile(), None);
 
-        crate::bootstrap::state::set_main_loop_model_override(original_override);
         crate::utils::settings::set_flag_settings_inline(original_flags);
+        crate::utils::settings::settings_cache::reset_settings_cache();
     }
 
     #[test]
@@ -3208,10 +3192,19 @@ mod tests {
     }
 
     #[test]
-    fn sdk_model_info_response_is_non_empty() {
+    fn sdk_model_info_lists_the_configured_profiles() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        install_print_profiles();
         let models = sdk_model_infos();
-        assert!(models.iter().any(|model| model["value"] == "sonnet[1m]"));
-        assert!(models.iter().any(|model| model["value"] == "haiku"));
+        let values = models
+            .iter()
+            .map(|model| model["value"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(values, ["fast", "main"]);
+        assert_eq!(models[1]["description"], "claude-sonnet-4-6");
+        crate::utils::settings::settings_cache::reset_settings_cache();
     }
 
     #[test]

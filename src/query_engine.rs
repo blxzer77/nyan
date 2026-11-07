@@ -48,7 +48,6 @@ pub(crate) struct QueryEngineReplayInput {
 struct QueryEngineOverrides {
     system_prompt: Option<String>,
     append_system_prompt: Option<String>,
-    model: Option<String>,
     thinking: Option<crate::utils::thinking::ThinkingConfig>,
     permission_mode: Option<crate::types::permissions::PermissionMode>,
     mcp_state: Option<crate::state::app_state_store::McpState>,
@@ -178,10 +177,6 @@ pub(crate) struct QueryEngineConfig {
     /// — the print/SDK elicitation forwarding leg carried onto the tool-use
     /// context.
     pub(crate) handle_elicitation: crate::tool::HandleElicitationCallback,
-    /// Maps to: CC `QueryEngineConfig.userSpecifiedModel` (QueryEngine.ts:143):
-    /// print's `activeUserSpecifiedModel`, first the launch `effectiveModel`
-    /// (`print.ts:1220`).
-    pub(crate) user_specified_model: Option<String>,
 }
 
 /// Maps to CC `QueryEngine.ts:184-1183` `QueryEngine`.
@@ -215,7 +210,6 @@ impl QueryEngine {
         Self {
             overrides: QueryEngineOverrides {
                 mcp_state: config.mcp_state,
-                model: config.user_specified_model,
                 ..QueryEngineOverrides::default()
             },
             config: config.cli_config,
@@ -359,19 +353,6 @@ impl QueryEngine {
 
     pub(crate) fn set_append_system_prompt(&mut self, prompt: String) {
         self.overrides.append_system_prompt = Some(prompt);
-    }
-
-    /// Maps to CC `QueryEngine.ts:1174-1176` `QueryEngine.setModel()`, which
-    /// sets `config.userSpecifiedModel`. Print keeps that value as
-    /// `activeUserSpecifiedModel` and passes it to every `ask`.
-    pub(crate) fn set_model(&mut self, model: String) {
-        self.overrides.model = Some(model);
-    }
-
-    /// CC `this.config.userSpecifiedModel`.
-    #[cfg(test)]
-    pub(crate) fn user_specified_model_for_test(&self) -> Option<&str> {
-        self.overrides.model.as_deref()
     }
 
     pub(crate) fn set_thinking(
@@ -574,14 +555,14 @@ async fn run_query(input: QueryRunInput<'_>) -> Result<QueryEngineOutcome, Strin
         resolve_system_prompt_overrides(config, overrides)?;
     context.custom_system_prompt = custom_system_prompt;
     context.append_system_prompt = append_system_prompt;
-    let initial_main_loop_model = initial_main_loop_model(overrides);
+    let initial_main_loop_model = initial_main_loop_model();
     context.main_loop_model = Some(initial_main_loop_model.clone());
+    context.main_loop_profile = crate::bootstrap::state::get_session_profile();
     context.thinking_config = Some(resolve_thinking(config));
     context.effort_value = initial_state.effort_value.clone();
     // CC QueryEngine.ts:348/496 — the config's handleElicitation leg rides the
     // tool-use context so MCP URL-elicitation retries reach the SDK consumer.
     context.handle_elicitation = handle_elicitation;
-    context.fast_mode = Some(initial_state.fast_mode);
     context.max_budget_usd = config
         .max_budget_usd
         .as_deref()
@@ -590,7 +571,7 @@ async fn run_query(input: QueryRunInput<'_>) -> Result<QueryEngineOutcome, Strin
         .fallback_model
         .as_deref()
         .filter(|fallback| *fallback != "default")
-        .map(crate::utils::model::model::parse_user_specified_model);
+        .map(str::to_string);
     let structured_required = engine_schema.is_some();
     // The Rust engine derives from `CliConfig` what CC threads through three
     // layers, so the two upstream owners are called here rather than copied:
@@ -681,6 +662,7 @@ async fn run_query(input: QueryRunInput<'_>) -> Result<QueryEngineOutcome, Strin
     // CC computes `initialMainLoopModel` on every submit; a carried context
     // still holds the previous turn's.
     context.main_loop_model = Some(initial_main_loop_model.clone());
+    context.main_loop_profile = crate::bootstrap::state::get_session_profile();
     if let Some(thinking) = &overrides.thinking {
         context.thinking_config = Some(thinking.clone());
     }
@@ -1303,20 +1285,12 @@ fn permission_denial_value(
     })
 }
 
-/// Maps to: CC `QueryEngine.ts:274-276` `initialMainLoopModel`:
-/// `userSpecifiedModel ? parseUserSpecifiedModel(userSpecifiedModel) :
-/// getMainLoopModel()`. `userSpecifiedModel` is print's
-/// `activeUserSpecifiedModel`: the launch `effectiveModel`
-/// ([`QueryEngineConfig::user_specified_model`]), then what `set_model` and
-/// `apply_flag_settings` set. Parsed as given, it does not pass the
-/// Provider profile validation is applied before the request model is used.
-fn initial_main_loop_model(overrides: &QueryEngineOverrides) -> String {
-    overrides
-        .model
-        .as_deref()
-        .filter(|model| !model.is_empty())
-        .map(crate::utils::model::model::parse_user_specified_model)
-        .unwrap_or_else(crate::utils::model::model::get_main_loop_model)
+/// Maps to: CC `QueryEngine.ts:274-276` `initialMainLoopModel`.
+///
+/// @nyan: the session profile (`--model`, `set_model`, `apply_flag_settings`)
+/// decides; the model is that profile's, computed once per submit.
+fn initial_main_loop_model() -> String {
+    crate::utils::model::model::get_main_loop_model()
 }
 
 /// `cli/print.rs#build_all_tools` (CC `print.ts:1474-1500`) off the
@@ -1978,7 +1952,6 @@ mod tests {
             output_sink: None,
             permission_resolver: None,
             handle_elicitation: crate::tool::HandleElicitationCallback::default(),
-            user_specified_model: None,
         });
         assert_eq!(engine.schema(), Some(&argv));
         assert_eq!(engine.tool_schema(), Some(&argv));
@@ -1999,7 +1972,6 @@ mod tests {
             output_sink: None,
             permission_resolver: None,
             handle_elicitation: crate::tool::HandleElicitationCallback::default(),
-            user_specified_model: None,
         });
         init_only.set_init_schema(init.clone());
         assert_eq!(init_only.schema(), Some(&init));
@@ -2018,7 +1990,6 @@ mod tests {
             output_sink: None,
             permission_resolver: None,
             handle_elicitation: crate::tool::HandleElicitationCallback::default(),
-            user_specified_model: None,
         });
         let error = file_read_engine
             .submit_message("unused".to_string(), None)
@@ -2037,7 +2008,6 @@ mod tests {
             output_sink: None,
             permission_resolver: None,
             handle_elicitation: crate::tool::HandleElicitationCallback::default(),
-            user_specified_model: None,
         });
         let error = alias_engine
             .submit_message("unused".to_string(), None)
@@ -2071,7 +2041,6 @@ mod tests {
             output_sink: None,
             permission_resolver: None,
             handle_elicitation: crate::tool::HandleElicitationCallback::default(),
-            user_specified_model: None,
         });
         engine.carry = Some(HeadlessCarry {
             history: Vec::new(),
@@ -2121,7 +2090,6 @@ mod tests {
             output_sink: None,
             permission_resolver: None,
             handle_elicitation: crate::tool::HandleElicitationCallback::default(),
-            user_specified_model: None,
         });
         engine.carry = Some(HeadlessCarry {
             history: Vec::new(),
@@ -2153,31 +2121,6 @@ mod tests {
         );
     }
 
-    /// CC `QueryEngine.ts:274-276`: a model alias is resolved, both the one
-    /// `setModel` set and the launch model the override holds. The saved
-    /// `opus[1m]` used to reach the API as the literal `opus`.
-    #[test]
-    fn initial_main_loop_model_resolves_aliases_like_query_engine() {
-        let _lock = TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _opus = EnvVarGuard::set("ANTHROPIC_DEFAULT_OPUS_MODEL", "custom-opus");
-        let _sonnet = EnvVarGuard::set("ANTHROPIC_DEFAULT_SONNET_MODEL", "custom-sonnet");
-        let original = crate::bootstrap::state::get_main_loop_model_override();
-
-        crate::bootstrap::state::set_main_loop_model_override(Some(Some("opus[1m]".into())));
-        let mut overrides = QueryEngineOverrides::default();
-        assert_eq!(initial_main_loop_model(&overrides), "custom-opus[1m]");
-
-        overrides.model = Some("sonnet".into());
-        assert_eq!(initial_main_loop_model(&overrides), "custom-sonnet");
-        // `userSpecifiedModel ? ...`: an empty one is unset.
-        overrides.model = Some(String::new());
-        assert_eq!(initial_main_loop_model(&overrides), "custom-opus[1m]");
-
-        crate::bootstrap::state::set_main_loop_model_override(original);
-    }
-
     #[test]
     fn query_engine_exposes_official_stateful_control_surface() {
         let mut engine = QueryEngine::new(QueryEngineConfig {
@@ -2188,10 +2131,7 @@ mod tests {
             output_sink: None,
             permission_resolver: None,
             handle_elicitation: crate::tool::HandleElicitationCallback::default(),
-            user_specified_model: None,
         });
-        engine.set_model("claude-test".to_string());
-        assert_eq!(initial_main_loop_model(&engine.overrides), "claude-test");
         assert!(engine.get_messages().is_empty());
         assert!(engine.get_read_file_state().is_empty());
         assert!(!engine.get_session_id().is_empty());
@@ -2272,8 +2212,7 @@ mod sdk_mapper_tests {
                 output_sink: None,
                 permission_resolver: None,
                 handle_elicitation: crate::tool::HandleElicitationCallback::default(),
-                user_specified_model: None,
-            });
+                });
             let result = runtime.block_on(async {
                 tokio::time::timeout(
                     std::time::Duration::from_secs(15),

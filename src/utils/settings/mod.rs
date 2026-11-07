@@ -1204,7 +1204,7 @@ mod tests {
             .expect("write user settings");
         fs::write(
             managed.join("managed-settings.json"),
-            r#"{"fastMode":false}"#,
+            r#"{"promptSuggestionEnabled":false}"#,
         )
         .expect("write managed settings");
         fs::write(
