@@ -161,8 +161,16 @@ pub fn subagent_model_spec<'a>(
         ),
     ]
     .into_iter()
-    .find_map(|(spec, layer)| spec.filter(|spec| !spec.trim().is_empty()).map(|spec| (spec, layer)))
-    .unwrap_or_else(|| (default_subagent_spec(agent_type), SubagentModelLayer::TypeDefault))
+    .find_map(|(spec, layer)| {
+        spec.filter(|spec| !spec.trim().is_empty())
+            .map(|spec| (spec, layer))
+    })
+    .unwrap_or_else(|| {
+        (
+            default_subagent_spec(agent_type),
+            SubagentModelLayer::TypeDefault,
+        )
+    })
 }
 
 /// Resolves a subagent's model and effort along the chain of

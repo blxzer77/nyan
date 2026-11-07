@@ -10,7 +10,7 @@ use super::tool_selector::AgentToolOption;
 use crate::components::custom_select::SelectOptionData;
 use crate::components::design_system::dialog::Dialog;
 use crate::tools::agent_tool::load_agents_dir::{
-    AgentDefinition, AgentDefinitionSource, get_active_agents_from_list,
+    AgentDefinition, AgentDefinitionSource, FailedAgentFile, get_active_agents_from_list,
     get_agent_definitions_with_overrides,
 };
 use crate::utils::prompt_editor::{EditorResult, ExternalEditorRuntime};
@@ -67,6 +67,7 @@ pub struct AgentsMenuProps<'a> {
     pub tools: Vec<AgentToolOption>,
     pub all_agents: Vec<AgentDefinition>,
     pub active_agents: Vec<AgentDefinition>,
+    pub failed_files: Vec<FailedAgentFile>,
     pub on_exit: HandlerMut<'a, String>,
 }
 
@@ -77,6 +78,8 @@ pub fn AgentsMenu<'a>(
 ) -> impl Into<AnyElement<'static>> {
     let initial = props.all_agents.clone();
     let mut all_agents = hooks.use_state(move || initial);
+    let initial_failed = props.failed_files.clone();
+    let mut failed_files = hooks.use_state(move || initial_failed);
     let mut mode = hooks.use_state(|| MenuMode::List);
     let mut changes = hooks.use_state(Vec::<String>::new);
     let mut pending_menu = hooks.use_state(|| None::<String>);
@@ -183,6 +186,7 @@ pub fn AgentsMenu<'a>(
         let loaded =
             get_agent_definitions_with_overrides(&crate::bootstrap::state::get_original_cwd());
         all_agents.set(loaded.all_agents);
+        failed_files.set(loaded.failed_files);
         mode.set(MenuMode::List);
     }
 
@@ -211,6 +215,7 @@ pub fn AgentsMenu<'a>(
             return element! { Fragment {
                 AgentsList(
                     source: Some(AgentsListSource::All), agents: resolved, changes: changes_snapshot,
+                    failed_files: failed_files.read().clone(),
                     on_back: move |_| {
                         let message = if exit_changes.is_empty() { "Agents dialog dismissed".to_string() } else { format!("Agent changes:\n{}", exit_changes.join("\n")) };
                         exit.set(Some(message));

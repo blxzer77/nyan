@@ -7,8 +7,8 @@ use crate::keybindings::types::ContextName;
 use crate::keybindings::use_keybinding::use_keybinding;
 use crate::tools::agent_tool::agent_color_manager::parse_agent_color_name;
 use crate::tools::agent_tool::agent_memory::get_memory_scope_display;
-use crate::tools::agent_tool::load_agents_dir::{AgentDefinition, AgentDefinitionSource};
 use crate::tools::agent_tool::agent_tool_utils::agent_tool_spec_matches;
+use crate::tools::agent_tool::load_agents_dir::{AgentDefinition, AgentDefinitionSource};
 use crate::utils::model::agent::describe_effective_subagent_model;
 use crate::utils::theme::Theme;
 use iocraft::prelude::*;
@@ -89,7 +89,9 @@ pub fn AgentDetail<'a>(
     let model_text = describe_effective_subagent_model(
         agent.model.as_deref(),
         &agent.agent_type,
-        crate::utils::settings::get_initial_settings().nyan.as_deref(),
+        crate::utils::settings::get_initial_settings()
+            .nyan
+            .as_deref(),
     );
     let tools_text = if has_wildcard {
         "All tools".to_string()
@@ -246,8 +248,14 @@ mod tests {
         }
         .render(Some(120))
         .to_string();
-        assert!(text.contains("Tools: mcp__srv, mcp__other__*"), "canvas=\n{text}");
+        assert!(
+            text.contains("Tools: mcp__srv, mcp__other__*"),
+            "canvas=\n{text}"
+        );
         assert!(text.contains("Unrecognized: mcp__gone"), "canvas=\n{text}");
-        assert!(text.contains("Disallowed tools: mcp__srv__b"), "canvas=\n{text}");
+        assert!(
+            text.contains("Disallowed tools: mcp__srv__b"),
+            "canvas=\n{text}"
+        );
     }
 }

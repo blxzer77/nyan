@@ -446,7 +446,8 @@ pub fn get_agent_definitions_with_overrides(cwd: &Path) -> AgentDefinitionsResul
     {
         initialize_agent_memory_snapshots(&mut custom_agents, cwd);
     }
-    let flag_agents = retain_valid_models(cli_flag_agents_from_bootstrap(), nyan, &mut failed_files);
+    let flag_agents =
+        retain_valid_models(cli_flag_agents_from_bootstrap(), nyan, &mut failed_files);
     let mut all_agents = built_in_agents;
     all_agents.extend(plugin_agents);
     all_agents.extend(custom_agents);
@@ -1505,7 +1506,12 @@ mod tests {
         let _env = pin_loader_env(&root, &config_home);
         let result = get_agent_definitions_with_overrides(&root);
 
-        let loaded = |name: &str| result.all_agents.iter().any(|agent| agent.agent_type == name);
+        let loaded = |name: &str| {
+            result
+                .all_agents
+                .iter()
+                .any(|agent| agent.agent_type == name)
+        };
         for name in ["profile", "tier", "inherit", "effort", "pack:ok", "flag-ok"] {
             assert!(loaded(name), "{name} loads");
         }
@@ -1523,7 +1529,11 @@ mod tests {
         assert_eq!(failed[1].0, PathBuf::from("pack:broken"));
         assert!(failed[1].1.contains("\"opus\""));
         assert_eq!(failed[2].0, PathBuf::from("flag-bad"));
-        assert!(failed[2].1.starts_with("Invalid \"model\" field: Unknown model \"openai/gpt-5\""));
+        assert!(
+            failed[2]
+                .1
+                .starts_with("Invalid \"model\" field: Unknown model \"openai/gpt-5\"")
+        );
         let _ = fs::remove_dir_all(root);
     }
 

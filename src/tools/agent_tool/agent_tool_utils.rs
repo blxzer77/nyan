@@ -606,8 +606,8 @@ mod tests {
         let resolve = |tools: &[&str], disallowed: &[&str]| {
             let mut agent =
                 AgentDefinition::new("custom", "Use", AgentDefinitionSource::ProjectSettings);
-            agent.tools = (!tools.is_empty())
-                .then(|| tools.iter().map(ToString::to_string).collect());
+            agent.tools =
+                (!tools.is_empty()).then(|| tools.iter().map(ToString::to_string).collect());
             agent.disallowed_tools = (!disallowed.is_empty())
                 .then(|| disallowed.iter().map(ToString::to_string).collect());
             let resolved = resolve_agent_tools(&agent, &available, false, false, None);

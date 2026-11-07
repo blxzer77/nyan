@@ -384,7 +384,10 @@ mod tests {
         let options = agent_creation_options();
         assert_eq!(options.model, "claude-haiku-4-5");
         assert_eq!(options.profile.as_deref(), Some("small"));
-        assert_eq!(options.effort_value, Some(crate::utils::effort::Effort::Off));
+        assert_eq!(
+            options.effort_value,
+            Some(crate::utils::effort::Effort::Off)
+        );
         assert_eq!(options.query_source, "agent_creation");
         assert_eq!(options.temperature_override, Some(0.0));
 
@@ -392,7 +395,10 @@ mod tests {
         let options = agent_creation_options();
         assert_eq!(options.model, "claude-opus-4-6");
         assert_eq!(options.profile.as_deref(), Some("big"));
-        assert_eq!(options.effort_value, Some(crate::utils::effort::Effort::Medium));
+        assert_eq!(
+            options.effort_value,
+            Some(crate::utils::effort::Effort::Medium)
+        );
 
         crate::utils::settings::settings_cache::reset_settings_cache();
     }
