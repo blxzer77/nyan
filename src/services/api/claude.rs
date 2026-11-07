@@ -1982,12 +1982,15 @@ fn build_sdk_message_create_plan(
         .enable_prompt_caching
         .unwrap_or_else(|| get_prompt_caching_enabled(&options.model))
         && cache_retention != CacheRetention::None;
-    let normalized_api_messages = crate::utils::messages::ensure_tool_result_pairing(
-        crate::utils::messages::normalize_messages_for_api_with_model(
-            messages.to_vec(),
-            tools,
-            Some(&options.model),
+    let normalized_api_messages = crate::services::provider::history::transform_for_target(
+        crate::utils::messages::ensure_tool_result_pairing(
+            crate::utils::messages::normalize_messages_for_api_with_model(
+                messages.to_vec(),
+                tools,
+                Some(&options.model),
+            ),
         ),
+        &request_producer(options),
     );
     super::api_trace::emit(
         &trace,
@@ -3495,14 +3498,17 @@ fn build_neutral_request(
     tools: &[Tool],
     options: &Options,
 ) -> crate::services::provider::ir::ModelRequest {
-    let api_messages = crate::utils::messages::strip_advisor_blocks(
-        crate::utils::messages::ensure_tool_result_pairing(
-            crate::utils::messages::normalize_messages_for_api_with_model(
-                messages.to_vec(),
-                tools,
-                Some(&options.model),
+    let api_messages = crate::services::provider::history::transform_for_target(
+        crate::utils::messages::strip_advisor_blocks(
+            crate::utils::messages::ensure_tool_result_pairing(
+                crate::utils::messages::normalize_messages_for_api_with_model(
+                    messages.to_vec(),
+                    tools,
+                    Some(&options.model),
+                ),
             ),
         ),
+        &request_producer(options),
     );
     let max_tokens = options
         .max_output_tokens_override
@@ -3545,6 +3551,18 @@ fn resolved_target_for(
     });
     resolved.model = model.to_string();
     resolved
+}
+
+/// @nyan: the model this request goes to, as history records its producer.
+/// The history pass compares against it, and the reply is stamped with it.
+fn request_producer(options: &Options) -> crate::types::message::ModelProducer {
+    let target = resolved_target_for(&options.model, options.profile.as_deref());
+    crate::types::message::ModelProducer {
+        profile: target.profile,
+        provider: target.provider,
+        protocol: target.protocol,
+        model: target.model,
+    }
 }
 
 /// A stream that opened, and which profile's options it was opened with.
@@ -4064,6 +4082,7 @@ async fn drain_stream_events(
     let mut content_block_count = 0usize;
     let mut has_tool_use = false;
     let mut response_model = Some(options.model.clone());
+    let producer = request_producer(options);
     let mut response_request_id = None;
     let mut response_api_message_id = None;
     let mut stop_reason = None;
@@ -4327,7 +4346,7 @@ async fn drain_stream_events(
                             continue;
                         };
                         content_block_count += 1;
-                        let assistant = assistant_message_for_completed_block(
+                        let mut assistant = assistant_message_for_completed_block(
                             assistant_content,
                             response_model.clone(),
                             response_request_id.clone(),
@@ -4335,6 +4354,7 @@ async fn drain_stream_events(
                             stop_reason.clone(),
                             usage.clone(),
                         );
+                        assistant.set_producer(producer.clone());
                         // Maps to CC `services/api/claude.ts:2171-2208`: every
                         // completed API content block is a distinct typed
                         // AssistantMessage with its own transcript UUID.
@@ -4598,9 +4618,10 @@ async fn execute_non_streaming_fallback_to_assistant(
             crate::services::provider::execute_non_streaming(&profile, &request, &cancel, &limits)
                 .await?;
         record_request_usage(options, &response.usage, started_at);
-        return Ok(
-            response.to_assistant_message(tools, options.agent_id.as_ref().map(|id| id.0.as_str()))
-        );
+        let mut assistant = response
+            .to_assistant_message(tools, options.agent_id.as_ref().map(|id| id.0.as_str()));
+        assistant.set_producer(request_producer(options));
+        return Ok(assistant);
     }
 
     // Maps to CC `queryModel(...)` streaming-error fallback: reuse the same
@@ -4648,11 +4669,13 @@ async fn execute_non_streaming_fallback_to_assistant(
             started_at,
         );
     }
-    sdk_message_response_to_assistant_message(
+    let mut assistant = sdk_message_response_to_assistant_message(
         result,
         tools,
         options.agent_id.as_ref().map(|id| id.0.as_str()),
-    )
+    )?;
+    assistant.set_producer(request_producer(options));
+    Ok(assistant)
 }
 
 pub(crate) fn sdk_message_response_to_assistant_message(
