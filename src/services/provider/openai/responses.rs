@@ -252,7 +252,11 @@ pub fn build_body(
             "strict": false,
         }});
     }
-    if target.cache_retention != crate::utils::settings::nyan::CacheRetention::None {
+    // Only the OpenAI kind takes OpenAI's cache parameters. The ChatGPT
+    // backend (always that kind) keeps the key but refuses the TTL fields.
+    if compat.openai_prompt_cache
+        && target.cache_retention != crate::utils::settings::nyan::CacheRetention::None
+    {
         let session_id = crate::bootstrap::state::get_session_id();
         if !session_id.is_empty() {
             body["prompt_cache_key"] = json!(super::clamp_prompt_cache_key(&session_id));
@@ -845,7 +849,7 @@ mod tests {
             messages,
             tools: vec![],
             tool_choice: ToolChoice::Auto,
-            effort: Effort::Off,
+            effort: Some(Effort::Off),
             max_output_tokens: 32_000,
             temperature: None,
             structured_output: None,
@@ -936,7 +940,7 @@ mod tests {
         r.tools = vec![tool()];
         r.tool_choice = ToolChoice::Any;
         r.disable_parallel_tools = true;
-        r.effort = Effort::Medium;
+        r.effort = Some(Effort::Medium);
         let body = build_body(&target(all()), &r, Backend::Api);
         assert_eq!(body["tools"][0]["strict"], false);
         assert_eq!(body["tools"][0]["name"], "Read");
@@ -1427,6 +1431,7 @@ mod tests {
         ] {
             let compat = Compat::resolve_full(kind, Some("other"), Some(&t.model), None);
             let body = super::build_body(&t, &req, Backend::Api, &compat);
+            assert!(body.get("prompt_cache_key").is_none(), "{kind:?}");
             assert!(body.get("prompt_cache_retention").is_none(), "{kind:?}");
             assert!(body.get("prompt_cache_options").is_none(), "{kind:?}");
         }
