@@ -302,8 +302,9 @@ mod tests {
             format!("call_{}|ab", "z".repeat(440)),
             "q".repeat(30)
         );
-        let first = transform_for_target(history(gpt.clone(), &long_id), &claude());
-        let second = transform_for_target(history(gpt, &long_id), &claude());
+        let messages = history(gpt, &long_id);
+        let first = transform_for_target(messages.clone(), &claude());
+        let second = transform_for_target(messages, &claude());
         assert_eq!(first, second);
         let AssistantContent::ToolUse(call) = &content(&first[0])[2] else {
             panic!()

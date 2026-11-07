@@ -6513,6 +6513,34 @@ mod tests {
     }
 
     #[test]
+    fn assistant_producer_roundtrips_and_rows_without_one_still_load() {
+        let producer = crate::types::message::ModelProducer {
+            profile: "ds".to_string(),
+            provider: "deepseek".to_string(),
+            protocol: crate::services::provider::ir::Protocol::OpenaiChat,
+            model: "deepseek-v4".to_string(),
+        };
+        let mut assistant = crate::utils::messages::create_assistant_message("answer".into());
+        assistant.set_producer(producer.clone());
+        let (entry, _) = typed_message_entry(&crate::types::message::Message::Assistant(assistant))
+            .expect("loggable message");
+        assert_eq!(entry["producer"]["protocol"], "openaiChat");
+        let mut legacy = entry.clone();
+        legacy.as_object_mut().unwrap().remove("producer");
+
+        let restored = crate::utils::conversation::into_typed_messages(vec![entry, legacy]);
+        let [
+            crate::types::message::Message::Assistant(with),
+            crate::types::message::Message::Assistant(without),
+        ] = restored.as_slice()
+        else {
+            panic!("expected two assistants");
+        };
+        assert_eq!(with.identity().unwrap().producer, Some(producer));
+        assert_eq!(without.identity().unwrap().producer, None);
+    }
+
+    #[test]
     fn per_content_stop_assistant_envelopes_remain_distinct_jsonl_entries() {
         let make = |uuid: &str, content: crate::types::message::AssistantContent| {
             crate::types::message::Message::Assistant(crate::types::message::AssistantMessage {
