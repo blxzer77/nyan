@@ -464,7 +464,7 @@ pub fn build_transcript_for_classifier(messages: &[Message], tools: &[Tool]) -> 
         .collect()
 }
 /// L1 SDK carrier for source inline TextBlockParam objects (including the
-/// auto_mode query-source cache-control TTL from the canonical API owner).
+/// the profile cache-control TTL from the canonical API owner).
 fn classifier_text_block(text: impl Into<String>, cached: bool) -> TextBlockParam {
     TextBlockParam {
         text: text.into(),
