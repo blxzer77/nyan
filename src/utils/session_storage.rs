@@ -6770,6 +6770,101 @@ mod tests {
     }
 
     #[test]
+    fn usage_entries_append_to_the_transcript_and_resume_replays_them() {
+        struct Restore {
+            session_id: String,
+            project_dir: Option<PathBuf>,
+            meta: CurrentSessionMeta,
+            root: PathBuf,
+        }
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                *get_project().current_session_meta.write().unwrap() = self.meta.clone();
+                crate::bootstrap::state::switch_session(&self.session_id, self.project_dir.clone());
+                crate::cost_tracker::reset_cost_state();
+                let _ = fs::remove_dir_all(&self.root);
+            }
+        }
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let _history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        crate::bootstrap::state::set_session_persistence_disabled(false);
+        let restore = Restore {
+            session_id: crate::bootstrap::state::get_session_id(),
+            project_dir: crate::bootstrap::state::get_session_project_dir(),
+            meta: get_project().current_session_meta.read().unwrap().clone(),
+            root: std::env::temp_dir().join(format!("nyan-usage-{}", Uuid::new_v4())),
+        };
+        let path = restore.root.join("usage-active.jsonl");
+        fs::create_dir_all(&restore.root).unwrap();
+        fs::write(
+            &path,
+            "{\"type\":\"user\",\"uuid\":\"u1\",\"message\":{}}\n",
+        )
+        .unwrap();
+        crate::bootstrap::state::switch_session("usage-active", Some(restore.root.clone()));
+        get_project()
+            .current_session_meta
+            .write()
+            .unwrap()
+            .session_file = Some(path.clone());
+
+        let record = |model: &str, source, cost_usd| crate::cost_tracker::UsageRecord {
+            profile: "main".to_string(),
+            provider: "anthropic".to_string(),
+            model: model.to_string(),
+            source,
+            input_tokens: 10,
+            output_tokens: 4,
+            cache_read_tokens: 0,
+            cache_write_5m_tokens: 0,
+            cache_write_1h_tokens: 2,
+            reasoning_tokens: 0,
+            cost_usd,
+            duration_ms: 5,
+        };
+        append_usage_entry(&record(
+            "a",
+            crate::cost_tracker::CostSource::Main,
+            Some(0.5),
+        ))
+        .unwrap();
+        append_usage_entry(&record(
+            "b",
+            crate::cost_tracker::CostSource::Subagent,
+            None,
+        ))
+        .unwrap();
+        crate::cost_tracker::reset_cost_state();
+        crate::cost_tracker::add_to_total_lines_changed(3, 1);
+        crate::cost_tracker::save_current_session_stats().unwrap();
+        let flushed = std::thread::spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(flush_session_storage())
+        })
+        .join()
+        .unwrap();
+        flushed.unwrap();
+
+        crate::cost_tracker::reset_cost_state();
+        crate::cost_tracker::restore_cost_state_from_transcript(&path);
+        let total = crate::cost_tracker::get_total_usage();
+        assert_eq!((total.requests, total.input_tokens), (2, 20));
+        assert_eq!(total.cost_usd, 0.5);
+        assert!(total.cost_unknown);
+        assert_eq!(crate::cost_tracker::get_model_usage().len(), 2);
+        assert_eq!(crate::cost_tracker::get_source_usage().len(), 2);
+        assert_eq!(crate::cost_tracker::get_total_lines_added(), 3);
+        assert_eq!(crate::cost_tracker::get_total_lines_removed(), 1);
+        // Usage entries are metadata, not conversation messages.
+        let loaded = load_session_structured_from_path(&path);
+        assert_eq!(loaded.messages.len(), 1);
+    }
+
+    #[test]
     fn record_content_replacement_is_safe_noop_while_session_writes_disabled() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _write_disabled = EnvVarGuard::unset("NYAN_WRITE_ENABLED");

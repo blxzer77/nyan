@@ -321,6 +321,33 @@ mod tests {
     }
 
     #[test]
+    fn one_hour_cache_writes_are_split_out_of_the_cache_write_count() {
+        let mut start = message_start(10);
+        start["message"]["usage"]["cache_creation"] =
+            serde_json::json!({"ephemeral_5m_input_tokens": 3, "ephemeral_1h_input_tokens": 4});
+        let kinds = events(&[
+            start,
+            serde_json::json!({"type":"message_delta","delta":{"stop_reason":"end_turn"},
+                               "usage":{"output_tokens":9}}),
+        ]);
+        let usages = kinds
+            .iter()
+            .filter_map(|kind| match kind {
+                StreamEventKind::MessageStart { usage, .. }
+                | StreamEventKind::MessageDelta { usage, .. } => Some(*usage),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(usages.len(), 2);
+        for usage in usages {
+            assert_eq!(
+                (usage.cache_write_tokens, usage.cache_write_1h_tokens),
+                (7, 4)
+            );
+        }
+    }
+
+    #[test]
     fn text_block_streams_through_as_start_delta_stop() {
         let kinds = events(&[
             message_start(10),
