@@ -98,7 +98,11 @@ fn test_wire_sends_no_cache_parameters_under_any_retention() {
     use crate::utils::settings::nyan::CacheRetention;
 
     // Gemini caches implicitly; no retention maps to a wire field.
-    for retention in [CacheRetention::Long, CacheRetention::Short, CacheRetention::None] {
+    for retention in [
+        CacheRetention::Long,
+        CacheRetention::Short,
+        CacheRetention::None,
+    ] {
         let mut target = test_target();
         target.cache_retention = retention;
         let req = minimal_request(vec![Message::User {

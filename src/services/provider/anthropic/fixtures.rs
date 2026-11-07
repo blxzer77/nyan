@@ -385,7 +385,10 @@ async fn breakpoint_ttls(
 
 #[tokio::test]
 async fn cache_retention_default_profile_sends_1h_ttl_on_the_wire() {
-    assert_eq!(breakpoint_ttls(None).await, [json!("1h"), json!("1h"), json!("1h")]);
+    assert_eq!(
+        breakpoint_ttls(None).await,
+        [json!("1h"), json!("1h"), json!("1h")]
+    );
 }
 
 #[tokio::test]

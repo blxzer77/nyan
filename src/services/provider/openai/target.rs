@@ -87,7 +87,9 @@ impl Compat {
             && model
                 .and_then(|model| {
                     crate::utils::model::metadata::metadata_provider_for_kind(kind).and_then(
-                        |snapshot| crate::utils::model::metadata::find_model_metadata(snapshot, model),
+                        |snapshot| {
+                            crate::utils::model::metadata::find_model_metadata(snapshot, model)
+                        },
                     )
                 })
                 .and_then(|entry| entry.cost.as_ref()?.cache_write)

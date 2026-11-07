@@ -820,8 +820,12 @@ mod tests {
 
     /// The body an OpenAI-kind profile on `target.model` gets.
     fn build_body(target: &ResolvedTarget, request: &ModelRequest, backend: Backend) -> Value {
-        let compat =
-            Compat::resolve_full(ProviderKind::Openai, Some("openai"), Some(&target.model), None);
+        let compat = Compat::resolve_full(
+            ProviderKind::Openai,
+            Some("openai"),
+            Some(&target.model),
+            None,
+        );
         super::build_body(target, request, backend, &compat)
     }
 

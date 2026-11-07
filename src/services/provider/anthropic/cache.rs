@@ -252,11 +252,7 @@ mod tests {
         );
         // CC `...(scope === 'global' && { scope })`: org is the API default
         // and never goes on the wire.
-        assert!(
-            get_cache_control(Some(CacheScope::Org))
-                .scope
-                .is_none()
-        );
+        assert!(get_cache_control(Some(CacheScope::Org)).scope.is_none());
     }
 
     #[test]

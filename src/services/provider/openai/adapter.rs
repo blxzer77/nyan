@@ -193,7 +193,7 @@ impl ProviderAdapter for OpenAiAdapter {
             let body: Value = match self.protocol {
                 Protocol::OpenaiResponses => {
                     responses::build_body(target, request, self.backend(), &self.target.compat)
-                },
+                }
                 _ => chat::build_body(target, request, &self.target.compat),
             };
             let opened = transport::post_stream(

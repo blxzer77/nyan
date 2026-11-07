@@ -1467,7 +1467,11 @@ mod tests {
         let mut t = target(all());
         t.model = "deepseek-v4-flash".into();
         t.cache_retention = CacheRetention::Long;
-        for kind in [ProviderKind::Gateway, ProviderKind::Vllm, ProviderKind::Ollama] {
+        for kind in [
+            ProviderKind::Gateway,
+            ProviderKind::Vllm,
+            ProviderKind::Ollama,
+        ] {
             let compat = Compat::resolve_full(kind, Some("deepseek"), Some(&t.model), None);
             let body = super::build_body(&t, &req, &compat);
             // DeepSeek caches automatically; only OpenAI takes these.
