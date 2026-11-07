@@ -1033,6 +1033,10 @@ fn Main(props: &MainProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 match restored {
                     Ok(Some(processed)) => {
                         app_store.replace_with(|state| processed.apply_to_app_state(state));
+                        if let Some(notice) = processed.missing_profile_notice() {
+                            crate::context::notifications::NotificationsWriter::new(app_store.clone())
+                                .add_notification(notice);
+                        }
                         let mut repl_props = base_repl_props.clone();
                         repl_props.apply_processed_resume(&processed);
                         resumed_repl_props.set(Some(repl_props));

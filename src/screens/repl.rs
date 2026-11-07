@@ -3545,6 +3545,11 @@ fn apply_resume_restore_result(
     // query and render projections switch atomically; startup resume uses the
     // same ProcessedResume before mount.
     app_store.replace_with(|state| result.apply_to_app_state(state));
+    if let Some(notice) = result.missing_profile_notice() {
+        // Already queued by the restore; adding it again shows the queue.
+        crate::context::notifications::NotificationsWriter::new(app_store.clone())
+            .add_notification(notice);
+    }
     // CC REPL.tsx:2548-2558: hot forks preserve the live replacement state
     // (including frozen classification and already-applied tool IDs).
     let replacement_state = (result.resume_restore_stores.entrypoint
