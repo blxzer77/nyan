@@ -182,42 +182,16 @@ pub fn save_agent_to_file(
     Ok(path)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn update_agent_file(
-    agent: &AgentDefinition,
-    when_to_use: &str,
-    tools: Option<&[String]>,
-    system_prompt: &str,
-    color: Option<&str>,
-    model: Option<&str>,
-    memory: Option<AgentMemoryScope>,
-    cwd: &Path,
-    config_home: &Path,
-) -> Result<PathBuf, String> {
-    if agent.source == AgentDefinitionSource::BuiltIn {
-        return Err("Cannot update built-in agents".to_string());
-    }
-    let path = get_actual_agent_file_path(agent, cwd, config_home)?;
-    let content = format_agent_as_markdown(
-        &agent.agent_type,
-        when_to_use,
-        tools,
-        system_prompt,
-        color,
-        model,
-        memory,
-    );
-    write_and_sync(&path, &content, false)?;
-    Ok(path)
-}
-
 pub fn delete_agent_from_file(
     agent: &AgentDefinition,
     cwd: &Path,
     config_home: &Path,
 ) -> Result<(), String> {
-    if agent.source == AgentDefinitionSource::BuiltIn {
-        return Err("Cannot delete built-in agents".to_string());
+    if !super::agents_menu::editable(agent) {
+        return Err(format!(
+            "Cannot delete {} agents",
+            agent.source.official_name()
+        ));
     }
     let path = get_actual_agent_file_path(agent, cwd, config_home)?;
     match fs::remove_file(path) {
@@ -282,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    fn save_create_new_flush_update_and_delete_use_actual_filename() {
+    fn save_create_new_and_delete_use_actual_filename() {
         let root = std::env::temp_dir().join(format!("nyan-agent-files-{}", uuid::Uuid::new_v4()));
         let config = root.join("config");
         let path = save_agent_to_file(
@@ -320,22 +294,25 @@ mod tests {
         let mut agent =
             AgentDefinition::new("renamed", "review", AgentDefinitionSource::ProjectSettings);
         agent.filename = Some("reviewer".to_string());
-        update_agent_file(
-            &agent,
-            "updated description",
-            Some(&[]),
-            "Updated sufficiently long prompt",
-            None,
-            None,
-            None,
-            &root,
-            &config,
-        )
-        .unwrap();
-        assert!(fs::read_to_string(&path).unwrap().contains("name: renamed"));
         delete_agent_from_file(&agent, &root, &config).unwrap();
         assert!(!path.exists());
         delete_agent_from_file(&agent, &root, &config).unwrap();
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delete_refuses_view_only_sources() {
+        let root = std::env::temp_dir().join(format!("nyan-agent-guard-{}", uuid::Uuid::new_v4()));
+        for source in [
+            AgentDefinitionSource::BuiltIn,
+            AgentDefinitionSource::Plugin,
+            AgentDefinitionSource::FlagSettings,
+            AgentDefinitionSource::PolicySettings,
+        ] {
+            let agent = AgentDefinition::new("reviewer", "review", source);
+            let error = delete_agent_from_file(&agent, &root, &root).unwrap_err();
+            assert!(error.starts_with("Cannot delete"), "{source:?}: {error}");
+        }
+        assert!(!root.exists());
     }
 }
