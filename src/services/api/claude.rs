@@ -820,22 +820,12 @@ pub fn assistant_message_to_message_param(
     // `MessageIdentity` is the Rust carrier for CC's assistant envelope, not
     // an Anthropic content block. Filter it before cache-breakpoint indexing
     // so adding identity cannot change request bytes or cache placement.
-    // A thinking block whose signature is another protocol's stored replay
-    // state (an OpenAI reasoning item) means nothing to Anthropic and its
-    // signature check would reject it, so it is not sent.
+    // Another model's thinking was already reduced by
+    // `provider::history::transform_for_target`.
     let api_content = message
         .content
         .iter()
-        .filter(|content| match content {
-            AssistantContent::MessageIdentity(_) => false,
-            AssistantContent::Thinking { signature, .. } => {
-                crate::services::provider::ir::ProviderState::from_signature(signature).is_none()
-            }
-            AssistantContent::RedactedThinking { data } => {
-                crate::services::provider::ir::ProviderState::from_signature(data).is_none()
-            }
-            _ => true,
-        })
+        .filter(|content| !matches!(content, AssistantContent::MessageIdentity(_)))
         .collect::<Vec<_>>();
     let blocks: Vec<serde_json::Value> = api_content
         .iter()
@@ -4618,8 +4608,8 @@ async fn execute_non_streaming_fallback_to_assistant(
             crate::services::provider::execute_non_streaming(&profile, &request, &cancel, &limits)
                 .await?;
         record_request_usage(options, &response.usage, started_at);
-        let mut assistant = response
-            .to_assistant_message(tools, options.agent_id.as_ref().map(|id| id.0.as_str()));
+        let mut assistant =
+            response.to_assistant_message(tools, options.agent_id.as_ref().map(|id| id.0.as_str()));
         assistant.set_producer(request_producer(options));
         return Ok(assistant);
     }
@@ -6199,39 +6189,64 @@ mod tests {
         );
     }
 
+    fn assistant_from(
+        producer: crate::types::message::ModelProducer,
+        content: Vec<crate::types::message::AssistantContent>,
+    ) -> Message {
+        let mut message = crate::utils::messages::create_assistant_message(String::new());
+        message.model = Some(producer.model.clone());
+        message.content = content;
+        message.set_producer(producer);
+        Message::Assistant(message)
+    }
+
     #[test]
-    fn anthropic_wire_skips_thinking_that_holds_another_protocols_state() {
-        let foreign = crate::services::provider::ir::ProviderState {
-            protocol: crate::services::provider::ir::Protocol::OpenaiResponses,
-            data: serde_json::json!({"type": "reasoning", "id": "rs_1"}),
-        }
-        .to_signature();
-        let mut message = crate::utils::messages::create_assistant_message("answer".into());
-        message.content.insert(
-            0,
-            crate::types::message::AssistantContent::Thinking {
-                text: "summary".into(),
-                signature: foreign,
-            },
-        );
-        message.content.insert(
-            1,
-            crate::types::message::AssistantContent::Thinking {
-                text: "own".into(),
-                signature: "sig-anthropic".into(),
-            },
-        );
-        let param =
-            assistant_message_to_message_param(&message, false, false, CacheRetention::default());
-        let MessageContent::Blocks(blocks) = param.content else {
-            panic!("blocks expected")
+    fn claude_request_after_a_deepseek_turn_carries_its_thinking_as_text_only() {
+        use crate::types::message::{AssistantContent, ModelProducer};
+        let deepseek = ModelProducer {
+            profile: "ds".into(),
+            provider: "deepseek".into(),
+            protocol: crate::services::provider::ir::Protocol::OpenaiChat,
+            model: "deepseek-v4".into(),
         };
-        let signatures: Vec<_> = blocks
-            .iter()
-            .filter(|block| block["type"] == "thinking")
-            .map(|block| block["signature"].as_str().unwrap().to_string())
-            .collect();
-        assert_eq!(signatures, vec!["sig-anthropic".to_string()]);
+        let messages = vec![
+            wire_test_user_message("hi"),
+            assistant_from(
+                deepseek,
+                vec![
+                    AssistantContent::Thinking {
+                        text: "deepseek reasoning".into(),
+                        signature: "reasoning_content".into(),
+                    },
+                    AssistantContent::Text("answer".into()),
+                ],
+            ),
+            wire_test_user_message("again"),
+        ];
+        let options = Options::new(
+            "claude-opus-5-5".to_string(),
+            "repl_main_thread".to_string(),
+        );
+        let plan = build_sdk_message_create_plan(
+            &messages,
+            &Vec::new(),
+            &ThinkingConfig::Disabled,
+            &[],
+            &options,
+        )
+        .expect("plan builds");
+        let body = serde_json::to_value(&plan.params.messages).unwrap();
+        let assistant = &body[1]["content"];
+        assert!(
+            assistant
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|block| block["type"] == "text"),
+            "{assistant}"
+        );
+        assert_eq!(assistant[0]["text"], "deepseek reasoning");
+        assert!(!body.to_string().contains("reasoning_content"), "{body}");
     }
 
     #[test]

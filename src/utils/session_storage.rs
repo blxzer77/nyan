@@ -1162,6 +1162,10 @@ fn agent_transcript_entry_to_message(
                         .get("errorDetails")
                         .and_then(|value| value.as_str())
                         .map(str::to_string),
+                    producer: entry
+                        .get("producer")
+                        .cloned()
+                        .and_then(|value| serde_json::from_value(value).ok()),
                 },
             ));
             Some(crate::types::message::Message::Assistant(
@@ -4786,6 +4790,17 @@ fn typed_message_entry(
                     .insert(
                         "requestId".to_string(),
                         serde_json::Value::String(request_id),
+                    );
+            }
+            // @nyan: which profile/model produced the row, for the
+            // cross-model history pass after resume.
+            if let Some(producer) = identity.and_then(|identity| identity.producer.as_ref()) {
+                entry
+                    .as_object_mut()
+                    .expect("typed assistant entry is an object")
+                    .insert(
+                        "producer".to_string(),
+                        serde_json::to_value(producer).unwrap_or_default(),
                     );
             }
             Some((entry, assistant_uuid))

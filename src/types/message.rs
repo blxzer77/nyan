@@ -448,11 +448,12 @@ impl AssistantMessage {
         }) {
             identity.producer = Some(producer);
         } else {
-            self.content
-                .push(AssistantContent::MessageIdentity(AssistantMessageIdentity {
+            self.content.push(AssistantContent::MessageIdentity(
+                AssistantMessageIdentity {
                     producer: Some(producer),
                     ..AssistantMessageIdentity::default()
-                }));
+                },
+            ));
         }
     }
 

@@ -21,7 +21,9 @@
 use std::collections::HashMap;
 
 use crate::types::ids::ToolUseId;
-use crate::types::message::{AssistantContent, AssistantMessage, Message, ModelProducer, UserContent};
+use crate::types::message::{
+    AssistantContent, AssistantMessage, Message, ModelProducer, UserContent,
+};
 
 /// The strictest tool-call id limit among supported protocols (OpenAI Chat
 /// accepts 40; Anthropic 64).
@@ -31,7 +33,10 @@ const MAX_TOOL_CALL_ID: usize = 40;
 /// recorded producer (synthetic rows, rows from before producers were
 /// recorded) counts as the same model only if its model id matches.
 fn is_same_model(message: &AssistantMessage, target: &ModelProducer) -> bool {
-    match message.identity().and_then(|identity| identity.producer.as_ref()) {
+    match message
+        .identity()
+        .and_then(|identity| identity.producer.as_ref())
+    {
         Some(producer) => producer.is_same_model(target),
         None => message.model.as_deref() == Some(target.model.as_str()),
     }
@@ -141,12 +146,12 @@ mod tests {
         let mut message = crate::utils::messages::create_assistant_message(String::new());
         message.model = producer.as_ref().map(|p| p.model.clone());
         message.content = content;
-        message
-            .content
-            .push(AssistantContent::MessageIdentity(AssistantMessageIdentity {
+        message.content.push(AssistantContent::MessageIdentity(
+            AssistantMessageIdentity {
                 producer,
                 ..AssistantMessageIdentity::default()
-            }));
+            },
+        ));
         Message::Assistant(message)
     }
 
@@ -216,9 +221,7 @@ mod tests {
     fn same_model_history_is_untouched_byte_for_byte() {
         let long_id = format!("call_{}|x", "y".repeat(80));
         let messages = history(claude(), &long_id);
-        let before = serde_json::to_string(&messages).unwrap();
-        let after = serde_json::to_string(&transform_for_target(messages, &claude())).unwrap();
-        assert_eq!(before, after);
+        assert_eq!(transform_for_target(messages.clone(), &claude()), messages);
     }
 
     #[test]
@@ -257,8 +260,11 @@ mod tests {
                 tool_use("call_1"),
             ]
         );
-        let json = serde_json::to_string(&out).unwrap();
-        assert!(!json.contains("EqQBsig==") && !json.contains("opaque"), "{json}");
+        let dump = format!("{out:?}");
+        assert!(
+            !dump.contains("EqQBsig==") && !dump.contains("opaque"),
+            "{dump}"
+        );
     }
 
     #[test]
@@ -282,7 +288,10 @@ mod tests {
             ],
         )];
         let out = transform_for_target(messages, &claude());
-        assert_eq!(content(&out[0]), vec![AssistantContent::Text("done".into())]);
+        assert_eq!(
+            content(&out[0]),
+            vec![AssistantContent::Text("done".into())]
+        );
     }
 
     #[test]
@@ -295,16 +304,16 @@ mod tests {
         );
         let first = transform_for_target(history(gpt.clone(), &long_id), &claude());
         let second = transform_for_target(history(gpt, &long_id), &claude());
-        assert_eq!(
-            serde_json::to_string(&first).unwrap(),
-            serde_json::to_string(&second).unwrap()
-        );
+        assert_eq!(first, second);
         let AssistantContent::ToolUse(call) = &content(&first[0])[2] else {
             panic!()
         };
         let id = &call.id.0;
         assert!(id.len() <= MAX_TOOL_CALL_ID, "{id}");
-        assert!(id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
+        assert!(
+            id.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        );
         assert!(!id.contains("nyanfc"), "{id}");
         assert_eq!(result_id(&first[1]), *id);
     }
