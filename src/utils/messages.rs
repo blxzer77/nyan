@@ -5153,7 +5153,7 @@ mod api_normalization_tests {
             panic!()
         };
         let wire = serde_json::to_value(
-            crate::services::api::claude::user_message_to_message_param(user, false, false, None),
+            crate::services::api::claude::user_message_to_message_param(user, false, false),
         )
         .unwrap();
         assert_eq!(
@@ -5184,7 +5184,7 @@ mod api_normalization_tests {
             panic!()
         };
         let wire = serde_json::to_value(
-            crate::services::api::claude::user_message_to_message_param(user, false, false, None),
+            crate::services::api::claude::user_message_to_message_param(user, false, false),
         )
         .unwrap();
         // TS :2372/2600: attachment moves immediately after tool result, folds
