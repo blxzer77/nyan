@@ -4436,7 +4436,7 @@ fn query_tool_use_context(
     context
 }
 
-fn build_call_model_request(
+pub(crate) fn build_call_model_request(
     messages: Vec<Message>,
     permission_context: ToolPermissionContext,
     query_source: &QuerySource,

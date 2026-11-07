@@ -2935,9 +2935,14 @@ mod tests {
         ));
     }
 
-    fn install_print_profiles() {
-        crate::utils::settings::settings_cache::install_test_settings(
-            serde_json::from_value(serde_json::json!({
+    /// User settings with `main` and `fast` profiles in a fresh config dir;
+    /// on disk, so a settings-cache reset keeps them.
+    fn install_print_profiles() -> (EnvVarGuard, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!("nyan-print-model-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("settings.json"),
+            serde_json::json!({
                 "nyan": {
                     "providers": {"p": {"kind": "anthropic", "protocol": "anthropicMessages"}},
                     "models": {
@@ -2948,9 +2953,13 @@ mod tests {
                     },
                     "selection": {"main": "main"}
                 }
-            }))
-            .unwrap(),
-        );
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        (guard, root)
     }
 
     /// `--model`, `set_model` and `apply_flag_settings` all move the session
@@ -2961,7 +2970,7 @@ mod tests {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        install_print_profiles();
+        let (_config, root) = install_print_profiles();
         let original_flags = crate::utils::settings::get_flag_settings_inline();
 
         let cli = CliConfig {
@@ -3033,7 +3042,9 @@ mod tests {
         assert_eq!(crate::bootstrap::state::get_session_profile(), None);
 
         crate::utils::settings::set_flag_settings_inline(original_flags);
+        crate::bootstrap::state::set_session_profile(None);
         crate::utils::settings::settings_cache::reset_settings_cache();
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -3196,7 +3207,7 @@ mod tests {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        install_print_profiles();
+        let (_config, root) = install_print_profiles();
         let models = sdk_model_infos();
         let values = models
             .iter()
@@ -3205,6 +3216,7 @@ mod tests {
         assert_eq!(values, ["fast", "main"]);
         assert_eq!(models[1]["description"], "claude-sonnet-4-6");
         crate::utils::settings::settings_cache::reset_settings_cache();
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

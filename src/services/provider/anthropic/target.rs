@@ -202,19 +202,32 @@ pub(crate) fn install_test_profiles_with_retention(
     });
 }
 
-/// A `main` profile on an endpoint-less Anthropic provider whose wire model
-/// is `model`, for tests that need the session to run on a given model id.
+/// Point the installed test `main` profile at wire model `model`, keeping its
+/// provider and credential; installs an endpoint-less one when none is set.
 #[cfg(test)]
 pub(crate) fn install_test_model_profile(model: &str) {
-    crate::utils::settings::settings_cache::install_test_settings(
-        serde_json::from_value(serde_json::json!({"nyan": {
+    let mut settings = crate::utils::settings::get_initial_settings();
+    if crate::utils::model::profile::resolve_main_profile(&settings).is_err() {
+        settings = serde_json::from_value(serde_json::json!({"nyan": {
             "providers": {"anthropic": {"kind": "anthropic", "protocol": "anthropicMessages"}},
-            "models": {"main": {"provider": "anthropic", "model": model,
+            "models": {"main": {"provider": "anthropic",
                 "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}}},
             "selection": {"main": "main"}
         }}))
-        .expect("test model profile"),
-    );
+        .expect("test model profile");
+    }
+    let nyan = settings.nyan.as_mut().expect("nyan settings");
+    let main = nyan
+        .selection
+        .as_ref()
+        .and_then(|selection| selection.main.clone())
+        .expect("main profile");
+    nyan.models
+        .as_mut()
+        .and_then(|models| models.get_mut(&main))
+        .expect("main profile settings")
+        .model = Some(model.to_string());
+    crate::utils::settings::settings_cache::install_test_settings(settings);
 }
 
 #[cfg(test)]

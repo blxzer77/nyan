@@ -16550,11 +16550,27 @@ mod tests {
 
     #[test]
     fn model_command_selection_appends_local_command_output_and_restores_prompt() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // Mirror the process runtime published by the production entrypoint.
         crate::utils::process_runtime::initialize_test_process_runtime();
+        crate::utils::settings::settings_cache::install_test_settings(
+            serde_json::from_value(serde_json::json!({"nyan": {
+                "providers": {"p": {"kind": "anthropic", "protocol": "anthropicMessages"}},
+                "models": {
+                    "main": {"provider": "p", "model": "claude-sonnet-4-6",
+                        "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}},
+                    "deep": {"provider": "p", "model": "claude-opus-4-6",
+                        "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}}
+                },
+                "selection": {"main": "main"}
+            }}))
+            .unwrap(),
+        );
         // Do not send Down on a fixed timer: the picker is mounted by an
         // async command path, so a loaded machine can consume Down before it
-        // owns the event and Enter then selects the initial Opus row. Gate
+        // owns the event and Enter then selects the initial row. Gate
         // each event on the UI state that is supposed to consume it.
         let canvases = run_repl_script(
             element!(ReplHarness).into_any(),
@@ -16575,7 +16591,7 @@ mod tests {
             "model selection should append the local command row; canvas=\n{text}"
         );
         assert!(
-            text.contains("Set model to Opus 4.6 1M"),
+            text.contains("Set model to deep"),
             "model selection should append the official local command output row; canvas=\n{text}"
         );
         assert!(
@@ -16586,6 +16602,8 @@ mod tests {
             !text.contains("Select model"),
             "model picker should be cleared after selection; canvas=\n{text}"
         );
+        crate::bootstrap::state::set_session_profile(None);
+        crate::utils::settings::settings_cache::reset_settings_cache();
     }
 
     #[test]

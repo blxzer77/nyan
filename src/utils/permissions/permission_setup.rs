@@ -1455,11 +1455,21 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
             root.join("settings.json"),
-            r#"{"skipAutoPermissionPrompt":true,"useAutoModeDuringPlan":true}"#,
+            serde_json::json!({
+                "skipAutoPermissionPrompt": true,
+                "useAutoModeDuringPlan": true,
+                "nyan": {
+                    "providers": {"p": {"kind": "anthropic", "protocol": "anthropicMessages"}},
+                    "models": {"main": {"provider": "p", "model": "claude-sonnet-4-6",
+                        "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}}},
+                    "selection": {"main": "main"}
+                }
+            })
+            .to_string(),
         )
         .unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        crate::services::provider::anthropic::target::install_test_model_profile("claude-sonnet-4-6");
+        crate::utils::settings::settings_cache::reset_settings_cache();
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let dangerous = PermissionRuleValue::new("Bash", Some("python:*".to_string()));

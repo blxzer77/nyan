@@ -1458,11 +1458,12 @@ mod tests {
 
         let catalog = commands();
         // 71 direct descriptors + internal /version, plus @nyan `/retrieval`.
-        // `/login` and `/logout` are gone: Anthropic is API-key only.
+        // `/login` and `/logout` are gone: Anthropic is API-key only; `/fast`
+        // is gone with Fast mode.
         let base_len = if crate::utils::build_profile::build_audience().is_internal() {
-            73
-        } else {
             72
+        } else {
+            71
         };
         assert_eq!(catalog.len(), base_len);
         for removed in ["login", "logout"] {

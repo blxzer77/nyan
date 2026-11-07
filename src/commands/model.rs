@@ -279,9 +279,16 @@ mod tests {
                     }
                 }
             };
-            let mut render_loop = Box::pin(app.mock_terminal_render_loop(
-                MockTerminalConfig::with_events(stream::iter(events)).with_size(110, 32),
-            ));
+            // Spaced like a typist so each key lands on the state the
+            // previous one left (keybinding and picker handlers both run).
+            let delayed = stream::unfold(events.into_iter(), |mut events| async move {
+                let event = events.next()?;
+                futures_timer::Delay::new(Duration::from_millis(30)).await;
+                Some((event, events))
+            });
+            let mut render_loop = Box::pin(
+                app.mock_terminal_render_loop(MockTerminalConfig::with_events(delayed).with_size(110, 32)),
+            );
             let mut canvases = Vec::new();
             loop {
                 let next = crate::utils::race(render_loop.next(), async {
