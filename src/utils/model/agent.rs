@@ -31,10 +31,11 @@ pub struct ParentSelection {
 }
 
 impl ParentSelection {
-    /// The configured selection, for callers with no session to inherit from.
+    /// The configured selection (`selection.main`), for callers with no
+    /// session to inherit from.
     pub fn configured() -> Self {
         Self {
-            model: crate::utils::model::model::get_main_loop_model(),
+            model: crate::utils::model::model::profile_model(None),
             effort: None,
             profile: None,
         }
