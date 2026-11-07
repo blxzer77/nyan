@@ -782,7 +782,7 @@ async fn handle_control_request(
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("default");
             // @nyan: the model is a profile ref; `default` is `selection.main`.
-            if let Err(error) = set_session_profile_from_ref(requested) {
+            if let Err(error) = set_session_profile_from_ref(engine, requested) {
                 control_error(&control.request_id, &error);
                 return false;
             }
@@ -986,7 +986,7 @@ async fn handle_control_request(
                     serde_json::Value::String(model) => model.clone(),
                     other => other.to_string(),
                 };
-                if let Err(error) = set_session_profile_from_ref(&requested) {
+                if let Err(error) = set_session_profile_from_ref(engine, &requested) {
                     control_error(&control.request_id, &error);
                     return false;
                 }
@@ -1551,22 +1551,36 @@ fn build_mcp_server_statuses(
 }
 
 /// Switch the headless session to the profile `requested` names (`default` is
-/// `selection.main`). Every later submit routes through it.
-fn set_session_profile_from_ref(requested: &str) -> Result<(), String> {
+/// `selection.main`) at its `:effort` (design §5.2). Every later submit routes
+/// through it.
+fn set_session_profile_from_ref(engine: &mut QueryEngine, requested: &str) -> Result<(), String> {
     let settings = crate::utils::settings::get_initial_settings();
-    let profile = if requested.trim() == "default" {
-        None
+    let (profile, effort) = if requested.trim() == "default" {
+        (None, None)
     } else {
         match crate::utils::model::profile::resolve_model_ref(settings.nyan.as_deref(), requested)
             .map_err(|error| error.to_string())?
         {
-            (crate::utils::model::profile::ModelChoice::Profile(profile), _) => Some(profile),
-            (crate::utils::model::profile::ModelChoice::Inherit, _) => {
-                crate::bootstrap::state::get_session_profile()
+            (crate::utils::model::profile::ModelChoice::Profile(profile), effort) => {
+                (Some(profile), effort)
+            }
+            (crate::utils::model::profile::ModelChoice::Inherit, effort) => {
+                (crate::bootstrap::state::get_session_profile(), effort)
             }
         }
     };
-    crate::bootstrap::state::set_session_profile(profile);
+    let main = settings
+        .nyan
+        .as_deref()
+        .and_then(|nyan| nyan.selection.as_ref())
+        .and_then(|selection| selection.main.clone());
+    match profile.or(main) {
+        Some(profile) => {
+            crate::components::model_picker::switch_session_profile(&profile, effort);
+        }
+        None => crate::bootstrap::state::set_session_profile(None),
+    }
+    engine.set_effort(effort);
     Ok(())
 }
 
@@ -3014,6 +3028,28 @@ mod tests {
         )
         .await;
         assert_eq!(get_main_loop_model(), "claude-sonnet-4-6");
+        assert_eq!(crate::bootstrap::state::get_session_profile(), None);
+
+        // Design §5.2: the `:effort` wins, else the new profile's own effort.
+        handle_control_request(
+            control(serde_json::json!({"subtype": "set_model", "model": "fast:max"})),
+            &mut initialized,
+            &mut engine,
+            &bridge,
+        )
+        .await;
+        assert_eq!(
+            engine.pending_effort(),
+            Some(Some(crate::utils::effort::Effort::Max))
+        );
+        handle_control_request(
+            control(serde_json::json!({"subtype": "set_model", "model": "main"})),
+            &mut initialized,
+            &mut engine,
+            &bridge,
+        )
+        .await;
+        assert_eq!(engine.pending_effort(), Some(None));
         assert_eq!(crate::bootstrap::state::get_session_profile(), None);
 
         handle_control_request(

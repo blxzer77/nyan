@@ -52,6 +52,9 @@ struct QueryEngineOverrides {
     permission_mode: Option<crate::types::permissions::PermissionMode>,
     mcp_state: Option<crate::state::app_state_store::McpState>,
     read_state_seeds: Vec<crate::utils::query_helpers::ReadFileStateEntry>,
+    /// The effort a `set_model` switch settled on, applied to the next submit
+    /// (`Some(None)` is the new profile's own effort).
+    effort: Option<Option<crate::utils::effort::Effort>>,
 }
 
 /// Values consumed by `cli/print.ts` result framing.
@@ -264,6 +267,7 @@ impl QueryEngine {
         .await;
         self.session_start_completed = true;
         self.overrides.read_state_seeds.clear();
+        self.overrides.effort = None;
         self.control.reset_after_query();
         if let Ok(outcome) = &result {
             self.carry = outcome.carry.as_ref().map(|carry| HeadlessCarry {
@@ -360,6 +364,16 @@ impl QueryEngine {
         thinking: Option<crate::utils::thinking::ThinkingConfig>,
     ) {
         self.overrides.thinking = thinking;
+    }
+
+    /// Design §5.2: a profile switch replaces the session effort.
+    pub(crate) fn set_effort(&mut self, effort: Option<crate::utils::effort::Effort>) {
+        self.overrides.effort = Some(effort);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pending_effort(&self) -> Option<Option<crate::utils::effort::Effort>> {
+        self.overrides.effort
     }
 
     pub(crate) fn set_permission_mode(&mut self, mode: crate::types::permissions::PermissionMode) {
@@ -663,6 +677,9 @@ async fn run_query(input: QueryRunInput<'_>) -> Result<QueryEngineOutcome, Strin
     // still holds the previous turn's.
     context.main_loop_model = Some(initial_main_loop_model.clone());
     context.main_loop_profile = crate::bootstrap::state::get_session_profile();
+    if let Some(effort) = overrides.effort {
+        context.effort_value = effort;
+    }
     if let Some(thinking) = &overrides.thinking {
         context.thinking_config = Some(thinking.clone());
     }
