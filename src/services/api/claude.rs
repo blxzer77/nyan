@@ -784,7 +784,7 @@ pub fn user_message_to_message_param(
     if add_cache && enable_prompt_caching {
         if let Some(last_block) = blocks.last_mut() {
             if let Some(obj) = last_block.as_object_mut() {
-                let cc = get_cache_control(None, query_source);
+                let cc = get_cache_control(None);
                 obj.insert(
                     "cache_control".to_string(),
                     serde_json::to_value(&cc).unwrap_or_default(),
@@ -951,7 +951,7 @@ pub fn assistant_message_to_message_param(
                 )
                 && let Some(obj) = block.as_object_mut()
             {
-                let cc = get_cache_control(None, query_source);
+                let cc = get_cache_control(None);
                 obj.insert(
                     "cache_control".to_string(),
                     serde_json::to_value(&cc).unwrap_or_default(),
@@ -1519,7 +1519,6 @@ pub fn build_system_prompt_blocks_with_retention(
                 block.cache_scope.map(|scope| {
                     crate::services::provider::anthropic::cache::get_cache_control_with_retention(
                         Some(scope),
-                        query_source,
                         cache_retention,
                     )
                 })
@@ -2214,7 +2213,6 @@ fn build_sdk_message_create_plan(
     if enable_prompt_caching && !sdk_tools.is_empty() {
         let cc = crate::services::provider::anthropic::cache::get_cache_control_with_retention(
             None,
-            Some(&options.query_source),
             options.cache_retention,
         );
         if let Some(last_tool) = sdk_tools.last_mut() {
