@@ -4014,11 +4014,45 @@ fn assistant_message_for_completed_block(
     }
 }
 
+/// Drain one streamed response and record its usage exactly once, whatever
+/// way the drain ends (complete, aborted, errored, receiver gone).
 async fn drain_sdk_message_stream_to_channel(
+    stream: SdkMessageStream,
+    tools: &[Tool],
+    options: &Options,
+    tx: tokio::sync::mpsc::Sender<QueryModelStreamItem>,
+) -> anyhow::Result<()> {
+    let started_at = std::time::Instant::now();
+    let mut usage = None;
+    let result = drain_stream_events(stream, tools, options, tx, &mut usage).await;
+    if let Some(usage) = usage {
+        record_request_usage(options, &usage, started_at);
+    }
+    result
+}
+
+/// @nyan: the request-layer accounting point for `query_model_with_streaming`
+/// (streaming and non-streaming fallback) — see `cost_tracker`.
+fn record_request_usage(
+    options: &Options,
+    usage: &crate::services::provider::ir::Usage,
+    started_at: std::time::Instant,
+) {
+    crate::cost_tracker::record_request(
+        options.profile.as_deref(),
+        &options.model,
+        crate::cost_tracker::CostSource::from_query_source(&options.query_source),
+        usage,
+        started_at.elapsed().as_millis() as u64,
+    );
+}
+
+async fn drain_stream_events(
     mut stream: SdkMessageStream,
     tools: &[Tool],
     options: &Options,
     tx: tokio::sync::mpsc::Sender<QueryModelStreamItem>,
+    ir_usage: &mut Option<crate::services::provider::ir::Usage>,
 ) -> anyhow::Result<()> {
     let mut blocks: HashMap<usize, ActiveClaudeStreamBlock> = HashMap::new();
     let mut content_block_count = 0usize;
@@ -4220,6 +4254,7 @@ async fn drain_sdk_message_stream_to_channel(
                 if model.is_some() {
                     response_model = model;
                 }
+                *ir_usage = Some(start_usage);
                 usage = Some(super::ir_bridge::token_usage(&start_usage));
             }
             StreamEventKind::MessageDelta {
@@ -4240,6 +4275,7 @@ async fn drain_sdk_message_stream_to_channel(
                         max_output_tokens,
                     ));
                 }
+                *ir_usage = Some(delta_usage);
                 usage = Some(super::ir_bridge::token_usage(&delta_usage));
                 if tx
                     .send(QueryModelStreamItem::AssistantDelta {
@@ -4551,9 +4587,11 @@ async fn execute_non_streaming_fallback_to_assistant(
             .clone()
             .unwrap_or_else(anthropic_sdk::AbortSignal::new);
         let limits = crate::services::provider::retry::RetryLimits::for_profile(&profile.profile);
+        let started_at = std::time::Instant::now();
         let response =
             crate::services::provider::execute_non_streaming(&profile, &request, &cancel, &limits)
                 .await?;
+        record_request_usage(options, &response.usage, started_at);
         return Ok(
             response.to_assistant_message(tools, options.agent_id.as_ref().map(|id| id.0.as_str()))
         );
@@ -4563,6 +4601,7 @@ async fn execute_non_streaming_fallback_to_assistant(
     // paramsFromContext shape as the streaming attempt, run
     // `executeNonStreamingRequest(...)`, then normalize the returned message
     // into the typed assistant item yielded by the query generator.
+    let started_at = std::time::Instant::now();
     let result = execute_non_streaming_request_with_initial_consecutive_529_errors(
         &options.model,
         options.profile.as_deref(),
@@ -4597,6 +4636,13 @@ async fn execute_non_streaming_fallback_to_assistant(
             .map(anthropic_sdk::AbortSignal::watch_receiver),
     )
     .await?;
+    if let Some(usage) = result.get("usage") {
+        record_request_usage(
+            options,
+            &crate::services::provider::ir::Usage::from_anthropic_json(usage),
+            started_at,
+        );
+    }
     sdk_message_response_to_assistant_message(
         result,
         tools,

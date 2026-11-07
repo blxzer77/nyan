@@ -2318,9 +2318,9 @@ fn emit_result(
             let value = serde_json::json!({
                 "inputTokens": usage.input_tokens,
                 "outputTokens": usage.output_tokens,
-                "cacheReadInputTokens": usage.cache_read_input_tokens,
-                "cacheCreationInputTokens": usage.cache_creation_input_tokens,
-                "webSearchRequests": usage.web_search_requests,
+                "cacheReadInputTokens": usage.cache_read_tokens,
+                "cacheCreationInputTokens": usage.cache_write_tokens,
+                "webSearchRequests": 0,
                 "costUSD": usage.cost_usd,
                 "contextWindow": crate::utils::context::get_context_window_for_model(&model, &[]),
                 "maxOutputTokens": crate::services::api::claude::get_max_output_tokens_for_model(&model),

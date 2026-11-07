@@ -633,6 +633,37 @@ pub fn record_memory_extract_cursor(uuid: &str, at_ms: i64) -> anyhow::Result<()
     )
 }
 
+/// @nyan: append one request's `usage` entry to the main session transcript.
+/// Sub-agent and background requests land here too: their cost is part of
+/// the session total that resume rebuilds.
+pub fn append_usage_entry(record: &crate::cost_tracker::UsageRecord) -> anyhow::Result<()> {
+    append_main_session_entry(serde_json::json!({
+        "type": crate::cost_tracker::USAGE_ENTRY_TYPE,
+        "usage": record,
+    }))
+}
+
+/// @nyan: append the session's lines changed and wall clock (last wins).
+pub fn append_session_stats_entry(stats: &crate::cost_tracker::SessionStats) -> anyhow::Result<()> {
+    append_main_session_entry(serde_json::json!({
+        "type": crate::cost_tracker::SESSION_STATS_ENTRY_TYPE,
+        "stats": stats,
+    }))
+}
+
+fn append_main_session_entry(mut entry: serde_json::Value) -> anyhow::Result<()> {
+    if !is_session_write_enabled() {
+        return Ok(());
+    }
+    let session_id = crate::bootstrap::state::get_session_id();
+    entry["sessionId"] = serde_json::Value::String(session_id.clone());
+    append_entry(
+        &crate::bootstrap::state::get_original_cwd().to_string_lossy(),
+        &session_id,
+        &entry,
+    )
+}
+
 /// @nyan: last `memory-extract-cursor` entry of the current session transcript.
 /// Scans the whole file (not only the tail) so a cursor written before a large
 /// compact boundary is still found on resume.
@@ -2963,6 +2994,9 @@ pub fn load_session_structured_from_path(path: &Path) -> LoadedSession {
             }
 
             "queue-operation" => {}
+
+            // @nyan: cost accounting; replayed by `cost_tracker` on resume.
+            "usage" | "session-stats" => {}
 
             other => {
                 tracing::debug!("Unknown JSONL entry type: {other}");

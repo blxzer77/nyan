@@ -265,7 +265,6 @@ async fn run_fork<D: crate::query::deps::QueryDeps>(
         }
     };
     let usage = result.total_usage;
-    crate::cost_tracker::add_to_total_tokens(usage.input_tokens, usage.output_tokens);
     // `run_forked_agent` returns Ok when the query was aborted (kill or
     // session abort); that is not a completed consolidation.
     if fork_abort.is_aborted() {
