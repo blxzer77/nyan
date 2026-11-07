@@ -3171,8 +3171,9 @@ pub async fn open_model_stream_with_context(
 ) -> anyhow::Result<tokio::sync::mpsc::Receiver<QueryModelStreamItem>> {
     let model = get_main_loop_model();
     if model.trim().is_empty() {
-        let reason = match crate::utils::model::profile::resolve_main_profile(
+        let reason = match crate::utils::model::profile::resolve_request_profile(
             &crate::utils::settings::get_initial_settings(),
+            crate::bootstrap::state::get_session_profile().as_deref(),
         ) {
             Err(reason) => reason.to_string(),
             Ok(_) => "No main model is selected for this request.".to_string(),

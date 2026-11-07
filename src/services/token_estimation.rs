@@ -15,7 +15,8 @@ async fn count_tokens_client(
     // this API boundary directly.
     crate::utils::tls_provider::install_crypto_provider();
     let options =
-        crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_main_profile(
+        crate::services::provider::anthropic::client::GetAnthropicClientOptions::for_profile(
+            crate::bootstrap::state::get_session_profile().as_deref(),
             1,
             Some(model.to_string()),
             Some("count_tokens".to_string()),
@@ -351,7 +352,11 @@ pub async fn count_tokens_with_api(content: &str) -> Option<usize> {
         return Some(0);
     }
     let settings = crate::utils::settings::get_initial_settings();
-    let profile = crate::utils::model::profile::resolve_main_profile(&settings).ok();
+    let profile = crate::utils::model::profile::resolve_request_profile(
+        &settings,
+        crate::bootstrap::state::get_session_profile().as_deref(),
+    )
+    .ok();
     if let Some(profile) = &profile {
         match profile.protocol {
             crate::utils::settings::nyan::ProviderProtocol::Gemini => {
@@ -386,7 +391,11 @@ pub async fn count_messages_tokens_with_api(
     tools: Vec<anthropic_sdk::resources::beta::messages::BetaToolUnion>,
 ) -> Option<usize> {
     let settings = crate::utils::settings::get_initial_settings();
-    let profile = crate::utils::model::profile::resolve_main_profile(&settings).ok();
+    let profile = crate::utils::model::profile::resolve_request_profile(
+        &settings,
+        crate::bootstrap::state::get_session_profile().as_deref(),
+    )
+    .ok();
     if let Some(profile) = &profile {
         match profile.protocol {
             crate::utils::settings::nyan::ProviderProtocol::Gemini => {

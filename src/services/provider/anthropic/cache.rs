@@ -106,11 +106,14 @@ pub struct CacheControl {
 /// `org` is the API default and stays off the wire.
 ///
 /// @nyan: the TTL comes only from the profile's `cacheRetention` (default
-/// `long`), not CC's `should1hCacheTTL` subscriber/allowlist gate.
+/// `long`), not CC's `should1hCacheTTL` subscriber/allowlist gate — the
+/// session profile's, since that is where the main loop's requests go.
 pub fn get_cache_control(scope: Option<CacheScope>) -> CacheControl {
-    let retention = super::target::current_main_target()
-        .map(|target| target.cache_retention)
-        .unwrap_or_default();
+    let retention = super::target::current_request_target(
+        crate::bootstrap::state::get_session_profile().as_deref(),
+    )
+    .map(|target| target.cache_retention)
+    .unwrap_or_default();
     get_cache_control_with_retention(scope, retention)
 }
 
