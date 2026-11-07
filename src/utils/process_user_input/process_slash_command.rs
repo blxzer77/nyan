@@ -1620,8 +1620,6 @@ mod tests {
             argument_names: Vec::new(),
             when_to_use: None,
             version: None,
-            model: None,
-            effort: None,
             disable_model_invocation: false,
             user_invocable: true,
             execution_context: crate::skills::load_skills_dir::SkillExecutionContext::Inline,

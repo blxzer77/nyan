@@ -895,7 +895,6 @@ mod tests {
         let crate::tool::ToolOutput::Skill(Output::Inline {
             command_name,
             allowed_tools,
-            model,
             status,
             ..
         }) = result.data
@@ -907,7 +906,6 @@ mod tests {
             allowed_tools.as_deref(),
             Some(&["Bash".to_string(), "Read".to_string()][..])
         );
-        assert_eq!(model.as_deref(), Some("opus"));
         // The inline main shape carries no status (SkillTool.ts:768-773).
         assert_eq!(status, None);
         assert_eq!(result.new_messages.len(), 2);
