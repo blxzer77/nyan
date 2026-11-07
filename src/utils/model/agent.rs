@@ -195,26 +195,27 @@ pub fn effective_subagent_profile(
     nyan: Option<&NyanSettings>,
 ) -> String {
     let (spec, _) = subagent_model_spec(None, agent_md_model, agent_type, nyan);
-    match resolve_model_ref(nyan, spec) {
-        Ok((ModelChoice::Profile(name), _)) => name,
-        Ok((ModelChoice::Inherit, _)) => "inherit".to_string(),
-        Err(_) => "unknown".to_string(),
-    }
+    profile_label(nyan, spec).unwrap_or_else(|_| "unknown".to_string())
 }
 
-/// `<written value> → <profile> (<layer>)`, e.g. `@light → ds-flash (type default)`.
+fn profile_label(nyan: Option<&NyanSettings>, spec: &str) -> Result<String, UnknownModelRef> {
+    Ok(match resolve_model_ref(nyan, spec)?.0 {
+        ModelChoice::Profile(name) => name,
+        ModelChoice::Inherit => "inherit".to_string(),
+    })
+}
+
+/// `<written value> → <profile> (<layer>)`, e.g. `@light → ds-flash (type default)`;
+/// a bad ref reads `nope → Unknown model "nope" (agent definition)`.
 pub fn describe_effective_subagent_model(
     agent_md_model: Option<&str>,
     agent_type: &str,
     nyan: Option<&NyanSettings>,
 ) -> String {
     let (spec, layer) = subagent_model_spec(None, agent_md_model, agent_type, nyan);
-    format!(
-        "{} → {} ({})",
-        spec.trim(),
-        effective_subagent_profile(agent_md_model, agent_type, nyan),
-        layer.label(agent_type)
-    )
+    let target = profile_label(nyan, spec)
+        .unwrap_or_else(|UnknownModelRef(name)| format!("Unknown model {name:?}"));
+    format!("{} → {target} ({})", spec.trim(), layer.label(agent_type))
 }
 
 /// Resolves a utility role's model and effort along the priority chain:
@@ -379,6 +380,10 @@ mod tests {
         assert_eq!(
             effective_subagent_profile(Some("nope"), "explore", Some(&nyan)),
             "unknown"
+        );
+        assert_eq!(
+            describe(&nyan, Some("nope"), "explore"),
+            "nope → Unknown model \"nope\" (agent definition)"
         );
         assert_eq!(
             subagent_model_spec(Some("@light"), Some("@heavy"), "x", Some(&nyan)),
