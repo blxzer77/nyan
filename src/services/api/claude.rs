@@ -3229,6 +3229,9 @@ pub async fn query_model_with_streaming(
             "No model profile is configured. Configure settings.nyan.providers, settings.nyan.models, and settings.nyan.selection.main, or pass an explicit temporary model."
         ));
     }
+    // The API duration of each record covers the whole request: connection,
+    // retries and time to first byte included (CC `start` in `queryModel`).
+    let started_at = std::time::Instant::now();
     let (tx, rx) = tokio::sync::mpsc::channel(32);
     // Maps to CC `services/api/claude.ts:1057-1230,1380`
     // `queryModelWithStreaming`: capture base betas/useBetas before Tool
@@ -3352,6 +3355,7 @@ pub async fn query_model_with_streaming(
                     &options,
                     &beta_capture,
                     None,
+                    started_at,
                 )
                 .await
                 {
@@ -3391,7 +3395,8 @@ pub async fn query_model_with_streaming(
 
     tokio::spawn(async move {
         if let Err(error) =
-            drain_sdk_message_stream_to_channel(stream, &tools, &options, tx.clone()).await
+            drain_sdk_message_stream_to_channel(stream, &tools, &options, tx.clone(), started_at)
+                .await
         {
             // Maps to CC `queryModel` (~2434-2441, ~2794-2798):
             // `streamingError instanceof APIUserAbortError` && `signal.aborted`
@@ -3441,6 +3446,7 @@ pub async fn query_model_with_streaming(
                 &options,
                 &beta_capture,
                 initial_consecutive_529_errors,
+                started_at,
             )
             .await
             {
@@ -4021,8 +4027,8 @@ async fn drain_sdk_message_stream_to_channel(
     tools: &[Tool],
     options: &Options,
     tx: tokio::sync::mpsc::Sender<QueryModelStreamItem>,
+    started_at: std::time::Instant,
 ) -> anyhow::Result<()> {
-    let started_at = std::time::Instant::now();
     let mut usage = None;
     let result = drain_stream_events(stream, tools, options, tx, &mut usage).await;
     if let Some(usage) = usage {
@@ -4571,6 +4577,7 @@ async fn execute_non_streaming_fallback_to_assistant(
     options: &Options,
     beta_capture: &SdkRequestBetaCapture,
     initial_consecutive_529_errors: Option<u32>,
+    started_at: std::time::Instant,
 ) -> anyhow::Result<AssistantMessage> {
     let settings = crate::utils::settings::get_initial_settings();
     let profile = crate::utils::model::profile::resolve_request_profile(
@@ -4587,7 +4594,6 @@ async fn execute_non_streaming_fallback_to_assistant(
             .clone()
             .unwrap_or_else(anthropic_sdk::AbortSignal::new);
         let limits = crate::services::provider::retry::RetryLimits::for_profile(&profile.profile);
-        let started_at = std::time::Instant::now();
         let response =
             crate::services::provider::execute_non_streaming(&profile, &request, &cancel, &limits)
                 .await?;
@@ -4601,7 +4607,6 @@ async fn execute_non_streaming_fallback_to_assistant(
     // paramsFromContext shape as the streaming attempt, run
     // `executeNonStreamingRequest(...)`, then normalize the returned message
     // into the typed assistant item yielded by the query generator.
-    let started_at = std::time::Instant::now();
     let result = execute_non_streaming_request_with_initial_consecutive_529_errors(
         &options.model,
         options.profile.as_deref(),

@@ -2051,7 +2051,7 @@ mod tests {
     #[test]
     fn process_slash_command_cost_reads_live_cost_tracker_state() {
         let _guard = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
-        crate::cost_tracker::reset_cost_state_for_tests();
+        crate::cost_tracker::reset_cost_state();
         let main = crate::cost_tracker::CostSource::Main;
         crate::cost_tracker::add_record_for_tests(&cost_record("opus", main.clone(), Some(1.0)));
         crate::cost_tracker::add_record_for_tests(&cost_record("opus", main, Some(0.25)));
@@ -2072,13 +2072,13 @@ mod tests {
         );
         assert!(output.contains("Usage by source:\n"), "{output}");
         assert!(output.contains("main:  14 input"), "{output}");
-        crate::cost_tracker::reset_cost_state_for_tests();
+        crate::cost_tracker::reset_cost_state();
     }
 
     #[test]
     fn process_slash_command_cost_marks_unknown_prices() {
         let _guard = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
-        crate::cost_tracker::reset_cost_state_for_tests();
+        crate::cost_tracker::reset_cost_state();
         crate::cost_tracker::add_record_for_tests(&cost_record(
             "opus",
             crate::cost_tracker::CostSource::Main,
@@ -2107,7 +2107,7 @@ mod tests {
             output.contains("opus:  7 input, 3 output, 0 cache read, 0 cache write ($2.00)"),
             "{output}"
         );
-        crate::cost_tracker::reset_cost_state_for_tests();
+        crate::cost_tracker::reset_cost_state();
     }
 
     #[test]

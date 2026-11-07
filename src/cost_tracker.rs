@@ -381,9 +381,15 @@ pub fn reset_cost_state() {
     *guard = CostState::default();
 }
 
-/// Test alias retained for existing callers.
-pub fn reset_cost_state_for_tests() {
-    reset_cost_state();
+/// Start the per-session stats (lines changed, wall clock) over for a new
+/// session, keeping the process-wide cost and usage totals (`/clear`).
+pub fn reset_session_stats() {
+    with_state(|state| {
+        state.total_lines_added = 0;
+        state.total_lines_removed = 0;
+        state.restored_duration_ms = 0;
+        state.session_started_at = Some(Instant::now());
+    });
 }
 
 #[cfg(test)]
