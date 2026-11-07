@@ -277,7 +277,7 @@ fn reasoning_tiers(model: &str) -> ReasoningTiers {
 }
 
 /// OpenAI `reasoning_effort` / `reasoning.effort` for the request, or `None`
-/// when nothing should be sent.
+/// when no depth should be sent.
 ///
 /// The four unified tiers map onto what the model accepts, clamped silently
 /// (provider-redesign §5.2): `off` is the family's lowest tier, `max` is

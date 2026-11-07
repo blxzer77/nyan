@@ -1253,7 +1253,7 @@ fn responses_reply() -> Reply {
 
 /// No effort on the profile or the session leaves the depth to the model: the
 /// default adaptive launch must not turn into `medium` on its way to a
-/// non-Anthropic provider.
+/// non-Anthropic provider. Responses still asks for the reasoning summary.
 #[tokio::test]
 async fn an_unset_effort_sends_no_reasoning_depth_on_chat_or_responses() {
     for (kind, model) in [
@@ -1282,7 +1282,8 @@ async fn an_unset_effort_sends_no_reasoning_depth_on_chat_or_responses() {
         None,
     );
     let body = main_loop_body(&mock, ThinkingConfig::Adaptive, None).await;
-    assert!(body.get("reasoning").is_none(), "{body}");
+    assert!(body["reasoning"].get("effort").is_none(), "{body}");
+    assert_eq!(body["reasoning"]["summary"], "auto", "{body}");
 }
 
 /// A configured depth still maps per family, and an explicit `off` on a
