@@ -1291,17 +1291,6 @@ pub fn accumulate_usage(
     }
 }
 
-// ---------------------------------------------------------------------------
-// addCacheBreakpoints
-// ---------------------------------------------------------------------------
-
-/// Maps to: CC services/api/claude.ts:3063-3211
-///
-/// Adds cache control markers to messages for the API. Places exactly one
-/// message-level cache_control marker per request. The marker position depends
-/// on `skip_cache_write`: if true, it goes on the second-to-last message
-/// (shared prefix point); otherwise on the last message.
-///
 /// The cache TTL of the profile this request is routed through
 /// (`options.profile`, `None`: the main profile); `options.cache_retention`
 /// overrides it.
@@ -1314,6 +1303,17 @@ fn request_cache_retention(options: &Options) -> CacheRetention {
         .unwrap_or_default()
     })
 }
+
+// ---------------------------------------------------------------------------
+// addCacheBreakpoints
+// ---------------------------------------------------------------------------
+
+/// Maps to: CC services/api/claude.ts:3063-3211
+///
+/// Adds cache control markers to messages for the API. Places exactly one
+/// message-level cache_control marker per request. The marker position depends
+/// on `skip_cache_write`: if true, it goes on the second-to-last message
+/// (shared prefix point); otherwise on the last message.
 
 pub fn add_cache_breakpoints(
     messages: &[MessageRef<'_>],
