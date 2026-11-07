@@ -191,6 +191,24 @@ pub struct FailedAgentFile {
     pub path: PathBuf,
     /// Maps to CC `AgentDefinitionsResult.failedFiles[].error`.
     pub error: String,
+    /// @nyan: `None` for a markdown file (`path` is that file); `Plugin` or
+    /// `FlagSettings` for an agent dropped for an invalid `model:`, whose
+    /// `path` then holds the agent name.
+    pub source: Option<AgentDefinitionSource>,
+}
+
+impl FailedAgentFile {
+    /// What to show in /doctor and /agents: the file path, or a labelled
+    /// agent name for sources that have no file.
+    pub fn label(&self) -> String {
+        match self.source {
+            Some(AgentDefinitionSource::Plugin) => format!("plugin agent {}", self.path.display()),
+            Some(AgentDefinitionSource::FlagSettings) => {
+                format!("--agents agent {}", self.path.display())
+            }
+            _ => self.path.display().to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -395,6 +413,7 @@ pub fn get_agent_definitions_with_overrides(cwd: &Path) -> AgentDefinitionsResul
                 Err(error) => failed_files.push(FailedAgentFile {
                     path: markdown_file.file_path,
                     error,
+                    source: None,
                 }),
             },
             // CC :324 `if (!frontmatter['name']) return null` — JS truthy:
@@ -408,6 +427,7 @@ pub fn get_agent_definitions_with_overrides(cwd: &Path) -> AgentDefinitionsResul
                 failed_files.push(FailedAgentFile {
                     path: markdown_file.file_path,
                     error: parse_error_for_frontmatter(&markdown_file.frontmatter),
+                    source: None,
                 });
             }
             None => {}
@@ -492,8 +512,8 @@ fn validate_agent_model(
 }
 
 /// Drops plugin and `--agents` agents whose `model:` is invalid, recording
-/// each in `failed_files` under the agent name (the loaders do not carry a
-/// file path for them).
+/// each in `failed_files` under the agent name and its source (the loaders do
+/// not carry a file path for them).
 fn retain_valid_models(
     agents: Vec<AgentDefinition>,
     nyan: Option<&crate::utils::settings::nyan::NyanSettings>,
@@ -507,6 +527,7 @@ fn retain_valid_models(
                 failed_files.push(FailedAgentFile {
                     path: PathBuf::from(&agent.agent_type),
                     error,
+                    source: Some(agent.source),
                 });
                 false
             }
@@ -1526,14 +1547,17 @@ mod tests {
         let failed = result
             .failed_files
             .iter()
-            .map(|file| (file.path.clone(), file.error.clone()))
+            .map(|file| (file.label(), file.error.clone()))
             .collect::<Vec<_>>();
         assert_eq!(failed.len(), 3, "{failed:?}");
-        assert_eq!(failed[0].0, config_home.join("agents/bad.md"));
+        assert_eq!(
+            failed[0].0,
+            config_home.join("agents/bad.md").display().to_string()
+        );
         assert!(failed[0].1.contains("\"sonnet\""), "{}", failed[0].1);
-        assert_eq!(failed[1].0, PathBuf::from("pack:broken"));
+        assert_eq!(failed[1].0, "plugin agent pack:broken");
         assert!(failed[1].1.contains("\"opus\""));
-        assert_eq!(failed[2].0, PathBuf::from("flag-bad"));
+        assert_eq!(failed[2].0, "--agents agent flag-bad");
         assert!(
             failed[2]
                 .1

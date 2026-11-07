@@ -348,7 +348,7 @@ pub fn AgentsList<'a>(
             .failed_files
             .iter()
             .map(|file| element! {
-                Text(content: format!("  └ {}: {}", file.path.display(), file.error), color: theme.inactive, wrap: TextWrap::Wrap)
+                Text(content: format!("  └ {}: {}", file.label(), file.error), color: theme.inactive, wrap: TextWrap::Wrap)
             })
             .collect::<Vec<_>>();
         element! { View(flex_direction: FlexDirection::Column, margin_bottom: 1u32) {
@@ -476,6 +476,7 @@ mod tests {
                     failed_files: vec![FailedAgentFile {
                         path: std::path::PathBuf::from("/p/.nyan/agents/bad.md"),
                         error: "Invalid \"model\" field: Unknown model \"sonnet\"".to_string(),
+                        source: None,
                     }],
                 )
             }
