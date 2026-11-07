@@ -341,14 +341,31 @@ async fn thinking_signature_and_tool_blocks_replay_on_the_next_request() {
 async fn breakpoint_ttls(
     retention: Option<crate::utils::settings::nyan::CacheRetention>,
 ) -> [serde_json::Value; 3] {
+    request_profile_breakpoint_ttls(retention, None).await
+}
+
+/// [`breakpoint_ttls`] with the request routed through a second profile
+/// `side` carrying `side_retention` (when set) instead of the main profile.
+async fn request_profile_breakpoint_ttls(
+    main_retention: Option<crate::utils::settings::nyan::CacheRetention>,
+    side_retention: Option<crate::utils::settings::nyan::CacheRetention>,
+) -> [serde_json::Value; 3] {
     let mock = MockAnthropic::start(vec![Reply::Sse(message_stream(StreamSpec::default()))]).await;
     let _env = Env::new(&mock.base_url);
-    super::target::install_test_main_profile_with_retention(&mock.base_url, KEY_VAR, retention);
+    super::target::install_test_profiles_with_retention(
+        &mock.base_url,
+        KEY_VAR,
+        main_retention,
+        side_retention,
+    );
 
-    let options = Options::new(
+    let mut options = Options::new(
         "claude-sonnet-4-6".to_string(),
         "repl_main_thread".to_string(),
     );
+    if side_retention.is_some() {
+        options.profile = Some("side".to_string());
+    }
     let messages = vec![user("hello")];
     let system_prompt = vec!["System static instructions.".to_string()];
     let tools = vec![probe_tool()];
@@ -406,6 +423,26 @@ async fn cache_retention_short_profile_sends_explicit_5m_ttl_on_the_wire() {
     assert_eq!(
         breakpoint_ttls(Some(CacheRetention::Short)).await,
         [json!("5m"), json!("5m"), json!("5m")]
+    );
+}
+
+#[tokio::test]
+async fn cache_retention_short_request_profile_overrides_long_main_on_the_wire() {
+    use crate::utils::settings::nyan::CacheRetention;
+    assert_eq!(
+        request_profile_breakpoint_ttls(Some(CacheRetention::Long), Some(CacheRetention::Short))
+            .await,
+        [json!("5m"), json!("5m"), json!("5m")]
+    );
+}
+
+#[tokio::test]
+async fn cache_retention_long_request_profile_overrides_short_main_on_the_wire() {
+    use crate::utils::settings::nyan::CacheRetention;
+    assert_eq!(
+        request_profile_breakpoint_ttls(Some(CacheRetention::Short), Some(CacheRetention::Long))
+            .await,
+        [json!("1h"), json!("1h"), json!("1h")]
     );
 }
 

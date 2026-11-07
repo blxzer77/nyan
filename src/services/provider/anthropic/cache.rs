@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::utils::settings::nyan::CacheRetention;
+
 pub use crate::utils::api::CacheScope;
 use crate::utils::model::model::{
     get_default_opus_model, get_default_sonnet_model, get_small_fast_model,
@@ -108,28 +110,23 @@ pub struct CacheControl {
 /// @nyan: the TTL comes only from the profile's `cacheRetention` (default
 /// `long`), not CC's `should1hCacheTTL` subscriber/allowlist gate.
 pub fn get_cache_control(scope: Option<CacheScope>) -> CacheControl {
-    get_cache_control_with_retention(scope, None)
+    let retention = super::target::current_main_target()
+        .map(|target| target.cache_retention)
+        .unwrap_or_default();
+    get_cache_control_with_retention(scope, retention)
 }
 
-/// Computes cache-control with an explicit or profile-resolved cache retention TTL.
+/// [`get_cache_control`] with the TTL of the profile the request goes through.
 pub fn get_cache_control_with_retention(
     scope: Option<CacheScope>,
-    retention: Option<crate::utils::settings::nyan::CacheRetention>,
+    retention: CacheRetention,
 ) -> CacheControl {
-    let effective_retention = retention
-        .or_else(|| {
-            super::target::current_main_target()
-                .ok()
-                .map(|t| t.cache_retention)
-        })
-        .unwrap_or_default();
-
-    let ttl = match effective_retention {
-        crate::utils::settings::nyan::CacheRetention::Long => Some("1h".to_string()),
-        crate::utils::settings::nyan::CacheRetention::None => None,
+    let ttl = match retention {
+        CacheRetention::Long => Some("1h".to_string()),
+        CacheRetention::None => None,
         // @nyan: explicit "5m" rather than CC's unmarked default, so gateways
         // that upgrade unmarked breakpoints to 1h keep the requested TTL.
-        crate::utils::settings::nyan::CacheRetention::Short => Some("5m".to_string()),
+        CacheRetention::Short => Some("5m".to_string()),
     };
 
     CacheControl {
@@ -137,20 +134,6 @@ pub fn get_cache_control_with_retention(
         ttl,
         scope: (scope == Some(CacheScope::Global)).then_some(CacheScope::Global),
     }
-}
-
-/// Returns whether cache retention allows prompt caching (i.e. not `CacheRetention::None`).
-pub fn is_cache_retention_enabled(
-    retention: Option<crate::utils::settings::nyan::CacheRetention>,
-) -> bool {
-    let effective = retention
-        .or_else(|| {
-            super::target::current_main_target()
-                .ok()
-                .map(|t| t.cache_retention)
-        })
-        .unwrap_or_default();
-    effective != crate::utils::settings::nyan::CacheRetention::None
 }
 
 // ---------------------------------------------------------------------------
@@ -257,22 +240,16 @@ mod tests {
 
     #[test]
     fn cache_control_with_retention_honors_explicit_retention() {
-        use crate::utils::settings::nyan::CacheRetention;
-
-        let cc_long = get_cache_control_with_retention(None, Some(CacheRetention::Long));
+        let cc_long = get_cache_control_with_retention(None, CacheRetention::Long);
         assert_eq!(cc_long.cache_type, "ephemeral");
         assert_eq!(cc_long.ttl.as_deref(), Some("1h"));
 
-        let cc_short = get_cache_control_with_retention(None, Some(CacheRetention::Short));
+        let cc_short = get_cache_control_with_retention(None, CacheRetention::Short);
         assert_eq!(cc_short.cache_type, "ephemeral");
         assert_eq!(cc_short.ttl.as_deref(), Some("5m"));
 
-        let cc_none = get_cache_control_with_retention(None, Some(CacheRetention::None));
+        let cc_none = get_cache_control_with_retention(None, CacheRetention::None);
         assert!(cc_none.ttl.is_none());
-
-        assert!(is_cache_retention_enabled(Some(CacheRetention::Long)));
-        assert!(is_cache_retention_enabled(Some(CacheRetention::Short)));
-        assert!(!is_cache_retention_enabled(Some(CacheRetention::None)));
     }
 
     // -- configure_effort_params --

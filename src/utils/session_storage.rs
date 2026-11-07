@@ -9609,7 +9609,12 @@ mod tests {
         let crate::types::message::Message::User(user) = &restored[0] else {
             panic!("continuation must remain a meta user message");
         };
-        let api = crate::services::api::claude::user_message_to_message_param(user, false, false);
+        let api = crate::services::api::claude::user_message_to_message_param(
+            user,
+            false,
+            false,
+            crate::utils::settings::nyan::CacheRetention::default(),
+        );
         assert_eq!(
             serde_json::to_value(api).unwrap(),
             json!({
@@ -9732,7 +9737,10 @@ mod tests {
             (0, 0, 0, 0)
         );
         let param = crate::services::api::claude::assistant_message_to_message_param(
-            assistant, false, false,
+            assistant,
+            false,
+            false,
+            crate::utils::settings::nyan::CacheRetention::default(),
         );
         let json = serde_json::to_value(param).unwrap();
         assert_eq!(
