@@ -249,7 +249,7 @@ mod tests {
         assert_eq!(target.base_url.as_deref(), Some("https://gw.example"));
         assert_eq!(
             target.cache_retention,
-            crate::utils::settings::nyan::CacheRetention::Short
+            crate::utils::settings::nyan::CacheRetention::Long
         );
     }
 
@@ -276,7 +276,7 @@ mod tests {
         let default_target = current_main_target().unwrap();
         assert_eq!(
             default_target.cache_retention,
-            crate::utils::settings::nyan::CacheRetention::Short
+            crate::utils::settings::nyan::CacheRetention::Long
         );
     }
 
