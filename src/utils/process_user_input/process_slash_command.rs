@@ -446,10 +446,6 @@ fn get_messages_for_prompt_slash_command(
                 kind: RenderableMessageKind::Attachment(
                     crate::utils::attachments::Attachment::CommandPermissions {
                         allowed_tools: allowed_tools.clone(),
-                        model: command
-                            .prompt_command
-                            .as_ref()
-                            .and_then(|prompt| prompt.model.clone()),
                     },
                 ),
             },
@@ -1660,7 +1656,7 @@ mod tests {
         // persisted command_permissions attachment, including empty lists.
         assert!(matches!(&result.messages[2].kind,
             RenderableMessageKind::Attachment(crate::utils::attachments::Attachment::CommandPermissions {
-                allowed_tools, model: None,
+                allowed_tools,
             }) if allowed_tools == &vec!["Read(/repo/**)".to_string(), "Grep".to_string()]
         ));
     }
@@ -1709,7 +1705,7 @@ mod tests {
             assert_eq!(result.allowed_tools, Some(expected.clone()));
             assert!(matches!(&result.messages[2].kind,
                 RenderableMessageKind::Attachment(crate::utils::attachments::Attachment::CommandPermissions {
-                    allowed_tools, model: None,
+                    allowed_tools,
                 }) if allowed_tools == &expected
             ));
         }
