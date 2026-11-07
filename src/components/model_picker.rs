@@ -162,18 +162,30 @@ pub(crate) fn apply_session_profile(
     profile: &str,
     effort: Option<Effort>,
 ) {
+    state.main_loop_profile = switch_session_profile(profile, effort);
+    state.effort_value = effort;
+}
+
+/// The one session switch every path shares (picker Enter, `/model`, headless
+/// `set_model`): moves the session to `profile`, stops the warmer and records
+/// the switch. Returns the stored profile — `None` when `profile` is
+/// `selection.main`, so a session back on the default keeps following it.
+///
+/// The caller sets the session effort to `effort` (design §5.2): `None` is the
+/// profile's own effort, resolved at request time, never the previous one.
+pub(crate) fn switch_session_profile(profile: &str, effort: Option<Effort>) -> Option<String> {
     let main = crate::utils::settings::get_initial_settings()
         .nyan
         .as_deref()
         .and_then(|nyan| nyan.selection.as_ref())
         .and_then(|selection| selection.main.clone());
-    // `None` is `selection.main`, so a session back on the default follows it.
-    state.main_loop_profile = (main.as_deref() != Some(profile)).then(|| profile.to_string());
-    state.effort_value = effort;
+    let stored = (main.as_deref() != Some(profile)).then(|| profile.to_string());
+    crate::bootstrap::state::set_session_profile(stored.clone());
     // @nyan (compaction C12): prompt cache is per-model, so a switch must stop
     // a warmer that is still refreshing the previous model's prefix.
     crate::services::cache_warmer::invalidate();
-    let _ = crate::utils::session_storage::save_session_profile(Some(profile), effort);
+    let _ = crate::utils::session_storage::save_session_profile(stored.as_deref(), effort);
+    stored
 }
 
 /// What Ctrl+S reports: the new default, and the project override that still
@@ -540,7 +552,7 @@ pub(crate) fn ModelPicker<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::test_env::TEST_ENV_LOCK;
+    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
 
     fn nyan(json: serde_json::Value) -> NyanSettings {
         serde_json::from_value(json).unwrap()
@@ -634,6 +646,11 @@ mod tests {
         crate::utils::settings::settings_cache::install_test_settings(
             serde_json::from_value(serde_json::json!({"nyan": three_profiles()})).unwrap(),
         );
+        let dir = std::env::temp_dir().join(format!("nyan-picker-switch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let original_session = crate::bootstrap::state::get_session_id();
+        crate::bootstrap::state::switch_session("picker-switch", Some(dir.clone()));
         let mut state = crate::state::app_state_store::AppState::default();
         apply_session_profile(&mut state, "alpha", None);
         assert_eq!(state.main_loop_profile.as_deref(), Some("alpha"));
@@ -641,6 +658,19 @@ mod tests {
         apply_session_profile(&mut state, "main", Some(Effort::Off));
         assert_eq!(state.main_loop_profile, None);
         assert_eq!(state.effort_value, Some(Effort::Off));
+        // The default is recorded as `null` too, so resume keeps following it.
+        let events = std::fs::read_to_string(dir.join("picker-switch.jsonl")).unwrap();
+        let profiles: Vec<serde_json::Value> = events
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap()["profile"].clone())
+            .collect();
+        assert_eq!(
+            profiles,
+            [serde_json::json!("alpha"), serde_json::Value::Null]
+        );
+        crate::bootstrap::state::switch_session(original_session, None);
+        crate::bootstrap::state::set_session_profile(None);
+        let _ = std::fs::remove_dir_all(dir);
         crate::utils::settings::settings_cache::reset_settings_cache();
     }
 

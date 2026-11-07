@@ -135,7 +135,11 @@ pub fn apply_switch(
     };
     match store {
         Some(store) => store.replace_with(|state| apply_session_profile(state, &profile, effort)),
-        None => crate::bootstrap::state::set_session_profile(Some(profile.clone())),
+        // No store: the effort rides the next request through the recorded
+        // switch; the profile's own effort applies when `effort` is `None`.
+        None => {
+            crate::components::model_picker::switch_session_profile(&profile, effort);
+        }
     }
     ModelPickerResult::Session { profile, effort }.message()
 }

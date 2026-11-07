@@ -1155,6 +1155,19 @@ mod tests {
         assert!(processed.missing_profile.is_none());
         assert!(state.notifications.queue.is_empty());
 
+        // A switch back to the default records `null`: resume follows
+        // `selection.main` instead of pinning its name.
+        let (state, _) = resume(
+            "back_to_default",
+            &[
+                json!({"type": "model-change", "sessionId": session_id, "profile": "deep", "effort": "max"}),
+                json!({"type": "model-change", "sessionId": session_id, "profile": null, "effort": null}),
+            ],
+        );
+        assert_eq!(state.main_loop_profile, None);
+        assert_eq!(crate::bootstrap::state::get_session_profile(), None);
+        assert_eq!(state.effort_value, None);
+
         // A session that never recorded either leaves the state as launch set it.
         let (state, _) = resume("quiet", &[]);
         assert_eq!(state.main_loop_profile, None);
