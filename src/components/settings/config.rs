@@ -15,7 +15,6 @@ use crate::components::custom_select::{
 use crate::components::design_system::dialog::Dialog;
 use crate::components::design_system::theme_provider::use_theme;
 use crate::components::language_picker::LanguagePicker;
-use crate::components::model_picker as model;
 use crate::components::model_picker::{ModelPicker, ModelPickerResult};
 use crate::components::output_style_picker as output_style;
 use crate::components::output_style_picker::OutputStylePicker;

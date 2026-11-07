@@ -2140,7 +2140,7 @@ mod tests {
 
     #[test]
     fn query_engine_exposes_official_stateful_control_surface() {
-        let mut engine = QueryEngine::new(QueryEngineConfig {
+        let engine = QueryEngine::new(QueryEngineConfig {
             cli_config: CliConfig::default(),
             schema: None,
             resume_seed: None,

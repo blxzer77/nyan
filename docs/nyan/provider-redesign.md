@@ -63,11 +63,11 @@ CLI / bootstrap override
 
 入口在 `src/main.rs:264-291`、`src/utils/model/model.rs:77-102,138-163`；`sonnet`、`opus`、`haiku`、`best`、`opusplan` 和 `[1m]` 是 Anthropic 专属别名（`src/utils/model/model.rs:104-135`）。当前 provider 由 `CLAUDE_CODE_USE_BEDROCK`、`CLAUDE_CODE_USE_VERTEX`、`CLAUDE_CODE_USE_FOUNDRY` 环境变量决定（`src/utils/model/providers.rs:7-27`），没有统一 provider trait。
 
-这些旧入口只用于现状审计。目标实现中它们被删除：不再读取 `settings.model`、`ANTHROPIC_MODEL`、`GlobalConfig.modelContextWindows`，也不再保留 Anthropic 默认 provider。
+这些旧入口只用于现状审计。目标实现中它们被删除：不再读取 `settings.model`、`ANTHROPIC_MODEL`、`GlobalConfig.modelContextWindows`，也不再保留 Anthropic 默认 provider。PR #59 已删除这些别名与 `model.rs` 中的对应代码，上文行号仅为历史记录。
 
 ### 1.3 Gateway model picker 与上下文窗口
 
-当前 picker 将 `availableModels` 追加到内置 Sonnet/Opus/Haiku（`src/components/model_picker.rs:57-145`）；`additionalModelOptionsCache` 只提供 label/description。`modelOverrides` 将 Anthropic canonical ID 映射成 provider-specific ID（`src/utils/settings/types.rs:75-77`、`src/utils/model/model_strings.rs:63-103`）。
+当前 picker 将 `availableModels` 追加到内置 Sonnet/Opus/Haiku（`src/components/model_picker.rs:57-145`）；`additionalModelOptionsCache` 只提供 label/description。`modelOverrides` 将 Anthropic canonical ID 映射成 provider-specific ID（`src/utils/settings/types.rs:75-77`、`src/utils/model/model_strings.rs:63-103`）。PR #59 已将 picker 改为只列 profile，并删除内置 Sonnet/Opus/Haiku 与 `model_strings.rs`；此段仅为历史审计。
 
 当前 `GlobalConfig.modelContextWindows` 是 gateway 专用旁路，按 model ID 查上下文长度（`src/utils/context.rs:126-154`，字段在 `src/utils/config.rs:617-621`）。目标设计删除这条旁路，统一使用固定模型元数据 + profile override；不存在“查不到时默认 200k”的隐式行为。
 
