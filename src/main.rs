@@ -203,7 +203,7 @@ fn build_interactive_launch_with_system_prompts(
     let thinking = resolve_thinking_launch(settings, cli);
     let agents = resolve_agent_launch(settings, cli);
     apply_launch_model_override(cli, &agents)?;
-    let initial_state = build_initial_app_state_with_thinking(
+    let initial_state = build_initial_app_state_with_agents(
         settings,
         settings_errors,
         workspace_trusted,
@@ -248,9 +248,8 @@ pub(crate) fn build_headless_initial_app_state(
     workspace_trusted: bool,
     cli: &crate::cli::CliConfig,
 ) -> anyhow::Result<AppState> {
-    let thinking = resolve_thinking_launch(settings, cli);
     let agents = resolve_agent_launch(settings, cli);
-    build_initial_app_state_with_thinking(
+    build_initial_app_state_with_agents(
         settings,
         settings_errors,
         workspace_trusted,
@@ -314,7 +313,7 @@ pub(crate) fn apply_headless_launch_model(
     apply_launch_model_override(cli, &resolve_agent_launch(settings, cli))
 }
 
-fn build_initial_app_state_with_thinking(
+fn build_initial_app_state_with_agents(
     settings: &SettingsJson,
     settings_errors: &[ValidationError],
     workspace_trusted: bool,
@@ -2759,7 +2758,7 @@ mod tests {
                 .as_deref(),
             Some("fast")
         );
-        let state = build_initial_app_state_with_thinking(
+        let state = build_initial_app_state_with_agents(
             &SettingsJson::default(),
             &[],
             true,

@@ -691,15 +691,6 @@ fn get_retry_after(error: &RetryableError) -> Option<String> {
     error.as_api()?.header("retry-after").map(|s| s.to_string())
 }
 
-/// Parse retry-after header into milliseconds.
-///
-/// Maps to: CC `services/api/withRetry.ts:803-812`
-fn get_retry_after_ms(error: &RetryableError) -> Option<u64> {
-    let header = get_retry_after(error)?;
-    let seconds: u64 = header.parse().ok()?;
-    Some(seconds * 1000)
-}
-
 /// Parse the `anthropic-ratelimit-unified-reset` header to compute how long
 /// until the rate limit window resets.
 ///

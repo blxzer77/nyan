@@ -532,7 +532,6 @@ mod tests {
     use super::*;
     use crate::types::message::{AssistantContent, AssistantMessage, StopReason};
     use crate::utils::settings::types::StatusLineSettings;
-    use crate::utils::test_env::TEST_ENV_LOCK;
     use crate::utils::theme;
     use chrono::Utc;
 

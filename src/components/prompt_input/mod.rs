@@ -599,7 +599,6 @@ pub fn PromptInput<'a>(
     // branches, which is a render-time "Unexpected hook type!" panic the moment
     // the hook owns a slot.
     let notifications = crate::context::notifications::use_notifications(&mut hooks);
-    let initial_app_state = app_store.as_ref().map(|store| store.get());
     let prompt_suggestion_state =
         use_app_state(&mut hooks, |state| state.prompt_suggestion.clone());
     let prompt_suggestion_viewing_agent =

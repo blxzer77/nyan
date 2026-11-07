@@ -85,10 +85,6 @@ fn now_seconds() -> i64 {
     Utc::now().timestamp()
 }
 
-fn now_millis() -> i64 {
-    Utc::now().timestamp_millis()
-}
-
 fn end_of_current_month_seconds() -> i64 {
     let now = Local::now();
     let (year, month) = if now.month() == 12 {
