@@ -1459,9 +1459,7 @@ mod tests {
         )
         .unwrap();
         let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        crate::bootstrap::state::set_main_loop_model_override(Some(Some(
-            "claude-sonnet-4-6".to_string(),
-        )));
+        crate::services::provider::anthropic::target::install_test_model_profile("claude-sonnet-4-6");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
         let dangerous = PermissionRuleValue::new("Bash", Some("python:*".to_string()));
@@ -1487,7 +1485,7 @@ mod tests {
         );
 
         crate::utils::permissions::auto_mode_state::reset_for_testing();
-        crate::bootstrap::state::set_main_loop_model_override(None);
+        crate::utils::settings::settings_cache::reset_settings_cache();
         let _ = std::fs::remove_dir_all(root);
     }
 

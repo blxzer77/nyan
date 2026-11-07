@@ -202,6 +202,21 @@ pub(crate) fn install_test_profiles_with_retention(
     });
 }
 
+/// A `main` profile on an endpoint-less Anthropic provider whose wire model
+/// is `model`, for tests that need the session to run on a given model id.
+#[cfg(test)]
+pub(crate) fn install_test_model_profile(model: &str) {
+    crate::utils::settings::settings_cache::install_test_settings(
+        serde_json::from_value(serde_json::json!({"nyan": {
+            "providers": {"anthropic": {"kind": "anthropic", "protocol": "anthropicMessages"}},
+            "models": {"main": {"provider": "anthropic", "model": model,
+                "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}}},
+            "selection": {"main": "main"}
+        }}))
+        .expect("test model profile"),
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

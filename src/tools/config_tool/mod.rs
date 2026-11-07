@@ -951,11 +951,6 @@ mod tests {
         assert!(!output.success);
         assert_eq!(output.operation.as_deref(), Some("set"));
         assert!(output.error.is_some(), "the persist error is reported");
-        assert_eq!(
-            store.get().main_loop_model,
-            None,
-            "the appStateKey projection sits after the write, inside CC's try"
-        );
         assert!(std::sync::Arc::ptr_eq(&before, &store.get()));
     }
 

@@ -631,10 +631,7 @@ mod tests {
         let _foundry = EnvVarGuard::unset("CLAUDE_CODE_USE_FOUNDRY");
         let _skip_auth = EnvVarGuard::set("CLAUDE_CODE_SKIP_BEDROCK_AUTH", "1");
         let _endpoint = EnvVarGuard::set("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", &endpoint);
-        let previous_model = crate::bootstrap::state::get_main_loop_model_override();
-        crate::bootstrap::state::set_main_loop_model_override(Some(Some(
-            "anthropic.claude-sonnet-4-5-20250929-v1:0".to_string(),
-        )));
+        crate::services::provider::anthropic::target::install_test_model_profile("anthropic.claude-sonnet-4-5-20250929-v1:0");
 
         assert_eq!(count_tokens_with_api("hello").await, Some(23));
         let request = server.join().unwrap();
@@ -654,7 +651,6 @@ mod tests {
         .unwrap();
         assert_eq!(invoke["anthropic_version"], "bedrock-2023-05-31");
         assert_eq!(invoke["messages"][0]["content"], "hello");
-        crate::bootstrap::state::set_main_loop_model_override(previous_model);
     }
 
     /// CC's side clients take `getAWSRegion()` (`utils/model/bedrock.ts:50-56,
@@ -765,10 +761,7 @@ mod tests {
         let _endpoint = EnvVarGuard::set("ANTHROPIC_VERTEX_BASE_URL", &endpoint);
         let _project = EnvVarGuard::set("ANTHROPIC_VERTEX_PROJECT_ID", "project-a");
         let _region = EnvVarGuard::set("CLOUD_ML_REGION", "us-east5");
-        let previous_model = crate::bootstrap::state::get_main_loop_model_override();
-        crate::bootstrap::state::set_main_loop_model_override(Some(Some(
-            "claude-sonnet-4-5".to_string(),
-        )));
+        crate::services::provider::anthropic::target::install_test_model_profile("claude-sonnet-4-5");
 
         assert_eq!(count_tokens_with_api("hello").await, Some(19));
         let request = server.join().unwrap();
@@ -780,7 +773,6 @@ mod tests {
         let body: Value = serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap();
         assert_eq!(body["anthropic_version"], "vertex-2023-10-16");
         assert_eq!(body["messages"][0]["content"], "hello");
-        crate::bootstrap::state::set_main_loop_model_override(previous_model);
     }
 
     #[tokio::test]
@@ -796,10 +788,7 @@ mod tests {
             format!("{endpoint}/anthropic/"),
         );
         let _api_key = EnvVarGuard::set("ANTHROPIC_FOUNDRY_API_KEY", "foundry-test-key");
-        let previous_model = crate::bootstrap::state::get_main_loop_model_override();
-        crate::bootstrap::state::set_main_loop_model_override(Some(Some(
-            "claude-sonnet-4-5".to_string(),
-        )));
+        crate::services::provider::anthropic::target::install_test_model_profile("claude-sonnet-4-5");
 
         assert_eq!(count_tokens_with_api("hello").await, Some(17));
         let request = server.join().unwrap();
@@ -809,6 +798,5 @@ mod tests {
                 .to_ascii_lowercase()
                 .contains("x-api-key: foundry-test-key")
         );
-        crate::bootstrap::state::set_main_loop_model_override(previous_model);
     }
 }

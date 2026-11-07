@@ -1497,11 +1497,11 @@ impl ToolUseContext {
         }
         if self.main_loop_model.is_none() {
             // Maps to CC wiring `useMainLoopModel()` into
-            // `toolUseContext.options.mainLoopModel` (API-ready full name).
-            // AppState may still hold aliases like `opus`.
-            self.main_loop_model = Some(crate::hooks::use_main_loop_model::use_main_loop_model(
-                snap.main_loop_model.as_deref(),
-                snap.main_loop_model_for_session.as_deref(),
+            // `toolUseContext.options.mainLoopModel`: the session profile and
+            // its wire model.
+            self.main_loop_profile = snap.main_loop_profile.clone();
+            self.main_loop_model = Some(crate::utils::model::model::profile_model(
+                snap.main_loop_profile.as_deref(),
             ));
         }
         self.app_store = AppStoreRef::new(store);

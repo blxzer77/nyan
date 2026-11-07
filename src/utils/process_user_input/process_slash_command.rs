@@ -1010,20 +1010,25 @@ pub(crate) fn call_model(
     command: &Command,
     args: &str,
     uuid: Option<String>,
-    _context: &crate::tool::ToolUseContext,
+    context: &crate::tool::ToolUseContext,
 ) -> ProcessUserInputBaseResult {
-    if let Some(output) = commands::model::inline_output_for_args(args) {
-        local_command_result(
-            uuid,
-            commands::get_command_name(command),
-            args,
-            output,
-            false,
-            None,
-        )
-    } else {
-        open_local_command_ui(LocalCommandUi::Model, invocation(command, args))
-    }
+    // @nyan: `/model <profile>[:effort]` switches the session here; an
+    // unknown ref only prints the error.
+    let output = match commands::model::parse_args(args) {
+        None => return open_local_command_ui(LocalCommandUi::Model, invocation(command, args)),
+        Some(commands::model::ModelArgs::Message(message)) => message,
+        Some(commands::model::ModelArgs::Switch { profile, effort }) => {
+            commands::model::apply_switch(context.app_store.store.as_ref(), profile, effort)
+        }
+    };
+    local_command_result(
+        uuid,
+        commands::get_command_name(command),
+        args,
+        output,
+        false,
+        None,
+    )
 }
 
 pub(crate) fn call_sandbox(

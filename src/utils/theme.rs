@@ -1,12 +1,12 @@
 //! Maps to: CC utils/theme.ts — complete 6-variant color system.
-//! 1:1 port of all 69 theme color keys from CC's Theme type.
+//! Port of CC's Theme type color keys (67; @nyan: the two Fast mode keys are gone).
 //! Every field, every variant, every RGB value matches the CC source.
 //! Source: rebuild/src/utils/theme.ts lines 4-89 (type), 115-596 (6 themes).
 
 use iocraft::Color;
 
 /// Complete theme color palette — maps to CC Theme type (theme.ts:4-89).
-/// All 69 keys ported verbatim.
+/// All CC keys except the two Fast mode ones.
 #[derive(Debug, Clone, Copy)]
 pub struct Theme {
     pub auto_accept: Color,
@@ -152,7 +152,7 @@ pub enum ThemeColorKey {
 }
 
 impl ThemeColorKey {
-    pub const ALL: [Self; 69] = [
+    pub const ALL: [Self; 67] = [
         Self::AutoAccept,
         Self::BashBorder,
         Self::Claude,
@@ -368,7 +368,7 @@ impl Theme {
         }
     }
 
-    pub fn palette(self) -> [Color; 69] {
+    pub fn palette(self) -> [Color; 67] {
         ThemeColorKey::ALL.map(|key| self.color(key))
     }
 }
@@ -1020,7 +1020,7 @@ mod tests {
 
     #[test]
     fn theme_color_keys_cover_the_full_official_palette() {
-        assert_eq!(ThemeColorKey::ALL.len(), 69);
+        assert_eq!(ThemeColorKey::ALL.len(), 67);
         assert_eq!(ThemeColorKey::ClawdBody.official_key(), "clawd_body");
         assert_eq!(
             ThemeColorKey::RateLimitFill.official_key(),

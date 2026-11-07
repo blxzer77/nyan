@@ -16,7 +16,7 @@ use crate::components::design_system::dialog::Dialog;
 use crate::components::design_system::theme_provider::use_theme;
 use crate::components::language_picker::LanguagePicker;
 use crate::components::model_picker as model;
-use crate::components::model_picker::{ModelPicker, ModelPickerSelection};
+use crate::components::model_picker::{ModelPicker, ModelPickerResult};
 use crate::components::output_style_picker as output_style;
 use crate::components::output_style_picker::OutputStylePicker;
 use crate::components::theme_picker::ThemePicker;
@@ -390,17 +390,6 @@ fn auto_updates_disabled_reason_label() -> &'static str {
     }
 }
 
-fn model_value_for_display(value: &str) -> String {
-    let trimmed = value.trim();
-    if trimmed.eq_ignore_ascii_case("Default (recommended)")
-        || trimmed.eq_ignore_ascii_case("default")
-    {
-        model::MODEL_NO_PREFERENCE.to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
 fn apply_settings_submenu_selection(
     items: &mut [SettingItem],
     menu: SettingsSubmenu,
@@ -431,7 +420,6 @@ fn config_summary_label(item: &SettingItem) -> &'static str {
         "prefersReducedMotion" => "reduce motion",
         "streamingTextDisplay" => "streaming text",
         "thinkingEnabled" => "thinking mode",
-        "fastMode" => "fast mode",
         "promptSuggestionEnabled" => "prompt suggestions",
         "fileCheckpointingEnabled" => "rewind code (checkpoints)",
         "verbose" => "verbose",
@@ -1094,33 +1082,23 @@ pub fn Config<'a>(props: &mut ConfigProps<'a>, mut hooks: Hooks) -> impl Into<An
             }
             .into_any()
         } else if active_submenu == SettingsSubmenu::Model {
-            let initial = items
-                .read()
-                .iter()
-                .find(|item| item.id == active_submenu.setting_id())
-                .map(|item| model_value_for_display(&item.display_value()));
             element! {
                 ContextProvider(value: Context::owned(theme)) {
                     View(flex_direction: FlexDirection::Column) {
                         ModelPicker(
-                            initial: initial,
-                            header_text: None,
-                            session_model_label: None,
                             is_standalone_command: false,
-                            skip_settings_write: true,
-                            show_fast_mode_notice: false,
-                            show_fast_mode_available_hint: false,
-                            fast_mode_is_on: false,
-                            exit_pending: false,
-                            exit_key_name: None,
-                            on_select: move |selection: ModelPickerSelection| {
-                                let mut all = items.read().clone();
-                                apply_settings_submenu_selection(
-                                    &mut all,
-                                    SettingsSubmenu::Model,
-                                    selection.display_label(),
-                                );
-                                items.set(all);
+                            on_select: move |result: ModelPickerResult| {
+                                // @nyan: the row shows the session's profile;
+                                // Ctrl+S changes the default, not the session.
+                                if let ModelPickerResult::Session { profile, .. } = &result {
+                                    let mut all = items.read().clone();
+                                    apply_settings_submenu_selection(
+                                        &mut all,
+                                        SettingsSubmenu::Model,
+                                        profile,
+                                    );
+                                    items.set(all);
+                                }
                                 submenu.set(None);
                                 tabs_hidden_request.set(Some(false));
                             },
