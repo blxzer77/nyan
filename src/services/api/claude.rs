@@ -483,12 +483,14 @@ pub fn configure_effort_params(
 /// The thinking configuration of one request: the effort when the session or
 /// agent set one, otherwise the caller's own.
 fn effective_thinking_config(
-    effort: Option<Effort>,
     thinking_config: &ThinkingConfig,
-    model: &str,
+    options: &Options,
 ) -> ThinkingConfig {
-    match effort {
-        Some(effort) => thinking_for_effort(effort, model_supports_adaptive_thinking(model)),
+    match options.effort_value {
+        Some(effort) => thinking_for_effort(
+            effort,
+            model_supports_adaptive_thinking(&options.model, options.profile.as_deref()),
+        ),
         None => thinking_config.clone(),
     }
 }
@@ -1840,16 +1842,18 @@ fn sdk_system_prompt_from_blocks(
 
 fn local_thinking_config_to_sdk(
     thinking: &ThinkingConfig,
-    model: &str,
+    options: &Options,
     max_output_tokens: u32,
 ) -> anthropic_sdk::resources::messages::ThinkingConfig {
-    if matches!(thinking, ThinkingConfig::Disabled) || !model_supports_thinking(model) {
+    let model = options.model.as_str();
+    let profile = options.profile.as_deref();
+    if matches!(thinking, ThinkingConfig::Disabled) || !model_supports_thinking(model, profile) {
         return anthropic_sdk::resources::messages::ThinkingConfig::Disabled;
     }
 
     match thinking {
         ThinkingConfig::Disabled => anthropic_sdk::resources::messages::ThinkingConfig::Disabled,
-        ThinkingConfig::Adaptive if model_supports_adaptive_thinking(model) => {
+        ThinkingConfig::Adaptive if model_supports_adaptive_thinking(model, profile) => {
             anthropic_sdk::resources::messages::ThinkingConfig::Adaptive
         }
         ThinkingConfig::Adaptive => anthropic_sdk::resources::messages::ThinkingConfig::Enabled {
@@ -2250,10 +2254,9 @@ fn build_sdk_message_create_plan(
     let max_tokens = options
         .max_output_tokens_override
         .unwrap_or_else(|| get_max_output_tokens_for_model(&options.model));
-    let effective_thinking_config =
-        effective_thinking_config(options.effort_value, thinking_config, &options.model);
+    let effective_thinking_config = effective_thinking_config(thinking_config, options);
     let sdk_thinking =
-        local_thinking_config_to_sdk(&effective_thinking_config, &options.model, max_tokens);
+        local_thinking_config_to_sdk(&effective_thinking_config, options, max_tokens);
     let temperature = if matches!(
         &sdk_thinking,
         anthropic_sdk::resources::messages::ThinkingConfig::Disabled
@@ -2709,10 +2712,9 @@ fn params_from_context(
     let max_tokens = options
         .max_output_tokens_override
         .unwrap_or_else(|| get_max_output_tokens_for_model(&options.model));
-    let effective_thinking_config =
-        effective_thinking_config(options.effort_value, thinking_config, &options.model);
+    let effective_thinking_config = effective_thinking_config(thinking_config, options);
     let sdk_thinking =
-        local_thinking_config_to_sdk(&effective_thinking_config, &options.model, max_tokens);
+        local_thinking_config_to_sdk(&effective_thinking_config, options, max_tokens);
     let has_thinking = !matches!(
         sdk_thinking,
         anthropic_sdk::resources::messages::ThinkingConfig::Disabled
@@ -6116,6 +6118,68 @@ mod tests {
 
         assert_eq!(value["thinking"]["type"], serde_json::json!("enabled"));
         assert_eq!(value["thinking"]["budget_tokens"], serde_json::json!(4095));
+    }
+
+    #[test]
+    fn wire_thinking_follows_the_model_version_and_the_profile_declaration() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        struct ResetSettings;
+        impl Drop for ResetSettings {
+            fn drop(&mut self) {
+                crate::utils::settings::settings_cache::reset_settings_cache();
+            }
+        }
+        let _reset = ResetSettings;
+        crate::utils::settings::settings_cache::install_test_settings(
+            serde_json::from_value(serde_json::json!({"nyan": {
+                "providers": {"p": {"kind": "anthropic", "protocol": "anthropicMessages"}},
+                "models": {
+                    "main": {"provider": "p", "model": "claude-sonnet-5-5",
+                        "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000}},
+                    "budget": {"provider": "p", "model": "claude-opus-5-5",
+                        "capabilities": {"contextWindow": 200000, "maxOutputTokens": 64000,
+                            "thinking": "budgeted"}}
+                },
+                "selection": {"main": "main"}
+            }}))
+            .unwrap(),
+        );
+        let thinking = |model: &str, profile: Option<&str>, effort: Option<Effort>| {
+            let mut options = Options::new(model.to_string(), "repl_main_thread".to_string());
+            options.profile = profile.map(str::to_string);
+            options.effort_value = effort;
+            options.max_output_tokens_override = Some(32_000);
+            let params = build_sdk_message_create_params(
+                &[Message::User(crate::utils::messages::create_user_message(
+                    "think".to_string(),
+                ))],
+                &Vec::new(),
+                &ThinkingConfig::Adaptive,
+                &[],
+                &options,
+            )
+            .expect("SDK params build");
+            serde_json::to_value(params).expect("params serialize")["thinking"].clone()
+        };
+        let adaptive = serde_json::json!({"type": "adaptive"});
+
+        assert_eq!(thinking("claude-opus-5-5", None, None), adaptive);
+        assert_eq!(thinking("claude-sonnet-5-5", None, None), adaptive);
+        assert_eq!(
+            thinking("claude-sonnet-5-5", None, Some(Effort::High)),
+            adaptive
+        );
+        assert_eq!(thinking("claude-opus-4-5", None, None)["type"], "enabled");
+        // The profile declares a budget for a model the table calls adaptive.
+        let budget = thinking("claude-opus-5-5", Some("budget"), None);
+        assert_eq!(budget["type"], "enabled");
+        assert_eq!(budget["budget_tokens"], 31_999);
+        assert_eq!(
+            thinking("claude-opus-5-5", Some("budget"), Some(Effort::High)),
+            serde_json::json!({"type": "enabled", "budget_tokens": 24_576})
+        );
     }
 
     #[test]
