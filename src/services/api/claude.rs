@@ -20,9 +20,8 @@ use crate::services::provider::anthropic::betas::{
     ADVISOR_BETA_HEADER, CONTEXT_MANAGEMENT_BETA_HEADER, EFFORT_BETA_HEADER,
     PROMPT_CACHING_SCOPE_BETA_HEADER, REDACT_THINKING_BETA_HEADER, STRUCTURED_OUTPUTS_BETA_HEADER,
     TASK_BUDGETS_BETA_HEADER, TOOL_SEARCH_BETA_HEADER_3P, get_bedrock_extra_body_params_betas,
-    get_merged_betas, get_model_betas, get_tool_search_beta_header,
-    model_supports_structured_outputs, should_include_first_party_only_betas,
-    should_use_global_cache_scope,
+    get_merged_betas, get_tool_search_beta_header, model_supports_structured_outputs,
+    should_include_first_party_only_betas, should_use_global_cache_scope,
 };
 use crate::services::provider::anthropic::effort::{output_config_effort, thinking_for_effort};
 use crate::types::message::{StreamEvent, SystemApiErrorMessage};
@@ -30,9 +29,7 @@ use crate::types::tools::Tool;
 use crate::utils::content_array::insert_block_after_tool_results;
 use crate::utils::context::{CAPPED_DEFAULT_MAX_TOKENS, get_model_max_output_tokens};
 use crate::utils::effort::Effort;
-use crate::utils::model::model::{
-    get_main_loop_model, get_small_fast_model, normalize_model_string_for_api,
-};
+use crate::utils::model::model::{get_main_loop_model, normalize_model_string_for_api};
 use crate::utils::process_env::JsTruthy;
 use crate::utils::thinking::{
     ThinkingConfig, model_supports_adaptive_thinking, model_supports_thinking,
@@ -590,38 +587,6 @@ pub fn get_api_metadata() -> ApiMetadata {
         serde_json::to_string(&JsonValue::Object(extra)).unwrap_or_else(|_| "{}".to_string());
 
     ApiMetadata { user_id }
-}
-
-// ---------------------------------------------------------------------------
-// verifyApiKey
-// ---------------------------------------------------------------------------
-
-/// Maps to: CC services/api/claude.ts:530-586
-///
-/// Verifies an API key by making a minimal messages.create call.
-/// Returns true if the key is valid, false if authentication fails.
-/// Errors on other failures.
-///
-pub async fn verify_api_key(
-    api_key: &str,
-    is_non_interactive_session: bool,
-) -> anyhow::Result<bool> {
-    // Skip API verification if running in print mode
-    if is_non_interactive_session {
-        return Ok(true);
-    }
-
-    // TODO: Implement real API key verification using anthropic_sdk::Anthropic.
-    // The CC implementation creates a minimal messages.create call with
-    // model=getSmallFastModel(), max_tokens=1, messages=[{role:'user', content:'test'}].
-    // See CC services/api/claude.ts:530-586 for full retry and error handling.
-    let _ = api_key;
-    let _model = get_small_fast_model();
-    let _betas = get_model_betas(&_model);
-
-    Err(anyhow::anyhow!(
-        "verifyApiKey stubbed: real implementation pending anthropic-sdk-rs wiring"
-    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -2824,25 +2789,6 @@ fn sdk_output_config_from_options(
     }))
 }
 
-fn sdk_error_message_without_secrets(error: impl std::fmt::Display) -> String {
-    let raw = error.to_string();
-    let mut sanitized = raw.replace('\n', " ");
-    for key in [
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_AUTH_TOKEN",
-        "CLAUDE_CODE_OAUTH_TOKEN",
-    ] {
-        sanitized = sanitized.replace(key, "<redacted>");
-        if let Some(secret) = crate::utils::process_env::var(key) {
-            let trimmed = secret.trim();
-            if !trimmed.is_empty() {
-                sanitized = sanitized.replace(trimmed, "<redacted>");
-            }
-        }
-    }
-    sanitized
-}
-
 fn stream_item_for_delta(delta: &crate::services::provider::ir::Delta) -> Option<ClaudeStreamItem> {
     use crate::services::provider::ir::Delta;
     match delta {
@@ -4752,7 +4698,7 @@ fn model_fallback_stream_item_from_error(error: &anyhow::Error) -> Option<QueryM
 }
 
 fn system_api_error_message_from_error(error: anyhow::Error) -> SystemApiErrorMessage {
-    let message = sdk_error_message_without_secrets(&error);
+    let message = crate::services::provider::credential::redact_credentials(&error.to_string());
     SystemApiErrorMessage {
         content: message.clone(),
         api_error: message.clone(),
@@ -8666,19 +8612,31 @@ mod tests {
         );
     }
 
-    // -- verify_api_key stub --
-
     #[test]
-    fn verify_api_key_stub_does_not_perform_network_success() {
-        let result = futures::executor::block_on(verify_api_key("sk-ant-test", false));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn verify_api_key_non_interactive_skips_verification() {
-        let result = futures::executor::block_on(verify_api_key("sk-ant-test", true));
-        assert!(result.is_ok());
-        assert!(result.unwrap());
+    fn system_api_error_redacts_a_non_anthropic_provider_key() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _key = EnvVarGuard::set("NYAN_FAKE_GEMINI_KEY", "AIzaFakeGeminiClaude0001");
+        crate::utils::settings::settings_cache::install_test_settings(
+            serde_json::from_value(serde_json::json!({"nyan": {"providers": {
+                "gemini": {"kind": "gemini", "protocol": "gemini",
+                    "credential": {"env": "NYAN_FAKE_GEMINI_KEY"}}
+            }}}))
+            .unwrap(),
+        );
+        let message = system_api_error_message_from_error(anyhow::anyhow!(
+            "403 key=AIzaFakeGeminiClaude0001\nforbidden"
+        ));
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        for text in [
+            &message.content,
+            &message.api_error,
+            &message.error,
+            message.error_details.as_ref().unwrap(),
+        ] {
+            assert_eq!(text, "403 key=<redacted> forbidden");
+        }
     }
 
     // -- get_extra_body_params --
