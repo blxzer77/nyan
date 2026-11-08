@@ -827,11 +827,11 @@ mod tests {
     #[test]
     fn direct_footer_row_count_includes_memory_wake_channel() {
         assert_eq!(
-            direct_footer_row_count(false, false, false, None, false, 0, false, true, false,),
+            direct_footer_row_count(false, false, false, None, false, 0, false, true, false),
             1
         );
         assert_eq!(
-            direct_footer_row_count(false, false, false, None, false, 0, false, false, false,),
+            direct_footer_row_count(false, false, false, None, false, 0, false, false, false),
             0
         );
     }

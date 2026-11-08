@@ -128,22 +128,22 @@ mod tests {
     #[test]
     fn external_editor_hint_from_state_matches_prompt_input_gates() {
         assert!(
-            external_editor_hint_notification_from_state(true, false, false, Some("cursor"),)
+            external_editor_hint_notification_from_state(true, false, false, Some("cursor"))
                 .is_some()
         );
         assert!(
-            external_editor_hint_notification_from_state(false, false, false, Some("cursor"),)
+            external_editor_hint_notification_from_state(false, false, false, Some("cursor"))
                 .is_none()
         );
         assert!(
-            external_editor_hint_notification_from_state(true, true, false, Some("cursor"),)
+            external_editor_hint_notification_from_state(true, true, false, Some("cursor"))
                 .is_none()
         );
         assert!(
-            external_editor_hint_notification_from_state(true, false, true, Some("cursor"),)
+            external_editor_hint_notification_from_state(true, false, true, Some("cursor"))
                 .is_none()
         );
-        assert!(external_editor_hint_notification_from_state(true, false, false, None,).is_none());
+        assert!(external_editor_hint_notification_from_state(true, false, false, None).is_none());
     }
 
     #[test]

@@ -3357,7 +3357,7 @@ mod tests {
     }
 
     #[component]
-    fn PromptWithMissingApiKey(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    fn PromptWithMissingCredential(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         let store = hooks.use_const(|| {
             crate::state::store::AppStore::new(
                 crate::state::app_state_store::AppState::default(),
@@ -4664,7 +4664,7 @@ mod tests {
 
     #[test]
     fn prompt_input_passes_repl_credential_status_through_footer() {
-        let text = element!(PromptWithMissingApiKey)
+        let text = element!(PromptWithMissingCredential)
             .render(Some(80))
             .to_string();
 
