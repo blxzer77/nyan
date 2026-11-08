@@ -612,6 +612,7 @@ mod tests {
             ("https://evil.example/moonshot.cn", Vendor::Other),
             ("https://moonshot.cn.evil.example/v1", Vendor::Other),
             ("https://notkimi.com/v1", Vendor::Other),
+            ("https://kimi.com@evil.example/v1", Vendor::Other),
             ("http://127.0.0.1:8317/v1", Vendor::Other),
             ("not a url", Vendor::Other),
         ] {
@@ -643,6 +644,7 @@ mod tests {
             (ProviderKind::Openai, "http://127.0.0.1:8317/v1"),
             (ProviderKind::Openai, "https://evil.example/moonshot.cn"),
             (ProviderKind::Openai, "https://moonshot.cn.evil.example/v1"),
+            (ProviderKind::Openai, "https://kimi.com@evil.example/v1"),
             (ProviderKind::Gateway, API_BASE),
             (ProviderKind::Gateway, "https://api.moonshot.cn/v1"),
             (ProviderKind::Openrouter, "https://openrouter.ai/api/v1"),
