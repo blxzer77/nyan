@@ -1359,14 +1359,6 @@ fn register_agent_frontmatter_hooks_for_run(
     let Some(hooks) = agent_definition.hooks.as_ref() else {
         return AgentFrontmatterHookGuard { session_id: None };
     };
-    let hooks_allowed_for_this_agent =
-        !crate::utils::settings::plugin_only_policy::is_restricted_to_plugin_only("hooks")
-            || crate::utils::settings::plugin_only_policy::is_source_admin_trusted(
-                agent_definition.source.official_name(),
-            );
-    if !hooks_allowed_for_this_agent {
-        return AgentFrontmatterHookGuard { session_id: None };
-    }
     let registered = crate::utils::hooks::register_frontmatter_hooks::register_frontmatter_hooks(
         agent_id,
         hooks,

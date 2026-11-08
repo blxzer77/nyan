@@ -69,12 +69,11 @@ pub fn mock_permission_request_with_input(
 }
 
 /// Maps to: CC `utils/permissions/permissions.ts:109-129#PERMISSION_RULE_SOURCES`.
-pub const PERMISSION_RULE_SOURCES: [PermissionRuleSource; 8] = [
+pub const PERMISSION_RULE_SOURCES: [PermissionRuleSource; 7] = [
     PermissionRuleSource::UserSettings,
     PermissionRuleSource::ProjectSettings,
     PermissionRuleSource::LocalSettings,
     PermissionRuleSource::FlagSettings,
-    PermissionRuleSource::PolicySettings,
     PermissionRuleSource::CliArg,
     PermissionRuleSource::Command,
     PermissionRuleSource::Session,
@@ -196,7 +195,6 @@ pub fn permission_rule_source_display_string(source: PermissionRuleSource) -> &'
         PermissionRuleSource::ProjectSettings => "shared project settings",
         PermissionRuleSource::LocalSettings => "project local settings",
         PermissionRuleSource::FlagSettings => "command line arguments",
-        PermissionRuleSource::PolicySettings => "enterprise managed settings",
         PermissionRuleSource::CliArg => "CLI argument",
         PermissionRuleSource::Command => "command configuration",
         PermissionRuleSource::Session => "current session",
@@ -2703,9 +2701,7 @@ pub fn delete_permission_rule(
     rule: &PermissionRule,
 ) -> anyhow::Result<ToolPermissionContext> {
     let destination = match rule.source {
-        PermissionRuleSource::PolicySettings
-        | PermissionRuleSource::FlagSettings
-        | PermissionRuleSource::Command => {
+        PermissionRuleSource::FlagSettings | PermissionRuleSource::Command => {
             anyhow::bail!("Cannot delete permission rules from read-only settings")
         }
         PermissionRuleSource::UserSettings => PermissionUpdateDestination::UserSettings,
@@ -2754,25 +2750,20 @@ pub fn apply_permission_rules_to_permission_context(
 }
 
 /// Maps to: CC `utils/permissions/permissions.ts:1419-1471#syncPermissionRulesFromDisk`.
-/// Replaces the literal source/behavior groups handled by upstream reload.
-/// Managed-only additionally clears CLI and session, while command and flag
-/// survive; policy/flag groups are replaced only when the fresh loader emits
-/// that exact group.
+/// Replaces the literal source/behavior groups handled by upstream reload;
+/// command, CLI, session and flag survive, and the flag group is replaced only
+/// when the fresh loader emits that exact group. @nyan: no managed-only mode
+/// (CC's `allowManagedPermissionRulesOnly` also cleared CLI and session).
 pub fn sync_permission_rules_from_disk(
     context: &ToolPermissionContext,
     rules: &[PermissionRule],
-    managed_only: bool,
 ) -> ToolPermissionContext {
     let mut next = context.clone();
-    let mut sources_to_clear = vec![
+    for source in [
         PermissionRuleSource::UserSettings,
         PermissionRuleSource::ProjectSettings,
         PermissionRuleSource::LocalSettings,
-    ];
-    if managed_only {
-        sources_to_clear.extend([PermissionRuleSource::CliArg, PermissionRuleSource::Session]);
-    }
-    for source in sources_to_clear {
+    ] {
         next.always_allow_rules.insert(source, Vec::new());
         next.always_deny_rules.insert(source, Vec::new());
         next.always_ask_rules.insert(source, Vec::new());
@@ -4126,7 +4117,8 @@ mod tests {
                     }],
                 })),
                 ..Default::default()
-            });
+            },
+        );
     }
 
     /// The other half of [`capture_permission_request_hook`]: pin the settings
@@ -4136,7 +4128,8 @@ mod tests {
     /// test could pass on a settings hook's decision.
     fn capture_no_settings_hooks() {
         crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(
-            &crate::utils::settings::SettingsJson::default());
+            &crate::utils::settings::SettingsJson::default(),
+        );
         crate::bootstrap::state::clear_registered_hooks();
     }
 
@@ -5969,7 +5962,6 @@ mod tests {
     #[test]
     fn delete_permission_rule_matches_official_read_only_source_guard() {
         for source in [
-            PermissionRuleSource::PolicySettings,
             PermissionRuleSource::FlagSettings,
             PermissionRuleSource::Command,
         ] {
@@ -6181,7 +6173,7 @@ mod tests {
     }
 
     #[test]
-    fn managed_reload_matches_official_literal_clear_and_preservation_matrix() {
+    fn reload_matches_official_literal_clear_and_preservation_matrix() {
         let mut context = ToolPermissionContext::default();
         for source in PERMISSION_RULE_SOURCES {
             context.always_allow_rules.insert(
@@ -6189,40 +6181,20 @@ mod tests {
                 vec![PermissionRuleValue::new(format!("Old{source:?}"), None)],
             );
         }
-        let fresh_policy = PermissionRule {
-            source: PermissionRuleSource::PolicySettings,
+        let fresh_user = PermissionRule {
+            source: PermissionRuleSource::UserSettings,
             rule_behavior: PermissionBehavior::Allow,
-            rule_value: PermissionRuleValue::new("FreshPolicy", None),
+            rule_value: PermissionRuleValue::new("FreshUser", None),
         };
-        let managed =
-            sync_permission_rules_from_disk(&context, std::slice::from_ref(&fresh_policy), true);
-
+        let normal = sync_permission_rules_from_disk(&context, std::slice::from_ref(&fresh_user));
+        assert_eq!(
+            normal.always_allow_rules[&PermissionRuleSource::UserSettings]
+                .iter()
+                .map(|rule| rule.tool_name.as_str())
+                .collect::<Vec<_>>(),
+            ["FreshUser"]
+        );
         for source in [
-            PermissionRuleSource::UserSettings,
-            PermissionRuleSource::ProjectSettings,
-            PermissionRuleSource::LocalSettings,
-            PermissionRuleSource::CliArg,
-            PermissionRuleSource::Session,
-        ] {
-            assert!(managed.always_allow_rules[&source].is_empty(), "{source:?}");
-        }
-        assert_eq!(
-            managed.always_allow_rules[&PermissionRuleSource::Command][0].tool_name,
-            "OldCommand"
-        );
-        assert_eq!(
-            managed.always_allow_rules[&PermissionRuleSource::FlagSettings][0].tool_name,
-            "OldFlagSettings"
-        );
-        assert_eq!(
-            managed.always_allow_rules[&PermissionRuleSource::PolicySettings][0].tool_name,
-            "FreshPolicy"
-        );
-
-        let normal =
-            sync_permission_rules_from_disk(&context, std::slice::from_ref(&fresh_policy), false);
-        for source in [
-            PermissionRuleSource::UserSettings,
             PermissionRuleSource::ProjectSettings,
             PermissionRuleSource::LocalSettings,
         ] {

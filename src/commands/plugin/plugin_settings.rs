@@ -898,9 +898,7 @@ fn ErrorsTabContent(
         }
         if matches!(
             error,
-            PluginError::MarketplaceNotFound { .. }
-                | PluginError::MarketplaceLoadFailed { .. }
-                | PluginError::MarketplaceBlockedByPolicy { .. }
+            PluginError::MarketplaceNotFound { .. } | PluginError::MarketplaceLoadFailed { .. }
         ) {
             let value = serde_json::to_value(error).unwrap();
             if !names.contains(value["marketplace"].as_str().unwrap_or("")) {
@@ -1020,9 +1018,9 @@ fn ErrorsTabContent(
         selected_index.set(clamped);
     }
     let theme = *hooks.use_context::<crate::utils::theme::Theme>();
-    let has_action = rows.get(clamped).is_some_and(|r| {
-        !matches!(r.action, ErrorRowAction::None)
-    });
+    let has_action = rows
+        .get(clamped)
+        .is_some_and(|r| !matches!(r.action, ErrorRowAction::None));
     if rows.is_empty() {
         return element!{View(flex_direction:FlexDirection::Column){View(margin_left:1u32){Text(content:"No plugin errors",dim:true)}View(margin_top:1u32){crate::components::configurable_shortcut_hint::ConfigurableShortcutHint(action:"confirm:no",context:"Confirmation",fallback:"Esc",description:"back",dim:true,italic:true)}}}.into_any();
     }

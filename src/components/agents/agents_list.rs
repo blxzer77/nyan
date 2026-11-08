@@ -126,7 +126,7 @@ fn source_title(source: AgentsListSource) -> &'static str {
     }
 }
 
-const GROUP_ORDER: [AgentDisplaySource; 7] = [
+const GROUP_ORDER: [AgentDisplaySource; 6] = [
     AgentDisplaySource::User,
     AgentDisplaySource::Project,
     AgentDisplaySource::Local,

@@ -142,10 +142,7 @@ mod tests {
         assert!(is_setting_source_enabled(SettingSource::Flag));
 
         crate::bootstrap::state::set_allowed_setting_sources(Vec::new());
-        assert_eq!(
-            get_enabled_setting_sources(),
-            vec![SettingSource::Flag]
-        );
+        assert_eq!(get_enabled_setting_sources(), vec![SettingSource::Flag]);
     }
 
     #[test]

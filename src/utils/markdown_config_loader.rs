@@ -217,13 +217,10 @@ pub fn load_markdown_files_for_subdir(subdir: &str, cwd: &Path) -> Vec<MarkdownF
         }
     }
 
-    let customization_locked = subdir == "agents"
-        && crate::utils::settings::plugin_only_policy::is_restricted_to_plugin_only("agents");
     let mut files = Vec::new();
     if crate::utils::settings::constants::is_setting_source_enabled(
         crate::utils::settings::constants::SettingSource::User,
-    ) && !customization_locked
-    {
+    ) {
         files.extend(load_markdown_files_from_dir(
             &user_dir,
             MarkdownConfigSource::UserSettings,
@@ -231,8 +228,7 @@ pub fn load_markdown_files_for_subdir(subdir: &str, cwd: &Path) -> Vec<MarkdownF
     }
     if crate::utils::settings::constants::is_setting_source_enabled(
         crate::utils::settings::constants::SettingSource::Project,
-    ) && !customization_locked
-    {
+    ) {
         for project_dir in project_dirs {
             files.extend(load_markdown_files_from_dir(
                 &project_dir,

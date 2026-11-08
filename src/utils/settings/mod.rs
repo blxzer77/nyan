@@ -20,7 +20,6 @@ pub(crate) mod internal_writes;
 /// @nyan: formal settings family for nyan's own modules.
 pub mod nyan;
 pub mod permission_validation;
-pub mod plugin_only_policy;
 pub mod schema_output;
 pub mod settings_cache;
 pub mod tool_validation_config;

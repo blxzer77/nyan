@@ -322,13 +322,10 @@ fn load_agent_markdown_files(
         }
     }
 
-    let customization_locked =
-        crate::utils::settings::plugin_only_policy::is_restricted_to_plugin_only("agents");
     let mut files = Vec::new();
     if crate::utils::settings::constants::is_setting_source_enabled(
         crate::utils::settings::constants::SettingSource::User,
-    ) && !customization_locked
-    {
+    ) {
         files.extend(
             crate::utils::markdown_config_loader::load_markdown_files_from_dir(
                 &user_dir,
@@ -338,8 +335,7 @@ fn load_agent_markdown_files(
     }
     if crate::utils::settings::constants::is_setting_source_enabled(
         crate::utils::settings::constants::SettingSource::Project,
-    ) && !customization_locked
-    {
+    ) {
         for project_dir in project_dirs {
             files.extend(
                 crate::utils::markdown_config_loader::load_markdown_files_from_dir(
@@ -1813,7 +1809,7 @@ mod tests {
     /// Without the last two the snapshot copy would land in whatever config
     /// home the run inherited.
     struct SnapshotEnv {
-        _loader: [EnvVarGuard; 4],
+        _loader: [EnvVarGuard; 3],
         _remote_memory: EnvVarGuard,
         _auto_memory: EnvVarGuard,
         _lock: TestEnvGuard<'static>,
