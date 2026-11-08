@@ -1053,8 +1053,7 @@ fn Main(props: &MainProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     if setup_complete.get() && !plugin_hooks_loaded.get() {
         let policy =
             crate::utils::hooks::hooks_config_snapshot::load_hooks_config_from_settings_sources();
-        if !policy.allow_managed_hooks_only
-            && !policy.disable_all_hooks
+        if !policy.disable_all_hooks
             && let Err(error) = crate::utils::plugins::load_plugin_hooks::load_plugin_hooks()
         {
             crate::utils::debug::log_for_debugging(&format!(
@@ -2195,8 +2194,7 @@ mod tests {
         };
         crate::utils::hooks::hooks_config_snapshot::reset_hooks_config_snapshot();
         crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(
-            &settings, None, false,
-        );
+            &settings);
         let startup_settings = Arc::new(SettingsWithErrors {
             settings: settings.clone(),
             errors: Vec::new(),

@@ -126,8 +126,7 @@ pub async fn process_session_start_hooks_async(
     }
     let loaded =
         crate::utils::hooks::hooks_config_snapshot::load_hooks_config_from_settings_sources();
-    if !loaded.allow_managed_hooks_only
-        && !loaded.disable_all_hooks
+    if !loaded.disable_all_hooks
         && let Err(error) = crate::utils::plugins::load_plugin_hooks::load_plugin_hooks()
     {
         crate::utils::debug::log_for_debugging(&format!(
@@ -275,10 +274,7 @@ mod tests {
         crate::utils::plugins::load_plugin_hooks::clear_plugin_hook_cache();
         crate::utils::hooks::hooks_config_snapshot::reset_hooks_config_snapshot();
         crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(
-            &crate::utils::settings::SettingsJson::default(),
-            None,
-            false,
-        );
+            &crate::utils::settings::SettingsJson::default());
 
         let messages =
             process_session_start_hooks("resume", Some("plugin-resume-session"), None, None);

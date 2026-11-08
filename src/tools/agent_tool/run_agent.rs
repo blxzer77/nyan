@@ -1425,7 +1425,7 @@ async fn execute_subagent_stop_hooks_from_settings(
 fn subagent_hook_config(agent_id: &str) -> Option<crate::services::hooks::RegisteredHooks> {
     let loaded_hooks = crate::services::hooks::load_hooks_config();
     let mut config = loaded_hooks.config;
-    if !loaded_hooks.allow_managed_hooks_only {
+    if !loaded_hooks.disable_all_hooks {
         crate::utils::hooks::session_hooks::merge_session_hooks_into_config(&mut config, agent_id);
     }
     (!config.is_empty()).then_some(config)

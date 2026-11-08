@@ -11850,8 +11850,7 @@ mod tests {
             ..Default::default()
         };
         crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(
-            &settings, None, false,
-        );
+            &settings);
         let target = resume::ResumeTarget {
             session_id: target_id.clone(),
             project_path: None,
@@ -11912,8 +11911,7 @@ mod tests {
         };
         crate::utils::hooks::hooks_config_snapshot::reset_hooks_config_snapshot();
         crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(
-            &settings, None, false,
-        );
+            &settings);
         let target = resume::ResumeTarget {
             session_id: "repl-resume-session".to_string(),
             project_path: None,
@@ -18966,10 +18964,7 @@ mod tests {
                     "SessionStart":[{"matcher":"resume","hooks":[{"type":"command","command":command,"timeout":5}]}]
                 })),
                 ..Default::default()
-            },
-            None,
-            false,
-        );
+            });
         let entries = vec![
             json!({"type":"user","uuid":"root","sessionId":target_id,"parentUuid":null,
                 "timestamp":"2026-09-12T01:00:00Z","message":{"role":"user","content":"resume"}}),
