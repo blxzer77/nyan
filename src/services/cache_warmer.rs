@@ -544,6 +544,8 @@ mod tests {
         };
         assert!(adaptive("claude-opus-5-5", None).is_some());
         assert!(adaptive("claude-sonnet-5-5", None).is_some());
+        assert!(adaptive("claude-haiku-5-5", None).is_some());
+        assert!(adaptive("claude-haiku-4-5-20251001", None).is_none());
 
         crate::utils::settings::settings_cache::install_test_settings(
             serde_json::from_value(serde_json::json!({"nyan": {

@@ -6117,7 +6117,16 @@ mod tests {
             thinking("claude-sonnet-5-5", None, Some(Effort::High)),
             adaptive
         );
+        assert_eq!(thinking("claude-haiku-5-5", None, None), adaptive);
+        assert_eq!(
+            thinking("claude-haiku-5-5", None, Some(Effort::Medium)),
+            adaptive
+        );
         assert_eq!(thinking("claude-opus-4-5", None, None)["type"], "enabled");
+        assert_eq!(
+            thinking("claude-haiku-4-5-20251001", None, None)["type"],
+            "enabled"
+        );
         // The profile declares a budget for a model the table calls adaptive.
         let budget = thinking("claude-opus-5-5", Some("budget"), None);
         assert_eq!(budget["type"], "enabled");
