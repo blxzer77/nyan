@@ -1922,6 +1922,34 @@ fn create_deferred_tool_placeholder() -> anthropic_sdk::resources::messages::Too
     anthropic_sdk::resources::messages::ToolUnion::Raw(beta_tool)
 }
 
+/// Anthropic rejects `cache_control` on a `defer_loading` tool, so the tools
+/// breakpoint goes on the last tool sent in full, and nowhere when every tool
+/// is deferred.
+fn add_tool_cache_breakpoint(
+    tools: &mut [anthropic_sdk::resources::messages::ToolUnion],
+    cache_control: &crate::services::provider::anthropic::cache::CacheControl,
+) {
+    if let Some(anchor) = tools
+        .iter_mut()
+        .rev()
+        .find(|tool| !is_deferred_tool_union(tool))
+    {
+        add_cache_control_to_tool_union(anchor, cache_control);
+    }
+}
+
+fn is_deferred_tool_union(tool: &anthropic_sdk::resources::messages::ToolUnion) -> bool {
+    use anthropic_sdk::resources::messages::ToolUnion;
+    match tool {
+        ToolUnion::Raw(value) => value
+            .get("defer_loading")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        ToolUnion::WithHelper { tool, .. } => is_deferred_tool_union(tool),
+        _ => false,
+    }
+}
+
 fn add_cache_control_to_tool_union(
     tool: &mut anthropic_sdk::resources::messages::ToolUnion,
     cache_control: &crate::services::provider::anthropic::cache::CacheControl,
@@ -2209,14 +2237,14 @@ fn build_sdk_message_create_plan(
     if tool_search_enabled {
         sdk_tools.push(create_deferred_tool_placeholder());
     }
-    if enable_prompt_caching && !sdk_tools.is_empty() {
-        let cc = crate::services::provider::anthropic::cache::get_cache_control_with_retention(
-            None,
-            cache_retention,
+    if enable_prompt_caching {
+        add_tool_cache_breakpoint(
+            &mut sdk_tools,
+            &crate::services::provider::anthropic::cache::get_cache_control_with_retention(
+                None,
+                cache_retention,
+            ),
         );
-        if let Some(last_tool) = sdk_tools.last_mut() {
-            add_cache_control_to_tool_union(last_tool, &cc);
-        }
     }
 
     let max_tokens = options
@@ -9703,7 +9731,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_search_adds_deferred_tool_placeholder_and_anchors_cache_control() {
+    fn tool_search_adds_deferred_tool_placeholder_and_anchors_cache_on_a_full_tool() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
         crate::utils::process_env::remove("ENABLE_TOOL_SEARCH");
@@ -9740,8 +9768,45 @@ mod tests {
         let last_tool = api_tools.last().expect("last tool");
         assert_eq!(last_tool["name"], DEFERRED_TOOL_PLACEHOLDER_NAME);
         assert_eq!(last_tool["defer_loading"], serde_json::json!(true));
-        // Cache control is anchored on the placeholder
-        assert_eq!(last_tool["cache_control"]["type"], "ephemeral");
+        assert!(last_tool.get("cache_control").is_none());
+        // The breakpoint sits on the last tool sent in full
+        let anchors = api_tools
+            .iter()
+            .filter(|t| t.get("cache_control").is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0]["name"], "ToolSearch");
+        assert_eq!(anchors[0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn tool_cache_breakpoint_skips_deferred_tools_and_is_absent_when_all_are_deferred() {
+        use anthropic_sdk::resources::messages::ToolUnion;
+        let cc = get_cache_control_with_retention(None, CacheRetention::Long);
+        let full = |name: &str| ToolUnion::Raw(serde_json::json!({ "name": name }));
+        let deferred =
+            |name: &str| ToolUnion::Raw(serde_json::json!({ "name": name, "defer_loading": true }));
+        let anchored = |tools: &[ToolUnion]| {
+            tools
+                .iter()
+                .map(|tool| serde_json::to_value(tool).unwrap())
+                .filter(|tool| tool.get("cache_control").is_some())
+                .map(|tool| tool["name"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        };
+
+        let mut mixed = vec![
+            full("a"),
+            full("b"),
+            deferred("c"),
+            create_deferred_tool_placeholder(),
+        ];
+        add_tool_cache_breakpoint(&mut mixed, &cc);
+        assert_eq!(anchored(&mixed), ["b"]);
+
+        let mut all_deferred = vec![deferred("c"), create_deferred_tool_placeholder()];
+        add_tool_cache_breakpoint(&mut all_deferred, &cc);
+        assert!(anchored(&all_deferred).is_empty());
     }
 
     #[test]
