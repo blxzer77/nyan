@@ -127,6 +127,23 @@ Unblock-File -Path .\nyan.exe, .\vendor\ripgrep\x64-win32\rg.exe
 
 按钮文字随 Windows 显示语言而不同（英文系统为 More info / Run anyway）。
 
+### 更新
+
+从 GitHub Release 安装的版本（Linux x86_64/aarch64、Windows x86_64）会在后台检查 `blxzer77/nyan` 的新版本，发现更新时只在页脚提示，不会自行下载或替换二进制。需要更新时运行：
+
+```sh
+nyan update
+```
+
+该命令会从对应 Release 下载匹配的资产，用该 Release 的 `SHA256SUMS` 校验后原子替换正在运行的二进制；完成后重新启动 nyan。
+
+- `NYAN_REPO=owner/name` 覆盖 Release 仓库。
+- `DISABLE_AUTOUPDATER=1`（或 `NYAN_DISABLE_AUTOUPDATER=1`）关闭后台检查；显式运行 `nyan update` 仍然有效。
+
+更新检查始终使用 GitHub 的 `/releases/latest`，因此不会自动提供预发布版本；`autoUpdatesChannel` 设置目前不影响这一行为。
+
+源码构建（`cargo build`、`cargo install`）不会被 `nyan update` 替换；命令会打印重新构建的说明。
+
 ### 交叉编译 Windows 版
 
 需要 mingw-w64 工具链。

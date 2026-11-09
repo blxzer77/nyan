@@ -69,6 +69,21 @@ nyan-vX.Y.Z-windows-x86_64.zip
 - Windows 运行时需要预先安装 [Git for Windows](https://git-scm.com/downloads/win) 提供的 Git Bash；Git Bash 不随 nyan 发布包提供。若不在自动发现的安装位置，可将 `NYAN_GIT_BASH_PATH` 设置为 `bash.exe` 的完整路径，例如 `C:\Program Files\Git\bin\bash.exe`。`install.ps1` 检测不到 Git Bash 时只打印警告，不会自动安装或因此失败。
 - 两个脚本都只支持当前平台的 x86_64/aarch64（Windows 仅 x86_64），都会下载 `SHA256SUMS`、校验对应资产，再解包并安装。
 
+## 运行时自动更新
+
+发布版二进制通过 GitHub Releases 自更新，代码位于 `src/utils/auto_updater.rs`：
+
+- 仓库默认 `blxzer77/nyan`，可用 `NYAN_REPO=owner/name` 覆盖（与两个安装脚本一致）。
+- 更新检查固定查询 `GET /repos/{repo}/releases/latest`。GitHub 该端点不返回预发布或 draft，因此 `autoUpdatesChannel` 的 `latest`/`stable` 目前没有不同来源；通道策略待定。
+- 正常启动只做通知：后台检查（30 分钟进程内缓存）发现新版本时在页脚提示 `nyan update`，不会自动下载或替换。`DISABLE_AUTOUPDATER=1` / `NYAN_DISABLE_AUTOUPDATER=1` 关闭后台检查。
+- 显式运行 `nyan update` 时：
+  1. 按 `uname`/`std::env::consts` 选择 `nyan-vX.Y.Z-linux-x86_64.tar.gz`、`-linux-aarch64.tar.gz` 或 `-windows-x86_64.zip`；
+  2. 从同一 Release 下载 `SHA256SUMS` 与资产，按 GNU coreutils 格式校验 SHA256；
+  3. 在系统临时目录解包（仅允许相对路径的普通文件和目录），只取 `nyan`/`nyan.exe`；Windows 同时替换归档中的 `vendor/`；
+  4. 在目标目录内同盘暂存后原子 `rename` 覆盖；Windows 对正在运行的 exe 使用 rename-swap。
+- 源码构建（`cargo build`、`cargo install`）以及没有对应资产的平台不会被替换；`nyan update` 打印重新构建或下载 Release 的说明。
+- 当前运行版本的预发布后缀不可见（`CARGO_PKG_VERSION` 只含 `X.Y.Z`），因此从 `nyan-v0.2.1-rc.1` 升级到 `nyan-v0.2.1` 不会被识别为更新；需要人工重装。见后续事项。
+
 ## 失败与回滚
 
 1. 构建、冒烟或汇总失败：workflow 失败，不创建 Release；修复后重新 dispatch 或重新推送一个新 tag。
