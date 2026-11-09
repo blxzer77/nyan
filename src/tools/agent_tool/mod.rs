@@ -1740,26 +1740,13 @@ impl crate::tool::ToolCall for AgentTool {
         true
     }
 
-    /// Maps to: CC `AgentTool.tsx:1692-1709` `checkPermissions(...)`. The auto
-    /// mode passthrough is ant-only; every other mode auto-approves the spawn.
+    /// Maps to: CC `AgentTool.tsx:1692-1709` `checkPermissions(...)`: the
+    /// spawn is auto-approved.
     fn check_permissions(
         &self,
         args: &serde_json::Value,
-        context: &crate::tool::ToolUseContext,
+        _context: &crate::tool::ToolUseContext,
     ) -> crate::utils::permissions::permission_result::PermissionResult {
-        if crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Permissions,
-        ) && context.tool_permission_context.mode
-            == crate::types::permissions::PermissionMode::Auto
-        {
-            return crate::utils::permissions::permission_result::PermissionResult::Passthrough {
-                message: "Agent tool requires permission to spawn sub-agents.".to_string(),
-                decision_reason: None,
-                suggestions: Vec::new(),
-                blocked_path: None,
-                pending_classifier_check: None,
-            };
-        }
         crate::utils::permissions::permission_result::PermissionResult::Allow {
             updated_input: Some(args.clone()),
             user_modified: None,
