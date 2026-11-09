@@ -394,6 +394,57 @@ mod tests {
     }
 
     #[test]
+    fn expired_probes_stop_matching_and_are_evicted() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let (config, _env) = isolated_config("ttl");
+        let url = "https://example.com/ttl";
+        {
+            let mut pending = lock();
+            pending.push(Probe {
+                id: "expired".to_string(),
+                point: DecisionPoint::WebAnswers,
+                kind: Kind::Url,
+                created: Instant::now()
+                    .checked_sub(PROBE_TTL)
+                    .expect("instant supports subtracting the TTL"),
+                candidates: vec![Candidate {
+                    key: normalize_url(url),
+                    label: url.to_string(),
+                    used: false,
+                }],
+            });
+        }
+        observe_url(url);
+        assert!(
+            events("posthoc").is_empty(),
+            "an expired probe cannot match"
+        );
+        assert_eq!(pending_count(), 0, "observation evicts expired probes");
+        clear();
+        let _ = std::fs::remove_dir_all(&config);
+    }
+
+    #[test]
+    fn the_oldest_probe_is_dropped_at_the_cap() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let (config, _env) = isolated_config("cap");
+        let url = |index: usize| format!("https://example.com/cap/{index}");
+        for index in 0..=MAX_PROBES {
+            register_urls(DecisionPoint::WebAnswers, [url(index)]).expect("probe");
+        }
+        assert_eq!(pending_count(), MAX_PROBES);
+        // The first registration was evicted, the newest one is still live.
+        observe_url(&url(0));
+        assert!(events("posthoc").is_empty());
+        observe_url(&url(MAX_PROBES));
+        let posthoc = events("posthoc");
+        assert_eq!(posthoc.len(), 1);
+        assert_eq!(posthoc[0]["identity"], url(MAX_PROBES));
+        clear();
+        let _ = std::fs::remove_dir_all(&config);
+    }
+
+    #[test]
     fn clear_forgets_pending_probes() {
         let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let (config, _env) = isolated_config("clear");
