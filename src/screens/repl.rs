@@ -5037,7 +5037,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                 if update_available.read().is_none()
                     && !crate::utils::config::is_auto_updater_disabled()
                     && let Some(version) = crate::utils::auto_updater::check_for_update().await
-                    && !crate::utils::auto_updater::should_skip_version(&version)
                 {
                     update_available.set(Some(crate::utils::auto_updater::UpdateAvailable {
                         version,

@@ -18,7 +18,6 @@
 use futures::future::BoxFuture;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
@@ -36,11 +35,9 @@ pub const CHECK_INTERVAL: Duration = Duration::from_secs(30 * 60);
 /// Checksum manifest asset name on every release.
 pub const CHECKSUM_ASSET: &str = "SHA256SUMS";
 
-// Channel policy note: `autoUpdatesChannel` (latest/stable) stays in settings,
-// but nyan has no separate channel feed yet. Both values resolve to GitHub's
-// `/releases/latest`, which never returns a prerelease or draft. Offering
-// prereleases by default would be a product decision, so it is deliberately
-// not guessed here.
+// Only stable releases are offered: `/releases/latest`, with drafts,
+// prereleases and non-`nyan-vX.Y.Z` tags rejected. There is no channel
+// setting.
 
 /// Whether this binary can replace itself with a release asset.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -117,6 +114,13 @@ pub enum UpdateError {
         actual: String,
     },
     Archive(String),
+    /// The install directory cannot be written, so only the install script
+    /// (re-run by the user) can update this installation.
+    NotWritable {
+        dir: PathBuf,
+        error: std::io::Error,
+        reinstall: String,
+    },
     /// The verified release could not be moved over an installed path.
     Replace {
         path: PathBuf,
@@ -148,6 +152,15 @@ impl std::fmt::Display for UpdateError {
                 "SHA256 mismatch for {asset}: expected {expected}, got {actual}"
             ),
             Self::Archive(message) => write!(f, "cannot unpack release archive: {message}"),
+            Self::NotWritable {
+                dir,
+                error,
+                reinstall,
+            } => write!(
+                f,
+                "cannot write to the install directory {} ({error}). Re-run the install script to update nyan: {reinstall}",
+                dir.display()
+            ),
             Self::Replace { path, error } => {
                 write!(f, "cannot replace {}: {error}", path.display())
             }
@@ -260,120 +273,41 @@ impl UpdateSupport {
     }
 }
 
-/// Parsed `nyan-vX.Y.Z[-pre]` release version, ordered with SemVer precedence.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Parsed stable `nyan-vX.Y.Z` release version. Field order gives the
+/// numeric ordering.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ReleaseVersion {
     pub major: u64,
     pub minor: u64,
     pub patch: u64,
-    pub pre: Option<String>,
 }
 
 impl ReleaseVersion {
+    /// `X.Y.Z` only: prerelease and build suffixes are not stable releases.
     pub fn parse(value: &str) -> Option<Self> {
-        let (base, pre) = match value.split_once('-') {
-            Some((base, pre)) if valid_prerelease(pre) => (base, Some(pre.to_string())),
-            Some(_) => return None,
-            None => (value, None),
+        let mut parts = value.split('.');
+        let mut number = || -> Option<u64> {
+            let part = parts.next()?;
+            part.bytes()
+                .all(|byte| byte.is_ascii_digit())
+                .then(|| part.parse().ok())
+                .flatten()
         };
-        let mut parts = base.split('.');
-        let major = parts.next()?.parse().ok()?;
-        let minor = parts.next()?.parse().ok()?;
-        let patch = parts.next()?.parse().ok()?;
-        if parts.next().is_some() {
-            return None;
-        }
-        Some(Self {
-            major,
-            minor,
-            patch,
-            pre,
-        })
+        let version = Self {
+            major: number()?,
+            minor: number()?,
+            patch: number()?,
+        };
+        parts.next().is_none().then_some(version)
     }
 
     pub fn as_version_string(&self) -> String {
-        let mut value = format!("{}.{}.{}", self.major, self.minor, self.patch);
-        if let Some(pre) = &self.pre {
-            value.push('-');
-            value.push_str(pre);
-        }
-        value
-    }
-}
-
-fn valid_prerelease(pre: &str) -> bool {
-    !pre.is_empty()
-        && pre
-            .split('.')
-            .all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric()))
-}
-
-fn compare_prerelease(left: &str, right: &str) -> Ordering {
-    for (left_part, right_part) in left.split('.').zip(right.split('.')) {
-        let ordering = match (left_part.parse::<u64>(), right_part.parse::<u64>()) {
-            (Ok(left), Ok(right)) => left.cmp(&right),
-            (Ok(_), Err(_)) => Ordering::Less,
-            (Err(_), Ok(_)) => Ordering::Greater,
-            (Err(_), Err(_)) => left_part.cmp(right_part),
-        };
-        if ordering != Ordering::Equal {
-            return ordering;
-        }
-    }
-    left.split('.').count().cmp(&right.split('.').count())
-}
-
-impl Ord for ReleaseVersion {
-    fn cmp(&self, other: &Self) -> Ordering {
-        (self.major, self.minor, self.patch)
-            .cmp(&(other.major, other.minor, other.patch))
-            .then_with(|| match (&self.pre, &other.pre) {
-                (None, None) => Ordering::Equal,
-                (None, Some(_)) => Ordering::Greater,
-                (Some(_), None) => Ordering::Less,
-                (Some(left), Some(right)) => compare_prerelease(left, right),
-            })
-    }
-}
-
-impl PartialOrd for ReleaseVersion {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+        format!("{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 
 pub fn parse_release_tag(tag: &str) -> Option<ReleaseVersion> {
     ReleaseVersion::parse(tag.strip_prefix(RELEASE_TAG_PREFIX)?)
-}
-
-pub fn version_gte(candidate: &str, current: &str) -> bool {
-    match (
-        ReleaseVersion::parse(candidate),
-        ReleaseVersion::parse(current),
-    ) {
-        (Some(candidate), Some(current)) => candidate >= current,
-        _ => candidate >= current,
-    }
-}
-
-/// Maps to: CC `shouldSkipVersion` (settings.minimumVersion gate).
-pub fn should_skip_version(target_version: &str) -> bool {
-    let settings = crate::utils::settings::load_settings_from_disk().settings;
-    let Some(minimum) = settings
-        .minimum_version
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-    else {
-        return false;
-    };
-    let skip = !version_gte(target_version, minimum);
-    if skip {
-        crate::utils::debug::log_for_debugging(&format!(
-            "Skipping update to {target_version} - below minimumVersion {minimum}"
-        ));
-    }
-    skip
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -407,6 +341,8 @@ struct RawRelease {
     #[serde(default)]
     draft: bool,
     #[serde(default)]
+    prerelease: bool,
+    #[serde(default)]
     assets: Vec<RawAsset>,
 }
 
@@ -426,14 +362,15 @@ fn release_from_raw(raw: RawRelease) -> Option<Release> {
     })
 }
 
-/// Parse the `/releases/latest` object.
+/// Parse the `/releases/latest` object. Only stable releases are accepted.
 pub fn parse_latest_release(json: &str) -> Result<Release, UpdateError> {
     let raw: RawRelease = serde_json::from_str(json)
         .map_err(|error| UpdateError::InvalidRelease(error.to_string()))?;
-    if raw.draft {
-        return Err(UpdateError::InvalidRelease(
-            "latest release is a draft".to_string(),
-        ));
+    if raw.draft || raw.prerelease {
+        return Err(UpdateError::InvalidRelease(format!(
+            "{} is not a stable release",
+            raw.tag_name
+        )));
     }
     release_from_raw(raw)
         .ok_or_else(|| UpdateError::InvalidRelease("release tag is not nyan-vX.Y.Z".to_string()))
@@ -934,6 +871,43 @@ fn install_unpacked(extracted: &Path, exe: &Path, os: &str) -> Result<(), Update
     }
 }
 
+/// The install-script command for this platform, as README documents it.
+pub fn reinstall_command(repo: &str, os: &str) -> String {
+    let script = if os == "windows" {
+        "install.ps1"
+    } else {
+        "install.sh"
+    };
+    let url = format!("https://raw.githubusercontent.com/{repo}/master/{script}");
+    if os == "windows" {
+        format!("download {url} and run .\\install.ps1")
+    } else {
+        format!("curl -fsSL {url} | bash")
+    }
+}
+
+/// Fail before downloading when the directory holding `exe` cannot take the
+/// same-directory staging files the swap needs.
+fn ensure_install_dir_writable(exe: &Path, repo: &str, os: &str) -> Result<(), UpdateError> {
+    let dir = exe.parent().unwrap_or(Path::new("."));
+    let probe = sibling(dir, "nyan", "write-test");
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+    {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            Ok(())
+        }
+        Err(error) => Err(UpdateError::NotWritable {
+            dir: dir.to_path_buf(),
+            error,
+            reinstall: reinstall_command(repo, os),
+        }),
+    }
+}
+
 /// Download, verify, unpack and install a newer release into `exe_path`.
 /// Parameters keep the flow testable with local fixtures and temp paths.
 pub async fn install_update_with(
@@ -955,6 +929,8 @@ pub async fn install_update_with(
             latest: release.version.as_version_string(),
         });
     }
+
+    ensure_install_dir_writable(exe_path, repo, os)?;
 
     let to = release.version.as_version_string();
     let asset =
@@ -1164,10 +1140,6 @@ mod tests {
             asset_name("nyan-v0.2.0", "windows", "x86_64").as_deref(),
             Some("nyan-v0.2.0-windows-x86_64.zip")
         );
-        assert_eq!(
-            asset_name("nyan-v0.2.1-rc.1", "linux", "x86_64").as_deref(),
-            Some("nyan-v0.2.1-rc.1-linux-x86_64.tar.gz")
-        );
         assert_eq!(asset_name("nyan-v0.2.0", "macos", "aarch64"), None);
         assert_eq!(asset_name("nyan-v0.2.0", "windows", "aarch64"), None);
     }
@@ -1200,28 +1172,32 @@ mod tests {
     }
 
     #[test]
-    fn release_tags_parse_and_order_semver() {
+    fn only_stable_release_tags_parse() {
         assert_eq!(
             parse_release_tag("nyan-v0.2.0"),
             Some(ReleaseVersion {
                 major: 0,
                 minor: 2,
                 patch: 0,
-                pre: None
             })
         );
-        assert_eq!(parse_release_tag("v0.2.0"), None);
-        assert_eq!(parse_release_tag("nyan-v0.2"), None);
-        assert_eq!(parse_release_tag("nyan-v0.2.0-"), None);
+        for tag in [
+            "v0.2.0",
+            "nyan-v0.2",
+            "nyan-v0.2.0.1",
+            "nyan-v0.2.0-",
+            "nyan-v0.2.1-rc.1",
+            "nyan-v0.2.1+build",
+            "nyan-v+1.2.3",
+        ] {
+            assert_eq!(parse_release_tag(tag), None, "{tag}");
+        }
 
         let version = |value: &str| ReleaseVersion::parse(value).expect(value);
         assert!(version("0.2.1") > version("0.2.0"));
+        assert!(version("0.10.0") > version("0.9.9"));
+        assert!(version("1.0.0") > version("0.99.99"));
         assert!(version("0.2.0") == version("0.2.0"));
-        assert!(version("0.2.0") > version("0.2.0-rc.1"));
-        assert!(version("0.2.1-rc.2") > version("0.2.1-rc.1"));
-        assert!(version("0.2.1-rc.10") > version("0.2.1-rc.2"));
-        assert!(version("0.2.1-beta") > version("0.2.1-alpha"));
-        assert!(version_gte("0.2.0", "0.2.0"));
     }
 
     #[test]
@@ -1238,6 +1214,25 @@ mod tests {
         assert_eq!(release.tag, "nyan-v0.3.0");
         assert_eq!(release.version.as_version_string(), "0.3.0");
         assert_eq!(release.assets.len(), 2);
+    }
+
+    #[test]
+    fn draft_and_prerelease_releases_are_rejected() {
+        for flags in [r#""draft": true"#, r#""prerelease": true"#] {
+            let json = format!(r#"{{"tag_name": "nyan-v0.3.0", {flags}, "assets": []}}"#);
+            assert!(
+                matches!(
+                    parse_latest_release(&json),
+                    Err(UpdateError::InvalidRelease(_))
+                ),
+                "{flags}"
+            );
+        }
+        let json = r#"{"tag_name": "nyan-v0.3.0-rc.1", "assets": []}"#;
+        assert!(matches!(
+            parse_latest_release(json),
+            Err(UpdateError::InvalidRelease(_))
+        ));
     }
 
     #[test]
@@ -1491,6 +1486,70 @@ mod tests {
         assert!(matches!(error, UpdateError::ChecksumMismatch { .. }));
         assert_eq!(std::fs::read(&exe).unwrap(), b"old-binary");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A read-only install directory (e.g. a root-owned `/usr/local/bin`)
+    /// fails before any download and points at the platform install script.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unwritable_install_dir_asks_to_rerun_the_install_script() {
+        use std::os::unix::fs::PermissionsExt;
+        // Root bypasses directory permissions, so the probe would succeed.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let root = temp_root("readonly");
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let exe = bin.join("nyan");
+        std::fs::write(&exe, b"old-binary").unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let source = FakeSource::new(fixture_release("nyan-v0.3.0", &[]), HashMap::new());
+
+        let result = install_update_with(
+            &source,
+            DEFAULT_REPO,
+            "0.2.0",
+            &exe,
+            "linux",
+            "x86_64",
+            &root,
+        )
+        .await;
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let error = result.expect_err("read-only install dir");
+        assert!(matches!(error, UpdateError::NotWritable { .. }), "{error}");
+        let message = error.to_string();
+        assert!(
+            message.contains(&format!(
+                "cannot write to the install directory {}",
+                bin.display()
+            )),
+            "{message}"
+        );
+        assert!(
+            message.contains(
+                "Re-run the install script to update nyan: curl -fsSL https://raw.githubusercontent.com/blxzer77/nyan/master/install.sh | bash"
+            ),
+            "{message}"
+        );
+        assert!(source.fetched.lock().unwrap().is_empty());
+        assert_eq!(std::fs::read(&exe).unwrap(), b"old-binary");
+        assert_eq!(file_names(&bin), ["nyan"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn reinstall_command_names_the_platform_install_script() {
+        assert_eq!(
+            reinstall_command("owner/repo", "linux"),
+            "curl -fsSL https://raw.githubusercontent.com/owner/repo/master/install.sh | bash"
+        );
+        assert_eq!(
+            reinstall_command("owner/repo", "windows"),
+            r"download https://raw.githubusercontent.com/owner/repo/master/install.ps1 and run .\install.ps1"
+        );
     }
 
     #[tokio::test]

@@ -141,7 +141,9 @@ nyan update
 - `DISABLE_AUTOUPDATER=1`、`NYAN_DISABLE_AUTOUPDATER=1` 或 `NYAN_DISABLE_NONESSENTIAL_TRAFFIC=1` 关闭后台检查；显式运行 `nyan update` 仍然有效。
 - 两者都使用已配置的代理与 CA（`HTTPS_PROXY`、`NO_PROXY`、`NODE_EXTRA_CA_CERTS`，包括用户 settings 的 `env`）。
 
-更新检查始终使用 GitHub 的 `/releases/latest`，因此不会自动提供预发布版本；`autoUpdatesChannel` 设置目前不影响这一行为。
+只提供稳定版：忽略 draft 和预发布版本，没有更新通道设置。
+
+安装目录不可写时（例如 root 所有的 `/usr/local/bin`），`nyan update` 不做任何改动，并提示重新运行安装脚本：Linux 用 `install.sh`，Windows 用 `install.ps1`。
 
 源码构建（`cargo build`、`cargo install`）不会被 `nyan update` 替换；命令会打印重新构建的说明。
 

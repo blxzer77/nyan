@@ -159,9 +159,12 @@ Restart nyan afterwards.
 - Both use the configured proxy and CA settings (`HTTPS_PROXY`, `NO_PROXY`,
   `NODE_EXTRA_CA_CERTS`, including the `env` block of user settings).
 
-The update check always uses GitHub's `/releases/latest`, so prereleases are
-not offered automatically; the `autoUpdatesChannel` setting does not change
-this yet.
+Only stable releases are offered: drafts and prereleases are ignored, and
+there is no channel setting.
+
+If the install directory is not writable (for example a root-owned
+`/usr/local/bin`), `nyan update` changes nothing and asks you to re-run the
+install script: `install.sh` on Linux, `install.ps1` on Windows.
 
 Source builds (`cargo build`, `cargo install`) are not replaced by
 `nyan update`; it prints the rebuild instruction instead.

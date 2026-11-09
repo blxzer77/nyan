@@ -74,15 +74,15 @@ nyan-vX.Y.Z-windows-x86_64.zip
 发布版二进制通过 GitHub Releases 自更新，代码位于 `src/utils/auto_updater.rs`：
 
 - 仓库默认 `blxzer77/nyan`，可用 `NYAN_REPO=owner/name` 覆盖（与两个安装脚本一致）。
-- 更新检查固定查询 `GET /repos/{repo}/releases/latest`。GitHub 该端点不返回预发布或 draft，因此 `autoUpdatesChannel` 的 `latest`/`stable` 目前没有不同来源；通道策略待定。
+- 只提供稳定版：更新检查查询 `GET /repos/{repo}/releases/latest`，并拒绝 `draft`/`prerelease` 为 true 或 tag 不是 `nyan-vX.Y.Z` 的 Release。没有更新通道设置。
 - 正常启动只做通知：后台检查（30 分钟进程内缓存）发现新版本时在页脚提示 `nyan update`，不会自动下载或替换。`DISABLE_AUTOUPDATER=1` / `NYAN_DISABLE_AUTOUPDATER=1` / `NYAN_DISABLE_NONESSENTIAL_TRAFFIC=1` 关闭后台检查。请求走 `utils/proxy` 的共享传输（代理、`NO_PROXY`、mTLS、额外 CA）。
 - 显式运行 `nyan update` 时：
   1. 按 `std::env::consts` 选择 `<tag>-linux-x86_64.tar.gz`、`<tag>-linux-aarch64.tar.gz` 或 `<tag>-windows-x86_64.zip`（`<tag>` 即 Release 的 `nyan-vX.Y.Z`，与 release.yml 和安装脚本一致）；
   2. 从同一 Release 下载 `SHA256SUMS` 与资产，按 GNU coreutils 格式校验 SHA256；
   3. 在系统临时目录解包（仅允许相对路径的普通文件和目录），只取 `nyan`/`nyan.exe`；Windows 同时替换归档中的 `vendor/`；
   4. 先在目标目录内同盘暂存新文件（暂存失败不动现有安装），再替换：Linux 原子 `rename`；Windows 先把旧 `vendor/`、旧 `nyan.exe` 改名为 `.<name>.old-*` 再换入新文件，二进制替换失败时回滚 `vendor/`。运行中的旧 exe 无法删除，由下一次更新清理。
+- 下载前先探测安装目录是否可写；不可写时直接报错退出，不下载、不改动，并提示重新运行安装脚本（Linux `install.sh`，Windows `install.ps1`）。没有包管理器发行渠道，也没有按包管理器关闭更新的逻辑。
 - 源码构建（路径含 `target/debug|release` 或 `~/.cargo/bin`）以及没有对应资产的平台不会被替换；`nyan update` 打印重新构建或下载 Release 的说明。
-- 当前运行版本的预发布后缀不可见（`CARGO_PKG_VERSION` 只含 `X.Y.Z`），因此从 `nyan-v0.2.1-rc.1` 升级到 `nyan-v0.2.1` 不会被识别为更新；需要人工重装。见后续事项。
 
 ## 失败与回滚
 
