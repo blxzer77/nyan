@@ -153,8 +153,11 @@ that release's `SHA256SUMS`, and atomically replaces the running binary.
 Restart nyan afterwards.
 
 - `NYAN_REPO=owner/name` overrides the release repository.
-- `DISABLE_AUTOUPDATER=1` (or `NYAN_DISABLE_AUTOUPDATER=1`) disables the
-  background check; `nyan update` still runs when invoked explicitly.
+- `DISABLE_AUTOUPDATER=1`, `NYAN_DISABLE_AUTOUPDATER=1` or
+  `NYAN_DISABLE_NONESSENTIAL_TRAFFIC=1` disables the background check;
+  `nyan update` still runs when invoked explicitly.
+- Both use the configured proxy and CA settings (`HTTPS_PROXY`, `NO_PROXY`,
+  `NODE_EXTRA_CA_CERTS`, including the `env` block of user settings).
 
 The update check always uses GitHub's `/releases/latest`, so prereleases are
 not offered automatically; the `autoUpdatesChannel` setting does not change

@@ -72,6 +72,10 @@ pub fn dispatch(config: &CliConfig) -> Option<i32> {
 
 /// `nyan update`: download and install the newest GitHub Release asset.
 fn run_update_cli() -> i32 {
+    // The trusted settings env carries the proxy and CA variables the
+    // download must honour, applied as `main::run` does before any request.
+    crate::utils::managed_env::apply_safe_config_environment_variables();
+    crate::utils::ca_certs_config::apply_extra_ca_certs_from_config();
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

@@ -49,7 +49,7 @@ pub enum UpdateSupport {
     ReleaseBinary,
     /// `cargo build` / `cargo run` tree; rebuilding is the update mechanism.
     DevelopmentBuild { path: PathBuf },
-    /// `cargo install` / npm-style install; the binary lives outside a release.
+    /// `cargo install` build; the binary lives outside a release.
     SourceInstall { path: PathBuf },
     /// No release asset exists for this OS/architecture.
     UnsupportedPlatform { platform: String },
@@ -117,6 +117,11 @@ pub enum UpdateError {
         actual: String,
     },
     Archive(String),
+    /// The verified release could not be moved over an installed path.
+    Replace {
+        path: PathBuf,
+        error: std::io::Error,
+    },
     Io(std::io::Error),
 }
 
@@ -143,6 +148,9 @@ impl std::fmt::Display for UpdateError {
                 "SHA256 mismatch for {asset}: expected {expected}, got {actual}"
             ),
             Self::Archive(message) => write!(f, "cannot unpack release archive: {message}"),
+            Self::Replace { path, error } => {
+                write!(f, "cannot replace {}: {error}", path.display())
+            }
             Self::Io(error) => write!(f, "{error}"),
         }
     }
@@ -184,15 +192,20 @@ pub fn repo_from_env() -> Result<String, UpdateError> {
     resolve_repo(crate::utils::process_env::var("NYAN_REPO").as_deref())
 }
 
-/// Asset for the release version and platform, following `release.yml`.
-pub fn asset_name(version: &str, os: &str, arch: &str) -> Option<String> {
-    let suffix = match (os, arch) {
-        ("linux", "x86_64") => "linux-x86_64.tar.gz",
-        ("linux", "aarch64") => "linux-aarch64.tar.gz",
-        ("windows", "x86_64") => "windows-x86_64.zip",
-        _ => return None,
-    };
-    Some(format!("nyan-v{version}-{suffix}"))
+/// Platform part of a release asset name, following `release.yml`.
+fn asset_suffix(os: &str, arch: &str) -> Option<&'static str> {
+    match (os, arch) {
+        ("linux", "x86_64") => Some("linux-x86_64.tar.gz"),
+        ("linux", "aarch64") => Some("linux-aarch64.tar.gz"),
+        ("windows", "x86_64") => Some("windows-x86_64.zip"),
+        _ => None,
+    }
+}
+
+/// Asset for a release tag and platform: `<tag>-<suffix>`, built from the
+/// tag exactly as `release.yml` and the install scripts do.
+pub fn asset_name(tag: &str, os: &str, arch: &str) -> Option<String> {
+    asset_suffix(os, arch).map(|suffix| format!("{tag}-{suffix}"))
 }
 
 fn platform_label(os: &str, arch: &str) -> String {
@@ -208,15 +221,12 @@ pub fn update_support_for_path(exe: &Path, os: &str, arch: &str) -> UpdateSuppor
             path: exe.to_path_buf(),
         };
     }
-    if lower.contains("/.cargo/bin/")
-        || lower.contains("/node_modules/")
-        || lower.contains("/.nvm/versions/node/")
-    {
+    if lower.contains("/.cargo/bin/") {
         return UpdateSupport::SourceInstall {
             path: exe.to_path_buf(),
         };
     }
-    if asset_name("0.0.0", os, arch).is_some() {
+    if asset_suffix(os, arch).is_some() {
         UpdateSupport::ReleaseBinary
     } else {
         UpdateSupport::UnsupportedPlatform {
@@ -225,19 +235,9 @@ pub fn update_support_for_path(exe: &Path, os: &str, arch: &str) -> UpdateSuppor
     }
 }
 
-/// Classify this process. `NODE_ENV`/`NYAN_ENV=development` behaves like a
-/// `cargo run` build even when the executable was copied elsewhere.
+/// Classify this process from its executable path.
 pub fn current_update_support() -> UpdateSupport {
-    let development_env = crate::utils::process_env::var("NODE_ENV")
-        .as_deref()
-        .is_some_and(|v| v == "development")
-        || crate::utils::process_env::var("NYAN_ENV")
-            .as_deref()
-            .is_some_and(|v| v == "development");
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("nyan"));
-    if development_env {
-        return UpdateSupport::DevelopmentBuild { path: exe };
-    }
     update_support_for_path(&exe, std::env::consts::OS, std::env::consts::ARCH)
 }
 
@@ -439,13 +439,16 @@ pub fn parse_latest_release(json: &str) -> Result<Release, UpdateError> {
         .ok_or_else(|| UpdateError::InvalidRelease("release tag is not nyan-vX.Y.Z".to_string()))
 }
 
-/// Parsed `SHA256SUMS` digest for `asset`.
+/// Parsed `SHA256SUMS` digest for `asset`. Lines are GNU coreutils
+/// `<digest>  <name>`, where binary mode marks the name as `*<name>`.
 pub fn parse_checksum(manifest: &str, asset: &str) -> Option<String> {
     manifest.lines().find_map(|line| {
         let mut fields = line.split_whitespace();
         let digest = fields.next()?;
         let name = fields.next()?;
-        (name == asset && is_sha256_hex(digest)).then(|| digest.to_ascii_lowercase())
+        let name = name.strip_prefix('*').unwrap_or(name);
+        (name == asset && fields.next().is_none() && is_sha256_hex(digest))
+            .then(|| digest.to_ascii_lowercase())
     })
 }
 
@@ -477,15 +480,21 @@ pub struct GitHubReleaseSource {
 }
 
 impl GitHubReleaseSource {
+    /// Uses the shared transport (proxy, NO_PROXY, mTLS, extra CAs). Release
+    /// archives are tens of MB, so only connecting and each read are bounded;
+    /// a whole-request deadline would cut off slow but healthy downloads.
     pub fn new() -> Result<Self, UpdateError> {
-        crate::utils::tls_provider::install_crypto_provider();
-        let client = reqwest::Client::builder()
-            .user_agent(crate::utils::http::user_agent())
-            .timeout(Duration::from_secs(120))
-            .build()
+        let client = crate::utils::proxy::get_proxy_fetch_options()
+            .and_then(|builder| {
+                builder
+                    .connect_timeout(Duration::from_secs(30))
+                    .read_timeout(Duration::from_secs(60))
+                    .build()
+                    .map_err(anyhow::Error::from)
+            })
             .map_err(|error| UpdateError::Http {
                 url: "https://api.github.com".to_string(),
-                message: error.to_string(),
+                message: format!("could not build the HTTP client: {error}"),
             })?;
         Ok(Self { client })
     }
@@ -755,8 +764,7 @@ impl Drop for TempWorkspace {
     }
 }
 
-#[cfg(windows)]
-fn copy_dir_all(source: &Path, dest: &Path) -> Result<(), UpdateError> {
+fn copy_dir_all(source: &Path, dest: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dest)?;
     for entry in std::fs::read_dir(source)? {
         let entry = entry?;
@@ -770,94 +778,159 @@ fn copy_dir_all(source: &Path, dest: &Path) -> Result<(), UpdateError> {
     Ok(())
 }
 
-/// Replace the bundled `vendor/` directory on Windows, matching `install.ps1`.
-#[cfg(windows)]
-fn replace_vendor_dir(extracted: &Path, exe: &Path) -> Result<(), UpdateError> {
-    let source = extracted.join("vendor");
-    if !source.is_dir() {
-        return Ok(());
-    }
-    let Some(parent) = exe.parent() else {
-        return Ok(());
-    };
-    let vendor = parent.join("vendor");
-    let staging = parent.join(format!("vendor.new-{}", uuid::Uuid::new_v4().simple()));
-    copy_dir_all(&source, &staging)?;
-    if vendor.exists() {
-        std::fs::remove_dir_all(&vendor)?;
-    }
-    std::fs::rename(&staging, &vendor)?;
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn replace_vendor_dir(_extracted: &Path, _exe: &Path) -> Result<(), UpdateError> {
-    Ok(())
-}
-
 #[cfg(unix)]
-fn install_permissions(path: &Path) -> Result<(), UpdateError> {
+fn set_executable(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
-    Ok(())
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
 }
 
 #[cfg(not(unix))]
-fn install_permissions(_path: &Path) -> Result<(), UpdateError> {
+fn set_executable(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Atomically move `new_binary` over `destination`, staging it in the
-/// destination directory so the final rename stays on one filesystem.
-pub fn replace_binary(new_binary: &Path, destination: &Path) -> Result<(), UpdateError> {
-    let dir = destination
-        .parent()
-        .ok_or_else(|| UpdateError::Archive("destination has no parent directory".to_string()))?;
-    let staged = dir.join(format!(
-        ".{}.new-{}",
-        destination
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("nyan"),
-        uuid::Uuid::new_v4().simple()
-    ));
-    std::fs::copy(new_binary, &staged)?;
-    install_permissions(&staged)?;
+/// Same-directory sibling `.{name}.{kind}-{uuid}`, so renames never cross
+/// filesystems.
+fn sibling(dir: &Path, name: &str, kind: &str) -> PathBuf {
+    dir.join(format!(".{name}.{kind}-{}", uuid::Uuid::new_v4().simple()))
+}
 
-    #[cfg(windows)]
-    {
-        // A running exe cannot be overwritten but can be renamed aside; this is
-        // the standard rename-swap. Restore it if the new binary cannot land.
-        let backup = dir.join(format!(
-            ".{}.old-{}",
-            destination
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("nyan"),
-            std::process::id()
-        ));
-        let _ = std::fs::remove_file(&backup);
-        if let Err(error) = std::fs::rename(destination, &backup) {
-            let _ = std::fs::remove_file(&staged);
-            return Err(error.into());
+fn remove_path(path: &Path) {
+    let _ = if path.is_dir() {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
+    };
+}
+
+/// Remove `.{name}.old-*` backups left by earlier updates. A Windows exe
+/// cannot be deleted while that old process still runs, so the swap leaves
+/// it behind and a later update collects it here.
+fn remove_stale_backups(dir: &Path, name: &str) {
+    let prefix = format!(".{name}.old-");
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|file| file.starts_with(&prefix))
+        {
+            remove_path(&entry.path());
         }
-        if let Err(error) = std::fs::rename(&staged, destination) {
-            let _ = std::fs::rename(&backup, destination);
-            let _ = std::fs::remove_file(&staged);
-            return Err(error.into());
+    }
+}
+
+/// Move `staged` onto `target` by first renaming any existing `target` aside.
+/// This is the only way to replace a directory or a running Windows exe. On
+/// failure the original is restored; on success its backup path is returned
+/// so the caller can delete it or roll back.
+fn swap_aside(staged: &Path, target: &Path, name: &str) -> std::io::Result<Option<PathBuf>> {
+    let dir = target.parent().unwrap_or(Path::new("."));
+    let backup = if target.exists() {
+        let backup = sibling(dir, name, "old");
+        std::fs::rename(target, &backup)?;
+        Some(backup)
+    } else {
+        None
+    };
+    if let Err(error) = std::fs::rename(staged, target) {
+        if let Some(backup) = &backup {
+            let _ = std::fs::rename(backup, target);
         }
-        // Deletion usually fails while the old image is still mapped; the next
-        // update removes leftovers.
-        let _ = std::fs::remove_file(&backup);
-        return Ok(());
+        return Err(error);
+    }
+    Ok(backup)
+}
+
+/// Install an unpacked, verified release over `exe`.
+///
+/// Everything is first copied into same-directory staging paths, so a
+/// failure there leaves the installation untouched. Then the Windows
+/// `vendor/` (bundled ripgrep, installed next to `nyan.exe` like
+/// `install.ps1` does) is swapped, and the binary last: one atomic `rename`
+/// on Unix, a rename-aside swap on Windows where the running exe cannot be
+/// overwritten. A failed binary swap rolls the `vendor/` swap back.
+fn install_unpacked(extracted: &Path, exe: &Path, os: &str) -> Result<(), UpdateError> {
+    let windows = os == "windows";
+    let binary_name = if windows { "nyan.exe" } else { "nyan" };
+    let new_binary = extracted.join(binary_name);
+    if !new_binary.is_file() {
+        return Err(UpdateError::Archive(format!(
+            "archive has no {binary_name}"
+        )));
+    }
+    let new_vendor = Some(extracted.join("vendor")).filter(|vendor| windows && vendor.is_dir());
+    let dir = exe.parent().ok_or_else(|| UpdateError::Replace {
+        path: exe.to_path_buf(),
+        error: std::io::Error::other("executable has no parent directory"),
+    })?;
+    let exe_name = exe
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(binary_name);
+    let vendor = dir.join("vendor");
+    let replace_error = |path: &Path, error| UpdateError::Replace {
+        path: path.to_path_buf(),
+        error,
+    };
+
+    remove_stale_backups(dir, exe_name);
+    remove_stale_backups(dir, "vendor");
+
+    let staged_binary = sibling(dir, exe_name, "new");
+    let staged_vendor = new_vendor.as_ref().map(|_| sibling(dir, "vendor", "new"));
+    let staged = std::fs::copy(&new_binary, &staged_binary)
+        .and_then(|_| set_executable(&staged_binary))
+        .and_then(|()| match (&new_vendor, &staged_vendor) {
+            (Some(source), Some(dest)) => copy_dir_all(source, dest),
+            _ => Ok(()),
+        });
+    if let Err(error) = staged {
+        remove_path(&staged_binary);
+        if let Some(staged_vendor) = &staged_vendor {
+            remove_path(staged_vendor);
+        }
+        return Err(replace_error(dir, error));
     }
 
-    #[cfg(not(windows))]
-    {
-        std::fs::rename(&staged, destination).inspect_err(|_| {
-            let _ = std::fs::remove_file(&staged);
-        })?;
-        Ok(())
+    let vendor_backup = match &staged_vendor {
+        Some(staged_vendor) => match swap_aside(staged_vendor, &vendor, "vendor") {
+            Ok(backup) => backup,
+            Err(error) => {
+                remove_path(&staged_binary);
+                remove_path(staged_vendor);
+                return Err(replace_error(&vendor, error));
+            }
+        },
+        None => None,
+    };
+
+    let binary = if windows {
+        swap_aside(&staged_binary, exe, exe_name)
+    } else {
+        std::fs::rename(&staged_binary, exe).map(|()| None)
+    };
+    match binary {
+        Ok(binary_backup) => {
+            // Fails on Windows while this process still runs the old image;
+            // the next update's sweep removes it.
+            for backup in binary_backup.iter().chain(vendor_backup.iter()) {
+                remove_path(backup);
+            }
+            Ok(())
+        }
+        Err(error) => {
+            remove_path(&staged_binary);
+            if staged_vendor.is_some() {
+                remove_path(&vendor);
+                if let Some(backup) = &vendor_backup {
+                    let _ = std::fs::rename(backup, &vendor);
+                }
+            }
+            Err(replace_error(exe, error))
+        }
     }
 }
 
@@ -884,10 +957,11 @@ pub async fn install_update_with(
     }
 
     let to = release.version.as_version_string();
-    let asset = asset_name(&to, os, arch).ok_or_else(|| UpdateError::NoCompatibleAsset {
-        version: to.clone(),
-        platform: platform_label(os, arch),
-    })?;
+    let asset =
+        asset_name(&release.tag, os, arch).ok_or_else(|| UpdateError::NoCompatibleAsset {
+            version: to.clone(),
+            platform: platform_label(os, arch),
+        })?;
     let archive = release
         .asset(&asset)
         .ok_or_else(|| UpdateError::NoCompatibleAsset {
@@ -920,16 +994,7 @@ pub async fn install_update_with(
     let kind = archive_kind(&asset)
         .ok_or_else(|| UpdateError::Archive(format!("unsupported asset {asset}")))?;
     extract_archive(&archive_path, kind, &extracted)?;
-
-    let binary_name = if os == "windows" { "nyan.exe" } else { "nyan" };
-    let extracted_binary = extracted.join(binary_name);
-    if !extracted_binary.is_file() {
-        return Err(UpdateError::Archive(format!(
-            "archive has no {binary_name}"
-        )));
-    }
-    replace_vendor_dir(&extracted, exe_path)?;
-    replace_binary(&extracted_binary, exe_path)?;
+    install_unpacked(&extracted, exe_path, os)?;
 
     Ok(UpdateOutcome::Updated { from, to })
 }
@@ -954,7 +1019,7 @@ pub async fn run_update() -> Result<UpdateOutcome, UpdateError> {
         &exe,
         std::env::consts::OS,
         std::env::consts::ARCH,
-        &std::env::temp_dir(),
+        &crate::utils::node_os::tmpdir(),
     )
     .await
 }
@@ -1017,7 +1082,7 @@ mod tests {
     }
 
     fn temp_root(label: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!(
+        let root = crate::utils::node_os::tmpdir().join(format!(
             "nyan-auto-update-{label}-{}",
             uuid::Uuid::new_v4().simple()
         ));
@@ -1043,10 +1108,11 @@ mod tests {
         encoder.finish().expect("gzip finish")
     }
 
+    /// Deflated like `Compress-Archive` output, so the real decoder runs.
     fn zip_fixture(entries: &[(&str, &[u8])]) -> Vec<u8> {
         let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         let options = zip::write::SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored);
+            .compression_method(zip::CompressionMethod::Deflated);
         for (name, contents) in entries {
             writer.start_file(*name, options).expect("zip entry");
             std::io::Write::write_all(&mut writer, contents).expect("zip write");
@@ -1054,22 +1120,83 @@ mod tests {
         writer.finish().expect("zip finish").into_inner()
     }
 
+    /// A release whose asset and `SHA256SUMS` are served from fixtures.
+    fn served_release(tag: &str, asset: &str, archive: Vec<u8>, manifest: String) -> FakeSource {
+        let release = fixture_release(
+            tag,
+            &[
+                (asset, "https://example.test/archive"),
+                (CHECKSUM_ASSET, "https://example.test/sums"),
+            ],
+        );
+        FakeSource::new(
+            release,
+            HashMap::from([
+                ("https://example.test/archive".to_string(), archive),
+                (
+                    "https://example.test/sums".to_string(),
+                    manifest.into_bytes(),
+                ),
+            ]),
+        )
+    }
+
+    fn file_names(dir: &Path) -> Vec<String> {
+        let mut names = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        names.sort();
+        names
+    }
+
     #[test]
     fn asset_names_follow_the_release_workflow() {
         assert_eq!(
-            asset_name("0.2.0", "linux", "x86_64").as_deref(),
+            asset_name("nyan-v0.2.0", "linux", "x86_64").as_deref(),
             Some("nyan-v0.2.0-linux-x86_64.tar.gz")
         );
         assert_eq!(
-            asset_name("0.2.0", "linux", "aarch64").as_deref(),
+            asset_name("nyan-v0.2.0", "linux", "aarch64").as_deref(),
             Some("nyan-v0.2.0-linux-aarch64.tar.gz")
         );
         assert_eq!(
-            asset_name("0.2.0", "windows", "x86_64").as_deref(),
+            asset_name("nyan-v0.2.0", "windows", "x86_64").as_deref(),
             Some("nyan-v0.2.0-windows-x86_64.zip")
         );
-        assert_eq!(asset_name("0.2.0", "macos", "aarch64"), None);
-        assert_eq!(asset_name("0.2.0", "windows", "aarch64"), None);
+        assert_eq!(
+            asset_name("nyan-v0.2.1-rc.1", "linux", "x86_64").as_deref(),
+            Some("nyan-v0.2.1-rc.1-linux-x86_64.tar.gz")
+        );
+        assert_eq!(asset_name("nyan-v0.2.0", "macos", "aarch64"), None);
+        assert_eq!(asset_name("nyan-v0.2.0", "windows", "aarch64"), None);
+    }
+
+    /// The asset name comes from the published tag, not a re-rendered
+    /// version: `nyan-v0.03.0` parses as 0.3.0 but its assets keep the tag.
+    #[tokio::test]
+    async fn install_uses_the_published_tag_for_the_asset_name() {
+        let root = temp_root("tag");
+        let asset = "nyan-v0.03.0-linux-x86_64.tar.gz";
+        let archive = tar_gz_fixture(&[("nyan", b"new-binary")]);
+        let manifest = format!("{}  {asset}\n", sha256_hex(&archive));
+        let source = served_release("nyan-v0.03.0", asset, archive, manifest);
+        let exe = root.join("nyan");
+        std::fs::write(&exe, b"old-binary").unwrap();
+
+        install_update_with(
+            &source,
+            DEFAULT_REPO,
+            "0.2.0",
+            &exe,
+            "linux",
+            "x86_64",
+            &root,
+        )
+        .await
+        .expect("install");
+        assert_eq!(std::fs::read(&exe).unwrap(), b"new-binary");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -1126,7 +1253,18 @@ mod tests {
             Some(digest.clone())
         );
         assert_eq!(parse_checksum(&manifest, "nyan-v0.2.0-linux-x86_64"), None);
-        assert_eq!(parse_checksum(&format!("short  asset"), "asset"), None);
+        assert_eq!(parse_checksum("short  asset", "asset"), None);
+        // `sha256sum --binary` marks names with `*`; uppercase digests are
+        // normalised.
+        let upper = "AB".repeat(32);
+        assert_eq!(
+            parse_checksum(&format!("{upper} *asset.zip\n"), "asset.zip"),
+            Some(upper.to_ascii_lowercase())
+        );
+        assert_eq!(
+            parse_checksum(&format!("{digest}  asset.zip trailing\n"), "asset.zip"),
+            None
+        );
     }
 
     #[test]
@@ -1163,6 +1301,22 @@ mod tests {
             UpdateSupport::SourceInstall { .. }
         ));
         assert!(matches!(
+            update_support_for_path(
+                Path::new(r"C:\Users\u\.cargo\bin\nyan.exe"),
+                "windows",
+                "x86_64"
+            ),
+            UpdateSupport::SourceInstall { .. }
+        ));
+        assert_eq!(
+            update_support_for_path(
+                Path::new(r"C:\Users\u\.local\bin\nyan.exe"),
+                "windows",
+                "x86_64"
+            ),
+            UpdateSupport::ReleaseBinary
+        );
+        assert!(matches!(
             update_support_for_path(Path::new("/home/u/.local/bin/nyan"), "macos", "aarch64"),
             UpdateSupport::UnsupportedPlatform { .. }
         ));
@@ -1195,28 +1349,13 @@ mod tests {
     #[tokio::test]
     async fn install_tar_gz_verifies_checksum_and_replaces_binary() {
         let root = temp_root("tar");
-        let version = "0.3.0";
-        let asset = asset_name(version, "linux", "x86_64").unwrap();
+        let asset = asset_name("nyan-v0.3.0", "linux", "x86_64").unwrap();
         let archive = tar_gz_fixture(&[("nyan", b"new-binary"), ("LICENSE", b"license")]);
         let manifest = format!("{}  {asset}\n", sha256_hex(&archive));
-        let release = fixture_release(
-            "nyan-v0.3.0",
-            &[
-                (&asset, "https://example.test/archive"),
-                (CHECKSUM_ASSET, "https://example.test/sums"),
-            ],
-        );
-        let source = FakeSource::new(
-            release,
-            HashMap::from([
-                ("https://example.test/archive".to_string(), archive),
-                (
-                    "https://example.test/sums".to_string(),
-                    manifest.into_bytes(),
-                ),
-            ]),
-        );
-        let exe = root.join("nyan");
+        let source = served_release("nyan-v0.3.0", &asset, archive, manifest);
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let exe = bin.join("nyan");
         std::fs::write(&exe, b"old-binary").unwrap();
 
         let outcome = install_update_with(
@@ -1247,34 +1386,35 @@ mod tests {
                 0o755
             );
         }
+        // No staging files, and the LICENSE and other archive members stay
+        // out of the install directory.
+        assert_eq!(file_names(&bin), ["nyan"]);
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The Windows flow (driven through `os`, so it runs on every host): the
+    /// deflated zip unpacks, `vendor/` is replaced wholesale like
+    /// `install.ps1`, the binary is swapped, and backups from an earlier
+    /// update that Windows could not delete are swept.
     #[tokio::test]
-    async fn install_zip_replaces_windows_binary_fixture() {
+    async fn install_zip_swaps_windows_binary_and_vendor() {
         let root = temp_root("zip");
-        let asset = asset_name("0.3.0", "windows", "x86_64").unwrap();
-        let archive = zip_fixture(&[("nyan.exe", b"new-exe"), ("LICENSE", b"license")]);
+        let asset = asset_name("nyan-v0.3.0", "windows", "x86_64").unwrap();
+        let archive = zip_fixture(&[
+            ("nyan.exe", b"new-exe"),
+            ("LICENSE", b"license"),
+            ("vendor/ripgrep/x64-win32/rg.exe", b"new-rg"),
+        ]);
         let manifest = format!("{}  {asset}\n", sha256_hex(&archive));
-        let release = fixture_release(
-            "nyan-v0.3.0",
-            &[
-                (&asset, "https://example.test/archive"),
-                (CHECKSUM_ASSET, "https://example.test/sums"),
-            ],
-        );
-        let source = FakeSource::new(
-            release,
-            HashMap::from([
-                ("https://example.test/archive".to_string(), archive),
-                (
-                    "https://example.test/sums".to_string(),
-                    manifest.into_bytes(),
-                ),
-            ]),
-        );
-        let exe = root.join("nyan.exe");
+        let source = served_release("nyan-v0.3.0", &asset, archive, manifest);
+        let bin = root.join("bin");
+        let old_vendor = bin.join("vendor/ripgrep/x64-win32");
+        std::fs::create_dir_all(&old_vendor).unwrap();
+        std::fs::write(old_vendor.join("rg.exe"), b"old-rg").unwrap();
+        std::fs::write(bin.join("vendor/stale.txt"), b"stale").unwrap();
+        let exe = bin.join("nyan.exe");
         std::fs::write(&exe, b"old-exe").unwrap();
+        std::fs::write(bin.join(".nyan.exe.old-1234"), b"older-exe").unwrap();
 
         install_update_with(
             &source,
@@ -1289,32 +1429,51 @@ mod tests {
         .expect("install");
 
         assert_eq!(std::fs::read(&exe).unwrap(), b"new-exe");
+        assert_eq!(
+            std::fs::read(bin.join("vendor/ripgrep/x64-win32/rg.exe")).unwrap(),
+            b"new-rg"
+        );
+        assert!(!bin.join("vendor/stale.txt").exists());
+        // On Linux nothing holds the old image, so its backup is deleted at
+        // once; the stale one from a previous update is swept.
+        assert_eq!(file_names(&bin), ["nyan.exe", "vendor"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// When the staged copy cannot land, the original is renamed back, so a
+    /// failed swap of either `vendor/` or the binary leaves the install as
+    /// it was.
+    #[test]
+    fn failed_swap_restores_the_original() {
+        let root = temp_root("swap");
+        let vendor = root.join("vendor");
+        std::fs::create_dir_all(&vendor).unwrap();
+        std::fs::write(vendor.join("rg.exe"), b"old-rg").unwrap();
+
+        let error = swap_aside(&root.join("missing-staging"), &vendor, "vendor")
+            .expect_err("missing staging must fail");
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        assert_eq!(std::fs::read(vendor.join("rg.exe")).unwrap(), b"old-rg");
+        assert_eq!(file_names(&root), ["vendor"]);
+
+        let staged = root.join("staged");
+        std::fs::create_dir_all(&staged).unwrap();
+        std::fs::write(staged.join("rg.exe"), b"new-rg").unwrap();
+        let backup = swap_aside(&staged, &vendor, "vendor")
+            .unwrap()
+            .expect("existing vendor is backed up");
+        assert_eq!(std::fs::read(vendor.join("rg.exe")).unwrap(), b"new-rg");
+        assert_eq!(std::fs::read(backup.join("rg.exe")).unwrap(), b"old-rg");
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[tokio::test]
     async fn install_rejects_checksum_mismatch_without_touching_binary() {
         let root = temp_root("mismatch");
-        let asset = asset_name("0.3.0", "linux", "x86_64").unwrap();
+        let asset = asset_name("nyan-v0.3.0", "linux", "x86_64").unwrap();
         let archive = tar_gz_fixture(&[("nyan", b"new-binary")]);
         let manifest = format!("{}  {asset}\n", "0".repeat(64));
-        let release = fixture_release(
-            "nyan-v0.3.0",
-            &[
-                (&asset, "https://example.test/archive"),
-                (CHECKSUM_ASSET, "https://example.test/sums"),
-            ],
-        );
-        let source = FakeSource::new(
-            release,
-            HashMap::from([
-                ("https://example.test/archive".to_string(), archive),
-                (
-                    "https://example.test/sums".to_string(),
-                    manifest.into_bytes(),
-                ),
-            ]),
-        );
+        let source = served_release("nyan-v0.3.0", &asset, archive, manifest);
         let exe = root.join("nyan");
         std::fs::write(&exe, b"old-binary").unwrap();
 
@@ -1331,6 +1490,35 @@ mod tests {
         .expect_err("checksum mismatch");
         assert!(matches!(error, UpdateError::ChecksumMismatch { .. }));
         assert_eq!(std::fs::read(&exe).unwrap(), b"old-binary");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn install_rejects_archive_without_binary() {
+        let root = temp_root("nobinary");
+        let asset = asset_name("nyan-v0.3.0", "linux", "x86_64").unwrap();
+        let archive = tar_gz_fixture(&[("LICENSE", b"license")]);
+        let manifest = format!("{}  {asset}\n", sha256_hex(&archive));
+        let source = served_release("nyan-v0.3.0", &asset, archive, manifest);
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let exe = bin.join("nyan");
+        std::fs::write(&exe, b"old-binary").unwrap();
+
+        let error = install_update_with(
+            &source,
+            DEFAULT_REPO,
+            "0.2.0",
+            &exe,
+            "linux",
+            "x86_64",
+            &root,
+        )
+        .await
+        .expect_err("archive without nyan");
+        assert!(matches!(error, UpdateError::Archive(_)), "{error}");
+        assert_eq!(std::fs::read(&exe).unwrap(), b"old-binary");
+        assert_eq!(file_names(&bin), ["nyan"]);
         let _ = std::fs::remove_dir_all(&root);
     }
 

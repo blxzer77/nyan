@@ -87,7 +87,6 @@ mod tests {
                 version: "0.3.0".to_string(),
             }),
             verbose: true,
-            ..UpdateNotifierProps::default()
         });
         assert!(
             text.contains("Update available: nyan 0.3.0"),

@@ -138,7 +138,8 @@ nyan update
 该命令会从对应 Release 下载匹配的资产，用该 Release 的 `SHA256SUMS` 校验后原子替换正在运行的二进制；完成后重新启动 nyan。
 
 - `NYAN_REPO=owner/name` 覆盖 Release 仓库。
-- `DISABLE_AUTOUPDATER=1`（或 `NYAN_DISABLE_AUTOUPDATER=1`）关闭后台检查；显式运行 `nyan update` 仍然有效。
+- `DISABLE_AUTOUPDATER=1`、`NYAN_DISABLE_AUTOUPDATER=1` 或 `NYAN_DISABLE_NONESSENTIAL_TRAFFIC=1` 关闭后台检查；显式运行 `nyan update` 仍然有效。
+- 两者都使用已配置的代理与 CA（`HTTPS_PROXY`、`NO_PROXY`、`NODE_EXTRA_CA_CERTS`，包括用户 settings 的 `env`）。
 
 更新检查始终使用 GitHub 的 `/releases/latest`，因此不会自动提供预发布版本；`autoUpdatesChannel` 设置目前不影响这一行为。
 
