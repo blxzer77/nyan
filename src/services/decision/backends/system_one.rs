@@ -343,7 +343,15 @@ fn error_summary(body: &[u8]) -> Option<String> {
         return None;
     }
     let mut summary = parts.join(" ");
-    summary.truncate(200);
+    // `String::truncate` panics off a char boundary; the service's messages
+    // are Chinese, so cut at the last boundary at or below 200 bytes.
+    if summary.len() > 200 {
+        let mut end = 200;
+        while !summary.is_char_boundary(end) {
+            end -= 1;
+        }
+        summary.truncate(end);
+    }
     Some(summary)
 }
 
@@ -1105,6 +1113,23 @@ mod tests {
             );
             mock.handle.await.unwrap();
         });
+    }
+
+    #[test]
+    fn a_long_multibyte_error_is_summarized_without_panicking() {
+        // This shape puts byte 200 inside a Chinese character: the old
+        // `String::truncate(200)` panicked here (release builds abort).
+        let body = json!({
+            "error": {
+                "code": "400",
+                "type": "E",
+                "message": "模型不存在或未启用".repeat(30),
+            }
+        });
+        let bytes = serde_json::to_vec(&body).unwrap();
+        let summary = error_summary(&bytes).expect("summary");
+        assert!(summary.len() <= 200, "{} bytes", summary.len());
+        assert!(summary.starts_with("code=400 type=E message=模型"));
     }
 
     #[test]

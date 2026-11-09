@@ -86,6 +86,10 @@ pub fn log_outcome(point: DecisionPoint, outcome: &DecisionOutcome) {
     };
     let total = receipt.agreement.len();
     let agreed = receipt.agreement.values().filter(|agrees| **agrees).count();
+    // `/decision` reads `detail.agrees` and `agreedCount`/`differedCount`
+    // independently and adds both. Emit exactly one shape: the detail for a
+    // single question, the counts for several. Emitting both made every
+    // single-question point count the same agreement twice.
     let detail = match total {
         0 => None,
         1 => receipt
@@ -105,8 +109,8 @@ pub fn log_outcome(point: DecisionPoint, outcome: &DecisionOutcome) {
         request_id: receipt.request_id.as_deref(),
         state_sha256: &receipt.state.sha256,
         state_bytes: receipt.state.bytes,
-        agreed_count: (total > 0).then_some(agreed),
-        differed_count: (total > 0).then_some(total - agreed),
+        agreed_count: (total > 1).then_some(agreed),
+        differed_count: (total > 1).then_some(total - agreed),
         detail,
     };
     if let Err(error) = append(&record) {
@@ -174,20 +178,32 @@ mod tests {
             };
         }
         log_outcome(DecisionPoint::RetrievalPrune, &shadow);
+        let mut multi = outcome(Some(Answer::Noul { probability: 0.9 }), true);
+        if let DecisionOutcome::Answered { receipt, .. } = &mut multi {
+            receipt.agreement.insert("q2".into(), false);
+        }
+        log_outcome(DecisionPoint::RetrievalSufficient, &multi);
 
         let text = std::fs::read_to_string(log_path()).unwrap();
         let records = text
             .lines()
             .map(|line| serde_json::from_str::<Value>(line).unwrap())
             .collect::<Vec<_>>();
-        assert_eq!(records.len(), 3);
+        assert_eq!(records.len(), 4);
         assert_eq!(records[0]["outcome"], "answered");
-        assert_eq!(records[0]["agreedCount"], 1);
+        // One question is described by `detail` alone; also emitting counts
+        // would make `/decision` add the same agreement twice.
         assert_eq!(records[0]["detail"]["agrees"], true);
+        assert!(records[0].get("agreedCount").is_none());
+        assert!(records[0].get("differedCount").is_none());
         assert_eq!(records[1]["outcome"], "fallback");
         assert_eq!(records[1]["fallbackReason"], "timeout");
         assert_eq!(records[2]["outcome"], "shadow");
         assert!(records[2].get("fallbackReason").is_none());
+        // Several questions are described by the counts, with no detail.
+        assert_eq!(records[3]["agreedCount"], 1);
+        assert_eq!(records[3]["differedCount"], 1);
+        assert!(records[3].get("detail").is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

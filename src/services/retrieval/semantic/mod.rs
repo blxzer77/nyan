@@ -1440,7 +1440,15 @@ fn embedding_error_summary(body: &str) -> Option<String> {
         return None;
     }
     let mut summary = parts.join(" ");
-    summary.truncate(200);
+    // `String::truncate` panics off a char boundary; the service can answer
+    // with non-ASCII text, so cut at the last boundary at or below 200 bytes.
+    if summary.len() > 200 {
+        let mut end = 200;
+        while !summary.is_char_boundary(end) {
+            end -= 1;
+        }
+        summary.truncate(end);
+    }
     Some(summary)
 }
 
@@ -1971,6 +1979,23 @@ mod tests {
         assert!(summary.contains("code=400"), "{summary}");
         assert!(summary.contains("type=BadRequestError"), "{summary}");
         assert!(embedding_error_summary("<html>oops</html>").is_none());
+    }
+
+    #[test]
+    fn embedding_error_summary_truncates_on_a_char_boundary() {
+        // `type=E` puts byte 200 inside a Chinese character; the old
+        // `String::truncate(200)` panicked (release builds abort).
+        let body = json!({
+            "error": {
+                "code": 400,
+                "type": "E",
+                "message": "模型不存在或未启用".repeat(30),
+            }
+        })
+        .to_string();
+        let summary = embedding_error_summary(&body).expect("summary");
+        assert!(summary.len() <= 200, "{} bytes", summary.len());
+        assert!(summary.starts_with("code=400 type=E message=模型"));
     }
 
     #[test]
