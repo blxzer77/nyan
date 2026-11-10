@@ -1181,8 +1181,15 @@ fn is_projectable_loop_variable(name: &str) -> bool {
 /// variable. Resolve only literal operand names: a dynamic `export "$arg"`
 /// cannot prove that it names a different variable, even across branches.
 fn may_declare_loop_variable(node: Node<'_>, source: &str, name: &str) -> bool {
+    let operands = named_children(node);
+    // The grammar can split one shell operand (`f"il"e`) into adjacent
+    // named nodes. Individual fragments cannot prove a different name.
     if node.kind() == "declaration_command"
-        && named_children(node).into_iter().any(|operand| {
+        && (operands.windows(2).any(|pair| {
+            source
+                .get(pair[0].end_byte()..pair[1].start_byte())
+                .is_none_or(|gap| gap.trim_start_matches("\\\n").is_empty())
+        }) || operands.iter().copied().any(|operand| {
             if operand.kind() == "variable_assignment" {
                 return named_children(operand)
                     .into_iter()
@@ -1193,26 +1200,62 @@ fn may_declare_loop_variable(node: Node<'_>, source: &str, name: &str) -> bool {
             if operand.kind() == "variable_name" {
                 return node_text(operand, source).is_none_or(|declared| declared == name);
             }
-            match resolve_argument_scoped(
-                operand,
-                source,
-                &mut Vec::new(),
-                &mut HashMap::new(),
-                false,
-            ) {
-                Ok(value) if !contains_placeholder(&value) => value
+            literal_declaration_operand(operand, source).is_none_or(|value| {
+                value
                     .split('=')
                     .next()
-                    .is_none_or(|declared| declared.trim_end_matches('+') == name),
-                _ => true,
-            }
-        })
+                    .is_none_or(|declared| declared.trim_end_matches('+') == name)
+            })
+        }))
     {
         return true;
     }
-    named_children(node)
+    operands
         .into_iter()
         .any(|child| may_declare_loop_variable(child, source, name))
+}
+
+// This scan must never enter a command collector: a substitution containing a
+// loop would scan the same root again. Unknown syntax may name any variable.
+fn literal_declaration_operand(node: Node<'_>, source: &str) -> Option<String> {
+    let text = node_text(node, source)?;
+    let value = match node.kind() {
+        "word" | "number"
+            if node.child_count() == 0
+                && !text.starts_with('=')
+                && text
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"_+-=".contains(&byte)) =>
+        {
+            text.to_string()
+        }
+        "raw_string" => text.strip_prefix('\'')?.strip_suffix('\'')?.to_string(),
+        "string" => {
+            let children = all_children(node);
+            if children.len() < 2
+                || children.first().map(Node::kind) != Some("\"")
+                || children.last().map(Node::kind) != Some("\"")
+                || children[1..children.len() - 1]
+                    .iter()
+                    .any(|child| !matches!(child.kind(), "string_content" | "$"))
+            {
+                return None;
+            }
+            resolve_double_quoted_content(text.strip_prefix('"')?.strip_suffix('"')?)
+        }
+        "concatenation" => {
+            let mut value = String::new();
+            for child in named_children(node) {
+                value.push_str(&literal_declaration_operand(child, source)?);
+                if value.len() > MAX_STATIC_VALUE_BYTES {
+                    return None;
+                }
+            }
+            value
+        }
+        _ => return None,
+    };
+    (value.len() <= MAX_STATIC_VALUE_BYTES).then_some(value)
 }
 
 fn collect_do_group(
@@ -3002,6 +3045,77 @@ mod tests {
                 "{source:?}"
             );
         }
+    }
+
+    #[test]
+    fn declaration_name_scan_uses_only_static_literal_operands() {
+        for builtin in ["export", "declare", "typeset"] {
+            for (operand, may_declare) in [
+                ("file", true),
+                ("file=before", true),
+                ("'file=before'", true),
+                ("\"file\"", true),
+                ("f\"il\"e", true),
+                ("f\\\n\"ile\"", true),
+                ("\"f\\\nile\"", true),
+                ("other", false),
+                ("other=before", false),
+                ("'other=before'", false),
+                ("\"other\"", false),
+                ("o\"th\"er", true),
+                ("\"o\\\nther\"", false),
+                ("\"$arg\"", true),
+                ("\"${arg}\"", true),
+                ("\"$((1+2))\"", true),
+                ("f\\ile", true),
+                ("*", true),
+                ("~", true),
+                ("=echo", true),
+                ("\"$(for i in x; do echo hello; done)\"", true),
+            ] {
+                let source = format!("{builtin} {operand}");
+                let super::super::parser::ParseCommandRawResult::Parsed(tree) =
+                    super::super::parser::parse_command_raw(&source)
+                else {
+                    panic!("expected declaration AST for {source:?}");
+                };
+                assert!(!tree.root_node().has_error(), "{source:?}");
+                assert_eq!(
+                    may_declare_loop_variable(tree.root_node(), &source, "file"),
+                    may_declare,
+                    "{source:?}: {}",
+                    tree.root_node().to_sexp()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn declaration_substitution_loops_return_bounded_safety_errors() {
+        let started = std::time::Instant::now();
+        for builtin in ["export", "declare", "typeset"] {
+            for operand in [
+                "\"$(for i in x; do echo hello; done)\"",
+                "\"other=$(for i in x; do echo hello; done)\"",
+                "other\"$(for i in x; do echo hello; done)\"",
+                "\"`for i in x; do echo hello; done`\"",
+                "\"$(echo \"$(for i in x; do echo hello; done)\")\"",
+                "\"$(for i in x; do for j in y; do echo hello; done; done)\"",
+                "\"$(for i in x; do export other; echo hello; done)\"",
+                "\"$(for i in x; do declare other; echo hello; done)\"",
+                "\"$(for i in x; do typeset other; echo hello; done)\"",
+            ] {
+                let source = format!("{builtin} {operand}");
+                assert!(
+                    matches!(
+                        parse_for_security(&source),
+                        ParseForSecurityResult::TooComplex { .. }
+                    ),
+                    "{source:?}"
+                );
+            }
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
     }
 
     #[test]

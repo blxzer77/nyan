@@ -1702,6 +1702,53 @@ mod tests {
     }
 
     #[test]
+    fn ast_declaration_substitution_loops_cannot_override_safety() {
+        let _project_dir = PinnedProjectDir::at_manifest_root();
+        let cwd = std::env::current_dir().unwrap();
+        let started = std::time::Instant::now();
+        for builtin in ["export", "declare", "typeset"] {
+            for operand in [
+                "\"$(for i in x; do echo hello; done)\"",
+                "\"other=$(for i in x; do echo hello; done)\"",
+                "other\"$(for i in x; do echo hello; done)\"",
+                "\"`for i in x; do echo hello; done`\"",
+                "\"$(echo \"$(for i in x; do echo hello; done)\")\"",
+                "\"$(for i in x; do for j in y; do echo hello; done; done)\"",
+                "\"$(for i in x; do export other; echo hello; done)\"",
+                "\"$(for i in x; do declare other; echo hello; done)\"",
+                "\"$(for i in x; do typeset other; echo hello; done)\"",
+            ] {
+                let source = format!("{builtin} {operand}");
+                for mode in [
+                    crate::types::permissions::PermissionMode::Default,
+                    crate::types::permissions::PermissionMode::AcceptEdits,
+                ] {
+                    for allow in [Some(source.clone()), None] {
+                        let mut context = ToolPermissionContext {
+                            mode,
+                            ..ToolPermissionContext::default()
+                        };
+                        context.always_allow_rules.insert(
+                            PermissionRuleSource::Session,
+                            vec![PermissionRuleValue::new("Bash", allow)],
+                        );
+                        for result in [
+                            bash_tool_has_permission(&source, &context, &cwd),
+                            check_sandbox_auto_allow(&source, &context),
+                        ] {
+                            assert!(
+                                matches!(result, PermissionResult::Ask { ref suggestions, pending_classifier_check: None, .. } if suggestions.is_empty()),
+                                "declaration loop must safely ask: {source:?}: {result:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
     fn ast_inherited_allowlisted_loop_variables_cannot_override_safety() {
         use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
 
