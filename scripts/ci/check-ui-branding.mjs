@@ -40,6 +40,19 @@ function* rustFiles(dir) {
 
 const isIdent = (c) => c !== undefined && /[A-Za-z0-9_]/.test(c);
 
+function decodeString(value) {
+  const escapes = { n: "\n", r: "\r", t: "\t", 0: "\0", "\\": "\\", '"': '"', "'": "'" };
+  return value.replace(
+    /\\(?:x([0-9a-fA-F]{2})|u\{([0-9a-fA-F_]+)\}|(\r?\n)[\t\n\r ]*|([nrt0\\'"]))/g,
+    (_, hex, unicode, continuation, simple) => {
+      if (hex !== undefined) return String.fromCodePoint(parseInt(hex, 16));
+      if (unicode !== undefined) return String.fromCodePoint(parseInt(unicode.replaceAll("_", ""), 16));
+      if (continuation !== undefined) return "";
+      return escapes[simple];
+    },
+  );
+}
+
 // Yields { value, line } for every string literal outside comments and
 // `#[cfg(test)]` modules. Handles nested block comments, raw strings
 // (`r#"..."#`), byte/C-string prefixes, char literals and lifetimes.
@@ -98,7 +111,11 @@ function* stringLiterals(src) {
         end = j;
         advance(j + 1);
       }
-      if (skipUntilDepth === null) yield { value: src.slice(start, end), line: startLine };
+      if (skipUntilDepth === null) {
+        const value = src.slice(start, end);
+        // Match ordinary strings as rendered, but preserve raw string backslashes.
+        yield { value: prefix[1] !== undefined ? value : decodeString(value), line: startLine };
+      }
       continue;
     }
 
