@@ -15,6 +15,7 @@ pub use super::parser::has_parse_error;
 
 const CMDSUB_PLACEHOLDER: &str = "__CMDSUB_OUTPUT__";
 const VAR_PLACEHOLDER: &str = "__TRACKED_VAR__";
+pub const MAX_COMMANDS_FOR_SECURITY_CHECK: usize = 50;
 
 static SIMPLE_EXPANSION_IN_TEXT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$[A-Za-z_]").expect("valid simple-expansion detection regex"));
@@ -104,6 +105,10 @@ pub fn check_semantics(commands: &[SimpleCommand]) -> SemanticCheckResult {
         "alias",
         "let",
         "getopts",
+        "readonly",
+        "set",
+        "shopt",
+        "unalias",
         "sh",
         "bash",
         "zsh",
@@ -126,6 +131,7 @@ pub fn check_semantics(commands: &[SimpleCommand]) -> SemanticCheckResult {
         if command
             .argv
             .iter()
+            .chain(command.env_vars.iter().map(|variable| &variable.value))
             .chain(command.redirects.iter().map(|redirect| &redirect.target))
             .any(|argument| contains_placeholder(argument))
         {
@@ -311,6 +317,36 @@ pub fn check_semantics(commands: &[SimpleCommand]) -> SemanticCheckResult {
                 return semantic_error(format!("'{name}' evaluates arguments as shell code"));
             }
         }
+        if argv.len() != command.argv.len()
+            && matches!(
+                name,
+                "read" | "unset" | "export" | "local" | "declare" | "typeset"
+            )
+        {
+            return semantic_error("Wrapped shell builtin changes variables outside tracked scope");
+        }
+        if name == "wait"
+            && argv
+                .iter()
+                .skip(1)
+                .any(|arg| arg.starts_with('-') && arg.contains('p'))
+        {
+            return semantic_error("wait -p changes variables at runtime");
+        }
+        if name == "[["
+            && argv.iter().enumerate().any(|(index, argument)| {
+                matches!(
+                    argument.as_str(),
+                    "-eq" | "-ne" | "-lt" | "-le" | "-gt" | "-ge"
+                ) && (index == 0
+                    || !is_signed_integer(&argv[index - 1])
+                    || argv
+                        .get(index + 1)
+                        .is_none_or(|value| !is_signed_integer(value)))
+            })
+        {
+            return semantic_error("Arithmetic test operands cannot be statically verified");
+        }
         if name == "jq"
             && argv
                 .iter()
@@ -324,6 +360,14 @@ pub fn check_semantics(commands: &[SimpleCommand]) -> SemanticCheckResult {
             .any(|arg| arg.contains("/proc/") && arg.contains("/environ"))
         {
             return semantic_error("Accesses /proc/*/environ which may expose secrets");
+        }
+        if matches!(name, "read" | "unset")
+            && argv
+                .iter()
+                .skip(1)
+                .any(|arg| is_execution_environment_variable(arg))
+        {
+            return semantic_error("Shell builtin can change command execution or path resolution");
         }
         if name == "printf"
             && argv
@@ -349,6 +393,21 @@ fn is_execution_environment_variable(name: &str) -> bool {
             name,
             "PATH" | "BASH_ENV" | "ENV" | "SHELLOPTS" | "BASHOPTS" | "CDPATH" | "GLOBIGNORE"
         )
+}
+
+fn is_runtime_variable(name: &str) -> bool {
+    matches!(
+        name,
+        "RANDOM"
+            | "SRANDOM"
+            | "SECONDS"
+            | "EPOCHSECONDS"
+            | "EPOCHREALTIME"
+            | "LINENO"
+            | "BASH_COMMAND"
+            | "BASH_SUBSHELL"
+            | "BASH_REMATCH"
+    )
 }
 
 fn is_signed_integer(value: &str) -> bool {
@@ -666,6 +725,12 @@ fn collect_commands_scoped(
     commands: &mut Vec<SimpleCommand>,
     variable_scope: &mut HashMap<String, String>,
 ) -> Result<(), ParseForSecurityResult> {
+    if commands.len() >= MAX_COMMANDS_FOR_SECURITY_CHECK {
+        return Err(too_complex(
+            node,
+            "Too many commands after static loop expansion",
+        ));
+    }
     match node.kind() {
         "command" => collect_simple_command_scoped(node, source, commands, variable_scope),
         "redirected_statement" => {
@@ -756,7 +821,13 @@ fn collect_structural_commands(
             conditional |= kind == "&&";
             if matches!(kind, "||" | "|" | "|&" | "&") {
                 invalidate_changed_scope(variable_scope, &incoming, &working);
-                working = incoming.clone();
+                if pipeline {
+                    working = incoming.clone();
+                } else {
+                    // A failed left branch can still have changed variables.
+                    let branch = working.clone();
+                    invalidate_changed_scope(&mut working, &incoming, &branch);
+                }
                 propagates = false;
             } else if pipeline {
                 working = incoming.clone();
@@ -862,12 +933,12 @@ fn collect_declaration_command(
                     && arg
                         .chars()
                         .skip(1)
-                        .any(|flag| matches!(flag, 'n' | 'i' | 'a' | 'A'))
+                        .any(|flag| matches!(flag, 'n' | 'i' | 'a' | 'A' | 'r'))
                 {
                     return Err(too_complex(
                         child,
                         format!(
-                            "declare flag {arg} changes assignment semantics (nameref/integer/array)"
+                            "declare flag {arg} changes assignment semantics (nameref/integer/array/readonly)"
                         ),
                     ));
                 }
@@ -881,6 +952,12 @@ fn collect_declaration_command(
                         child,
                         format!("declare positional '{arg}' contains array subscript"),
                     ));
+                }
+                if let Some((name, _)) = arg.split_once('=') {
+                    let name = name.trim_end_matches('+');
+                    if VARIABLE_NAME_RE.is_match(name) {
+                        variable_scope.insert(name.to_string(), VAR_PLACEHOLDER.to_string());
+                    }
                 }
                 argv.push(arg);
             }
@@ -921,24 +998,60 @@ fn collect_for_statement(
         .child_by_field_name("body")
         .ok_or_else(|| too_complex(node, "For statement has no body"))?;
     let variable_name = node_text(loop_variable, source).unwrap_or_default();
-    if !VARIABLE_NAME_RE.is_match(variable_name) || matches!(variable_name, "PS4" | "IFS") {
+    if !VARIABLE_NAME_RE.is_match(variable_name)
+        || matches!(variable_name, "PS4" | "IFS")
+        || is_execution_environment_variable(variable_name)
+        || is_runtime_variable(variable_name)
+    {
         return Err(too_complex(loop_variable, "Unsafe for-loop variable name"));
     }
 
+    let mut values = Vec::new();
     for child in named_children(node) {
         if child.id() == loop_variable.id() || child.id() == body.id() {
             continue;
         }
-        if child.kind() == "command_substitution" {
-            collect_command_substitution_scoped(child, source, commands, variable_scope)?;
-        } else {
-            let _ = resolve_argument_scoped(child, source, commands, variable_scope, false)?;
+        // Only literal lists are expanded: no globbing, substitutions, or
+        // implicit positional parameters whose values depend on the shell.
+        let mut pending = vec![child];
+        while let Some(part) = pending.pop() {
+            if !matches!(
+                part.kind(),
+                "word" | "number" | "raw_string" | "string" | "concatenation" | "string_content"
+            ) || part.kind() == "word"
+                && node_text(part, source).is_some_and(|text| text.contains(['*', '?', '[', '~']))
+            {
+                return Err(too_complex(part, "For-loop list is not statically literal"));
+            }
+            pending.extend(named_children(part));
+        }
+        values.push(resolve_argument_scoped(
+            child,
+            source,
+            commands,
+            variable_scope,
+            false,
+        )?);
+        if values.len() > MAX_COMMANDS_FOR_SECURITY_CHECK {
+            return Err(too_complex(node, "Too many static for-loop iterations"));
         }
     }
+    if values.is_empty() {
+        return Err(too_complex(
+            node,
+            "For-loop requires an explicit nonempty literal list",
+        ));
+    }
 
-    variable_scope.insert(variable_name.to_string(), VAR_PLACEHOLDER.to_string());
     let mut body_scope = variable_scope.clone();
-    collect_do_group(body, source, commands, &mut body_scope)
+    for value in values {
+        body_scope.insert(variable_name.to_string(), value);
+        collect_do_group(body, source, commands, &mut body_scope)?;
+    }
+    // Even a literal list can exit early through break/continue. Do not guess
+    // which value survives after the loop.
+    variable_scope.insert(variable_name.to_string(), VAR_PLACEHOLDER.to_string());
+    Ok(())
 }
 
 fn collect_do_group(
@@ -948,19 +1061,24 @@ fn collect_do_group(
     variable_scope: &mut HashMap<String, String>,
 ) -> Result<(), ParseForSecurityResult> {
     let before = commands.len();
+    let incoming = variable_scope.clone();
     for child in all_children(node) {
         if matches!(child.kind(), "do" | "done" | ";" | "\n") {
             continue;
         }
         collect_commands_scoped(child, source, commands, variable_scope)?;
     }
-    if commands[before..].iter().any(|command| {
-        !command.env_vars.is_empty()
-            || matches!(
-                command.argv.first().map(String::as_str),
-                Some("export" | "local" | "readonly" | "declare" | "typeset" | "unset" | "read")
-            )
-    }) {
+    if *variable_scope != incoming
+        || commands[before..].iter().any(|command| {
+            !command.env_vars.is_empty()
+                || matches!(
+                    command.argv.first().map(String::as_str),
+                    Some(
+                        "export" | "local" | "readonly" | "declare" | "typeset" | "unset" | "read"
+                    )
+                )
+        })
+    {
         return Err(too_complex(
             node,
             "Loop variable mutations require manual approval",
@@ -976,15 +1094,28 @@ fn collect_conditional_statement(
     variable_scope: &mut HashMap<String, String>,
 ) -> Result<(), ParseForSecurityResult> {
     if node.kind() == "while_statement" {
-        if let Some(condition) = node.child_by_field_name("condition") {
+        let body = node
+            .child_by_field_name("body")
+            .ok_or_else(|| too_complex(node, "Loop has no body"))?;
+        let incoming = variable_scope.clone();
+        // The grammar repeats the condition field for semicolon/newline lists;
+        // child_by_field_name would silently omit every condition after the first.
+        for condition in named_children(node) {
+            if condition.id() == body.id() {
+                continue;
+            }
             let before = commands.len();
             collect_commands_scoped(condition, source, commands, variable_scope)?;
             track_read_variables_from_condition(&commands[before..], variable_scope)?;
         }
-        if let Some(body) = node.child_by_field_name("body") {
-            let mut body_scope = variable_scope.clone();
-            collect_do_group(body, source, commands, &mut body_scope)?;
+        if *variable_scope != incoming {
+            return Err(too_complex(
+                node,
+                "Loop condition changes variables at runtime",
+            ));
         }
+        let mut body_scope = variable_scope.clone();
+        collect_do_group(body, source, commands, &mut body_scope)?;
         return Ok(());
     }
 
@@ -1213,6 +1344,17 @@ fn collect_simple_command_scoped(
         }
     }
 
+    if argv.first().is_some_and(|name| {
+        matches!(
+            name.as_str(),
+            "export" | "readonly" | "local" | "declare" | "typeset" | "unset"
+        )
+    }) {
+        return Err(too_complex(
+            node,
+            "Obfuscated shell builtin changes untracked state",
+        ));
+    }
     let raw_text = node_text(node, source).unwrap_or_default();
     let text = if SIMPLE_EXPANSION_IN_TEXT_RE.is_match(raw_text) || raw_text.contains('\n') {
         env_vars
@@ -1231,6 +1373,7 @@ fn collect_simple_command_scoped(
         raw_text.to_string()
     };
     if argv.first().is_some_and(|name| name == "read") {
+        variable_scope.insert("REPLY".to_string(), VAR_PLACEHOLDER.to_string());
         for argument in argv
             .iter()
             .skip(1)
@@ -1334,7 +1477,7 @@ fn apply_variable_to_scope(
             variable_scope
                 .get(&assignment.name)
                 .map(String::as_str)
-                .unwrap_or_default(),
+                .unwrap_or(VAR_PLACEHOLDER),
             assignment.value
         )
     } else {
@@ -1342,7 +1485,7 @@ fn apply_variable_to_scope(
     };
     variable_scope.insert(
         assignment.name.clone(),
-        if contains_placeholder(&combined) {
+        if contains_placeholder(&combined) || is_runtime_variable(&assignment.name) {
             VAR_PLACEHOLDER.to_string()
         } else {
             combined
@@ -1526,7 +1669,7 @@ fn resolve_argument_scoped(
         "simple_expansion" => resolve_simple_expansion(node, source, variable_scope, inside_string),
         "arithmetic_expansion" => {
             validate_arithmetic(node, source)?;
-            Ok(text.to_string())
+            Ok(VAR_PLACEHOLDER.to_string())
         }
         "command_substitution" => Err(too_complex(
             node,
@@ -1606,8 +1749,8 @@ fn resolve_string_scoped(
             }
             "arithmetic_expansion" => {
                 validate_arithmetic(child, source)?;
-                result.push_str(node_text(child, source).unwrap_or_default());
-                literal = true;
+                result.push_str(VAR_PLACEHOLDER);
+                dynamic = true;
             }
             other => {
                 return Err(too_complex(
@@ -1654,7 +1797,14 @@ fn extract_safe_cat_heredoc(
                 saw_cat = true;
             }
             "heredoc_redirect" => {
-                if validate_heredoc_redirect(child, source).is_err() {
+                if body.is_some()
+                    || validate_heredoc_redirect(child, source).is_err()
+                    || all_children(child).iter().any(|part| {
+                        part.kind() == "<<-"
+                            || part.kind() == "file_descriptor"
+                                && node_text(*part, source) != Some("0")
+                    })
+                {
                     return Ok(None);
                 }
                 body = named_children(child)
@@ -2324,7 +2474,7 @@ mod tests {
             ("cat <<< hello", vec![vec!["cat".to_string()]]),
             (
                 "echo $((1+2))",
-                vec![vec!["echo".to_string(), "$((1+2))".to_string()]],
+                vec![vec!["echo".to_string(), VAR_PLACEHOLDER.to_string()]],
             ),
             (
                 "declare X=foo",
@@ -2359,6 +2509,57 @@ mod tests {
                 vec!["rm".to_string(), "/etc/passwd".to_string()],
             ]
         );
+    }
+
+    #[test]
+    fn while_and_until_project_every_condition_command() {
+        for keyword in ["while", "until"] {
+            assert_eq!(
+                argvs(&format!(
+                    "{keyword} true; echo condition; do echo body; done"
+                )),
+                vec![
+                    vec!["true"],
+                    vec!["echo", "condition"],
+                    vec!["echo", "body"]
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn literal_for_loops_check_every_value_with_a_bounded_projection() {
+        assert_eq!(
+            argvs("for i in 1 2 3; do echo progress-$i; sleep 1.2; done"),
+            vec![
+                vec!["echo", "progress-1"],
+                vec!["sleep", "1.2"],
+                vec!["echo", "progress-2"],
+                vec!["sleep", "1.2"],
+                vec!["echo", "progress-3"],
+                vec!["sleep", "1.2"],
+            ]
+        );
+        assert_eq!(
+            argvs("for path in 'a b' \"c d\"; do cat \"$path\"; done"),
+            vec![vec!["cat", "a b"], vec!["cat", "c d"]]
+        );
+        let values = std::iter::repeat_n("x", MAX_COMMANDS_FOR_SECURITY_CHECK)
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(
+            argvs(&format!("for i in {values}; do echo $i; done")).len(),
+            MAX_COMMANDS_FOR_SECURITY_CHECK
+        );
+        for command in [
+            format!("for i in {values} x; do echo $i; done"),
+            format!("for i in {values}; do echo $i; pwd; done"),
+        ] {
+            assert!(matches!(
+                parse_for_security(&command),
+                ParseForSecurityResult::TooComplex { .. }
+            ));
+        }
     }
 
     #[test]

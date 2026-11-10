@@ -23,7 +23,7 @@ use crate::utils::permissions::shell_rule_matching::{
 };
 
 /// Maps to: CC `MAX_SUBCOMMANDS_FOR_SECURITY_CHECK`.
-pub const MAX_SUBCOMMANDS_FOR_SECURITY_CHECK: usize = 50;
+pub const MAX_SUBCOMMANDS_FOR_SECURITY_CHECK: usize = ast::MAX_COMMANDS_FOR_SECURITY_CHECK;
 /// Maps to: CC `MAX_SUGGESTED_RULES_FOR_COMPOUND`.
 pub const MAX_SUGGESTED_RULES_FOR_COMPOUND: usize = 5;
 
@@ -1522,6 +1522,9 @@ mod tests {
             "if true; then echo hello; else echo goodbye; fi",
             "while false; do echo hello; done",
             "for item in one two; do echo hello; done",
+            "for i in 1 2 3; do echo progress-$i; sleep 1.2; done",
+            "for path in Cargo.toml Cargo.lock; do cat \"$path\"; done",
+            "for command in echo pwd; do $command; done",
             "! false",
             "cat <<'EOF'\n$(not_a_command) | literal data\nEOF",
             "echo hello > /dev/null",
@@ -1548,6 +1551,8 @@ mod tests {
             "PATH=/untrusted; echo hello".to_string(),
             "LD_PRELOAD=library.so echo hello".to_string(),
             "env PATH=/untrusted echo hello".to_string(),
+            "FOO=$(cat Cargo.toml) echo hello".to_string(),
+            "FOO=$(cat Cargo.toml)".to_string(),
             "export PATH=/untrusted".to_string(),
             "bash <<'EOF'\necho hello\nEOF".to_string(),
             "/bin/bash -c 'echo hello'".to_string(),
@@ -1557,6 +1562,40 @@ mod tests {
             "P=inside; while true; do cat \"$P\"; P=/etc/passwd; done".to_string(),
             "P=inside; read P; cat \"$P\"".to_string(),
             "P=inside; printf -v P /etc/passwd; cat \"$P\"".to_string(),
+            "P=inside; true && P=/etc/passwd && false || cat \"$P\"".to_string(),
+            "P=inside; while cat \"$P\" && P=/etc/passwd; do echo hello; done".to_string(),
+            "REPLY=inside; read; cat \"$REPLY\"".to_string(),
+            "P=inside; time read P; cat \"$P\"".to_string(),
+            "P=inside; time export P=/etc/passwd; cat \"$P\"".to_string(),
+            "P=inside; e\"\"xport P=/etc/passwd; cat \"$P\"".to_string(),
+            "P=inside; export 'P=/etc/passwd'; cat \"$P\"".to_string(),
+            "P=inside; export \"P=/etc/passwd\"; cat \"$P\"".to_string(),
+            "P=inside; wait -np P; cat \"$P\"".to_string(),
+            "BASH_REMATCH=inside; cat \"$BASH_REMATCH\"".to_string(),
+            "P=/etc/passwd; readonly P; P=inside; cat \"$P\"".to_string(),
+            "P=/etc/passwd; declare -r P; P=inside; cat \"$P\"".to_string(),
+            "P+=inside; cat \"$P\"".to_string(),
+            "RANDOM=1; cat \"$RANDOM\"".to_string(),
+            "P=inside; echo \"$P\" $((1+2))".to_string(),
+            "echo \"number: $((1+2))\"".to_string(),
+            "[[ 'P=1' -eq 1 ]]".to_string(),
+            "unset PATH; echo hello".to_string(),
+            "read PATH; echo hello".to_string(),
+            "set -f; echo hello".to_string(),
+            "shopt -s lastpipe; echo hello".to_string(),
+            "for PATH in /untrusted; do echo hello; done".to_string(),
+            "for IFS in /; do echo hello; done".to_string(),
+            "for RANDOM in 1; do cat \"$RANDOM\"; done".to_string(),
+            "for path in ../*; do cat \"$path\"; done".to_string(),
+            "for path in \"$(pwd)\"; do echo hello; done".to_string(),
+            "for path in \"$HOME\"; do echo hello; done".to_string(),
+            "for path; do echo hello; done".to_string(),
+            "for path in; do echo hello; done".to_string(),
+            "for i in 1 2; do i=3; echo $i; done".to_string(),
+            "P=inside; for i in 1 2; do cat \"$P\"; for P in /etc/passwd; do echo hello; done; done".to_string(),
+            "for path in Cargo.toml; do echo hello; done; cat \"$path\"".to_string(),
+            "cat \"$(cat 3<<'EOF'\nCargo.toml\nEOF\n)\"".to_string(),
+            "cat \"$(cat <<-'EOF'\n\tCargo.toml\nEOF\n)\"".to_string(),
         ];
         sources.push(format!("echo {}", "x".repeat(10_001)));
         sources.push(format!("{}echo hello{}", "(".repeat(200), ")".repeat(200)));
@@ -1566,19 +1605,21 @@ mod tests {
                 .join("; "),
         );
         for source in sources {
-            let mut context = ToolPermissionContext::default();
-            context.always_allow_rules.insert(
-                PermissionRuleSource::Session,
-                vec![PermissionRuleValue::new("Bash", Some(source.clone()))],
-            );
-            for result in [
-                bash_tool_has_permission(&source, &context, &cwd),
-                check_sandbox_auto_allow(&source, &context),
-            ] {
-                assert!(
-                    matches!(result, PermissionResult::Ask { ref suggestions, pending_classifier_check: None, .. } if suggestions.is_empty()),
-                    "security ask required: {result:?}"
+            for rule in [Some(source.clone()), None] {
+                let mut context = ToolPermissionContext::default();
+                context.always_allow_rules.insert(
+                    PermissionRuleSource::Session,
+                    vec![PermissionRuleValue::new("Bash", rule)],
                 );
+                for result in [
+                    bash_tool_has_permission(&source, &context, &cwd),
+                    check_sandbox_auto_allow(&source, &context),
+                ] {
+                    assert!(
+                        matches!(result, PermissionResult::Ask { ref suggestions, pending_classifier_check: None, .. } if suggestions.is_empty()),
+                        "security ask required for {source:?}: {result:?}"
+                    );
+                }
             }
         }
     }
@@ -1590,6 +1631,9 @@ mod tests {
             "printf x | git push origin main",
             "(git push origin main)",
             "if true; then git push origin main; fi",
+            "for action in status push; do git $action origin main; done",
+            "while true; git push origin main; do echo hello; done",
+            "until false; git push origin main; do echo hello; done",
             "echo \"prefix: $(git push origin main)\"",
             "g\"\"it push origin main",
             "env FOO=x timeout 5 git push origin main",
@@ -1731,6 +1775,9 @@ mod tests {
             "cat < -/../../nyan-ast-input-outside".to_string(),
             format!("P={} && cat \"$P\"", outside.display()),
             format!("rm \"$(cat <<'EOF'\n{}\nEOF\n)\"", outside.display()),
+            "for path in Cargo.toml /etc/passwd; do cat \"$path\"; done".to_string(),
+            "for path in inside /etc/nyan-ast-outside; do echo hello > \"$path\"; done".to_string(),
+            "for path in sub ..; do cd $path; done".to_string(),
             "cd sub && echo x > file".to_string(),
             "cd sub && git status".to_string(),
             "cd sub; cd ..; pwd".to_string(),
