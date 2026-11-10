@@ -103,11 +103,51 @@ pub fn check_semantics(commands: &[SimpleCommand]) -> SemanticCheckResult {
         "compgen",
         "alias",
         "let",
+        "getopts",
+        "sh",
+        "bash",
+        "zsh",
+        "dash",
+        "ksh",
+        "fish",
+        "csh",
+        "tcsh",
     ];
     for command in commands {
+        if command
+            .env_vars
+            .iter()
+            .any(|variable| is_execution_environment_variable(&variable.name))
+        {
+            return semantic_error(
+                "Environment assignment can change command execution or path resolution",
+            );
+        }
+        if command
+            .argv
+            .iter()
+            .chain(command.redirects.iter().map(|redirect| &redirect.target))
+            .any(|argument| contains_placeholder(argument))
+        {
+            return semantic_error(
+                "Runtime argument or redirect target cannot be statically verified",
+            );
+        }
         let mut argv = command.argv.as_slice();
         loop {
-            match argv.first().map(String::as_str) {
+            if matches!(
+                argv.first().and_then(|name| name.rsplit('/').next()),
+                Some("env" | "export" | "readonly" | "local" | "declare" | "typeset")
+            ) && argv.iter().skip(1).any(|argument| {
+                argument.split_once('=').is_some_and(|(name, _)| {
+                    is_execution_environment_variable(name.trim_end_matches('+'))
+                })
+            }) {
+                return semantic_error(
+                    "Environment assignment can change command execution or path resolution",
+                );
+            }
+            match argv.first().and_then(|name| name.rsplit('/').next()) {
                 Some("time" | "nohup") => argv = &argv[1..],
                 Some("timeout") => {
                     let mut index = 1usize;
@@ -219,7 +259,7 @@ pub fn check_semantics(commands: &[SimpleCommand]) -> SemanticCheckResult {
                 _ => break,
             }
         }
-        let Some(name) = argv.first().map(String::as_str) else {
+        let Some(name) = argv.first().and_then(|name| name.rsplit('/').next()) else {
             continue;
         };
         if name.is_empty() || name.contains("__CMDSUB_OUTPUT__") || name.contains("__TRACKED_VAR__")
@@ -285,6 +325,14 @@ pub fn check_semantics(commands: &[SimpleCommand]) -> SemanticCheckResult {
         {
             return semantic_error("Accesses /proc/*/environ which may expose secrets");
         }
+        if name == "printf"
+            && argv
+                .iter()
+                .skip(1)
+                .any(|arg| arg.starts_with('-') && arg.contains('v'))
+        {
+            return semantic_error("printf -v changes variables at runtime");
+        }
         if has_subscript_eval_operand(name, argv) {
             return semantic_error(format!(
                 "'{name}' NAME operand contains an array subscript evaluated by Bash"
@@ -292,6 +340,15 @@ pub fn check_semantics(commands: &[SimpleCommand]) -> SemanticCheckResult {
         }
     }
     SemanticCheckResult::Ok
+}
+
+fn is_execution_environment_variable(name: &str) -> bool {
+    name.starts_with("LD_")
+        || name.starts_with("DYLD_")
+        || matches!(
+            name,
+            "PATH" | "BASH_ENV" | "ENV" | "SHELLOPTS" | "BASHOPTS" | "CDPATH" | "GLOBIGNORE"
+        )
 }
 
 fn is_signed_integer(value: &str) -> bool {
@@ -600,10 +657,9 @@ pub fn parse_for_security(command: &str) -> ParseForSecurityResult {
 
 /// Maps to CC `walkProgram` / `collectCommands` (`ast.ts:462-960`).
 ///
-/// The scope model is security-sensitive: sequential `&&`/`;` clauses carry
-/// literal assignments, while pipelines, `||`, and background clauses fork
-/// from the incoming snapshot so conditional/subshell assignments cannot hide
-/// a later runtime path or flag.
+/// Literal assignments flow through sequential clauses. Conditional writes
+/// become unknown on exit, and pipelines/background clauses fork the incoming
+/// scope, so skipped or repeated assignments cannot hide a runtime path.
 fn collect_commands_scoped(
     node: Node<'_>,
     source: &str,
@@ -634,6 +690,15 @@ fn collect_commands_scoped(
             let assignment =
                 parse_variable_assignment_scoped(node, source, commands, variable_scope)?;
             apply_variable_to_scope(variable_scope, &assignment);
+            commands.push(SimpleCommand {
+                argv: Vec::new(),
+                env_vars: vec![EnvironmentVariable {
+                    name: assignment.name,
+                    value: assignment.value,
+                }],
+                redirects: Vec::new(),
+                text: node_text(node, source).unwrap_or_default().to_string(),
+            });
             Ok(())
         }
         "for_statement" => collect_for_statement(node, source, commands, variable_scope),
@@ -683,14 +748,14 @@ fn collect_structural_commands(
     let pipeline = node.kind() == "pipeline";
     let mut working = incoming.clone();
     let mut propagates = !pipeline;
+    let mut conditional = false;
 
     for child in all_children(node) {
         let kind = child.kind();
         if is_separator(kind) {
+            conditional |= kind == "&&";
             if matches!(kind, "||" | "|" | "|&" | "&") {
-                if propagates {
-                    *variable_scope = working.clone();
-                }
+                invalidate_changed_scope(variable_scope, &incoming, &working);
                 working = incoming.clone();
                 propagates = false;
             } else if pipeline {
@@ -701,10 +766,24 @@ fn collect_structural_commands(
         collect_commands_scoped(child, source, commands, &mut working)?;
     }
 
-    if propagates {
+    if propagates && !conditional {
         *variable_scope = working;
+    } else {
+        invalidate_changed_scope(variable_scope, &incoming, &working);
     }
     Ok(())
+}
+
+fn invalidate_changed_scope(
+    scope: &mut HashMap<String, String>,
+    incoming: &HashMap<String, String>,
+    branch: &HashMap<String, String>,
+) {
+    for name in incoming.keys().chain(branch.keys()) {
+        if incoming.get(name) != branch.get(name) {
+            scope.insert(name.clone(), VAR_PLACEHOLDER.to_string());
+        }
+    }
 }
 
 fn collect_redirected_statement(
@@ -868,11 +947,24 @@ fn collect_do_group(
     commands: &mut Vec<SimpleCommand>,
     variable_scope: &mut HashMap<String, String>,
 ) -> Result<(), ParseForSecurityResult> {
+    let before = commands.len();
     for child in all_children(node) {
         if matches!(child.kind(), "do" | "done" | ";" | "\n") {
             continue;
         }
         collect_commands_scoped(child, source, commands, variable_scope)?;
+    }
+    if commands[before..].iter().any(|command| {
+        !command.env_vars.is_empty()
+            || matches!(
+                command.argv.first().map(String::as_str),
+                Some("export" | "local" | "readonly" | "declare" | "typeset" | "unset" | "read")
+            )
+    }) {
+        return Err(too_complex(
+            node,
+            "Loop variable mutations require manual approval",
+        ));
     }
     Ok(())
 }
@@ -896,11 +988,14 @@ fn collect_conditional_statement(
         return Ok(());
     }
 
+    let incoming = variable_scope.clone();
+    let mut then_scope = incoming.clone();
     let mut after_then = false;
     for child in all_children(node) {
         match child.kind() {
             "if" | "fi" | "else" | "elif" | ";" | "\n" => continue,
             "then" => {
+                then_scope = variable_scope.clone();
                 after_then = true;
                 continue;
             }
@@ -912,10 +1007,10 @@ fn collect_conditional_statement(
                     }
                     collect_commands_scoped(branch_child, source, commands, &mut branch_scope)?;
                 }
+                invalidate_changed_scope(variable_scope, &incoming, &branch_scope);
             }
             _ if after_then => {
-                let mut branch_scope = variable_scope.clone();
-                collect_commands_scoped(child, source, commands, &mut branch_scope)?;
+                collect_commands_scoped(child, source, commands, &mut then_scope)?;
             }
             _ => {
                 let before = commands.len();
@@ -924,6 +1019,7 @@ fn collect_conditional_statement(
             }
         }
     }
+    invalidate_changed_scope(variable_scope, &incoming, &then_scope);
     Ok(())
 }
 
@@ -1089,6 +1185,7 @@ fn collect_simple_command_scoped(
             | "string"
             | "concatenation"
             | "arithmetic_expansion"
+            | "command_substitution"
             | "simple_expansion" => {
                 argv.push(resolve_argument_scoped(
                     child,
@@ -1118,13 +1215,30 @@ fn collect_simple_command_scoped(
 
     let raw_text = node_text(node, source).unwrap_or_default();
     let text = if SIMPLE_EXPANSION_IN_TEXT_RE.is_match(raw_text) || raw_text.contains('\n') {
-        argv.iter()
-            .map(|argument| shell_escape_argument(argument))
+        env_vars
+            .iter()
+            .map(|variable| {
+                format!(
+                    "{}={}",
+                    variable.name,
+                    shell_escape_argument(&variable.value)
+                )
+            })
+            .chain(argv.iter().map(|argument| shell_escape_argument(argument)))
             .collect::<Vec<_>>()
             .join(" ")
     } else {
         raw_text.to_string()
     };
+    if argv.first().is_some_and(|name| name == "read") {
+        for argument in argv
+            .iter()
+            .skip(1)
+            .filter(|arg| VARIABLE_NAME_RE.is_match(arg))
+        {
+            variable_scope.insert(argument.clone(), VAR_PLACEHOLDER.to_string());
+        }
+    }
     commands.extend(inner_commands);
     commands.push(SimpleCommand {
         argv,
@@ -1472,10 +1586,8 @@ fn resolve_string_scoped(
             }
             "command_substitution" => {
                 if let Some(body) = extract_safe_cat_heredoc(child, source)? {
-                    let trimmed = body.trim_end_matches('\n');
-                    if !trimmed.contains('\n') {
-                        result.push_str(trimmed);
-                    }
+                    collect_command_substitution_scoped(child, source, commands, variable_scope)?;
+                    result.push_str(body.trim_end_matches('\n'));
                     literal = true;
                 } else {
                     collect_command_substitution_scoped(child, source, commands, variable_scope)?;
@@ -2113,6 +2225,13 @@ mod tests {
             "env FOO=bar jq 'system(\"id\")'",
             "cat /proc/self/environ",
             "printf -v 'a[$(id)]' x",
+            "PATH=/untrusted; echo hello",
+            "env PATH=/untrusted echo hello",
+            "export PATH=/untrusted",
+            "/usr/bin/env PATH=/untrusted echo hello",
+            "echo \"prefix$HOME\"",
+            "bash <<'EOF'\necho hello\nEOF",
+            "/bin/bash -c 'echo hello'",
         ] {
             let ParseForSecurityResult::Simple { commands } = parse_for_security(command) else {
                 panic!("{command:?} should have a static argv parse");
@@ -2165,7 +2284,7 @@ mod tests {
         let cases = [
             (
                 "FOO=bar && echo \"$FOO\"",
-                vec![vec!["echo".to_string(), "bar".to_string()]],
+                vec![vec![], vec!["echo".to_string(), "bar".to_string()]],
             ),
             (
                 "if true; then echo hi; fi",
@@ -2197,11 +2316,10 @@ mod tests {
             ),
             (
                 "X=\"a b\"; printf \"%s\" \"$X\"",
-                vec![vec![
-                    "printf".to_string(),
-                    "%s".to_string(),
-                    "a b".to_string(),
-                ]],
+                vec![
+                    vec![],
+                    vec!["printf".to_string(), "%s".to_string(), "a b".to_string()],
+                ],
             ),
             ("cat <<< hello", vec![vec!["cat".to_string()]]),
             (
@@ -2223,18 +2341,36 @@ mod tests {
         );
         assert_eq!(
             argvs("gh pr create --body \"$(cat <<'EOF'\n## Summary\ntext\nEOF\n)\""),
-            vec![vec![
-                "gh".to_string(),
-                "pr".to_string(),
-                "create".to_string(),
-                "--body".to_string(),
-                String::new(),
-            ]]
+            vec![
+                vec!["cat".to_string()],
+                vec![
+                    "gh".to_string(),
+                    "pr".to_string(),
+                    "create".to_string(),
+                    "--body".to_string(),
+                    "## Summary\ntext".to_string(),
+                ],
+            ]
         );
         assert_eq!(
             argvs("rm \"$(cat <<'EOF'\n/etc/passwd\nEOF\n)\""),
-            vec![vec!["rm".to_string(), "/etc/passwd".to_string()]]
+            vec![
+                vec!["cat".to_string()],
+                vec!["rm".to_string(), "/etc/passwd".to_string()],
+            ]
         );
+    }
+
+    #[test]
+    fn assignments_in_one_branch_remain_visible_within_that_branch() {
+        let ParseForSecurityResult::Simple { commands } =
+            parse_for_security("P=inside; if true; then P=/etc/passwd; cat \"$P\"; fi")
+        else {
+            panic!("literal branch assignments should parse");
+        };
+        assert_eq!(commands.last().unwrap().argv, ["cat", "/etc/passwd"]);
+        assert_eq!(commands[0].env_vars[0].name, "P");
+        assert_eq!(commands[0].env_vars[0].value, "inside");
     }
 
     #[test]
@@ -2251,6 +2387,11 @@ mod tests {
             "f(){ echo hi; }; f",
             "echo {a'}',b}",
             "cat \"$(cat <<'EOF'\n/proc/self/environ\nEOF\n)\"",
+            "P=/etc/passwd; false && P=inside; cat \"$P\"",
+            "P=inside; if true; then P=/etc/passwd; fi; cat \"$P\"",
+            "P=inside; true || P=/etc/passwd; cat \"$P\"",
+            "P=inside; while true; do cat \"$P\"; P=/etc/passwd; done",
+            "P=inside; read P; cat \"$P\"",
         ] {
             assert!(
                 matches!(

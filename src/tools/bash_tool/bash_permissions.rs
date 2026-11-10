@@ -2,15 +2,16 @@
 //!
 //! This module owns Bash permission rule normalization, command permission
 //! checks, and the safe-disabled classifier seams used by `useCanUseTool`.
-//! Full tree-sitter parsing and credentialed classifier RPCs remain in broader
-//! integration slices.
+//! All permission paths use fail-closed tree-sitter Bash security analysis.
 
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
+use super::path_validation::strip_wrappers_from_argv;
 use crate::tool::ToolPermissionContext;
 use crate::types::permissions::{PermissionRule, PermissionUpdate};
+use crate::utils::bash::ast::{self, ParseForSecurityResult, SemanticCheckResult, SimpleCommand};
 use crate::utils::bash::commands::split_command_deprecated;
 use crate::utils::permissions::permission_result::{PermissionDecisionReason, PermissionResult};
 use crate::utils::permissions::permissions::get_rule_by_contents_for_tool_name;
@@ -59,13 +60,6 @@ static STDBUF_WRAPPER_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 static NOHUP_WRAPPER_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^nohup[ \t]+(?:--[ \t]+)?").expect("valid nohup regex"));
-static TIMEOUT_FLAG_VALUE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_.+-]+$").expect("valid timeout value regex"));
-static TIMEOUT_DURATION_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\d+(?:\.\d+)?[smhd]?$").expect("valid timeout duration regex"));
-static SHORT_TIMEOUT_FLAG_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^-[ks][A-Za-z0-9_.+-]+$").expect("valid flag regex"));
-
 /// Maps to CC `BINARY_HIJACK_VARS`.
 pub static BINARY_HIJACK_VARS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(LD_|DYLD_|PATH$)").expect("valid hijack regex"));
@@ -286,49 +280,6 @@ pub fn strip_safe_wrappers(command: &str) -> String {
     stripped.trim().to_string()
 }
 
-/// Maps to: CC `stripWrappersFromArgv(argv)`.
-pub fn strip_wrappers_from_argv(argv: &[String]) -> Vec<String> {
-    let mut args = argv.to_vec();
-    loop {
-        match args.first().map(String::as_str) {
-            Some("time") | Some("nohup") => {
-                let cut = if args.get(1).is_some_and(|arg| arg == "--") {
-                    2
-                } else {
-                    1
-                };
-                args = args.into_iter().skip(cut).collect();
-            }
-            Some("timeout") => {
-                let index = skip_timeout_flags(&args);
-                if index < 0 {
-                    return args;
-                }
-                let index = index as usize;
-                if !args
-                    .get(index)
-                    .is_some_and(|arg| TIMEOUT_DURATION_RE.is_match(arg))
-                {
-                    return args;
-                }
-                args = args.into_iter().skip(index + 1).collect();
-            }
-            Some("nice")
-                if args.get(1).is_some_and(|arg| arg == "-n")
-                    && args.get(2).is_some_and(|arg| parse_i64(arg).is_some()) =>
-            {
-                let cut = if args.get(3).is_some_and(|arg| arg == "--") {
-                    4
-                } else {
-                    3
-                };
-                args = args.into_iter().skip(cut).collect();
-            }
-            _ => return args,
-        }
-    }
-}
-
 /// Maps to: CC `stripAllLeadingEnvVars(command, blocklist)`.
 pub fn strip_all_leading_env_vars(command: &str, blocklist: Option<&Regex>) -> String {
     let mut stripped = command.to_string();
@@ -394,45 +345,6 @@ pub fn command_has_any_cd(command: &str) -> bool {
         .any(|subcommand| is_normalized_cd_command(subcommand.trim()))
 }
 
-fn skip_timeout_flags(args: &[String]) -> isize {
-    let mut index = 1usize;
-    while index < args.len() {
-        let arg = &args[index];
-        let next = args.get(index + 1);
-        if matches!(
-            arg.as_str(),
-            "--foreground" | "--preserve-status" | "--verbose"
-        ) || Regex::new(r"^--(?:kill-after|signal)=[A-Za-z0-9_.+-]+$")
-            .expect("valid timeout long regex")
-            .is_match(arg)
-        {
-            index += 1;
-        } else if matches!(arg.as_str(), "--kill-after" | "--signal")
-            && next.is_some_and(|value| TIMEOUT_FLAG_VALUE_RE.is_match(value))
-        {
-            index += 2;
-        } else if arg == "--" {
-            index += 1;
-            break;
-        } else if arg.starts_with("--") {
-            return -1;
-        } else if arg == "-v" {
-            index += 1;
-        } else if matches!(arg.as_str(), "-k" | "-s")
-            && next.is_some_and(|value| TIMEOUT_FLAG_VALUE_RE.is_match(value))
-        {
-            index += 2;
-        } else if SHORT_TIMEOUT_FLAG_RE.is_match(arg) {
-            index += 1;
-        } else if arg.starts_with('-') {
-            return -1;
-        } else {
-            break;
-        }
-    }
-    index as isize
-}
-
 fn is_safe_env_var(var_name: &str) -> bool {
     SAFE_ENV_VARS.contains(&var_name)
 }
@@ -450,26 +362,6 @@ fn strip_comment_lines(command: &str) -> String {
     } else {
         non_comment_lines.join("\n")
     }
-}
-
-fn parse_i64(value: &str) -> Option<i64> {
-    value.parse::<i64>().ok()
-}
-
-pub(super) fn has_obscured_command_names(command: &str) -> bool {
-    if command.contains("$(") || command.contains("<(") || command.contains(">(") {
-        return true;
-    }
-    crate::utils::bash::commands::split_command_deprecated(command)
-        .into_iter()
-        .any(|part| {
-            let name = part.split_ascii_whitespace().next().unwrap_or_default();
-            name.chars()
-                .any(|ch| matches!(ch, '\'' | '"' | '\\' | '$' | '`'))
-                || part.contains("$(")
-                || part.contains("<(")
-                || part.contains(">(")
-        })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -669,14 +561,14 @@ pub fn bash_tool_check_exact_match_permission(
     }
 }
 
-/// Maps to: CC `bashToolCheckPermission(...)` legacy-string path.
+/// Checks a verified simple command; argv and redirects are validated once
+/// across the whole AST before command allow rules or permission modes apply.
 fn bash_tool_check_permission(
-    command: &str,
+    extracted: &SimpleCommand,
     tool_permission_context: &ToolPermissionContext,
-    compound_command_has_cd: bool,
     cwd: &std::path::Path,
 ) -> PermissionResult {
-    let command = command.trim();
+    let command = extracted.text.trim();
     let exact_match = bash_tool_check_exact_match_permission(command, tool_permission_context);
     if matches!(
         exact_match,
@@ -685,12 +577,7 @@ fn bash_tool_check_permission(
         return exact_match;
     }
 
-    let matching = matching_rules_for_input(
-        command,
-        tool_permission_context,
-        BashRuleMatchMode::Prefix,
-        false,
-    );
+    let matching = matching_rules_for_ast_command(extracted, tool_permission_context);
     if let Some(rule) = matching.matching_deny_rules.first() {
         return PermissionResult::Deny {
             message: format!("Permission to use Bash with command {command} has been denied."),
@@ -710,17 +597,6 @@ fn bash_tool_check_permission(
             pending_classifier_check: None,
             content_blocks: Vec::new(),
         };
-    }
-
-    let cwd_string = cwd.display().to_string();
-    let path_result = super::path_validation::check_path_constraints(
-        command,
-        &cwd_string,
-        tool_permission_context,
-        compound_command_has_cd,
-    );
-    if !matches!(path_result, PermissionResult::Passthrough { .. }) {
-        return path_result;
     }
 
     if matches!(exact_match, PermissionResult::Allow { .. }) {
@@ -748,7 +624,17 @@ fn bash_tool_check_permission(
         return mode_result;
     }
 
-    if super::read_only_validation::check_read_only_constraints(command, cwd) {
+    let writes_file = extracted.redirects.iter().any(|redirect| {
+        redirect.target != "/dev/null"
+            && match redirect.op.as_str() {
+                ">" | ">>" | ">|" | "&>" | "&>>" => true,
+                ">&" => {
+                    redirect.target != "-" && !redirect.target.chars().all(|ch| ch.is_ascii_digit())
+                }
+                _ => false,
+            }
+    });
+    if !writes_file && super::read_only_validation::check_read_only_constraints(command, cwd) {
         return PermissionResult::Allow {
             updated_input: Some(serde_json::json!({ "command": command })),
             user_modified: None,
@@ -773,90 +659,78 @@ fn bash_tool_check_permission(
     }
 }
 
-/// Maps to: CC `checkCommandAndSuggestRules(...)`.
-fn check_command_and_suggest_rules(
+/// Deny rules are checked before syntax/semantic asks, including normalized
+/// argv so quoting a command name cannot conceal a denied command.
+fn parse_permission_commands(
     command: &str,
     tool_permission_context: &ToolPermissionContext,
-    command_prefix: Option<&str>,
-    compound_command_has_cd: bool,
-    cwd: &std::path::Path,
-) -> PermissionResult {
-    let exact_match = bash_tool_check_exact_match_permission(command, tool_permission_context);
-    if matches!(
-        exact_match,
-        PermissionResult::Deny { .. } | PermissionResult::Ask { .. }
-    ) {
-        return exact_match;
-    }
-
-    let permission_result = bash_tool_check_permission(
+) -> Result<Vec<SimpleCommand>, Box<PermissionResult>> {
+    let parsed = ast::parse_for_security(command);
+    let full = matching_rules_for_input(
         command,
         tool_permission_context,
-        compound_command_has_cd,
-        cwd,
+        BashRuleMatchMode::Prefix,
+        false,
     );
-    if matches!(
-        permission_result,
-        PermissionResult::Deny { .. } | PermissionResult::Ask { .. }
-    ) {
-        return permission_result;
+    let mut deny = full.matching_deny_rules.first().cloned();
+    if let ParseForSecurityResult::Simple { commands } = &parsed {
+        deny = deny.or_else(|| {
+            commands.iter().find_map(|extracted| {
+                matching_rules_for_ast_command(extracted, tool_permission_context)
+                    .matching_deny_rules
+                    .into_iter()
+                    .next()
+            })
+        });
     }
-
-    if !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("NYAN_DISABLE_COMMAND_INJECTION_CHECK").as_deref(),
-    ) {
-        let safety_result = super::bash_security::bash_command_is_safe_deprecated(command);
-        if !matches!(safety_result, PermissionResult::Passthrough { .. }) {
-            let reason = match safety_result {
-                PermissionResult::Ask {
-                    decision_reason: Some(PermissionDecisionReason::SafetyCheck { reason, .. }),
-                    ..
-                } => reason,
-                PermissionResult::Ask { message, .. } => message,
-                _ => "This command contains patterns that could pose security risks and requires approval"
-                    .to_string(),
-            };
-            let reason = PermissionDecisionReason::SafetyCheck {
-                reason,
-                classifier_approvable: true,
-            };
-            return PermissionResult::Ask {
-                message: create_permission_request_message(Some(&reason)),
-                updated_input: None,
-                decision_reason: Some(reason),
-                suggestions: Vec::new(),
-                blocked_path: None,
-                metadata: None,
-                is_bash_security_check_for_misparsing: false,
-                pending_classifier_check: None,
-                content_blocks: Vec::new(),
-            };
+    if let Some(rule) = deny {
+        return Err(Box::new(PermissionResult::Deny {
+            message: format!("Permission to use Bash with command {command} has been denied."),
+            decision_reason: PermissionDecisionReason::Rule { rule },
+            tool_use_id: None,
+        }));
+    }
+    let commands = match parsed {
+        ParseForSecurityResult::Simple { commands } => commands,
+        ParseForSecurityResult::TooComplex { reason, .. } => {
+            return Err(Box::new(ask_without_suggestions(&reason)));
         }
+        ParseForSecurityResult::ParseUnavailable => {
+            return Err(Box::new(ask_without_suggestions(
+                "Bash syntax analysis is unavailable; manual approval is required",
+            )));
+        }
+    };
+    if commands.len() > MAX_SUBCOMMANDS_FOR_SECURITY_CHECK {
+        return Err(Box::new(ask_without_suggestions(
+            "Command is too complex to analyze safely",
+        )));
     }
+    if let SemanticCheckResult::Unsafe { reason } = ast::check_semantics(&commands) {
+        return Err(Box::new(ask_without_suggestions(&reason)));
+    }
+    Ok(commands)
+}
 
-    if matches!(permission_result, PermissionResult::Allow { .. }) {
-        return permission_result;
-    }
-
-    let suggested_updates = command_prefix
-        .map(suggestion_for_prefix)
-        .unwrap_or_else(|| suggestion_for_exact_command(command));
-    match permission_result {
-        PermissionResult::Passthrough {
-            message,
-            decision_reason,
-            blocked_path,
-            pending_classifier_check,
-            ..
-        } => PermissionResult::Passthrough {
-            message,
-            decision_reason,
-            suggestions: suggested_updates,
-            blocked_path,
-            pending_classifier_check,
-        },
-        other => other,
-    }
+fn matching_rules_for_ast_command(
+    command: &SimpleCommand,
+    context: &ToolPermissionContext,
+) -> MatchingBashRules {
+    let mut matching =
+        matching_rules_for_input(&command.text, context, BashRuleMatchMode::Prefix, true);
+    let normalized = matching_rules_for_input(
+        &strip_wrappers_from_argv(&command.argv).join(" "),
+        context,
+        BashRuleMatchMode::Prefix,
+        true,
+    );
+    matching
+        .matching_deny_rules
+        .extend(normalized.matching_deny_rules);
+    matching
+        .matching_ask_rules
+        .extend(normalized.matching_ask_rules);
+    matching
 }
 
 /// Maps to CC `checkSandboxAutoAllow(...)`: explicit deny wins across the
@@ -866,29 +740,10 @@ pub fn check_sandbox_auto_allow(
     command: &str,
     tool_permission_context: &ToolPermissionContext,
 ) -> PermissionResult {
-    check_sandbox_auto_allow_with_subcommands(command, tool_permission_context, None)
-}
-
-/// AST-authoritative sandbox auto-allow variant. Maps to the same CC
-/// `checkSandboxAutoAllow`, with `splitCommand` replaced by already-verified
-/// command spans so control-flow wrappers cannot hide an explicit rule.
-pub fn check_sandbox_auto_allow_from_ast(
-    command: &str,
-    commands: &[crate::utils::bash::ast::SimpleCommand],
-    tool_permission_context: &ToolPermissionContext,
-) -> PermissionResult {
-    let subcommands = commands
-        .iter()
-        .map(|command| command.text.as_str())
-        .collect::<Vec<_>>();
-    check_sandbox_auto_allow_with_subcommands(command, tool_permission_context, Some(&subcommands))
-}
-
-fn check_sandbox_auto_allow_with_subcommands(
-    command: &str,
-    tool_permission_context: &ToolPermissionContext,
-    verified_subcommands: Option<&[&str]>,
-) -> PermissionResult {
+    let commands = match parse_permission_commands(command, tool_permission_context) {
+        Ok(commands) => commands,
+        Err(result) => return *result,
+    };
     let command = command.trim();
     let full = matching_rules_for_input(
         command,
@@ -905,37 +760,9 @@ fn check_sandbox_auto_allow_with_subcommands(
     }
 
     let mut first_ask = None;
-    let fallback_subcommands;
-    let subcommands = if let Some(verified) = verified_subcommands {
-        verified.to_vec()
-    } else {
-        fallback_subcommands = split_command_deprecated(command);
-        fallback_subcommands
-            .iter()
-            .map(String::as_str)
-            .map(str::trim)
-            .filter(|subcommand| !subcommand.is_empty())
-            .collect::<Vec<_>>()
-    };
-    if subcommands.len() > 1 {
-        for subcommand in subcommands {
-            let matching = matching_rules_for_input(
-                subcommand,
-                tool_permission_context,
-                BashRuleMatchMode::Prefix,
-                false,
-            );
-            if let Some(rule) = matching.matching_deny_rules.first() {
-                return PermissionResult::Deny {
-                    message: format!(
-                        "Permission to use Bash with command {command} has been denied."
-                    ),
-                    decision_reason: PermissionDecisionReason::Rule { rule: rule.clone() },
-                    tool_use_id: None,
-                };
-            }
-            first_ask = first_ask.or_else(|| matching.matching_ask_rules.first().cloned());
-        }
+    for extracted in &commands {
+        let matching = matching_rules_for_ast_command(extracted, tool_permission_context);
+        first_ask = first_ask.or_else(|| matching.matching_ask_rules.first().cloned());
     }
     first_ask = first_ask.or_else(|| full.matching_ask_rules.first().cloned());
     if let Some(rule) = first_ask {
@@ -964,18 +791,18 @@ fn check_sandbox_auto_allow_with_subcommands(
     }
 }
 
-/// Maps to CC `bashToolHasPermission(...)` after a successful native AST
-/// projection (`bashPermissions.ts:1798-2480`). The parser has already proved
-/// each argv trustworthy, so this path checks every extracted command without
-/// routing the original control-flow source back through the legacy splitter.
-pub fn bash_tool_has_permission_from_ast(
+/// Maps to CC `bashToolHasPermission(...)` using the native AST projection.
+pub fn bash_tool_has_permission(
     command: &str,
-    commands: &[crate::utils::bash::ast::SimpleCommand],
     tool_permission_context: &ToolPermissionContext,
     cwd: &std::path::Path,
 ) -> PermissionResult {
     use std::collections::BTreeMap;
 
+    let commands = match parse_permission_commands(command, tool_permission_context) {
+        Ok(commands) => commands,
+        Err(result) => return *result,
+    };
     let command = command.trim();
     let exact = bash_tool_check_exact_match_permission(command, tool_permission_context);
     if matches!(
@@ -1039,40 +866,36 @@ pub fn bash_tool_has_permission_from_ast(
         );
     }
 
-    // Explicit subcommand deny rules must win before path asks.
-    for extracted in commands {
-        let matching = matching_rules_for_input(
-            &extracted.text,
-            tool_permission_context,
-            BashRuleMatchMode::Prefix,
-            false,
+    if compound_command_has_cd && commands.len() > 1 {
+        return ask_without_suggestions(
+            "Compound commands that change directories require approval to resolve paths safely",
         );
-        if let Some(rule) = matching.matching_deny_rules.first() {
-            return PermissionResult::Deny {
-                message: format!("Permission to use Bash with command {command} has been denied."),
-                decision_reason: PermissionDecisionReason::Rule { rule: rule.clone() },
-                tool_use_id: None,
-            };
-        }
     }
 
-    let path_result = super::path_validation::check_path_constraints_from_ast(
-        commands,
+    let mut path_result = super::path_validation::check_path_constraints(
+        &commands,
         &cwd.display().to_string(),
         tool_permission_context,
     );
-    if matches!(path_result, PermissionResult::Deny { .. }) {
+    if let PermissionResult::Ask {
+        decision_reason,
+        message,
+        ..
+    } = &mut path_result
+        && !matches!(decision_reason, Some(PermissionDecisionReason::Rule { .. }))
+    {
+        *decision_reason = Some(PermissionDecisionReason::SafetyCheck {
+            reason: message.clone(),
+            classifier_approvable: false,
+        });
+    }
+    if !matches!(path_result, PermissionResult::Passthrough { .. }) {
         return path_result;
     }
 
     let mut decisions = Vec::with_capacity(commands.len());
-    for extracted in commands {
-        let decision = bash_tool_check_permission(
-            &extracted.text,
-            tool_permission_context,
-            compound_command_has_cd,
-            cwd,
-        );
+    for extracted in &commands {
+        let decision = bash_tool_check_permission(extracted, tool_permission_context, cwd);
         if matches!(decision, PermissionResult::Deny { .. }) {
             return PermissionResult::Deny {
                 message: format!("Permission to use Bash with command {command} has been denied."),
@@ -1089,14 +912,7 @@ pub fn bash_tool_has_permission_from_ast(
         .iter()
         .filter(|(_, result)| matches!(result, PermissionResult::Ask { .. }))
         .count();
-    let non_allow_count = decisions
-        .iter()
-        .filter(|(_, result)| !matches!(result, PermissionResult::Allow { .. }))
-        .count();
-    if matches!(path_result, PermissionResult::Ask { .. }) && ask_count == 0 {
-        return path_result;
-    }
-    if ask_count == 1 && non_allow_count == 1 {
+    if ask_count > 0 {
         if let Some((_, result)) = decisions
             .into_iter()
             .find(|(_, result)| matches!(result, PermissionResult::Ask { .. }))
@@ -1160,10 +976,7 @@ pub fn bash_tool_has_permission_from_ast(
         updated_input: None,
         decision_reason: Some(decision_reason),
         suggestions,
-        blocked_path: match path_result {
-            PermissionResult::Ask { blocked_path, .. } => blocked_path,
-            _ => None,
-        },
+        blocked_path: None,
         metadata: None,
         is_bash_security_check_for_misparsing: false,
         pending_classifier_check: build_pending_classifier_check(command, tool_permission_context),
@@ -1172,8 +985,9 @@ pub fn bash_tool_has_permission_from_ast(
 }
 
 fn ask_without_suggestions(reason: &str) -> PermissionResult {
-    let decision_reason = PermissionDecisionReason::Other {
+    let decision_reason = PermissionDecisionReason::SafetyCheck {
         reason: reason.to_string(),
+        classifier_approvable: false,
     };
     PermissionResult::Ask {
         message: create_permission_request_message(Some(&decision_reason)),
@@ -1186,116 +1000,6 @@ fn ask_without_suggestions(reason: &str) -> PermissionResult {
         pending_classifier_check: None,
         content_blocks: Vec::new(),
     }
-}
-
-/// Maps to: CC `bashToolHasPermission(...)` legacy path in external builds.
-pub fn bash_tool_has_permission(
-    command: &str,
-    tool_permission_context: &ToolPermissionContext,
-    cwd: &std::path::Path,
-) -> PermissionResult {
-    let command = command.trim();
-    let exact_match = bash_tool_check_exact_match_permission(command, tool_permission_context);
-    if !matches!(exact_match, PermissionResult::Passthrough { .. }) {
-        return exact_match;
-    }
-
-    if !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("NYAN_DISABLE_COMMAND_INJECTION_CHECK").as_deref(),
-    ) {
-        let safety_result = super::bash_security::bash_command_is_safe_deprecated(command);
-        if let PermissionResult::Ask {
-            message,
-            decision_reason,
-            ..
-        } = safety_result
-        {
-            return PermissionResult::Ask {
-                message,
-                updated_input: None,
-                decision_reason,
-                suggestions: Vec::new(),
-                blocked_path: None,
-                metadata: None,
-                is_bash_security_check_for_misparsing: false,
-                pending_classifier_check: None,
-                content_blocks: Vec::new(),
-            };
-        }
-    }
-
-    let subcommands = split_command_deprecated(command)
-        .into_iter()
-        .map(|command| command.trim().to_string())
-        .filter(|command| !command.is_empty())
-        .collect::<Vec<_>>();
-    if subcommands.len() > MAX_SUBCOMMANDS_FOR_SECURITY_CHECK {
-        let reason = PermissionDecisionReason::Other {
-            reason: "Command is too complex to analyze safely".to_string(),
-        };
-        return PermissionResult::Ask {
-            message: create_permission_request_message(Some(&reason)),
-            updated_input: None,
-            decision_reason: Some(reason),
-            suggestions: Vec::new(),
-            blocked_path: None,
-            metadata: None,
-            is_bash_security_check_for_misparsing: false,
-            pending_classifier_check: build_pending_classifier_check(
-                command,
-                tool_permission_context,
-            ),
-            content_blocks: Vec::new(),
-        };
-    }
-
-    if command.contains('|') {
-        return super::bash_command_helpers::check_command_operator_permissions(
-            command,
-            |subcommand| {
-                let prefix = get_simple_command_prefix(subcommand);
-                check_command_and_suggest_rules(
-                    subcommand,
-                    tool_permission_context,
-                    prefix.as_deref(),
-                    command_has_any_cd(command),
-                    cwd,
-                )
-            },
-            super::bash_command_helpers::CommandIdentityCheckers::default(),
-        );
-    }
-
-    if subcommands.len() > 1 {
-        let segments = subcommands
-            .iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>();
-        return super::bash_command_helpers::segmented_command_permission_result(
-            command,
-            &segments,
-            |subcommand| {
-                let prefix = get_simple_command_prefix(subcommand);
-                check_command_and_suggest_rules(
-                    subcommand,
-                    tool_permission_context,
-                    prefix.as_deref(),
-                    command_has_any_cd(command),
-                    cwd,
-                )
-            },
-            super::bash_command_helpers::CommandIdentityCheckers::default(),
-        );
-    }
-
-    let prefix = get_simple_command_prefix(command);
-    check_command_and_suggest_rules(
-        command,
-        tool_permission_context,
-        prefix.as_deref(),
-        false,
-        cwd,
-    )
 }
 
 /// Maps to CC `peekSpeculativeClassifierCheck(command)`.
@@ -1627,14 +1331,14 @@ mod tests {
         );
 
         assert!(matches!(
-            bash_tool_check_permission("FOO=a=b rm -rf target", &context, false, &std::env::current_dir().unwrap()),
+            bash_tool_has_permission("FOO=a=b rm -rf target", &context, &std::env::current_dir().unwrap()),
             PermissionResult::Deny { decision_reason: PermissionDecisionReason::Rule { ref rule }, .. }
                 if rule.rule_behavior == PermissionBehavior::Deny
         ));
         assert!(matches!(
-            bash_tool_check_permission("NODE_ENV=test timeout 10 npm run build", &context, false, &std::env::current_dir().unwrap()),
-            PermissionResult::Allow { decision_reason: Some(PermissionDecisionReason::Rule { ref rule }), .. }
-                if rule.rule_behavior == PermissionBehavior::Allow
+            bash_tool_has_permission("NODE_ENV=test timeout 10 npm run build", &context, &std::env::current_dir().unwrap()),
+            PermissionResult::Allow { decision_reason: Some(PermissionDecisionReason::SubcommandResults { ref reasons }), .. }
+                if matches!(reasons.get("NODE_ENV=test timeout 10 npm run build").map(Box::as_ref), Some(PermissionResult::Allow { decision_reason: Some(PermissionDecisionReason::Rule { rule }), .. }) if rule.rule_behavior == PermissionBehavior::Allow)
         ));
     }
 
@@ -1661,22 +1365,20 @@ mod tests {
             PermissionResult::Ask { .. }
         ));
         assert_eq!(split_command_deprecated("printf 'x|y' && echo ok").len(), 2);
-        assert!(has_obscured_command_names("g\"\"it push origin main"));
-        assert!(has_obscured_command_names("echo $(git push origin main)"));
-
-        let crate::utils::bash::ast::ParseForSecurityResult::Simple { commands } =
-            crate::utils::bash::ast::parse_for_security("if true; then git push origin main; fi")
-        else {
-            panic!("control-flow sandbox fixture parses");
-        };
-        assert!(matches!(
-            check_sandbox_auto_allow_from_ast(
-                "if true; then git push origin main; fi",
-                &commands,
-                &context,
-            ),
-            PermissionResult::Deny { .. }
-        ));
+        for source in [
+            "g\"\"it push origin main",
+            "echo \"status: $(git push origin main)\"",
+            "if true; then git push origin main; fi",
+            "(git push origin main)",
+        ] {
+            assert!(
+                matches!(
+                    check_sandbox_auto_allow(source, &context),
+                    PermissionResult::Deny { .. }
+                ),
+                "{source}"
+            );
+        }
     }
 
     #[test]
@@ -1724,12 +1426,12 @@ mod tests {
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let default_context = ToolPermissionContext::default();
         assert!(matches!(
-            bash_tool_check_permission("git status", &default_context, false, &std::env::current_dir().unwrap()),
-            PermissionResult::Allow { decision_reason: Some(PermissionDecisionReason::Other { ref reason }), .. }
-                if reason == "Read-only command is allowed"
+            bash_tool_has_permission("git status", &default_context, &std::env::current_dir().unwrap()),
+            PermissionResult::Allow { decision_reason: Some(PermissionDecisionReason::SubcommandResults { ref reasons }), .. }
+                if matches!(reasons.get("git status").map(Box::as_ref), Some(PermissionResult::Allow { decision_reason: Some(PermissionDecisionReason::Other { reason }), .. }) if reason == "Read-only command is allowed")
         ));
         assert!(matches!(
-            bash_tool_check_permission("sed 's/a/b/w /tmp/out'", &default_context, false, &std::env::current_dir().unwrap()),
+            bash_tool_has_permission("sed 's/a/b/w /tmp/out'", &default_context, &std::env::current_dir().unwrap()),
             PermissionResult::Ask { ref message, .. }
                 if message == "sed command requires approval (contains potentially dangerous operations)"
         ));
@@ -1738,16 +1440,15 @@ mod tests {
             ..ToolPermissionContext::default()
         };
         assert!(matches!(
-            bash_tool_check_permission(
+            bash_tool_has_permission(
                 "mkdir target",
                 &accept,
-                false,
                 &std::env::current_dir().unwrap()
             ),
             PermissionResult::Allow {
-                decision_reason: Some(PermissionDecisionReason::Mode { .. }),
+                decision_reason: Some(PermissionDecisionReason::SubcommandResults { ref reasons }),
                 ..
-            }
+            } if matches!(reasons.get("mkdir target").map(Box::as_ref), Some(PermissionResult::Allow { decision_reason: Some(PermissionDecisionReason::Mode { .. }), .. }))
         ));
     }
 
@@ -1782,24 +1483,17 @@ mod tests {
 
     #[test]
     fn ast_permission_path_checks_extracted_control_flow_without_legacy_resplit() {
-        fn parsed(source: &str) -> Vec<crate::utils::bash::ast::SimpleCommand> {
-            match crate::utils::bash::ast::parse_for_security(source) {
-                crate::utils::bash::ast::ParseForSecurityResult::Simple { commands } => commands,
-                other => panic!("expected simple AST for {source:?}, got {other:?}"),
-            }
-        }
-
         let context = ToolPermissionContext::default();
         let cwd = std::env::current_dir().unwrap();
         let source = "if true; then echo hi; fi";
         assert!(matches!(
-            bash_tool_has_permission_from_ast(source, &parsed(source), &context, &cwd),
+            bash_tool_has_permission(source, &context, &cwd),
             PermissionResult::Allow { .. }
         ));
 
         let source = "P=/etc/passwd && cat \"$P\"";
         assert!(matches!(
-            bash_tool_has_permission_from_ast(source, &parsed(source), &context, &cwd),
+            bash_tool_has_permission(source, &context, &cwd),
             PermissionResult::Ask {
                 blocked_path: Some(_),
                 ..
@@ -1812,14 +1506,246 @@ mod tests {
             vec![PermissionRuleValue::new("Bash", Some("echo:*".to_string()))],
         );
         assert!(matches!(
-            bash_tool_has_permission_from_ast(
-                "if true; then echo hi; fi",
-                &parsed("if true; then echo hi; fi"),
-                &denied,
-                &cwd,
-            ),
+            bash_tool_has_permission("if true; then echo hi; fi", &denied, &cwd),
             PermissionResult::Deny { .. }
         ));
+    }
+
+    #[test]
+    fn ast_permissions_allow_verified_static_shell_structure() {
+        let _project_dir = PinnedProjectDir::at_manifest_root();
+        let context = ToolPermissionContext::default();
+        let cwd = std::env::current_dir().unwrap();
+        for source in [
+            "echo hello | head -n 1",
+            "(echo hello && pwd)",
+            "if true; then echo hello; else echo goodbye; fi",
+            "while false; do echo hello; done",
+            "for item in one two; do echo hello; done",
+            "! false",
+            "cat <<'EOF'\n$(not_a_command) | literal data\nEOF",
+            "echo hello > /dev/null",
+        ] {
+            let result = bash_tool_has_permission(source, &context, &cwd);
+            assert!(
+                matches!(result, PermissionResult::Allow { .. }),
+                "{source:?}: {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn ast_security_asks_cannot_be_overridden_by_allow_rules_or_sandbox() {
+        let cwd = std::env::current_dir().unwrap();
+        let mut sources = vec![
+            "echo 'unterminated".to_string(),
+            "echo $(id)".to_string(),
+            "echo \"prefix: $(id)\"".to_string(),
+            "cat \"prefix$HOME\"".to_string(),
+            "cat <(echo hello)".to_string(),
+            "cat <<EOF\n$(id)\nEOF".to_string(),
+            "eval 'echo hello'".to_string(),
+            "PATH=/untrusted; echo hello".to_string(),
+            "LD_PRELOAD=library.so echo hello".to_string(),
+            "env PATH=/untrusted echo hello".to_string(),
+            "export PATH=/untrusted".to_string(),
+            "bash <<'EOF'\necho hello\nEOF".to_string(),
+            "/bin/bash -c 'echo hello'".to_string(),
+            "f() { echo hello; }; f".to_string(),
+            "P=/etc/passwd; false && P=inside; cat \"$P\"".to_string(),
+            "P=inside; if true; then P=/etc/passwd; fi; cat \"$P\"".to_string(),
+            "P=inside; while true; do cat \"$P\"; P=/etc/passwd; done".to_string(),
+            "P=inside; read P; cat \"$P\"".to_string(),
+            "P=inside; printf -v P /etc/passwd; cat \"$P\"".to_string(),
+        ];
+        sources.push(format!("echo {}", "x".repeat(10_001)));
+        sources.push(format!("{}echo hello{}", "(".repeat(200), ")".repeat(200)));
+        sources.push(
+            std::iter::repeat_n("echo hello", MAX_SUBCOMMANDS_FOR_SECURITY_CHECK + 1)
+                .collect::<Vec<_>>()
+                .join("; "),
+        );
+        for source in sources {
+            let mut context = ToolPermissionContext::default();
+            context.always_allow_rules.insert(
+                PermissionRuleSource::Session,
+                vec![PermissionRuleValue::new("Bash", Some(source.clone()))],
+            );
+            for result in [
+                bash_tool_has_permission(&source, &context, &cwd),
+                check_sandbox_auto_allow(&source, &context),
+            ] {
+                assert!(
+                    matches!(result, PermissionResult::Ask { ref suggestions, pending_classifier_check: None, .. } if suggestions.is_empty()),
+                    "security ask required: {result:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ast_rules_cover_every_extracted_command_before_allowing() {
+        let cwd = std::env::current_dir().unwrap();
+        for source in [
+            "printf x | git push origin main",
+            "(git push origin main)",
+            "if true; then git push origin main; fi",
+            "echo \"prefix: $(git push origin main)\"",
+            "g\"\"it push origin main",
+            "env FOO=x timeout 5 git push origin main",
+            "cat <<'EOF'\nliteral data\nEOF\ngit push origin main",
+        ] {
+            let mut context = ToolPermissionContext::default();
+            context.always_allow_rules.insert(
+                PermissionRuleSource::Session,
+                vec![PermissionRuleValue::new("Bash", Some(source.to_string()))],
+            );
+            context.always_ask_rules.insert(
+                PermissionRuleSource::Session,
+                vec![PermissionRuleValue::new(
+                    "Bash",
+                    Some("git push:*".to_string()),
+                )],
+            );
+            assert!(
+                matches!(
+                    bash_tool_has_permission(source, &context, &cwd),
+                    PermissionResult::Ask { .. }
+                ),
+                "{source}"
+            );
+            assert!(
+                matches!(
+                    check_sandbox_auto_allow(source, &context),
+                    PermissionResult::Ask { .. }
+                ),
+                "{source}"
+            );
+            context.always_deny_rules.insert(
+                PermissionRuleSource::Session,
+                vec![PermissionRuleValue::new(
+                    "Bash",
+                    Some("git push:*".to_string()),
+                )],
+            );
+            assert!(
+                matches!(
+                    bash_tool_has_permission(source, &context, &cwd),
+                    PermissionResult::Deny { .. }
+                ),
+                "{source}"
+            );
+            assert!(
+                matches!(
+                    check_sandbox_auto_allow(source, &context),
+                    PermissionResult::Deny { .. }
+                ),
+                "{source}"
+            );
+        }
+        let mut context = ToolPermissionContext::default();
+        context.always_deny_rules.insert(
+            PermissionRuleSource::Session,
+            vec![PermissionRuleValue::new(
+                "Bash",
+                Some("git push:*".to_string()),
+            )],
+        );
+        let literal_heredoc = "cat <<'EOF'\ngit push origin main\nEOF";
+        assert!(matches!(
+            bash_tool_has_permission(literal_heredoc, &context, &cwd),
+            PermissionResult::Allow { .. }
+        ));
+        assert!(matches!(
+            check_sandbox_auto_allow(literal_heredoc, &context),
+            PermissionResult::Allow { .. }
+        ));
+        context.always_deny_rules.insert(
+            PermissionRuleSource::Session,
+            vec![PermissionRuleValue::new("Bash", Some("eval:*".to_string()))],
+        );
+        assert!(matches!(
+            bash_tool_has_permission("echo hi | eval 'echo bad'", &context, &cwd),
+            PermissionResult::Deny { .. }
+        ));
+        context.always_deny_rules.insert(
+            PermissionRuleSource::Session,
+            vec![PermissionRuleValue::new("Bash", Some("cat:*".to_string()))],
+        );
+        let source = "echo \"$(cat <<'EOF'\nhello\nEOF\n)\"";
+        assert!(matches!(
+            bash_tool_has_permission(source, &context, &cwd),
+            PermissionResult::Deny { .. }
+        ));
+        assert!(matches!(
+            check_sandbox_auto_allow(source, &context),
+            PermissionResult::Deny { .. }
+        ));
+    }
+
+    #[test]
+    fn ast_projection_preserves_environment_and_redirection_permission_boundaries() {
+        let _project_dir = PinnedProjectDir::at_manifest_root();
+        let cwd = std::env::current_dir().unwrap();
+        let mut context = ToolPermissionContext {
+            mode: crate::types::permissions::PermissionMode::AcceptEdits,
+            ..ToolPermissionContext::default()
+        };
+        let target = cwd.join(format!("ast-output-{}", uuid::Uuid::new_v4().simple()));
+        for source in [
+            format!("echo hello > {}", target.display()),
+            format!("echo hello >> {}", target.display()),
+            format!("echo hello &> {}", target.display()),
+        ] {
+            let result = bash_tool_has_permission(&source, &context, &cwd);
+            assert!(
+                matches!(result, PermissionResult::Passthrough { .. }),
+                "{source:?}: {result:?}"
+            );
+        }
+        context.always_allow_rules.insert(
+            PermissionRuleSource::Session,
+            vec![
+                PermissionRuleValue::new("Bash", Some("P=build".to_string())),
+                PermissionRuleValue::new("Bash", Some("npm run:*".to_string())),
+            ],
+        );
+        let source = "P=build; NODE_OPTIONS=--inspect npm run \"$P\"";
+        assert!(matches!(
+            bash_tool_has_permission(source, &context, &cwd),
+            PermissionResult::Ask { .. }
+        ));
+    }
+
+    #[test]
+    fn ast_paths_and_directory_changes_override_exact_allow() {
+        let _project_dir = PinnedProjectDir::at_manifest_root();
+        let cwd = std::env::current_dir().unwrap();
+        let outside = std::env::temp_dir().join(format!(
+            "nyan-ast-outside-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        for source in [
+            format!("echo x > {}", outside.display()),
+            format!("cat < {}", outside.display()),
+            "cat < -/../../nyan-ast-input-outside".to_string(),
+            format!("P={} && cat \"$P\"", outside.display()),
+            format!("rm \"$(cat <<'EOF'\n{}\nEOF\n)\"", outside.display()),
+            "cd sub && echo x > file".to_string(),
+            "cd sub && git status".to_string(),
+            "cd sub; cd ..; pwd".to_string(),
+        ] {
+            let mut context = ToolPermissionContext::default();
+            context.always_allow_rules.insert(
+                PermissionRuleSource::Session,
+                vec![PermissionRuleValue::new("Bash", Some(source.clone()))],
+            );
+            let result = bash_tool_has_permission(&source, &context, &cwd);
+            assert!(
+                matches!(result, PermissionResult::Ask { .. }),
+                "{source:?}: {result:?}"
+            );
+        }
     }
 
     #[test]
@@ -1839,7 +1765,7 @@ mod tests {
         assert!(matches!(
             bash_tool_has_permission("echo $(id)", &context, &std::env::current_dir().unwrap()),
             PermissionResult::Ask { ref message, ref suggestions, .. }
-                if message == "Command contains $() command substitution" && suggestions.is_empty()
+                if message.contains("Bare command substitution") && suggestions.is_empty()
         ));
     }
 }
