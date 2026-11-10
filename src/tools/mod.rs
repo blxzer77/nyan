@@ -744,6 +744,15 @@ mod tests {
     }
 
     #[test]
+    fn config_tool_is_not_registered() {
+        assert!(
+            get_all_base_tools()
+                .iter()
+                .all(|tool| tool.name != "Config")
+        );
+    }
+
+    #[test]
     fn worktree_tools_are_unconditionally_available_like_official_mode_gate() {
         let names = get_all_base_tools()
             .into_iter()

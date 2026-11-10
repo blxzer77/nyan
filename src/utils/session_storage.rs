@@ -8825,6 +8825,49 @@ mod tests {
     }
 
     #[test]
+    fn load_session_structured_ignores_legacy_speculation_accept_entries() {
+        let path = std::env::temp_dir().join(format!(
+            "nyan-session-legacy-speculation-{}.jsonl",
+            Uuid::new_v4()
+        ));
+        let entries = [
+            json!({
+                "type": "user",
+                "uuid": "u1",
+                "parentUuid": null,
+                "timestamp": "2026-07-18T10:00:00Z",
+                "message": {"role": "user", "content": "hello"}
+            }),
+            json!({
+                "type": "speculation-accept",
+                "timestamp": "2026-07-18T10:01:00Z",
+                "timeSavedMs": 250
+            }),
+            json!({
+                "type": "assistant",
+                "uuid": "a1",
+                "parentUuid": "u1",
+                "timestamp": "2026-07-18T10:02:00Z",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}]}
+            }),
+        ];
+        let contents = entries
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&path, format!("{contents}\n")).unwrap();
+
+        let session = load_session_structured_from_path(&path);
+        let _ = fs::remove_file(&path);
+
+        assert_eq!(session.messages.len(), 2);
+        let chain = build_conversation_chain(&session, "a1");
+        assert_eq!(uuids(&chain), vec!["u1", "a1"]);
+        assert_eq!(chain, vec![entries[0].clone(), entries[2].clone()]);
+    }
+
+    #[test]
     fn load_session_structured_bridges_legacy_progress_entries_like_official() {
         let session_id = "progress-bridge-session";
         let path = std::env::temp_dir().join(format!(

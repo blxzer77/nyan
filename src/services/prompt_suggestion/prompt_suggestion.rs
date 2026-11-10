@@ -243,20 +243,6 @@ where
     }))
 }
 
-pub async fn generate_suggestion(
-    abort_controller: AbortController,
-    prompt_id: PromptVariant,
-    cache_safe_params: CacheSafeParams,
-) -> anyhow::Result<SuggestionGeneration> {
-    generate_suggestion_with_deps(
-        abort_controller,
-        prompt_id,
-        cache_safe_params,
-        crate::query::deps::production_deps(),
-    )
-    .await
-}
-
 pub(crate) async fn generate_suggestion_with_deps<D>(
     abort_controller: AbortController,
     _prompt_id: PromptVariant,

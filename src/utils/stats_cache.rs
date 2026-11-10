@@ -417,6 +417,37 @@ mod tests {
     }
 
     #[test]
+    fn stats_cache_ignores_legacy_speculation_total_without_changing_aggregates() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!("nyan-stats-cache-{}", uuid::Uuid::new_v4()));
+        let path = root.join("stats-cache.json");
+        std::fs::create_dir_all(&root).unwrap();
+        let expected = PersistedStatsCache {
+            total_sessions: 2,
+            total_messages: 5,
+            daily_activity: vec![DailyActivity {
+                date: "2026-07-18".to_string(),
+                message_count: 5,
+                session_count: 2,
+                tool_call_count: 3,
+            }],
+            ..PersistedStatsCache::empty()
+        };
+        let mut legacy = serde_json::to_value(&expected).unwrap();
+        legacy["totalSpeculationTimeSavedMs"] = serde_json::json!(250);
+        std::fs::write(&path, legacy.to_string()).unwrap();
+        let _path = set_test_stats_cache_path(&path);
+
+        let cache = load_stats_cache();
+        assert_eq!(cache, expected);
+        let stats = cache_to_stats(cache, None);
+        assert_eq!(stats.total_sessions, 2);
+        assert_eq!(stats.total_messages, 5);
+        assert_eq!(stats.daily_activity[0].tool_call_count, 3);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn stats_cache_merge_keeps_bounded_daily_model_and_session_aggregates() {
         let mut cache = PersistedStatsCache::empty();
         cache.total_sessions = 2;

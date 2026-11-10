@@ -649,6 +649,7 @@ mod tests {
             &[
                 serde_json::json!({"type":"user","timestamp":"2026-07-18T10:00:00Z","message":{"role":"user","content":"hello"}}),
                 serde_json::json!({"type":"assistant","timestamp":"2026-07-18T10:30:00Z","message":{"role":"assistant","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":3},"content":[{"type":"tool_use","id":"t1","name":"Read","input":{}}]}}),
+                serde_json::json!({"type":"speculation-accept","timestamp":"2026-07-18T10:31:00Z","timeSavedMs":250}),
             ],
         );
         write_lines(

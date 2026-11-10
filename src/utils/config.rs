@@ -1663,6 +1663,28 @@ mod tests {
     }
 
     #[test]
+    fn global_config_reads_legacy_speculation_setting_without_changing_preferences() {
+        for enabled in [false, true] {
+            let config = load_global_config_from_value(serde_json::json!({
+                "speculationEnabled": enabled,
+                "expandThinking": false,
+                "messageIdleNotifThresholdMs": 120000,
+                "numStartups": 9,
+            }))
+            .expect("legacy speculation setting should not prevent config loading");
+
+            assert_eq!(config.expand_thinking, Some(false));
+            assert_eq!(config.expand_collapsed_read_search, Some(true));
+            assert_eq!(config.message_idle_notif_threshold_ms(), 120_000);
+            assert_eq!(config.num_startups, 9);
+            assert_eq!(
+                config.other_global_fields.get("speculationEnabled"),
+                Some(&serde_json::json!(enabled))
+            );
+        }
+    }
+
+    #[test]
     fn global_config_deserializes_official_btw_use_count_for_spinner_tips() {
         let config: GlobalConfig = serde_json::from_str(r#"{"btwUseCount": 2}"#)
             .expect("global config should deserialize");
