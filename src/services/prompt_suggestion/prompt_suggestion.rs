@@ -451,13 +451,6 @@ pub async fn execute_prompt_suggestion(cache_safe_params: CacheSafeParams) {
             crate::services::decision::DecisionPoint::PromptSuggestionGenerateGate,
             &suggestion,
         );
-        if super::speculation::is_speculation_enabled() {
-            let speculation_cache = cache_safe_params.clone();
-            tokio::spawn(async move {
-                let _ = super::speculation::start_speculation(suggestion, speculation_cache, false)
-                    .await;
-            });
-        }
     }
     let mut current = CURRENT_ABORT_CONTROLLER
         .lock()

@@ -379,8 +379,6 @@ pub struct GlobalConfig {
     pub message_idle_notif_threshold_ms: Option<u64>,
 
     pub auto_compact_enabled: Option<bool>,
-    /// Maps to CC global config `speculationEnabled` (ant-only consumer).
-    pub speculation_enabled: Option<bool>,
     pub show_turn_duration: Option<bool>,
     #[serde(
         default,
@@ -568,7 +566,6 @@ impl Default for GlobalConfig {
             custom_notify_command: None,
             message_idle_notif_threshold_ms: None,
             auto_compact_enabled: None,
-            speculation_enabled: None,
             show_turn_duration: None,
             env: None,
             queued_command_up_hint_count: None,

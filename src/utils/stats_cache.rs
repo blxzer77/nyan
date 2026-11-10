@@ -35,7 +35,6 @@ pub struct PersistedStatsCache {
     pub longest_session: Option<LongestSessionStats>,
     pub first_session_date: Option<String>,
     pub hour_counts: BTreeMap<u8, u64>,
-    pub total_speculation_time_saved_ms: u64,
     pub shot_distribution: Option<BTreeMap<u64, u64>>,
 }
 
@@ -279,9 +278,6 @@ pub(crate) fn merge_cache_with_new_stats(
         longest_session,
         first_session_date,
         hour_counts,
-        total_speculation_time_saved_ms: existing
-            .total_speculation_time_saved_ms
-            .saturating_add(incoming.total_speculation_time_saved_ms),
         shot_distribution: existing.shot_distribution,
     }
 }
@@ -371,7 +367,6 @@ pub(crate) fn cache_to_stats(
         model_usage: cache.model_usage,
         first_session_date: cache.first_session_date,
         last_session_date,
-        total_speculation_time_saved_ms: cache.total_speculation_time_saved_ms,
         shot_distribution: cache.shot_distribution,
         one_shot_rate: None,
     }
