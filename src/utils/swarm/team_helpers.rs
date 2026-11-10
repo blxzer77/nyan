@@ -333,7 +333,7 @@ pub(crate) fn create_team_record(
 /// @nyan: normalize both requested and existing names with the mailbox path
 /// key BEFORE the census, and return the normalized name. Reserve the leader's
 /// address even when the roster is absent, so aliases cannot share its inbox
-/// or take its agent id.
+/// or take its agent id. Skip local-agent ids so SendMessage routes to the inbox.
 pub(crate) fn generate_unique_teammate_name(base_name: &str, team_name: Option<&str>) -> String {
     let base_name = sanitize_agent_name(base_name);
     let mut existing = std::collections::HashSet::from([
@@ -347,13 +347,17 @@ pub(crate) fn generate_unique_teammate_name(base_name: &str, team_name: Option<&
                 .map(|member| sanitize_agent_name(&member.name).to_ascii_lowercase()),
         );
     }
-    if !existing.contains(&base_name.to_ascii_lowercase()) {
+    if !existing.contains(&base_name.to_ascii_lowercase())
+        && crate::types::ids::to_agent_id(&base_name).is_none()
+    {
         return base_name;
     }
     let mut suffix = 2;
     loop {
         let candidate = format!("{base_name}-{suffix}");
-        if !existing.contains(&candidate.to_ascii_lowercase()) {
+        if !existing.contains(&candidate.to_ascii_lowercase())
+            && crate::types::ids::to_agent_id(&candidate).is_none()
+        {
             return candidate;
         }
         suffix += 1;
@@ -902,10 +906,26 @@ mod tests {
             ("qa\tfrontend", "qa-frontend-8"),
             ("qa前frontend", "qa-frontend-9"),
             ("QA frontend", "QA-frontend-10"),
+            ("ax.0123456789abcdef", "ax-0123456789abcdef-2"),
+            ("ax-0123456789abcdef", "ax-0123456789abcdef-3"),
+            ("ax 0123456789abcdef", "ax-0123456789abcdef-4"),
+            ("ax中0123456789abcdef", "ax-0123456789abcdef-5"),
+            ("a0123456789abcdef", "a0123456789abcdef-2"),
+            (
+                "alabel-with-dash-0123456789ABCDEF",
+                "alabel-with-dash-0123456789ABCDEF-2",
+            ),
+            ("a-0123456789abcdef", "a-0123456789abcdef"),
+            ("ax-0123456789abcdeg", "ax-0123456789abcdeg"),
+            ("中文", "--"),
+            (".@", "---2"),
+            ("foo-2", "foo-2"),
+            ("foo-2", "foo-2-2"),
         ] {
             let name = super::generate_unique_teammate_name(requested, Some("alpha"));
             assert_eq!(name, expected, "requested {requested}");
             assert_eq!(name, crate::utils::tasks::sanitize_path_component(&name));
+            assert!(crate::types::ids::to_agent_id(&name).is_none());
             record.members.push(member_record(&name));
             super::write_team_record_result(record.clone()).unwrap();
         }
@@ -922,12 +942,35 @@ mod tests {
         assert_eq!(ids.len(), members.len());
         assert_eq!(paths.len(), members.len());
         for member in &members {
+            assert_eq!(
+                member.agent_id,
+                crate::utils::agent_id::format_agent_id(&member.name, "alpha")
+            );
+            assert_eq!(
+                Path::new(&get_inbox_path(&member.name, Some("alpha")))
+                    .file_stem()
+                    .unwrap()
+                    .to_str(),
+                Some(crate::utils::tasks::sanitize_path_component(&member.name).as_str())
+            );
             let output = crate::tools::send_message_tool::send_message_output(&serde_json::json!({
                 "to": member.name,
                 "message": format!("private to {}", member.name),
                 "summary": "isolated delivery",
             }));
             assert!(output.success, "{}", output.message);
+            assert_eq!(
+                output.message,
+                format!("Message sent to {}'s inbox", member.name)
+            );
+            // Local-agent queue/resume branches return no mailbox routing.
+            assert_eq!(
+                output
+                    .routing
+                    .as_ref()
+                    .map(|routing| routing.target.as_str()),
+                Some(format!("@{}", member.name).as_str())
+            );
             assert!(Path::new(&get_inbox_path(&member.name, Some("alpha"))).is_file());
         }
         clear_mailboxes_for_test();
