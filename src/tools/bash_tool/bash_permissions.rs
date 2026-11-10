@@ -1598,6 +1598,7 @@ mod tests {
             "cat \"$(cat <<-'EOF'\n\tCargo.toml\nEOF\n)\"".to_string(),
         ];
         sources.push(format!("echo {}", "x".repeat(10_001)));
+        sources.push(format!("P=x; {} cat \"$P\"", "P=\"$P$P\";".repeat(20)));
         sources.push(format!("{}echo hello{}", "(".repeat(200), ")".repeat(200)));
         sources.push(
             std::iter::repeat_n("echo hello", MAX_SUBCOMMANDS_FOR_SECURITY_CHECK + 1)
@@ -1625,6 +1626,167 @@ mod tests {
     }
 
     #[test]
+    fn ast_declaration_semantics_cannot_be_overridden_by_any_allow() {
+        let cwd = std::env::current_dir().unwrap();
+        for builtin in ["declare", "typeset"] {
+            for option in [
+                "-l", "-u", "-p", "-f", "-F", "-xl", "-ux", "-xp", "-pf", "+l",
+            ] {
+                for source in [
+                    format!(
+                        "{builtin} {option} action; for action in PUSH; do git \"$action\" origin main; done"
+                    ),
+                    format!("P=/outside/file; {builtin} {option} P=inside; cat \"$P\""),
+                    format!("P=/outside/file; {builtin} {option} P=inside; echo x > \"$P\""),
+                ] {
+                    for allow in [Some(source.clone()), None] {
+                        for deny in [false, true] {
+                            let mut context = ToolPermissionContext::default();
+                            context.always_allow_rules.insert(
+                                PermissionRuleSource::Session,
+                                vec![PermissionRuleValue::new("Bash", allow.clone())],
+                            );
+                            let rules = if deny {
+                                &mut context.always_deny_rules
+                            } else {
+                                &mut context.always_ask_rules
+                            };
+                            rules.insert(
+                                PermissionRuleSource::Session,
+                                vec![PermissionRuleValue::new(
+                                    "Bash",
+                                    Some("git push:*".to_string()),
+                                )],
+                            );
+                            for result in [
+                                bash_tool_has_permission(&source, &context, &cwd),
+                                check_sandbox_auto_allow(&source, &context),
+                            ] {
+                                assert!(
+                                    matches!(result, PermissionResult::Ask { ref suggestions, pending_classifier_check: None, .. } if suggestions.is_empty()),
+                                    "unmodeled declarations must safely ask: {source:?}: {result:?}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ast_newline_paths_preserve_symlink_and_read_deny_boundaries() {
+        let root = std::env::temp_dir().join(format!(
+            "nyan-ast-newline-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let cwd = root.join("project");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(cwd.join("safe")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(cwd.join("safe/file"), "inside fixture").unwrap();
+        std::fs::write(outside.join("file"), "outside fixture").unwrap();
+        std::os::unix::fs::symlink(&outside, cwd.join("safe\n")).unwrap();
+        std::os::unix::fs::symlink(&outside, cwd.join("\n")).unwrap();
+        let _project_dir = PinnedProjectDir::at(&cwd);
+        for source in [
+            "for path in \"safe\n\"; do cat \"$path/file\"; done",
+            "for path in \"\n\"; do cat \"$path/file\"; done",
+            "cat \"safe\n/file\"",
+            "cat < \"safe\n/file\"",
+            "echo x > \"safe\n/file\"",
+            "for path in \"safe\n\"; do echo x >> \"$path/file\"; done",
+        ] {
+            for allow in [Some(source.to_string()), None] {
+                let mut context = ToolPermissionContext::default();
+                context.always_allow_rules.insert(
+                    PermissionRuleSource::Session,
+                    vec![PermissionRuleValue::new("Bash", allow)],
+                );
+                let result = bash_tool_has_permission(source, &context, &cwd);
+                assert!(
+                    matches!(
+                        result,
+                        PermissionResult::Ask {
+                            blocked_path: Some(_),
+                            ..
+                        }
+                    ),
+                    "{source:?}: {result:?}"
+                );
+            }
+        }
+        std::fs::create_dir_all(cwd.join("denied\n")).unwrap();
+        std::fs::write(cwd.join("denied\n/file"), "denied fixture").unwrap();
+        for source in [
+            "cat \"denied\n/file\"",
+            "cat < \"denied\n/file\"",
+            "for path in \"denied\n\"; do cat \"$path/file\"; done",
+        ] {
+            for allow in [Some(source.to_string()), None] {
+                let mut context = ToolPermissionContext::default();
+                context.always_allow_rules.insert(
+                    PermissionRuleSource::Session,
+                    vec![PermissionRuleValue::new("Bash", allow)],
+                );
+                context.always_deny_rules.insert(
+                    PermissionRuleSource::Session,
+                    vec![PermissionRuleValue::new(
+                        "Read",
+                        Some(format!("/{}", cwd.join("denied\n/file").display())),
+                    )],
+                );
+                let result = bash_tool_has_permission(source, &context, &cwd);
+                assert!(
+                    matches!(result, PermissionResult::Deny { .. }),
+                    "{source:?}: {result:?}"
+                );
+            }
+        }
+        let result = bash_tool_has_permission(
+            "echo x > \"output\n\"",
+            &ToolPermissionContext {
+                mode: crate::types::permissions::PermissionMode::AcceptEdits,
+                ..ToolPermissionContext::default()
+            },
+            &cwd,
+        );
+        assert!(
+            matches!(result, PermissionResult::Passthrough { .. }),
+            "{result:?}"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn ast_projection_work_budget_cannot_be_overridden_by_allow_or_sandbox() {
+        let cwd = std::env::current_dir().unwrap();
+        for source in [
+            "for i in x; do # empty\ndone",
+            "for i in 1 2 3 4 5 6 7 8; do for j in 1 2 3 4 5 6 7 8; do :; done; done",
+            "echo \"prefix: $(for i in 1 2 3 4 5 6 7 8; do for j in 1 2 3 4 5 6 7 8; do :; done; done)\"",
+        ] {
+            for allow in [Some(source.to_string()), None] {
+                let mut context = ToolPermissionContext::default();
+                context.always_allow_rules.insert(
+                    PermissionRuleSource::Session,
+                    vec![PermissionRuleValue::new("Bash", allow)],
+                );
+                for result in [
+                    bash_tool_has_permission(source, &context, &cwd),
+                    check_sandbox_auto_allow(source, &context),
+                ] {
+                    assert!(
+                        matches!(result, PermissionResult::Ask { ref suggestions, pending_classifier_check: None, .. } if suggestions.is_empty()),
+                        "{source:?}: {result:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn ast_rules_cover_every_extracted_command_before_allowing() {
         let cwd = std::env::current_dir().unwrap();
         for source in [
@@ -1632,6 +1794,9 @@ mod tests {
             "(git push origin main)",
             "if true; then git push origin main; fi",
             "for action in status push; do git $action origin main; done",
+            "action=push; declare action=status sub=\"$action\"; git \"$sub\" origin main",
+            "action=push; typeset action=status sub=\"$action\"; git \"$sub\" origin main",
+            "action=push; export action=status sub=\"$action\"; git \"$sub\" origin main",
             "while true; git push origin main; do echo hello; done",
             "until false; git push origin main; do echo hello; done",
             "echo \"prefix: $(git push origin main)\"",
@@ -1776,6 +1941,9 @@ mod tests {
             format!("P={} && cat \"$P\"", outside.display()),
             format!("rm \"$(cat <<'EOF'\n{}\nEOF\n)\"", outside.display()),
             "for path in Cargo.toml /etc/passwd; do cat \"$path\"; done".to_string(),
+            "P=/etc/passwd; declare P=inside Q=\"$P\"; cat \"$Q\"".to_string(),
+            "P=/etc/passwd; typeset P=inside Q=\"$P\"; cat \"$Q\"".to_string(),
+            "P=/etc/passwd; export P=inside Q=\"$P\"; echo x > \"$Q\"".to_string(),
             "for path in inside /etc/nyan-ast-outside; do echo hello > \"$path\"; done".to_string(),
             "for path in sub ..; do cd $path; done".to_string(),
             "cd sub && echo x > file".to_string(),

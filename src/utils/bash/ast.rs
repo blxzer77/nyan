@@ -16,6 +16,8 @@ pub use super::parser::has_parse_error;
 const CMDSUB_PLACEHOLDER: &str = "__CMDSUB_OUTPUT__";
 const VAR_PLACEHOLDER: &str = "__TRACKED_VAR__";
 pub const MAX_COMMANDS_FOR_SECURITY_CHECK: usize = 50;
+const MAX_PROJECTION_NODE_VISITS: usize = 4096;
+const MAX_STATIC_VALUE_BYTES: usize = 10_000;
 
 static SIMPLE_EXPANSION_IN_TEXT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$[A-Za-z_]").expect("valid simple-expansion detection regex"));
@@ -706,12 +708,67 @@ pub fn parse_for_security(command: &str) -> ParseForSecurityResult {
             node_type: Some("ERROR".to_string()),
         };
     }
+    let mut visits_left = MAX_PROJECTION_NODE_VISITS;
+    let mut iterations_left = MAX_COMMANDS_FOR_SECURITY_CHECK;
+    if let Err(error) = check_projection_work(root, 1, &mut visits_left, &mut iterations_left) {
+        return error;
+    }
     let mut commands = Vec::new();
     let mut variable_scope = HashMap::new();
     match collect_commands_scoped(root, command, &mut commands, &mut variable_scope) {
-        Ok(()) => ParseForSecurityResult::Simple { commands },
+        Ok(()) if commands.len() <= MAX_COMMANDS_FOR_SECURITY_CHECK => {
+            ParseForSecurityResult::Simple { commands }
+        }
+        Ok(()) => too_complex(root, "Too many commands after static loop expansion"),
         Err(error) => error,
     }
+}
+
+// Precharge the complete expanded tree, not just emitted commands. Multiplicity
+// carries through every subtree, including substitutions; neither an empty body
+// nor a fresh command buffer can reset the shared, monotonically spent budget.
+fn check_projection_work(
+    node: Node<'_>,
+    multiplicity: usize,
+    visits_left: &mut usize,
+    iterations_left: &mut usize,
+) -> Result<(), ParseForSecurityResult> {
+    *visits_left = visits_left
+        .checked_sub(multiplicity)
+        .ok_or_else(|| too_complex(node, "Bash projection node-visit budget exceeded"))?;
+    let body = node.child_by_field_name("body");
+    let iterations = if node.kind() == "for_statement" {
+        let variable = node.child_by_field_name("variable");
+        let count = named_children(node)
+            .into_iter()
+            .filter(|child| Some(*child) != variable && Some(*child) != body)
+            .count();
+        let expanded = multiplicity
+            .checked_mul(count)
+            .ok_or_else(|| too_complex(node, "Bash projection iteration budget exceeded"))?;
+        *iterations_left = iterations_left
+            .checked_sub(expanded)
+            .ok_or_else(|| too_complex(node, "Bash projection iteration budget exceeded"))?;
+        expanded
+    } else {
+        multiplicity
+    };
+    for child in all_children(node) {
+        let copies = if node.kind() == "for_statement" && Some(child) == body {
+            iterations
+        } else {
+            multiplicity
+        };
+        check_projection_work(child, copies, visits_left, iterations_left)?;
+    }
+    if node.kind() == "do_group"
+        && named_children(node)
+            .iter()
+            .all(|child| child.kind() == "comment")
+    {
+        return Err(too_complex(node, "Empty loop body is not valid Bash"));
+    }
+    Ok(())
 }
 
 /// Maps to CC `walkProgram` / `collectCommands` (`ast.ts:462-960`).
@@ -919,38 +976,52 @@ fn collect_declaration_command(
     variable_scope: &mut HashMap<String, String>,
 ) -> Result<(), ParseForSecurityResult> {
     let mut argv = Vec::new();
+    // Bash expands all declaration operands before the builtin applies any of
+    // them. A preceding operand must not change a later operand's expansion.
+    let mut argument_scope = variable_scope.clone();
+    let mut options_ended = false;
+    let mut saw_operand = false;
     for child in all_children(node) {
         match child.kind() {
-            "export" | "local" | "readonly" | "declare" | "typeset" => {
+            "local" => {
+                return Err(too_complex(
+                    child,
+                    "Function-local declarations are not modeled",
+                ));
+            }
+            "export" | "readonly" | "declare" | "typeset" => {
                 argv.push(child.kind().to_string());
             }
             "word" | "number" | "raw_string" | "string" | "concatenation" => {
-                let arg = resolve_argument_scoped(child, source, commands, variable_scope, false)?;
-                if matches!(
-                    argv.first().map(String::as_str),
-                    Some("declare" | "typeset" | "local")
-                ) && arg.starts_with('-')
-                    && arg
-                        .chars()
-                        .skip(1)
-                        .any(|flag| matches!(flag, 'n' | 'i' | 'a' | 'A' | 'r'))
-                {
-                    return Err(too_complex(
-                        child,
-                        format!(
-                            "declare flag {arg} changes assignment semantics (nameref/integer/array/readonly)"
-                        ),
-                    ));
+                let arg =
+                    resolve_argument_scoped(child, source, commands, &mut argument_scope, false)?;
+                if arg.starts_with(['-', '+']) {
+                    // Only export marking is modeled. Conversion, readonly,
+                    // array, nameref, query/function and combined options can
+                    // change or suppress subsequent assignments.
+                    let supported = !options_ended
+                        && !saw_operand
+                        && (arg == "--"
+                            || arg == "-x"
+                                && matches!(
+                                    argv.first().map(String::as_str),
+                                    Some("declare" | "typeset")
+                                ));
+                    if !supported {
+                        return Err(too_complex(
+                            child,
+                            format!("Unmodeled declaration option: {arg}"),
+                        ));
+                    }
+                    options_ended |= arg == "--";
+                    argv.push(arg);
+                    continue;
                 }
-                if matches!(
-                    argv.first().map(String::as_str),
-                    Some("declare" | "typeset" | "local")
-                ) && !arg.starts_with('-')
-                    && arg.split('=').next().is_some_and(|name| name.contains('['))
-                {
+                saw_operand = true;
+                if arg.split('=').next().is_some_and(|name| name.contains('[')) {
                     return Err(too_complex(
                         child,
-                        format!("declare positional '{arg}' contains array subscript"),
+                        format!("Declaration positional '{arg}' contains array subscript"),
                     ));
                 }
                 if let Some((name, _)) = arg.split_once('=') {
@@ -963,11 +1034,20 @@ fn collect_declaration_command(
             }
             "variable_assignment" => {
                 let assignment =
-                    parse_variable_assignment_scoped(child, source, commands, variable_scope)?;
+                    parse_variable_assignment_scoped(child, source, commands, &mut argument_scope)?;
                 apply_variable_to_scope(variable_scope, &assignment);
-                argv.push(format!("{}={}", assignment.name, assignment.value));
+                saw_operand = true;
+                argv.push(format!(
+                    "{}{}={}",
+                    assignment.name,
+                    if assignment.append { "+" } else { "" },
+                    assignment.value
+                ));
             }
-            "variable_name" => argv.push(node_text(child, source).unwrap_or_default().to_string()),
+            "variable_name" => {
+                saw_operand = true;
+                argv.push(node_text(child, source).unwrap_or_default().to_string());
+            }
             other => {
                 return Err(too_complex(
                     child,
@@ -1485,7 +1565,10 @@ fn apply_variable_to_scope(
     };
     variable_scope.insert(
         assignment.name.clone(),
-        if contains_placeholder(&combined) || is_runtime_variable(&assignment.name) {
+        if combined.len() > MAX_STATIC_VALUE_BYTES
+            || contains_placeholder(&combined)
+            || is_runtime_variable(&assignment.name)
+        {
             VAR_PLACEHOLDER.to_string()
         } else {
             combined
@@ -1663,6 +1746,9 @@ fn resolve_argument_scoped(
                     variable_scope,
                     false,
                 )?);
+                if result.len() > MAX_STATIC_VALUE_BYTES {
+                    return Err(too_complex(node, "Static argument byte budget exceeded"));
+                }
             }
             Ok(result)
         }
@@ -1690,43 +1776,37 @@ fn resolve_string_scoped(
 ) -> Result<String, ParseForSecurityResult> {
     let text = node_text(node, source).unwrap_or_default();
     let children = all_children(node);
-    if children.is_empty() {
-        return Ok(text
-            .strip_prefix('"')
-            .and_then(|value| value.strip_suffix('"'))
-            .unwrap_or(text)
-            .to_string());
+    if !text.starts_with('"')
+        || !text.ends_with('"')
+        || children.first().map(Node::kind) != Some("\"")
+        || children.last().map(Node::kind) != Some("\"")
+    {
+        return Err(too_complex(node, "Unrecognized double-quoted boundaries"));
     }
 
     let mut result = String::new();
-    let mut cursor = None;
+    let mut pending_literal = String::new();
+    let mut cursor = node.start_byte() + 1;
     let mut dynamic = false;
     let mut literal = false;
-    for child in children {
-        if let Some(previous) = cursor
-            && child.start_byte() > previous
-            && child.kind() != "\""
-        {
-            let gap = source.get(previous..child.start_byte()).unwrap_or_default();
-            let newline_count = gap.bytes().filter(|byte| *byte == b'\n').count();
-            if newline_count > 0 {
-                result.push_str(&"\n".repeat(newline_count));
-                literal = true;
-            }
+    for child in children[1..children.len() - 1].iter().copied() {
+        let gap = source
+            .get(cursor..child.start_byte())
+            .ok_or_else(|| too_complex(node, "Invalid double-quoted source span"))?;
+        if !gap.replace("\\\n", "").bytes().all(|byte| byte == b'\n') {
+            return Err(too_complex(node, "Unmodeled double-quoted source gap"));
         }
-        cursor = Some(child.end_byte());
+        pending_literal.push_str(gap);
+        cursor = child.end_byte();
+        if matches!(child.kind(), "string_content" | "$") {
+            pending_literal.push_str(node_text(child, source).unwrap_or_default());
+            continue;
+        }
+        let decoded = resolve_double_quoted_content(&pending_literal);
+        literal |= !decoded.is_empty();
+        result.push_str(&decoded);
+        pending_literal.clear();
         match child.kind() {
-            "\"" => {}
-            "string_content" => {
-                result.push_str(&resolve_double_quoted_content(
-                    node_text(child, source).unwrap_or_default(),
-                ));
-                literal = true;
-            }
-            "$" => {
-                result.push('$');
-                literal = true;
-            }
             "command_substitution" => {
                 if let Some(body) = extract_safe_cat_heredoc(child, source)? {
                     collect_command_substitution_scoped(child, source, commands, variable_scope)?;
@@ -1759,6 +1839,22 @@ fn resolve_string_scoped(
                 ));
             }
         }
+        if result.len() > MAX_STATIC_VALUE_BYTES {
+            return Err(too_complex(node, "Static argument byte budget exceeded"));
+        }
+    }
+    let tail = source
+        .get(cursor..node.end_byte() - 1)
+        .ok_or_else(|| too_complex(node, "Invalid double-quoted tail span"))?;
+    if !tail.replace("\\\n", "").bytes().all(|byte| byte == b'\n') {
+        return Err(too_complex(node, "Unmodeled double-quoted tail gap"));
+    }
+    pending_literal.push_str(tail);
+    let decoded = resolve_double_quoted_content(&pending_literal);
+    literal |= !decoded.is_empty();
+    result.push_str(&decoded);
+    if result.len() > MAX_STATIC_VALUE_BYTES {
+        return Err(too_complex(node, "Static argument byte budget exceeded"));
     }
     if dynamic && !literal {
         return Err(too_complex(
@@ -2509,6 +2605,236 @@ mod tests {
                 vec!["rm".to_string(), "/etc/passwd".to_string()],
             ]
         );
+    }
+
+    #[test]
+    fn double_quoted_newlines_preserve_every_literal_byte() {
+        for (quoted, expected) in [
+            ("\"safe\n\"", "safe\n"),
+            ("\"\n\"", "\n"),
+            ("\"\n\n\"", "\n\n"),
+            ("\"\nα\nβ\n\"", "\nα\nβ\n"),
+            ("\"\n\"'tail'", "\ntail"),
+        ] {
+            assert_eq!(argvs(&format!("cat {quoted}")), vec![vec!["cat", expected]]);
+            assert_eq!(argvs(&format!("{quoted} arg")), vec![vec![expected, "arg"]]);
+            assert_eq!(
+                argvs(&format!(
+                    "for path in {quoted}; do cat \"$path/file\"; done"
+                )),
+                vec![vec!["cat".to_string(), format!("{expected}/file")]]
+            );
+            for operator in ["<", ">", ">>"] {
+                let source = format!("cat {operator} {quoted}");
+                let ParseForSecurityResult::Simple { commands } = parse_for_security(&source)
+                else {
+                    panic!("literal redirect should parse: {source:?}");
+                };
+                assert_eq!(
+                    commands[0].redirects[0].target.as_bytes(),
+                    expected.as_bytes()
+                );
+            }
+        }
+        assert_eq!(
+            argvs("P=tail; cat \"\n$P\n\" \"prefix$P\n\""),
+            vec![vec![], vec!["cat", "\ntail\n", "prefixtail\n"]]
+        );
+    }
+
+    #[test]
+    fn double_quoted_line_continuations_decode_without_dropping_literal_newlines() {
+        for (quoted, expected, asks) in [
+            ("\"safe\\\n\"", "safe", true),
+            ("\"safe\\\\\n\"", "safe\\\n", false),
+            ("\"safe\\\\\\\n\"", "safe\\", false),
+        ] {
+            let source = format!("cat {quoted}");
+            // Keep the existing differential guard for a lone escaped LF;
+            // verify the decoder independently as well as the public result.
+            if asks {
+                assert!(matches!(
+                    parse_for_security(&source),
+                    ParseForSecurityResult::TooComplex { .. }
+                ));
+            } else {
+                assert_eq!(argvs(&source), vec![vec!["cat", expected]]);
+            }
+            let tree = super::super::bash_parser::parse(&source).unwrap().unwrap();
+            let mut commands = Vec::new();
+            collect_commands_scoped(
+                tree.root_node(),
+                &source,
+                &mut commands,
+                &mut HashMap::new(),
+            )
+            .unwrap();
+            assert_eq!(commands[0].argv, ["cat", expected]);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn static_projection_matches_bash_nul_delimited_argv() {
+        for source in [
+            "capture \"safe\n\"",
+            "capture \"\n\" \"\n\n\" \"α\nβ\n\"",
+            "capture \"a\\\\\\\"b\" '\n' \"\\$literal\n\"",
+            "\"capture\n\" arg",
+        ] {
+            let output = std::process::Command::new("bash")
+                .args([
+                    "--noprofile",
+                    "--norc",
+                    "-c",
+                    &format!("printf '%s\\0' {source}"),
+                ])
+                .env_remove("BASH_ENV")
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{source:?}: {:?}", output.stderr);
+            let actual = output
+                .stdout
+                .strip_suffix(&[0])
+                .unwrap()
+                .split(|byte| *byte == 0)
+                .map(|bytes| String::from_utf8(bytes.to_vec()).unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(argvs(source), vec![actual], "{source:?}");
+        }
+        for source in [
+            "declare action=push; capture \"$action\"",
+            "typeset -x action=push; for item in 'a b' \"\n\"; do capture \"$action\" \"$item\"; done",
+            "declare -- action=push; declare action+=ed; capture \"$action\"",
+            "P=old; declare P=inside Q=\"$P\"; capture \"$P\" \"$Q\"",
+            "P=old; typeset P=inside Q=\"$P\"; capture \"$P\" \"$Q\"",
+            "P=old; export P=inside Q=\"$P\"; capture \"$P\" \"$Q\"",
+        ] {
+            let script = format!("capture() {{ printf '%s\\0' capture \"$@\"; }}; {source}");
+            let output = std::process::Command::new("bash")
+                .args(["--noprofile", "--norc", "-c", &script])
+                .env_remove("BASH_ENV")
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{source:?}: {:?}", output.stderr);
+            let projected = argvs(source)
+                .into_iter()
+                .filter(|argv| argv.first().is_some_and(|name| name == "capture"))
+                .flatten()
+                .flat_map(|argument| argument.into_bytes().into_iter().chain([0]))
+                .collect::<Vec<_>>();
+            assert_eq!(projected, output.stdout, "{source:?}");
+        }
+    }
+
+    #[test]
+    fn declarations_require_explicitly_modeled_options() {
+        for builtin in ["declare", "typeset"] {
+            for option in [
+                "-l", "-u", "-p", "-f", "-F", "-i", "-a", "-A", "-n", "-r", "-t", "-g", "-xl",
+                "-ux", "-xp", "-pf", "+l", "+x", "--help", "-Z",
+            ] {
+                for source in [
+                    format!(
+                        "{builtin} {option} action; for action in PUSH; do git \"$action\" origin main; done"
+                    ),
+                    format!("P=/outside/file; {builtin} {option} P=inside; cat \"$P\""),
+                    format!("P=/outside/file; {builtin} {option} P=inside; cat > \"$P\""),
+                ] {
+                    assert!(
+                        matches!(
+                            parse_for_security(&source),
+                            ParseForSecurityResult::TooComplex { .. }
+                        ),
+                        "{source:?}"
+                    );
+                }
+            }
+            for option in ["", "-x", "--", "-x --"] {
+                assert_eq!(
+                    argvs(&format!("{builtin} {option} P=inside; cat \"$P\""))[1],
+                    ["cat", "inside"]
+                );
+            }
+        }
+        for source in [
+            "local P=inside; cat \"$P\"",
+            "P=/outside/file; export -p P=inside; cat \"$P\"",
+            "P=/outside/file; declare -- -p P=inside; cat \"$P\"",
+            "P=/outside/file; declare P=inside -x; cat \"$P\"",
+        ] {
+            assert!(
+                matches!(
+                    parse_for_security(source),
+                    ParseForSecurityResult::TooComplex { .. }
+                ),
+                "{source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn projection_budget_is_shared_by_all_expanded_subtrees() {
+        for source in [
+            "for j in x; do # empty\ndone; for i in 1 2 3 4 5 6 7 8; do for j in 1 2 3 4 5 6 7 8; do # empty\ndone; done".to_string(),
+            "for i in x; do # empty\ndone".to_string(),
+            "while false; do # empty\ndone".to_string(),
+            "for i in 1 2 3 4 5 6 7 8; do for j in 1 2 3 4 5 6 7 8; do :; done; done".to_string(),
+            format!("for i in {}; do :; done; for j in x; do :; done", std::iter::repeat_n("x", 50).collect::<Vec<_>>().join(" ")),
+            format!("echo \"first: $(for i in {}; do :; done)\" \"second: $(for j in {}; do :; done)\"", std::iter::repeat_n("x", 26).collect::<Vec<_>>().join(" "), std::iter::repeat_n("x", 25).collect::<Vec<_>>().join(" ")),
+            format!("echo \"prefix: $(for i in {}; do echo \"nested: $(for j in x y; do :; done)\"; done)\"", std::iter::repeat_n("x", 20).collect::<Vec<_>>().join(" ")),
+        ] {
+            assert!(
+                matches!(
+                    parse_for_security(&source),
+                    ParseForSecurityResult::TooComplex { .. }
+                ),
+                "{source:?}"
+            );
+        }
+        let empty = "for i in x; do # empty\ndone";
+        let tree = super::super::bash_parser::parse(empty).unwrap().unwrap();
+        let mut visits_left = MAX_PROJECTION_NODE_VISITS;
+        let mut iterations_left = MAX_COMMANDS_FOR_SECURITY_CHECK;
+        assert!(
+            check_projection_work(tree.root_node(), 1, &mut visits_left, &mut iterations_left)
+                .is_err()
+        );
+        assert_eq!(iterations_left, MAX_COMMANDS_FOR_SECURITY_CHECK - 1);
+        assert!(visits_left < MAX_PROJECTION_NODE_VISITS);
+        let nested_empty =
+            "for i in 1 2 3 4 5 6 7 8; do for j in 1 2 3 4 5 6 7 8; do # empty\ndone; done";
+        assert!(
+            matches!(parse_for_security(nested_empty), ParseForSecurityResult::TooComplex { reason, .. } if reason.contains("iteration budget"))
+        );
+        let tree = super::super::bash_parser::parse("echo x").unwrap().unwrap();
+        assert!(check_projection_work(tree.root_node(), 1, &mut 1, &mut 50).is_err());
+        let source = std::iter::repeat_n("echo x", 50)
+            .collect::<Vec<_>>()
+            .join("; ");
+        assert_eq!(argvs(&source).len(), 50);
+        assert!(matches!(
+            parse_for_security(&format!("{source}; echo x")),
+            ParseForSecurityResult::TooComplex { .. }
+        ));
+        assert!(matches!(
+            parse_for_security(&format!("echo \"prefix: $({source})\"")),
+            ParseForSecurityResult::TooComplex { .. }
+        ));
+        let wide = format!("echo {}", "x ".repeat(4500));
+        assert!(
+            matches!(parse_for_security(&wide), ParseForSecurityResult::TooComplex { reason, .. } if reason.contains("node-visit budget"))
+        );
+        for assignment in ["P=\"$P$P\";", "P=$P$P;", "P+=\"$P\";"] {
+            let source = format!("P=x; {} cat \"$P\"", assignment.repeat(20));
+            assert!(
+                matches!(
+                    parse_for_security(&source),
+                    ParseForSecurityResult::TooComplex { .. }
+                ),
+                "{source:?}"
+            );
+        }
     }
 
     #[test]
