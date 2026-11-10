@@ -329,12 +329,19 @@ pub(crate) fn create_team_record(
 /// `clear_team_tool_state_for_test`), so the move is a teamHelpers.ts
 /// file-alignment batch, not a two-file edit. Ledger: MODULE_MAP rows
 /// `tools/shared/spawnMultiAgent.ts` and `utils/swarm/teamHelpers.ts`.
+///
+/// @nyan: unlike CC, the name is sanitized BEFORE the census and returned
+/// sanitized, so `qa:frontend` collides with an existing `qa-frontend` instead
+/// of sharing its agent id and inbox. The leader is a roster member named
+/// `team-lead`, so `team:lead` / `team@lead` get a `-2` suffix instead of
+/// taking the leader's agent id.
 pub(crate) fn generate_unique_teammate_name(base_name: &str, team_name: Option<&str>) -> String {
+    let base_name = sanitize_agent_name(base_name);
     let Some(team_name) = team_name else {
-        return base_name.to_string();
+        return base_name;
     };
     let Some(record) = read_team_file(team_name) else {
-        return base_name.to_string();
+        return base_name;
     };
     let existing = record
         .members
@@ -342,7 +349,7 @@ pub(crate) fn generate_unique_teammate_name(base_name: &str, team_name: Option<&
         .map(|member| member.name.to_ascii_lowercase())
         .collect::<std::collections::HashSet<_>>();
     if !existing.contains(&base_name.to_ascii_lowercase()) {
-        return base_name.to_string();
+        return base_name;
     }
     let mut suffix = 2;
     loop {
@@ -776,6 +783,104 @@ mod tests {
             "reviewer"
         );
 
+        super::clear_team_tool_state_for_test();
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    fn member_record(name: &str) -> super::TeamMemberRecord {
+        super::TeamMemberRecord {
+            agent_id: crate::utils::agent_id::format_agent_id(name, "alpha"),
+            name: name.to_string(),
+            agent_type: None,
+            model: None,
+            prompt: None,
+            color: None,
+            plan_mode_required: None,
+            joined_at_ms: 1,
+            tmux_pane_id: "in-process".to_string(),
+            cwd: "/tmp".to_string(),
+            worktree_path: None,
+            session_id: None,
+            subscriptions: Vec::new(),
+            backend_type: Some("in-process".to_string()),
+            is_active: None,
+            mode: None,
+        }
+    }
+
+    #[test]
+    fn unique_teammate_name_dedupes_after_sanitizing() {
+        let _lock = TEST_TEAM_HELPERS_LOCK.lock().unwrap();
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let (root, _config_guard, _io_guard) = team_disk_guards("unique-name-sanitized");
+        let mut record = super::create_team_record(
+            "alpha".to_string(),
+            None,
+            Some("team-lead".to_string()),
+            None,
+            "/tmp".to_string(),
+        );
+        record.members.push(member_record("qa-frontend"));
+        super::write_team_record(record);
+
+        let colon = super::generate_unique_teammate_name("qa:frontend", Some("alpha"));
+        let at = super::generate_unique_teammate_name("qa@frontend", Some("alpha"));
+        assert_eq!(colon, "qa-frontend-2");
+        assert_eq!(at, "qa-frontend-2");
+
+        let existing_id = crate::utils::agent_id::format_agent_id("qa-frontend", "alpha");
+        let colon_id = crate::utils::agent_id::format_agent_id(&colon, "alpha");
+        assert_ne!(colon_id, existing_id);
+        assert_ne!(
+            crate::utils::teammate_mailbox::get_inbox_path(&colon, Some("alpha")),
+            crate::utils::teammate_mailbox::get_inbox_path("qa-frontend", Some("alpha"))
+        );
+
+        super::clear_team_tool_state_for_test();
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn unique_teammate_name_never_yields_the_leader_identity() {
+        let _lock = TEST_TEAM_HELPERS_LOCK.lock().unwrap();
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let _context_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
+            .lock()
+            .unwrap();
+        let (root, _config_guard, _io_guard) = team_disk_guards("unique-name-leader");
+        let record = super::create_team_record(
+            "alpha".to_string(),
+            None,
+            Some("team-lead".to_string()),
+            None,
+            "/tmp".to_string(),
+        );
+        let lead_agent_id = record.lead_agent_id.clone();
+        super::write_team_record(record);
+
+        for requested in ["team:lead", "team@lead", "team-lead"] {
+            let name = super::generate_unique_teammate_name(requested, Some("alpha"));
+            let agent_id = crate::utils::agent_id::format_agent_id(&name, "alpha");
+            assert_eq!(name, "team-lead-2", "requested {requested}");
+            assert_ne!(agent_id, lead_agent_id, "requested {requested}");
+
+            crate::utils::teammate::set_dynamic_team_context(Some(
+                crate::utils::teammate::DynamicTeamContext {
+                    agent_id,
+                    agent_name: name,
+                    team_name: "alpha".to_string(),
+                    color: None,
+                    plan_mode_required: false,
+                    parent_session_id: None,
+                },
+            ));
+            assert!(
+                !crate::utils::teammate::is_team_lead(Some(&lead_agent_id)),
+                "requested {requested}"
+            );
+        }
+
+        crate::utils::teammate::clear_dynamic_team_context();
         super::clear_team_tool_state_for_test();
         let _ = std::fs::remove_dir_all(root);
     }
