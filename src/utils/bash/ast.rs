@@ -738,6 +738,12 @@ fn check_projection_work(
         .ok_or_else(|| too_complex(node, "Bash projection node-visit budget exceeded"))?;
     let body = node.child_by_field_name("body");
     let iterations = if node.kind() == "for_statement" {
+        if node.child(0).map(|keyword| keyword.kind()) != Some("for") {
+            return Err(too_complex(
+                node,
+                "Only literal for statements can be expanded",
+            ));
+        }
         let variable = node.child_by_field_name("variable");
         let count = named_children(node)
             .into_iter()
@@ -1077,13 +1083,25 @@ fn collect_for_statement(
     let body = node
         .child_by_field_name("body")
         .ok_or_else(|| too_complex(node, "For statement has no body"))?;
+    // `select` shares this grammar node, but its value comes from stdin.
+    if node.child(0).map(|keyword| keyword.kind()) != Some("for") {
+        return Err(too_complex(
+            node,
+            "select reads its loop value from stdin at runtime",
+        ));
+    }
     let variable_name = node_text(loop_variable, source).unwrap_or_default();
-    if !VARIABLE_NAME_RE.is_match(variable_name)
-        || matches!(variable_name, "PS4" | "IFS")
-        || is_execution_environment_variable(variable_name)
-        || is_runtime_variable(variable_name)
+    let mut root = node;
+    while let Some(parent) = root.parent() {
+        root = parent;
+    }
+    if may_declare_loop_variable(root, source, variable_name)
+        || !is_projectable_loop_variable(variable_name)
     {
-        return Err(too_complex(loop_variable, "Unsafe for-loop variable name"));
+        return Err(too_complex(
+            loop_variable,
+            "For-loop variable may rebind inherited or shell-special state",
+        ));
     }
 
     let mut values = Vec::new();
@@ -1105,13 +1123,18 @@ fn collect_for_statement(
             }
             pending.extend(named_children(part));
         }
-        values.push(resolve_argument_scoped(
-            child,
-            source,
-            commands,
-            variable_scope,
-            false,
-        )?);
+        let value = resolve_argument_scoped(child, source, commands, variable_scope, false)?;
+        // The Bash tool may run zsh, whose snapshot restores user options:
+        // under GLOB_SUBST an unquoted `$var` re-expands `~`, `<1-9>`, `(a|b)`
+        // and other patterns, and a leading `=` is command-path expansion.
+        // Accept only characters that no supported shell expands.
+        if !value
+            .chars()
+            .all(|ch| ch.is_alphanumeric() || " \t\n_./:,@%+-".contains(ch))
+        {
+            return Err(too_complex(child, "For-loop value may expand at runtime"));
+        }
+        values.push(value);
         if values.len() > MAX_COMMANDS_FOR_SECURITY_CHECK {
             return Err(too_complex(node, "Too many static for-loop iterations"));
         }
@@ -1132,6 +1155,64 @@ fn collect_for_statement(
     // which value survives after the loop.
     variable_scope.insert(variable_name.to_string(), VAR_PLACEHOLDER.to_string());
     Ok(())
+}
+
+/// The only names a literal `for` may bind. A loop variable keeps an existing
+/// export and any special meaning, so it can change `~`, `cd`, git/XDG/tool
+/// configuration or zsh's tied `path` without changing the command text.
+/// Only ordinary scalar names are accepted, not an open-ended class such as
+/// lowercase identifiers. They must also be absent from both inherited
+/// environment carriers and all declarations in the input. An unexported
+/// ordinary scalar cannot change a child's environment. Session scripts can
+/// introduce arbitrary attributes, so their presence prevents expansion.
+const PROJECTABLE_LOOP_VARIABLES: &[&str] = &[
+    "i", "j", "k", "x", "y", "f", "d", "p", "item", "file", "dir", "name", "value", "entry", "arg",
+    "word", "pkg", "target", "src", "dst", "line", "part", "key", "cmd", "action",
+];
+
+fn is_projectable_loop_variable(name: &str) -> bool {
+    PROJECTABLE_LOOP_VARIABLES.contains(&name)
+        && crate::utils::process_env::var_os(name).is_none()
+        && !crate::utils::session_env_vars::get_session_env_vars().contains_key(name)
+        && crate::utils::session_environment::get_session_environment_script().is_none()
+}
+
+/// A declaration anywhere may leave an export or other attribute on the loop
+/// variable. Resolve only literal operand names: a dynamic `export "$arg"`
+/// cannot prove that it names a different variable, even across branches.
+fn may_declare_loop_variable(node: Node<'_>, source: &str, name: &str) -> bool {
+    if node.kind() == "declaration_command"
+        && named_children(node).into_iter().any(|operand| {
+            if operand.kind() == "variable_assignment" {
+                return named_children(operand)
+                    .into_iter()
+                    .find(|child| child.kind() == "variable_name")
+                    .and_then(|child| node_text(child, source))
+                    .is_none_or(|declared| declared == name);
+            }
+            if operand.kind() == "variable_name" {
+                return node_text(operand, source).is_none_or(|declared| declared == name);
+            }
+            match resolve_argument_scoped(
+                operand,
+                source,
+                &mut Vec::new(),
+                &mut HashMap::new(),
+                false,
+            ) {
+                Ok(value) if !contains_placeholder(&value) => value
+                    .split('=')
+                    .next()
+                    .is_none_or(|declared| declared.trim_end_matches('+') == name),
+                _ => true,
+            }
+        })
+    {
+        return true;
+    }
+    named_children(node)
+        .into_iter()
+        .any(|child| may_declare_loop_variable(child, source, name))
 }
 
 fn collect_do_group(
@@ -2619,9 +2700,7 @@ mod tests {
             assert_eq!(argvs(&format!("cat {quoted}")), vec![vec!["cat", expected]]);
             assert_eq!(argvs(&format!("{quoted} arg")), vec![vec![expected, "arg"]]);
             assert_eq!(
-                argvs(&format!(
-                    "for path in {quoted}; do cat \"$path/file\"; done"
-                )),
+                argvs(&format!("for dir in {quoted}; do cat \"$dir/file\"; done")),
                 vec![vec!["cat".to_string(), format!("{expected}/file")]]
             );
             for operator in ["<", ">", ">>"] {
@@ -2854,6 +2933,177 @@ mod tests {
     }
 
     #[test]
+    fn literal_for_bindings_require_closed_names_and_static_declarations() {
+        for name in [
+            "HOME",
+            "PWD",
+            "OLDPWD",
+            "GIT_DIR",
+            "GIT_CONFIG_GLOBAL",
+            "XDG_CONFIG_HOME",
+            "LESSOPEN",
+            "PAGER",
+            "EDITOR",
+            "HISTFILE",
+            "NODE_OPTIONS",
+            "PYTHONPATH",
+            "PATH",
+            "IFS",
+            "PS4",
+            "RANDOM",
+            "REPLY",
+            "path",
+            "fpath",
+            "status",
+            "parameters",
+            "arbitrary_lowercase",
+            "NYAN_UNKNOWN_ENV",
+        ] {
+            let source = format!("for {name} in inside; do echo hello; done");
+            assert!(
+                matches!(
+                    parse_for_security(&source),
+                    ParseForSecurityResult::TooComplex { .. }
+                ),
+                "{source:?}"
+            );
+        }
+        for declaration in [
+            "export file",
+            "export file=before",
+            "export 'file=before'",
+            "export \"file\"",
+            "export f\\ile",
+            "declare file",
+            "typeset -x file",
+            "arg=file; export \"$arg\"",
+            "arg=file; declare -x \"$arg\"",
+            "arg=file; typeset -x \"$arg\"",
+            "false && export file",
+        ] {
+            let source = format!("{declaration}; for file in inside; do cat \"$file\"; done");
+            assert!(
+                matches!(
+                    parse_for_security(&source),
+                    ParseForSecurityResult::TooComplex { .. }
+                ),
+                "{source:?}"
+            );
+        }
+        for value in [
+            "'~'", "'=cat'", "'<1-9>'", "'(a|b)'", "'*.txt'", "'a?b'", "'[ab]'", "'a{b,c}'",
+        ] {
+            let source = format!("for file in {value}; do cat $file; done");
+            assert!(
+                matches!(
+                    parse_for_security(&source),
+                    ParseForSecurityResult::TooComplex { .. }
+                ),
+                "{source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn literal_for_bindings_reject_process_and_session_exports() {
+        use crate::utils::session_env_vars::{
+            delete_session_env_var, get_session_env_vars, set_session_env_var,
+        };
+        use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+
+        struct RestoreSessionVariable(Option<String>);
+        impl Drop for RestoreSessionVariable {
+            fn drop(&mut self) {
+                if let Some(value) = self.0.take() {
+                    set_session_env_var("file", value);
+                } else {
+                    delete_session_env_var("file");
+                }
+            }
+        }
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _restore = RestoreSessionVariable(get_session_env_vars().get("file").cloned());
+        delete_session_env_var("file");
+        let _absent = EnvVarGuard::unset("file");
+        let source = "for file in inside; do cat \"$file\"; done";
+        assert!(matches!(
+            parse_for_security(source),
+            ParseForSecurityResult::Simple { .. }
+        ));
+        for value in ["", "before"] {
+            let _inherited = EnvVarGuard::set("file", value);
+            assert!(matches!(
+                parse_for_security(source),
+                ParseForSecurityResult::TooComplex { .. }
+            ));
+        }
+        set_session_env_var("file", "");
+        assert!(matches!(
+            parse_for_security(source),
+            ParseForSecurityResult::TooComplex { .. }
+        ));
+    }
+
+    #[test]
+    fn select_never_uses_literal_for_projection() {
+        for source in [
+            "select p in Cargo.toml; do cat \"$p\"; done",
+            "echo 9 | select p in src; do cat \"$p/etc/hostname\"; done",
+            "REPLY=status; echo push | select x in a; do git \"$REPLY\" origin main; break; done",
+            "select i; do echo hello; done",
+            "for i in x; do select p in Cargo.toml; do cat \"$p\"; done; done",
+            "echo \"$(select p in a; do echo \"$p\"; done)\"",
+        ] {
+            assert!(
+                matches!(
+                    parse_for_security(source),
+                    ParseForSecurityResult::TooComplex { .. }
+                ),
+                "{source:?}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejected_bindings_and_select_match_real_bash_runtime_behavior() {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let source = "for HOME in /etc; do printf '%s\\0' ~/passwd; done";
+        assert!(matches!(
+            parse_for_security(source),
+            ParseForSecurityResult::TooComplex { .. }
+        ));
+        let output = Command::new("bash")
+            .args(["--noprofile", "--norc", "-c", source])
+            .env_remove("BASH_ENV")
+            .env("HOME", "/fixture/home")
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"/etc/passwd\0");
+
+        let source = "select p in src; do printf '%s\\0' \"$p/etc/hostname\"; break; done";
+        assert!(matches!(
+            parse_for_security(source),
+            ParseForSecurityResult::TooComplex { .. }
+        ));
+        let mut child = Command::new("bash")
+            .args(["--noprofile", "--norc", "-c", source])
+            .env_remove("BASH_ENV")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(b"9\n").unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"/etc/hostname\0");
+    }
+
+    #[test]
     fn literal_for_loops_check_every_value_with_a_bounded_projection() {
         assert_eq!(
             argvs("for i in 1 2 3; do echo progress-$i; sleep 1.2; done"),
@@ -2867,7 +3117,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            argvs("for path in 'a b' \"c d\"; do cat \"$path\"; done"),
+            argvs("for file in 'a b' \"c d\"; do cat \"$file\"; done"),
             vec![vec!["cat", "a b"], vec!["cat", "c d"]]
         );
         let values = std::iter::repeat_n("x", MAX_COMMANDS_FOR_SECURITY_CHECK)

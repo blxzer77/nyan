@@ -1523,8 +1523,8 @@ mod tests {
             "while false; do echo hello; done",
             "for item in one two; do echo hello; done",
             "for i in 1 2 3; do echo progress-$i; sleep 1.2; done",
-            "for path in Cargo.toml Cargo.lock; do cat \"$path\"; done",
-            "for command in echo pwd; do $command; done",
+            "for file in Cargo.toml Cargo.lock; do cat \"$file\"; done",
+            "for cmd in echo pwd; do $cmd; done",
             "! false",
             "cat <<'EOF'\n$(not_a_command) | literal data\nEOF",
             "echo hello > /dev/null",
@@ -1586,14 +1586,14 @@ mod tests {
             "for PATH in /untrusted; do echo hello; done".to_string(),
             "for IFS in /; do echo hello; done".to_string(),
             "for RANDOM in 1; do cat \"$RANDOM\"; done".to_string(),
-            "for path in ../*; do cat \"$path\"; done".to_string(),
-            "for path in \"$(pwd)\"; do echo hello; done".to_string(),
-            "for path in \"$HOME\"; do echo hello; done".to_string(),
-            "for path; do echo hello; done".to_string(),
-            "for path in; do echo hello; done".to_string(),
+            "for file in ../*; do cat \"$file\"; done".to_string(),
+            "for file in \"$(pwd)\"; do echo hello; done".to_string(),
+            "for file in \"$HOME\"; do echo hello; done".to_string(),
+            "for file; do echo hello; done".to_string(),
+            "for file in; do echo hello; done".to_string(),
             "for i in 1 2; do i=3; echo $i; done".to_string(),
-            "P=inside; for i in 1 2; do cat \"$P\"; for P in /etc/passwd; do echo hello; done; done".to_string(),
-            "for path in Cargo.toml; do echo hello; done; cat \"$path\"".to_string(),
+            "p=inside; for i in 1 2; do cat \"$p\"; for p in /etc/passwd; do echo hello; done; done".to_string(),
+            "for file in Cargo.toml; do echo hello; done; cat \"$file\"".to_string(),
             "cat \"$(cat 3<<'EOF'\nCargo.toml\nEOF\n)\"".to_string(),
             "cat \"$(cat <<-'EOF'\n\tCargo.toml\nEOF\n)\"".to_string(),
         ];
@@ -1623,6 +1623,176 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn ast_for_environment_rebinding_and_select_always_require_safety_approval() {
+        let _project_dir = PinnedProjectDir::at_manifest_root();
+        let cwd = std::env::current_dir().unwrap();
+        // Every command in the N1/N2 review table, including its sandbox-only
+        // REPLY case, must fail before any auto-allow policy is considered.
+        for source in [
+            "for HOME in /etc; do cat ~/passwd; done",
+            "for HOME in /etc; do cat < ~/passwd; done",
+            "for HOME in evilhome; do git status; done",
+            "for GIT_DIR in /tmp/x; do git status; done",
+            "for XDG_CONFIG_HOME in evilhome; do git status; done",
+            "for GIT_CONFIG_GLOBAL in evilhome/config; do git status; done",
+            "for LESSOPEN in x; do git log; done",
+            "for HOME in /etc; do cd; done",
+            "for OLDPWD in /etc; do cd -; done",
+            "for HOME in /tmp; do echo x > ~/f; done",
+            "echo 9 | select p in src; do cat \"$p/etc/hostname\"; done",
+            "select p in Cargo.toml; do cat \"$p\"; done",
+            "REPLY=status; echo push | select x in a; do git \"$REPLY\" origin main; break; done",
+            "for path in /tmp; do cat ~/passwd; done",
+            "for NYAN_UNKNOWN_ENV in x; do git status; done",
+            "export file; for file in inside; do cat \"$file\"; done",
+            "declare -x file; for file in inside; do cat \"$file\"; done",
+            "arg=file; export \"$arg\"; for file in inside; do cat \"$file\"; done",
+            "for file in '~'; do cat $file; done",
+            "for file in '<1-9>'; do cat $file; done",
+        ] {
+            for mode in [
+                crate::types::permissions::PermissionMode::Default,
+                crate::types::permissions::PermissionMode::AcceptEdits,
+            ] {
+                for allow in [
+                    None,
+                    Some(Some(source.to_string())),
+                    Some(None),
+                    Some(Some("echo:*".to_string())),
+                ] {
+                    for deny in [false, true] {
+                        let mut context = ToolPermissionContext {
+                            mode,
+                            ..ToolPermissionContext::default()
+                        };
+                        if let Some(rule) = &allow {
+                            context.always_allow_rules.insert(
+                                PermissionRuleSource::Session,
+                                vec![PermissionRuleValue::new("Bash", rule.clone())],
+                            );
+                        }
+                        let rules = if deny {
+                            &mut context.always_deny_rules
+                        } else {
+                            &mut context.always_ask_rules
+                        };
+                        rules.insert(
+                            PermissionRuleSource::Session,
+                            vec![PermissionRuleValue::new(
+                                "Bash",
+                                Some("git push:*".to_string()),
+                            )],
+                        );
+                        for result in [
+                            bash_tool_has_permission(source, &context, &cwd),
+                            check_sandbox_auto_allow(source, &context),
+                        ] {
+                            assert!(
+                                matches!(result, PermissionResult::Ask { ref suggestions, pending_classifier_check: None, .. } if suggestions.is_empty()),
+                                "safety ask required for {source:?}: {result:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ast_inherited_allowlisted_loop_variables_cannot_override_safety() {
+        use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let cwd = std::env::current_dir().unwrap();
+        for name in ["i", "item", "file", "cmd"] {
+            for value in ["", "inherited"] {
+                let _inherited = EnvVarGuard::set(name, value);
+                let source = format!("for {name} in Cargo.toml; do cat \"${name}\"; done");
+                for allow in [Some(source.clone()), None] {
+                    let mut context = ToolPermissionContext::default();
+                    context.always_allow_rules.insert(
+                        PermissionRuleSource::Session,
+                        vec![PermissionRuleValue::new("Bash", allow)],
+                    );
+                    for result in [
+                        bash_tool_has_permission(&source, &context, &cwd),
+                        check_sandbox_auto_allow(&source, &context),
+                    ] {
+                        assert!(
+                            matches!(result, PermissionResult::Ask { ref suggestions, pending_classifier_check: None, .. } if suggestions.is_empty()),
+                            "inherited variable must safely ask: {source:?}: {result:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ast_session_exports_and_hook_scripts_prevent_literal_loop_auto_allow() {
+        use crate::utils::session_env_vars::{
+            delete_session_env_var, get_session_env_vars, set_session_env_var,
+        };
+        use crate::utils::session_environment::invalidate_session_env_cache;
+        use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+
+        struct Restore {
+            variable: Option<String>,
+            script_path: std::path::PathBuf,
+        }
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                if let Some(value) = self.variable.take() {
+                    set_session_env_var("file", value);
+                } else {
+                    delete_session_env_var("file");
+                }
+                invalidate_session_env_cache();
+                let _ = std::fs::remove_file(&self.script_path);
+            }
+        }
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _restore = Restore {
+            variable: get_session_env_vars().get("file").cloned(),
+            script_path: std::env::temp_dir().join(format!(
+                "nyan-ast-loop-env-{}.sh",
+                uuid::Uuid::new_v4().simple()
+            )),
+        };
+        let _file = EnvVarGuard::unset("file");
+        let _env_file = EnvVarGuard::unset("NYAN_ENV_FILE");
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
+        invalidate_session_env_cache();
+        let cwd = std::env::current_dir().unwrap();
+        let source = "for file in Cargo.toml; do cat \"$file\"; done";
+        let assert_safety_ask = || {
+            for allow in [Some(source.to_string()), None] {
+                let mut context = ToolPermissionContext::default();
+                context.always_allow_rules.insert(
+                    PermissionRuleSource::Session,
+                    vec![PermissionRuleValue::new("Bash", allow)],
+                );
+                for result in [
+                    bash_tool_has_permission(source, &context, &cwd),
+                    check_sandbox_auto_allow(source, &context),
+                ] {
+                    assert!(
+                        matches!(result, PermissionResult::Ask { ref suggestions, pending_classifier_check: None, .. } if suggestions.is_empty()),
+                        "session state must safely ask: {result:?}"
+                    );
+                }
+            }
+        };
+        set_session_env_var("file", "");
+        assert_safety_ask();
+        delete_session_env_var("file");
+        std::fs::write(&_restore.script_path, "export file=before").unwrap();
+        let _script = EnvVarGuard::set("NYAN_ENV_FILE", &_restore.script_path);
+        invalidate_session_env_cache();
+        assert_safety_ask();
     }
 
     #[test]
@@ -1691,12 +1861,12 @@ mod tests {
         std::os::unix::fs::symlink(&outside, cwd.join("\n")).unwrap();
         let _project_dir = PinnedProjectDir::at(&cwd);
         for source in [
-            "for path in \"safe\n\"; do cat \"$path/file\"; done",
-            "for path in \"\n\"; do cat \"$path/file\"; done",
+            "for dir in \"safe\n\"; do cat \"$dir/file\"; done",
+            "for dir in \"\n\"; do cat \"$dir/file\"; done",
             "cat \"safe\n/file\"",
             "cat < \"safe\n/file\"",
             "echo x > \"safe\n/file\"",
-            "for path in \"safe\n\"; do echo x >> \"$path/file\"; done",
+            "for dir in \"safe\n\"; do echo x >> \"$dir/file\"; done",
         ] {
             for allow in [Some(source.to_string()), None] {
                 let mut context = ToolPermissionContext::default();
@@ -1722,7 +1892,7 @@ mod tests {
         for source in [
             "cat \"denied\n/file\"",
             "cat < \"denied\n/file\"",
-            "for path in \"denied\n\"; do cat \"$path/file\"; done",
+            "for dir in \"denied\n\"; do cat \"$dir/file\"; done",
         ] {
             for allow in [Some(source.to_string()), None] {
                 let mut context = ToolPermissionContext::default();
@@ -1940,12 +2110,12 @@ mod tests {
             "cat < -/../../nyan-ast-input-outside".to_string(),
             format!("P={} && cat \"$P\"", outside.display()),
             format!("rm \"$(cat <<'EOF'\n{}\nEOF\n)\"", outside.display()),
-            "for path in Cargo.toml /etc/passwd; do cat \"$path\"; done".to_string(),
+            "for file in Cargo.toml /etc/passwd; do cat \"$file\"; done".to_string(),
             "P=/etc/passwd; declare P=inside Q=\"$P\"; cat \"$Q\"".to_string(),
             "P=/etc/passwd; typeset P=inside Q=\"$P\"; cat \"$Q\"".to_string(),
             "P=/etc/passwd; export P=inside Q=\"$P\"; echo x > \"$Q\"".to_string(),
-            "for path in inside /etc/nyan-ast-outside; do echo hello > \"$path\"; done".to_string(),
-            "for path in sub ..; do cd $path; done".to_string(),
+            "for file in inside /etc/nyan-ast-outside; do echo hello > \"$file\"; done".to_string(),
+            "for dir in sub ..; do cd $dir; done".to_string(),
             "cd sub && echo x > file".to_string(),
             "cd sub && git status".to_string(),
             "cd sub; cd ..; pwd".to_string(),
