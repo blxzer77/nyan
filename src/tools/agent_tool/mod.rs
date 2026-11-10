@@ -1948,26 +1948,6 @@ impl crate::tool::ToolCall for AgentTool {
             };
             let effective_isolation =
                 effective_isolation_for_agent_tool(requested_isolation, &agent_definition);
-            // Not-implemented notice, not a validation rule. Unreachable on an
-            // external build — the schema enum is `["worktree"]` (`:105`,
-            // matching CC `AgentTool.tsx:215`'s external arm) and a frontmatter
-            // `remote` is dropped by the audience gate
-            // (`load_agents_dir.rs:686-693`) — so it only fires if either is
-            // widened for an internal audience, which is exactly when the
-            // missing implementation would matter.
-            //
-            // Two `Unsupported Agent isolation mode` early returns used to sit
-            // around this one, rejecting any non-`worktree`/`remote` value.
-            // Both were dead: CC rejects a bad `isolation` at the zod enum, and
-            // this port does the equivalent one layer up, in the execution gate
-            // at `tool_execution.rs:566-576` (`Maps to: CC
-            // toolExecution.ts:615-676`), whose fallback validator checks
-            // `enum`. A value that fails there never reaches `call`.
-            if effective_isolation.as_deref() == Some("remote") {
-                return agent_tool_error(
-                    "Failed to create remote session: remote isolation is unavailable; no remote subagent was started.",
-                );
-            }
             // Maps to CC `AgentTool.tsx`: `cwd` is documented as mutually
             // exclusive in the schema description, but the runtime does not
             // throw. If both are supplied, it still creates/cleans the

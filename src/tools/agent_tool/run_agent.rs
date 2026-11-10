@@ -755,14 +755,14 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
     // `prompt_messages` is CC's `initialMessages` and goes in WHOLE, hook
     // attachment included — that write is the one place CC hands an attachment
     // to `recordSidechainTranscript`, and `cleanMessagesForLogging` is what
-    // decides its fate per audience. Everything the query LOOP produces passes
+    // decides its fate. Everything the query LOOP produces passes
     // [`is_recordable_message`] first (CC `:231-246`), so no other attachment
     // can reach the file.
     //
     // This used to hand-roll its own message→entry conversion and hand the
     // result straight to `record_sidechain_transcript`, i.e. it wrote CC's
     // whole drop set to disk: the SubagentStart `hook_additional_context`
-    // attachment pushed above on EVERY audience, every `Message::Attachment`
+    // attachment pushed above, every `Message::Attachment`
     // the query loop yields (CC yields those WITHOUT recording,
     // `runAgent.ts:770-790`), hook results, and progress as a literal `null`
     // JSONL line. The conversion and the `cleanMessagesForLogging` privacy
@@ -1646,9 +1646,8 @@ fn record_query_event_to_agent_transcript(
 /// would reject them anyway. The port sends the same values through
 /// `QueryEvent::Message` (`query.rs` `emit_max_turns_reached`, the
 /// hook/skill/system-reminder attachments), so without this gate they reached
-/// the writer, where only `isLoggableMessage`'s audience check stood between
-/// them and the file: on an `ant` build every attachment was persisted, and
-/// each one also took the parent cursor, so the chain CC writes as
+/// the writer, where only `isLoggableMessage` stood between them and the
+/// file, and each one also took the parent cursor, so the chain CC writes as
 /// `assistant → user` was written as `assistant → attachment → user`.
 ///
 /// `hook_result` has no CC counterpart in this union (it is the port's carrier
@@ -4163,7 +4162,7 @@ mod tests {
         let flat = std::fs::read_to_string(get_agent_transcript_path(agent_id)).unwrap();
         assert!(
             !flat.contains("SECRET-FROM-HOOK"),
-            "no attachment the query loop yields may be persisted on ANY audience: {flat}"
+            "no attachment the query loop yields may be persisted: {flat}"
         );
 
         assert_eq!(

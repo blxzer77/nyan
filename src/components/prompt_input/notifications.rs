@@ -350,7 +350,7 @@ pub fn Notifications(
             overflow: Overflow::Hidden,
         ) {
             // CC order: Ide → notif → apiKeyHelper → auth/debug/verbose
-            // → TokenWarning → AutoUpdater → Memory → Sandbox.
+            // → TokenWarning → AutoUpdater → Sandbox.
             IdeStatusIndicator(
                 ide_status: ide_status,
                 ide_selection: ide_selection,
