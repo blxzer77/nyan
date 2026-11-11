@@ -291,7 +291,7 @@ fn now_ms() -> u64 {
 }
 
 /// Read projection of the MCP SDK `OAuthTokens` value returned by
-/// `McpAuthProvider.tokens()`.
+/// `ClaudeAuthProvider.tokens()`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct McpOAuthTokens {
     pub access_token: Option<String>,
@@ -301,7 +301,7 @@ pub struct McpOAuthTokens {
     pub token_type: &'static str,
 }
 
-/// Maps to: CC `services/mcp/auth.ts:1376-1405` `McpAuthProvider`.
+/// Maps to: CC `services/mcp/auth.ts:1376-1405` `ClaudeAuthProvider`.
 ///
 /// This reviewed partial retains the source identity for read/status callers;
 /// interactive discovery and refresh remain in the separately gated MCP
@@ -313,7 +313,7 @@ pub struct McpAuthProvider {
 
 impl McpAuthProvider {
     /// Maps to: CC `services/mcp/auth.ts:1393-1405`
-    /// `McpAuthProvider.constructor` with default redirect options.
+    /// `ClaudeAuthProvider.constructor` with default redirect options.
     pub fn new(server_name: &str, server_config: &super::types::ScopedMcpServerConfig) -> Self {
         Self {
             server_name: server_name.to_string(),
@@ -322,7 +322,7 @@ impl McpAuthProvider {
     }
 
     /// Maps to: CC `services/mcp/auth.ts:1540-1702`
-    /// `McpAuthProvider.tokens`.
+    /// `ClaudeAuthProvider.tokens`.
     ///
     /// Partial dependency seam: secure-storage `readAsync` and the imported MCP
     /// SDK refresh carrier are not yet available at this synchronous settings
@@ -696,7 +696,7 @@ mod runtime {
         token_response: &OAuthTokenResponse,
         resource_metadata_url: Option<&str>,
     ) -> anyhow::Result<bool> {
-        // Maps to: CC `McpAuthProvider.saveTokens` and discovery-state fields.
+        // Maps to: CC `ClaudeAuthProvider.saveTokens` and discovery-state fields.
         let token_json = serde_json::to_value(token_response)?;
         let Some(access_token) = token_json
             .get("access_token")
@@ -816,7 +816,7 @@ mod runtime {
         client_secret: &str,
         tokens: &crate::services::mcp::xaa::XaaResult,
     ) -> anyhow::Result<()> {
-        // Maps to: CC `performMCPXaaAuth` / `McpAuthProvider.xaaRefresh`
+        // Maps to: CC `performMCPXaaAuth` / `ClaudeAuthProvider.xaaRefresh`
         // direct keychain writes.
         let mut credentials = read_credentials_json_for_update();
         if !credentials.is_object() {
@@ -1069,7 +1069,7 @@ mod runtime {
         config: &ScopedMcpServerConfig,
         entry: &Value,
     ) -> anyhow::Result<Option<AuthorizationMetadata>> {
-        // Maps to: CC `McpAuthProvider.discoveryState()` + `_doRefresh()`
+        // Maps to: CC `ClaudeAuthProvider.discoveryState()` + `_doRefresh()`
         // metadata priority: cached metadata, cached authorization server URL,
         // then normal configured/RFC discovery from the MCP server URL.
         if let Some(metadata) = discovery_state_value(entry, "authorizationServerMetadata")
@@ -1090,7 +1090,7 @@ mod runtime {
     }
 
     fn invalidate_mcp_oauth_tokens(server_key: &str) -> anyhow::Result<()> {
-        // Maps to: CC `McpAuthProvider.invalidateCredentials('tokens')`.
+        // Maps to: CC `ClaudeAuthProvider.invalidateCredentials('tokens')`.
         let mut credentials = read_credentials_json_for_update();
         let Some(entry) = credentials
             .get_mut("mcpOAuth")
@@ -1224,7 +1224,7 @@ mod runtime {
     }
 
     /// Maps to: CC `wrapFetchWithStepUpDetection(...)`,
-    /// `McpAuthProvider.markStepUpPending(...)`, and persisted discovery
+    /// `ClaudeAuthProvider.markStepUpPending(...)`, and persisted discovery
     /// state consumed by `performMCPOAuthFlow(...)` after a 401/403
     /// WWW-Authenticate challenge.
     pub fn record_mcp_www_authenticate_challenge(
@@ -1314,7 +1314,7 @@ mod runtime {
         entry: &Value,
         snapshot: &McpOAuthTokenSnapshot,
     ) -> anyhow::Result<Option<String>> {
-        // Maps to: CC `McpAuthProvider.refreshAuthorization()` and
+        // Maps to: CC `ClaudeAuthProvider.refreshAuthorization()` and
         // `_doRefresh()`, but delegates token refresh to rmcp's official
         // `AuthorizationManager::refresh_token()` state machine.
         let Some(client_id) = snapshot.client_id.clone() else {
@@ -1499,7 +1499,7 @@ mod runtime {
     }
 
     /// Maps to: CC MCP SDK `auth(provider, ...)` 401 retry path when
-    /// `McpAuthProvider.tokens()` exposes a refresh_token.
+    /// `ClaudeAuthProvider.tokens()` exposes a refresh_token.
     ///
     /// A transport-level 401 should force a refresh even when the local expiry
     /// timestamp says the access token is still fresh. This mirrors the JS MCP
@@ -2170,7 +2170,7 @@ mod runtime {
         scopes: &[String],
         server_key: &str,
     ) -> OAuthClientConfig {
-        // Maps to: CC `McpAuthProvider.clientInformation()` preconfigured
+        // Maps to: CC `ClaudeAuthProvider.clientInformation()` preconfigured
         // `oauth.clientId` path: read `mcpOAuthClientConfig[serverKey]` and
         // pass the client_secret to the SDK token exchange without requiring
         // dynamic client registration.
