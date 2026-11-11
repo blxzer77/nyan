@@ -409,13 +409,13 @@ fn classifier_text_block(text: impl Into<String>, cached: bool) -> TextBlockPara
     }
 }
 /// Maps to: CC `yoloClassifier.ts:460-477` `buildClaudeMdMessage`.
-fn build_claude_md_message() -> Option<MessageParam> {
-    let claude_md = crate::bootstrap::state::get_cached_claude_md_content()?;
+fn build_agents_md_message() -> Option<MessageParam> {
+    let agents_md = crate::bootstrap::state::get_cached_agents_md_content()?;
     Some(MessageParam {
         role: "user".into(),
         content: MessageContent::Blocks(vec![ContentBlockParam::Text(classifier_text_block(
             format!(
-                "The following is the user's AGENTS.md configuration. These are instructions the user provided to the agent and should be treated as part of the user's intent when evaluating actions.\n\n<user_claude_md>\n{claude_md}\n</user_claude_md>"
+                "The following is the user's AGENTS.md configuration. These are instructions the user provided to the agent and should be treated as part of the user's intent when evaluating actions.\n\n<user_claude_md>\n{agents_md}\n</user_claude_md>"
             ),
             true,
         ))]),
@@ -748,7 +748,7 @@ pub async fn classify_yolo_action(
     }
     let system = build_yolo_system_prompt();
     let entries = build_transcript_entries(messages);
-    let prefix: Vec<_> = build_claude_md_message().into_iter().collect();
+    let prefix: Vec<_> = build_agents_md_message().into_iter().collect();
     let mut prompt_lengths = ClassifierPromptLengths {
         system_prompt: system.encode_utf16().count() as u64,
         tool_calls: action_compact.encode_utf16().count() as u64,
@@ -1287,7 +1287,7 @@ mod tests {
         fn new(config: Value) -> Self {
             Self::set_config(config);
             Self(
-                crate::bootstrap::state::get_cached_claude_md_content(),
+                crate::bootstrap::state::get_cached_agents_md_content(),
                 crate::bootstrap::state::get_last_classifier_requests(),
             )
         }
@@ -1299,7 +1299,7 @@ mod tests {
     impl Drop for ConfigGuard {
         fn drop(&mut self) {
             AUTO_MODE_CONFIG.with(|c| c.borrow_mut().take());
-            crate::bootstrap::state::set_cached_claude_md_content(self.0.take());
+            crate::bootstrap::state::set_cached_agents_md_content(self.0.take());
             crate::bootstrap::state::set_last_classifier_requests(self.1.take());
         }
     }
@@ -1324,7 +1324,7 @@ mod tests {
     async fn classifier_schema_and_cached_request_match_official() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _config = ConfigGuard::new(json!({}));
-        crate::bootstrap::state::set_cached_claude_md_content(Some("User instruction".into()));
+        crate::bootstrap::state::set_cached_agents_md_content(Some("User instruction".into()));
         for (input, expected_block) in [
             // CC yoloClassifier.ts:252-257,1220-1235: an array is not the
             // z.object response and must never become an allow decision.

@@ -5,7 +5,7 @@ const SETTINGS_FILES: [&str; 2] = ["settings.json", "settings.local.json"];
 /// Maps to: CC `utils/plugins/addDirPluginSettings.ts:34-48#getAddDirEnabledPlugins`.
 pub fn get_add_dir_enabled_plugins() -> Map<String, Value> {
     let mut result = Map::new();
-    for dir in crate::bootstrap::state::get_additional_directories_for_claude_md() {
+    for dir in crate::bootstrap::state::get_additional_directories_for_agents_md() {
         for file in SETTINGS_FILES {
             // Node join resolves all lexical segments before filesystem I/O.
             let mut path = std::path::PathBuf::new();
@@ -34,7 +34,7 @@ pub fn get_add_dir_enabled_plugins() -> Map<String, Value> {
 /// Maps to: CC `utils/plugins/addDirPluginSettings.ts:56-71#getAddDirExtraMarketplaces`.
 pub fn get_add_dir_extra_marketplaces() -> Map<String, Value> {
     let mut result = Map::new();
-    for dir in crate::bootstrap::state::get_additional_directories_for_claude_md() {
+    for dir in crate::bootstrap::state::get_additional_directories_for_agents_md() {
         for file in SETTINGS_FILES {
             // Node join resolves all lexical segments before filesystem I/O.
             let mut path = std::path::PathBuf::new();

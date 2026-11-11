@@ -3,7 +3,7 @@
 //! Dialog UI + choice callback. Project-config writes
 //! (`hasClaudeMdExternalIncludesApproved` /
 //! `hasClaudeMdExternalIncludesWarningShown`) are applied by
-//! `interactive_helpers::apply_claude_md_external_includes_choice` at the
+//! `interactive_helpers::apply_agents_md_external_includes_choice` at the
 //! setup-screen boundary (same TrustDialog pattern). Analytics omitted.
 
 use crate::components::custom_select::{Select, SelectLayout, SelectOptionData};

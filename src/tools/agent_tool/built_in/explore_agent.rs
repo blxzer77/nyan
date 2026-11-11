@@ -63,7 +63,7 @@ pub fn explore_agent() -> AgentDefinition {
         crate::tools::file_write_tool::prompt::FILE_WRITE_TOOL_NAME.to_string(),
         crate::tools::notebook_edit_tool::constants::NOTEBOOK_EDIT_TOOL_NAME.to_string(),
     ]);
-    agent.omit_claude_md = true;
+    agent.omit_agents_md = true;
     agent.system_prompt = Some(get_explore_system_prompt());
     agent
 }
@@ -82,7 +82,7 @@ mod tests {
         // No model of its own: `selection.subagents.explore` and the type
         // default (`@light`) decide.
         assert_eq!(agent.model, None);
-        assert!(agent.omit_claude_md);
+        assert!(agent.omit_agents_md);
         assert!(
             agent
                 .disallowed_tools

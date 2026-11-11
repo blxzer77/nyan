@@ -76,7 +76,7 @@ pub fn plan_agent() -> AgentDefinition {
         crate::tools::notebook_edit_tool::constants::NOTEBOOK_EDIT_TOOL_NAME.to_string(),
     ]);
     agent.tools = explore_agent().tools;
-    agent.omit_claude_md = true;
+    agent.omit_agents_md = true;
     agent.system_prompt = Some(get_plan_v2_system_prompt());
     agent
 }
@@ -95,7 +95,7 @@ mod tests {
         );
         assert!(!prompt.contains("Claude"));
         assert_eq!(agent.model, None);
-        assert!(agent.omit_claude_md);
+        assert!(agent.omit_agents_md);
         assert!(
             agent
                 .disallowed_tools

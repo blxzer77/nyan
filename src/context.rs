@@ -101,7 +101,7 @@ pub fn get_user_context() -> BTreeMap<String, String> {
     {
         return context.clone();
     }
-    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_claude_md();
+    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_agents_md();
     let context = build_user_context(
         |key| crate::utils::process_env::var(key),
         crate::utils::agents_md::build_agents_md_context,
@@ -110,7 +110,7 @@ pub fn get_user_context() -> BTreeMap<String, String> {
     );
     // Maps to: CC `context.ts:176` — publish only after the canonical context
     // producer applies AGENTS.md gates; the classifier must never load it again.
-    crate::bootstrap::state::set_cached_claude_md_content(context.get("claudeMd").cloned());
+    crate::bootstrap::state::set_cached_agents_md_content(context.get("claudeMd").cloned());
     if let Ok(mut cache) = USER_CONTEXT_CACHE.write() {
         *cache = Some(context.clone());
     }
@@ -154,7 +154,7 @@ pub fn get_system_context() -> BTreeMap<String, String> {
 
 fn build_user_context(
     get_env: impl Fn(&str) -> Option<String>,
-    build_claude_md_context: impl Fn() -> String,
+    build_agents_md_context: impl Fn() -> String,
     get_local_iso_date: impl Fn() -> String,
     has_explicit_add_dir: bool,
 ) -> BTreeMap<String, String> {
@@ -162,15 +162,15 @@ fn build_user_context(
 
     // Maps to CC `context.ts` `shouldDisableClaudeMd`: hard-disable wins;
     // bare/simple mode skips auto-discovery but still honors explicit add-dir.
-    let should_disable_claude_md =
+    let should_disable_agents_md =
         crate::utils::env_utils::is_env_truthy(get_env("NYAN_DISABLE_CLAUDE_MDS").as_deref())
             || (crate::utils::env_utils::is_env_truthy(get_env("NYAN_SIMPLE").as_deref())
                 && !has_explicit_add_dir);
-    if !should_disable_claude_md {
-        let claude_md = build_claude_md_context();
+    if !should_disable_agents_md {
+        let agents_md = build_agents_md_context();
         // CC uses string truthiness for both context and classifier cache.
-        if !claude_md.is_empty() {
-            context.insert("claudeMd".to_string(), claude_md);
+        if !agents_md.is_empty() {
+            context.insert("claudeMd".to_string(), agents_md);
         }
     }
 
@@ -302,7 +302,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn get_user_context_shape_matches_official_current_date_and_claude_md() {
+    fn get_user_context_shape_matches_official_current_date_and_agents_md() {
         let context = build_user_context(
             |_| None,
             || "# Source: AGENTS.md\n\nproject memory".to_string(),
@@ -321,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn get_user_context_respects_official_claude_md_disable_gates() {
+    fn get_user_context_respects_official_agents_md_disable_gates() {
         for key in ["NYAN_DISABLE_CLAUDE_MDS", "NYAN_SIMPLE"] {
             let context = build_user_context(
                 |requested| (requested == key).then(|| "1".to_string()),

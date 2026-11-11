@@ -2275,7 +2275,7 @@ fn get_directories_to_process(
     nested_dirs
 }
 
-fn claude_md_kind_name(kind: crate::utils::agents_md::AgentsMdKind) -> &'static str {
+fn agents_md_kind_name(kind: crate::utils::agents_md::AgentsMdKind) -> &'static str {
     match kind {
         crate::utils::agents_md::AgentsMdKind::User => "User",
         crate::utils::agents_md::AgentsMdKind::Project => "Project",
@@ -2336,7 +2336,7 @@ fn memory_files_to_attachments(
         // only when set, matching JSON.stringify's undefined-omission.
         let memory_info = crate::utils::agents_md::MemoryFileInfo {
             path: path.clone(),
-            memory_type: claude_md_kind_name(memory_file.kind).to_string(),
+            memory_type: agents_md_kind_name(memory_file.kind).to_string(),
             content,
             parent: memory_file
                 .parent

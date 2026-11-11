@@ -83,7 +83,7 @@ pub struct AgentDefinition {
     /// Maps to CC `BaseAgentDefinition.color`.
     pub color: Option<String>,
     /// Maps to CC `BaseAgentDefinition.omitClaudeMd`.
-    pub omit_claude_md: bool,
+    pub omit_agents_md: bool,
     /// Maps to CC `BaseAgentDefinition.criticalSystemReminder_EXPERIMENTAL`.
     pub critical_system_reminder_experimental: Option<String>,
     /// Maps to CC `BaseAgentDefinition.hooks`.
@@ -165,7 +165,7 @@ impl AgentDefinition {
             disallowed_tools: None,
             skills: None,
             color: None,
-            omit_claude_md: false,
+            omit_agents_md: false,
             critical_system_reminder_experimental: None,
             hooks: None,
             max_turns: None,

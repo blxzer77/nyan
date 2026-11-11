@@ -119,7 +119,7 @@ pub fn discover_agents_md_files() -> Vec<AgentsMdFile> {
         return files.clone();
     }
 
-    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_claude_md();
+    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_agents_md();
     let include_default_discovery = !crate::utils::env_utils::is_env_truthy(
         crate::utils::process_env::var("NYAN_SIMPLE").as_deref(),
     );
@@ -202,7 +202,7 @@ pub fn discover_agents_md_files_with_external_policy(
         || global_config
             .projects
             .get(&project_key)
-            .and_then(|project| project.has_claude_md_external_includes_approved)
+            .and_then(|project| project.has_agents_md_external_includes_approved)
             .unwrap_or(false);
 
     if include_default_discovery {
@@ -363,16 +363,16 @@ pub fn has_external_agents_md_includes(files: &[AgentsMdFile]) -> bool {
 pub fn should_show_agents_md_external_includes_warning() -> bool {
     let project = config::get_current_project_config();
     if project
-        .has_claude_md_external_includes_approved
+        .has_agents_md_external_includes_approved
         .unwrap_or(false)
         || project
-            .has_claude_md_external_includes_warning_shown
+            .has_agents_md_external_includes_warning_shown
             .unwrap_or(false)
     {
         return false;
     }
 
-    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_claude_md();
+    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_agents_md();
     let include_default_discovery = !crate::utils::env_utils::is_env_truthy(
         crate::utils::process_env::var("NYAN_SIMPLE").as_deref(),
     );
@@ -653,7 +653,7 @@ fn is_agents_md_excluded(path: &Path, kind: AgentsMdKind) -> bool {
         return false;
     }
     let patterns = crate::utils::settings::get_initial_settings()
-        .claude_md_excludes
+        .agents_md_excludes
         .unwrap_or_default();
     agents_md_path_matches_excludes(path, &patterns)
 }

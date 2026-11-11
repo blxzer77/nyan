@@ -2399,7 +2399,7 @@ mod tests {
             &second.join(".nyan/settings.json"),
             r#"{"enabledPlugins":{"alpha@market":false,"gamma@market":true}}"#,
         );
-        crate::bootstrap::state::set_additional_directories_for_claude_md(vec![first, second]);
+        crate::bootstrap::state::set_additional_directories_for_agents_md(vec![first, second]);
         let add_dir = super::super::add_dir_plugin_settings::get_add_dir_enabled_plugins();
         assert_eq!(add_dir.get("alpha@market"), Some(&Value::Bool(false)));
         assert_eq!(add_dir.get("beta@market"), Some(&Value::Bool(false)));
