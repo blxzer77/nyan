@@ -29,7 +29,7 @@ pub fn FeedColumn(props: &FeedColumnProps, hooks: Hooks) -> impl Into<AnyElement
                     Fragment {
                         Feed(config: feed, actual_width: actual_width)
                         #(if index < last_index {
-                            Some(element! { Divider(color: theme.claude, width: actual_width as u32) })
+                            Some(element! { Divider(color: theme.nyan, width: actual_width as u32) })
                         } else {
                             None
                         })

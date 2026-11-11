@@ -22,7 +22,7 @@ pub struct SpinnerGlyphProps {
 #[component]
 pub fn SpinnerGlyph(props: &SpinnerGlyphProps, hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_context::<Theme>();
-    let base_color = props.color.unwrap_or(theme.claude);
+    let base_color = props.color.unwrap_or(theme.nyan);
     let color = if props.reduced_motion {
         base_color
     } else {

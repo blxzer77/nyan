@@ -40,7 +40,7 @@ pub enum NotificationColor {
     Error,
     Warning,
     Success,
-    Claude,
+    Nyan,
     Text,
     Ide,
     Suggestion,

@@ -959,8 +959,8 @@ pub fn SpinnerWithVerb(
         live_tip_scheduler_enabled,
         props.btw_use_count.unwrap_or(runtime_btw_use_count),
     );
-    let message_color = props.override_color.unwrap_or(theme.claude);
-    let shimmer_color = props.override_shimmer_color.unwrap_or(theme.claude_shimmer);
+    let message_color = props.override_color.unwrap_or(theme.nyan);
+    let shimmer_color = props.override_shimmer_color.unwrap_or(theme.nyan_shimmer);
     let message_width = UnicodeWidthStr::width(message.as_str());
     let glimmer_index = if reduced_motion || stalled_intensity > 0.0 {
         -100

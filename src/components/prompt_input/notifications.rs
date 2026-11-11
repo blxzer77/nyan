@@ -177,7 +177,7 @@ fn notification_color(color: Option<NotificationColor>, theme: &Theme) -> Color 
         Some(NotificationColor::Error) => theme.error,
         Some(NotificationColor::Warning) => theme.warning,
         Some(NotificationColor::Success) => theme.success,
-        Some(NotificationColor::Claude) => theme.claude,
+        Some(NotificationColor::Nyan) => theme.nyan,
         Some(NotificationColor::Text) => theme.text,
         Some(NotificationColor::Ide) => theme.ide,
         Some(NotificationColor::Suggestion) => theme.suggestion,
@@ -579,6 +579,16 @@ mod tests {
                 )
             }
         }
+    }
+
+    #[test]
+    fn notification_color_nyan_uses_the_nyan_palette_entry() {
+        let theme = *crate::utils::theme::current();
+        assert_eq!(
+            notification_color(Some(NotificationColor::Nyan), &theme),
+            theme.nyan
+        );
+        assert_eq!(notification_color(None, &theme), theme.inactive);
     }
 
     #[test]

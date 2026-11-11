@@ -374,7 +374,7 @@ fn render_model_picker_content(props: &ModelPickerView, theme: Theme) -> AnyElem
                     }))
                 }
                 View(margin_bottom: 1u32, flex_direction: FlexDirection::Row) {
-                    Text(content: symbol.to_string(), color: theme.claude, wrap: TextWrap::NoWrap)
+                    Text(content: symbol.to_string(), color: theme.nyan, wrap: TextWrap::NoWrap)
                     Text(content: format!("{effort_label} "), dim: true, wrap: TextWrap::NoWrap)
                     Text(content: "← → to adjust".to_string(), color: theme.subtle, wrap: TextWrap::NoWrap)
                 }

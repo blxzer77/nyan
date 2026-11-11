@@ -1008,7 +1008,7 @@ pub struct StatsContentProps {
 enum StatsGlyphTone {
     Default,
     Inactive,
-    Claude,
+    Nyan,
     Suggestion,
     Success,
     Warning,
@@ -1024,7 +1024,7 @@ fn stats_glyph_tone(character: char, chart: bool) -> StatsGlyphTone {
         }
     } else {
         match character {
-            '░' | '▒' | '▓' | '█' => StatsGlyphTone::Claude,
+            '░' | '▒' | '▓' | '█' => StatsGlyphTone::Nyan,
             '·' => StatsGlyphTone::Inactive,
             _ => StatsGlyphTone::Default,
         }
@@ -1062,7 +1062,7 @@ fn stats_styled_line(line: &str, chart: bool, theme: Theme) -> AnyElement<'stati
                 let color = match tone {
                     StatsGlyphTone::Default => None,
                     StatsGlyphTone::Inactive => Some(theme.inactive),
-                    StatsGlyphTone::Claude => Some(theme.claude),
+                    StatsGlyphTone::Nyan => Some(theme.nyan),
                     StatsGlyphTone::Suggestion => Some(theme.suggestion),
                     StatsGlyphTone::Success => Some(theme.success),
                     StatsGlyphTone::Warning => Some(theme.warning),
@@ -1187,14 +1187,14 @@ fn StatsOverviewContent(
                     "Favorite model",
                     overview.favorite_model.clone(),
                     None,
-                    theme.claude,
+                    theme.nyan,
                     true,
                 ))
                 #(stats_value_cell(
                     "Total tokens",
                     Some(format_number(overview.total_tokens)),
                     None,
-                    theme.claude,
+                    theme.nyan,
                     false,
                 ))
             }
@@ -1203,14 +1203,14 @@ fn StatsOverviewContent(
                     "Sessions",
                     Some(format_number(props.stats.total_sessions)),
                     None,
-                    theme.claude,
+                    theme.nyan,
                     false,
                 ))
                 #(stats_value_cell(
                     "Longest session",
                     longest_session,
                     None,
-                    theme.claude,
+                    theme.nyan,
                     false,
                 ))
             }
@@ -1219,14 +1219,14 @@ fn StatsOverviewContent(
                     "Active days",
                     Some(props.stats.active_days.to_string()),
                     Some((format!("/{}", overview.range_days), Some(theme.subtle))),
-                    theme.claude,
+                    theme.nyan,
                     false,
                 ))
                 #(stats_value_cell(
                     "Longest streak",
                     Some(props.stats.streaks.longest_streak.to_string()),
                     Some((longest_unit.to_string(), None)),
-                    theme.claude,
+                    theme.nyan,
                     true,
                 ))
             }
@@ -1235,14 +1235,14 @@ fn StatsOverviewContent(
                     "Most active day",
                     most_active_day,
                     None,
-                    theme.claude,
+                    theme.nyan,
                     false,
                 ))
                 #(stats_value_cell(
                     "Current streak",
                     Some(props.all_time_stats.streaks.current_streak.to_string()),
                     Some((current_unit.to_string(), None)),
-                    theme.claude,
+                    theme.nyan,
                     true,
                 ))
             }
@@ -1410,12 +1410,12 @@ fn StatsSuccessContent(
     let copy_status = props.data.copy_status.clone().unwrap_or_default();
 
     element! {
-        Pane(color: Some(theme.claude)) {
+        Pane(color: Some(theme.nyan)) {
             View(flex_direction: FlexDirection::Row, column_gap: 1u32, margin_bottom: 1u32) {
                 View(flex_direction: FlexDirection::Column) {
                     TabsHeader(
                         title: Some(String::new()),
-                        color: Some(theme.claude),
+                        color: Some(theme.nyan),
                         tabs: vec![
                             TabItem::new("Overview", "Overview"),
                             TabItem::new("Models", "Models"),
@@ -1525,7 +1525,7 @@ pub fn DateRangeSelector(
                         }))
                         Text(
                             content: label,
-                            color: if selected { theme.claude } else { theme.inactive },
+                            color: if selected { theme.nyan } else { theme.inactive },
                             weight: if selected { Weight::Bold } else { Weight::Normal },
                             wrap: TextWrap::NoWrap,
                         )
@@ -1620,6 +1620,12 @@ mod tests {
             shot_distribution: None,
             ..ClaudeCodeStats::default()
         }
+    }
+
+    #[test]
+    fn stats_block_glyphs_use_the_nyan_tone() {
+        assert_eq!(stats_glyph_tone('█', false), StatsGlyphTone::Nyan);
+        assert_eq!(stats_glyph_tone('●', true), StatsGlyphTone::Suggestion);
     }
 
     #[test]
@@ -1835,7 +1841,7 @@ mod tests {
                 .cell(overview_column, header_row)
                 .unwrap()
                 .background_color,
-            Some(theme.claude)
+            Some(theme.nyan)
         );
     }
 

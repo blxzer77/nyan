@@ -506,7 +506,7 @@ pub fn MCPRemoteServerMenu<'a>(
             authorization_url_value.is_some() && manual_callback_submit_value.is_some();
         return element! {
             View(flex_direction: FlexDirection::Column, padding: 1u32, row_gap: 1u32) {
-                Text(content: format!("Authenticating with {}…", server.name), color: theme.claude, wrap: TextWrap::NoWrap)
+                Text(content: format!("Authenticating with {}…", server.name), color: theme.nyan, wrap: TextWrap::NoWrap)
                 View(flex_direction: FlexDirection::Row) {
                     Spinner
                     Text(content: auth_copy.to_string(), wrap: TextWrap::NoWrap)
