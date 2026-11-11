@@ -1921,7 +1921,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_memory_path_is_an_internal_write_carve_out_before_claude_safety() {
+    fn agent_memory_path_is_an_internal_write_carve_out_before_path_safety() {
         let cwd = std::env::temp_dir().join(format!(
             "nyan-agent-memory-permission-{}",
             uuid::Uuid::new_v4().simple()

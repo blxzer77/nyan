@@ -1904,7 +1904,7 @@ mod runtime {
             crate::services::mcp::headers_helper::get_mcp_server_headers(name, config).await,
         );
 
-        let oauth_token = crate::services::mcp::auth::ClaudeAuthProvider::new(name, config)
+        let oauth_token = crate::services::mcp::auth::McpAuthProvider::new(name, config)
             .tokens()?
             .and_then(|tokens| tokens.access_token)
             .filter(|token| !token.is_empty());
@@ -1960,7 +1960,7 @@ mod runtime {
         headers.extend(
             crate::services::mcp::headers_helper::get_mcp_server_headers(name, config).await,
         );
-        if let Some(token) = crate::services::mcp::auth::ClaudeAuthProvider::new(name, config)
+        if let Some(token) = crate::services::mcp::auth::McpAuthProvider::new(name, config)
             .tokens()?
             .and_then(|tokens| tokens.access_token)
             .filter(|token| !token.is_empty())

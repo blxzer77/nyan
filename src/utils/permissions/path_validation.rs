@@ -591,7 +591,7 @@ mod tests {
     }
 
     #[test]
-    fn accept_edits_allows_safe_working_directory_writes_but_not_claude_config() {
+    fn accept_edits_allows_safe_working_directory_writes_but_not_nyan_settings() {
         // "Working directory" is judged against the project dir.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = std::env::current_dir().unwrap();

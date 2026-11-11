@@ -9270,7 +9270,7 @@ mod tests {
     }
 
     #[test]
-    fn stream_watchdog_gated_by_claude_enable_stream_watchdog() {
+    fn stream_watchdog_gated_by_nyan_enable_stream_watchdog() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::remove("NYAN_ENABLE_STREAM_WATCHDOG");
         assert!(!stream_watchdog_enabled());

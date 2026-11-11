@@ -306,12 +306,12 @@ pub struct McpOAuthTokens {
 /// This reviewed partial retains the source identity for read/status callers;
 /// interactive discovery and refresh remain in the separately gated MCP
 /// runtime paths until the full async provider object is ported.
-pub struct ClaudeAuthProvider {
+pub struct McpAuthProvider {
     server_name: String,
     server_config: super::types::ScopedMcpServerConfig,
 }
 
-impl ClaudeAuthProvider {
+impl McpAuthProvider {
     /// Maps to: CC `services/mcp/auth.ts:1393-1405`
     /// `ClaudeAuthProvider.constructor` with default redirect options.
     pub fn new(server_name: &str, server_config: &super::types::ScopedMcpServerConfig) -> Self {
@@ -2622,7 +2622,7 @@ mod tests {
                 "expiresAt": now_ms() + 60_000,
             }));
             assert!(
-                ClaudeAuthProvider::new("docs", &config)
+                McpAuthProvider::new("docs", &config)
                     .tokens()
                     .unwrap()
                     .is_some()
@@ -2634,7 +2634,7 @@ mod tests {
                 "expiresAt": now_ms().saturating_sub(1_000),
             }));
             assert!(
-                ClaudeAuthProvider::new("docs", &config)
+                McpAuthProvider::new("docs", &config)
                     .tokens()
                     .unwrap()
                     .is_none()
@@ -2645,7 +2645,7 @@ mod tests {
                 "refreshToken": "refresh",
                 "expiresAt": 0,
             }));
-            let error = ClaudeAuthProvider::new("docs", &config)
+            let error = McpAuthProvider::new("docs", &config)
                 .tokens()
                 .expect_err("proactive refresh must hit the closed credential outlet");
             assert!(
@@ -2930,7 +2930,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_auth_provider_tokens_uses_active_cached_token_without_refresh_probe() {
+    fn mcp_auth_provider_tokens_uses_active_cached_token_without_refresh_probe() {
         let token = with_temp_config_home(|home| {
             let server_key =
                 get_server_key("docs", "http", "https://example.com/mcp", &BTreeMap::new());
@@ -2950,7 +2950,7 @@ mod tests {
                 .to_string(),
             )
             .unwrap();
-            ClaudeAuthProvider::new("docs", &test_http_config())
+            McpAuthProvider::new("docs", &test_http_config())
                 .tokens()
                 .map(|tokens| tokens.and_then(|tokens| tokens.access_token))
         })
@@ -2960,7 +2960,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_auth_provider_tokens_returns_none_for_expired_token_without_refresh() {
+    fn mcp_auth_provider_tokens_returns_none_for_expired_token_without_refresh() {
         let token = with_temp_config_home(|home| {
             let server_key =
                 get_server_key("docs", "http", "https://example.com/mcp", &BTreeMap::new());
@@ -2980,7 +2980,7 @@ mod tests {
                 .to_string(),
             )
             .unwrap();
-            ClaudeAuthProvider::new("docs", &test_http_config())
+            McpAuthProvider::new("docs", &test_http_config())
                 .tokens()
                 .map(|tokens| tokens.and_then(|tokens| tokens.access_token))
         })
