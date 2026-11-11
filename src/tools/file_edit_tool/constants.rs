@@ -5,11 +5,11 @@ pub const FILE_EDIT_TOOL_NAME: &str = "Edit";
 
 /// Permission pattern for granting session-level access to the project's
 /// `.nyan/` folder. Maps to: CC `CLAUDE_FOLDER_PERMISSION_PATTERN`.
-pub const CLAUDE_FOLDER_PERMISSION_PATTERN: &str = "/.nyan/**";
+pub const NYAN_FOLDER_PERMISSION_PATTERN: &str = "/.nyan/**";
 
 /// Permission pattern for granting session-level access to the global
 /// `~/.nyan/` folder. Maps to: CC `GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN`.
-pub const GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN: &str = "~/.nyan/**";
+pub const GLOBAL_NYAN_FOLDER_PERMISSION_PATTERN: &str = "~/.nyan/**";
 
 /// Maps to: CC `FILE_UNEXPECTEDLY_MODIFIED_ERROR`.
 pub const FILE_UNEXPECTEDLY_MODIFIED_ERROR: &str =

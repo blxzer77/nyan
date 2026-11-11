@@ -998,7 +998,7 @@ pub(crate) fn paths_to_check(path: &str, cwd: &Path) -> Vec<String> {
         .collect()
 }
 
-fn claude_folder_session_allow_rule(
+fn nyan_folder_session_allow_rule(
     path: &str,
     context: &ToolPermissionContext,
     cwd: &Path,
@@ -1337,7 +1337,7 @@ pub fn check_write_permission_for_tool(
         };
     }
 
-    if let Some(rule) = claude_folder_session_allow_rule(path, context, cwd) {
+    if let Some(rule) = nyan_folder_session_allow_rule(path, context, cwd) {
         return PermissionResult::Allow {
             updated_input: Some(input.clone()),
             user_modified: None,

@@ -43,8 +43,8 @@ pub enum FileOperationType {
 pub enum FilePermissionOptionValue {
     Yes,
     YesSession,
-    YesClaudeFolder,
-    YesGlobalClaudeFolder,
+    YesNyanFolder,
+    YesGlobalNyanFolder,
     No,
 }
 
@@ -53,8 +53,8 @@ impl FilePermissionOptionValue {
         match self {
             Self::Yes => "yes",
             Self::YesSession => "yes-session",
-            Self::YesClaudeFolder => "yes-claude-folder",
-            Self::YesGlobalClaudeFolder => "yes-global-claude-folder",
+            Self::YesNyanFolder => "yes-claude-folder",
+            Self::YesGlobalNyanFolder => "yes-global-claude-folder",
             Self::No => "no",
         }
     }
@@ -131,8 +131,8 @@ pub fn get_file_permission_options_with_context(
             file_path,
             tool_permission_context,
         ),
-        in_claude_folder: is_in_claude_folder(file_path),
-        in_global_claude_folder: is_in_global_claude_folder(file_path),
+        in_nyan_folder: is_in_nyan_folder(file_path),
+        in_global_nyan_folder: is_in_global_nyan_folder(file_path),
         directory_name: directory_name_for_path(file_path),
         mode_cycle_shortcut: "shift+tab".to_string(),
         yes_input_mode: false,
@@ -145,8 +145,8 @@ pub fn get_file_permission_options_with_context(
             let value = match option.value.as_str() {
                 "yes" => FilePermissionOptionValue::Yes,
                 "yes-session" => FilePermissionOptionValue::YesSession,
-                "yes-claude-folder" => FilePermissionOptionValue::YesClaudeFolder,
-                "yes-global-claude-folder" => FilePermissionOptionValue::YesGlobalClaudeFolder,
+                "yes-claude-folder" => FilePermissionOptionValue::YesNyanFolder,
+                "yes-global-claude-folder" => FilePermissionOptionValue::YesGlobalNyanFolder,
                 "no" => FilePermissionOptionValue::No,
                 _ => FilePermissionOptionValue::No,
             };
@@ -164,8 +164,8 @@ pub fn file_permission_option_to_prompt_choice(
     match value {
         FilePermissionOptionValue::Yes => PermissionPromptChoice::AllowOnce,
         FilePermissionOptionValue::YesSession
-        | FilePermissionOptionValue::YesClaudeFolder
-        | FilePermissionOptionValue::YesGlobalClaudeFolder => PermissionPromptChoice::AlwaysAllow,
+        | FilePermissionOptionValue::YesNyanFolder
+        | FilePermissionOptionValue::YesGlobalNyanFolder => PermissionPromptChoice::AlwaysAllow,
         FilePermissionOptionValue::No => PermissionPromptChoice::Deny,
     }
 }
@@ -190,18 +190,14 @@ pub fn file_permission_option_to_prompt_response(
                 operation_type,
                 tool_permission_context,
             )),
-        FilePermissionOptionValue::YesClaudeFolder => PermissionPromptResponse::new(choice)
-            .with_permission_updates(vec![
-                use_permission_handler::claude_folder_permission_update(
-                    PermissionSessionScope::ClaudeFolder,
-                ),
-            ]),
-        FilePermissionOptionValue::YesGlobalClaudeFolder => PermissionPromptResponse::new(choice)
-            .with_permission_updates(vec![
-                use_permission_handler::claude_folder_permission_update(
-                    PermissionSessionScope::GlobalClaudeFolder,
-                ),
-            ]),
+        FilePermissionOptionValue::YesNyanFolder => PermissionPromptResponse::new(choice)
+            .with_permission_updates(vec![use_permission_handler::nyan_folder_permission_update(
+                PermissionSessionScope::NyanFolder,
+            )]),
+        FilePermissionOptionValue::YesGlobalNyanFolder => PermissionPromptResponse::new(choice)
+            .with_permission_updates(vec![use_permission_handler::nyan_folder_permission_update(
+                PermissionSessionScope::GlobalNyanFolder,
+            )]),
         FilePermissionOptionValue::No => PermissionPromptResponse::new(choice),
     }
 }
@@ -234,18 +230,18 @@ pub fn generate_file_permission_suggestions(
 }
 
 /// Maps to: CC `FilePermissionDialog/permissionOptions.tsx` `isInClaudeFolder`.
-pub fn is_in_claude_folder(file_path: &str) -> bool {
+pub fn is_in_nyan_folder(file_path: &str) -> bool {
     let path = normalize_absolute_path(file_path);
-    let claude_dir = normalize_path(&crate::bootstrap::state::get_original_cwd().join(".nyan"));
-    is_descendant_of(&path, &claude_dir)
+    let nyan_dir = normalize_path(&crate::bootstrap::state::get_original_cwd().join(".nyan"));
+    is_descendant_of(&path, &nyan_dir)
 }
 
 /// Maps to: CC `FilePermissionDialog/permissionOptions.tsx`
 /// `isInGlobalClaudeFolder`.
-pub fn is_in_global_claude_folder(file_path: &str) -> bool {
+pub fn is_in_global_nyan_folder(file_path: &str) -> bool {
     let path = normalize_absolute_path(file_path);
-    let claude_dir = normalize_path(&crate::utils::node_os::homedir().join(".nyan"));
-    is_descendant_of(&path, &claude_dir)
+    let nyan_dir = normalize_path(&crate::utils::node_os::homedir().join(".nyan"));
+    is_descendant_of(&path, &nyan_dir)
 }
 
 /// Maps to: CC `utils/permissions/filesystem.ts` `pathInAllowedWorkingPath`.
@@ -615,7 +611,25 @@ mod tests {
     }
 
     #[test]
-    fn file_permission_options_match_official_read_write_and_claude_folder_labels() {
+    fn file_permission_option_values_keep_existing_strings() {
+        assert_eq!(FilePermissionOptionValue::Yes.as_str(), "yes");
+        assert_eq!(
+            FilePermissionOptionValue::YesSession.as_str(),
+            "yes-session"
+        );
+        assert_eq!(
+            FilePermissionOptionValue::YesNyanFolder.as_str(),
+            "yes-claude-folder"
+        );
+        assert_eq!(
+            FilePermissionOptionValue::YesGlobalNyanFolder.as_str(),
+            "yes-global-claude-folder"
+        );
+        assert_eq!(FilePermissionOptionValue::No.as_str(), "no");
+    }
+
+    #[test]
+    fn file_permission_options_match_official_read_write_and_nyan_folder_labels() {
         // Fixtures are real in-repo paths; the project dir must agree.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = std::env::current_dir().unwrap();
@@ -633,15 +647,13 @@ mod tests {
             get_file_permission_options(&inside.display().to_string(), FileOperationType::Read);
         assert_eq!(read_options[1].label, "Yes, during this session");
 
-        let claude_path = crate::bootstrap::state::get_original_cwd()
+        let nyan_path = crate::bootstrap::state::get_original_cwd()
             .join(".nyan")
             .join("settings.json");
-        let claude_options = get_file_permission_options(
-            &claude_path.display().to_string(),
-            FileOperationType::Write,
-        );
+        let nyan_options =
+            get_file_permission_options(&nyan_path.display().to_string(), FileOperationType::Write);
         assert_eq!(
-            claude_options[1].label,
+            nyan_options[1].label,
             "Yes, and allow nyan to edit its own settings for this session"
         );
     }

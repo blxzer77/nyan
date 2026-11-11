@@ -10,7 +10,7 @@ use crate::types::permissions::{
 };
 
 pub use crate::tools::file_edit_tool::constants::{
-    CLAUDE_FOLDER_PERMISSION_PATTERN, FILE_EDIT_TOOL_NAME, GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN,
+    FILE_EDIT_TOOL_NAME, GLOBAL_NYAN_FOLDER_PERMISSION_PATTERN, NYAN_FOLDER_PERMISSION_PATTERN,
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -38,10 +38,10 @@ pub struct PermissionHandlerOutcome {
 
 /// Maps to: CC `usePermissionHandler.ts#handleAcceptSession` special
 /// `.nyan/` session-scope update branch.
-pub fn claude_folder_permission_update(scope: PermissionSessionScope) -> PermissionUpdate {
+pub fn nyan_folder_permission_update(scope: PermissionSessionScope) -> PermissionUpdate {
     let pattern = match scope {
-        PermissionSessionScope::ClaudeFolder => CLAUDE_FOLDER_PERMISSION_PATTERN,
-        PermissionSessionScope::GlobalClaudeFolder => GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN,
+        PermissionSessionScope::NyanFolder => NYAN_FOLDER_PERMISSION_PATTERN,
+        PermissionSessionScope::GlobalNyanFolder => GLOBAL_NYAN_FOLDER_PERMISSION_PATTERN,
     };
     PermissionUpdate::AddRules {
         destination: PermissionUpdateDestination::Session,
@@ -70,7 +70,7 @@ pub fn handle_permission_option(
             let updates = scope
                 .clone()
                 .or(options.scope)
-                .map(|scope| vec![claude_folder_permission_update(scope)])
+                .map(|scope| vec![nyan_folder_permission_update(scope)])
                 .unwrap_or(generated_session_updates);
             PermissionHandlerOutcome {
                 accepted: true,
@@ -120,14 +120,20 @@ mod tests {
     }
 
     #[test]
-    fn permission_handler_accept_session_prefers_claude_folder_scope() {
+    fn nyan_folder_permission_patterns_keep_existing_values() {
+        assert_eq!(NYAN_FOLDER_PERMISSION_PATTERN, "/.nyan/**");
+        assert_eq!(GLOBAL_NYAN_FOLDER_PERMISSION_PATTERN, "~/.nyan/**");
+    }
+
+    #[test]
+    fn permission_handler_accept_session_prefers_nyan_folder_scope() {
         let generated = vec![PermissionUpdate::AddDirectories {
             destination: PermissionUpdateDestination::Session,
             directories: vec!["/repo".to_string()],
         }];
         let outcome = handle_permission_option(
             &PermissionOption::AcceptSession {
-                scope: Some(PermissionSessionScope::ClaudeFolder),
+                scope: Some(PermissionSessionScope::NyanFolder),
             },
             generated,
             PermissionHandlerOptions::default(),
@@ -141,7 +147,7 @@ mod tests {
                 behavior: PermissionBehavior::Allow,
                 rules: vec![PermissionRuleValue::new(
                     FILE_EDIT_TOOL_NAME,
-                    Some(CLAUDE_FOLDER_PERMISSION_PATTERN.to_string())
+                    Some(NYAN_FOLDER_PERMISSION_PATTERN.to_string())
                 )],
             }
         );
