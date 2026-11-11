@@ -31,7 +31,6 @@ pub mod use_inbox_poller;
 pub mod use_log_messages;
 pub mod use_memory_usage;
 pub mod use_merged_commands;
-pub mod use_plugin_recommendation_base;
 pub mod use_scheduled_tasks;
 pub mod use_search_input;
 pub mod use_settings_change;

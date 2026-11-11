@@ -113,8 +113,6 @@ pub enum FeatureFlag {
     ChannelAllowlistLedger,
     /// Maps to CC GrowthBook `tengu_herring_clock` team-memory cohort gate.
     TeamMemory,
-    /// Maps to CC GrowthBook `tengu_lapis_finch` plugin hint-recommendation gate.
-    PluginHintRecommendation,
     /// Maps to CC GrowthBook dynamic config `tengu-top-of-feed-tip`.
     EmergencyTip,
     /// Maps to CC GrowthBook `tengu_iron_gate_closed` auto-mode classifier fail-closed gate.
@@ -452,12 +450,6 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         cc_growthbook_name: "tengu_herring_clock",
         enabled: false,
         note: "Official default false; team-memory paths stay unrecognized and the auto-memory setting alone cannot enable them.",
-    },
-    FeatureSwitch {
-        flag: FeatureFlag::PluginHintRecommendation,
-        cc_growthbook_name: "tengu_lapis_finch",
-        enabled: false,
-        note: "Official default false; Bash/PowerShell plugin hints are stripped without ever reaching the startup recommendation dialog.",
     },
     FeatureSwitch {
         flag: FeatureFlag::EmergencyTip,
