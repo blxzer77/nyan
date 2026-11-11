@@ -4,14 +4,14 @@
 //! (CC file header). Used by side queries and main API attribution.
 
 const DEFAULT_PREFIX: &str = "You are nyan, an AI assistant.";
-const AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX: &str =
+const AGENT_SDK_NON_INTERACTIVE_PRESET_PREFIX: &str =
     "You are nyan, an AI assistant running in a non-interactive session.";
 const AGENT_SDK_PREFIX: &str = "You are a nyan agent.";
 
 /// Maps to: CC `constants/system.ts:14-18` `CLI_SYSPROMPT_PREFIX_VALUES`.
 const CLI_SYSPROMPT_PREFIX_VALUES: [&str; 3] = [
     DEFAULT_PREFIX,
-    AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX,
+    AGENT_SDK_NON_INTERACTIVE_PRESET_PREFIX,
     AGENT_SDK_PREFIX,
 ];
 
@@ -37,7 +37,7 @@ pub fn get_cli_sysprompt_prefix(
 ) -> CliSyspromptPrefix {
     if is_non_interactive {
         if has_append_system_prompt {
-            return AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX;
+            return AGENT_SDK_NON_INTERACTIVE_PRESET_PREFIX;
         }
         return AGENT_SDK_PREFIX;
     }

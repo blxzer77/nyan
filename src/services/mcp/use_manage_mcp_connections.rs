@@ -1224,8 +1224,7 @@ async fn initialize_discovered_servers_as_pending(
     let loaded = if dependencies.startup.strict || dependencies.startup.bare {
         super::config::McpConfigs::default()
     } else {
-        super::config::get_claude_code_mcp_configs(&global, &project, &dependencies.startup.dynamic)
-            .await?
+        super::config::get_mcp_configs(&global, &project, &dependencies.startup.dynamic).await?
     };
     let _turn = crate::state::store::enter_store_turn_segment();
     let mut configs = loaded.servers;
@@ -1256,8 +1255,7 @@ async fn load_and_connect_mcp_configs(
     let loaded = if strict {
         super::config::McpConfigs::default()
     } else {
-        super::config::get_claude_code_mcp_configs(&global, &project, &dependencies.startup.dynamic)
-            .await?
+        super::config::get_mcp_configs(&global, &project, &dependencies.startup.dynamic).await?
     };
     let runtime = crate::utils::process_runtime::runtime_handle_for_detached_work()
         .expect("MCP process runtime");

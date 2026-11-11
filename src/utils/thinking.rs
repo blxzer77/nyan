@@ -133,7 +133,7 @@ fn profile_thinking(model: &str, profile: Option<&str>) -> Option<String> {
     entry.capabilities.as_ref()?.thinking.clone()
 }
 
-static CLAUDE_FAMILY_VERSION: LazyLock<Regex> = LazyLock::new(|| {
+static MODEL_FAMILY_VERSION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:opus|sonnet|haiku)[-.](\d+)(?:[-.](\d+))?").expect("valid claude version regex")
 });
 
@@ -142,8 +142,8 @@ static CLAUDE_FAMILY_VERSION: LazyLock<Regex> = LazyLock::new(|| {
 /// `us.anthropic.claude-opus-4-6-v1:0`. A trailing date is not a minor
 /// version (`claude-opus-4-20250514` is 4.0), and Claude 3 ids, which put the
 /// version first (`claude-3-5-sonnet-20241022`), spell none.
-fn claude_family_version(id: &str) -> Option<(u32, u32)> {
-    let captures = CLAUDE_FAMILY_VERSION.captures(id)?;
+fn model_family_version(id: &str) -> Option<(u32, u32)> {
+    let captures = MODEL_FAMILY_VERSION.captures(id)?;
     let major = captures.get(1)?.as_str();
     if major.len() > 2 {
         return None;
@@ -190,7 +190,7 @@ pub fn model_supports_adaptive_thinking(model: &str, profile: Option<&str>) -> b
         return declared == "adaptive";
     }
     let id = model.to_ascii_lowercase();
-    if let Some(version) = claude_family_version(&id) {
+    if let Some(version) = model_family_version(&id) {
         return version >= (4, 6);
     }
     !["opus", "sonnet", "haiku"]

@@ -1824,7 +1824,7 @@ where
                         continue;
                     }
                     other => {
-                        let Some(content) = claude_stream_item_to_assistant_content(other) else {
+                        let Some(content) = stream_item_to_assistant_content(other) else {
                             continue;
                         };
                         if let Some(kind) = assistant_content_to_source_event_kind_with_status(
@@ -1897,7 +1897,7 @@ where
                     }
                 },
                 crate::services::api::request::QueryModelStreamItem::CompletedContent(item) => {
-                    let Some(content) = claude_stream_item_to_assistant_content(item) else {
+                    let Some(content) = stream_item_to_assistant_content(item) else {
                         continue;
                     };
                     if let Some(kind) = assistant_content_to_source_event_kind_with_status(
@@ -5113,7 +5113,7 @@ async fn execute_stop_failure_hooks_for_api_error(
     .await;
 }
 
-fn claude_stream_item_to_assistant_content(
+fn stream_item_to_assistant_content(
     item: crate::services::api::request::RequestStreamItem,
 ) -> Option<crate::types::message::AssistantContent> {
     match item {
@@ -5315,7 +5315,7 @@ pub(crate) fn query_model_stream_items_to_pending_events(
                 index += 1;
             }
             crate::services::api::request::QueryModelStreamItem::CompletedContent(item) => {
-                if let Some(content) = claude_stream_item_to_assistant_content(item) {
+                if let Some(content) = stream_item_to_assistant_content(item) {
                     completed_contents.push(content.clone());
                     if let Some(kind) = assistant_content_to_source_event_kind(content.clone()) {
                         pending.push(PendingQueryEvent {
