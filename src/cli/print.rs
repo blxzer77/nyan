@@ -1104,9 +1104,11 @@ fn read_state_seed_from_control(
 /// The headless pool is NOT `getTools()` plus appended MCP tools — CC runs the
 /// same `assembleToolPool` → `mergeAndFilterTools` partition-sort the REPL
 /// uses (`hooks/useMergedTools.ts:30`), so built-ins are a name-sorted
-/// contiguous prefix and MCP tools a name-sorted suffix. That order is what
-/// the server's `claude_code_system_cache_policy` prefix-matches against
-/// (`tools.ts:354-359`); an insertion-ordered pool defeats it in `-p` mode.
+/// contiguous prefix and MCP tools a name-sorted suffix. The server-side
+/// Anthropic policy named `claude_code_system_cache_policy` prefix-matches the
+/// built-in prefix (`tools.ts:354-359`); keeping it contiguous gives the
+/// generic prefix cache one stable breakpoint before MCP tools, while an
+/// insertion-ordered pool defeats that cache in `-p` mode.
 ///
 /// * `launch_tools` — CC `[...tools, ...sdkTools, ...dynamicMcpState.tools]`
 ///   (`:1481`): the `main.tsx:2755-2785` `tools` argument, produced by

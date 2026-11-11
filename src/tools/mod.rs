@@ -148,12 +148,13 @@ pub fn filter_tools_by_deny_rules(
 ///    model reads even though the call-time check would refuse it.
 /// 2. **Each partition is sorted separately and built-ins stay a contiguous
 ///    prefix** — NOT a flat sort. CC states the reason in-source at `:354-359`:
-///    "The server's `claude_code_system_cache_policy` places a global cache
-///    breakpoint after the last prefix-matched built-in tool; a flat sort would
-///    interleave MCP tools into built-ins and invalidate all downstream cache
-///    keys whenever an MCP tool sorts between existing built-ins." Determinism
-///    alone does not satisfy this — the partition boundary is the cache
-///    breakpoint.
+///    the Anthropic server-side policy named
+///    `claude_code_system_cache_policy` places a global cache breakpoint after
+///    the last prefix-matched built-in tool. Keeping built-ins contiguous lets
+///    a generic prefix cache reuse that whole stable prefix; a flat sort would
+///    interleave MCP tools into it and invalidate downstream cache keys whenever
+///    an MCP tool sorts between existing built-ins. Determinism alone does not
+///    satisfy this — the partition boundary is the cache breakpoint.
 /// 3. **`uniqBy` preserves insertion order** (`:363-366`), so the built-in wins
 ///    a name collision with an MCP tool.
 ///
@@ -446,11 +447,12 @@ mod tests {
     }
 
     /// CC `tools.ts:354-359`: each partition is sorted on its own and built-ins
-    /// stay a contiguous prefix, because "the server's
+    /// stay a contiguous prefix because the Anthropic server-side policy named
     /// `claude_code_system_cache_policy` places a global cache breakpoint after
-    /// the last prefix-matched built-in tool; a flat sort would interleave MCP
-    /// tools into built-ins and invalidate all downstream cache keys whenever an
-    /// MCP tool sorts between existing built-ins."
+    /// the last prefix-matched built-in tool. A generic prefix cache can reuse
+    /// that stable prefix; a flat sort would interleave MCP tools into it and
+    /// invalidate downstream cache keys whenever an MCP tool sorts between
+    /// existing built-ins.
     ///
     /// `aaa_server` is the point: under a flat sort `mcp__aaa_server__*` lands
     /// ahead of most built-ins and splits the prefix.

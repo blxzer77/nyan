@@ -88,12 +88,11 @@ fn remote_server_authentication_state_for_settings(
     // `isAuthenticated` derivation for SSE/HTTP clients.
     match config.transport {
         Transport::Sse | Transport::Http => {
-            let has_oauth_tokens =
-                crate::services::mcp::auth::ClaudeAuthProvider::new(name, config)
-                    .tokens()
-                    .ok()
-                    .flatten()
-                    .is_some();
+            let has_oauth_tokens = crate::services::mcp::auth::McpAuthProvider::new(name, config)
+                .tokens()
+                .ok()
+                .flatten()
+                .is_some();
             let has_tools_and_connected =
                 client_type == McpServerConnectionType::Connected && tools_count > 0;
             Some(has_oauth_tokens || has_tools_and_connected)

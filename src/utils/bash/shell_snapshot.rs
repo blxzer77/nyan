@@ -143,7 +143,7 @@ fn get_user_snapshot_content(config_file: &Path) -> String {
 }
 
 /// Maps to CC `utils/bash/ShellSnapshot.ts:269-340` `getClaudeCodeSnapshotContent`.
-fn get_claude_code_snapshot_content(env: &crate::utils::process_env::EnvSnapshot) -> String {
+fn get_nyan_snapshot_content(env: &crate::utils::process_env::EnvSnapshot) -> String {
     let (integration_type, rg_integration) = create_ripgrep_shell_integration();
     let mut content = String::from(
         r##"
@@ -206,14 +206,14 @@ fn get_snapshot_script(
       echo "# Unset all aliases to avoid conflicts with functions" >> "$SNAPSHOT_FILE"
       echo "unalias -a 2>/dev/null || true" >> "$SNAPSHOT_FILE"
       {user}
-      {claude}
+      {nyan}
       if [ ! -f "$SNAPSHOT_FILE" ]; then
         echo "Error: Snapshot file was not created at $SNAPSHOT_FILE" >&2
         exit 1
       fi
 "##,
         snapshot = crate::utils::bash::shell_quote::quote(&[&snapshot_path.display().to_string()]),
-        claude = get_claude_code_snapshot_content(env),
+        nyan = get_nyan_snapshot_content(env),
     )
 }
 
@@ -318,5 +318,26 @@ mod tests {
         assert!(script.contains("shopt -s expand_aliases"));
         assert!(script.contains("unalias -a"));
         assert!(script.contains("/nyan/carrier-only-snapshot-path"));
+    }
+
+    #[test]
+    fn nyan_snapshot_content_has_stable_bytes() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _path = EnvVarGuard::set("PATH", "/nyan/carrier-only-snapshot-path");
+        let _embedded = EnvVarGuard::set("EMBEDDED_SEARCH_TOOLS", "0");
+        let _builtin = EnvVarGuard::set("USE_BUILTIN_RIPGREP", "1");
+        let env = crate::utils::process_env::snapshot();
+        let expected = concat!(
+            "\n",
+            "      echo \"# Check for rg availability\" >> \"$SNAPSHOT_FILE\"\n",
+            "      echo \"if ! (unalias rg 2>/dev/null; command -v rg) >/dev/null 2>&1; then\" >> \"$SNAPSHOT_FILE\"\n",
+            "      echo '  alias rg='\"'rg'\" >> \"$SNAPSHOT_FILE\"\n",
+            "      echo \"fi\" >> \"$SNAPSHOT_FILE\"\n",
+            "      echo \"export PATH=/nyan/carrier-only-snapshot-path\" >> \"$SNAPSHOT_FILE\"\n",
+        );
+        assert_eq!(
+            get_nyan_snapshot_content(&env).as_bytes(),
+            expected.as_bytes()
+        );
     }
 }
