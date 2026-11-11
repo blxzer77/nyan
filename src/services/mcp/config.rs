@@ -772,7 +772,7 @@ async fn plugin_mcp_servers() -> anyhow::Result<McpConfigs> {
 /// `dedupPluginMcpServers(...)`. Disabled/policy-blocked plugin servers still
 /// appear in `/mcp`, but they must not win the first-plugin-wins race against
 /// enabled duplicates.
-fn dedup_plugin_mcp_servers_for_get_claude_code_configs_readonly(
+fn dedup_plugin_mcp_servers_for_mcp_configs_readonly(
     plugin_servers: &indexmap::IndexMap<String, ScopedMcpServerConfig>,
     enabled_manual_servers: &indexmap::IndexMap<String, ScopedMcpServerConfig>,
     project_config: &ProjectConfig,
@@ -797,7 +797,7 @@ fn dedup_plugin_mcp_servers_for_get_claude_code_configs_readonly(
 
 /// Existing synchronous caller bridge; the aggregation algorithm remains in
 /// the source-owned asynchronous getClaudeCodeMcpConfigs below.
-pub fn get_claude_code_mcp_configs_readonly(
+pub fn get_mcp_configs_readonly(
     global_config: &GlobalConfig,
     project_config: &ProjectConfig,
     dynamic_servers: &indexmap::IndexMap<String, ScopedMcpServerConfig>,
@@ -808,7 +808,7 @@ pub fn get_claude_code_mcp_configs_readonly(
         dynamic_servers.clone(),
     );
     match crate::utils::process_runtime::block_on_from_sync(async move {
-        get_claude_code_mcp_configs(&global, &project, &dynamic).await
+        get_mcp_configs(&global, &project, &dynamic).await
     }) {
         Some(Ok(result)) => result,
         result => McpConfigs {
@@ -827,7 +827,7 @@ pub fn get_claude_code_mcp_configs_readonly(
 
 /// Maps to: CC `services/mcp/config.ts:1070#getClaudeCodeMcpConfigs`.
 /// @nyan: no `extraDedupTargets` (it only carried claude.ai connectors).
-pub async fn get_claude_code_mcp_configs(
+pub async fn get_mcp_configs(
     global_config: &GlobalConfig,
     project_config: &ProjectConfig,
     dynamic_servers: &indexmap::IndexMap<String, ScopedMcpServerConfig>,
@@ -872,7 +872,7 @@ pub async fn get_claude_code_mcp_configs(
             })
             .map(|(name, config)| (name.to_owned(), config.clone()))
             .collect();
-    let deduped = dedup_plugin_mcp_servers_for_get_claude_code_configs_readonly(
+    let deduped = dedup_plugin_mcp_servers_for_mcp_configs_readonly(
         &plugin_servers,
         &enabled_manual_servers,
         project_config,
@@ -915,7 +915,7 @@ pub async fn get_all_mcp_configs(
     global_config: &GlobalConfig,
     project_config: &ProjectConfig,
 ) -> anyhow::Result<McpConfigs> {
-    get_claude_code_mcp_configs(global_config, project_config, &Default::default()).await
+    get_mcp_configs(global_config, project_config, &Default::default()).await
 }
 
 /// Maps to: CC `getClaudeCodeMcpConfigs(...)` callers that need all configured
@@ -924,8 +924,7 @@ pub fn all_configured_mcp_servers_readonly(
     global_config: &GlobalConfig,
     project_config: &ProjectConfig,
 ) -> indexmap::IndexMap<String, ScopedMcpServerConfig> {
-    get_claude_code_mcp_configs_readonly(global_config, project_config, &indexmap::IndexMap::new())
-        .servers
+    get_mcp_configs_readonly(global_config, project_config, &indexmap::IndexMap::new()).servers
 }
 
 /// Maps to: CC `services/mcp/config.ts#getMcpConfigByName`.
@@ -1133,8 +1132,7 @@ mod tests {
             "fixture must reach policy rather than fail schema"
         );
         let result =
-            futures::executor::block_on(get_claude_code_mcp_configs(&global, &project, &dynamic))
-                .unwrap();
+            futures::executor::block_on(get_mcp_configs(&global, &project, &dynamic)).unwrap();
         assert!(result.servers.contains_key("manual"));
         assert!(
             !result.servers.contains_key("sdk"),
@@ -1453,7 +1451,7 @@ mod tests {
             ..ProjectConfig::default()
         };
 
-        let result = dedup_plugin_mcp_servers_for_get_claude_code_configs_readonly(
+        let result = dedup_plugin_mcp_servers_for_mcp_configs_readonly(
             &plugin_servers,
             &indexmap::IndexMap::new(),
             &project,
@@ -2154,7 +2152,7 @@ mod tests {
             "{:?}",
             loaded.errors
         );
-        let result = get_claude_code_mcp_configs_readonly(
+        let result = get_mcp_configs_readonly(
             &global,
             &ProjectConfig::default(),
             &indexmap::IndexMap::new(),

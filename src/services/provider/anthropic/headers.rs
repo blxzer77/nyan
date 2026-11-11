@@ -11,13 +11,10 @@ use crate::utils::process_env::EnvSnapshot;
 
 /// Headers sent for every model request, regardless of provider.
 pub fn common_headers() -> HashMap<String, Option<String>> {
-    HashMap::from([
-        (
-            "User-Agent".to_string(),
-            Some(crate::utils::http::user_agent()),
-        ),
-        ("x-app".to_string(), Some("cli".to_string())),
-    ])
+    HashMap::from([(
+        "User-Agent".to_string(),
+        Some(crate::utils::http::user_agent()),
+    )])
 }
 
 /// Anthropic-shaped adapter headers. The session id is nyan's; the
@@ -87,13 +84,13 @@ mod tests {
     }
 
     #[test]
-    fn common_layer_uses_the_shared_nyan_user_agent() {
+    fn common_layer_uses_the_shared_nyan_user_agent_without_x_app() {
         let headers = common_headers();
         assert_eq!(
             headers.get("User-Agent").and_then(Option::as_deref),
             Some(crate::utils::http::user_agent()).as_deref()
         );
-        assert_eq!(headers.get("x-app").and_then(Option::as_deref), Some("cli"));
+        assert!(!headers.contains_key("x-app"));
         assert!(!headers.contains_key("anthropic-beta"));
         assert!(!headers.contains_key("X-Nyan-Session-Id"));
     }

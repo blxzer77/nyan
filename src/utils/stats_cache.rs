@@ -6,7 +6,7 @@
 //! its cache; only the source-controlled v3 shape is written.
 
 use crate::utils::stats::{
-    ClaudeCodeStats, DailyActivity, DailyModelTokens, LongestSessionStats, ModelUsageStats,
+    DailyActivity, DailyModelTokens, LongestSessionStats, ModelUsageStats, NyanStats,
     ProcessedStats, StreakStats,
 };
 use chrono::{DateTime, Local, NaiveDate, Utc};
@@ -298,7 +298,7 @@ fn parse_date_or_timestamp(value: &str) -> Option<DateTime<Utc>> {
 pub(crate) fn cache_to_stats(
     mut cache: PersistedStatsCache,
     today: Option<ProcessedStats>,
-) -> ClaudeCodeStats {
+) -> NyanStats {
     let today = today.unwrap_or_default();
     let merged = merge_cache_with_new_stats(
         cache.clone(),
@@ -353,7 +353,7 @@ pub(crate) fn cache_to_stats(
     let streaks: StreakStats =
         crate::utils::stats::calculate_streaks(&daily_activity, Local::now().date_naive());
 
-    ClaudeCodeStats {
+    NyanStats {
         total_sessions: cache.total_sessions,
         total_messages: cache.total_messages,
         total_days,

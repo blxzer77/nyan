@@ -46,7 +46,7 @@ pub struct PreviewQuestionViewProps {
     pub on_cancel: Handler<()>,
     pub on_tab_prev: Handler<()>,
     pub on_tab_next: Handler<()>,
-    pub on_respond_to_claude: Handler<()>,
+    pub on_respond_to_agent: Handler<()>,
     pub on_finish_plan_interview: Handler<()>,
 }
 
@@ -235,7 +235,7 @@ pub fn PreviewQuestionView(
     let footer_at_render = is_footer_focused.get();
     let notes_at_render = is_in_notes_input.get();
     hooks.use_propagated_terminal_events({
-        let on_respond_to_claude = props.on_respond_to_claude.clone();
+        let on_respond_to_agent = props.on_respond_to_agent.clone();
         let on_finish_plan_interview = props.on_finish_plan_interview.clone();
         let on_cancel = props.on_cancel.clone();
         let on_text_input_focus = props.on_text_input_focus.clone();
@@ -274,7 +274,7 @@ pub fn PreviewQuestionView(
                 } else if *code == KeyCode::Enter {
                     event.prevent_default();
                     if footer_index.get() == 0 {
-                        on_respond_to_claude(());
+                        on_respond_to_agent(());
                     } else {
                         on_finish_plan_interview(());
                     }
