@@ -188,7 +188,7 @@ pub fn build_yolo_system_prompt() -> String {
 }
 /// Maps to: CC `yoloClassifier.ts:186-192` `getAutoModeClassifierErrorDumpPath`.
 pub fn get_auto_mode_classifier_error_dump_path() -> String {
-    super::filesystem::get_claude_temp_dir()
+    super::filesystem::get_nyan_temp_dir()
         .join("auto-mode-classifier-errors")
         .join(format!("{}.txt", crate::bootstrap::state::get_session_id()))
         .display()

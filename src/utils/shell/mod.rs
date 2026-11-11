@@ -213,7 +213,7 @@ pub fn exec(
             .truthy()
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("/tmp")),
-        Path::new(&crate::utils::permissions::filesystem::get_claude_temp_dir_name()),
+        Path::new(&crate::utils::permissions::filesystem::get_nyan_temp_dir_name()),
     );
     let built = provider
         .build_exec_command(

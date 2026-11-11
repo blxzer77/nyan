@@ -10,7 +10,7 @@ use crate::tools::bash_tool::tool_name::BASH_TOOL_NAME;
 use crate::tools::file_read_tool::prompt::FILE_READ_TOOL_NAME;
 use crate::tools::web_fetch_tool::prompt::WEB_FETCH_TOOL_NAME;
 use crate::types::permissions::PermissionUpdate;
-use crate::utils::permissions::filesystem::get_claude_temp_dir;
+use crate::utils::permissions::filesystem::get_nyan_temp_dir;
 use crate::utils::permissions::permission_rule_parser::permission_rule_value_from_string;
 use crate::utils::process_env::JsTruthy;
 use crate::utils::settings::constants::SettingSource;
@@ -891,7 +891,7 @@ fn proxy_environment(http_port: u16, socks_port: u16) -> Vec<String> {
     let tmpdir = crate::utils::process_env::var("NYAN_TMPDIR")
         .truthy()
         .unwrap_or_else(|| {
-            crate::utils::permissions::filesystem::get_claude_temp_dir()
+            crate::utils::permissions::filesystem::get_nyan_temp_dir()
                 .display()
                 .to_string()
         });
@@ -1272,7 +1272,7 @@ pub fn convert_to_sandbox_runtime_config(settings: &SettingsJson) -> SandboxRunt
             .and_then(|permissions| permissions.deny.as_ref()),
     );
 
-    let mut allow_write = vec![".".to_string(), get_claude_temp_dir().display().to_string()];
+    let mut allow_write = vec![".".to_string(), get_nyan_temp_dir().display().to_string()];
     let mut deny_write = Vec::new();
     let mut deny_read = Vec::new();
     let mut allow_read = Vec::new();

@@ -180,7 +180,7 @@ fn get_simple_sandbox_section() -> String {
     // Replace the per-UID temp dir literal (e.g. /private/tmp/claude-1001/) with
     // "$TMPDIR" so the prompt is identical across users — avoids busting the
     // cross-user global prompt cache. The sandbox already sets $TMPDIR at runtime.
-    let claude_temp_dir = crate::utils::permissions::filesystem::get_claude_temp_dir()
+    let claude_temp_dir = crate::utils::permissions::filesystem::get_nyan_temp_dir()
         .display()
         .to_string();
     let normalized_allow_only: Vec<String> = dedup_preserve_order(&config.filesystem.allow_write)
