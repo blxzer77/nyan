@@ -499,7 +499,7 @@ fn has_suspicious_windows_path_pattern(path: &str) -> bool {
 }
 
 /// Maps to CC `isClaudeSettingsPath(filePath)`.
-pub fn is_claude_settings_path(file_path: &str, cwd: &Path) -> bool {
+pub fn is_nyan_settings_path(file_path: &str, cwd: &Path) -> bool {
     let expanded = crate::utils::path::expand_path(file_path, Some(cwd))
         .unwrap_or_else(|_| PathBuf::from(file_path));
     let normalized = normalize_for_permission_comparison(&expanded.display().to_string());
@@ -515,9 +515,9 @@ pub fn is_claude_settings_path(file_path: &str, cwd: &Path) -> bool {
         .any(|path| path == normalized)
 }
 
-fn is_claude_config_file_path(file_path: &str) -> bool {
+fn is_nyan_config_file_path(file_path: &str) -> bool {
     let cwd = crate::bootstrap::state::get_original_cwd();
-    if is_claude_settings_path(file_path, &cwd) {
+    if is_nyan_settings_path(file_path, &cwd) {
         return true;
     }
     ["commands", "agents", "skills"].iter().any(|directory| {
@@ -574,7 +574,7 @@ pub fn check_path_safety_for_auto_edit(
     }
     if paths
         .iter()
-        .any(|candidate| is_claude_config_file_path(candidate))
+        .any(|candidate| is_nyan_config_file_path(candidate))
     {
         return PathSafetyForAutoEdit::Unsafe {
             message: format!(
@@ -727,7 +727,7 @@ pub fn is_scratchpad_enabled() -> bool {
 }
 
 /// Maps to CC `getClaudeTempDirName()` (`filesystem.ts:307-315`).
-pub fn get_claude_temp_dir_name() -> String {
+pub fn get_nyan_temp_dir_name() -> String {
     use crate::utils::platform::{Platform, get_platform};
     if get_platform() == Platform::Windows {
         return "claude".to_string();
@@ -803,18 +803,18 @@ pub(crate) fn verify_owned_temp_dir(dir: &Path) -> std::io::Result<()> {
 /// Test builds compute it on every call: under `cargo test` a directory fixed
 /// by the first test would take every later test's writes, into the real
 /// per-user temp directory.
-pub fn get_claude_temp_dir() -> PathBuf {
+pub fn get_nyan_temp_dir() -> PathBuf {
     #[cfg(not(test))]
     {
         static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-        DIR.get_or_init(claude_temp_dir).clone()
+        DIR.get_or_init(nyan_temp_dir).clone()
     }
     #[cfg(test)]
-    claude_temp_dir()
+    nyan_temp_dir()
 }
 
-/// The body of [`get_claude_temp_dir`].
-fn claude_temp_dir() -> PathBuf {
+/// The body of [`get_nyan_temp_dir`].
+fn nyan_temp_dir() -> PathBuf {
     use crate::utils::platform::{Platform, get_platform};
     let base_tmp_dir = crate::utils::process_env::var_os("NYAN_TMPDIR")
         .as_deref()
@@ -834,7 +834,7 @@ fn claude_temp_dir() -> PathBuf {
         .unwrap_or(base_tmp_dir);
     let mut dir = crate::utils::fs_operations::native::join_path(
         &resolved,
-        Path::new(&get_claude_temp_dir_name()),
+        Path::new(&get_nyan_temp_dir_name()),
     )
     .into_os_string();
     dir.push(std::path::MAIN_SEPARATOR_STR);
@@ -845,7 +845,7 @@ fn claude_temp_dir() -> PathBuf {
 /// is the load-bearing defense against pre-created shared-temp symlink trees.
 pub fn get_bundled_skills_root() -> PathBuf {
     static ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
-        get_claude_temp_dir()
+        get_nyan_temp_dir()
             .join("bundled-skills")
             .join(env!("CARGO_PKG_VERSION"))
             .join(uuid::Uuid::new_v4().simple().to_string())
@@ -857,7 +857,7 @@ pub fn get_bundled_skills_root() -> PathBuf {
 /// `join(getClaudeTempDir(), sanitizePath(getOriginalCwd())) + sep`.
 pub fn get_project_temp_dir() -> PathBuf {
     let mut dir = crate::utils::fs_operations::native::join_path(
-        &get_claude_temp_dir(),
+        &get_nyan_temp_dir(),
         Path::new(&crate::utils::session_storage::sanitize_path(
             &crate::bootstrap::state::get_original_cwd().to_string_lossy(),
         )),
@@ -1024,7 +1024,7 @@ fn nyan_folder_session_allow_rule(
 }
 
 /// Maps to CC `getClaudeSkillScope(filePath)`.
-pub fn get_claude_skill_scope(file_path: &str) -> Option<(String, String)> {
+pub fn get_nyan_skill_scope(file_path: &str) -> Option<(String, String)> {
     let absolute = crate::utils::path::expand_path(file_path, None).ok()?;
     let absolute = absolute.display().to_string().replace('\\', "/");
     let bases = [
@@ -1353,7 +1353,7 @@ pub fn check_write_permission_for_tool(
             message,
             classifier_approvable,
         } => {
-            let suggestions = get_claude_skill_scope(path)
+            let suggestions = get_nyan_skill_scope(path)
                 .map(|(_, pattern)| {
                     vec![PermissionUpdate::AddRules {
                         destination: PermissionUpdateDestination::Session,
@@ -1504,14 +1504,14 @@ mod tests {
     /// under it named by `sanitizePath`, each with a trailing separator.
     #[cfg(unix)]
     #[test]
-    fn claude_temp_dirs_match_official_shape() {
+    fn nyan_temp_dirs_match_official_shape() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("nyan-temp-shape-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let resolved = root.canonicalize().unwrap();
         let _tmp = EnvVarGuard::set("NYAN_TMPDIR", &root);
         let expected = format!("{}/claude-{}/", resolved.display(), current_uid());
-        assert_eq!(get_claude_temp_dir().to_string_lossy(), expected);
+        assert_eq!(get_nyan_temp_dir().to_string_lossy(), expected);
         let cwd = crate::bootstrap::state::get_original_cwd();
         assert_eq!(
             get_project_temp_dir().to_string_lossy(),
@@ -1766,17 +1766,17 @@ mod tests {
     }
 
     #[test]
-    fn claude_settings_path_detection_normalizes_structure_and_case() {
+    fn nyan_settings_path_detection_normalizes_structure_and_case() {
         let cwd = std::env::temp_dir().join("nyan-settings-path-detection");
-        assert!(is_claude_settings_path(
+        assert!(is_nyan_settings_path(
             &cwd.join(".nyan/./settings.json").display().to_string(),
             &cwd,
         ));
-        assert!(is_claude_settings_path(
+        assert!(is_nyan_settings_path(
             &cwd.join(".nYaN/settings.local.json").display().to_string(),
             &cwd,
         ));
-        assert!(!is_claude_settings_path(
+        assert!(!is_nyan_settings_path(
             &cwd.join("settings.json").display().to_string(),
             &cwd,
         ));
@@ -2015,10 +2015,10 @@ mod tests {
     }
 
     #[test]
-    fn claude_skill_scope_is_narrow_and_rejects_glob_names() {
+    fn nyan_skill_scope_is_narrow_and_rejects_glob_names() {
         let root = crate::bootstrap::state::get_original_cwd();
         assert_eq!(
-            get_claude_skill_scope(
+            get_nyan_skill_scope(
                 &root
                     .join(".nyan/skills/reviewer/SKILL.md")
                     .display()
@@ -2030,11 +2030,11 @@ mod tests {
             ))
         );
         assert!(
-            get_claude_skill_scope(&root.join(".nyan/skills/*/SKILL.md").display().to_string())
+            get_nyan_skill_scope(&root.join(".nyan/skills/*/SKILL.md").display().to_string())
                 .is_none()
         );
         assert!(
-            get_claude_skill_scope(&root.join(".nyan/skills/direct.md").display().to_string())
+            get_nyan_skill_scope(&root.join(".nyan/skills/direct.md").display().to_string())
                 .is_none()
         );
     }
