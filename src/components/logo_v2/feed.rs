@@ -91,7 +91,7 @@ pub fn Feed(props: &FeedProps, hooks: Hooks) -> impl Into<AnyElement<'static>> {
 
     element! {
         View(flex_direction: FlexDirection::Column, width: actual_width as u32) {
-            Text(content: props.config.title.clone(), weight: Weight::Bold, color: theme.claude, wrap: TextWrap::NoWrap)
+            Text(content: props.config.title.clone(), weight: Weight::Bold, color: theme.nyan, wrap: TextWrap::NoWrap)
             #(if props.config.lines.is_empty() {
                 props.config.empty_message.as_ref().map(|empty_message| element! {
                     Text(content: truncate_to_width(empty_message, actual_width), color: theme.inactive, wrap: TextWrap::NoWrap)

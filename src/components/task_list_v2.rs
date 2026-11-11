@@ -342,7 +342,7 @@ pub fn task_list_v2_row_display(
 fn themed_color(theme: &Theme, key: Option<&str>) -> Option<Color> {
     match key {
         Some("success") => Some(theme.success),
-        Some("claude") => Some(theme.claude),
+        Some("claude") => Some(theme.nyan),
         _ => None,
     }
 }
@@ -608,6 +608,14 @@ mod tests {
             text.contains("… +1 pending, 1 completed"),
             "canvas=\n{text}"
         );
+    }
+
+    #[test]
+    fn task_list_v2_themed_color_keeps_the_official_claude_key() {
+        let theme = *theme::current();
+        assert_eq!(themed_color(&theme, Some("claude")), Some(theme.nyan));
+        assert_eq!(themed_color(&theme, Some("success")), Some(theme.success));
+        assert_eq!(themed_color(&theme, Some("unknown")), None);
     }
 
     #[test]

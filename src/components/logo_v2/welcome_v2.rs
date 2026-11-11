@@ -38,7 +38,7 @@ pub fn WelcomeV2(props: &WelcomeV2Props, hooks: Hooks) -> impl Into<AnyElement<'
     element! {
         View(flex_direction: FlexDirection::Column, width: WELCOME_V2_WIDTH as u32) {
             View(flex_direction: FlexDirection::Row) {
-                Text(content: format!("{WELCOME_MESSAGE} "), color: theme.claude, wrap: TextWrap::NoWrap)
+                Text(content: format!("{WELCOME_MESSAGE} "), color: theme.nyan, wrap: TextWrap::NoWrap)
                 Text(content: format!("v{version} "), color: theme.inactive, wrap: TextWrap::NoWrap)
             }
             #(rows.into_iter().map(|line| element! {

@@ -13,10 +13,10 @@ use iocraft::Color;
 pub struct Theme {
     pub auto_accept: Color,
     pub bash_border: Color,
-    pub claude: Color,
-    pub claude_shimmer: Color,
-    pub claude_blue: Color,
-    pub claude_blue_shimmer: Color,
+    pub nyan: Color,
+    pub nyan_shimmer: Color,
+    pub nyan_blue: Color,
+    pub nyan_blue_shimmer: Color,
     pub permission: Color,
     pub permission_shimmer: Color,
     pub plan_mode: Color,
@@ -60,7 +60,7 @@ pub struct Theme {
     pub bash_message_bg: Color,
     pub memory_bg: Color,
     pub brief_label_you: Color,
-    pub brief_label_claude: Color,
+    pub brief_label_nyan: Color,
     pub rainbow_red: Color,
     pub rainbow_orange: Color,
     pub rainbow_yellow: Color,
@@ -83,10 +83,10 @@ pub struct Theme {
 pub enum ThemeColorKey {
     AutoAccept,
     BashBorder,
-    Claude,
-    ClaudeShimmer,
-    ClaudeBlue,
-    ClaudeBlueShimmer,
+    Nyan,
+    NyanShimmer,
+    NyanBlue,
+    NyanBlueShimmer,
     Permission,
     PermissionShimmer,
     PlanMode,
@@ -130,7 +130,7 @@ pub enum ThemeColorKey {
     BashMessageBg,
     MemoryBg,
     BriefLabelYou,
-    BriefLabelClaude,
+    BriefLabelNyan,
     RainbowRed,
     RainbowOrange,
     RainbowYellow,
@@ -151,10 +151,10 @@ impl ThemeColorKey {
     pub const ALL: [Self; 64] = [
         Self::AutoAccept,
         Self::BashBorder,
-        Self::Claude,
-        Self::ClaudeShimmer,
-        Self::ClaudeBlue,
-        Self::ClaudeBlueShimmer,
+        Self::Nyan,
+        Self::NyanShimmer,
+        Self::NyanBlue,
+        Self::NyanBlueShimmer,
         Self::Permission,
         Self::PermissionShimmer,
         Self::PlanMode,
@@ -198,7 +198,7 @@ impl ThemeColorKey {
         Self::BashMessageBg,
         Self::MemoryBg,
         Self::BriefLabelYou,
-        Self::BriefLabelClaude,
+        Self::BriefLabelNyan,
         Self::RainbowRed,
         Self::RainbowOrange,
         Self::RainbowYellow,
@@ -219,10 +219,10 @@ impl ThemeColorKey {
         match self {
             Self::AutoAccept => "autoAccept",
             Self::BashBorder => "bashBorder",
-            Self::Claude => "claude",
-            Self::ClaudeShimmer => "claudeShimmer",
-            Self::ClaudeBlue => "claudeBlue_FOR_SYSTEM_SPINNER",
-            Self::ClaudeBlueShimmer => "claudeBlueShimmer_FOR_SYSTEM_SPINNER",
+            Self::Nyan => "claude",
+            Self::NyanShimmer => "claudeShimmer",
+            Self::NyanBlue => "claudeBlue_FOR_SYSTEM_SPINNER",
+            Self::NyanBlueShimmer => "claudeBlueShimmer_FOR_SYSTEM_SPINNER",
             Self::Permission => "permission",
             Self::PermissionShimmer => "permissionShimmer",
             Self::PlanMode => "planMode",
@@ -266,7 +266,7 @@ impl ThemeColorKey {
             Self::BashMessageBg => "bashMessageBackgroundColor",
             Self::MemoryBg => "memoryBackgroundColor",
             Self::BriefLabelYou => "briefLabelYou",
-            Self::BriefLabelClaude => "briefLabelClaude",
+            Self::BriefLabelNyan => "briefLabelClaude",
             Self::RainbowRed => "rainbow_red",
             Self::RainbowOrange => "rainbow_orange",
             Self::RainbowYellow => "rainbow_yellow",
@@ -290,10 +290,10 @@ impl Theme {
         match key {
             ThemeColorKey::AutoAccept => self.auto_accept,
             ThemeColorKey::BashBorder => self.bash_border,
-            ThemeColorKey::Claude => self.claude,
-            ThemeColorKey::ClaudeShimmer => self.claude_shimmer,
-            ThemeColorKey::ClaudeBlue => self.claude_blue,
-            ThemeColorKey::ClaudeBlueShimmer => self.claude_blue_shimmer,
+            ThemeColorKey::Nyan => self.nyan,
+            ThemeColorKey::NyanShimmer => self.nyan_shimmer,
+            ThemeColorKey::NyanBlue => self.nyan_blue,
+            ThemeColorKey::NyanBlueShimmer => self.nyan_blue_shimmer,
             ThemeColorKey::Permission => self.permission,
             ThemeColorKey::PermissionShimmer => self.permission_shimmer,
             ThemeColorKey::PlanMode => self.plan_mode,
@@ -337,7 +337,7 @@ impl Theme {
             ThemeColorKey::BashMessageBg => self.bash_message_bg,
             ThemeColorKey::MemoryBg => self.memory_bg,
             ThemeColorKey::BriefLabelYou => self.brief_label_you,
-            ThemeColorKey::BriefLabelClaude => self.brief_label_claude,
+            ThemeColorKey::BriefLabelNyan => self.brief_label_nyan,
             ThemeColorKey::RainbowRed => self.rainbow_red,
             ThemeColorKey::RainbowOrange => self.rainbow_orange,
             ThemeColorKey::RainbowYellow => self.rainbow_yellow,
@@ -377,10 +377,10 @@ macro_rules! rgb {
 pub static DARK: Theme = Theme {
     auto_accept: rgb!(175, 135, 255),
     bash_border: rgb!(253, 93, 177),
-    claude: rgb!(215, 119, 87),
-    claude_shimmer: rgb!(235, 159, 127),
-    claude_blue: rgb!(147, 165, 255),
-    claude_blue_shimmer: rgb!(177, 195, 255),
+    nyan: rgb!(215, 119, 87),
+    nyan_shimmer: rgb!(235, 159, 127),
+    nyan_blue: rgb!(147, 165, 255),
+    nyan_blue_shimmer: rgb!(177, 195, 255),
     permission: rgb!(177, 185, 249),
     permission_shimmer: rgb!(207, 215, 255),
     plan_mode: rgb!(72, 150, 140),
@@ -424,7 +424,7 @@ pub static DARK: Theme = Theme {
     bash_message_bg: rgb!(65, 60, 65),
     memory_bg: rgb!(55, 65, 70),
     brief_label_you: rgb!(122, 180, 232),
-    brief_label_claude: rgb!(215, 119, 87),
+    brief_label_nyan: rgb!(215, 119, 87),
     rainbow_red: rgb!(235, 95, 87),
     rainbow_orange: rgb!(245, 139, 87),
     rainbow_yellow: rgb!(250, 195, 95),
@@ -447,10 +447,10 @@ pub static DARK: Theme = Theme {
 pub static LIGHT: Theme = Theme {
     auto_accept: rgb!(135, 0, 255),
     bash_border: rgb!(255, 0, 135),
-    claude: rgb!(215, 119, 87),
-    claude_shimmer: rgb!(245, 149, 117),
-    claude_blue: rgb!(87, 105, 247),
-    claude_blue_shimmer: rgb!(117, 135, 255),
+    nyan: rgb!(215, 119, 87),
+    nyan_shimmer: rgb!(245, 149, 117),
+    nyan_blue: rgb!(87, 105, 247),
+    nyan_blue_shimmer: rgb!(117, 135, 255),
     permission: rgb!(87, 105, 247),
     permission_shimmer: rgb!(137, 155, 255),
     plan_mode: rgb!(0, 102, 102),
@@ -494,7 +494,7 @@ pub static LIGHT: Theme = Theme {
     bash_message_bg: rgb!(250, 245, 250),
     memory_bg: rgb!(230, 245, 250),
     brief_label_you: rgb!(37, 99, 235),
-    brief_label_claude: rgb!(215, 119, 87),
+    brief_label_nyan: rgb!(215, 119, 87),
     rainbow_red: rgb!(235, 95, 87),
     rainbow_orange: rgb!(245, 139, 87),
     rainbow_yellow: rgb!(250, 195, 95),
@@ -517,10 +517,10 @@ pub static LIGHT: Theme = Theme {
 pub static DARK_ANSI: Theme = Theme {
     auto_accept: Color::Magenta,
     bash_border: Color::Magenta,
-    claude: Color::Red,
-    claude_shimmer: Color::Yellow,
-    claude_blue: Color::Blue,
-    claude_blue_shimmer: Color::Blue,
+    nyan: Color::Red,
+    nyan_shimmer: Color::Yellow,
+    nyan_blue: Color::Blue,
+    nyan_blue_shimmer: Color::Blue,
     permission: Color::Blue,
     permission_shimmer: Color::Blue,
     plan_mode: Color::Cyan,
@@ -564,7 +564,7 @@ pub static DARK_ANSI: Theme = Theme {
     bash_message_bg: Color::Black,
     memory_bg: Color::DarkGrey,
     brief_label_you: Color::Blue,
-    brief_label_claude: Color::Red,
+    brief_label_nyan: Color::Red,
     rainbow_red: Color::DarkRed,
     rainbow_orange: Color::Red,
     rainbow_yellow: Color::DarkYellow,
@@ -587,10 +587,10 @@ pub static DARK_ANSI: Theme = Theme {
 pub static LIGHT_ANSI: Theme = Theme {
     auto_accept: Color::DarkMagenta,
     bash_border: Color::DarkMagenta,
-    claude: Color::Red,
-    claude_shimmer: Color::Yellow,
-    claude_blue: Color::DarkBlue,
-    claude_blue_shimmer: Color::Blue,
+    nyan: Color::Red,
+    nyan_shimmer: Color::Yellow,
+    nyan_blue: Color::DarkBlue,
+    nyan_blue_shimmer: Color::Blue,
     permission: Color::DarkBlue,
     permission_shimmer: Color::Blue,
     plan_mode: Color::DarkCyan,
@@ -634,7 +634,7 @@ pub static LIGHT_ANSI: Theme = Theme {
     bash_message_bg: Color::White,
     memory_bg: Color::Grey,
     brief_label_you: Color::DarkBlue,
-    brief_label_claude: Color::Red,
+    brief_label_nyan: Color::Red,
     rainbow_red: Color::DarkRed,
     rainbow_orange: Color::Red,
     rainbow_yellow: Color::DarkYellow,
@@ -657,10 +657,10 @@ pub static LIGHT_ANSI: Theme = Theme {
 pub static DARK_DALTONIZED: Theme = Theme {
     auto_accept: rgb!(175, 135, 255),
     bash_border: rgb!(51, 153, 255),
-    claude: rgb!(255, 153, 51),
-    claude_shimmer: rgb!(255, 183, 101),
-    claude_blue: rgb!(153, 204, 255),
-    claude_blue_shimmer: rgb!(183, 224, 255),
+    nyan: rgb!(255, 153, 51),
+    nyan_shimmer: rgb!(255, 183, 101),
+    nyan_blue: rgb!(153, 204, 255),
+    nyan_blue_shimmer: rgb!(183, 224, 255),
     permission: rgb!(153, 204, 255),
     permission_shimmer: rgb!(183, 224, 255),
     plan_mode: rgb!(102, 153, 153),
@@ -704,7 +704,7 @@ pub static DARK_DALTONIZED: Theme = Theme {
     bash_message_bg: rgb!(65, 60, 65),
     memory_bg: rgb!(55, 65, 70),
     brief_label_you: rgb!(122, 180, 232),
-    brief_label_claude: rgb!(255, 153, 51),
+    brief_label_nyan: rgb!(255, 153, 51),
     rainbow_red: rgb!(235, 95, 87),
     rainbow_orange: rgb!(245, 139, 87),
     rainbow_yellow: rgb!(250, 195, 95),
@@ -727,10 +727,10 @@ pub static DARK_DALTONIZED: Theme = Theme {
 pub static LIGHT_DALTONIZED: Theme = Theme {
     auto_accept: rgb!(135, 0, 255),
     bash_border: rgb!(0, 102, 204),
-    claude: rgb!(255, 153, 51),
-    claude_shimmer: rgb!(255, 183, 101),
-    claude_blue: rgb!(51, 102, 255),
-    claude_blue_shimmer: rgb!(101, 152, 255),
+    nyan: rgb!(255, 153, 51),
+    nyan_shimmer: rgb!(255, 183, 101),
+    nyan_blue: rgb!(51, 102, 255),
+    nyan_blue_shimmer: rgb!(101, 152, 255),
     permission: rgb!(51, 102, 255),
     permission_shimmer: rgb!(101, 152, 255),
     plan_mode: rgb!(51, 102, 102),
@@ -774,7 +774,7 @@ pub static LIGHT_DALTONIZED: Theme = Theme {
     bash_message_bg: rgb!(250, 245, 250),
     memory_bg: rgb!(230, 245, 250),
     brief_label_you: rgb!(37, 99, 235),
-    brief_label_claude: rgb!(255, 153, 51),
+    brief_label_nyan: rgb!(255, 153, 51),
     rainbow_red: rgb!(235, 95, 87),
     rainbow_orange: rgb!(245, 139, 87),
     rainbow_yellow: rgb!(250, 195, 95),
@@ -1002,6 +1002,36 @@ mod tests {
         assert_eq!(
             DARK.color(ThemeColorKey::RainbowVioletShimmer),
             DARK.rainbow_violet_shimmer
+        );
+    }
+
+    #[test]
+    fn nyan_color_keys_keep_the_official_key_strings() {
+        assert_eq!(ThemeColorKey::Nyan.official_key(), "claude");
+        assert_eq!(ThemeColorKey::NyanShimmer.official_key(), "claudeShimmer");
+        assert_eq!(
+            ThemeColorKey::NyanBlue.official_key(),
+            "claudeBlue_FOR_SYSTEM_SPINNER"
+        );
+        assert_eq!(
+            ThemeColorKey::NyanBlueShimmer.official_key(),
+            "claudeBlueShimmer_FOR_SYSTEM_SPINNER"
+        );
+        assert_eq!(
+            ThemeColorKey::BriefLabelNyan.official_key(),
+            "briefLabelClaude"
+        );
+
+        assert_eq!(DARK.color(ThemeColorKey::Nyan), DARK.nyan);
+        assert_eq!(DARK.color(ThemeColorKey::NyanShimmer), DARK.nyan_shimmer);
+        assert_eq!(DARK.color(ThemeColorKey::NyanBlue), DARK.nyan_blue);
+        assert_eq!(
+            DARK.color(ThemeColorKey::NyanBlueShimmer),
+            DARK.nyan_blue_shimmer
+        );
+        assert_eq!(
+            DARK.color(ThemeColorKey::BriefLabelNyan),
+            DARK.brief_label_nyan
         );
     }
 }

@@ -208,7 +208,7 @@ pub fn BriefToolResultMessage(
                 View(flex_direction: FlexDirection::Row) {
                     Text(
                         content: "nyan".to_string(),
-                        color: theme.brief_label_claude,
+                        color: theme.brief_label_nyan,
                         wrap: TextWrap::NoWrap,
                     )
                     #(if props.rendered.timestamp.is_empty() {

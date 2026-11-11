@@ -471,7 +471,7 @@ pub fn GroupedToolUseContent(
         ) {
             #(lines.into_iter().map(|line| {
                 let color = match line.tone {
-                    ToolRenderTone::Normal => theme.claude,
+                    ToolRenderTone::Normal => theme.nyan,
                     ToolRenderTone::Success => theme.success,
                     ToolRenderTone::Warning => theme.warning,
                     ToolRenderTone::Error => theme.error,
@@ -491,7 +491,7 @@ pub fn GroupedToolUseContent(
                     Some(ToolResultStatus::Canceled) => theme.inactive,
                     _ if item.is_error => theme.error,
                     _ if item.is_resolved => theme.success,
-                    _ if item.is_in_progress => theme.claude,
+                    _ if item.is_in_progress => theme.nyan,
                     _ => theme.inactive,
                 };
                 let result_suffix = item.result_content

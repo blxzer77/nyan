@@ -1013,7 +1013,7 @@ fn ErrorsTabContent(
             View{Text(content:if idx==clamped{"❯ "}else{"✘ "},color:if idx==clamped{theme.suggestion}else{theme.error})Text(content:row.label,weight:if idx==clamped{Weight::Bold}else{Weight::Normal})#(row.scope.map(|scope|element!{Text(content:format!(" ({scope})"),dim:true)}))}
             View(margin_left:3u32){Text(content:row.message,color:theme.error)}#(row.guidance.filter(|s|!s.is_empty()).map(|guidance|element!{View(margin_left:3u32){Text(content:guidance,dim:true,italic:true)}}))
         }}))
-        #(action_message.read().clone().filter(|s|!s.is_empty()).map(|message|element!{View(margin_top:1u32,margin_left:1u32){Text(content:message,color:theme.claude)}}))
+        #(action_message.read().clone().filter(|s|!s.is_empty()).map(|message|element!{View(margin_top:1u32,margin_left:1u32){Text(content:message,color:theme.nyan)}}))
         View(margin_top:1u32){crate::components::design_system::byline::Byline{
             crate::components::configurable_shortcut_hint::ConfigurableShortcutHint(action:"select:previous",context:"Select",fallback:"↑",description:"navigate",dim:true,italic:true)
             #(has_action.then(||element!{crate::components::configurable_shortcut_hint::ConfigurableShortcutHint(action:"select:accept",context:"Select",fallback:"Enter",description:"resolve",dim:true,italic:true)}))

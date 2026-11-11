@@ -418,7 +418,7 @@ fn CompactLogo(props: &LogoShapeProps, hooks: Hooks) -> impl Into<AnyElement<'st
             View(
                 flex_direction: FlexDirection::Column,
                 border_style: BorderStyle::Round,
-                border_color: theme.claude,
+                border_color: theme.nyan,
                 border_text: Some(BorderText {
                     content: format!(" {LOGO_DISPLAY_NAME} "),
                     position: BorderTextPosition::Top,
@@ -474,7 +474,7 @@ fn HorizontalLogo(props: &LogoShapeProps, hooks: Hooks) -> impl Into<AnyElement<
             View(
                 flex_direction: FlexDirection::Column,
                 border_style: BorderStyle::Round,
-                border_color: theme.claude,
+                border_color: theme.nyan,
                 border_text: Some(BorderText {
                     content: format!(" {LOGO_DISPLAY_NAME} v{} ", props.data.version),
                     position: BorderTextPosition::Top,
@@ -502,7 +502,7 @@ fn HorizontalLogo(props: &LogoShapeProps, hooks: Hooks) -> impl Into<AnyElement<
                     View(
                         height: 9u32,
                         border_style: BorderStyle::Single,
-                        border_color: theme.claude,
+                        border_color: theme.nyan,
                         border_dim_color: true,
                         border_top: false,
                         border_bottom: false,

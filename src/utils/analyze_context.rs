@@ -693,7 +693,7 @@ pub fn analyze_context_usage(input: AnalyzeContextUsageInput<'_>) -> ContextData
         categories.push(ContextCategory {
             name: "Memory files".to_string(),
             tokens: memory_tokens,
-            color: theme.claude,
+            color: theme.nyan,
             is_deferred: false,
         });
     }
