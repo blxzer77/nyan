@@ -87,7 +87,7 @@ client factory 构造 Direct、Bedrock、Foundry、Vertex 四种 Anthropic SDK c
 
 当前 header 已有可复用边界：
 
-- common：`User-Agent`、`x-app`（`src/services/api/request_headers.rs:12-21`）；
+- common：`User-Agent`（`src/services/provider/anthropic/headers.rs:12-20`）；
 - Anthropic adapter：session/container/remote header（`:23-50`）；
 - `anthropic-beta` 只由 Anthropic 请求使用（`:52-58`）；
 - `httpHeaders` 最后覆盖同名 header（`:60-82`）。
