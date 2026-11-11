@@ -5,8 +5,8 @@
 //! ([`SetupScreensHost`]) — matching official JSX in the same file.
 
 use crate::commands::terminal_setup::terminal_setup::should_offer_terminal_setup_for;
-use crate::components::claude_md_external_includes_dialog::{
-    ClaudeMdExternalIncludesChoice, ClaudeMdExternalIncludesDialog,
+use crate::components::agents_md_external_includes_dialog::{
+    AgentsMdExternalIncludesChoice, AgentsMdExternalIncludesDialog,
 };
 use crate::components::trust_dialog::utils::{
     get_api_key_helper_sources_from_settings, get_aws_commands_sources_from_settings,
@@ -461,7 +461,7 @@ fn SetupScreensHost<'a>(
         SetupScreenGate::ClaudeMdExternalIncludes => {
             let includes = claude_md_external_includes.clone();
             element! {
-                ClaudeMdExternalIncludesDialog(
+                AgentsMdExternalIncludesDialog(
                     is_standalone_dialog: true,
                     external_includes: includes,
                     on_done: move |choice| {
@@ -801,8 +801,8 @@ pub fn apply_trust_dialog_accept(result: &TrustDialogAcceptResult) {
 }
 
 /// Maps to: CC `ClaudeMdExternalIncludesDialog` `handleSelection` config writes.
-pub fn apply_claude_md_external_includes_choice(choice: ClaudeMdExternalIncludesChoice) {
-    let approved = matches!(choice, ClaudeMdExternalIncludesChoice::Yes);
+pub fn apply_claude_md_external_includes_choice(choice: AgentsMdExternalIncludesChoice) {
+    let approved = matches!(choice, AgentsMdExternalIncludesChoice::Yes);
     let _ = save_current_project_config(|project| {
         project.has_claude_md_external_includes_approved = Some(approved);
         project.has_claude_md_external_includes_warning_shown = Some(true);

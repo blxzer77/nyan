@@ -8,6 +8,7 @@
 
 pub mod agent_progress_line;
 pub mod agents;
+pub mod agents_md_external_includes_dialog;
 pub mod app;
 pub mod auto_mode_opt_in_dialog;
 pub mod base_text_input;
@@ -15,7 +16,6 @@ pub mod bash_mode_progress;
 pub mod bypass_permissions_mode_dialog;
 pub mod cache_break_confirm_dialog;
 pub mod claude_code_hint;
-pub mod claude_md_external_includes_dialog;
 pub mod clickable_image_ref;
 pub mod compact_summary;
 pub mod configurable_shortcut_hint;

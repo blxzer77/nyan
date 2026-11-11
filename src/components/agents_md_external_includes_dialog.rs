@@ -13,12 +13,12 @@ use crate::utils::theme::Theme;
 use iocraft::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ClaudeMdExternalIncludesChoice {
+pub enum AgentsMdExternalIncludesChoice {
     Yes,
     No,
 }
 
-impl ClaudeMdExternalIncludesChoice {
+impl AgentsMdExternalIncludesChoice {
     pub fn value(self) -> &'static str {
         match self {
             Self::Yes => "yes",
@@ -28,31 +28,31 @@ impl ClaudeMdExternalIncludesChoice {
 }
 
 /// Maps to: CC `components/ClaudeMdExternalIncludesDialog.tsx` `Select` options.
-pub fn claude_md_external_includes_options() -> Vec<SelectOptionData> {
+pub fn agents_md_external_includes_options() -> Vec<SelectOptionData> {
     vec![
         SelectOptionData {
             label: "Yes, allow external imports".to_string(),
-            value: ClaudeMdExternalIncludesChoice::Yes.value().to_string(),
+            value: AgentsMdExternalIncludesChoice::Yes.value().to_string(),
             ..SelectOptionData::default()
         },
         SelectOptionData {
             label: "No, disable external imports".to_string(),
-            value: ClaudeMdExternalIncludesChoice::No.value().to_string(),
+            value: AgentsMdExternalIncludesChoice::No.value().to_string(),
             ..SelectOptionData::default()
         },
     ]
 }
 
-fn choice_from_value(value: &str) -> ClaudeMdExternalIncludesChoice {
+fn choice_from_value(value: &str) -> AgentsMdExternalIncludesChoice {
     match value {
-        "yes" => ClaudeMdExternalIncludesChoice::Yes,
-        _ => ClaudeMdExternalIncludesChoice::No,
+        "yes" => AgentsMdExternalIncludesChoice::Yes,
+        _ => AgentsMdExternalIncludesChoice::No,
     }
 }
 
 #[derive(Default, Props)]
-pub struct ClaudeMdExternalIncludesDialogProps<'a> {
-    pub on_done: HandlerMut<'a, ClaudeMdExternalIncludesChoice>,
+pub struct AgentsMdExternalIncludesDialogProps<'a> {
+    pub on_done: HandlerMut<'a, AgentsMdExternalIncludesChoice>,
     pub is_standalone_dialog: bool,
     pub external_includes: Vec<ExternalAgentsMdInclude>,
 }
@@ -60,14 +60,14 @@ pub struct ClaudeMdExternalIncludesDialogProps<'a> {
 /// Maps to: CC `components/ClaudeMdExternalIncludesDialog.tsx`
 /// `ClaudeMdExternalIncludesDialog`.
 #[component]
-pub fn ClaudeMdExternalIncludesDialog<'a>(
-    props: &mut ClaudeMdExternalIncludesDialogProps<'a>,
+pub fn AgentsMdExternalIncludesDialog<'a>(
+    props: &mut AgentsMdExternalIncludesDialogProps<'a>,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_context::<Theme>();
     let mut focused_index = hooks.use_state(|| 0usize);
-    let mut pending_choice = hooks.use_state(|| Option::<ClaudeMdExternalIncludesChoice>::None);
-    let options = claude_md_external_includes_options();
+    let mut pending_choice = hooks.use_state(|| Option::<AgentsMdExternalIncludesChoice>::None);
+    let options = agents_md_external_includes_options();
     let option_count = options.len().max(1);
     let external_includes = props.external_includes.clone();
 
@@ -113,7 +113,7 @@ pub fn ClaudeMdExternalIncludesDialog<'a>(
             hide_border: !props.is_standalone_dialog,
             hide_input_guide: !props.is_standalone_dialog,
             on_cancel: move |_| {
-                pending_choice.set(Some(ClaudeMdExternalIncludesChoice::No));
+                pending_choice.set(Some(AgentsMdExternalIncludesChoice::No));
             },
         ) {
             Text(
@@ -164,8 +164,8 @@ mod tests {
     }
 
     #[test]
-    fn claude_md_external_includes_options_match_official_copy_and_order() {
-        let options = claude_md_external_includes_options();
+    fn agents_md_external_includes_options_match_official_copy_and_order() {
+        let options = agents_md_external_includes_options();
 
         assert_eq!(options[0].label, "Yes, allow external imports");
         assert_eq!(options[0].value, "yes");
@@ -174,10 +174,10 @@ mod tests {
     }
 
     #[test]
-    fn claude_md_external_includes_dialog_renders_official_copy_list_link_and_options() {
+    fn agents_md_external_includes_dialog_renders_official_copy_list_link_and_options() {
         let text = element! {
             ContextProvider(value: Context::owned(*theme::current())) {
-                ClaudeMdExternalIncludesDialog(
+                AgentsMdExternalIncludesDialog(
                     is_standalone_dialog: true,
                     external_includes: vec![
                         ExternalAgentsMdInclude::new("/outside/AGENTS.md", "/repo/AGENTS.md"),
@@ -223,10 +223,10 @@ mod tests {
     }
 
     #[test]
-    fn claude_md_external_includes_non_standalone_hides_default_input_guide() {
+    fn agents_md_external_includes_non_standalone_hides_default_input_guide() {
         let text = element! {
             ContextProvider(value: Context::owned(*theme::current())) {
-                ClaudeMdExternalIncludesDialog(is_standalone_dialog: false)
+                AgentsMdExternalIncludesDialog(is_standalone_dialog: false)
             }
         }
         .render(Some(100))
@@ -243,14 +243,14 @@ mod tests {
     }
 
     #[test]
-    fn claude_md_external_includes_default_enter_calls_on_done_with_yes() {
-        let done = Arc::new(Mutex::new(Option::<ClaudeMdExternalIncludesChoice>::None));
+    fn agents_md_external_includes_default_enter_calls_on_done_with_yes() {
+        let done = Arc::new(Mutex::new(Option::<AgentsMdExternalIncludesChoice>::None));
         let done_for_handler = Arc::clone(&done);
 
         futures::executor::block_on(async move {
             let mut app = element! {
                 ContextProvider(value: Context::owned(*theme::current())) {
-                    ClaudeMdExternalIncludesDialog(
+                    AgentsMdExternalIncludesDialog(
                         is_standalone_dialog: true,
                         on_done: move |choice| {
                             *done_for_handler.lock().expect("done mutex") = Some(choice);
@@ -278,19 +278,19 @@ mod tests {
 
         assert_eq!(
             *done.lock().expect("done mutex"),
-            Some(ClaudeMdExternalIncludesChoice::Yes)
+            Some(AgentsMdExternalIncludesChoice::Yes)
         );
     }
 
     #[test]
-    fn claude_md_external_includes_down_enter_calls_on_done_with_no() {
-        let done = Arc::new(Mutex::new(Option::<ClaudeMdExternalIncludesChoice>::None));
+    fn agents_md_external_includes_down_enter_calls_on_done_with_no() {
+        let done = Arc::new(Mutex::new(Option::<AgentsMdExternalIncludesChoice>::None));
         let done_for_handler = Arc::clone(&done);
 
         futures::executor::block_on(async move {
             let mut app = element! {
                 ContextProvider(value: Context::owned(*theme::current())) {
-                    ClaudeMdExternalIncludesDialog(
+                    AgentsMdExternalIncludesDialog(
                         is_standalone_dialog: true,
                         on_done: move |choice| {
                             *done_for_handler.lock().expect("done mutex") = Some(choice);
@@ -321,7 +321,7 @@ mod tests {
 
         assert_eq!(
             *done.lock().expect("done mutex"),
-            Some(ClaudeMdExternalIncludesChoice::No)
+            Some(AgentsMdExternalIncludesChoice::No)
         );
     }
 }
