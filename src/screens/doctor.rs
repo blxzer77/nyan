@@ -232,11 +232,11 @@ pub fn Doctor<'a>(props: &mut DoctorProps<'a>, mut hooks: Hooks) -> impl Into<An
         .clone()
         .unwrap_or_else(|| check_context_warnings(&DoctorContextWarningsInput::default()));
     let unreachable_rules_warning = context_warnings.unreachable_rules_warning.clone();
-    let claude_md_warning = context_warnings.claude_md_warning.clone();
+    let agents_md_warning = context_warnings.agents_md_warning.clone();
     let agent_warning = context_warnings.agent_warning.clone();
     let mcp_warning = context_warnings.mcp_warning.clone();
     let has_context_usage_warnings =
-        claude_md_warning.is_some() || agent_warning.is_some() || mcp_warning.is_some();
+        agents_md_warning.is_some() || agent_warning.is_some() || mcp_warning.is_some();
     let warning_symbol = figures::get().warning.to_string();
 
     element! {
@@ -457,7 +457,7 @@ pub fn Doctor<'a>(props: &mut DoctorProps<'a>, mut hooks: Hooks) -> impl Into<An
                 Some(element! {
                     View(margin_top: 1u32, flex_direction: FlexDirection::Column) {
                         Text(content: "Context Usage Warnings".to_string(), weight: Weight::Bold)
-                        #(claude_md_warning.clone().map(|warning| {
+                        #(agents_md_warning.clone().map(|warning| {
                             let symbol = warning_symbol.clone();
                             element! {
                                 View(flex_direction: FlexDirection::Column) {
@@ -775,8 +775,8 @@ mod tests {
                 current_value: 1,
                 threshold: 0,
             }),
-            claude_md_warning: Some(ContextWarning {
-                warning_type: ContextWarningType::ClaudeMdFiles,
+            agents_md_warning: Some(ContextWarning {
+                warning_type: ContextWarningType::AgentsMdFiles,
                 severity: ContextWarningSeverity::Warning,
                 message: "Large AGENTS.md file detected".to_string(),
                 details: vec!["AGENTS.md: 40,001 chars".to_string()],

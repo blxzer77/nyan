@@ -1,7 +1,7 @@
 //! Maps to: CC `interactiveHelpers.tsx` (single file).
 //!
 //! Owns `showSetupScreens` gate order, snapshot derivation, Trust /
-//! ClaudeMdExternalIncludes persistence, and the setup-screen UI host
+//! AgentsMdExternalIncludes persistence, and the setup-screen UI host
 //! ([`SetupScreensHost`]) — matching official JSX in the same file.
 
 use crate::commands::terminal_setup::terminal_setup::should_offer_terminal_setup_for;
@@ -253,7 +253,7 @@ pub fn show_setup_screens(
 }
 
 /// Component implementation for [`show_setup_screens`].
-/// Gate order: onboarding → trust → mcpjson → ClaudeMd → complete.
+/// Gate order: onboarding → trust → mcpjson → AgentsMd → complete.
 #[component]
 fn SetupScreensHost<'a>(
     props: &mut SetupScreensHostProps<'a>,
@@ -272,9 +272,9 @@ fn SetupScreensHost<'a>(
     // (Do not seed use_state from props — iocraft may first-mount with Default props.)
     let mut onboarding_dismissed = hooks.use_state(|| false);
     let mut trust_dismissed = hooks.use_state(|| false);
-    let mut claude_md_dismissed = hooks.use_state(|| false);
+    let mut agents_md_dismissed = hooks.use_state(|| false);
     let trust_risk_snapshot = hooks.use_const(build_trust_dialog_risk_snapshot);
-    let claude_md_external_includes = hooks.use_const(load_claude_md_external_includes_for_setup);
+    let agents_md_external_includes = hooks.use_const(load_agents_md_external_includes_for_setup);
     // The Onboarding store's settings seed, built once (see the Onboarding
     // arm below).
     let onboarding_settings_seed = hooks.use_const({
@@ -300,8 +300,8 @@ fn SetupScreensHost<'a>(
 
     let show_onboarding = setup_screens_snapshot.show_onboarding && !onboarding_dismissed.get();
     let show_trust_dialog = should_show_trust_dialog() && !trust_dismissed.get();
-    let show_claude_md_external_includes =
-        should_show_claude_md_external_includes_gate() && !claude_md_dismissed.get();
+    let show_agents_md_external_includes =
+        should_show_agents_md_external_includes_gate() && !agents_md_dismissed.get();
 
     let pending_mcpjson_servers = { pending_mcpjson_servers_state.read().clone() };
     // CC `:154-161`: demo mode returns before every step, the env application
@@ -313,7 +313,7 @@ fn SetupScreensHost<'a>(
             show_onboarding,
             show_trust_dialog,
             !pending_mcpjson_servers.is_empty(),
-            show_claude_md_external_includes,
+            show_agents_md_external_includes,
         )
     };
 
@@ -458,15 +458,15 @@ fn SetupScreensHost<'a>(
                 .into_any()
             }
         }
-        SetupScreenGate::ClaudeMdExternalIncludes => {
-            let includes = claude_md_external_includes.clone();
+        SetupScreenGate::AgentsMdExternalIncludes => {
+            let includes = agents_md_external_includes.clone();
             element! {
                 AgentsMdExternalIncludesDialog(
                     is_standalone_dialog: true,
                     external_includes: includes,
                     on_done: move |choice| {
-                        apply_claude_md_external_includes_choice(choice);
-                        claude_md_dismissed.set(true);
+                        apply_agents_md_external_includes_choice(choice);
+                        agents_md_dismissed.set(true);
                     },
                 )
             }
@@ -674,7 +674,7 @@ pub enum SetupScreenGate {
     Onboarding,
     Trust,
     Mcpjson,
-    ClaudeMdExternalIncludes,
+    AgentsMdExternalIncludes,
     Ready,
 }
 
@@ -702,7 +702,7 @@ pub fn should_show_trust_dialog() -> bool {
 
 /// Maps to: CC showSetupScreens ClaudeMdExternalIncludes gate predicate.
 /// Skipped under CLAUBBIT, inside the same trust block as official.
-pub fn should_show_claude_md_external_includes_gate() -> bool {
+pub fn should_show_agents_md_external_includes_gate() -> bool {
     if should_skip_trust_dialog_for_env() {
         return false;
     }
@@ -710,8 +710,8 @@ pub fn should_show_claude_md_external_includes_gate() -> bool {
 }
 
 /// Snapshot of external includes for the standalone setup dialog.
-pub fn load_claude_md_external_includes_for_setup() -> Vec<ExternalAgentsMdInclude> {
-    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_claude_md();
+pub fn load_agents_md_external_includes_for_setup() -> Vec<ExternalAgentsMdInclude> {
+    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_agents_md();
     let include_default_discovery = !crate::utils::env_utils::is_env_truthy(
         crate::utils::process_env::var("NYAN_SIMPLE").as_deref(),
     );
@@ -801,11 +801,11 @@ pub fn apply_trust_dialog_accept(result: &TrustDialogAcceptResult) {
 }
 
 /// Maps to: CC `ClaudeMdExternalIncludesDialog` `handleSelection` config writes.
-pub fn apply_claude_md_external_includes_choice(choice: AgentsMdExternalIncludesChoice) {
+pub fn apply_agents_md_external_includes_choice(choice: AgentsMdExternalIncludesChoice) {
     let approved = matches!(choice, AgentsMdExternalIncludesChoice::Yes);
     let _ = save_current_project_config(|project| {
-        project.has_claude_md_external_includes_approved = Some(approved);
-        project.has_claude_md_external_includes_warning_shown = Some(true);
+        project.has_agents_md_external_includes_approved = Some(approved);
+        project.has_agents_md_external_includes_warning_shown = Some(true);
     });
 }
 
@@ -819,7 +819,7 @@ pub fn resolve_setup_screen_gate(
     show_onboarding: bool,
     show_trust: bool,
     pending_mcpjson: bool,
-    show_claude_md_external: bool,
+    show_agents_md_external: bool,
 ) -> SetupScreenGate {
     if show_onboarding {
         SetupScreenGate::Onboarding
@@ -827,8 +827,8 @@ pub fn resolve_setup_screen_gate(
         SetupScreenGate::Trust
     } else if pending_mcpjson {
         SetupScreenGate::Mcpjson
-    } else if show_claude_md_external {
-        SetupScreenGate::ClaudeMdExternalIncludes
+    } else if show_agents_md_external {
+        SetupScreenGate::AgentsMdExternalIncludes
     } else {
         SetupScreenGate::Ready
     }
@@ -855,7 +855,7 @@ mod tests {
         );
         assert_eq!(
             resolve_setup_screen_gate(false, false, false, true),
-            SetupScreenGate::ClaudeMdExternalIncludes
+            SetupScreenGate::AgentsMdExternalIncludes
         );
         assert_eq!(
             resolve_setup_screen_gate(false, false, false, false),

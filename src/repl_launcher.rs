@@ -56,7 +56,7 @@ mod tests {
             crate::utils::config::GlobalConfig::default(),
         ));
         crate::utils::config::reset_trust_dialog_accepted_cache_for_testing();
-        // Skip Trust/ClaudeMd gates while mounting the post-setup launcher.
+        // Skip Trust/AgentsMd gates while mounting the post-setup launcher.
         crate::utils::process_env::set("CLAUBBIT", "1");
 
         let startup_settings = Arc::new(SettingsWithErrors {

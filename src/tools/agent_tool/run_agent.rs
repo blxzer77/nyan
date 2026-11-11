@@ -581,12 +581,12 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
         .system_context
         .clone()
         .unwrap_or_else(crate::context::get_system_context);
-    let should_omit_claude_md = input.agent_definition.omit_claude_md
+    let should_omit_agents_md = input.agent_definition.omit_agents_md
         && input.r#override.user_context.is_none()
         && crate::utils::feature_flags::feature_enabled(
             crate::utils::feature_flags::FeatureFlag::SlimSubagentAgentsMd,
         );
-    if should_omit_claude_md {
+    if should_omit_agents_md {
         resolved_user_context.remove("claudeMd");
     }
     if matches!(
@@ -4408,7 +4408,7 @@ mod input_contract_tests {
                 AgentDefinitionSource::ProjectSettings,
             );
             agent.system_prompt = Some("SYSTEM_PROMPT_SENTINEL".to_string());
-            agent.omit_claude_md = true;
+            agent.omit_agents_md = true;
             agent.max_turns = Some(1);
             // CC runAgent.ts:504-506 reads directory keys from live AppState, not
             // bootstrap's separate CLAUDE.md directories or the stale context copy.

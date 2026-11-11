@@ -879,7 +879,7 @@ pub fn apply_live_startup_flags(argv: &[String]) -> Result<(), String> {
         .into_iter()
         .map(std::path::PathBuf::from)
         .collect::<Vec<_>>();
-    bootstrap::state::set_additional_directories_for_claude_md(add_dirs);
+    bootstrap::state::set_additional_directories_for_agents_md(add_dirs);
     if let Some(agents_json) =
         utils::cli_args::eager_parse_cli_flag("--agents", argv.iter().cloned())
     {
@@ -1954,7 +1954,7 @@ mod tests {
             fn capture() -> Self {
                 Self {
                     allowed_sources: bootstrap::state::get_allowed_setting_sources(),
-                    additional_dirs: bootstrap::state::get_additional_directories_for_claude_md(),
+                    additional_dirs: bootstrap::state::get_additional_directories_for_agents_md(),
                     cli_agents: bootstrap::state::get_cli_agents_json(),
                     inline_plugins: bootstrap::state::get_inline_plugins(),
                     use_cowork_plugins: bootstrap::state::get_use_cowork_plugins(),
@@ -1965,7 +1965,7 @@ mod tests {
         impl Drop for LiveFlagStateRestore {
             fn drop(&mut self) {
                 bootstrap::state::set_allowed_setting_sources(self.allowed_sources.clone());
-                bootstrap::state::set_additional_directories_for_claude_md(
+                bootstrap::state::set_additional_directories_for_agents_md(
                     self.additional_dirs.clone(),
                 );
                 bootstrap::state::set_cli_agents_json(self.cli_agents.clone());

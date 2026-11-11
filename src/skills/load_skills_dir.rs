@@ -403,7 +403,7 @@ fn load_skill_dir_commands(cwd: &Path) -> Vec<SkillCommand> {
     let mut legacy_command_dirs = Vec::new();
     let user_enabled = is_setting_source_enabled(SettingSource::User);
     let project_enabled = is_setting_source_enabled(SettingSource::Project);
-    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_claude_md();
+    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_agents_md();
 
     // CC --bare skips every auto-discovered source and all legacy commands;
     // only explicit --add-dir skill roots survive the project gate.
@@ -1247,7 +1247,7 @@ mod tests {
         fn capture() -> Self {
             Self {
                 sources: crate::bootstrap::state::get_allowed_setting_sources(),
-                additional_dirs: crate::bootstrap::state::get_additional_directories_for_claude_md(
+                additional_dirs: crate::bootstrap::state::get_additional_directories_for_agents_md(
                 ),
             }
         }
@@ -1256,7 +1256,7 @@ mod tests {
     impl Drop for SkillDiscoveryStateGuard {
         fn drop(&mut self) {
             crate::bootstrap::state::set_allowed_setting_sources(self.sources.clone());
-            crate::bootstrap::state::set_additional_directories_for_claude_md(
+            crate::bootstrap::state::set_additional_directories_for_agents_md(
                 self.additional_dirs.clone(),
             );
         }
@@ -1303,7 +1303,7 @@ mod tests {
         let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config);
         let _simple = EnvVarGuard::set("NYAN_SIMPLE", "0");
         crate::bootstrap::state::set_allowed_setting_sources(vec!["projectSettings".to_string()]);
-        crate::bootstrap::state::set_additional_directories_for_claude_md(vec![additional.clone()]);
+        crate::bootstrap::state::set_additional_directories_for_agents_md(vec![additional.clone()]);
 
         // `get_skill_dir_commands` is memoized by cwd (CC `:638`), and this test
         // re-reads the same cwd under two different modes, so each round

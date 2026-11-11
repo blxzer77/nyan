@@ -1305,7 +1305,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let path = root.to_string_lossy().into_owned();
         let input_leaf = root.file_name().unwrap().to_string_lossy().into_owned();
-        let bootstrap = crate::bootstrap::state::get_additional_directories_for_claude_md();
+        let bootstrap = crate::bootstrap::state::get_additional_directories_for_agents_md();
         let store = crate::state::store::AppStore::new(Default::default(), None);
         let exits = Arc::new(std::sync::Mutex::new(Vec::new()));
         let observed = exits.clone();
@@ -1409,7 +1409,7 @@ mod tests {
             }]
         );
         assert_eq!(
-            crate::bootstrap::state::get_additional_directories_for_claude_md(),
+            crate::bootstrap::state::get_additional_directories_for_agents_md(),
             bootstrap,
             "Workspace must not borrow /add-dir bootstrap effects"
         );

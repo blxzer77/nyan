@@ -54,7 +54,7 @@ static FLAG_SETTINGS_PATH: LazyLock<RwLock<Option<PathBuf>>> = LazyLock::new(|| 
 static LAST_CLASSIFIER_REQUESTS: LazyLock<RwLock<Option<Vec<serde_json::Value>>>> =
     LazyLock::new(|| RwLock::new(None));
 /// Maps to: CC `bootstrap/state.ts:123,347` `STATE.cachedClaudeMdContent`.
-static CACHED_CLAUDE_MD_CONTENT: LazyLock<RwLock<Option<String>>> =
+static CACHED_AGENTS_MD_CONTENT: LazyLock<RwLock<Option<String>>> =
     LazyLock::new(|| RwLock::new(None));
 /// Maps to: CC `bootstrap/state.ts:1199-1201` `setLastClassifierRequests`.
 pub fn set_last_classifier_requests(requests: Option<Vec<serde_json::Value>>) {
@@ -72,15 +72,15 @@ pub fn get_last_classifier_requests() -> Option<Vec<serde_json::Value>> {
 }
 
 /// Maps to: CC `bootstrap/state.ts:1207-1209` `setCachedClaudeMdContent`.
-pub fn set_cached_claude_md_content(content: Option<String>) {
-    *CACHED_CLAUDE_MD_CONTENT
+pub fn set_cached_agents_md_content(content: Option<String>) {
+    *CACHED_AGENTS_MD_CONTENT
         .write()
         .unwrap_or_else(|p| p.into_inner()) = content;
 }
 
 /// Maps to: CC `bootstrap/state.ts:1211-1213` `getCachedClaudeMdContent`.
-pub fn get_cached_claude_md_content() -> Option<String> {
-    CACHED_CLAUDE_MD_CONTENT
+pub fn get_cached_agents_md_content() -> Option<String> {
+    CACHED_AGENTS_MD_CONTENT
         .read()
         .unwrap_or_else(|p| p.into_inner())
         .clone()
@@ -94,7 +94,7 @@ static CLI_AGENTS_JSON: LazyLock<RwLock<Option<serde_json::Value>>> =
     LazyLock::new(|| RwLock::new(None));
 static INLINE_PLUGINS: LazyLock<RwLock<Vec<PathBuf>>> = LazyLock::new(|| RwLock::new(Vec::new()));
 static USE_COWORK_PLUGINS: LazyLock<RwLock<bool>> = LazyLock::new(|| RwLock::new(false));
-static ADDITIONAL_DIRECTORIES_FOR_CLAUDE_MD: LazyLock<RwLock<Vec<PathBuf>>> =
+static ADDITIONAL_DIRECTORIES_FOR_AGENTS_MD: LazyLock<RwLock<Vec<PathBuf>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));
 /// Maps to CC `STATE.allowedSettingSources`; policy/flag are added by the
 /// settings owner and therefore are not stored in this user-selectable list.
@@ -817,8 +817,8 @@ pub fn handle_auto_mode_transition(from_mode: &str, to_mode: &str) {
 /// Return additional directories from the explicit `--add-dir` flag.
 ///
 /// Maps to: CC `bootstrap/state.ts:getAdditionalDirectoriesForClaudeMd`.
-pub fn get_additional_directories_for_claude_md() -> Vec<PathBuf> {
-    ADDITIONAL_DIRECTORIES_FOR_CLAUDE_MD
+pub fn get_additional_directories_for_agents_md() -> Vec<PathBuf> {
+    ADDITIONAL_DIRECTORIES_FOR_AGENTS_MD
         .read()
         .map(|directories| directories.clone())
         .unwrap_or_default()
@@ -827,8 +827,8 @@ pub fn get_additional_directories_for_claude_md() -> Vec<PathBuf> {
 /// Set additional directories from the explicit `--add-dir` flag.
 ///
 /// Maps to: CC `bootstrap/state.ts:setAdditionalDirectoriesForClaudeMd`.
-pub fn set_additional_directories_for_claude_md(directories: Vec<PathBuf>) {
-    if let Ok(mut slot) = ADDITIONAL_DIRECTORIES_FOR_CLAUDE_MD.write() {
+pub fn set_additional_directories_for_agents_md(directories: Vec<PathBuf>) {
+    if let Ok(mut slot) = ADDITIONAL_DIRECTORIES_FOR_AGENTS_MD.write() {
         *slot = directories;
     }
 }

@@ -255,8 +255,10 @@ pub struct ProjectConfig {
     pub has_trust_dialog_accepted: Option<bool>,
     pub has_completed_project_onboarding: Option<bool>,
     pub project_onboarding_seen_count: u32,
-    pub has_claude_md_external_includes_approved: Option<bool>,
-    pub has_claude_md_external_includes_warning_shown: Option<bool>,
+    #[serde(rename = "hasClaudeMdExternalIncludesApproved")]
+    pub has_agents_md_external_includes_approved: Option<bool>,
+    #[serde(rename = "hasClaudeMdExternalIncludesWarningShown")]
+    pub has_agents_md_external_includes_warning_shown: Option<bool>,
 
     // ── Worktree ──
     pub active_worktree_session: Option<crate::utils::worktree::WorktreeSession>,
@@ -1630,6 +1632,25 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["1", "2", "1\0tail", "SECOND", "FIRST"]
         );
+    }
+
+    #[test]
+    fn project_config_keeps_agents_md_approval_json_keys() {
+        let config: ProjectConfig = serde_json::from_value(serde_json::json!({
+            "hasClaudeMdExternalIncludesApproved": true,
+            "hasClaudeMdExternalIncludesWarningShown": false,
+        }))
+        .expect("project config should deserialize AgentsMd approval keys");
+
+        assert_eq!(config.has_agents_md_external_includes_approved, Some(true));
+        assert_eq!(
+            config.has_agents_md_external_includes_warning_shown,
+            Some(false)
+        );
+
+        let serialized = serde_json::to_value(&config).unwrap();
+        assert_eq!(serialized["hasClaudeMdExternalIncludesApproved"], true);
+        assert_eq!(serialized["hasClaudeMdExternalIncludesWarningShown"], false);
     }
 
     #[test]

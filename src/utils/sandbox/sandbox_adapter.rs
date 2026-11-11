@@ -5,7 +5,7 @@
 //! run under Seatbelt and Linux commands under bubblewrap; unavailable backends
 //! fail closed rather than falling through to an ordinary shell.
 
-use crate::bootstrap::state::{get_additional_directories_for_claude_md, get_original_cwd};
+use crate::bootstrap::state::{get_additional_directories_for_agents_md, get_original_cwd};
 use crate::tools::bash_tool::tool_name::BASH_TOOL_NAME;
 use crate::tools::file_read_tool::prompt::FILE_READ_TOOL_NAME;
 use crate::tools::web_fetch_tool::prompt::WEB_FETCH_TOOL_NAME;
@@ -1303,7 +1303,7 @@ pub fn convert_to_sandbox_runtime_config(settings: &SettingsJson) -> SandboxRunt
         allow_write.extend(additional.iter().cloned());
     }
     allow_write.extend(
-        get_additional_directories_for_claude_md()
+        get_additional_directories_for_agents_md()
             .into_iter()
             .map(|path| path.display().to_string()),
     );

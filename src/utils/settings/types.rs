@@ -157,7 +157,8 @@ pub struct SettingsJson {
     pub allowed_channel_plugins: Option<Vec<serde_json::Value>>,
 
     // ── Memory ──
-    pub claude_md_excludes: Option<Vec<String>>,
+    #[serde(rename = "claudeMdExcludes")]
+    pub agents_md_excludes: Option<Vec<String>>,
     pub auto_memory_enabled: Option<bool>,
     pub auto_memory_directory: Option<String>,
     pub auto_dream_enabled: Option<bool>,
@@ -1488,6 +1489,24 @@ mod zod_schema_tests {
     /// CC settings env objects retain ECMAScript own-key order when consumed by
     /// `utils/managedEnv.ts`, while `state/onChangeAppState.ts:164` gates on the
     /// nested env object's reference identity.
+    #[test]
+    fn settings_keeps_agents_md_excludes_json_key() {
+        let settings: SettingsJson = serde_json::from_value(serde_json::json!({
+            "claudeMdExcludes": ["**/private.md"],
+        }))
+        .expect("settings should deserialize the existing AgentsMd excludes key");
+
+        assert_eq!(
+            settings.agents_md_excludes,
+            Some(vec!["**/private.md".to_string()])
+        );
+        let serialized = serde_json::to_value(&settings).unwrap();
+        assert_eq!(
+            serialized["claudeMdExcludes"],
+            serde_json::json!(["**/private.md"])
+        );
+    }
+
     #[test]
     fn settings_env_matches_official_own_key_order_and_reference_identity() {
         let settings: SettingsJson = serde_json::from_str(

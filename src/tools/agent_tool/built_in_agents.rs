@@ -148,7 +148,7 @@ mod tests {
             .iter()
             .find(|agent| agent.agent_type == "explore")
             .unwrap();
-        assert!(explore.omit_claude_md);
+        assert!(explore.omit_agents_md);
     }
 
     /// Only `general-purpose` and `plan` follow the session; `explore` and
