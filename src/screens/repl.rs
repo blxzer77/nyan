@@ -842,7 +842,6 @@ enum FocusedInputDialog {
     ToolPermission,
     WorkerSandboxPermission,
     Elicitation,
-    PluginHint,
 }
 
 impl FocusedInputDialog {
@@ -855,7 +854,6 @@ impl FocusedInputDialog {
             Self::ToolPermission => "tool-permission",
             Self::WorkerSandboxPermission => "worker-sandbox-permission",
             Self::Elicitation => "elicitation",
-            Self::PluginHint => "plugin-hint",
         }
     }
 }
@@ -882,8 +880,6 @@ struct FocusedInputDialogInput {
     has_worker_sandbox_permission: bool,
     /// `elicitation.queue[0]`
     has_elicitation: bool,
-    /// `hintRecommendation`
-    has_hint_recommendation: bool,
 }
 
 /// Maps to: CC `screens/REPL.tsx`:2684-2760 `getFocusedInputDialog()`.
@@ -918,9 +914,6 @@ fn get_focused_input_dialog(input: &FocusedInputDialogInput) -> Option<FocusedIn
     }
     if allow && input.has_elicitation {
         return Some(Elicitation);
-    }
-    if allow && input.has_hint_recommendation {
-        return Some(PluginHint);
     }
     None
 }
@@ -3831,91 +3824,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             Option::<QueryHandle>::None
         }
     });
-    // Partial useClaudeCodeHintRecommendation/usePluginRecommendationBase:
-    // retain the existing 250ms pending-slot poll, but resolve on the published
-    // process runtime. Source void promises outlive the initiating component;
-    // only their State delivery is mount-scoped (existing REPL channel carrier).
-    let mut hint_recommendation = hooks.use_state(|| {
-        Option::<crate::utils::plugins::hint_recommendation::PluginHintRecommendation>::None
-    });
-    let hint_resolution_tasks = hooks.use_const(|| {
-        Arc::new(async_channel::unbounded::<
-            tokio::task::JoinHandle<
-                Option<crate::utils::plugins::hint_recommendation::PluginHintRecommendation>,
-            >,
-        >())
-    });
-    let hint_is_checking = hooks.use_ref(|| false);
-    hooks.use_future({
-        let tasks = hint_resolution_tasks.1.clone();
-        let mut hint_recommendation = hint_recommendation;
-        let mut hint_is_checking = hint_is_checking;
-        async move {
-            while let Ok(task) = tasks.recv().await {
-                // usePluginRecommendationBase: then(setRecommendation),
-                // catch(logError), finally(isCheckingRef = false), in order.
-                match task.await {
-                    Ok(Some(resolved)) => hint_recommendation.set(Some(resolved)),
-                    Ok(None) => {}
-                    Err(error) => crate::utils::log::log_error(crate::utils::log::LogError::new(
-                        error.to_string(),
-                    )),
-                }
-                hint_is_checking.set(false);
-            }
-        }
-    });
-    hooks.use_interval(
-        {
-            let hint_recommendation = hint_recommendation;
-            let mut hint_is_checking = hint_is_checking;
-            let tasks = hint_resolution_tasks.0.clone();
-            move || {
-                if hint_recommendation.read().is_some() || hint_is_checking.get() {
-                    return;
-                }
-                let Some(hint) = crate::utils::claude_code_hints::get_pending_hint_snapshot()
-                else {
-                    return;
-                };
-                let Some(runtime) =
-                    crate::utils::process_runtime::runtime_handle_for_detached_work()
-                else {
-                    crate::utils::log::log_error(crate::utils::log::LogError::new(
-                        "Process runtime unavailable for plugin hint resolution".to_string(),
-                    ));
-                    return;
-                };
-                hint_is_checking.set(true);
-                let task = runtime.spawn(async move {
-                    let resolved =
-                        crate::utils::plugins::hint_recommendation::resolve_plugin_hint(&hint)
-                            .await;
-                    if let Some(resolved) = &resolved {
-                        crate::utils::debug::log_for_debugging(&format!(
-                            "[useClaudeCodeHintRecommendation] surfacing {} from {}",
-                            resolved.plugin_id, resolved.source_command,
-                        ));
-                        crate::utils::claude_code_hints::mark_shown_this_session();
-                    }
-                    // Existing native store uses value snapshots; JS reference
-                    // identity for two equal replacement hints remains partial.
-                    if crate::utils::claude_code_hints::get_pending_hint_snapshot().as_ref()
-                        == Some(&hint)
-                    {
-                        crate::utils::claude_code_hints::clear_pending_hint();
-                    }
-                    resolved
-                });
-                if tasks.try_send(task).is_err() {
-                    // Dropping a JoinHandle detaches the source promise. Its
-                    // store effects still finish if this component unmounted.
-                    hint_is_checking.set(false);
-                }
-            }
-        },
-        Some(Duration::from_millis(250)),
-    );
     // Maps to CC `/compact` sharing its abortController with the forked
     // summary request so the ordinary cancel owner can stop compaction.
     let mut active_compact_abort = hooks.use_state(|| Option::<crate::tool::AbortController>::None);
@@ -6732,7 +6640,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         && classifier_approvals.read().checking().is_none()
         && !message_selector_visible.get()
         && !exit_flow_active.get()
-        && hint_recommendation.read().is_none()
         && !prompt_modal_overlay_active.get();
     let pending_command = pending_keybinding_command.read().clone();
     if let Some(command) = pending_command {
@@ -8267,7 +8174,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     // Maps to: CC `isMessageSelectorVisible`, the input behind
     // `getFocusedInputDialog()`'s 'message-selector' (REPL.tsx:2689).
     let message_selector_visible_snapshot = message_selector_visible.get();
-    let hint_recommendation_snapshot = hint_recommendation.read().clone();
     let current_permission = permission_queue.read().first().cloned();
     let query_is_loading = !pending_responses.read().is_empty() || active_query.read().is_some();
     let user_input_on_processing_active = user_input_on_processing
@@ -8460,7 +8366,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         has_tool_use_confirm: current_permission.is_some(),
         has_worker_sandbox_permission: current_sandbox_permission.is_some(),
         has_elicitation: elicitation_queued,
-        has_hint_recommendation: hint_recommendation_snapshot.is_some(),
     });
     focused_input_dialog_ref.set(focused_input_dialog);
     // The dialog slots exist only in CC's prompt-screen return; the transcript
@@ -8840,85 +8745,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     let on_exit_flow_cancel = move |_: ()| {
         exit_flow_active.set(false);
     };
-    let mut plugin_hint_notifications =
-        crate::context::notifications::NotificationsWriter::new(app_store.clone());
-    let app_store_for_plugin_install = app_store.clone();
-    let mut hint_recommendation_for_response = hint_recommendation;
-    let on_plugin_hint_response =
-        move |response: crate::components::claude_code_hint::PluginHintResponse| {
-            let Some(recommendation) = hint_recommendation_for_response.read().clone() else {
-                return;
-            };
-            let record_error = crate::utils::plugins::hint_recommendation::mark_hint_plugin_shown(
-                &recommendation.plugin_id,
-            )
-            .err()
-            .map(|error| error.to_string());
-            let disable_error = (response
-                == crate::components::claude_code_hint::PluginHintResponse::Disable)
-                .then(crate::utils::plugins::hint_recommendation::disable_hint_recommendations)
-                .and_then(Result::err)
-                .map(|error| error.to_string());
-            if response == crate::components::claude_code_hint::PluginHintResponse::Yes {
-                let spawn_result =
-                    crate::hooks::use_plugin_recommendation_base::install_plugin_and_notify(
-                        recommendation.plugin_id.clone(),
-                        recommendation.plugin_name.clone(),
-                        "hint-plugin",
-                        app_store_for_plugin_install.clone(),
-                        {
-                            // CC useClaudeCodeHintRecommendation.tsx:96-108:
-                            // the common notification helper receives its install callback.
-                            let plugin_id = recommendation.plugin_id.clone();
-                            let marketplace_name = recommendation.marketplace_name.clone();
-                            move |plugin_data| async move {
-                                use crate::utils::plugins::plugin_installation_helpers::{
-                                    InstallPluginParams, InstallPluginResult,
-                                    install_plugin_from_marketplace,
-                                };
-                                match install_plugin_from_marketplace(InstallPluginParams {
-                                    plugin_id,
-                                    entry: plugin_data.entry,
-                                    marketplace_name,
-                                    scope: Some(crate::utils::plugins::schemas::PluginScope::User),
-                                })
-                                .await
-                                {
-                                    InstallPluginResult::Success { .. } => Ok(()),
-                                    InstallPluginResult::Failure { error } => {
-                                        Err(anyhow::anyhow!(error))
-                                    }
-                                }
-                            }
-                        },
-                    );
-                if let Err(error) = spawn_result {
-                    crate::utils::debug::log_for_debugging(&format!(
-                        "Plugin hint installer thread could not start: {error}"
-                    ));
-                    plugin_hint_notifications.add_notification(
-                        crate::context::notifications::Notification::text(
-                            "hint-plugin-install-failed",
-                            format!("Failed to install {}", recommendation.plugin_name),
-                            crate::context::notifications::NotificationPriority::Immediate,
-                        )
-                        .with_color(crate::context::notifications::NotificationColor::Error)
-                        .with_timeout_ms(5_000),
-                    );
-                }
-            }
-            if let Some(error) = record_error.as_ref().or(disable_error.as_ref()) {
-                plugin_hint_notifications.add_notification(
-                    crate::context::notifications::Notification::text(
-                        format!("plugin-hint-state: {}", recommendation.plugin_id),
-                        format!("Could not persist plugin hint preference: {error}"),
-                        crate::context::notifications::NotificationPriority::High,
-                    )
-                    .with_color(crate::context::notifications::NotificationColor::Error),
-                );
-            }
-            hint_recommendation_for_response.set(None);
-        };
 
     // This is the REPL's only return: every screen state, every dialog and
     // every panel is a child of the one tree below, so a dialog appearing is a
@@ -9398,20 +9224,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             #(worker_sandbox_pending_permission)
             #(worker_sandbox_permission_dialog)
             #(elicitation_dialog)
-
-            // Maps to: CC REPL.tsx:6628-6653 focused plugin-hint dialog.
-            #(match mounted_input_dialog {
-                Some(FocusedInputDialog::PluginHint) => hint_recommendation_snapshot.clone().map(|recommendation| element! {
-                    crate::components::claude_code_hint::PluginHintMenu(
-                        plugin_name: recommendation.plugin_name,
-                        plugin_description: recommendation.plugin_description,
-                        marketplace_name: recommendation.marketplace_name,
-                        source_command: recommendation.source_command,
-                        on_response: on_plugin_hint_response,
-                    )
-                }.into_any()),
-                _ => None,
-            })
 
             #(if exit_flow_active_snapshot {
                 Some(element! {
@@ -15024,7 +14836,6 @@ mod tests {
             has_tool_use_confirm: true,
             has_worker_sandbox_permission: true,
             has_elicitation: true,
-            has_hint_recommendation: true,
         };
 
         // CC REPL.tsx:2684-2760 order: peel the winner off one at a time.
@@ -15038,7 +14849,6 @@ mod tests {
                 ToolPermission => input.has_tool_use_confirm = false,
                 WorkerSandboxPermission => input.has_worker_sandbox_permission = false,
                 Elicitation => input.has_elicitation = false,
-                PluginHint => input.has_hint_recommendation = false,
             }
         }
         assert_eq!(
@@ -15049,7 +14859,6 @@ mod tests {
                 ToolPermission,
                 WorkerSandboxPermission,
                 Elicitation,
-                PluginHint,
             ]
         );
 

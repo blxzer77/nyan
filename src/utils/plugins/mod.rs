@@ -3,7 +3,6 @@
 //! Maps to: CC `utils/plugins/`.
 
 pub mod git_availability;
-pub mod hint_recommendation;
 pub mod installed_plugins_manager;
 pub mod load_plugin_agents;
 pub mod load_plugin_hooks;

@@ -325,14 +325,6 @@ pub fn get_custom_api_key_status(
     CustomApiKeyStatus::New
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClaudeCodeHintsConfig {
-    #[serde(default)]
-    pub plugin: Vec<String>,
-    pub disabled: Option<bool>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -426,8 +418,6 @@ pub struct GlobalConfig {
     pub has_seen_tasks_hint: Option<bool>,
     pub has_used_stash: Option<bool>,
     pub has_used_background_task: Option<bool>,
-    /// Maps to CC `GlobalConfig.claudeCodeHints` show-once state.
-    pub claude_code_hints: Option<ClaudeCodeHintsConfig>,
     pub show_expanded_todos: Option<bool>,
     /// Maps to CC `GlobalConfig.showSpinnerTree` — persisted expandedView
     /// 'teammates' leg (see state/onChangeAppState.ts:114-128).
@@ -583,7 +573,6 @@ impl Default for GlobalConfig {
             has_seen_tasks_hint: None,
             has_used_stash: None,
             has_used_background_task: None,
-            claude_code_hints: None,
             show_expanded_todos: None,
             show_spinner_tree: None,
             memory_usage_count: None,

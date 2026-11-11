@@ -955,14 +955,8 @@ pub(crate) fn bash_output(
         stderr = utils::stderr_append_shell_reset_message(&stderr);
     }
 
-    let mut stripped = utils::strip_empty_lines(&full_stdout);
-    let extracted = crate::utils::claude_code_hints::extract_claude_code_hints(&stripped, command);
-    stripped = extracted.stripped;
-    if context.agent_id.is_none() {
-        for hint in extracted.hints {
-            crate::utils::plugins::hint_recommendation::maybe_record_plugin_hint(hint);
-        }
-    }
+    let mut stripped =
+        crate::utils::plugin_hint::strip_plugin_hints(&utils::strip_empty_lines(&full_stdout));
 
     let persisted_output_size = result.output_file_size;
     let persisted_output_path = if interpretation.is_error && !is_interrupt {
@@ -1923,6 +1917,50 @@ mod tests {
         assert_eq!(output.stdout, "ab�tail\n(output contained invalid UTF-8)");
         assert!(output.stderr.is_empty());
         assert_eq!(output.exit_code, Some(0));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn plugin_hint_tags_are_stripped_from_model_and_user_output() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "nyan-bash-plugin-hint-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let _background = EnvVarGuard::set("NYAN_DISABLE_BACKGROUND_TASKS", "1");
+        let output = bash_output(
+            &serde_json::json!({
+                "command": "echo before; \
+                    echo '<claude-code-hint v=1 type=plugin value=secret-plugin@market />'; \
+                    echo '  <claude-code-hint v=\"1\" type=\"plugin\" value=\"other@market\" />' >&2; \
+                    echo after"
+            }),
+            &crate::tool::ToolUseContext::default(),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(output.stdout, "before\n\nafter");
+        let (mapped, _) = crate::tool::ToolCall::map_tool_result_to_tool_result_block_param(
+            &BashTool,
+            &crate::tool::ToolOutput::Bash(output.clone()),
+            "toolu_plugin_hint",
+        );
+        let raw = crate::tool::ToolCall::tool_use_result(
+            &BashTool,
+            &crate::tool::ToolOutput::Bash(output),
+        )
+        .expect("bash raw rides")
+        .to_string();
+        for visible in [&mapped, &raw] {
+            assert!(visible.contains("before") && visible.contains("after"));
+            for leaked in ["claude-code-hint", "secret-plugin", "other@market"] {
+                assert!(!visible.contains(leaked), "{leaked} leaked into {visible}");
+            }
+        }
         let _ = std::fs::remove_dir_all(root);
     }
 
