@@ -727,7 +727,7 @@ mod tests {
 
     /// Claude in Chrome is not shipped, so its flags are not accepted.
     #[test]
-    fn parse_rejects_claude_in_chrome_flags() {
+    fn parse_rejects_unsupported_chrome_flags() {
         let c = parse_cli_config(&argv(&["--chrome", "--no-chrome", "--chrome-native-host"]));
         assert_eq!(
             c.unknown_flags,

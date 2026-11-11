@@ -672,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    fn user_agent_uses_official_claude_cli_shape() {
+    fn user_agent_uses_shared_nyan_shape() {
         let ua = crate::utils::http::get_user_agent();
         assert_eq!(ua, crate::utils::http::user_agent());
         assert!(ua.starts_with("nyan/"));
