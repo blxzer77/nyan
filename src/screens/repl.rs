@@ -1638,6 +1638,27 @@ fn has_turn_interruption(stores: &ResumeRestoreStores) -> bool {
         == Some(crate::utils::conversation::TurnInterruptionState::InterruptedPrompt)
 }
 
+/// Whether a query on `messages` as-is continues a turn: the last message the
+/// API would receive must be a user prompt/tool_result, never an assistant
+/// reply (which would go out as a prefill). System, progress and hook rows are
+/// dropped by `normalize_messages_for_api` and attachments fold into the
+/// neighbouring user message, so none of them decide it.
+fn history_awaits_assistant(messages: &[Message]) -> bool {
+    messages
+        .iter()
+        .rev()
+        .find(|message| {
+            !matches!(
+                message,
+                Message::System(_)
+                    | Message::Progress(_)
+                    | Message::HookResult(_)
+                    | Message::Attachment(_)
+            )
+        })
+        .is_some_and(|message| matches!(message, Message::User(_)))
+}
+
 fn clear_turn_interruption(stores: &mut State<ResumeRestoreStores>) {
     if has_turn_interruption(&stores.read()) {
         let mut next = stores.read().clone();
@@ -6773,7 +6794,10 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             let query_active = !pending_responses.read().is_empty()
                 || active_query.read().is_some()
                 || !permission_queue.read().is_empty();
-            if query_active || !has_turn_interruption(&resume_restore_stores.read()) {
+            if query_active
+                || !has_turn_interruption(&resume_restore_stores.read())
+                || !history_awaits_assistant(&history_model_messages(&history_state.read()))
+            {
                 return;
             }
             clear_turn_interruption(&mut resume_restore_stores);
@@ -8388,8 +8412,18 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         stop_hook_spinner_suffix(&stop_hook_spinner_state.read(), is_loading);
     let is_empty_session = messages.is_empty() && !is_loading;
     let main_screen_width = terminal_cols.max(1) as u32;
-    let resume_store_snapshot = resume_restore_stores.read().clone();
-    let show_interrupted_turn_hint = !is_loading && has_turn_interruption(&resume_store_snapshot);
+    let mut resume_store_snapshot = resume_restore_stores.read().clone();
+    // The resumed interruption is continuable only until history moves on.
+    // Paths other than prompt submit (queued/cron/inbox turns, rewind,
+    // summarize) never touch the flag, so retire it here: once any query
+    // runs, or the API-bound history stops ending in a user message.
+    if has_turn_interruption(&resume_store_snapshot)
+        && (is_loading || !history_awaits_assistant(&model_messages))
+    {
+        clear_turn_interruption(&mut resume_restore_stores);
+        resume_store_snapshot.turn_interruption_state = None;
+    }
+    let show_interrupted_turn_hint = has_turn_interruption(&resume_store_snapshot);
     // AppState.teamContext / agent are the single source (CC).
     let inbox_team_context =
         crate::state::app_state::use_app_state(&mut hooks, |state| state.team_context.clone());
@@ -13007,6 +13041,27 @@ mod tests {
         done: impl Fn(&ReplActiveQueryProbe, &str) -> bool,
         timeout: Duration,
     ) -> (bool, String) {
+        drive_resumed_repl_steps(
+            processed,
+            probe,
+            vec![(Box::new(ready), keys)],
+            done,
+            timeout,
+        )
+        .await
+    }
+
+    type ReplStep<'a> = (Box<dyn Fn(&str) -> bool + 'a>, Vec<TerminalEvent>);
+
+    /// Each step waits for a frame satisfying its predicate (rendered after
+    /// the previous step's input), then sends its keys.
+    async fn drive_resumed_repl_steps(
+        processed: &crate::utils::session_restore::ProcessedResume,
+        probe: &ReplActiveQueryProbe,
+        steps: Vec<ReplStep<'_>>,
+        done: impl Fn(&ReplActiveQueryProbe, &str) -> bool,
+        timeout: Duration,
+    ) -> (bool, String) {
         let mut app = element! {
             ContextProvider(value: Context::owned(probe.clone())) {
                 ContextProvider(value: Context::owned(
@@ -13029,7 +13084,8 @@ mod tests {
             ));
         let deadline = futures_timer::Delay::new(timeout);
         tokio::pin!(deadline);
-        let mut sent = false;
+        let mut steps = steps.into_iter();
+        let mut step = steps.next();
         let mut text = String::new();
         loop {
             tokio::select! {
@@ -13037,13 +13093,17 @@ mod tests {
                 canvas = frames.next() => {
                     let Some(canvas) = canvas else { return (false, text) };
                     text = canvas_lines(&canvas).join("\n");
-                    if !sent && ready(&text) {
-                        for key in &keys {
-                            key_tx.try_send(key.clone()).unwrap();
+                    match &step {
+                        Some((ready, keys)) => {
+                            if ready(&text) {
+                                for key in keys {
+                                    key_tx.try_send(key.clone()).unwrap();
+                                }
+                                step = steps.next();
+                            }
                         }
-                        sent = true;
-                    } else if sent && done(probe, &text) {
-                        return (true, text);
+                        None if done(probe, &text) => return (true, text),
+                        None => {}
                     }
                 }
             }
@@ -13135,6 +13195,123 @@ mod tests {
         let snapshot = snapshot.as_ref().unwrap();
         assert_eq!(snapshot.model_messages, *processed.messages);
         assert!(!has_synthetic_resume_text(&snapshot.model_messages));
+    }
+
+    #[test]
+    fn history_awaits_assistant_only_when_api_tail_is_user() {
+        let user =
+            |text: &str| Message::User(crate::utils::messages::create_user_message(text.into()));
+        let assistant = conversation::into_typed_messages(vec![json!({
+            "type":"assistant","uuid":"tail-assistant","timestamp":"2026-11-12T00:00:00.000Z",
+            "message":{"id":"msg-tail","role":"assistant","content":[{"type":"text","text":"done"}]}
+        })])
+        .remove(0);
+        let system = Message::System(SystemMessage::informational(
+            "bookkeeping".to_string(),
+            SystemMessageLevel::Info,
+        ));
+        assert!(history_awaits_assistant(&[user("go")]));
+        assert!(history_awaits_assistant(&[
+            assistant.clone(),
+            user("go"),
+            system.clone()
+        ]));
+        assert!(!history_awaits_assistant(&[user("go"), assistant.clone()]));
+        assert!(!history_awaits_assistant(&[user("go"), assistant, system]));
+        assert!(!history_awaits_assistant(&[]));
+    }
+
+    /// Review fix: history changed by a path other than prompt submit (here
+    /// MessageSelector restore) must retire the interruption.
+    #[tokio::test]
+    async fn interrupted_resume_hint_retires_after_rewind_and_empty_enter_stays_idle() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
+        let _guard = env_lock().lock().unwrap();
+        let _settings = IsolatedProjectSettings::pin();
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
+        let _title = EnvVarGuard::set("NYAN_DISABLE_TERMINAL_TITLE", "1");
+        let _checkpointing = EnvVarGuard::set("NYAN_DISABLE_FILE_CHECKPOINTING", "0");
+        let processed = processed_resume_from_entries(vec![
+            json!({"type":"user","uuid":"rw-user-1","timestamp":"2026-11-12T00:00:00.000Z",
+                "message":{"role":"user","content":"first question"}}),
+            json!({"type":"assistant","uuid":"rw-assistant-1","timestamp":"2026-11-12T00:00:01.000Z",
+                "message":{"id":"msg-rw-1","role":"assistant","content":[{"type":"text","text":"first answer"}]}}),
+            json!({"type":"user","uuid":"rw-user-2","timestamp":"2026-11-12T00:00:02.000Z",
+                "message":{"role":"user","content":"second question"}}),
+            json!({"type":"assistant","uuid":"rw-assistant-2","timestamp":"2026-11-12T00:00:03.000Z",
+            "message":{"id":"msg-rw-2","role":"assistant","content":[
+                {"type":"tool_use","id":"toolu_rw","name":"Read","input":{"file_path":"/tmp/x"}}
+            ]}}),
+            json!({"type":"user","uuid":"rw-result","timestamp":"2026-11-12T00:00:04.000Z",
+                "message":{"role":"user","content":[
+                    {"type":"tool_result","tool_use_id":"toolu_rw","content":"file body"}
+                ]},
+                "toolUseResult":{"type":"text"}}),
+        ]);
+        assert_eq!(
+            processed.resume_restore_stores.turn_interruption_state,
+            Some(conversation::TurnInterruptionState::InterruptedPrompt)
+        );
+        let probe = idle_probe("rewind-after-interrupt");
+        let snapshot_probe = probe.clone();
+        let rewound = move || {
+            snapshot_probe
+                .snapshot
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|snapshot| {
+                    matches!(snapshot.model_messages.last(), Some(Message::Assistant(_)))
+                })
+        };
+        let (finished, text) = drive_resumed_repl_steps(
+            &processed,
+            &probe,
+            vec![
+                (
+                    Box::new(|text: &str| text.contains(INTERRUPTED_TURN_HINT)),
+                    vec![key(KeyCode::Esc), key(KeyCode::Esc)],
+                ),
+                (
+                    Box::new(|text: &str| text.contains("Rewind")),
+                    vec![key(KeyCode::Up), key(KeyCode::Enter)],
+                ),
+                (
+                    Box::new(|text: &str| text.contains("Confirm you want to restore")),
+                    vec![key(KeyCode::Enter)],
+                ),
+                // Rewind puts the restored prompt back in the composer; clear
+                // it so the following Enter is an empty submit.
+                (
+                    Box::new(move |text: &str| {
+                        rewound() && !text.contains("Confirm you want to restore")
+                    }),
+                    vec![ctrl_key('u'), key(KeyCode::Enter)],
+                ),
+            ],
+            // Nothing may start, so this runs to the deadline.
+            |probe, _| !probe.started_queries.lock().unwrap().is_empty(),
+            Duration::from_secs(8),
+        )
+        .await;
+        assert!(
+            !finished,
+            "empty Enter after rewind started a query; canvas=\n{text}"
+        );
+        assert!(probe.started_queries.lock().unwrap().is_empty());
+        let snapshot = probe.snapshot.lock().unwrap();
+        let history = &snapshot.as_ref().unwrap().model_messages;
+        assert!(
+            matches!(
+                history.as_slice(),
+                [Message::User(_), Message::Assistant(_)]
+            ),
+            "rewind did not truncate to the first turn: {history:?}"
+        );
+        assert!(
+            !text.contains(INTERRUPTED_TURN_HINT),
+            "hint reappeared; canvas=\n{text}"
+        );
     }
 
     #[tokio::test]
