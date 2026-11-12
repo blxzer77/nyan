@@ -609,6 +609,8 @@ mod tests {
 
     #[test]
     fn clear_conversation_clears_metadata_and_resets_file_pointer() {
+        // clear_conversation regenerates the process-global session id.
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::session_storage::set_current_session_metadata_for_test(
             Some("My Session"),
             Some("bug"),

@@ -631,6 +631,7 @@ mod tests {
 
     #[test]
     fn typed_run_tools_defers_permission_and_completion_until_after_hooks() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         // The relative `src/main.rs` inputs resolve against the project dir.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let read = ToolUseBlock {

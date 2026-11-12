@@ -1667,6 +1667,7 @@ mod tests {
 
     #[test]
     fn user_tool_result_dispatches_read_edit_write_search_summaries() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         // CC FileWriteTool/UI.tsx:59 uses relative(getCwd(), filePath).
         // These raw fixtures contain relative paths, so the session and process
         // cwd must agree for the source to display the bare filename.

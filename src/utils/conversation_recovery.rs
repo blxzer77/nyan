@@ -2924,6 +2924,7 @@ mod tests {
 
     #[test]
     fn write_create_success_uses_created_summary() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         // CC FileWriteTool/UI.tsx:59 resolves the relative wire filePath using
         // process cwd, then displays it relative to session cwd. Pin both for
         // this fixture's intentionally bare filename expectation.

@@ -3367,6 +3367,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn nested_live_iteration_accepts_insertion_during_source_await() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         // At-mention reads resolve against the project dir.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = std::env::current_dir().unwrap();

@@ -857,6 +857,10 @@ mod tests {
     #[tokio::test]
     async fn swarms_auto_owner_and_mailbox_notification_match_official() {
         let _task_guard = crate::utils::tasks::TASK_TOOL_TEST_LOCK.lock().unwrap();
+        // The dynamic team context set below is process-wide.
+        let _teammate = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
+            .lock()
+            .unwrap();
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _temp = crate::utils::tasks::TempTaskConfig::new("update-swarm");
         crate::utils::process_env::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");

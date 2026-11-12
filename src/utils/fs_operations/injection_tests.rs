@@ -359,6 +359,7 @@ fn injected_backend_matches_official_resolution_and_file_read_consumers() {
 
 #[test]
 fn expand_path_matches_official_session_cwd_before_injected_fs() {
+    let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
     // CC utils/path.ts:34 and utils/cwd.ts:19-30; explicit tool cwd override
     // precedes bootstrap session cwd, which precedes the FsOperations fallback.
     struct Reset(PathBuf);

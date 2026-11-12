@@ -1309,6 +1309,8 @@ mod tests {
 
     #[test]
     fn get_commands_loads_and_executes_filesystem_skill_before_builtins() {
+        // clear_commands_cache resets the process-wide command catalog.
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-command-registry-skill-{}",
             uuid::Uuid::new_v4()
@@ -1486,6 +1488,9 @@ mod tests {
         .unwrap();
 
         crate::bootstrap::state::set_inline_plugins(vec![root.clone()]);
+        // The plugin loader memoizes its result independently of the command
+        // caches; an earlier test's load would otherwise omit this plugin.
+        crate::utils::plugins::plugin_loader::clear_plugin_cache(None);
         clear_commands_cache();
         let catalog = get_commands(&root);
         let plugin_command = find_command("registry-plugin:inspect", &catalog)
@@ -1527,8 +1532,9 @@ mod tests {
             )
         )));
 
-        clear_commands_cache();
         crate::bootstrap::state::set_inline_plugins(previous_inline);
+        crate::utils::plugins::plugin_loader::clear_plugin_cache(None);
+        clear_commands_cache();
         let _ = std::fs::remove_dir_all(root);
     }
 

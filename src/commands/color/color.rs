@@ -134,6 +134,10 @@ mod tests {
     #[test]
     fn color_validation_matches_official_copy_membership_and_js_trim() {
         // CC color.ts:34-42,66-72; reset aliases are tested through persistence below.
+        // `call` reads the process-wide teammate context first.
+        let _teammate = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
+            .lock()
+            .unwrap();
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -198,6 +202,9 @@ mod tests {
     #[test]
     fn color_persistence_and_reset_matches_official_state_and_cold_restore() {
         // CC color.ts:45-63,75-92: disk first, same name, default sentinel.
+        let _teammate = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
+            .lock()
+            .unwrap();
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
@@ -278,6 +285,9 @@ mod tests {
     #[test]
     fn color_write_error_matches_official_no_success_or_state_mutation() {
         // CC color.ts:51/79 await has no catch; setAppState is after that await.
+        let _teammate = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
+            .lock()
+            .unwrap();
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let fixture = SessionFixture::new();

@@ -6623,6 +6623,7 @@ mod tests {
 
     #[test]
     fn find_project_dir_uses_prefix_fallback_only_for_long_paths() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("nyan-find-project-{}", Uuid::new_v4()));
         let projects = root.join("projects");
         let _guard = set_test_projects_dir_override(projects.clone());
@@ -7328,6 +7329,7 @@ mod tests {
     /// the /resume picker: `if (enriched.teamName) return null`.
     #[test]
     fn enrichment_filters_team_sessions_like_official() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("nyan-team-filter-{}", Uuid::new_v4()));
         let _guard = set_test_projects_dir_override(root.join("projects"));
         let project_path = "/tmp/team-filter-project";
@@ -7366,6 +7368,7 @@ mod tests {
 
     #[test]
     fn progressive_loading_enriches_fifty_then_continues_without_duplicates() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
             std::env::temp_dir().join(format!("nyan-progressive-sessions-{}", Uuid::new_v4()));
         let _guard = set_test_projects_dir_override(root.join("projects"));
@@ -7529,6 +7532,7 @@ mod tests {
 
     #[test]
     fn subagent_transcript_paths_and_metadata_match_official_sidecar_shape() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("nyan-subagent-session-{}", Uuid::new_v4()));
         let _guard = set_test_projects_dir_override(root.join("projects"));
         let project_path = "/tmp/project with spaces";
@@ -9425,6 +9429,8 @@ mod tests {
         // PATH (utils/git.ts:212-216), so the fake git must be on PATH when the
         // process starts: the parent writes it and re-runs this test as a child.
         const PROBE: &str = "NYAN_TITLE_SEARCH_ROOT";
+        // Held across the child run: the parent bakes this cwd into the fake git.
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
         let cwd = crate::bootstrap::state::get_original_cwd()
             .to_string_lossy()
             .into_owned();
@@ -9472,7 +9478,6 @@ mod tests {
             );
             return;
         };
-        let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = PathBuf::from(root);
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let sibling = root.join("sibling").to_string_lossy().into_owned();

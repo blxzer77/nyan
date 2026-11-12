@@ -1422,6 +1422,7 @@ mod tests {
 
     #[test]
     fn bash_tool_check_permission_runs_path_sed_mode_and_read_only_layers() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         // The path layer resolves against the project dir.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let default_context = ToolPermissionContext::default();
@@ -1513,6 +1514,7 @@ mod tests {
 
     #[test]
     fn ast_permissions_allow_verified_static_shell_structure() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let context = ToolPermissionContext::default();
         let cwd = std::env::current_dir().unwrap();
@@ -1627,6 +1629,7 @@ mod tests {
 
     #[test]
     fn ast_for_environment_rebinding_and_select_always_require_safety_approval() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = std::env::current_dir().unwrap();
         // Every command in the N1/N2 review table, including its sandbox-only
@@ -1703,6 +1706,7 @@ mod tests {
 
     #[test]
     fn ast_declaration_substitution_loops_cannot_override_safety() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = std::env::current_dir().unwrap();
         let started = std::time::Instant::now();
@@ -1894,6 +1898,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn ast_newline_paths_preserve_symlink_and_read_deny_boundaries() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-ast-newline-{}",
             uuid::Uuid::new_v4().simple()
@@ -2111,6 +2116,7 @@ mod tests {
 
     #[test]
     fn ast_projection_preserves_environment_and_redirection_permission_boundaries() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = std::env::current_dir().unwrap();
         let mut context = ToolPermissionContext {
@@ -2145,6 +2151,7 @@ mod tests {
 
     #[test]
     fn ast_paths_and_directory_changes_override_exact_allow() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = std::env::current_dir().unwrap();
         let outside = std::env::temp_dir().join(format!(
