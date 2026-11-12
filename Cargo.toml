@@ -204,6 +204,12 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "logg
 pretty_assertions = "1"
 tokio = { version = "1", features = ["test-util"] }
 
+# iocraft is vendored from the CometixTUI commit in Cargo.lock with 32-bit draw
+# coordinates (vendor/iocraft/NYAN.md). Its siblings, chalk and iocraft-macros,
+# still come from git.
+[patch."https://github.com/Haleclipse/CometixTUI"]
+iocraft = { path = "vendor/iocraft" }
+
 [profile.release]
 lto = "thin"
 codegen-units = 16

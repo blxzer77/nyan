@@ -1750,7 +1750,6 @@ dependencies = [
 [[package]]
 name = "iocraft"
 version = "0.9.1"
-source = "git+https://github.com/Haleclipse/CometixTUI#ec7c06155482815a4b4a99be5ad4c62675a632a1"
 dependencies = [
  "bitflags",
  "chalk",
