@@ -2,13 +2,13 @@
 
 **Breaking**
 
-- Environment variables `CLAUDE_*` / `CLAUDE_CODE_*` are renamed to `NYAN_*` (e.g. `CLAUDE_CODE_SIMPLE` → `NYAN_SIMPLE`, `CLAUDE_DEBUG` → `NYAN_DEBUG`). Update your shell profiles, scripts and CI accordingly.
+- The remaining `CLAUDE_*` / `CLAUDE_CODE_*` environment variables are renamed to `NYAN_*` (e.g. `CLAUDE_CODE_API_KEY_HELPER_TTL_MS` → `NYAN_API_KEY_HELPER_TTL_MS`, `CLAUDE_COWORK_MEMORY_PATH_OVERRIDE` → `NYAN_MEMORY_PATH_OVERRIDE`). If you set any of them in shell profiles, scripts or CI, switch to the `NYAN_*` name.
 - The `claudeCodeHints` global config field and plugin hint recommendations are removed.
 
 **Identity**
 
 - UI copy and system prompts now identify the assistant as nyan.
-- Requests no longer send the `x-app` header, and nyan no longer sends a Claude Code client fingerprint.
+- Requests no longer send the `x-app` header.
 - MCP OAuth no longer uses Claude Code client metadata; a client metadata document is used only when `MCP_OAUTH_CLIENT_METADATA_URL` is set explicitly, otherwise dynamic client registration is used.
 
 **Removed**
@@ -28,13 +28,13 @@
 
 **不兼容变更**
 
-- 环境变量 `CLAUDE_*` / `CLAUDE_CODE_*` 统一改名为 `NYAN_*`（如 `CLAUDE_CODE_SIMPLE` → `NYAN_SIMPLE`、`CLAUDE_DEBUG` → `NYAN_DEBUG`），请同步更新 shell 配置、脚本与 CI。
+- 剩余的 `CLAUDE_*` / `CLAUDE_CODE_*` 环境变量统一改名为 `NYAN_*`（如 `CLAUDE_CODE_API_KEY_HELPER_TTL_MS` → `NYAN_API_KEY_HELPER_TTL_MS`、`CLAUDE_COWORK_MEMORY_PATH_OVERRIDE` → `NYAN_MEMORY_PATH_OVERRIDE`）。如果你在 shell 配置、脚本或 CI 中设置过这些变量，请改用 `NYAN_*` 名称。
 - 移除全局配置字段 `claudeCodeHints` 及插件提示推荐。
 
 **身份**
 
 - 界面文案与系统提示中的身份统一为 nyan。
-- 请求不再发送 `x-app` 头，nyan 不再发送 Claude Code 客户端指纹。
+- 请求不再发送 `x-app` 头。
 - MCP OAuth 不再使用 Claude Code 客户端元数据；仅在显式设置 `MCP_OAUTH_CLIENT_METADATA_URL` 时使用客户端元数据文档，否则走动态客户端注册。
 
 **移除**
