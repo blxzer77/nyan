@@ -461,6 +461,9 @@ pub struct PromptInputProps<'a> {
     /// Test/runtime override; normal production reads the configured editor mode.
     pub vim_enabled_override: Option<bool>,
     pub on_submit: HandlerMut<'a, PromptSubmission>,
+    /// @nyan: Enter on an empty prompt with no suggestion to accept. REPL uses
+    /// it to continue a turn interrupted before resume.
+    pub on_empty_submit: HandlerMut<'a, ()>,
     pub on_exit: HandlerMut<'a, ()>,
     /// Maps to: CC `onShowMessageSelector` — empty-input double-Escape opens
     /// the rewind MessageSelector (PromptInput.tsx:1663).
@@ -2098,6 +2101,8 @@ pub fn PromptInput<'a>(
                 pasted_contents: submitted_pasted_contents,
                 from_keybinding: false,
             });
+        } else if !has_images {
+            (props.on_empty_submit)(());
         }
     }
 
