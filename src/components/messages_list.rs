@@ -5170,4 +5170,99 @@ mod tests {
         assert!(has_content_after_index(&rows, 2));
         assert!(!has_content_after_index(&rows, 0));
     }
+
+    /// Synthetic history of `count` assistant messages, each a ~`thinking_bytes`
+    /// thinking block (long lines) followed by a short text answer; the last
+    /// answer is `final-answer-sentinel`.
+    fn thinking_heavy_history(count: usize, thinking_bytes: usize) -> Arc<Vec<RenderableMessage>> {
+        use crate::types::message::AssistantContent;
+        let line = "synthetic reasoning about nothing in particular, repeated to make a long line "
+            .repeat(4);
+        Arc::new(
+            (0..count)
+                .map(|index| {
+                    let thinking = format!("{line}\n").repeat(thinking_bytes / (line.len() + 1));
+                    let answer = if index + 1 == count {
+                        "final-answer-sentinel".to_string()
+                    } else {
+                        format!("answer {index}")
+                    };
+                    RenderableMessage::assistant_blocks(
+                        format!("a{index}"),
+                        vec![
+                            AssistantContent::Thinking {
+                                text: thinking,
+                                signature: String::new(),
+                            },
+                            AssistantContent::Text(answer),
+                        ],
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    /// Renders `Messages` at 60 columns; `None` keeps the default `AppState`.
+    fn render_messages_canvas(
+        messages: &Arc<Vec<RenderableMessage>>,
+        expand_thinking: Option<bool>,
+    ) -> iocraft::Canvas {
+        let current_theme = *theme::current();
+        let messages = Arc::clone(messages);
+        let initial_state = expand_thinking.map(|expand_thinking| {
+            let mut state = crate::state::app_state_store::AppState::default();
+            state.expand_thinking = expand_thinking;
+            state
+        });
+        element! {
+            ContextProvider(value: Context::owned(current_theme)) {
+                crate::state::app_state::AppStateProvider(
+                    initial_state: initial_state,
+                    children: crate::state::app_state::ProviderChildren::new(move || element! {
+                        Messages(messages: Arc::clone(&messages), hide_logo: true)
+                    }.into_any()),
+                )
+            }
+        }
+        .render(Some(60))
+    }
+
+    /// Regression: with default settings, a long thinking-heavy history must
+    /// stay far below iocraft's i16 canvas coordinate limit (32767 rows),
+    /// otherwise the whole screen goes blank.
+    #[test]
+    fn default_collapsed_thinking_keeps_long_history_canvas_small() {
+        let history = thinking_heavy_history(40, 60 * 1024);
+        let canvas = render_messages_canvas(&history, None);
+        let rendered = canvas.to_string();
+
+        assert!(
+            canvas.height() < 5000,
+            "collapsed thinking canvas too tall: {} rows",
+            canvas.height()
+        );
+        assert!(rendered.contains("∴ Thinking"), "collapsed hint missing");
+        assert!(!rendered.contains("synthetic reasoning"));
+        assert!(
+            rendered.contains("final-answer-sentinel"),
+            "last message not visible"
+        );
+    }
+
+    /// Opt-in `expandThinking=true` still expands (the contrast for the
+    /// default-collapsed regression above), at a small size to stay fast.
+    #[test]
+    fn expand_thinking_true_renders_full_thinking_blocks() {
+        let history = thinking_heavy_history(2, 60 * 1024);
+        let collapsed = render_messages_canvas(&history, Some(false));
+        let expanded = render_messages_canvas(&history, Some(true));
+
+        assert!(expanded.to_string().contains("synthetic reasoning"));
+        assert!(
+            expanded.height() > 1000 && expanded.height() > collapsed.height() * 20,
+            "expanded={} collapsed={}",
+            expanded.height(),
+            collapsed.height()
+        );
+    }
 }

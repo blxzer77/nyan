@@ -492,8 +492,9 @@ pub struct AppState {
     /// 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
     /// Single-source expansion control for thinking blocks, REPLACING CC's
     /// verbose gate at the leaf (AssistantThinkingMessage.tsx:38). Default
-    /// true — mirrors the authoritative factory default (`expandThinking`,
-    /// config.rs `create_official_default_global_config`).
+    /// false (collapsed, ctrl+o to expand, as in CC) — mirrors the factory
+    /// default (`expandThinking`, config.rs
+    /// `create_official_default_global_config`).
     pub expand_thinking: bool,
     /// Nyan extension (no CC counterpart) — user-authorized L2 (v3 ruling,
     /// 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
@@ -696,7 +697,7 @@ impl Default for AppState {
         Self {
             auth_version: 0,
             verbose: false,
-            expand_thinking: true,
+            expand_thinking: false,
             expand_collapsed_read_search: true,
             main_loop_profile: None,
             advisor_model: None,
@@ -966,11 +967,11 @@ mod tests {
     }
 
     #[test]
-    fn display_pref_defaults_mirror_factory_true() {
-        // Ruled default (v3, 2026-08-01): both Nyan display prefs default
-        // true, mirroring the authoritative factory defaults
+    fn display_pref_defaults_mirror_factory_defaults() {
+        // Thinking blocks default collapsed (as in CC; ctrl+o expands) and
+        // read/search groups default expanded, mirroring the factory defaults
         // (`create_official_default_global_config`).
-        assert!(AppState::default().expand_thinking);
+        assert!(!AppState::default().expand_thinking);
         assert!(AppState::default().expand_collapsed_read_search);
     }
 }
