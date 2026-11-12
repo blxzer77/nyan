@@ -2946,13 +2946,54 @@ mod tests {
     use super::*;
     use crate::context::notifications::{Notification, NotificationPriority, NotificationsState};
     use crate::utils::cursor::Cursor;
-    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK, TestEnvGuard};
     use crate::utils::theme;
     use futures::{StreamExt, stream};
     use std::collections::BTreeMap;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
+
+    /// Every mounted `PromptInput` reads process-global state: Up/Esc pop the
+    /// command queue, the footer and model picker read the settings cache, and
+    /// prompt history lives under the config home. Tests that mount it hold
+    /// this for their whole body so they neither see nor consume each other's
+    /// queue entries, and read an empty config home instead of the host's.
+    ///
+    /// Lock order is env, then queue, as in the other modules that hold both.
+    /// Fields drop in declaration order, so the env lock is released last.
+    struct PromptTestEnv {
+        config_dir: std::path::PathBuf,
+        _config_home: EnvVarGuard,
+        _queue: std::sync::MutexGuard<'static, ()>,
+        _env: TestEnvGuard<'static>,
+    }
+
+    fn isolated_prompt_env() -> PromptTestEnv {
+        let env = TEST_ENV_LOCK.lock().unwrap();
+        let queue = crate::utils::message_queue_manager::TEST_QUEUE_LOCK
+            .lock()
+            .unwrap();
+        crate::utils::message_queue_manager::clear_command_queue();
+        let config_dir = std::env::temp_dir().join(format!(
+            "nyan-prompt-input-test-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&config_dir).expect("create prompt input config home");
+        PromptTestEnv {
+            _config_home: EnvVarGuard::set("NYAN_CONFIG_DIR", &config_dir),
+            config_dir,
+            _queue: queue,
+            _env: env,
+        }
+    }
+
+    impl Drop for PromptTestEnv {
+        fn drop(&mut self) {
+            crate::utils::message_queue_manager::clear_command_queue();
+            let _ = std::fs::remove_dir_all(&self.config_dir);
+        }
+    }
 
     fn key(code: KeyCode) -> TerminalEvent {
         TerminalEvent::Key(KeyEvent::new(KeyEventKind::Press, code))
@@ -3283,6 +3324,7 @@ mod tests {
 
     #[test]
     fn prompt_input_shift_tab_invokes_permission_mode_cycle_callback() {
+        let _env = isolated_prompt_env();
         let current_theme = *theme::current();
         let cycle_count = Arc::new(AtomicUsize::new(0));
         let cycle_count_for_handler = cycle_count.clone();
@@ -3564,6 +3606,7 @@ mod tests {
 
     #[test]
     fn empty_enter_accepts_shown_prompt_suggestion_and_resets_state() {
+        let _env = isolated_prompt_env();
         let mut initial = crate::state::app_state_store::AppState::default();
         initial.prompt_suggestion_enabled = true;
         initial.prompt_suggestion = crate::state::app_state_store::PromptSuggestionState {
@@ -3646,9 +3689,7 @@ mod tests {
 
     #[test]
     fn prompt_input_model_picker_switches_the_session_profile_and_effort() {
-        let _lock = TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _env = isolated_prompt_env();
         crate::utils::process_runtime::initialize_test_process_runtime();
         install_prompt_profiles();
         let store = crate::state::store::AppStore::new(
@@ -3677,6 +3718,7 @@ mod tests {
 
     #[test]
     fn prompt_input_alt_p_opens_the_model_picker_and_alt_t_alt_o_do_nothing() {
+        let _env = isolated_prompt_env();
         crate::utils::process_runtime::initialize_test_process_runtime();
         let model = prompt_after_events(
             false,
@@ -3698,6 +3740,7 @@ mod tests {
 
     #[test]
     fn prompt_input_image_paste_action_inserts_live_image_chip() {
+        let _env = isolated_prompt_env();
         let paste_key = if cfg!(windows) {
             key_with_modifiers(KeyCode::Char('v'), KeyModifiers::ALT)
         } else {
@@ -3714,6 +3757,7 @@ mod tests {
 
     #[test]
     fn prompt_input_applies_controlled_and_cursor_insertion_revisions_once() {
+        let _env = isolated_prompt_env();
         let text = prompt_with_initial_after_events(
             Some("draft".to_string()),
             Some(PromptInputTextUpdate {
@@ -3737,7 +3781,7 @@ mod tests {
     fn prompt_input_history_suppression_matches_official_navigation_and_reactivation() {
         // CC PromptInput.tsx:1245-1286,1508 and useTypeahead.tsx:684-688:
         // history suppresses the suggestion state, not just the dropdown.
-        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _env = isolated_prompt_env();
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _skip = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         prompt_history::add_to_history("/help");
@@ -3790,6 +3834,7 @@ mod tests {
 
     #[test]
     fn prompt_input_arrows_matches_official_cursor_before_history() {
+        let _env = isolated_prompt_env();
         crate::utils::process_runtime::initialize_test_process_runtime();
         // CC useTextInput.ts:269-315 and Cursor.ts:353-407,511-551.
         // Use the real PromptInput + default keybinding runtime: the old
@@ -3843,6 +3888,7 @@ mod tests {
 
     #[test]
     fn prompt_input_vim_normal_mode_navigation_and_delete_are_live() {
+        let _env = isolated_prompt_env();
         let text = prompt_with_initial_after_events(
             Some("abc".to_string()),
             None,
@@ -3862,6 +3908,7 @@ mod tests {
 
     #[test]
     fn prompt_input_vim_delete_operator_removes_logical_line() {
+        let _env = isolated_prompt_env();
         crate::utils::process_runtime::initialize_test_process_runtime();
         let text = prompt_with_initial_after_events(
             Some("one\ntwo".to_string()),
@@ -3881,6 +3928,7 @@ mod tests {
 
     #[test]
     fn prompt_input_undo_action_restores_previous_edit_snapshot() {
+        let _env = isolated_prompt_env();
         let text = prompt_with_initial_after_events(
             Some("draft".to_string()),
             None,
@@ -3899,6 +3947,7 @@ mod tests {
 
     #[test]
     fn prompt_input_stash_action_stashes_and_restores_prompt() {
+        let _env = isolated_prompt_env();
         let stashed = prompt_with_initial_after_events(
             Some("draft".to_string()),
             None,
@@ -3938,6 +3987,7 @@ mod tests {
 
     #[test]
     fn prompt_input_search_keybindings_open_live_local_dialogs() {
+        let _env = isolated_prompt_env();
         let ctrl_shift = KeyModifiers::CONTROL | KeyModifiers::SHIFT;
 
         let quick = prompt_after_events(
@@ -3971,6 +4021,7 @@ mod tests {
 
     #[test]
     fn prompt_input_search_keybindings_are_suppressed_for_local_command_ui() {
+        let _env = isolated_prompt_env();
         let text = prompt_after_events(
             true,
             vec![key_with_modifiers(
@@ -3984,6 +4035,7 @@ mod tests {
 
     #[test]
     fn prompt_input_wires_footer_status_indicators_from_context() {
+        let _env = isolated_prompt_env();
         let text = element!(PromptWithStatusIndicators)
             .render(Some(80))
             .to_string();
@@ -3994,6 +4046,7 @@ mod tests {
 
     #[test]
     fn slash_highlights_matches_official_validity_in_prompt_and_bash() {
+        let _env = isolated_prompt_env();
         // CC PromptInput.tsx:768-776 and commands.ts:688-702: exact internal
         // name, display name or alias; no hidden, mode or dropdown gate.
         let current_theme = *theme::current();
@@ -4165,6 +4218,7 @@ mod tests {
 
     #[test]
     fn prompt_input_uses_full_width_border_box_like_official() {
+        let _env = isolated_prompt_env();
         let current_theme = *theme::current();
         let canvas = element! {
             ContextProvider(value: Context::owned(current_theme)) {
@@ -4205,6 +4259,7 @@ mod tests {
 
     #[test]
     fn prompt_input_renders_live_swarm_banner_projection() {
+        let _env = isolated_prompt_env();
         let current_theme = *theme::current();
         // `use_terminal_size` reads the OS terminal during a plain render;
         // drive the mock loop so the fixture's 80-column size is applied.
@@ -4251,6 +4306,7 @@ mod tests {
 
     #[test]
     fn prompt_input_color_only_banner_matches_official_empty_text_border() {
+        let _env = isolated_prompt_env();
         // CC useSwarmBanner.ts:127-133 preserves color-only metadata;
         // PromptInput.tsx:2990-3003 alone decides whether to render the tag.
         // A whitespace name is truthy in JS and must retain its padded tag.
@@ -4319,6 +4375,7 @@ mod tests {
 
     #[test]
     fn prompt_input_refreshes_suggestions_when_live_merged_commands_change() {
+        let _env = isolated_prompt_env();
         let canvases = futures::executor::block_on(
             element!(PromptWithLiveCommandProps)
                 .mock_terminal_render_loop(MockTerminalConfig::default().with_size(80, 20))
@@ -4372,6 +4429,7 @@ mod tests {
     // user types leaves a dim "Waiting for permission…" above the input box.
     #[test]
     fn prompt_input_says_it_is_waiting_while_dialogs_are_suppressed() {
+        let _env = isolated_prompt_env();
         let shown = element!(PromptSuppressedDialogsHarness(suppressed: true))
             .render(Some(80))
             .to_string();
@@ -4401,6 +4459,7 @@ mod tests {
 
     #[test]
     fn prompt_input_renders_notifications_in_native_document_flow() {
+        let _env = isolated_prompt_env();
         let text = element!(PromptWithNotification)
             .render(Some(80))
             .to_string();
@@ -4414,6 +4473,7 @@ mod tests {
 
     #[test]
     fn prompt_input_passes_repl_credential_status_through_footer() {
+        let _env = isolated_prompt_env();
         let text = element!(PromptWithMissingCredential)
             .render(Some(80))
             .to_string();
@@ -4426,6 +4486,7 @@ mod tests {
 
     #[test]
     fn prompt_input_suppresses_notifications_while_suggestions_own_footer() {
+        let _env = isolated_prompt_env();
         let text = prompt_with_notification_after_events(vec![key(KeyCode::Char('/'))]);
 
         assert!(
@@ -4440,10 +4501,7 @@ mod tests {
 
     #[test]
     fn prompt_input_escape_pops_all_editable_queued_commands() {
-        let _lock = crate::utils::message_queue_manager::TEST_QUEUE_LOCK
-            .lock()
-            .unwrap();
-        crate::utils::message_queue_manager::clear_command_queue();
+        let _env = isolated_prompt_env();
         crate::utils::message_queue_manager::enqueue(
             crate::utils::message_queue_manager::QueuedCommand::new("queued edit", "prompt"),
         );
@@ -4477,10 +4535,7 @@ mod tests {
         batches: Vec<Vec<TerminalEvent>>,
         queued_text: Option<&str>,
     ) -> (usize, Vec<String>) {
-        let _queue_lock = crate::utils::message_queue_manager::TEST_QUEUE_LOCK
-            .lock()
-            .unwrap();
-        crate::utils::message_queue_manager::clear_command_queue();
+        let _env = isolated_prompt_env();
         if let Some(text) = queued_text {
             crate::utils::message_queue_manager::enqueue(
                 crate::utils::message_queue_manager::QueuedCommand::new(text, "prompt"),
@@ -4724,7 +4779,7 @@ mod tests {
     #[test]
     fn prompt_input_queues_external_editor_hint_when_wrapped() {
         crate::utils::process_runtime::initialize_test_process_runtime();
-        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
+        let _env = isolated_prompt_env();
         let _editor_guard = EnvVarGuard::set("EDITOR", "code --wait");
         let _visual_guard = EnvVarGuard::unset("VISUAL");
         let long_input = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -4742,6 +4797,7 @@ mod tests {
 
     #[test]
     fn prompt_help_question_mark_renders_in_prompt_footer_not_panel() {
+        let _env = isolated_prompt_env();
         let text = prompt_after_events(false, vec![key(KeyCode::Char('?'))]);
 
         assert!(text.contains("! for bash mode"), "canvas=\n{text}");
@@ -4755,6 +4811,7 @@ mod tests {
 
     #[test]
     fn prompt_help_esc_restores_normal_footer_hint() {
+        let _env = isolated_prompt_env();
         let text = prompt_after_events(false, vec![key(KeyCode::Char('?')), key(KeyCode::Esc)]);
 
         assert!(!text.contains("! for bash mode"), "canvas=\n{text}");
@@ -4763,6 +4820,7 @@ mod tests {
 
     #[test]
     fn prompt_input_stays_visible_but_unfocused_for_active_local_command_ui() {
+        let _env = isolated_prompt_env();
         let events = vec![key(KeyCode::Char('a')), key(KeyCode::Char('b'))];
         let focused = prompt_after_events(false, events.clone());
         let unfocused = prompt_after_events(true, events);
