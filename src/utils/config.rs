@@ -604,7 +604,7 @@ fn create_official_default_global_config() -> GlobalConfig {
     config.theme = Some("dark".to_string());
     config.preferred_notif_channel = Some("auto".to_string());
     config.verbose = Some(false);
-    config.expand_thinking = Some(true);
+    config.expand_thinking = Some(false);
     config.expand_collapsed_read_search = Some(true);
     config.editor_mode = Some("normal".to_string());
     config.auto_compact_enabled = Some(true);
@@ -1698,22 +1698,22 @@ mod tests {
     }
 
     #[test]
-    fn merge_fills_absent_display_pref_keys_with_ruled_factory_true() {
-        // Pins the ruled default (v3, 2026-08-01) at the live merge path:
-        // a disk config without the nyan display-pref keys must load with
-        // both effective true (factory-authoritative, CC {...DEFAULT, ...disk}
+    fn merge_fills_absent_display_pref_keys_with_factory_defaults() {
+        // Pins the factory defaults at the live merge path: a disk config
+        // without the nyan display-pref keys must load with thinking collapsed
+        // (matches CC) and read/search groups expanded (CC {...DEFAULT, ...disk}
         // spread shape). Explicit disk values must still win.
         let merged = load_global_config_from_value(serde_json::json!({}))
             .expect("empty disk config should merge with factory defaults");
-        assert_eq!(merged.expand_thinking, Some(true));
+        assert_eq!(merged.expand_thinking, Some(false));
         assert_eq!(merged.expand_collapsed_read_search, Some(true));
 
         let overridden = load_global_config_from_value(serde_json::json!({
-            "expandThinking": false,
+            "expandThinking": true,
             "expandCollapsedReadSearch": false,
         }))
         .expect("disk overrides should merge");
-        assert_eq!(overridden.expand_thinking, Some(false));
+        assert_eq!(overridden.expand_thinking, Some(true));
         assert_eq!(overridden.expand_collapsed_read_search, Some(false));
     }
 

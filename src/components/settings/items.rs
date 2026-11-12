@@ -165,7 +165,7 @@ pub fn build_items(config: &GlobalConfig, settings: &SettingsJson) -> Vec<Settin
         SettingItem {
             id: "expandThinking",
             label: "Expand thinking blocks",
-            value: SettingValue::Bool(config.expand_thinking.unwrap_or(true)),
+            value: SettingValue::Bool(config.expand_thinking.unwrap_or(false)),
             search_text: "thinking expand collapse ctrl+o reasoning",
             visible: true,
         },

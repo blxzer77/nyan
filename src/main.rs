@@ -438,9 +438,10 @@ fn build_initial_app_state_with_agents(
     };
     // Nyan extension (no CC counterpart) — user-authorized L2 (v3 ruling,
     // 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
-    // Unwraps mirror the authoritative factory defaults (both true); the merge
-    // path fills disk-absent keys from the factory, so these are safety nets.
-    initial.expand_thinking = global_config.expand_thinking.unwrap_or(true);
+    // Unwraps mirror the authoritative factory defaults (thinking collapsed,
+    // read/search expanded); the merge path fills disk-absent keys from the
+    // factory, so these are safety nets.
+    initial.expand_thinking = global_config.expand_thinking.unwrap_or(false);
     initial.expand_collapsed_read_search =
         global_config.expand_collapsed_read_search.unwrap_or(true);
     // Maps to: CC main.tsx:4069-4070 resolved agent + definitions fields.
