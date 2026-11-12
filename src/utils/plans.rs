@@ -407,6 +407,8 @@ mod tests {
 
     #[test]
     fn plan_file_path_uses_session_slug_and_optional_agent_suffix() {
+        // set_session_id also clears the process-wide session project dir.
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _guard = test_plan_state_lock();
         let session_id = format!("plan-test-{}", uuid::Uuid::new_v4());
         set_plan_slug(&session_id, "calm-river");

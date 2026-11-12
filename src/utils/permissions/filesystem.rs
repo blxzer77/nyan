@@ -1943,6 +1943,7 @@ mod tests {
 
     #[test]
     fn matcher_uses_ignore_negation_double_star_and_source_precedence() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         // Matcher roots resolve against the project dir.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = crate::bootstrap::state::get_original_cwd();
@@ -2016,6 +2017,8 @@ mod tests {
 
     #[test]
     fn nyan_skill_scope_is_narrow_and_rejects_glob_names() {
+        // get_nyan_skill_scope re-reads the original cwd captured here.
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = crate::bootstrap::state::get_original_cwd();
         assert_eq!(
             get_nyan_skill_scope(
@@ -2237,6 +2240,8 @@ mod tests {
     }
     #[test]
     fn session_plan_file_matches_main_and_agent_plan_names() {
+        // set_session_id also clears the process-wide session project dir.
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _guard = crate::utils::plans::test_plan_state_lock();
         let session_id = format!("plan-match-{}", uuid::Uuid::new_v4());
         let previous_session = crate::bootstrap::state::get_session_id();

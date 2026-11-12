@@ -1852,6 +1852,7 @@ mod tests {
 
     #[test]
     fn writes_inside_the_working_directory_pass_in_accept_edits() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         // "Inside the working directory" is judged against the project dir.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let context = ToolPermissionContext {

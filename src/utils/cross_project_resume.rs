@@ -53,6 +53,7 @@ mod tests {
 
     #[test]
     fn check_cross_project_resume_matches_official_worktree_gate_and_command() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let previous_original_cwd = crate::bootstrap::state::get_original_cwd();
         crate::bootstrap::state::set_original_cwd("/repo");
         let worktree_selection = SessionSelection {

@@ -1257,6 +1257,9 @@ mod tests {
         // conversationRecovery.ts:540–556 recovers from log.messages before
         // deserializeMessages filters unresolved ExitPlanMode tool_use blocks.
         let _env = TEST_ENV_LOCK.lock().unwrap();
+        // The plans-directory cache and the injected FS backend read below are
+        // serialised by the plan-state lock, not by TEST_ENV_LOCK.
+        let _plan = crate::utils::plans::test_plan_state_lock();
         let root = std::env::temp_dir().join(format!("resume-plan-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);

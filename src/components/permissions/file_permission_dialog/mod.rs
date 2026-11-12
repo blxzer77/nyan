@@ -630,6 +630,7 @@ mod tests {
 
     #[test]
     fn file_permission_options_match_official_read_write_and_nyan_folder_labels() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         // Fixtures are real in-repo paths; the project dir must agree.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = std::env::current_dir().unwrap();
@@ -704,6 +705,7 @@ mod tests {
 
     #[test]
     fn file_permission_suggestions_match_official_session_updates() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         // Fixtures are real in-repo paths; the project dir must agree.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd_file = std::env::current_dir().unwrap().join("src/main.rs");
@@ -770,6 +772,7 @@ mod tests {
 
     #[test]
     fn file_permission_dialog_renders_official_shell_and_footer() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         // Fixtures are real in-repo paths; the project dir must agree.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let path = std::env::current_dir().unwrap().join("src/main.rs");
