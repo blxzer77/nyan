@@ -179,7 +179,10 @@ struct UseSizeImpl {
 impl Hook for UseSizeImpl {
     fn pre_component_draw(&mut self, drawer: &mut ComponentDrawer) {
         let s = drawer.size();
-        self.size = (s.width, s.height);
+        self.size = (
+            u16::try_from(s.width).unwrap_or(u16::MAX),
+            u16::try_from(s.height).unwrap_or(u16::MAX),
+        );
     }
 }
 

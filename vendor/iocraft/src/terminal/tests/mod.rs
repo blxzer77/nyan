@@ -936,7 +936,7 @@ fn test_fullscreen_clear_preserves_output_above() {
 fn new_fullscreen_term(
     dest: TestWriter,
     prev_canvas_top_row: u16,
-    prev_canvas_height: u16,
+    prev_canvas_height: usize,
 ) -> StdTerminal<'static> {
     StdTerminal {
         input_is_terminal: false,
@@ -964,13 +964,13 @@ fn new_fullscreen_term(
     }
 }
 
-fn new_inline_term(dest: TestWriter, prev_canvas_height: u16) -> StdTerminal<'static> {
+fn new_inline_term(dest: TestWriter, prev_canvas_height: usize) -> StdTerminal<'static> {
     new_inline_term_with_size(dest, prev_canvas_height, (10, 10))
 }
 
 fn new_inline_term_with_size(
     dest: TestWriter,
-    prev_canvas_height: u16,
+    prev_canvas_height: usize,
     term_size: (u16, u16),
 ) -> StdTerminal<'static> {
     StdTerminal {

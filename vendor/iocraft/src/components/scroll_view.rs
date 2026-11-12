@@ -1869,11 +1869,11 @@ struct MeasureHeightHook {
 
 impl Hook for MeasureHeightHook {
     fn pre_component_draw(&mut self, drawer: &mut ComponentDrawer) {
-        let h = drawer.size().height;
+        let h = u16::try_from(drawer.size().height).unwrap_or(u16::MAX);
         if self.out.try_get() != Some(h) {
             self.out.set(h);
         }
-        let top = drawer.canvas_position().y.max(0) as u16;
+        let top = u16::try_from(drawer.canvas_position().y.max(0)).unwrap_or(u16::MAX);
         if self.out_top.try_get() != Some(top) {
             self.out_top.set(top);
         }
@@ -1885,8 +1885,8 @@ struct ScrollHintHook {
     scroll_offset: i32,
     enabled: bool,
     prev_scroll_offset: Option<i32>,
-    prev_top: Option<i16>,
-    prev_height: Option<u16>,
+    prev_top: Option<i32>,
+    prev_height: Option<u32>,
 }
 
 impl Hook for ScrollHintHook {
@@ -1899,7 +1899,7 @@ impl Hook for ScrollHintHook {
             {
                 let delta = self.scroll_offset - prev_offset;
                 let same_region = prev_top == pos.y && prev_height == size.height;
-                if same_region && delta != 0 && delta.unsigned_abs() < size.height as u32 {
+                if same_region && delta != 0 && delta.unsigned_abs() < size.height {
                     drawer.set_scroll_hint(delta);
                 }
             }
@@ -2531,7 +2531,7 @@ struct ContentHeightHook {
 impl Hook for ContentHeightHook {
     fn pre_component_draw(&mut self, drawer: &mut ComponentDrawer) {
         if let Some(mut out) = self.out {
-            let h = drawer.size().height;
+            let h = u16::try_from(drawer.size().height).unwrap_or(u16::MAX);
             let old_h = out.try_get().unwrap_or(0);
             if self.pinned_to_bottom && self.selection.is_enabled() && old_h > 0 && h > old_h {
                 if let (Some(viewport_top), Some(viewport_height)) =

@@ -299,7 +299,7 @@ type EventCallback = Box<dyn FnMut(&PropagatedTerminalEvent) + Send + 'static>;
 
 struct UseTerminalEventsImpl {
     events: Option<TerminalEvents>,
-    component_location: (Point<i16>, Size<u16>),
+    component_location: (Point<i32>, Size<u32>),
     in_component: bool,
     propagation_aware: bool,
     observe_stopped: bool,
@@ -335,10 +335,10 @@ impl Hook for UseTerminalEventsImpl {
                 let (location, size) = self.component_location;
                 match event {
                     TerminalEvent::FullscreenMouse(event) => {
-                        if event.row as i16 >= location.y && event.column as i16 >= location.x {
-                            let row = (event.row as i16 - location.y) as u16;
-                            let column = (event.column as i16 - location.x) as u16;
-                            if row < size.height && column < size.width {
+                        let row = u16::try_from(event.row as i32 - location.y);
+                        let column = u16::try_from(event.column as i32 - location.x);
+                        if let (Ok(row), Ok(column)) = (row, column) {
+                            if (row as u32) < size.height && (column as u32) < size.width {
                                 if let Some(f) = &mut self.f {
                                     f(&PropagatedTerminalEvent::new(
                                         TerminalEvent::FullscreenMouse(FullscreenMouseEvent {

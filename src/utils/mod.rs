@@ -88,6 +88,8 @@ pub mod image_store;
 pub mod immediate_command;
 pub mod intl;
 pub mod iocraft_color;
+#[cfg(test)]
+mod iocraft_tall_canvas_tests;
 pub mod js_sort;
 pub mod json;
 pub mod kill_ring;

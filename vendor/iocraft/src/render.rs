@@ -821,9 +821,9 @@ pub(crate) fn set_retained_blit_for_tests(enabled: Option<bool>) {
 /// utilize during the draw phase.
 pub struct ComponentDrawer<'a> {
     node_id: NodeId,
-    node_position: Point<i16>,
-    node_size: Size<u16>,
-    clip_rect: Rect<u16>,
+    node_position: Point<i32>,
+    node_size: Size<u32>,
+    clip_rect: Rect<u32>,
     vertical_clip_active: bool,
     skip_children: bool,
     context: DrawContext<'a>,
@@ -849,8 +849,8 @@ impl ComponentDrawer<'_> {
             if layout.size.width <= 0.0 || layout.size.height <= 0.0 {
                 continue;
             }
-            let x = self.node_position.x as i32 + layout.location.x as i32;
-            let y = self.node_position.y as i32 + layout.location.y as i32;
+            let x = self.node_position.x + layout.location.x as i32;
+            let y = self.node_position.y + layout.location.y as i32;
             left = left.min(x);
             top = top.min(y);
             right = right.max(x + layout.size.width as i32);
@@ -903,10 +903,10 @@ impl ComponentDrawer<'_> {
         // Clipped subtrees drew partially last frame; their cells cannot be
         // assumed representative of the full subtree. Fall back.
         if self.vertical_clip_active
-            || (x as u16) < self.clip_rect.left
-            || ((x + width) as u16) > self.clip_rect.right
-            || (y as u16) < self.clip_rect.top
-            || ((y + height) as u16) > self.clip_rect.bottom
+            || x < self.clip_rect.left as usize
+            || x + width > self.clip_rect.right as usize
+            || y < self.clip_rect.top as usize
+            || y + height > self.clip_rect.bottom as usize
         {
             return false;
         }
@@ -943,7 +943,7 @@ impl ComponentDrawer<'_> {
     }
 
     /// Gets the size of the component.
-    pub fn size(&self) -> Size<u16> {
+    pub fn size(&self) -> Size<u32> {
         self.node_size
     }
 
@@ -952,7 +952,7 @@ impl ComponentDrawer<'_> {
     /// This mirrors CC Ink's `get-max-width.ts` helper, generalized to both
     /// axes: content width/height are the computed node size minus computed
     /// padding and border. Values saturate at zero.
-    pub fn content_size(&self) -> Size<u16> {
+    pub fn content_size(&self) -> Size<u32> {
         let layout = self.layout();
         Size {
             width: (layout.size.width
@@ -960,18 +960,18 @@ impl ComponentDrawer<'_> {
                 - layout.padding.right
                 - layout.border.left
                 - layout.border.right)
-                .max(0.0) as u16,
+                .max(0.0) as u32,
             height: (layout.size.height
                 - layout.padding.top
                 - layout.padding.bottom
                 - layout.border.top
                 - layout.border.bottom)
-                .max(0.0) as u16,
+                .max(0.0) as u32,
         }
     }
 
     /// Gets the visible component size inside the current canvas clip.
-    pub fn visible_size(&self) -> Size<u16> {
+    pub fn visible_size(&self) -> Size<u32> {
         let x = self.node_position.x as isize;
         let y = self.node_position.y as isize;
         let node_right = x + self.node_size.width as isize;
@@ -981,8 +981,8 @@ impl ComponentDrawer<'_> {
         let right = node_right.min(self.clip_rect.right as isize).max(0);
         let bottom = node_bottom.min(self.clip_rect.bottom as isize).max(0);
         Size {
-            width: (right - left).max(0) as u16,
-            height: (bottom - top).max(0) as u16,
+            width: (right - left).max(0) as u32,
+            height: (bottom - top).max(0) as u32,
         }
     }
 
@@ -993,21 +993,21 @@ impl ComponentDrawer<'_> {
     /// an overflowing cross-axis width that is wider than the terminal canvas;
     /// wrapping against this clamped width keeps rendered line count consistent
     /// with the cells that can actually exist in the screen buffer.
-    pub fn remaining_canvas_size(&self) -> Size<u16> {
+    pub fn remaining_canvas_size(&self) -> Size<u32> {
         let x = self.node_position.x as isize;
         let y = self.node_position.y as isize;
         Size {
             width: (self.context.canvas.width() as isize - x)
                 .max(0)
-                .min(self.node_size.width as isize) as u16,
+                .min(self.node_size.width as isize) as u32,
             height: (self.context.canvas.height() as isize - y)
                 .max(0)
-                .min(self.node_size.height as isize) as u16,
+                .min(self.node_size.height as isize) as u32,
         }
     }
 
     /// Gets the position of the component relative to the top left of the canvas.
-    pub fn canvas_position(&self) -> Point<i16> {
+    pub fn canvas_position(&self) -> Point<i32> {
         self.node_position
     }
 
@@ -1251,8 +1251,8 @@ impl ComponentDrawer<'_> {
         self.node_id = node_id;
         let layout = self.layout();
         let mut next_position = Point {
-            x: self.node_position.x + layout.location.x as i16,
-            y: self.node_position.y + layout.location.y as i16,
+            x: self.node_position.x + layout.location.x as i32,
+            y: self.node_position.y + layout.location.y as i32,
         };
         if next_position.y < 0
             && self.style().position == Position::Absolute
@@ -1268,8 +1268,8 @@ impl ComponentDrawer<'_> {
         }
         self.node_position = next_position;
         self.node_size = Size {
-            width: layout.size.width as u16,
-            height: layout.size.height as u16,
+            width: layout.size.width as u32,
+            height: layout.size.height as u32,
         };
         f(self);
         let requested_skip_children = self.skip_children;
@@ -1330,10 +1330,10 @@ impl ComponentDrawer<'_> {
             self.clip_rect.left = self
                 .clip_rect
                 .left
-                .max((self.node_position.x + layout.border.left as i16).max(0) as u16);
+                .max((self.node_position.x + layout.border.left as i32).max(0) as u32);
             self.clip_rect.right = self.clip_rect.right.min(
-                (self.node_position.x + self.node_size.width as i16 - layout.border.right as i16)
-                    .max(0) as u16,
+                (self.node_position.x + self.node_size.width as i32 - layout.border.right as i32)
+                    .max(0) as u32,
             );
         }
         if overflow.y != Overflow::Visible {
@@ -1341,10 +1341,10 @@ impl ComponentDrawer<'_> {
             self.clip_rect.top = self
                 .clip_rect
                 .top
-                .max((self.node_position.y + layout.border.top as i16).max(0) as u16);
+                .max((self.node_position.y + layout.border.top as i32).max(0) as u32);
             self.clip_rect.bottom = self.clip_rect.bottom.min(
-                (self.node_position.y + self.node_size.height as i16 - layout.border.bottom as i16)
-                    .max(0) as u16,
+                (self.node_position.y + self.node_size.height as i32 - layout.border.bottom as i32)
+                    .max(0) as u32,
             );
         }
         f(self);
@@ -1558,10 +1558,10 @@ impl std::ops::DerefMut for LayoutEngine {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct LayoutSnapshot {
-    x: i16,
-    y: i16,
-    width: u16,
-    height: u16,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
 }
 
 impl LayoutSnapshot {
@@ -2030,10 +2030,10 @@ impl<'a> Tree<'a> {
             out.insert(
                 node_id,
                 LayoutSnapshot {
-                    x: layout.location.x as i16,
-                    y: layout.location.y as i16,
-                    width: layout.size.width as u16,
-                    height: layout.size.height as u16,
+                    x: layout.location.x as i32,
+                    y: layout.location.y as i32,
+                    width: layout.size.width as u32,
+                    height: layout.size.height as u32,
                 },
             );
         }

@@ -277,18 +277,32 @@ impl Drop for ResumeSignalListener {
 
 pub(super) fn clear_canvas_inline(
     dest: &mut (impl Write + ?Sized),
-    prev_canvas_height: u16,
+    prev_canvas_height: usize,
 ) -> io::Result<()> {
-    let lines_to_rewind = prev_canvas_height - 1;
+    let lines_to_rewind = prev_canvas_height.saturating_sub(1);
     if lines_to_rewind == 0 {
-        dest.queue(cursor::MoveToColumn(0))?
-            .queue(terminal::Clear(terminal::ClearType::FromCursorDown))?;
-        Ok(())
+        dest.queue(cursor::MoveToColumn(0))?;
     } else {
-        dest.queue(cursor::MoveToPreviousLine(lines_to_rewind as _))?
-            .queue(terminal::Clear(terminal::ClearType::FromCursorDown))?;
-        Ok(())
+        queue_line_moves(dest, lines_to_rewind, cursor::MoveToPreviousLine)?;
     }
+    dest.queue(terminal::Clear(terminal::ClearType::FromCursorDown))?;
+    Ok(())
+}
+
+/// Queues a relative line move of `rows`, split into steps that fit the
+/// command's `u16` count. Canvas heights are `usize`; a transcript taller than
+/// `u16::MAX` rows must not wrap the count.
+fn queue_line_moves<C: crossterm::Command>(
+    dest: &mut (impl Write + ?Sized),
+    mut rows: usize,
+    command: fn(u16) -> C,
+) -> io::Result<()> {
+    while rows > 0 {
+        let step = rows.min(u16::MAX as usize);
+        dest.queue(command(step as u16))?;
+        rows -= step;
+    }
+    Ok(())
 }
 
 /// Global bookkeeping for the panic hook that restores the terminal to a usable state
@@ -400,7 +414,7 @@ pub(super) struct StdTerminal<'a> {
     pub(super) enabled_keyboard_enhancement: bool,
     pub(super) keyboard_enhancement_flags: event::KeyboardEnhancementFlags,
     pub(super) prev_canvas_top_row: u16,
-    pub(super) prev_canvas_height: u16,
+    pub(super) prev_canvas_height: usize,
     pub(super) prev_size_on_write: Option<(u16, u16)>,
     pub(super) size: Option<(u16, u16)>,
     /// Whether the physical cursor is currently shown (via a cursor declaration).
@@ -409,7 +423,7 @@ pub(super) struct StdTerminal<'a> {
     /// moved by the last cursor declaration. The row-diff logic in `write_canvas` and
     /// `clear_canvas` assumes the cursor sits on the canvas's last row, so this
     /// displacement must be undone (see `restore_cursor_baseline`) before either runs.
-    pub(super) cursor_displacement_rows: u16,
+    pub(super) cursor_displacement_rows: usize,
     /// Blank terminal rows between the inline canvas's last row and the physical
     /// screen bottom. Shrinking frames clear trailing rows without un-scrolling,
     /// so the canvas bottom drifts up from the screen bottom; growing frames
@@ -418,7 +432,7 @@ pub(super) struct StdTerminal<'a> {
     /// on the screen bottom, so this gap must be added to the frame height there
     /// — otherwise MoveToPreviousLine gets clamped at the viewport top and every
     /// subsequent relative write lands one row off (stale border artifacts).
-    pub(super) inline_bottom_gap: u16,
+    pub(super) inline_bottom_gap: usize,
     /// Whether the last inline canvas write ended in the terminal's right-margin
     /// auto-wrap pending state. VT terminals typically delay wrapping until the next
     /// printable byte; before relative cursor movement we resolve that pending state
@@ -708,7 +722,7 @@ impl TerminalImpl for StdTerminal<'_> {
                 } else {
                     self.restore_cursor_baseline()?;
                     let last_row = self.prev_canvas_height.saturating_sub(1);
-                    let rows_up = last_row.saturating_sub(y);
+                    let rows_up = last_row.saturating_sub(decl.y);
                     self.move_inline_to_previous_line(rows_up)?;
                     self.move_inline_to_column(x)?;
                     self.cursor_displacement_rows = rows_up;
@@ -766,7 +780,7 @@ impl TerminalImpl for StdTerminal<'_> {
         }
 
         if let Some(size) = self.size {
-            if self.prev_canvas_height >= size.1 {
+            if self.prev_canvas_height >= size.1 as usize {
                 // A viewport-tall inline canvas cannot be cleared reliably with
                 // relative line erases: some rows may already be in native
                 // scrollback. Clear the visible screen and repaint from a fresh
@@ -855,7 +869,7 @@ impl TerminalImpl for StdTerminal<'_> {
                 self.prev_canvas_top_row = 0;
                 self.dest.queue(cursor::MoveTo(0, 0))?;
             }
-            self.prev_canvas_height = canvas.height() as _;
+            self.prev_canvas_height = canvas.height();
             self.prev_size_on_write = self.size;
             if self.fullscreen {
                 self.write_fullscreen_canvas_absolute(canvas)?;
@@ -876,7 +890,7 @@ impl TerminalImpl for StdTerminal<'_> {
                 // cleared with `\033[K` and oddly may re-enter the terminal as visible characters
                 // are cleared.
                 self.clear_fullscreen_screen()?;
-                self.prev_canvas_height = canvas.height() as _;
+                self.prev_canvas_height = canvas.height();
                 self.prev_canvas_top_row = 0;
                 self.prev_size_on_write = self.size;
                 self.write_fullscreen_canvas_absolute(canvas)?;
@@ -931,13 +945,13 @@ impl TerminalImpl for StdTerminal<'_> {
             if wrote_anything {
                 self.park_fullscreen_cursor_after_write(canvas.height())?;
             }
-            self.prev_canvas_height = canvas.height() as _;
+            self.prev_canvas_height = canvas.height();
             return Ok(());
         }
 
         if self.inline_force_full_rewrite_next_diff || self.inline_resize_requires_full_rewrite() {
             self.clear_inline_for_full_rewrite(prev.height(), canvas.height())?;
-            self.prev_canvas_height = canvas.height() as _;
+            self.prev_canvas_height = canvas.height();
             self.prev_size_on_write = self.size;
             self.write_inline_canvas_without_final_newline(canvas)?;
             self.inline_force_full_rewrite_next_diff = false;
@@ -948,13 +962,13 @@ impl TerminalImpl for StdTerminal<'_> {
             if !self.inline_shrink_requires_full_rewrite(prev.height(), canvas.height())
                 && self.write_inline_full_repaint(prev, canvas)?
             {
-                self.prev_canvas_height = canvas.height() as _;
+                self.prev_canvas_height = canvas.height();
                 self.prev_size_on_write = self.size;
                 return Ok(());
             }
 
             self.clear_inline_for_full_rewrite(prev.height(), canvas.height())?;
-            self.prev_canvas_height = canvas.height() as _;
+            self.prev_canvas_height = canvas.height();
             self.prev_size_on_write = self.size;
             self.write_inline_canvas_without_final_newline(canvas)?;
             self.inline_force_full_rewrite_next_diff = false;
@@ -968,7 +982,7 @@ impl TerminalImpl for StdTerminal<'_> {
 
         if self.inline_shrink_requires_full_rewrite(prev_height, new_height) {
             self.clear_inline_for_full_rewrite(prev_height, new_height)?;
-            self.prev_canvas_height = canvas.height() as _;
+            self.prev_canvas_height = canvas.height();
             self.prev_size_on_write = self.size;
             self.write_inline_canvas_without_final_newline(canvas)?;
             self.inline_force_full_rewrite_next_diff = false;
@@ -1010,7 +1024,7 @@ impl TerminalImpl for StdTerminal<'_> {
                     continue;
                 }
                 self.clear_inline_for_full_rewrite(prev_height, new_height)?;
-                self.prev_canvas_height = canvas.height() as _;
+                self.prev_canvas_height = canvas.height();
                 self.prev_size_on_write = self.size;
                 self.write_inline_canvas_without_final_newline(canvas)?;
                 self.inline_force_full_rewrite_next_diff = false;
@@ -1018,7 +1032,7 @@ impl TerminalImpl for StdTerminal<'_> {
             }
             let row_move_left_at_col0 = match y.cmp(&current_y) {
                 std::cmp::Ordering::Less => {
-                    self.move_inline_to_previous_line((current_y - y) as u16)?;
+                    self.move_inline_to_previous_line(current_y - y)?;
                     true
                 }
                 std::cmp::Ordering::Greater => {
@@ -1029,19 +1043,17 @@ impl TerminalImpl for StdTerminal<'_> {
                     // scrollback when the cursor is at the bottom of the screen.
                     let last_existing_line = prev_height.saturating_sub(1).max(current_y);
                     if y <= last_existing_line {
-                        self.move_inline_to_next_line((y - current_y) as u16)?;
+                        self.move_inline_to_next_line(y - current_y)?;
                     } else {
                         let move_to_last = last_existing_line.saturating_sub(current_y);
                         if move_to_last > 0 {
-                            self.move_inline_to_next_line(move_to_last as u16)?;
+                            self.move_inline_to_next_line(move_to_last)?;
                         }
                         let new_lines = y - last_existing_line;
                         // New rows first re-occupy blank rows left by earlier
                         // shrinks (the \r\n is a plain cursor move there — no
                         // scrolling) before genuinely extending the screen.
-                        self.inline_bottom_gap = self
-                            .inline_bottom_gap
-                            .saturating_sub(new_lines.min(u16::MAX as usize) as u16);
+                        self.inline_bottom_gap = self.inline_bottom_gap.saturating_sub(new_lines);
                         for _ in 0..new_lines {
                             self.write_inline_newline()?;
                         }
@@ -1067,10 +1079,10 @@ impl TerminalImpl for StdTerminal<'_> {
         let target_y = new_height.saturating_sub(1);
         match target_y.cmp(&current_y) {
             std::cmp::Ordering::Greater => {
-                self.move_inline_to_next_line((target_y - current_y) as u16)?;
+                self.move_inline_to_next_line(target_y - current_y)?;
             }
             std::cmp::Ordering::Less => {
-                self.move_inline_to_previous_line((current_y - target_y) as u16)?;
+                self.move_inline_to_previous_line(current_y - target_y)?;
             }
             std::cmp::Ordering::Equal => {}
         }
@@ -1081,9 +1093,9 @@ impl TerminalImpl for StdTerminal<'_> {
         if new_height < prev_height {
             self.inline_bottom_gap = self
                 .inline_bottom_gap
-                .saturating_add((prev_height - new_height).min(u16::MAX as usize) as u16);
+                .saturating_add(prev_height - new_height);
         }
-        self.prev_canvas_height = new_height as _;
+        self.prev_canvas_height = new_height;
         Ok(())
     }
 
@@ -1357,7 +1369,7 @@ impl<'a> StdTerminal<'a> {
         // screen bottom: a shrink whose cleared span (plus the blank rows an
         // earlier shrink already left) would run past the bottom cannot be
         // patched row-by-row. Clear and repaint instead.
-        if (prev_height - new_height) + self.inline_bottom_gap as usize >= rows {
+        if (prev_height - new_height) + self.inline_bottom_gap >= rows {
             return true;
         }
         if rows == 0 {
@@ -1389,7 +1401,7 @@ impl<'a> StdTerminal<'a> {
         // rows are physically on screen. Ignoring the gap would let the diff
         // target rows that already scrolled out, and the resulting clamped
         // MoveToPreviousLine would misalign every subsequent write.
-        let physical_height = prev_height + self.inline_bottom_gap as usize;
+        let physical_height = prev_height + self.inline_bottom_gap;
         let viewport_y = physical_height.saturating_sub(rows);
         let cursor_restore_scroll = usize::from(physical_height >= rows);
         viewport_y + cursor_restore_scroll
@@ -1428,20 +1440,14 @@ impl<'a> StdTerminal<'a> {
         Ok(())
     }
 
-    fn move_inline_to_previous_line(&mut self, rows: u16) -> io::Result<()> {
+    fn move_inline_to_previous_line(&mut self, rows: usize) -> io::Result<()> {
         self.resolve_inline_pending_wrap()?;
-        if rows > 0 {
-            self.dest.queue(cursor::MoveToPreviousLine(rows))?;
-        }
-        Ok(())
+        queue_line_moves(&mut *self.dest, rows, cursor::MoveToPreviousLine)
     }
 
-    fn move_inline_to_next_line(&mut self, rows: u16) -> io::Result<()> {
+    fn move_inline_to_next_line(&mut self, rows: usize) -> io::Result<()> {
         self.resolve_inline_pending_wrap()?;
-        if rows > 0 {
-            self.dest.queue(cursor::MoveToNextLine(rows))?;
-        }
-        Ok(())
+        queue_line_moves(&mut *self.dest, rows, cursor::MoveToNextLine)
     }
 
     fn move_inline_to_column(&mut self, column: u16) -> io::Result<()> {
@@ -1512,23 +1518,21 @@ impl<'a> StdTerminal<'a> {
 
             match y.cmp(&current_y) {
                 std::cmp::Ordering::Less => {
-                    self.move_inline_to_previous_line((current_y - y) as u16)?;
+                    self.move_inline_to_previous_line(current_y - y)?;
                 }
                 std::cmp::Ordering::Greater => {
                     let last_existing_line = prev_height.saturating_sub(1).max(current_y);
                     if y <= last_existing_line {
-                        self.move_inline_to_next_line((y - current_y) as u16)?;
+                        self.move_inline_to_next_line(y - current_y)?;
                     } else {
                         let move_to_last = last_existing_line.saturating_sub(current_y);
                         if move_to_last > 0 {
-                            self.move_inline_to_next_line(move_to_last as u16)?;
+                            self.move_inline_to_next_line(move_to_last)?;
                         }
                         let new_lines = y - last_existing_line;
                         // Same gap bookkeeping as the row-diff writer: new rows
                         // re-occupy blank shrink leftovers before scrolling.
-                        self.inline_bottom_gap = self
-                            .inline_bottom_gap
-                            .saturating_sub(new_lines.min(u16::MAX as usize) as u16);
+                        self.inline_bottom_gap = self.inline_bottom_gap.saturating_sub(new_lines);
                         for _ in 0..new_lines {
                             self.write_inline_newline()?;
                         }
@@ -1552,10 +1556,10 @@ impl<'a> StdTerminal<'a> {
         let target_y = new_height.saturating_sub(1);
         match target_y.cmp(&current_y) {
             std::cmp::Ordering::Greater => {
-                self.move_inline_to_next_line((target_y - current_y) as u16)?;
+                self.move_inline_to_next_line(target_y - current_y)?;
             }
             std::cmp::Ordering::Less => {
-                self.move_inline_to_previous_line((current_y - target_y) as u16)?;
+                self.move_inline_to_previous_line(current_y - target_y)?;
             }
             std::cmp::Ordering::Equal => {}
         }
@@ -1563,7 +1567,7 @@ impl<'a> StdTerminal<'a> {
         if new_height < prev_height {
             self.inline_bottom_gap = self
                 .inline_bottom_gap
-                .saturating_add((prev_height - new_height).min(u16::MAX as usize) as u16);
+                .saturating_add(prev_height - new_height);
         }
 
         Ok(true)
@@ -1574,11 +1578,12 @@ impl<'a> StdTerminal<'a> {
     /// cursor sitting there at the start of every write/clear.
     pub(super) fn restore_cursor_baseline(&mut self) -> io::Result<()> {
         self.resolve_inline_pending_wrap()?;
-        if self.cursor_displacement_rows > 0 {
-            self.dest
-                .queue(cursor::MoveToNextLine(self.cursor_displacement_rows))?;
-            self.cursor_displacement_rows = 0;
-        }
+        queue_line_moves(
+            &mut *self.dest,
+            self.cursor_displacement_rows,
+            cursor::MoveToNextLine,
+        )?;
+        self.cursor_displacement_rows = 0;
         Ok(())
     }
 

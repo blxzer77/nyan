@@ -24,8 +24,8 @@ pub struct CachedSubtreeProps<'a> {
 
 struct CachedSubtreeSnapshot {
     key: String,
-    width: u16,
-    height: u16,
+    width: u32,
+    height: u32,
     canvas: Canvas,
 }
 
