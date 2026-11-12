@@ -122,7 +122,7 @@ pub fn renderable_messages_from_entries(entries: &[serde_json::Value]) -> Vec<Re
 /// [`renderable_messages_from_entries`]).
 ///
 /// The deserialize-stage filters (`filterUnresolvedToolUses`, orphan
-/// thinking, whitespace assistants, sentinel insertion —
+/// thinking, whitespace assistants, interruption detection —
 /// conversationRecovery.ts:187-245) are NOT applied here: they run once in
 /// `conversation::deserialize_messages_with_interrupt_detection`, which
 /// produces `ResumeTarget.entries` (`commands/resume`), exactly like CC's
@@ -1664,14 +1664,12 @@ mod tests {
         // (CC conversationRecovery.ts:187-189), before the parser. That leaves
         // a trailing tool_result whose tool is not one of the three terminal
         // ones (conversationRecovery.ts:364-368), so the stage reads it as
-        // `interrupted_turn` and appends the continuation user message
-        // (:213-225) plus the NO_RESPONSE_REQUESTED sentinel after it
-        // (:231-245) — four rows. The sentinel null-renders at the component
-        // (AssistantTextMessage.tsx:91-92).
+        // `interrupted_turn`. @nyan: no continuation/sentinel rows are
+        // appended (see `conversation::detect_and_append_sentinel`).
         let messages = renderable_messages_from_entries(
             &crate::utils::conversation::deserialize_messages(entries),
         );
-        assert_eq!(messages.len(), 4);
+        assert_eq!(messages.len(), 2);
         let (_, description) = recovered_tool_rows(std::slice::from_ref(&messages[0]))
             .into_iter()
             .next()

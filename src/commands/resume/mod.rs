@@ -819,31 +819,23 @@ mod tests {
             .filter_map(|entry| entry.get("uuid").and_then(|value| value.as_str()))
             .collect::<Vec<_>>();
 
-        assert_eq!(&uuids[..4], &["a1", "a2", "r1", "r2"]);
-        assert!(loaded.entries.iter().any(|entry| {
-            entry.get("isMeta").and_then(|value| value.as_bool()) == Some(true)
-                && entry
-                    .get("message")
-                    .and_then(|message| message.get("content"))
-                    .and_then(|content| content.as_array())
-                    .and_then(|blocks| blocks.first())
-                    .and_then(|block| block.get("text"))
-                    .and_then(|text| text.as_str())
-                    == Some(conversation::CONTINUATION_MESSAGE)
-        }));
-        assert!(loaded.entries.iter().any(|entry| {
-            entry
-                .get("message")
-                .and_then(|message| message.get("content"))
-                .and_then(|content| content.as_array())
-                .is_some_and(|blocks| {
-                    blocks.iter().any(|block| {
-                        block.get("type").and_then(|value| value.as_str()) == Some("text")
-                            && block.get("text").and_then(|value| value.as_str())
-                                == Some(conversation::NO_RESPONSE_REQUESTED)
-                    })
-                })
-        }));
+        // Interrupted after the tool_results: no synthetic continuation or
+        // "No response requested." sentinel is added to the resumed transcript.
+        assert_eq!(uuids, ["a1", "a2", "r1", "r2"]);
+        let texts = loaded
+            .entries
+            .iter()
+            .filter_map(|entry| entry.pointer("/message/content")?.as_array())
+            .flatten()
+            .filter_map(|block| block.get("text")?.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            !texts.iter().any(|text| matches!(
+                *text,
+                "Continue from where you left off." | crate::utils::messages::NO_RESPONSE_REQUESTED
+            )),
+            "{texts:?}"
+        );
     }
 
     #[test]

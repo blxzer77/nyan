@@ -9807,10 +9807,17 @@ mod tests {
         clear_session_metadata();
         clear_session_messages_cache();
         crate::bootstrap::state::switch_session(&id, Some(restore.root.clone()));
-        let recovered = crate::utils::conversation::deserialize_messages(vec![json!({
-            "type":"user", "uuid":"interrupted-user", "message":{"role":"user","content":"hello"},
-            "timestamp":"2026-09-12T00:00:00.000Z"
-        })]);
+        // Resume no longer synthesizes this sentinel, but transcripts written
+        // before that change still carry it; it must keep round-tripping.
+        let recovered = vec![
+            json!({
+                "type":"user", "uuid":"interrupted-user", "message":{"role":"user","content":"hello"},
+                "timestamp":"2026-09-12T00:00:00.000Z"
+            }),
+            crate::utils::messages::create_assistant_message_value(
+                crate::utils::messages::NO_RESPONSE_REQUESTED.to_string(),
+            ),
+        ];
         let raw = recovered.last().unwrap();
         let typed = crate::utils::conversation::into_typed_messages(recovered.clone());
         let sentinel = typed.last().unwrap();

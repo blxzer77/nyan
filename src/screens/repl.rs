@@ -1633,6 +1633,40 @@ fn append_prompt_submit_result(
     schedule_pending_query_messages(pending_responses, result.pending);
 }
 
+fn has_turn_interruption(stores: &ResumeRestoreStores) -> bool {
+    stores.turn_interruption_state
+        == Some(crate::utils::conversation::TurnInterruptionState::InterruptedPrompt)
+}
+
+/// Whether a query on `messages` as-is continues a turn: the last message the
+/// API would receive must be a user prompt/tool_result, never an assistant
+/// reply (which would go out as a prefill). System, progress and hook rows are
+/// dropped by `normalize_messages_for_api` and attachments fold into the
+/// neighbouring user message, so none of them decide it.
+fn history_awaits_assistant(messages: &[Message]) -> bool {
+    messages
+        .iter()
+        .rev()
+        .find(|message| {
+            !matches!(
+                message,
+                Message::System(_)
+                    | Message::Progress(_)
+                    | Message::HookResult(_)
+                    | Message::Attachment(_)
+            )
+        })
+        .is_some_and(|message| matches!(message, Message::User(_)))
+}
+
+fn clear_turn_interruption(stores: &mut State<ResumeRestoreStores>) {
+    if has_turn_interruption(&stores.read()) {
+        let mut next = stores.read().clone();
+        next.turn_interruption_state = None;
+        stores.set(next);
+    }
+}
+
 /// Maps to: CC `REPL.tsx:3496` `setMessages(oldMessages => [...oldMessages,
 /// newMessage])` — CC's stream handler appends whole messages. The
 /// replace-by-uuid half is the Rust seam's re-yield contract: an actor that
@@ -2219,6 +2253,24 @@ fn TranscriptModeFooter(
         ) {
             // CC :661 `<Text dimColor>` is ThemedText: the inactive foreground.
             Text(content: text, color: theme.inactive)
+        }
+    }
+}
+
+pub(crate) const INTERRUPTED_TURN_HINT: &str = "Previous turn was interrupted · Enter to continue";
+
+/// @nyan: shown above the prompt after resuming a transcript that ends
+/// mid-turn; Enter on an empty prompt continues it (see
+/// `continue_interrupted_turn_action`).
+#[component]
+fn InterruptedTurnHint(hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    let theme = hooks
+        .try_use_context::<crate::utils::theme::Theme>()
+        .map(|theme| *theme)
+        .unwrap_or_else(|| *crate::utils::theme::current());
+    element! {
+        View(padding_left: 2u32) {
+            Text(content: INTERRUPTED_TURN_HINT, color: theme.warning)
         }
     }
 }
@@ -5491,6 +5543,110 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         }
     });
 
+    // @nyan: Enter on an empty prompt after resuming an interrupted turn. The
+    // query runs on the restored history as-is (it ends with the interrupted
+    // tool_result or prompt), so no user message is added, shown or recorded,
+    // and no UserPromptSubmit hook fires since nothing was submitted.
+    let continue_interrupted_turn_action = hooks.use_async_handler({
+        #[cfg(test)]
+        let query_probe = active_query_probe.clone();
+        let runtime_mcp_context = runtime_mcp_context.clone();
+        let prompt_submit = prompt_submit.clone();
+        let system_prompt_overrides = system_prompt_overrides.clone();
+        let history_state = history_state;
+        let mut content_replacement_state = content_replacement_state;
+        let resume_restore_stores = resume_restore_stores;
+        let loaded_nested_memory_paths = loaded_nested_memory_paths;
+        let main_thread_agent_definition = main_thread_agent_definition;
+        let mut active_query = active_query;
+        let mut stream_mode = stream_mode;
+        let mut response_length_ref = response_length_ref;
+        let mock_pump_tx = mock_pump_tx.clone();
+        let channel_permission_callbacks = channel_permission_callbacks.clone();
+        let permission_sink = interactive_permission_sink.clone();
+        let app_store = app_store.clone();
+        let thinking_config = thinking_config.clone();
+        let initial_tools = initial_tools.clone();
+        let has_interruptible_tool_in_progress = Arc::clone(&has_interruptible_tool_in_progress);
+        let set_in_progress_tool_use_ids = set_in_progress_tool_use_ids.clone();
+        move |tool_permission_context: ToolPermissionContext| {
+            #[cfg(test)]
+            let query_probe = query_probe.clone();
+            let runtime_mcp_context = runtime_mcp_context.clone();
+            let prompt_submit = prompt_submit.clone();
+            let system_prompt_overrides = system_prompt_overrides.clone();
+            let mock_pump_tx = mock_pump_tx.clone();
+            let channel_permission_callbacks = channel_permission_callbacks.clone();
+            let permission_sink = permission_sink.clone();
+            let app_store = app_store.clone();
+            let thinking_config = thinking_config.clone();
+            let initial_tools = initial_tools.clone();
+            let has_interruptible_tool_in_progress = Arc::clone(&has_interruptible_tool_in_progress);
+            let set_in_progress_tool_use_ids = set_in_progress_tool_use_ids.clone();
+            async move {
+                let result = prompt_submit.submit_processed_prompt_deferred_query(
+                    String::new(),
+                    Uuid::new_v4().to_string(),
+                    crate::utils::process_user_input::ProcessUserInputBaseResult {
+                        messages: Vec::new(),
+                        should_query: true,
+                        allowed_tools: None,
+                        local_action: None,
+                        query_source: crate::constants::query_source::QuerySource::Prompt,
+                    },
+                    tool_permission_context,
+                );
+                let Some(mut params) = result.query_params else {
+                    return;
+                };
+                let command_permission_context = apply_repl_command_allowed_tools(&app_store, &[]);
+                let entries_snapshot = Arc::clone(&*history_state.read());
+                let main_thread_agent_definition = main_thread_agent_definition.read().clone();
+                tokio::join!(
+                    crate::utils::permissions::bypass_permissions_killswitch::check_and_disable_bypass_permissions_if_needed(
+                        &command_permission_context, &app_store),
+                    crate::utils::permissions::bypass_permissions_killswitch::check_and_disable_auto_mode_if_needed(
+                        &command_permission_context, &app_store),
+                );
+                let next_content_replacement_state = apply_repl_query_turn_context(
+                    &mut params,
+                    &app_store,
+                    command_permission_context,
+                    &entries_snapshot,
+                    content_replacement_state.read().clone(),
+                    &resume_restore_stores.read(),
+                    runtime_mcp_context.as_ref().map(|context| context.current()),
+                    main_thread_agent_definition.as_deref(),
+                    initial_tools.as_slice(),
+                    &system_prompt_overrides,
+                    channel_permission_callbacks.as_ref(),
+                    &permission_sink,
+                    &has_interruptible_tool_in_progress,
+                    &set_in_progress_tool_use_ids,
+                    thinking_config.as_ref(),
+                    // Like the MCP-prompt path, this context never met the builder.
+                    Some(loaded_nested_memory_paths.read().clone()),
+                );
+                if let Some(state) = next_content_replacement_state {
+                    content_replacement_state.set(state);
+                }
+                stream_mode.set(SpinnerMode::Responding);
+                response_length_ref.set(0);
+                #[cfg(test)]
+                let query_handle = if let Some(probe) = query_probe.as_ref() {
+                    probe.started_queries.lock().unwrap().push(params);
+                    probe.handle.clone()
+                } else {
+                    spawn_query(params, production_deps())
+                };
+                #[cfg(not(test))]
+                let query_handle = spawn_query(params, production_deps());
+                active_query.set(Some(query_handle));
+                let _ = mock_pump_tx.try_send(());
+            }
+        }
+    });
+
     // Maps to: CC `commands/copy/copy.tsx::copyOrWriteToFile`. Keep OSC/file
     // transport async and component-bound rather than blocking a retained
     // update frame for large responses.
@@ -6467,7 +6623,11 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     let active_query_for_submit = active_query;
     let permission_queue_for_submit = permission_queue;
     let prompt_query_action_for_submit = prompt_query_action.clone();
+    let mut resume_restore_stores_for_submit = resume_restore_stores;
     let mut on_submit = move |submission: PromptSubmission| {
+        // Any submission moves past the interrupted turn: a new prompt simply
+        // follows the restored tool_result/prompt into the next query.
+        clear_turn_interruption(&mut resume_restore_stores_for_submit);
         let system_prompt_overrides = system_prompt_overrides_for_submit.clone();
         let from_keybinding = submission.from_keybinding;
         let submitted_image_ids = submission
@@ -6622,6 +6782,27 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             runtime_mcp_state: runtime_mcp_state_for_submit,
             completed_local_command: None,
         });
+    };
+
+    // @nyan: empty Enter continues a turn interrupted before resume; otherwise
+    // it is a no-op, as before.
+    let on_empty_submit = {
+        let mut resume_restore_stores = resume_restore_stores;
+        let permission_store = permission_store.clone();
+        let continue_interrupted_turn_action = continue_interrupted_turn_action.clone();
+        move |_: ()| {
+            let query_active = !pending_responses.read().is_empty()
+                || active_query.read().is_some()
+                || !permission_queue.read().is_empty();
+            if query_active
+                || !has_turn_interruption(&resume_restore_stores.read())
+                || !history_awaits_assistant(&history_model_messages(&history_state.read()))
+            {
+                return;
+            }
+            clear_turn_interruption(&mut resume_restore_stores);
+            continue_interrupted_turn_action(permission_store.tool_permission_context());
+        }
     };
 
     // Maps to: CC `<CommandKeybindingHandlers onSubmit isActive/>` in both
@@ -8231,7 +8412,18 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         stop_hook_spinner_suffix(&stop_hook_spinner_state.read(), is_loading);
     let is_empty_session = messages.is_empty() && !is_loading;
     let main_screen_width = terminal_cols.max(1) as u32;
-    let resume_store_snapshot = resume_restore_stores.read().clone();
+    let mut resume_store_snapshot = resume_restore_stores.read().clone();
+    // The resumed interruption is continuable only until history moves on.
+    // Paths other than prompt submit (queued/cron/inbox turns, rewind,
+    // summarize) never touch the flag, so retire it here: once any query
+    // runs, or the API-bound history stops ending in a user message.
+    if has_turn_interruption(&resume_store_snapshot)
+        && (is_loading || !history_awaits_assistant(&model_messages))
+    {
+        clear_turn_interruption(&mut resume_restore_stores);
+        resume_store_snapshot.turn_interruption_state = None;
+    }
+    let show_interrupted_turn_hint = has_turn_interruption(&resume_store_snapshot);
     // AppState.teamContext / agent are the single source (CC).
     let inbox_team_context =
         crate::state::app_state::use_app_state(&mut hooks, |state| state.team_context.clone());
@@ -9288,6 +9480,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             #(if should_render_prompt_input {
                 Some(element! {
                     Fragment {
+                    #((show_interrupted_turn_hint).then(|| element! { InterruptedTurnHint }))
                     PromptInput(
                         // SEAM (slice 3b review A3): this per-submit key
                         // remounts PromptInput and its child-local display
@@ -9332,6 +9525,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                             }
                         },
                         on_submit: on_submit,
+                        on_empty_submit: on_empty_submit,
                         on_exit: on_exit,
                         // Maps to: CC REPL.tsx:4895 handleShowMessageSelector
                         // — setIsMessageSelectorVisible(prev => !prev).
@@ -12548,6 +12742,7 @@ mod tests {
         /// seeded with the on-disk permission context) without any production
         /// fallback in `Repl`.
         app_store: Option<crate::state::store::AppStore>,
+        initial_resume_restore_stores: Option<Arc<ResumeRestoreStores>>,
     }
 
     struct ScopedReplAuthConfig {
@@ -12600,6 +12795,10 @@ mod tests {
         let app_store = props.app_store.clone().unwrap_or(default_store);
         let initial_messages = props.initial_messages.clone();
         let initial_renderable_messages = props.initial_renderable_messages.clone();
+        let initial_resume_restore_stores = props
+            .initial_resume_restore_stores
+            .clone()
+            .unwrap_or_default();
         element! {
             crate::state::app_state::AppStateProvider(
                 prebuilt_store: Some(app_store),
@@ -12608,6 +12807,7 @@ mod tests {
                         Repl(
                             initial_messages: initial_messages.clone(),
                             initial_renderable_messages: initial_renderable_messages.clone(),
+                            initial_resume_restore_stores: initial_resume_restore_stores.clone(),
                         )
                     }
                     .into_any()
@@ -12774,6 +12974,405 @@ mod tests {
             canvas.contains("first-frame resumed prompt"),
             "canvas=\n{canvas}"
         );
+    }
+
+    /// Synthetic transcript interrupted right after a tool_result, run through
+    /// the real resume deserialize + restore pipeline.
+    fn interrupted_tool_result_resume() -> crate::utils::session_restore::ProcessedResume {
+        let entries = vec![
+            json!({"type":"user","uuid":"int-user","timestamp":"2026-11-12T00:00:00.000Z",
+                "message":{"role":"user","content":"read the file"}}),
+            json!({"type":"assistant","uuid":"int-assistant","timestamp":"2026-11-12T00:00:01.000Z",
+            "message":{"id":"msg-int","role":"assistant","content":[
+                {"type":"tool_use","id":"toolu_int","name":"Read","input":{"file_path":"/tmp/x"}}
+            ]}}),
+            json!({"type":"user","uuid":"int-result","timestamp":"2026-11-12T00:00:02.000Z",
+                "message":{"role":"user","content":[
+                    {"type":"tool_result","tool_use_id":"toolu_int","content":"file body"}
+                ]},
+                "toolUseResult":{"type":"text"}}),
+        ];
+        processed_resume_from_entries(entries)
+    }
+
+    fn processed_resume_from_entries(
+        entries: Vec<serde_json::Value>,
+    ) -> crate::utils::session_restore::ProcessedResume {
+        let deserialized = conversation::deserialize_messages_with_interrupt_detection(entries);
+        let target = resume::ResumeTarget {
+            session_id: "interrupt-session".to_string(),
+            project_path: None,
+            entries: deserialized.messages,
+            turn_interruption_state: deserialized.turn_interruption_state,
+            metadata: resume::ResumeMetadata::default(),
+            entrypoint: None,
+        };
+        crate::utils::session_restore::ProcessedResume::from_load_result(
+            crate::utils::session_restore::ResumeLoadResult::try_from(&target).unwrap(),
+            None,
+            Arc::new(crate::tools::agent_tool::load_agents_dir::AgentDefinitionsResult::default()),
+        )
+    }
+
+    fn idle_probe(id: &str) -> ReplActiveQueryProbe {
+        let (_events, event_rx) = async_channel::unbounded();
+        let (commands, _command_rx) = async_channel::unbounded();
+        ReplActiveQueryProbe {
+            start_active: false,
+            started_queries: Arc::new(Mutex::new(Vec::new())),
+            handle: QueryHandle {
+                id: id.to_string(),
+                events: Arc::new(event_rx),
+                commands: Arc::new(commands),
+                abort_controller: crate::tool::AbortController::default(),
+                resume: None,
+            },
+            snapshot: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Drives a resumed REPL: waits for `ready`, sends `keys`, then waits until
+    /// `done(probe, canvas)` holds or times out. Returns the last canvas text.
+    async fn drive_resumed_repl(
+        processed: &crate::utils::session_restore::ProcessedResume,
+        probe: &ReplActiveQueryProbe,
+        ready: impl Fn(&str) -> bool,
+        keys: Vec<TerminalEvent>,
+        done: impl Fn(&ReplActiveQueryProbe, &str) -> bool,
+        timeout: Duration,
+    ) -> (bool, String) {
+        drive_resumed_repl_steps(
+            processed,
+            probe,
+            vec![(Box::new(ready), keys)],
+            done,
+            timeout,
+        )
+        .await
+    }
+
+    type ReplStep<'a> = (Box<dyn Fn(&str) -> bool + 'a>, Vec<TerminalEvent>);
+
+    /// Each step waits for a frame satisfying its predicate (rendered after
+    /// the previous step's input), then sends its keys.
+    async fn drive_resumed_repl_steps(
+        processed: &crate::utils::session_restore::ProcessedResume,
+        probe: &ReplActiveQueryProbe,
+        steps: Vec<ReplStep<'_>>,
+        done: impl Fn(&ReplActiveQueryProbe, &str) -> bool,
+        timeout: Duration,
+    ) -> (bool, String) {
+        let mut app = element! {
+            ContextProvider(value: Context::owned(probe.clone())) {
+                ContextProvider(value: Context::owned(
+                    crate::keybindings::keybinding_context::KeybindingRuntime::with_default_bindings()
+                )) {
+                    ContextProvider(value: Context::owned(*theme::current())) {
+                        IsolatedAuthRepl(
+                            initial_messages: Some(processed.messages.clone()),
+                            initial_renderable_messages: Some(processed.renderable_messages.clone()),
+                            initial_resume_restore_stores: Some(processed.resume_restore_stores.clone()),
+                        )
+                    }
+                }
+            }
+        };
+        let (key_tx, events) = async_channel::unbounded();
+        let mut frames =
+            Box::pin(app.mock_terminal_render_loop(
+                MockTerminalConfig::with_events(events).with_size(120, 40),
+            ));
+        let deadline = futures_timer::Delay::new(timeout);
+        tokio::pin!(deadline);
+        let mut steps = steps.into_iter();
+        let mut step = steps.next();
+        let mut text = String::new();
+        loop {
+            tokio::select! {
+                _ = &mut deadline => return (false, text),
+                canvas = frames.next() => {
+                    let Some(canvas) = canvas else { return (false, text) };
+                    text = canvas_lines(&canvas).join("\n");
+                    match &step {
+                        Some((ready, keys)) => {
+                            if ready(&text) {
+                                for key in keys {
+                                    key_tx.try_send(key.clone()).unwrap();
+                                }
+                                step = steps.next();
+                            }
+                        }
+                        None if done(probe, &text) => return (true, text),
+                        None => {}
+                    }
+                }
+            }
+        }
+    }
+
+    fn has_synthetic_resume_text(messages: &[Message]) -> bool {
+        messages.iter().any(|message| {
+            let texts: Vec<&str> = match message {
+                Message::User(user) => user
+                    .content
+                    .iter()
+                    .filter_map(|content| match content {
+                        UserContent::Text(text) | UserContent::MetaText(text) => {
+                            Some(text.as_str())
+                        }
+                        _ => None,
+                    })
+                    .collect(),
+                Message::Assistant(assistant) => assistant
+                    .content
+                    .iter()
+                    .filter_map(|content| match content {
+                        crate::types::message::AssistantContent::Text(text) => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            texts.iter().any(|text| {
+                *text == "Continue from where you left off."
+                    || *text == crate::utils::messages::NO_RESPONSE_REQUESTED
+            })
+        })
+    }
+
+    #[tokio::test]
+    async fn interrupted_resume_shows_hint_and_empty_enter_continues_turn() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
+        let _guard = env_lock().lock().unwrap();
+        let _settings = IsolatedProjectSettings::pin();
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
+        let _title = EnvVarGuard::set("NYAN_DISABLE_TERMINAL_TITLE", "1");
+        let processed = interrupted_tool_result_resume();
+        assert_eq!(
+            processed.resume_restore_stores.turn_interruption_state,
+            Some(conversation::TurnInterruptionState::InterruptedPrompt)
+        );
+        assert!(!has_synthetic_resume_text(&processed.messages));
+        let probe = idle_probe("continue-interrupted");
+
+        let (finished, text) = drive_resumed_repl(
+            &processed,
+            &probe,
+            |text| {
+                // The hint sits directly above the prompt input row.
+                let lines = text.lines().collect::<Vec<_>>();
+                lines
+                    .iter()
+                    .position(|line| line.contains(INTERRUPTED_TURN_HINT))
+                    .is_some_and(|hint| lines[hint + 1..].iter().any(|line| line.contains('❯')))
+            },
+            vec![key(KeyCode::Enter)],
+            |probe, text| {
+                !probe.started_queries.lock().unwrap().is_empty()
+                    && !text.contains(INTERRUPTED_TURN_HINT)
+            },
+            Duration::from_secs(15),
+        )
+        .await;
+        assert!(
+            finished,
+            "continue did not start/clear the hint; canvas=\n{text}"
+        );
+
+        let started = probe.started_queries.lock().unwrap();
+        assert_eq!(started.len(), 1);
+        let params = &started[0];
+        assert!(params.input.is_empty());
+        // Exactly the restored history goes to the API, ending at the
+        // interrupted tool_result; nothing synthetic is added.
+        assert_eq!(params.model_messages, *processed.messages);
+        assert!(matches!(
+            params.model_messages.last(),
+            Some(Message::User(user))
+                if matches!(user.content.as_slice(), [UserContent::ToolResult(_)])
+        ));
+        let snapshot = probe.snapshot.lock().unwrap();
+        let snapshot = snapshot.as_ref().unwrap();
+        assert_eq!(snapshot.model_messages, *processed.messages);
+        assert!(!has_synthetic_resume_text(&snapshot.model_messages));
+    }
+
+    #[test]
+    fn history_awaits_assistant_only_when_api_tail_is_user() {
+        let user =
+            |text: &str| Message::User(crate::utils::messages::create_user_message(text.into()));
+        let assistant = conversation::into_typed_messages(vec![json!({
+            "type":"assistant","uuid":"tail-assistant","timestamp":"2026-11-12T00:00:00.000Z",
+            "message":{"id":"msg-tail","role":"assistant","content":[{"type":"text","text":"done"}]}
+        })])
+        .remove(0);
+        let system = Message::System(SystemMessage::informational(
+            "bookkeeping".to_string(),
+            SystemMessageLevel::Info,
+        ));
+        assert!(history_awaits_assistant(&[user("go")]));
+        assert!(history_awaits_assistant(&[
+            assistant.clone(),
+            user("go"),
+            system.clone()
+        ]));
+        assert!(!history_awaits_assistant(&[user("go"), assistant.clone()]));
+        assert!(!history_awaits_assistant(&[user("go"), assistant, system]));
+        assert!(!history_awaits_assistant(&[]));
+    }
+
+    /// Review fix: history changed by a path other than prompt submit (here
+    /// MessageSelector restore) must retire the interruption.
+    #[tokio::test]
+    async fn interrupted_resume_hint_retires_after_rewind_and_empty_enter_stays_idle() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
+        let _guard = env_lock().lock().unwrap();
+        let _settings = IsolatedProjectSettings::pin();
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
+        let _title = EnvVarGuard::set("NYAN_DISABLE_TERMINAL_TITLE", "1");
+        let _checkpointing = EnvVarGuard::set("NYAN_DISABLE_FILE_CHECKPOINTING", "0");
+        let processed = processed_resume_from_entries(vec![
+            json!({"type":"user","uuid":"rw-user-1","timestamp":"2026-11-12T00:00:00.000Z",
+                "message":{"role":"user","content":"first question"}}),
+            json!({"type":"assistant","uuid":"rw-assistant-1","timestamp":"2026-11-12T00:00:01.000Z",
+                "message":{"id":"msg-rw-1","role":"assistant","content":[{"type":"text","text":"first answer"}]}}),
+            json!({"type":"user","uuid":"rw-user-2","timestamp":"2026-11-12T00:00:02.000Z",
+                "message":{"role":"user","content":"second question"}}),
+            json!({"type":"assistant","uuid":"rw-assistant-2","timestamp":"2026-11-12T00:00:03.000Z",
+            "message":{"id":"msg-rw-2","role":"assistant","content":[
+                {"type":"tool_use","id":"toolu_rw","name":"Read","input":{"file_path":"/tmp/x"}}
+            ]}}),
+            json!({"type":"user","uuid":"rw-result","timestamp":"2026-11-12T00:00:04.000Z",
+                "message":{"role":"user","content":[
+                    {"type":"tool_result","tool_use_id":"toolu_rw","content":"file body"}
+                ]},
+                "toolUseResult":{"type":"text"}}),
+        ]);
+        assert_eq!(
+            processed.resume_restore_stores.turn_interruption_state,
+            Some(conversation::TurnInterruptionState::InterruptedPrompt)
+        );
+        let probe = idle_probe("rewind-after-interrupt");
+        let snapshot_probe = probe.clone();
+        let rewound = move || {
+            snapshot_probe
+                .snapshot
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|snapshot| {
+                    matches!(snapshot.model_messages.last(), Some(Message::Assistant(_)))
+                })
+        };
+        let (finished, text) = drive_resumed_repl_steps(
+            &processed,
+            &probe,
+            vec![
+                (
+                    Box::new(|text: &str| text.contains(INTERRUPTED_TURN_HINT)),
+                    vec![key(KeyCode::Esc), key(KeyCode::Esc)],
+                ),
+                (
+                    Box::new(|text: &str| text.contains("Rewind")),
+                    vec![key(KeyCode::Up), key(KeyCode::Enter)],
+                ),
+                (
+                    Box::new(|text: &str| text.contains("Confirm you want to restore")),
+                    vec![key(KeyCode::Enter)],
+                ),
+                // Rewind puts the restored prompt back in the composer; clear
+                // it so the following Enter is an empty submit.
+                (
+                    Box::new(move |text: &str| {
+                        rewound() && !text.contains("Confirm you want to restore")
+                    }),
+                    vec![ctrl_key('u'), key(KeyCode::Enter)],
+                ),
+            ],
+            // Nothing may start, so this runs to the deadline.
+            |probe, _| !probe.started_queries.lock().unwrap().is_empty(),
+            Duration::from_secs(8),
+        )
+        .await;
+        assert!(
+            !finished,
+            "empty Enter after rewind started a query; canvas=\n{text}"
+        );
+        assert!(probe.started_queries.lock().unwrap().is_empty());
+        let snapshot = probe.snapshot.lock().unwrap();
+        let history = &snapshot.as_ref().unwrap().model_messages;
+        assert!(
+            matches!(
+                history.as_slice(),
+                [Message::User(_), Message::Assistant(_)]
+            ),
+            "rewind did not truncate to the first turn: {history:?}"
+        );
+        assert!(
+            !text.contains(INTERRUPTED_TURN_HINT),
+            "hint reappeared; canvas=\n{text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn interrupted_resume_hint_clears_on_typed_prompt_and_never_shows_for_completed_turn() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
+        let _guard = env_lock().lock().unwrap();
+        let _settings = IsolatedProjectSettings::pin();
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
+        let _title = EnvVarGuard::set("NYAN_DISABLE_TERMINAL_TITLE", "1");
+
+        // Typing something else submits it normally and dismisses the hint.
+        let processed = interrupted_tool_result_resume();
+        let probe = idle_probe("typed-after-interrupt");
+        let (finished, text) = drive_resumed_repl(
+            &processed,
+            &probe,
+            |text| text.contains(INTERRUPTED_TURN_HINT),
+            text_input_events("go on"),
+            |probe, text| {
+                !probe.started_queries.lock().unwrap().is_empty()
+                    && !text.contains(INTERRUPTED_TURN_HINT)
+            },
+            Duration::from_secs(15),
+        )
+        .await;
+        assert!(
+            finished,
+            "typed submit did not clear the hint; canvas=\n{text}"
+        );
+        {
+            let started = probe.started_queries.lock().unwrap();
+            assert_eq!(started.len(), 1);
+            assert_eq!(started[0].input, "go on");
+            assert!(!has_synthetic_resume_text(&started[0].model_messages));
+        }
+
+        // A completed turn resumes without the hint, and empty Enter stays a no-op.
+        let processed = processed_resume_from_entries(vec![
+            json!({"type":"user","uuid":"done-user","timestamp":"2026-11-12T00:00:00.000Z",
+                "message":{"role":"user","content":"hello"}}),
+            json!({"type":"assistant","uuid":"done-assistant","timestamp":"2026-11-12T00:00:01.000Z",
+                "message":{"id":"msg-done","role":"assistant","content":[{"type":"text","text":"completed answer"}]}}),
+        ]);
+        assert_eq!(
+            processed.resume_restore_stores.turn_interruption_state,
+            Some(conversation::TurnInterruptionState::None)
+        );
+        let probe = idle_probe("completed-resume");
+        let (_, text) = drive_resumed_repl(
+            &processed,
+            &probe,
+            |text| text.contains("completed answer"),
+            vec![key(KeyCode::Enter)],
+            // Nothing should happen; watch the frames for a short while.
+            |probe, _| !probe.started_queries.lock().unwrap().is_empty(),
+            Duration::from_secs(2),
+        )
+        .await;
+        assert!(text.contains("completed answer"), "canvas=\n{text}");
+        assert!(!text.contains(INTERRUPTED_TURN_HINT), "canvas=\n{text}");
+        assert!(probe.started_queries.lock().unwrap().is_empty());
     }
 
     #[test]
