@@ -810,6 +810,9 @@ pub struct AppState {
     /// `onChangeAppState`. Optional in CC with no `getDefaultAppState` entry,
     /// hence `Option<bool>` defaulting to `None` rather than `false`.
     pub is_ultraplan_mode: Option<bool>,
+    /// @nyan: TUI info-line metrics (docs/nyan/tui.md §3.1, §5). Collected
+    /// here; rendered by later slices. Not a CC field.
+    pub footer_metrics: super::footer_metrics::FooterMetrics,
 }
 
 impl Default for AppState {
@@ -894,6 +897,7 @@ impl Default for AppState {
             claude_ai_limits: Arc::new(crate::services::claude_ai_limits::ClaudeAiLimits::default()),
             // CC `AppStateStore.ts:445` is optional with no default entry.
             is_ultraplan_mode: None,
+            footer_metrics: super::footer_metrics::FooterMetrics::default(),
         }
     }
 }

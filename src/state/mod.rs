@@ -58,6 +58,7 @@
 
 pub mod app_state;
 pub mod app_state_store;
+pub mod footer_metrics;
 pub mod on_change_app_state;
 pub mod selectors;
 pub mod store;

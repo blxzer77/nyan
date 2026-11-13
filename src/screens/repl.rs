@@ -4043,6 +4043,15 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     // inside `<AppStateProvider>` (REPL.tsx is mounted by App.tsx), so the read
     // is strict: no fallback store, no provider-less path (Contract B clause 2).
     let app_store = crate::state::app_state::use_app_state_store(&mut hooks);
+    hooks.use_const({
+        let app_store = app_store.clone();
+        move || {
+            // @nyan: the request layer has no ToolUseContext, so the REPL
+            // publishes this store for tps/cache. Git is probed off render.
+            crate::state::footer_metrics::bind_store(app_store.clone());
+            crate::state::footer_metrics::refresh_git(&app_store, None);
+        }
+    });
     crate::hooks::use_manage_plugins::use_manage_plugins(
         &mut hooks,
         !crate::bootstrap::state::get_is_remote_mode(),
@@ -4482,6 +4491,8 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                     // `onQuery([])` prepares the IDE integration too, from
                     // the store's clients (`REPL.tsx:3566-3569`).
                     prepare_ide_integration_for_query(&app_store.get().mcp.clients);
+                    // @nyan: speculation accept continues as a new user turn.
+                    crate::state::footer_metrics::start_user_turn(&app_store);
                     stream_mode.set(SpinnerMode::Responding);
                     response_length_ref.set(0);
                     active_query.set(Some(spawn_query(params, production_deps())));
@@ -4792,6 +4803,8 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                             &app_store,
                             result,
                         );
+                        // @nyan: /resume swaps in another conversation's prefix; exempt the next cache-miss check.
+                        crate::state::footer_metrics::note_main_thread_prefix_reset(&app_store);
                         // Maps to: CC `REPL.tsx:2494-2495` — resumed sessions
                         // shouldn't re-title from mid-conversation context,
                         // and the previous session's Haiku title shouldn't
@@ -5626,6 +5639,9 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                             }
                             stop_hook_spinner_state.set(StopHookSpinnerState::default());
                             active_query.set(None);
+                            // @nyan: the user turn ended; keep its tps sample and
+                            // refresh branch / worktree off the render path.
+                            crate::state::footer_metrics::finish_user_turn(&app_store_for_pump);
                             // Maps to: CC `resetLoadingState` → `pickNewSpinnerTip`.
                             crate::services::tips::pick_new_spinner_tip(&permission_store);
                         }
@@ -5886,6 +5902,8 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                 content_replacement_state.set(state);
             }
 
+            // @nyan: MCP prompt submissions start a user turn.
+            crate::state::footer_metrics::start_user_turn(&app_store_for_mcp);
             stream_mode.set(SpinnerMode::Responding);
             response_length_ref.set(0);
             active_query.set(Some(spawn_query(params, production_deps())));
@@ -6459,6 +6477,11 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                         handle.abort_controller.abort();
                     }
                     active_query.set(None);
+                    // @nyan: /clear drops the query handle before the pump can
+                    // see Terminal, so turn_open would stay set.
+                    crate::state::footer_metrics::finish_user_turn(&app_store_for_submit);
+                    // @nyan: /clear replaces the request prefix; exempt the next cache-miss check.
+                    crate::state::footer_metrics::note_main_thread_prefix_reset(&app_store_for_submit);
                     permission_queue.set(Vec::new());
                     // CC clear/conversation.ts:170-200 spreads prev AppState:
                     // retain directory/rule grants rather than rerunning startup.
@@ -6538,6 +6561,9 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                             content_replacement_state.set(state);
                         }
 
+                        // @nyan: keyboard submit that starts a query. Queued
+                        // input rotates when it drains, not when it is parked.
+                        crate::state::footer_metrics::start_user_turn(&app_store_for_submit);
                         stream_mode.set(SpinnerMode::Responding);
                         response_length_ref.set(0);
                         #[cfg(test)]
@@ -6816,6 +6842,9 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                             handle.abort_controller.abort();
                         }
                         active_query.set(None);
+                        // @nyan: Exit clears the handle before the pump's Terminal
+                        // branch, which is what closes turn_open.
+                        crate::state::footer_metrics::finish_user_turn(&app_store_for_submit);
                         permission_queue.set(Vec::new());
                         let current = active_local_command_ui.read().clone();
                         active_local_command_ui.set(clear_local_command_ui(current));
@@ -7402,6 +7431,8 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                     content_replacement_state.set(state);
                 }
 
+                // @nyan: inbox delivery is a new user turn.
+                crate::state::footer_metrics::start_user_turn(&app_store_for_inbox);
                 stream_mode.set(SpinnerMode::Responding);
                 response_length_ref.set(0);
                 active_query.set(Some(spawn_query(params, production_deps())));
@@ -7601,6 +7632,11 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                         handle.abort_controller.abort();
                     }
                     active_query.set(None);
+                    // @nyan: queued /clear takes the same early path as a direct
+                    // /clear — the pump will not observe Terminal.
+                    crate::state::footer_metrics::finish_user_turn(&app_store_for_cron);
+                    // @nyan: /clear replaces the request prefix; exempt the next cache-miss check.
+                    crate::state::footer_metrics::note_main_thread_prefix_reset(&app_store_for_cron);
                     permission_queue.set(Vec::new());
                     resume_restore_stores.set(ResumeRestoreStores::default());
                     loaded_nested_memory_paths.set(std::collections::HashSet::new());
@@ -7938,6 +7974,8 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                     content_replacement_state.set(state);
                 }
 
+                // @nyan: a drained queue or scheduled task starts a user turn.
+                crate::state::footer_metrics::start_user_turn(&app_store_for_cron);
                 stream_mode.set(SpinnerMode::Responding);
                 response_length_ref.set(0);
                 active_query.set(Some(spawn_query(params, production_deps())));
@@ -7950,6 +7988,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     );
 
     // Maps to: CC PromptInput → onExit → REPL → exit()
+    let app_store_for_exit = app_store.clone();
     let on_exit = move |_: ()| {
         if let Some(handle) = active_query.read().clone() {
             // Maps to CC `REPL.tsx` interrupt path preserving partial
@@ -7963,6 +8002,8 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             handle.abort_controller.abort();
         }
         active_query.set(None);
+        // @nyan: on_exit nulls the handle before the pump can finish the turn.
+        crate::state::footer_metrics::finish_user_turn(&app_store_for_exit);
         permission_queue.set(Vec::new());
         let current = active_local_command_ui.read().clone();
         active_local_command_ui.set(clear_local_command_ui(current));
