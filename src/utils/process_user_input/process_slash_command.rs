@@ -2390,6 +2390,9 @@ mod tests {
     fn rename_receipts_match_official_system_display_without_caveat() {
         // CC rename/rename.ts:27-30,82 and processSlashCommand.tsx:783-798,
         // 675-681: normal onDone paths are two local_command System rows.
+        let _team_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
+            .lock()
+            .unwrap();
         let _env = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("rename-receipt-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
@@ -2410,9 +2413,6 @@ mod tests {
             root.clone(),
         );
         crate::bootstrap::state::switch_session(Uuid::new_v4().to_string(), Some(root));
-        let _team_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
-            .lock()
-            .unwrap();
         struct RestoreTeam(Option<crate::utils::teammate::DynamicTeamContext>);
         impl Drop for RestoreTeam {
             fn drop(&mut self) {

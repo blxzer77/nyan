@@ -5,13 +5,11 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-#[cfg(test)]
-use std::sync::MutexGuard;
 use std::sync::{LazyLock, RwLock};
 
 use crate::utils::settings::types::SettingsJson;
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateGuard, TestStateLock};
 
 const MAX_SLUG_RETRIES: usize = 10;
 
@@ -24,10 +22,10 @@ static PLAN_SLUG_CACHE: LazyLock<RwLock<HashMap<String, String>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
 #[cfg(test)]
-static PLAN_TEST_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStateLock::new);
+static PLAN_TEST_LOCK: TestStateLock = TestStateLock::new(TestLockRank::PlanState);
 
 #[cfg(test)]
-pub(crate) fn test_plan_state_lock() -> MutexGuard<'static, ()> {
+pub(crate) fn test_plan_state_lock() -> TestStateGuard<'static> {
     let guard = PLAN_TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -395,6 +393,7 @@ mod tests {
 
     #[test]
     fn get_plan_slug_matches_official_empty_cache_regeneration() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let _plan_lock = test_plan_state_lock();
         let session_id = uuid::Uuid::new_v4().to_string();
         set_plan_slug(&session_id, "");

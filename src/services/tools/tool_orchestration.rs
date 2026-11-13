@@ -452,6 +452,7 @@ mod tests {
 
     #[test]
     fn run_tools_accepts_typed_tool_use_blocks_and_requests_permission() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let block = typed_bash_block();
         let assistant = assistant_with_block(block.clone());
         let context = ToolUseContext::with_permission_context(ToolPermissionContext::default());
@@ -470,6 +471,7 @@ mod tests {
 
     #[test]
     fn run_tools_serially_pauses_at_first_interactive_permission_request() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let first = ToolUseBlock {
             id: crate::types::ids::ToolUseId("toolu_first_serial".to_string()),
             name: "Bash".to_string(),
@@ -507,6 +509,7 @@ mod tests {
 
     #[test]
     fn partition_tool_calls_batches_consecutive_read_only_tools() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let read = ToolUseBlock {
             id: crate::types::ids::ToolUseId("toolu_read".to_string()),
             name: "Read".to_string(),
@@ -608,6 +611,7 @@ mod tests {
 
     #[test]
     fn partition_tool_calls_treats_schema_invalid_tools_as_serial_like_official_safe_parse() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let invalid_read = ToolUseBlock {
             id: crate::types::ids::ToolUseId("toolu_invalid_read_partition".to_string()),
             name: "Read".to_string(),
@@ -679,6 +683,7 @@ mod tests {
 
     #[test]
     fn run_tools_concurrent_permission_request_pauses_before_later_batches() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let web_fetch = ToolUseBlock {
             id: crate::types::ids::ToolUseId("toolu_web_fetch_permission".to_string()),
             name: "WebFetch".to_string(),
@@ -713,6 +718,7 @@ mod tests {
 
     #[test]
     fn run_tools_concurrently_does_not_mark_permission_blocked_tool_complete() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let web_fetch = ToolUseBlock {
             id: crate::types::ids::ToolUseId("toolu_web_fetch_blocked".to_string()),
             name: "WebFetch".to_string(),
@@ -735,6 +741,7 @@ mod tests {
 
     #[test]
     fn orchestration_delegates_queued_tool_use_to_execution_gate() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let message = queued_bash();
         let mut queue = Vec::new();
 
@@ -747,6 +754,7 @@ mod tests {
 
     #[test]
     fn orchestration_events_include_permission_request_and_new_context() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let message = queued_bash();
         let mut queue = Vec::new();
         let context = ToolUseContext::with_permission_context(ToolPermissionContext::default());
@@ -769,6 +777,7 @@ mod tests {
 
     #[test]
     fn orchestration_events_keep_request_when_permission_is_preallowed() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let message = queued_bash();
         let mut ctx = ToolPermissionContext::default();
         let mut rules = HashMap::new();

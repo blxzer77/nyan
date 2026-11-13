@@ -8,7 +8,7 @@
 //! the in-memory leader cache used by the current in-process runner.
 
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
@@ -682,8 +682,8 @@ pub(crate) fn current_team_name() -> Option<String> {
 }
 
 #[cfg(test)]
-pub(crate) static TEST_TEAM_HELPERS_LOCK: std::sync::LazyLock<TestStateLock> =
-    std::sync::LazyLock::new(TestStateLock::new);
+pub(crate) static TEST_TEAM_HELPERS_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::TeamHelpers);
 
 #[cfg(test)]
 pub(crate) fn clear_team_tool_state_for_test() {
@@ -1043,10 +1043,10 @@ mod tests {
     #[test]
     fn unique_teammate_name_never_yields_the_leader_identity() {
         let _lock = TEST_TEAM_HELPERS_LOCK.lock().unwrap();
-        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _context_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
             .lock()
             .unwrap();
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let (root, _config_guard, _io_guard) = team_disk_guards("unique-name-leader");
         let record = super::create_team_record(
             "alpha".to_string(),

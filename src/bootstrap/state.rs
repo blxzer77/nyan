@@ -2,7 +2,7 @@
 //! Maps to CC `bootstrap/state.ts`.
 
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{LazyLock, RwLock};
@@ -255,7 +255,8 @@ static SYSTEM_PROMPT_SECTION_CACHE: LazyLock<RwLock<HashMap<String, Option<Strin
 static INVOKED_SKILLS: LazyLock<RwLock<Vec<(String, InvokedSkillInfo)>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));
 #[cfg(test)]
-pub static TEST_INVOKED_SKILLS_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStateLock::new);
+pub static TEST_INVOKED_SKILLS_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::InvokedSkills);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InvokedSkillInfo {

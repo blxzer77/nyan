@@ -15,7 +15,7 @@ use crate::constants::query_source::QuerySource;
 use crate::tool::ToolUseContext;
 use crate::types::message::{AssistantContent, Message, UserContent};
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
 
@@ -98,7 +98,8 @@ static CACHED_MC_STATE: LazyLock<Mutex<CachedMicrocompactState>> =
     LazyLock::new(|| Mutex::new(CachedMicrocompactState::default()));
 
 #[cfg(test)]
-pub static TEST_CACHED_MC_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStateLock::new);
+pub static TEST_CACHED_MC_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::CachedMicrocompact);
 
 #[derive(Debug, Clone, Default)]
 pub struct MicrocompactResult {
@@ -639,7 +640,7 @@ mod tests {
     use super::*;
     use crate::utils::test_env::TEST_ENV_LOCK;
 
-    fn lock_cached_mc_state_for_test() -> std::sync::MutexGuard<'static, ()> {
+    fn lock_cached_mc_state_for_test() -> crate::utils::test_env::TestStateGuard<'static> {
         let guard = TEST_CACHED_MC_LOCK.lock().unwrap();
         reset_microcompact_state();
         guard

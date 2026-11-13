@@ -1191,6 +1191,7 @@ mod tests {
 
     #[tokio::test]
     async fn initialize_tool_permission_context_maps_default_mode_and_rules() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let settings = SettingsJson {
             default_permission_mode: Some("default".to_string()),
             permissions: Some(crate::utils::settings::types::PermissionsSettings {
@@ -1466,6 +1467,7 @@ mod tests {
 
     #[tokio::test]
     async fn startup_matches_official_source_attributed_loader_boundary() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let merged_settings = SettingsJson {
             permissions: Some(crate::utils::settings::types::PermissionsSettings {
                 allow: Some(vec!["Edit".to_string()]),
@@ -1505,6 +1507,7 @@ mod tests {
 
     #[tokio::test]
     async fn cli_lists_create_source_shaped_empty_buckets() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let context =
             initialize_tool_permission_context(&SettingsJson::default(), &[], &[], &[], None, &[])
                 .await

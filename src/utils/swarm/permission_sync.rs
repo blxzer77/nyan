@@ -8,7 +8,7 @@
 //! full team-file persistence is enabled.
 
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -472,8 +472,8 @@ pub fn send_permission_response_via_mailbox(
 }
 
 #[cfg(test)]
-pub static TEST_PERMISSION_SYNC_LOCK: std::sync::LazyLock<TestStateLock> =
-    std::sync::LazyLock::new(TestStateLock::new);
+pub static TEST_PERMISSION_SYNC_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::PermissionSync);
 
 #[cfg(test)]
 pub fn clear_permission_sync_for_test() {

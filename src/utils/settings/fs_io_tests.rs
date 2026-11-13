@@ -216,18 +216,20 @@ impl FsOperations for RecordingFs {
         NodeFsOperations.read_file_bytes(path, max_bytes)
     }
 }
-struct ResetFs(Arc<dyn FsOperations>);
+struct ResetFs {
+    _fs: ThreadFsOverride,
+}
 impl ResetFs {
     fn install(fs: Arc<dyn FsOperations>) -> Self {
-        let reset = Self(get_fs_implementation());
-        set_fs_implementation(fs);
+        let reset = Self {
+            _fs: ThreadFsOverride::install(fs),
+        };
         settings_cache::reset_settings_cache();
         reset
     }
 }
 impl Drop for ResetFs {
     fn drop(&mut self) {
-        set_fs_implementation(self.0.clone());
         settings_cache::reset_settings_cache();
         internal_writes::clear_internal_writes();
     }
@@ -353,7 +355,7 @@ async fn marketplace_initial_read_matches_official_capture_before_poll() {
     let pending = crate::utils::plugins::marketplace_manager::load_known_marketplaces_config();
     assert_eq!(first.calls(), vec!["read_file"]);
     let second = Arc::new(RecordingFs::with_reads(&["invalid"]));
-    set_fs_implementation(second.clone());
+    let _second = ThreadFsOverride::install(second.clone());
     assert!(pending.await.unwrap().is_empty());
     assert!(second.calls().is_empty());
 }
@@ -371,7 +373,7 @@ async fn marketplace_finalization_matches_official_captured_rm_and_rename() {
     let second = Arc::new(RecordingFs::with_reads(&[
         r#"{"name":"final","owner":{"name":"test"},"plugins":[]}"#,
     ]));
-    set_fs_implementation(second.clone());
+    let _second = ThreadFsOverride::install(second.clone());
     let loaded = pending.await.unwrap();
     assert_eq!(loaded.marketplace["name"], "final");
     assert_eq!(first.calls(), vec!["mkdir", "mkdir", "rm", "rename"]);
@@ -417,7 +419,7 @@ async fn marketplace_active_fs_error_matches_official_message_and_errno_identity
     assert_eq!(error.to_string(), "remote catalog unavailable");
     assert_eq!(crate::utils::errors::get_errno_code(&error), Some("EACCES"));
     // An injected Node code must win even if the Rust carrier kind is Other.
-    set_fs_implementation(Arc::new(RecordingFs {
+    let _absent = ThreadFsOverride::install(Arc::new(RecordingFs {
         read_error: Some(("ENOENT", "virtual record absent")),
         ..RecordingFs::default()
     }));

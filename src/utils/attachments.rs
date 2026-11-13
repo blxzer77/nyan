@@ -2996,6 +2996,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn user_input_attachment_phase_keeps_file_then_agent_producer_order() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-user-attachment-order-{}",
             uuid::Uuid::new_v4().simple()
@@ -3035,6 +3036,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test(flavor = "current_thread")]
     async fn slow_at_mention_sibling_keeps_completed_file_attachment_and_state() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         use std::os::unix::ffi::OsStrExt as _;
 
         let root = std::env::temp_dir().join(format!(
@@ -3089,6 +3091,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn compact_file_restoration_keeps_file_unchanged_attachment() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-compact-file-unchanged-{}",
             uuid::Uuid::new_v4().simple()
@@ -3134,6 +3137,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn at_mention_file_and_directory_flow_through_read_attachment_owner() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let root =
             std::env::temp_dir().join(format!("nyan-at-mention-{}", uuid::Uuid::new_v4().simple()));
         let source = root.join("src");
@@ -3171,6 +3176,7 @@ mod tests {
 
     #[test]
     fn transformed_nested_memory_is_cached_as_partial_raw_disk_view() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-nested-memory-partial-{}",
             uuid::Uuid::new_v4().simple()
@@ -3229,6 +3235,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn at_mention_token_fallback_keeps_truncated_read_state_range() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_runtime::initialize_test_process_runtime();
         let root = std::env::temp_dir().join(format!(
             "nyan-at-mention-token-fallback-{}",
@@ -3285,6 +3292,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn at_mention_read_discovers_nested_dynamic_skill_directory() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_runtime::initialize_test_process_runtime();
         crate::skills::load_skills_dir::clear_dynamic_skills();
         struct DynamicSkillsRestore;
         impl Drop for DynamicSkillsRestore {
@@ -3413,6 +3421,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn dynamic_snapshot_clears_insertion_that_arrives_during_source_await() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-dynamic-race-{}",
             uuid::Uuid::new_v4().simple()
@@ -3452,6 +3461,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn changed_image_uses_second_helper_without_replaying_read_effects() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         const TINY_PNG: &[u8] = &[
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
             0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00,
@@ -3506,6 +3516,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn changed_full_file_state_emits_edited_text_reminder_and_refreshes_cache() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-changed-file-{}",
             uuid::Uuid::new_v4().simple()
@@ -3708,6 +3719,8 @@ mod tests {
     /// `source_uuid`/`commandMode`/`isMeta` (:1075-1079).
     #[tokio::test]
     async fn queued_command_snapshot_projects_to_attachment_with_payload_fields() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let snapshot = vec![
             crate::utils::message_queue_manager::QueuedCommand {
                 value: "<task-notification><status>completed</status></task-notification>"
@@ -3785,6 +3798,7 @@ mod tests {
     /// enqueue site never set it — a `false` projects to the absent field.
     #[tokio::test]
     async fn queued_command_without_is_meta_omits_the_field() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let attachments = get_attachments(GetAttachmentMessagesParams {
             tool_use_context: &mut ToolUseContext::default(),
             messages: &[],
@@ -3810,6 +3824,7 @@ mod tests {
 
     #[tokio::test]
     async fn dynamic_skill_attachment_lists_discovered_skills_and_drains_triggers() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-dynamic-skill-attachment-{}",
             uuid::Uuid::new_v4().simple()
@@ -3949,6 +3964,7 @@ mod tests {
 
     #[tokio::test]
     async fn dynamic_skill_precedes_main_thread_reminders_in_async_attachment_order() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-dynamic-skill-order-{}",
             uuid::Uuid::new_v4().simple()
@@ -3996,6 +4012,8 @@ mod tests {
 
     #[tokio::test]
     async fn critical_system_reminder_attachment_matches_official_tool_context_field() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let mut context = ToolUseContext::default()
             .with_critical_system_reminder_experimental(Some("Verify every claim.".to_string()));
 
@@ -4037,6 +4055,8 @@ mod tests {
 
     #[tokio::test]
     async fn agent_pending_message_attachments_drain_agent_task_queue() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let _task_lock = crate::tasks::local_agent_task::TEST_LOCAL_AGENT_TASK_LOCK
             .lock()
             .unwrap();
@@ -4101,6 +4121,7 @@ mod tests {
     /// CC query.ts:1566-1578; CC turn-0 callers pass `[]`).
     #[tokio::test]
     async fn get_attachments_never_touches_the_global_command_queue() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let _queue_lock = crate::utils::message_queue_manager::TEST_QUEUE_LOCK
             .lock()
             .unwrap();
@@ -4362,6 +4383,7 @@ mod tests {
 
     #[test]
     fn todo_reminder_is_emitted_only_after_both_thresholds() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let under = (0..6).map(|_| assistant_text("work")).collect::<Vec<_>>();
         assert!(get_todo_task_reminder_attachments(&under, &ToolUseContext::default()).is_empty());
 

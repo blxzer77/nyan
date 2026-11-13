@@ -2965,7 +2965,7 @@ mod tests {
     struct PromptTestEnv {
         config_dir: std::path::PathBuf,
         _config_home: EnvVarGuard,
-        _queue: std::sync::MutexGuard<'static, ()>,
+        _queue: crate::utils::test_env::TestStateGuard<'static>,
         _env: TestEnvGuard<'static>,
     }
 

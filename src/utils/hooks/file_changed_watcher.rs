@@ -336,10 +336,10 @@ pub fn file_changed_watcher_snapshot() -> FileChangedWatcherSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::test_env::TestStateLock;
+    use crate::utils::test_env::{TestLockRank, TestStateLock};
     use serde_json::Map;
 
-    static TEST_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStateLock::new);
+    static TEST_LOCK: TestStateLock = TestStateLock::new(TestLockRank::ModuleLocal);
 
     fn config(value: Value) -> RegisteredHooks {
         let config: crate::services::hooks::HooksConfig = serde_json::from_value(value).unwrap();

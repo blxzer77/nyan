@@ -313,17 +313,7 @@ impl FsOperations for VirtualFs {
 }
 #[test]
 fn injected_backend_matches_official_resolution_and_file_read_consumers() {
-    struct Reset;
-    impl Drop for Reset {
-        fn drop(&mut self) {
-            set_original_fs_implementation();
-        }
-    }
-    let _reset = Reset;
-    let fs = Arc::new(VirtualFs {
-        calls: Mutex::new(Vec::new()),
-    });
-    set_fs_implementation(fs.clone());
+    let (_fs_override, fs) = install_virtual_fs();
     let result =
         crate::utils::file_read::read_file_sync_with_metadata(Path::new("/virtual/file")).unwrap();
     assert_eq!(result.content, "virtual");
@@ -362,20 +352,9 @@ fn expand_path_matches_official_session_cwd_before_injected_fs() {
     let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
     // CC utils/path.ts:34 and utils/cwd.ts:19-30; explicit tool cwd override
     // precedes bootstrap session cwd, which precedes the FsOperations fallback.
-    struct Reset(PathBuf);
-    impl Drop for Reset {
-        fn drop(&mut self) {
-            set_original_fs_implementation();
-            crate::bootstrap::state::set_original_cwd(self.0.clone());
-        }
-    }
-    let _reset = Reset(crate::bootstrap::state::get_original_cwd());
     let cwd = std::env::current_dir().unwrap().join("session-base");
-    crate::bootstrap::state::set_original_cwd(&cwd);
-    let fs = Arc::new(VirtualFs {
-        calls: Mutex::new(Vec::new()),
-    });
-    set_fs_implementation(fs.clone());
+    let _cwd = crate::utils::test_env::PinnedProjectDir::at(&cwd);
+    let (_fs_override, fs) = install_virtual_fs();
     assert_eq!(
         crate::utils::path::expand_path("a", None).unwrap(),
         cwd.join("a")
@@ -413,28 +392,21 @@ fn ancestor_symlink_tail_matches_official_node_variadic_join() {
     );
 }
 
-struct RestoreFs;
-impl Drop for RestoreFs {
-    fn drop(&mut self) {
-        set_original_fs_implementation();
-    }
-}
-fn install_virtual_fs() -> (RestoreFs, Arc<VirtualFs>) {
+fn install_virtual_fs() -> (ThreadFsOverride, Arc<VirtualFs>) {
     let fs = Arc::new(VirtualFs {
         calls: Mutex::new(Vec::new()),
     });
-    set_fs_implementation(fs.clone());
-    (RestoreFs, fs)
+    (ThreadFsOverride::install(fs.clone()), fs)
 }
 
 #[tokio::test]
 async fn injected_pdf_matches_official_async_stat_endpoint() {
-    let (_reset, fs) = install_virtual_fs();
+    let (fs_override, fs) = install_virtual_fs();
     let path = Path::new("virtual.pdf");
     let read = crate::utils::pdf::read_pdf(path);
     let extract = crate::utils::pdf::extract_pdf_pages(path, None);
     assert_eq!(*fs.calls.lock().unwrap(), ["stat", "stat"]);
-    set_original_fs_implementation();
+    drop(fs_override);
     let read = read.await.unwrap_err();
     let extract = extract.await.unwrap_err();
     assert_eq!(read.message, "virtual backend");
@@ -446,13 +418,13 @@ async fn injected_pdf_matches_official_async_stat_endpoint() {
 
 #[tokio::test]
 async fn injected_sed_preview_matches_official_read_order_and_probe_errors() {
-    let (_reset, fs) = install_virtual_fs();
+    let (fs_override, fs) = install_virtual_fs();
     use crate::components::permissions::sed_edit_permission_request::read_sed_file_content;
     let read = read_sed_file_content("raw/../virtual");
     assert_eq!(*fs.calls.lock().unwrap(), ["read_sync", "read_file"]);
-    set_original_fs_implementation();
+    drop(fs_override);
     assert_eq!(read.await.unwrap().old_content, "virtual");
-    set_fs_implementation(fs.clone());
+    let _fs_override = ThreadFsOverride::install(fs.clone());
     fs.calls.lock().unwrap().clear();
     let denied = read_sed_file_content("probe-denied").await.unwrap_err();
     assert_eq!(denied.kind(), io::ErrorKind::PermissionDenied);
@@ -465,7 +437,7 @@ async fn injected_sed_preview_matches_official_read_order_and_probe_errors() {
 
 #[tokio::test]
 async fn injected_grep_matches_official_all_settled_and_fractional_mtime() {
-    let (_reset, fs) = install_virtual_fs();
+    let (_fs_override, fs) = install_virtual_fs();
     use crate::tools::grep_tool::file_match_mtimes;
     let paths = vec!["async-mtime".into(), "missing".into()];
     assert_eq!(file_match_mtimes(&paths).await, vec![1.25, 0.0]);
@@ -481,7 +453,7 @@ async fn injected_grep_matches_official_all_settled_and_fractional_mtime() {
 
 #[test]
 fn injected_find_similar_matches_official_dirname_join_and_raw_comparison() {
-    let (_reset, fs) = install_virtual_fs();
+    let (_fs_override, fs) = install_virtual_fs();
     assert_eq!(
         crate::utils::file::find_similar_file(Path::new("a.ts")),
         Some("a.js".into())
@@ -495,20 +467,22 @@ fn injected_find_similar_matches_official_dirname_join_and_raw_comparison() {
 
 #[tokio::test]
 async fn injected_plan_resume_matches_official_eager_backend_capture() {
+    let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
     let _plan_lock = crate::utils::plans::test_plan_state_lock();
-    let (_reset, fs) = install_virtual_fs();
+    let (fs_override, fs) = install_virtual_fs();
     let session = uuid::Uuid::new_v4().to_string();
     let slug = format!("virtual-plan-{session}");
     let messages = [serde_json::json!({"type": "user", "slug": slug})];
     let copying = crate::utils::plans::copy_plan_for_resume(&messages, Some(&session));
     assert!(fs.calls.lock().unwrap().contains(&"read_file"));
-    set_original_fs_implementation();
+    drop(fs_override);
     assert!(copying.await);
     crate::utils::plans::clear_plan_slug(Some(&session));
 }
 
 #[tokio::test]
 async fn injected_attachment_matches_official_distinct_stat_branches() {
+    let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
     use crate::utils::attachments::{
         FileAttachmentMode, GenerateFileAttachmentOptions, generate_file_attachment,
     };
@@ -519,7 +493,7 @@ async fn injected_attachment_matches_official_distinct_stat_branches() {
     let mut context = crate::tool::ToolUseContext::default();
     let mut limits = crate::tools::file_read_tool::limits::get_default_file_reading_limits();
     let _ = crate::utils::plugins::plugin_loader::load_all_plugins_cache_only().await;
-    let (_reset, fs) = install_virtual_fs();
+    let (_fs_override, fs) = install_virtual_fs();
     limits.max_size_bytes = 0.0;
     assert!(
         generate_file_attachment(
@@ -581,10 +555,11 @@ async fn injected_attachment_matches_official_distinct_stat_branches() {
 
 #[tokio::test]
 async fn injected_changed_files_matches_official_concurrent_stats_and_eviction() {
+    let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
     crate::utils::process_runtime::initialize_test_process_runtime();
     let mut context = crate::tool::ToolUseContext::default();
     let _ = crate::utils::plugins::plugin_loader::load_all_plugins_cache_only().await;
-    let (_reset, fs) = install_virtual_fs();
+    let (_fs_override, fs) = install_virtual_fs();
     for name in ["async-pending", "async-deleted", "async-mtime"] {
         context
             .read_file_state

@@ -3136,6 +3136,7 @@ mod tests {
 
     #[test]
     fn read_outer_rules_and_filesystem_order_match_official() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let input = serde_json::json!({"file_path": "/tmp/.../secret.txt"});
 
         let mut content_denied = ToolPermissionContext::default();
@@ -3189,6 +3190,7 @@ mod tests {
 
     #[test]
     fn read_permission_parse_retains_raw_input_matches_official() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let raw_valid = serde_json::json!({"file_path": "/tmp/.../secret.txt", "offset": "2"});
         let valid_context = ToolPermissionContext::default();
         let valid_tool_context =
@@ -3328,6 +3330,7 @@ mod tests {
 
     #[test]
     fn read_working_directory_ask_is_bypassable_but_explicit_ask_is_not() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-read-bypass-{}",
             uuid::Uuid::new_v4().simple()
@@ -3400,6 +3403,7 @@ mod tests {
 
     #[test]
     fn bash_permission_uses_tool_check_permissions_before_generic_prompt() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let context = ToolPermissionContext::default();
         let git_status = serde_json::json!({"command": "git status"});
         assert!(matches!(
@@ -3469,6 +3473,7 @@ mod tests {
 
     #[test]
     fn bash_permission_integration_respects_tool_wide_rule_ordering() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut deny_context = ToolPermissionContext::default();
         deny_context.always_deny_rules.insert(
             PermissionRuleSource::Session,
@@ -4329,6 +4334,7 @@ mod tests {
     /// with the ask's own `createPermissionRequestMessage` copy instead.
     #[test]
     fn headless_non_auto_ask_denies_with_async_agent_reason_and_auto_reject_message() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let context = ToolPermissionContext {
             mode: PermissionMode::Default,
             should_avoid_permission_prompts: true,
@@ -4855,6 +4861,7 @@ mod tests {
     /// to `BashTool.checkPermissions` and lose the rule reason.
     #[test]
     fn bash_whole_tool_ask_rule_asks_with_rule_reason_when_sandbox_auto_allow_is_off() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut context = ToolPermissionContext::default();
         context.always_ask_rules.insert(
             PermissionRuleSource::Session,
@@ -5072,6 +5079,7 @@ mod tests {
     /// ask into the outer branch changes what AUTO does with it and nothing else.
     #[test]
     fn bypass_permissions_content_ask_rule_matches_official_step_1f_immunity() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut bypass_context = ToolPermissionContext {
             mode: PermissionMode::BypassPermissions,
             ..ToolPermissionContext::default()
@@ -5129,6 +5137,7 @@ mod tests {
 
     #[test]
     fn bash_permission_integration_respects_deny_rules_and_security_checks() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut context = ToolPermissionContext::default();
         context.always_deny_rules.insert(
             PermissionRuleSource::Session,
@@ -5201,6 +5210,7 @@ mod tests {
     /// end-to-end carrier: the gate result must carry the SAME input back.
     #[test]
     fn tool_allow_updated_input_survives_the_gate() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let context = ToolPermissionContext::default();
         let input = serde_json::json!({ "output": "final answer" });
         let result = has_permissions_to_use_tool(HasPermissionsToUseToolParams {
@@ -5227,6 +5237,7 @@ mod tests {
 
     #[test]
     fn web_fetch_permission_uses_official_domain_rule_and_preapproved_hosts() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let context = ToolPermissionContext::default();
         let preapproved_input = serde_json::json!({
             "url": "https://doc.rust-lang.org/book/",
@@ -5352,6 +5363,7 @@ mod tests {
     /// unapproved domain in Auto mode took the empty-projection allow.
     #[test]
     fn web_fetch_routes_through_the_tool_check_permissions_and_the_auto_classifier() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let unapproved_input = serde_json::json!({
             "url": "https://example.com/docs/page",
             "prompt": "summarize"
@@ -5421,7 +5433,6 @@ mod tests {
             "an empty projection is what let Auto mode skip the classifier"
         );
 
-        let _guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
         crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "block");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
@@ -5481,6 +5492,7 @@ mod tests {
 
     #[test]
     fn write_permission_uses_invocation_cwd_override_in_generic_gate() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let invocation_cwd = std::env::temp_dir().join(format!(
             "nyan-write-permission-cwd-{}",
             uuid::Uuid::new_v4().simple()
@@ -5522,6 +5534,7 @@ mod tests {
 
     #[test]
     fn write_permission_retains_filesystem_suggestions_in_generic_gate() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let path = crate::bootstrap::state::get_original_cwd().join("new-write.txt");
         let path = path.display().to_string();
         let input = serde_json::json!({"file_path": path, "content": "hello"});
@@ -5552,6 +5565,7 @@ mod tests {
 
     #[test]
     fn edit_ordinary_filesystem_ask_is_overridden_by_bypass_modes() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let path = crate::bootstrap::state::get_original_cwd().join("bypass-edit.txt");
         let path = path.display().to_string();
         let input = serde_json::json!({
@@ -5593,6 +5607,7 @@ mod tests {
 
     #[test]
     fn notebook_edit_ordinary_filesystem_ask_is_overridden_by_bypass_mode() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let path = crate::bootstrap::state::get_original_cwd().join("bypass-notebook.ipynb");
         let path = path.display().to_string();
         let input = serde_json::json!({
@@ -5628,6 +5643,7 @@ mod tests {
 
     #[test]
     fn edit_explicit_ask_rule_stays_bypass_immune_but_safety_check_does_not() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let cwd = crate::bootstrap::state::get_original_cwd();
         let ordinary_path = cwd.join("explicit-ask-edit.txt").display().to_string();
         let mut context = ToolPermissionContext {
@@ -5733,6 +5749,7 @@ mod tests {
 
     #[test]
     fn dont_ask_mode_transforms_prompt_into_deny_after_allow_fast_paths() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut context = ToolPermissionContext::default();
         context.mode = PermissionMode::DontAsk;
 
@@ -5830,6 +5847,7 @@ mod tests {
 
     #[test]
     fn dont_ask_runs_after_whole_tool_allow_matches_official_order() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let input = serde_json::json!({"file_path": "/tmp/.../secret.txt"});
         let mut context = ToolPermissionContext {
             mode: PermissionMode::DontAsk,
@@ -5883,6 +5901,7 @@ mod tests {
 
     #[test]
     fn requires_user_interaction_ask_precedes_bypass_and_whole_tool_allow() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let input = serde_json::json!({});
         let decide = |context: &ToolPermissionContext| {
             let tool_context =
@@ -5966,6 +5985,7 @@ mod tests {
     /// `{behavior:'allow'}` — CC never prompts for a subagent spawn.
     #[test]
     fn agent_spawn_is_allowed_without_a_prompt_matches_official() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let input = serde_json::json!({
             "description": "audit permissions",
             "prompt": "Check the permission pipeline.",
@@ -6028,6 +6048,7 @@ mod tests {
     /// on the floor. Each row cites the CC owner of the expected behavior.
     #[test]
     fn tool_check_permissions_result_is_final_matches_official() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let context = ToolPermissionContext::default();
 
         // CC has no `checkPermissions` on these tools, so `TOOL_DEFAULTS`
@@ -6650,6 +6671,7 @@ mod tests {
     /// carries the flag.
     #[test]
     fn isolated_subagent_denials_stay_local_matches_official() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         use crate::utils::permissions::denial_tracking::{DenialTrackingState, record_denial};
 
         let parent_state = DenialTrackingState {
@@ -6831,6 +6853,7 @@ mod tests {
 
     #[test]
     fn bypass_and_plan_allow_after_tool_allow_match_official_complete_decision() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let input = serde_json::json!({"todos":[]});
         for mode in [PermissionMode::BypassPermissions, PermissionMode::Plan] {
             let permission = ToolPermissionContext {
@@ -6886,6 +6909,7 @@ mod tests {
 
     #[test]
     fn aborted_permission_call_matches_official_rejection_before_rules_and_denial_reset() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let input = serde_json::json!({"todos":[]});
         let context = crate::tool::ToolUseContext::default();
         context.abort_controller.abort();
@@ -6912,6 +6936,7 @@ mod tests {
 
     #[tokio::test]
     async fn rule_only_powershell_check_matches_official_content_deny_without_store_mutation() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut permissions = ToolPermissionContext {
             mode: PermissionMode::Default,
             ..Default::default()
@@ -6949,6 +6974,7 @@ mod tests {
 
     #[test]
     fn schema_failure_still_reaches_bypass_matches_official_inner_catch() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         // CC permissions.ts:1218-1224 catches parse failures then proceeds to 2a.
         let input = serde_json::json!({"questions":42});
         let permission = ToolPermissionContext {
@@ -7049,6 +7075,7 @@ mod tests {
 
     #[test]
     fn live_deny_rule_precedes_stale_bypass_snapshot_matches_official_get_app_state() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut permission = ToolPermissionContext::default();
         permission.always_deny_rules.insert(
             PermissionRuleSource::Session,

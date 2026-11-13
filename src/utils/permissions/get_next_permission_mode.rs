@@ -97,6 +97,7 @@ mod tests {
 
     #[test]
     fn next_permission_mode_default_cycle_without_auto_available() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut context = ToolPermissionContext::default();
         context.is_auto_mode_available = Some(false);
         assert_eq!(
@@ -119,6 +120,7 @@ mod tests {
 
     #[test]
     fn next_permission_mode_includes_auto_when_available_and_gate_on() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
         auto_mode_state::reset_for_testing();
         let mut context = ToolPermissionContext::default();
         context.is_auto_mode_available = Some(true);
@@ -133,6 +135,7 @@ mod tests {
 
     #[test]
     fn cycle_from_accept_edits_to_plan_does_not_call_auto_active() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
         auto_mode_state::reset_for_testing();
         let mut context = ToolPermissionContext::default();
         context.mode = PermissionMode::AcceptEdits;
@@ -143,6 +146,7 @@ mod tests {
 
     #[test]
     fn cycle_into_auto_uses_from_mode_not_external_default() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
         auto_mode_state::reset_for_testing();
         crate::bootstrap::state::set_needs_auto_mode_exit_attachment(true);
         let mut context = ToolPermissionContext::default();
@@ -163,6 +167,7 @@ mod tests {
 
     #[test]
     fn cycle_out_of_auto_restores_and_sets_exit_attachment() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
         auto_mode_state::reset_for_testing();
         // The auto gate needs a supported main model. Without a profile the
         // model is unset (no Anthropic default), so pin one explicitly.

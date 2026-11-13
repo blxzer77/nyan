@@ -8,7 +8,7 @@
 //! in-memory cache for the current in-process runner.
 
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -820,8 +820,8 @@ pub fn mark_messages_as_read_by_predicate(
 }
 
 #[cfg(test)]
-pub static TEST_TEAMMATE_MAILBOX_LOCK: std::sync::LazyLock<TestStateLock> =
-    std::sync::LazyLock::new(TestStateLock::new);
+pub static TEST_TEAMMATE_MAILBOX_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::TeammateMailbox);
 
 #[cfg(test)]
 pub fn clear_mailboxes_for_test() {

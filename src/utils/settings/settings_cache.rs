@@ -128,6 +128,7 @@ mod tests {
     /// for sources that legitimately have no file.
     #[test]
     fn per_source_cache_distinguishes_miss_from_cached_absence() {
+        let _lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         reset_settings_cache();
         assert!(get_cached_settings_for_source(SettingSource::Project).is_none());
 
@@ -150,6 +151,7 @@ mod tests {
     /// while `pluginSettingsBase` survives (only :78-80 clears it).
     #[test]
     fn reset_clears_three_caches_but_keeps_plugin_base() {
+        let _lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         reset_settings_cache();
         clear_plugin_settings_base();
 
