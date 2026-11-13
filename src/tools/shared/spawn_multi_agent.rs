@@ -1715,10 +1715,10 @@ mod tests {
         crate::utils::swarm::backends::teammate_mode_snapshot::set_cli_teammate_mode_override(
             crate::utils::swarm::backends::teammate_mode_snapshot::TeammateMode::InProcess,
         );
-        let _task_lock = crate::tasks::in_process_teammate_task::TEST_IN_PROCESS_TEAMMATE_TASK_LOCK
+        let _team_state_lock = crate::utils::swarm::team_helpers::TEST_TEAM_HELPERS_LOCK
             .lock()
             .unwrap();
-        let _team_state_lock = crate::utils::swarm::team_helpers::TEST_TEAM_HELPERS_LOCK
+        let _task_lock = crate::tasks::in_process_teammate_task::TEST_IN_PROCESS_TEAMMATE_TASK_LOCK
             .lock()
             .unwrap();
         crate::tasks::in_process_teammate_task::clear_in_process_teammate_tasks_for_test();

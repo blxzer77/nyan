@@ -1582,6 +1582,7 @@ mod tests {
 
     #[test]
     fn read_permission_matches_official_working_dir_rule_and_suggestion_order() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-read-permission-{}",
             uuid::Uuid::new_v4().simple()
@@ -1698,6 +1699,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn read_permission_checks_resolved_working_path_then_requested_rules_like_official() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         use std::os::unix::fs::symlink;
         let root = std::env::temp_dir().join(format!(
             "nyan-read-working-symlink-{}",
@@ -2127,6 +2129,7 @@ mod tests {
 
     #[test]
     fn default_write_asks_with_accept_edits_suggestion() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let cwd = std::env::current_dir().unwrap();
         let path = cwd.join("new-write.txt");
         let result = check_write_permission_for_tool(

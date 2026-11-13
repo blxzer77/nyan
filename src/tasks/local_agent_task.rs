@@ -26,7 +26,7 @@ use crate::tools::agent_tool::load_agents_dir::AgentDefinition;
 use crate::types::message::{AssistantContent, Message};
 use crate::utils::task::disk_output;
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use std::collections::HashMap;
 use std::sync::{
     Arc, LazyLock, Mutex,
@@ -221,7 +221,8 @@ static BACKGROUND_SIGNAL_RESOLVERS: LazyLock<
 > = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[cfg(test)]
-pub static TEST_LOCAL_AGENT_TASK_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStateLock::new);
+pub static TEST_LOCAL_AGENT_TASK_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::LocalAgentTask);
 
 fn now_ms() -> u64 {
     chrono::Utc::now().timestamp_millis().max(0) as u64

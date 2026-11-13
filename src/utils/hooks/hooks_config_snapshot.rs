@@ -121,9 +121,9 @@ pub fn reset_hooks_config_snapshot() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::test_env::TestStateLock;
+    use crate::utils::test_env::{TestLockRank, TestStateLock};
 
-    static TEST_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStateLock::new);
+    static TEST_LOCK: TestStateLock = TestStateLock::new(TestLockRank::ModuleLocal);
 
     fn settings_with_hook(command: &str) -> SettingsJson {
         SettingsJson {

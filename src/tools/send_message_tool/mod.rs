@@ -1088,10 +1088,10 @@ impl crate::tool::ToolCall for SendMessageTool {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK, TestStateLock};
+    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK, TestLockRank, TestStateLock};
 
-    static SEND_MESSAGE_TEAM_MAILBOX_TEST_LOCK: std::sync::LazyLock<TestStateLock> =
-        std::sync::LazyLock::new(TestStateLock::new);
+    static SEND_MESSAGE_TEAM_MAILBOX_TEST_LOCK: TestStateLock =
+        TestStateLock::new(TestLockRank::SendMessageMailbox);
 
     #[test]
     fn unsupported_address_schemes_fail_before_delivery_regardless_of_peer_gate() {

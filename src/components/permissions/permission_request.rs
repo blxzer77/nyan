@@ -1065,6 +1065,7 @@ mod tests {
     /// `app:interrupt` still reaches the dispatcher (CC :206-214).
     #[tokio::test]
     async fn ctrl_c_answers_nothing_in_the_tool_dialogs() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         for request in [
             bash_request(),
             powershell_request(),
@@ -1137,6 +1138,7 @@ mod tests {
 
     #[test]
     fn permission_request_uses_natural_height() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let current_theme = *theme::current();
         let canvas = element! {
             ContextProvider(value: Context::owned(current_theme)) {
@@ -1156,6 +1158,7 @@ mod tests {
 
     #[test]
     fn permission_explainer_gate_follows_global_config_mid_session() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         use crate::utils::config::{GlobalConfig, replace_test_global_config};
 
         let render = || {
@@ -1197,6 +1200,7 @@ mod tests {
 
     #[test]
     fn permission_request_forwards_worker_badge_to_concrete_tool_ui() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let current_theme = *theme::current();
         let text = element! {
             ContextProvider(value: Context::owned(current_theme)) {
@@ -1216,6 +1220,7 @@ mod tests {
 
     #[test]
     fn permission_request_stretches_to_wide_main_screen_parent() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let current_theme = *theme::current();
         let canvas = element! {
             ContextProvider(value: Context::owned(current_theme)) {
@@ -1235,6 +1240,7 @@ mod tests {
 
     #[test]
     fn transcript_plus_permission_request_uses_terminal_width_root() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let current_theme = *theme::current();
         let messages = transcript_fixture_messages(3);
 
@@ -1266,6 +1272,7 @@ mod tests {
 
     #[test]
     fn transcript_plus_prompt_input_uses_terminal_width_root() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let current_theme = *theme::current();
         let messages = transcript_fixture_messages(12);
 
@@ -1299,6 +1306,7 @@ mod tests {
 
     #[test]
     fn transcript_loading_plus_prompt_input_uses_terminal_width_root() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let current_theme = *theme::current();
         let messages = transcript_fixture_messages(36);
 
@@ -1360,6 +1368,7 @@ mod tests {
 
     #[test]
     fn transcript_plus_prompt_input_mock_terminal_size_no_blank_pages() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let canvases = futures::executor::block_on(
             element!(PromptLayoutProbe)
                 .mock_terminal_render_loop(MockTerminalConfig::default().with_size(125, 41))
@@ -1376,6 +1385,7 @@ mod tests {
 
     #[test]
     fn permission_request_delegates_bash_to_official_bash_permission_dialog() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let current_theme = *theme::current();
         let text = element! {
             ContextProvider(value: Context::owned(current_theme)) {
@@ -1639,6 +1649,7 @@ mod tests {
 
     #[test]
     fn permission_request_delegates_file_tools_to_official_file_permission_dialogs() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let current_theme = *theme::current();
         let cases = vec![
             (read_request(), "Read file", "Read(/repo/src/main.rs"),

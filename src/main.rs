@@ -2443,10 +2443,10 @@ mod tests {
 
     #[test]
     fn configure_teammate_from_cli_sets_dynamic_context_and_mode_override_like_official() {
-        let _teammate_lock = utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK.lock().unwrap();
         let _backend_lock = utils::swarm::backends::registry::TEST_BACKEND_REGISTRY_LOCK
             .lock()
             .unwrap();
+        let _teammate_lock = utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK.lock().unwrap();
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         utils::teammate::clear_dynamic_team_context();

@@ -49,6 +49,7 @@ mod tests {
 
     #[test]
     fn apply_settings_change_replaces_app_state_settings_snapshot() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let store = AppStore::new(AppState::default(), None);
         let before = store.get().settings.clone();
         apply_settings_change(SettingSource::User, &store);

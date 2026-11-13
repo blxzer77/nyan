@@ -2537,6 +2537,12 @@ mod tests {
 
     #[test]
     fn agent_tool_team_name_resolution_matches_teammate_context_order() {
+        let _team_lock = crate::utils::swarm::team_helpers::TEST_TEAM_HELPERS_LOCK
+            .lock()
+            .unwrap();
+        let _teammate_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
+            .lock()
+            .unwrap();
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let context = crate::tool::ToolUseContext::default();
         {
@@ -2544,12 +2550,6 @@ mod tests {
             assert!(resolve_team_name_for_agent_tool(None, &context).is_none());
         }
         let _teams = EnvVarGuard::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
-        let _teammate_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
-            .lock()
-            .unwrap();
-        let _team_lock = crate::utils::swarm::team_helpers::TEST_TEAM_HELPERS_LOCK
-            .lock()
-            .unwrap();
         crate::utils::teammate::clear_dynamic_team_context();
         crate::utils::swarm::team_helpers::clear_team_tool_state_for_test();
         crate::utils::swarm::team_helpers::write_team_record(
@@ -3120,11 +3120,11 @@ mod tests {
     #[test]
     fn agent_tool_rejects_nested_teammate_spawn_before_backend_execution() {
         use crate::tool::ToolCall;
-        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _teams = EnvVarGuard::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         let _teammate_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
             .lock()
             .unwrap();
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let _teams = EnvVarGuard::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         crate::utils::teammate::clear_dynamic_team_context();
         crate::utils::teammate::set_dynamic_team_context(Some(
             crate::utils::teammate::DynamicTeamContext {
@@ -3658,11 +3658,11 @@ mod tests {
     /// truthy and wins; only `''` falls through to the context.
     #[test]
     fn team_name_resolution_uses_js_truthiness_not_trimming() {
-        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _teams = EnvVarGuard::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         let _teammate_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
             .lock()
             .unwrap();
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let _teams = EnvVarGuard::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         crate::utils::teammate::clear_dynamic_team_context();
         let context = crate::tool::ToolUseContext::default();
 

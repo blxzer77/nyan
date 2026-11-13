@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::utils::process_env::JsTruthy;
 #[cfg(test)]
-use crate::utils::test_env::{EnvVarGuard, TestStateLock};
+use crate::utils::test_env::{EnvVarGuard, TestLockRank, TestStateLock};
 
 const HIGH_WATER_MARK_FILE: &str = ".highwatermark";
 
@@ -557,7 +557,7 @@ impl TaskToolStoreCompatInner {
 }
 
 #[cfg(test)]
-pub(crate) static TASK_TOOL_TEST_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStateLock::new);
+pub(crate) static TASK_TOOL_TEST_LOCK: TestStateLock = TestStateLock::new(TestLockRank::TaskTool);
 
 #[cfg(test)]
 mod tests {

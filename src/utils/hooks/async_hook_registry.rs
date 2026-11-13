@@ -453,9 +453,9 @@ mod tests {
         HookEventHandler, HookExecutionEvent, clear_hook_event_state, register_hook_event_handler,
         set_all_hook_events_enabled,
     };
-    use crate::utils::test_env::TestStateLock;
+    use crate::utils::test_env::{TestLockRank, TestStateLock};
 
-    static TEST_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStateLock::new);
+    static TEST_LOCK: TestStateLock = TestStateLock::new(TestLockRank::ModuleLocal);
 
     fn collect_handler(into: Arc<Mutex<Vec<HookExecutionEvent>>>) -> HookEventHandler {
         Arc::new(move |event| into.lock().expect("events mutex").push(event))
