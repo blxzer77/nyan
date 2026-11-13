@@ -117,7 +117,6 @@ pub mod skill_improvement_survey;
 pub mod skills;
 pub mod spinner;
 pub mod stats;
-pub mod status_line;
 pub mod status_notices;
 pub mod structured_diff;
 pub mod structured_diff_fallback;

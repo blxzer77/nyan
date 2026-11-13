@@ -133,7 +133,6 @@ mod tests {
         let initial = crate::main::build_initial_app_state(
             &settings.settings,
             &settings.errors,
-            true,
             &crate::cli::CliConfig::default(),
         )
         .unwrap();
@@ -241,7 +240,6 @@ mod tests {
         let initial = crate::main::build_initial_app_state(
             &settings.settings,
             &settings.errors,
-            true,
             &crate::cli::CliConfig::default(),
         )
         .unwrap();
@@ -330,7 +328,6 @@ mod tests {
         let initial = crate::main::build_initial_app_state(
             &settings.settings,
             &settings.errors,
-            true,
             &crate::cli::CliConfig::default(),
         )
         .unwrap();

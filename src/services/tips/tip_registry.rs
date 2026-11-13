@@ -21,11 +21,6 @@ fn builtin_tips(ctx: &TipContext) -> Vec<Tip> {
             cooldown_sessions: 20,
         },
         Tip {
-            id: "status-line".to_string(),
-            content: "Customize your status line with /statusline".to_string(),
-            cooldown_sessions: 25,
-        },
-        Tip {
             id: "prompt-queue".to_string(),
             content: "Hit Enter to queue another message while Claude is working".to_string(),
             cooldown_sessions: 5,

@@ -615,12 +615,6 @@ pub struct AppState {
     /// is equivalent to CC's reference projection (B3 review A-7,
     /// permissions.ts:974 + denialTracking.ts:33).
     pub denial_tracking: Option<crate::utils::permissions::denial_tracking::DenialTrackingState>,
-    /// Maps to: CC AppStateStore.ts:94 statusLineText. Plain
-    /// `string | undefined` — configured/padding are derived from
-    /// `AppState.settings` at the read sites (CC StatusLine.tsx:59/:391).
-    /// Written by the async statusline-command future at App mount; read
-    /// by the prompt footer.
-    pub status_line_text: Option<String>,
     /// Maps to: CC `AppState.notifications` — `{current, queue}` consumed by
     /// the prompt-input notification row.
     pub notifications: Arc<crate::context::notifications::NotificationsState>,
@@ -845,8 +839,6 @@ impl Default for AppState {
             settings: Arc::new(crate::utils::settings::SettingsJson::default()),
             tool_permission_context: Arc::new(ToolPermissionContext::default()),
             denial_tracking: None,
-            // Maps to: CC AppStateStore.ts:475 `statusLineText: undefined`.
-            status_line_text: None,
             notifications: Arc::new(crate::context::notifications::NotificationsState::default()),
             elicitation: Arc::new(ElicitationState::default()),
             mcp: Arc::new(McpState::default()),

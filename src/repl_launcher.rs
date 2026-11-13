@@ -67,7 +67,6 @@ mod tests {
         let initial = crate::main::build_initial_app_state(
             &startup_settings.settings,
             &startup_settings.errors,
-            true,
             &crate::cli::CliConfig::default(),
         )
         .unwrap();

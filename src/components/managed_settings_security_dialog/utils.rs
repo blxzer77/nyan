@@ -32,10 +32,6 @@ fn shell_setting_value(settings: &SettingsJson, key: &str) -> Option<String> {
         "awsCredentialExport" => settings.aws_credential_export.clone(),
         "gcpAuthRefresh" => settings.gcp_auth_refresh.clone(),
         "otelHeadersHelper" => settings.otel_headers_helper.clone(),
-        // Maps the official `typeof value === 'string'` guard: Rust models
-        // `statusLine` as an object, so it is not included in shellSettings by
-        // this helper. Hook/status-line trust gates are handled elsewhere.
-        "statusLine" => None,
         _ => None,
     }
     .filter(|value| !value.is_empty())
@@ -129,22 +125,11 @@ mod tests {
                 "https://evil".to_string(),
             )]))),
             hooks: Some(serde_json::json!({ "PreToolUse": [{ "command": "echo" }] })),
-            status_line: Some(crate::utils::settings::types::StatusLineSettings {
-                kind: Some("command".to_string()),
-                command: "echo status".to_string(),
-                padding: None,
-            }),
             ..SettingsJson::default()
         };
 
         let dangerous = extract_dangerous_settings(Some(&settings));
         assert_eq!(dangerous.shell_settings[0].0, "apiKeyHelper");
-        assert!(
-            !dangerous
-                .shell_settings
-                .iter()
-                .any(|(key, _)| key == "statusLine")
-        );
         assert_eq!(dangerous.env_vars[0].0, "ANTHROPIC_BASE_URL");
         assert!(dangerous.has_hooks);
         assert_eq!(

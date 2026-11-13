@@ -47,7 +47,6 @@ pub mod review;
 pub mod sandbox;
 pub mod skills;
 pub mod stats;
-pub mod statusline;
 pub mod tasks;
 pub mod terminal_setup;
 pub mod theme;
@@ -353,11 +352,6 @@ impl Command {
     fn prompt_metadata(mut self, progress_message: &'static str, content_length: usize) -> Self {
         self.progress_message = Some(Cow::Borrowed(progress_message));
         self.content_length = Some(content_length);
-        self
-    }
-
-    fn disable_non_interactive(mut self) -> Self {
-        self.disable_non_interactive = true;
         self
     }
 
@@ -769,7 +763,6 @@ fn commands() -> Vec<Command> {
         )
         .immediate()
         .executable(execution::call_status),
-        statusline::command(),
         Command::local("stickers", "Order nyan stickers"),
         Command::local_ui("tag", "Toggle a searchable tag on the current session")
             .argument_hint("<tag-name>")
@@ -1256,7 +1249,6 @@ pub fn filter_commands_for_remote_mode(commands: Vec<Command>) -> Vec<Command> {
         "feedback",
         "plan",
         "keybindings",
-        "statusline",
         "stickers",
         "mobile",
     ];
@@ -1457,13 +1449,13 @@ mod tests {
         let _demo = EnvVarGuard::unset("IS_DEMO");
 
         let catalog = commands();
-        // 71 direct descriptors + internal /version, plus @nyan `/retrieval`.
+        // 70 direct descriptors + internal /version, plus @nyan `/retrieval`.
         // `/login` and `/logout` are gone: Anthropic is API-key only; `/fast`
         // is gone with Fast mode.
         let base_len = if crate::utils::build_profile::build_audience().is_internal() {
-            72
-        } else {
             71
+        } else {
+            70
         };
         assert_eq!(catalog.len(), base_len);
         for removed in ["login", "logout"] {
@@ -1520,7 +1512,6 @@ mod tests {
             "skills",
             "stats",
             "status",
-            "statusline",
             "stickers",
             "tag",
             "theme",

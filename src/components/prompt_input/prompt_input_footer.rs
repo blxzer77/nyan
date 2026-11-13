@@ -1,17 +1,12 @@
 //! Maps to: CC `components/PromptInput/PromptInputFooter.tsx`.
 //!
 //! Nyan keeps this footer in normal document flow for the main-screen /
-//! native-scrollback path. It mirrors the official row ordering (optional
-//! status line, then left-side mode/hints plus right-side notifications) while
-//! keeping status-line command execution as the only command-hook special case,
-//! with no fullscreen/overlay behavior.
+//! native-scrollback path. It mirrors the official left-side mode/hints plus
+//! right-side notifications, with no fullscreen/overlay behavior.
 
 use super::{
     input_modes::PromptInputMode, notifications,
     prompt_input_footer_left_side::PromptInputFooterLeftSide,
-};
-use crate::components::status_line::{
-    StatusLine, status_line_should_display, status_line_should_render,
 };
 use crate::context::notifications::{NotificationColor, NotificationSegment};
 use crate::hooks::use_credential_status::CredentialStatus;
@@ -116,11 +111,7 @@ pub struct FooterProps {
 
 /// Single source for "the left side renders a body row for footer pills"
 /// (bash banner, vim indicator, tasks pill, teammate pill). The HEIGHT BUDGET
-/// and the component's own render gate MUST share this predicate: the
-/// 2026-08-07 prompt-box collapse ("2 tasks" under a status line squeezing
-/// the input row out) was exactly this condition living in the component but
-/// not in the budget — the same divergence class as the status-line-loading
-/// collapse documented on `footer_height_for`.
+/// and the component's own render gate MUST share this predicate.
 pub fn footer_has_items(
     mode: PromptInputMode,
     vim_mode_active: bool,
@@ -179,7 +170,6 @@ fn footer_body_height_for(
 }
 
 pub fn footer_height_for(
-    status_line_configured: bool,
     exit_hint_visible: bool,
     is_searching: bool,
     suppress_hint: bool,
@@ -189,20 +179,7 @@ pub fn footer_height_for(
     status_indicator_count: usize,
     has_footer_items: bool,
 ) -> usize {
-    // Height MUST track the same condition as the mount
-    // (`status_line_should_render`), not the text. They used to differ, on the
-    // theory that CC renders nothing while `statusLineText` is undefined — but
-    // CC reserves the row (`StatusLine.tsx:397-406`, and says why at `:393`:
-    // "a 0→1 row change when the command finishes steals a row"). Tracking the
-    // text here meant that while a configured status line was still loading,
-    // the hint row was already suppressed on its account
-    // (`PromptInputFooter.tsx:136` suppresses on SETTINGS) while its own row
-    // was not yet counted — so the footer budget went to zero and the prompt
-    // box collapsed.
-    usize::from(status_line_should_render(
-        status_line_configured,
-        exit_hint_visible,
-    )) + footer_body_height_for(
+    footer_body_height_for(
         exit_hint_visible,
         is_searching,
         suppress_hint,
@@ -216,14 +193,6 @@ pub fn footer_height_for(
 
 #[component]
 pub fn Footer(props: &FooterProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    // Maps to: CC StatusLine.tsx:195 `useAppState(s => s.statusLineText)` +
-    // PromptInputFooter.tsx:136 `statusLineShouldDisplay(settings)` — both
-    // re-derived from live AppState per render, never snapshotted.
-    let status_line_text =
-        use_app_state(&mut hooks, |state| state.status_line_text.clone()).unwrap_or_default();
-    let status_line_configured = use_app_state(&mut hooks, |state| {
-        status_line_should_display(&state.settings)
-    });
     // Rows `Notifications` renders directly (CC NotificationContent). Computed
     // here (component-owned) from the same contexts Notifications reads, so
     // every mount point — production or test harness — stays consistent.
@@ -274,9 +243,8 @@ pub fn Footer(props: &FooterProps, mut hooks: Hooks) -> impl Into<AnyElement<'st
             )
         })
     };
-    let suppress_hint = props.suppress_hint || status_line_configured || props.is_searching;
+    let suppress_hint = props.suppress_hint || props.is_searching;
     let exit_hint_visible = props.exit_hint.is_some();
-    let has_status_line = status_line_should_render(status_line_configured, exit_hint_visible);
     let has_footer_items = footer_has_items(
         props.mode,
         props.vim_mode.is_some(),
@@ -296,27 +264,12 @@ pub fn Footer(props: &FooterProps, mut hooks: Hooks) -> impl Into<AnyElement<'st
     let has_footer_row = footer_body_height > 0;
     let has_right_side = notification_row_count > 0 || props.status_indicator_count > 0;
 
-    if !has_status_line && !has_footer_row {
+    if !has_footer_row {
         return element! { View(width: 0u32, height: 0u32) }.into_any();
     }
 
     element! {
         View(flex_direction: FlexDirection::Column, width: 100pct) {
-            #(if has_status_line {
-                // Maps to: CC `PromptInputFooter.tsx:179-183` — the source
-                // passes `messagesRef`, `lastAssistantMessageId` and `vimMode`;
-                // StatusLine reads permission mode / model from AppState itself.
-                Some(element! {
-                    StatusLine(
-                        text: status_line_text.clone(),
-                        messages: Some(std::sync::Arc::clone(&props.messages)),
-                        last_assistant_message_id: crate::components::status_line::get_last_assistant_message_id(&props.messages),
-                        vim_mode: props.vim_mode.clone(),
-                    )
-                })
-            } else {
-                None
-            })
             #(if has_footer_row {
                 Some(element! {
                     View(
@@ -570,29 +523,12 @@ pub fn BridgeStatusIndicator(
 mod tests {
     use super::*;
     use crate::context::notifications::{Notification, NotificationsState};
-    use crate::utils::settings::types::{SettingsJson, StatusLineSettings};
     use crate::utils::theme;
 
     #[test]
-    fn footer_height_matches_statusline_hint_and_notification_rows() {
+    fn footer_height_matches_hint_and_notification_rows() {
         assert_eq!(
             footer_height_for(
-                true,
-                false,
-                false,
-                true,
-                false,
-                PermissionMode::Default,
-                0,
-                0,
-                false,
-            ),
-            1,
-            "configured status line with text suppresses shortcut hint and owns one row"
-        );
-        assert_eq!(
-            footer_height_for(
-                false,
                 false,
                 false,
                 false,
@@ -606,23 +542,12 @@ mod tests {
             "loading hint and notification share the official footer row"
         );
         assert_eq!(
-            footer_height_for(
-                false,
-                false,
-                false,
-                true,
-                false,
-                PermissionMode::Plan,
-                0,
-                0,
-                false,
-            ),
+            footer_height_for(false, false, true, false, PermissionMode::Plan, 0, 0, false,),
             1,
             "active permission mode renders even when shortcut hints are suppressed"
         );
         assert_eq!(
             footer_height_for(
-                false,
                 false,
                 false,
                 true,
@@ -638,29 +563,9 @@ mod tests {
     }
 
     #[test]
-    fn footer_height_budgets_the_pill_row_alongside_a_status_line() {
-        // Regression: the 2026-08-07 prompt-box collapse. A configured status
-        // line suppresses hints (budget row 1 = status line), and the tasks
-        // pill renders a body row the old budget did not count — the input
-        // row got squeezed out. The pill predicate must add the body row.
+    fn footer_height_budgets_the_pill_row() {
         assert_eq!(
             footer_height_for(
-                true,
-                false,
-                false,
-                true,
-                false,
-                PermissionMode::Default,
-                0,
-                0,
-                true,
-            ),
-            2,
-            "status line row + footer-pill body row must both be budgeted"
-        );
-        assert_eq!(
-            footer_height_for(
-                false,
                 false,
                 false,
                 true,
@@ -676,94 +581,6 @@ mod tests {
         assert!(footer_has_items(PromptInputMode::Prompt, false, 2, 0));
         assert!(footer_has_items(PromptInputMode::Bash, false, 0, 0));
         assert!(!footer_has_items(PromptInputMode::Prompt, false, 0, 0));
-    }
-
-    #[component]
-    fn FooterWithStatusLine(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-        let status_line_store = hooks.use_state(|| {
-            let mut initial = crate::state::app_state_store::AppState::default();
-            initial.status_line_text = Some("\u{1b}[32mrepo main\u{1b}[0m".to_string());
-            // Hint suppression + padding derive from settings (CC
-            // PromptInputFooter.tsx:136 / StatusLine.tsx:391).
-            initial.settings = std::sync::Arc::new(SettingsJson {
-                status_line: Some(StatusLineSettings {
-                    kind: Some("command".to_string()),
-                    command: "printf ok".to_string(),
-                    padding: Some(1),
-                }),
-                ..Default::default()
-            });
-            crate::state::store::AppStore::new(initial, None)
-        });
-        element! {
-            ContextProvider(value: Context::owned(*theme::current())) {
-                crate::state::app_state::AppStateProvider(
-                    prebuilt_store: Some(status_line_store.read().clone()),
-                    children: crate::state::app_state::ProviderChildren::new(|| element! {
-                        Footer(
-                            suppress_hint: false,
-                            permission_mode: PermissionMode::Default,
-                        )
-                    }.into_any()),
-                )
-            }
-        }
-    }
-
-    #[test]
-    fn footer_renders_statusline_above_left_side_and_suppresses_default_hint() {
-        let text = element!(FooterWithStatusLine).render(Some(80)).to_string();
-
-        assert!(text.contains("repo main"), "canvas=\n{text}");
-        assert!(!text.contains("? for shortcuts"), "canvas=\n{text}");
-    }
-
-    #[component]
-    fn FooterWithMixedStatusLine(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-        let status_line_store = hooks.use_state(|| {
-            let mut initial = crate::state::app_state_store::AppState::default();
-            initial.status_line_text = Some("plain \u{1b}[32mgreen\u{1b}[0m".to_string());
-            // Configured status line with no padding (CC StatusLine.tsx:391
-            // `?? 0` default keeps column 0 assertions valid).
-            initial.settings = std::sync::Arc::new(SettingsJson {
-                status_line: Some(StatusLineSettings {
-                    kind: Some("command".to_string()),
-                    command: "printf ok".to_string(),
-                    padding: None,
-                }),
-                ..Default::default()
-            });
-            crate::state::store::AppStore::new(initial, None)
-        });
-        element! {
-            ContextProvider(value: Context::owned(*theme::current())) {
-                crate::state::app_state::AppStateProvider(
-                    prebuilt_store: Some(status_line_store.read().clone()),
-                    children: crate::state::app_state::ProviderChildren::new(|| element! {
-                        Footer(
-                            suppress_hint: true,
-                            permission_mode: PermissionMode::Default,
-                        )
-                    }.into_any()),
-                )
-            }
-        }
-    }
-
-    #[test]
-    fn footer_statusline_uses_inactive_default_color_without_forcing_dim() {
-        let theme = *theme::current();
-        let canvas = element!(FooterWithMixedStatusLine).render(Some(80));
-        let text = canvas.to_string();
-
-        assert!(text.starts_with("plain green"), "canvas=\n{text}");
-        let plain_style = canvas.resolved_text_style(0, 0).expect("plain style");
-        assert_eq!(plain_style.color, Some(theme.inactive));
-        assert_eq!(plain_style.weight, Weight::Normal);
-
-        let green_style = canvas.resolved_text_style(6, 0).expect("green style");
-        assert_eq!(green_style.color, Some(Color::DarkGreen));
-        assert_eq!(green_style.weight, Weight::Normal);
     }
 
     #[component]

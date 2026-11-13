@@ -2690,13 +2690,6 @@ pub fn PromptInput<'a>(
             )
         })
     };
-    // Maps to: CC StatusLine.tsx:195 `useAppState(s => s.statusLineText)` +
-    // PromptInputFooter.tsx:136 `statusLineShouldDisplay(settings)`, both
-    // re-derived from live AppState per render (no startup snapshot).
-    let status_line_text = use_app_state(&mut hooks, |state| state.status_line_text.clone());
-    let status_line_configured = use_app_state(&mut hooks, |state| {
-        crate::components::status_line::status_line_should_display(&state.settings)
-    });
     let rendered_lines = text_input.rendered_lines.clone();
     let base_input_state = BaseInputState::from(&text_input);
     // Maps to: PromptInput.tsx imageRefPositions + inside-chip snap useEffect.
@@ -2802,15 +2795,13 @@ pub fn PromptInput<'a>(
     } else if help_open.get() {
         PROMPT_INPUT_HELP_MENU_HEIGHT
     } else {
-        let suppress_hint = !input_is_empty || status_line_configured || history_search_active;
+        let suppress_hint = !input_is_empty || history_search_active;
         // The pill predicate MUST be the same one the Footer component uses
         // to render its body row (footer_has_items, fed by the exact prop
         // expressions at the Footer mount below) — the old local `.max(1)`
-        // band-aid diverged (no bash mode, its own vim condition) and, with a
-        // status line occupying the budget's first row, left the tasks-pill
-        // row unbudgeted: the prompt input row collapsed.
+        // band-aid diverged (no bash mode, its own vim condition) and left the
+        // tasks-pill row unbudgeted: the prompt input row collapsed.
         prompt_input_footer::footer_height_for(
-            status_line_configured,
             exit_hint.is_some(),
             history_search_active,
             suppress_hint,

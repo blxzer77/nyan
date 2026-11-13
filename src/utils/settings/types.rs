@@ -87,9 +87,6 @@ pub struct SettingsJson {
     pub allowed_http_hook_urls: Option<Vec<String>>,
     pub http_hook_allowed_env_vars: Option<Vec<String>>,
 
-    // ── StatusLine ──
-    pub status_line: Option<StatusLineSettings>,
-
     // ── MCP Servers ──
     pub enable_all_project_mcp_servers: Option<bool>,
     pub enabled_mcpjson_servers: Option<Vec<String>>,
@@ -224,15 +221,6 @@ pub struct PermissionsSettings {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StatusLineSettings {
-    #[serde(rename = "type")]
-    pub kind: Option<String>,
-    pub command: String,
-    pub padding: Option<u16>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AllowedMcpServerEntry {
     pub server_name: Option<String>,
     pub server_command: Option<Vec<String>>,
@@ -309,12 +297,6 @@ pub struct XaaIdpSettings {
 
 // ════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════
-
-impl StatusLineSettings {
-    pub fn is_command_type(&self) -> bool {
-        self.kind.as_deref().unwrap_or("command") == "command"
-    }
-}
 
 impl AllowedMcpServerEntry {
     pub fn is_name_entry(&self) -> bool {
@@ -840,7 +822,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 "disableAllHooks",
                 zod::boolean()
                     .optional()
-                    .describe("Disable all hooks and statusLine execution"),
+                    .describe("Disable all hooks"),
             ),
             (
                 "defaultShell",
@@ -894,16 +876,6 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 .describe(
                     "When set in managed settings, blocks non-plugin customization sources for the listed surfaces. Array form locks specific surfaces (e.g. [\"skills\", \"hooks\"]); `true` locks all four; `false` is an explicit no-op. Blocked: ~/.claude/{surface}/, .claude/{surface}/ (project), settings.json hooks, .mcp.json. NOT blocked: managed (policySettings) sources, plugin-provided customizations. Composes with strictKnownMarketplaces for end-to-end admin control — plugins gated by marketplace allowlist, everything else blocked here.",
                 ),
-            ),
-            (
-                "statusLine",
-                zod::object(vec![
-                    ("type", zod::literal(json!("command"))),
-                    ("command", zod::string()),
-                    ("padding", zod::number().optional()),
-                ])
-                .optional()
-                .describe("Custom status line display configuration"),
             ),
             (
                 "enabledPlugins",
@@ -1544,7 +1516,6 @@ mod zod_schema_tests {
             "permissions": {"allow": ["Bash(npm run:*)"], "defaultMode": "plan"},
             "hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "echo"}]}]},
             "sandbox": {"enabled": true},
-            "statusLine": {"type": "command", "command": "starship"},
             "spinnerVerbs": {"mode": "append", "verbs": ["Reticulating"]},
             "someFutureKey": {"kept": true},
         });
