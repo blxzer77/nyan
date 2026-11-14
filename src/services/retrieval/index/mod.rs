@@ -941,13 +941,20 @@ struct WalkedFile {
 /// no nested repository or worktree, and no hidden directory outside
 /// [`HIDDEN_DIRS_KEPT`].
 fn walk(root: &Path) -> Vec<WalkedFile> {
+    // Keep the git boundary even for repositories with no commits yet.
+    let require_git = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .is_ok_and(|output| output.status.success());
     let mut walker = WalkBuilder::new(root);
     walker
         .hidden(false)
         .git_ignore(true)
         .git_global(true)
         .git_exclude(true)
-        .require_git(false)
+        .require_git(require_git)
         .follow_links(false)
         .filter_entry(|entry| {
             let name = entry.file_name().to_string_lossy();
@@ -1768,6 +1775,43 @@ mod tests {
             [".github/workflows/ci.yml", ".gitignore", "src/lib.rs"]
         );
         let _ = std::fs::remove_dir_all(project.parent().unwrap());
+    }
+
+    #[test]
+    fn walk_git_roots_ignore_gitignores_above_the_repository() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let (config, project) = temp_project("walk-git-boundary");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config);
+        std::fs::write(project.parent().unwrap().join(".gitignore"), "*\n").unwrap();
+        let init = Command::new("git")
+            .args(["init", "--quiet"])
+            .arg(&project)
+            .output()
+            .unwrap();
+        assert!(
+            init.status.success(),
+            "git init failed: {}",
+            String::from_utf8_lossy(&init.stderr)
+        );
+        std::fs::create_dir_all(project.join("src")).unwrap();
+        std::fs::write(project.join("src/lib.rs"), "fn kept() {}\n").unwrap();
+
+        let index = open(&project);
+        assert!(index.head.is_none(), "fixture has no commits yet");
+        assert_eq!(
+            index
+                .files()
+                .iter()
+                .map(|file| file.path.as_str())
+                .collect::<Vec<_>>(),
+            ["src/lib.rs"]
+        );
+        let subdirectory_index = open(&project.join("src"));
+        assert_eq!(subdirectory_index.files().len(), 1);
+        assert!(subdirectory_index.file("lib.rs").is_some());
+        drop(subdirectory_index);
+        drop(index);
+        std::fs::remove_dir_all(project.parent().unwrap()).unwrap();
     }
 
     #[test]

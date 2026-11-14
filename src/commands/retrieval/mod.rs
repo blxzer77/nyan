@@ -92,12 +92,13 @@ fn status(context: &crate::tool::ToolUseContext) -> Result<String, String> {
     ));
     if index.skipped.total() > 0 {
         lines.push(format!(
-            "skipped: {} binary, {} too large, {} sensitive, {} denied, {} unsupported",
+            "skipped: {} binary, {} too large, {} sensitive, {} denied, {} unsupported, {} over limit",
             index.skipped.binary,
             index.skipped.too_large,
             index.skipped.sensitive,
             index.skipped.denied,
-            index.skipped.unsupported
+            index.skipped.unsupported,
+            index.skipped.over_limit
         ));
     }
     match retrieval.semantic() {
