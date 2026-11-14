@@ -107,12 +107,14 @@ fn configured_api_key_helper_present(store: &AppStore) -> bool {
 
 /// Height budget for Notifications rows. Wake-dependent rows (apiKeyHelper /
 /// memory / sandbox) are computed live — no mirrored bag (D9).
+///
+/// @nyan: the verbose `N tokens` row is gone (docs/nyan/tui.md §3.4); the
+/// info line owns the token count, so `verbose` and `credential_missing` no
+/// longer contribute a row anywhere.
 pub fn direct_footer_row_count(
     has_current_notification: bool,
-    verbose: bool,
     is_brief_only: bool,
     main_loop_model: Option<&str>,
-    credential_missing: bool,
     token_usage: u64,
     api_key_helper_slow: bool,
     memory_visible: bool,
@@ -120,9 +122,6 @@ pub fn direct_footer_row_count(
 ) -> usize {
     let mut count = usize::from(has_current_notification);
     count += usize::from(api_key_helper_slow);
-    if !credential_missing && verbose {
-        count += 1;
-    }
     let model = main_loop_model.unwrap_or(DEFAULT_MODEL);
     count += token_warning_hint_row_count(token_usage, model, is_brief_only);
     count += usize::from(memory_visible);
@@ -178,12 +177,10 @@ pub fn direct_footer_row_count_from_app(
     };
     let mut count = direct_footer_row_count(
         has_current_notification,
-        state.verbose,
         state.is_brief_only,
         Some(&crate::utils::model::model::profile_model(
             state.main_loop_profile.as_deref(),
         )),
-        credential_status.is_missing(),
         token_usage,
         api_key_helper_slow,
         memory_visible,
@@ -414,11 +411,9 @@ pub fn Notifications(
             NotificationColor::Warning,
         )));
     }
-    if !credential_status.is_missing() && verbose {
-        tail_rows.push(FooterRow::from_indicator(PromptFooterIndicator::dim(
-            format!("{token_usage} tokens"),
-        )));
-    }
+    // @nyan: the verbose `N tokens` row moved to the built-in info line
+    // (docs/nyan/tui.md §3.4). `verbose` still gates the auto-updater versions
+    // row below.
 
     let ide_status = ide_connected.then_some(IdeConnectionStatus::Connected);
     let ide_visible = ide_status_indicator_text(ide_status, ide_selection.as_ref()).is_some();
@@ -821,17 +816,18 @@ mod tests {
         .to_string();
         assert!(text.contains("Now using extra usage"), "canvas=\n{text}");
         assert!(text.contains("Debug mode"), "canvas=\n{text}");
-        assert!(text.contains("42 tokens"), "canvas=\n{text}");
+        // @nyan: verbose no longer renders a `N tokens` row (tui.md §3.4).
+        assert!(!text.contains("42 tokens"), "canvas=\n{text}");
     }
 
     #[test]
     fn direct_footer_row_count_includes_memory_wake_channel() {
         assert_eq!(
-            direct_footer_row_count(false, false, false, None, false, 0, false, true, false),
+            direct_footer_row_count(false, false, None, 0, false, true, false),
             1
         );
         assert_eq!(
-            direct_footer_row_count(false, false, false, None, false, 0, false, false, false),
+            direct_footer_row_count(false, false, None, 0, false, false, false),
             0
         );
     }

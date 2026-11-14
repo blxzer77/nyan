@@ -667,6 +667,20 @@ fn install_git(store: &AppStore, snapshot: GitSnapshot, cwd: PathBuf) {
     });
 }
 
+/// The main thread's session cwd for display, without a `ToolUseContext`.
+///
+/// `ToolUseContext::effective_cwd` is the authority (`cwd_override`, updated
+/// by a persistent Bash `cd`, else `get_original_cwd`). The render tree has no
+/// context handle, but the stop-hook snapshot holds the last main-thread one.
+/// Before the first turn (and whenever no snapshot exists) the session cwd is
+/// the startup/worktree directory, which is the same fallback `effective_cwd`
+/// uses. Read-only: this never probes git and never writes.
+pub fn session_cwd() -> PathBuf {
+    crate::utils::forked_agent::get_last_cache_safe_params()
+        .map(|params| params.tool_use_context.effective_cwd())
+        .unwrap_or_else(crate::bootstrap::state::get_original_cwd)
+}
+
 fn bound_store() -> &'static Mutex<Option<AppStore>> {
     static SLOT: OnceLock<Mutex<Option<AppStore>>> = OnceLock::new();
     SLOT.get_or_init(|| Mutex::new(None))

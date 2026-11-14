@@ -6,7 +6,7 @@
 
 use super::{
     input_modes::PromptInputMode, notifications,
-    prompt_input_footer_left_side::PromptInputFooterLeftSide,
+    prompt_input_footer_left_side::PromptInputFooterLeftSide, prompt_input_info_line,
 };
 use crate::context::notifications::{NotificationColor, NotificationSegment};
 use crate::hooks::use_credential_status::CredentialStatus;
@@ -107,6 +107,9 @@ pub struct FooterProps {
     pub vim_mode: Option<String>,
     pub mode: PromptInputMode,
     pub is_pasting: bool,
+    /// Terminal columns for the info line's narrow-screen degradation
+    /// (`docs/nyan/tui.md` §3.2). `None` reads the process terminal.
+    pub info_line_width: Option<u32>,
 }
 
 /// Single source for "the left side renders a body row for footer pills"
@@ -169,6 +172,11 @@ fn footer_body_height_for(
     }
 }
 
+/// Total footer height: the built-in info line plus the body row(s).
+///
+/// @nyan: the info line is always present (docs/nyan/tui.md §3.1) and is NOT
+/// affected by `suppress_hint`, so it is added outside the body predicate.
+/// The component below mounts it on exactly the same condition.
 pub fn footer_height_for(
     exit_hint_visible: bool,
     is_searching: bool,
@@ -179,16 +187,17 @@ pub fn footer_height_for(
     status_indicator_count: usize,
     has_footer_items: bool,
 ) -> usize {
-    footer_body_height_for(
-        exit_hint_visible,
-        is_searching,
-        suppress_hint,
-        is_loading,
-        permission_mode,
-        notification_row_count,
-        status_indicator_count,
-        has_footer_items,
-    )
+    prompt_input_info_line::INFO_LINE_HEIGHT
+        + footer_body_height_for(
+            exit_hint_visible,
+            is_searching,
+            suppress_hint,
+            is_loading,
+            permission_mode,
+            notification_row_count,
+            status_indicator_count,
+            has_footer_items,
+        )
 }
 
 #[component]
@@ -264,12 +273,20 @@ pub fn Footer(props: &FooterProps, mut hooks: Hooks) -> impl Into<AnyElement<'st
     let has_footer_row = footer_body_height > 0;
     let has_right_side = notification_row_count > 0 || props.status_indicator_count > 0;
 
-    if !has_footer_row {
-        return element! { View(width: 0u32, height: 0u32) }.into_any();
+    // @nyan: the built-in info line replaces the deleted statusLine and is
+    // always present, independent of `suppress_hint` (docs/nyan/tui.md §3.1).
+    // `footer_height_for` counts exactly this row.
+    let info_line = element! {
+        prompt_input_info_line::InfoLine(
+            token_usage: token_usage,
+            width: props.info_line_width,
+        )
     }
+    .into_any();
 
     element! {
         View(flex_direction: FlexDirection::Column, width: 100pct) {
+            #(Some(info_line))
             #(if has_footer_row {
                 Some(element! {
                     View(
@@ -527,6 +544,7 @@ mod tests {
 
     #[test]
     fn footer_height_matches_hint_and_notification_rows() {
+        // @nyan: +1 for the built-in info line, which is always present.
         assert_eq!(
             footer_height_for(
                 false,
@@ -538,12 +556,12 @@ mod tests {
                 0,
                 false,
             ),
-            1,
-            "loading hint and notification share the official footer row"
+            2,
+            "loading hint and notification share the official footer row above the info line"
         );
         assert_eq!(
             footer_height_for(false, false, true, false, PermissionMode::Plan, 0, 0, false,),
-            1,
+            2,
             "active permission mode renders even when shortcut hints are suppressed"
         );
         assert_eq!(
@@ -557,7 +575,7 @@ mod tests {
                 2,
                 false,
             ),
-            2,
+            3,
             "right-side status indicators keep their official stacked footer rows"
         );
     }
@@ -575,12 +593,30 @@ mod tests {
                 0,
                 true,
             ),
-            1,
-            "footer pills alone own one body row"
+            2,
+            "footer pills own one body row plus the info line"
         );
         assert!(footer_has_items(PromptInputMode::Prompt, false, 2, 0));
         assert!(footer_has_items(PromptInputMode::Bash, false, 0, 0));
         assert!(!footer_has_items(PromptInputMode::Prompt, false, 0, 0));
+    }
+
+    #[test]
+    fn footer_height_keeps_the_info_line_when_no_body_row_renders() {
+        assert_eq!(
+            footer_height_for(
+                false,
+                false,
+                true,
+                false,
+                PermissionMode::Default,
+                0,
+                0,
+                false,
+            ),
+            1,
+            "the info line survives a fully suppressed hint row"
+        );
     }
 
     #[component]
@@ -706,7 +742,10 @@ mod tests {
 
         assert!(text.contains("? for shortcuts"), "canvas=\n{text}");
         assert!(text.contains("Debug mode"), "canvas=\n{text}");
-        assert!(text.contains("77 tokens"), "canvas=\n{text}");
+        // @nyan: the verbose `N tokens` row moved to the info line (tui.md
+        // §3.4), so the debug rows no longer carry it.
+        assert!(!text.contains("77 tokens"), "canvas=\n{text}");
+        assert!(!text.contains(" tokens"), "canvas=\n{text}");
     }
 
     #[derive(Default, Props)]

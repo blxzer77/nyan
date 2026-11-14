@@ -26,6 +26,7 @@ pub mod prompt_input_footer;
 pub mod prompt_input_footer_left_side;
 pub mod prompt_input_footer_suggestions;
 pub mod prompt_input_help_menu;
+pub mod prompt_input_info_line;
 pub mod prompt_input_mode_indicator;
 pub mod prompt_input_queued_commands;
 pub mod prompt_input_stash_notice;
@@ -3073,6 +3074,9 @@ pub fn PromptInput<'a>(
                             vim_mode: show_vim_insert_footer.then(|| "INSERT".to_string()),
                             mode: input_mode.get(),
                             is_pasting: false,
+                            // The info line degrades by terminal width; pass the
+                            // same column count the input box measured against.
+                            info_line_width: Some(columns as u32),
                         )
                     }
                 }.into_any()
@@ -4230,7 +4234,10 @@ mod tests {
             .to_string();
 
         assert!(text.contains("Debug mode"), "canvas=\n{text}");
-        assert!(text.contains("123 tokens"), "canvas=\n{text}");
+        // @nyan: the token count moved from the verbose row to the info line's
+        // context segment (docs/nyan/tui.md §3.4).
+        assert!(text.contains("123/200k"), "canvas=\n{text}");
+        assert!(!text.contains("123 tokens"), "canvas=\n{text}");
     }
 
     #[test]
