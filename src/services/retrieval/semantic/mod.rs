@@ -717,7 +717,7 @@ impl SemanticClient {
     /// worker calls [`Self::sync_pending`] under the single-writer lock.
     pub fn spawn_background_sync(
         &self,
-        index: LocalIndex,
+        index: std::sync::Arc<LocalIndex>,
         settings: RetrievalSyncSettings,
     ) -> tokio::task::JoinHandle<SyncReport> {
         let client = self.clone();
@@ -897,7 +897,7 @@ fn chunk_id(path: &str, start: usize, end: usize) -> u64 {
 /// worktree plus how many of them still need a successful batch.
 struct FileWork {
     entry: PendingEntry,
-    file: super::index::IndexedFile,
+    file: std::sync::Arc<super::index::IndexedFile>,
     chunks: Vec<(super::index::ChunkRecord, String)>,
     remaining_chunks: usize,
     failed: bool,

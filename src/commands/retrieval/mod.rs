@@ -92,12 +92,13 @@ fn status(context: &crate::tool::ToolUseContext) -> Result<String, String> {
     ));
     if index.skipped.total() > 0 {
         lines.push(format!(
-            "skipped: {} binary, {} too large, {} sensitive, {} denied, {} unsupported",
+            "skipped: {} binary, {} too large, {} sensitive, {} denied, {} unsupported, {} over limit",
             index.skipped.binary,
             index.skipped.too_large,
             index.skipped.sensitive,
             index.skipped.denied,
-            index.skipped.unsupported
+            index.skipped.unsupported,
+            index.skipped.over_limit
         ));
     }
     match retrieval.semantic() {
@@ -207,10 +208,8 @@ fn prune(context: &crate::tool::ToolUseContext, dry_run: bool) -> Result<String,
         retrieval.index().max_file_bytes(),
         &context.tool_permission_context,
     )?;
-    let client_for_task = client.clone();
-    let index_for_task = index.clone();
     let report = crate::utils::process_runtime::block_on_from_sync(async move {
-        client_for_task.prune(&index_for_task, &sync, dry_run).await
+        client.prune(&index, &sync, dry_run).await
     })
     .ok_or_else(|| "no runtime available to run prune".to_string())??;
     let mut lines = Vec::new();
