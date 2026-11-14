@@ -17,6 +17,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::utils::permissions::filesystem::read_deny_rg_globs;
@@ -27,7 +28,13 @@ use super::outcome::{Branch, Candidate, SearchRequest};
 
 use self::text::{ChunkDocument, TextHit, TextIndex};
 
-const INDEX_SCHEMA_VERSION: &str = "nyan-retrieval-index-v2";
+/// v3: hidden directories and nested repositories/worktrees left the walk.
+const INDEX_SCHEMA_VERSION: &str = "nyan-retrieval-index-v3";
+/// Fuse for a root that is not a project (a home directory, a dump of
+/// unrelated trees). The file table is held in memory at roughly 40 KB per
+/// source file, so 50k files is ~2 GB; real repositories of that size are
+/// rare, and the files past the cap are counted, never silently dropped.
+const MAX_INDEXED_FILES: usize = 50_000;
 pub const CHUNKER_VERSION: &str = "symbol-v4";
 const MAX_CHUNK_LINES: usize = 60;
 /// Keep embedding inputs below the deployed model's context limit even when a
@@ -40,6 +47,13 @@ const MAX_PER_FILE: usize = 3;
 /// (pid reuse after a crash). A legitimate first build of a very large
 /// worktree is minutes, not hours.
 const LOCK_STALE_AFTER: Duration = Duration::from_secs(2 * 60 * 60);
+/// Version-control metadata, never indexed (the set the exact branch skips).
+const VCS_DIRS: &[&str] = &[".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
+/// A directory below the root that holds one of these is its own repository
+/// or worktree (`.worktrees/<task>`, a nested clone, a submodule) and gets its
+/// own index when nyan runs there. `.svn` is left out: pre-1.7 checkouts put
+/// one in every directory.
+const NESTED_REPO_MARKERS: &[&str] = &[".git", ".hg", ".jj"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IndexState {
@@ -55,20 +69,28 @@ pub struct SkipCounts {
     pub sensitive: usize,
     pub denied: usize,
     pub unsupported: usize,
+    /// Past [`MAX_INDEXED_FILES`] in path order.
+    pub over_limit: usize,
 }
 
 impl SkipCounts {
     pub fn total(&self) -> usize {
-        self.binary + self.too_large + self.sensitive + self.denied + self.unsupported
+        self.binary
+            + self.too_large
+            + self.sensitive
+            + self.denied
+            + self.unsupported
+            + self.over_limit
     }
 }
 
-#[derive(Clone)]
+/// Not `Clone`: callers share one index through `Arc`, and a refresh shares
+/// every unchanged file record with the index it refreshes.
 pub struct LocalIndex {
     root: PathBuf,
     storage: PathBuf,
     text: Option<TextIndex>,
-    files: Vec<IndexedFile>,
+    files: Vec<Arc<IndexedFile>>,
     file_by_path: HashMap<String, usize>,
     pub state: IndexState,
     pub skipped: SkipCounts,
@@ -78,17 +100,31 @@ pub struct LocalIndex {
     changed_files: Vec<String>,
     removed_files: Vec<String>,
     writable: bool,
+    max_file_bytes: u64,
+    /// [`worktree_stamp`] of the walk this index was built from.
+    stamp: [u8; 32],
+    /// Paths changed or removed by read-only builds and not yet written to
+    /// the text index and `index.json`; the next writable build applies them.
+    unapplied: BTreeSet<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct PersistedIndex {
-    schema: String,
-    generation: String,
-    #[serde(default)]
+/// The on-disk `index.json`, serialized from borrowed records so persisting
+/// never copies the file table. [`load_persisted`] reads it back.
+#[derive(Serialize)]
+struct PersistedIndex<'a> {
+    schema: &'a str,
+    generation: &'a str,
+    head: Option<&'a str>,
+    skipped: &'a SkipCounts,
+    files: Vec<&'a IndexedFile>,
+}
+
+/// The file table a build starts from: the persisted index on open, the
+/// in-memory one on refresh.
+struct Baseline {
+    files: Vec<Arc<IndexedFile>>,
     head: Option<String>,
-    #[serde(default)]
-    skipped: SkipCounts,
-    files: Vec<IndexedFile>,
+    unapplied: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -243,59 +279,107 @@ impl LocalIndex {
         let storage = storage_for(&root);
         std::fs::create_dir_all(&storage).map_err(|error| error.to_string())?;
         let generation = generation_for(&root, max_file_bytes);
+        let (baseline, stale_generation) = match load_persisted(&storage, &generation) {
+            Persisted::Current(baseline) => (Some(baseline), false),
+            Persisted::Stale => (None, true),
+            Persisted::Missing => (None, false),
+        };
+        Self::build(
+            root,
+            storage,
+            generation,
+            max_file_bytes,
+            baseline,
+            stale_generation,
+            permission_context,
+        )
+    }
+
+    /// Bring this index up to date from its in-memory file table: unchanged
+    /// records are shared with `self`, and `index.json` is neither re-read nor
+    /// re-parsed.
+    pub fn refresh(
+        &self,
+        permission_context: &crate::tool::ToolPermissionContext,
+    ) -> Result<Self, String> {
+        Self::build(
+            self.root.clone(),
+            self.storage.clone(),
+            self.generation.clone(),
+            self.max_file_bytes,
+            Some(Baseline {
+                files: self.files.clone(),
+                head: self.head.clone(),
+                unapplied: self.unapplied.clone(),
+            }),
+            false,
+            permission_context,
+        )
+    }
+
+    fn build(
+        root: PathBuf,
+        storage: PathBuf,
+        generation: String,
+        max_file_bytes: u64,
+        baseline: Option<Baseline>,
+        stale_generation: bool,
+        permission_context: &crate::tool::ToolPermissionContext,
+    ) -> Result<Self, String> {
         let text_dir = storage.join("text").join(&generation);
-        let persisted = load_persisted(&storage);
         let current_head = git_head(&root);
-        let stale_generation = persisted
+        let previous_files = baseline
             .as_ref()
-            .is_some_and(|index| index.generation != generation);
-        let previous = persisted
-            .as_ref()
-            .filter(|index| index.generation == generation)
-            .cloned();
-        let previous_files = previous
-            .as_ref()
-            .map(|index| index.files.as_slice())
+            .map(|baseline| baseline.files.as_slice())
             .unwrap_or_default();
-        let previous_head = previous.as_ref().and_then(|index| index.head.clone());
+        let previous_head = baseline
+            .as_ref()
+            .and_then(|baseline| baseline.head.as_deref());
 
         let lock = IndexLock::acquire(&storage);
         let writable = lock.is_some();
-        let (files, skipped, changed_files, removed_files) = refresh_files(
+        let Refreshed {
+            files,
+            skipped,
+            changed_files,
+            removed_files,
+            stamp,
+        } = refresh_files(
             &root,
             max_file_bytes,
             permission_context,
             previous_files,
-            previous_head.as_deref(),
+            previous_head,
             current_head.as_deref(),
         )?;
 
+        let file_by_path = files
+            .iter()
+            .enumerate()
+            .map(|(position, file)| (file.path.clone(), position))
+            .collect::<HashMap<_, _>>();
+        let mut unapplied = baseline
+            .as_ref()
+            .map(|baseline| baseline.unapplied.clone())
+            .unwrap_or_default();
+        unapplied.extend(changed_files.iter().chain(&removed_files).cloned());
         let mut text = None;
         if writable {
             let existing = TextIndex::open_existing(&text_dir);
-            let needs_rebuild =
-                !changed_files.is_empty() || !removed_files.is_empty() || existing.is_none();
-            if needs_rebuild {
-                let changed_documents = changed_files
-                    .iter()
-                    .filter_map(|path| {
-                        files
-                            .iter()
-                            .find(|file| &file.path == path)
-                            .map(|file| chunk_documents(&root, file))
-                    })
-                    .collect::<Vec<_>>();
+            if !unapplied.is_empty() || existing.is_none() {
                 let index = TextIndex::open(&text_dir)?;
                 let fields = index.fields();
                 let mut writer = index.writer()?;
-                if existing.is_some() {
-                    for path in &removed_files {
-                        TextIndex::delete_file(&mut writer, &fields, path);
-                    }
-                }
-                for documents in changed_documents {
-                    for document in documents {
-                        TextIndex::replace_file(&mut writer, &fields, &document);
+                // One file's text at a time: the writer flushes by its own
+                // memory budget, so a first build never holds the worktree.
+                for path in &unapplied {
+                    match file_by_path.get(path) {
+                        Some(position) => {
+                            for document in chunk_documents(&root, &files[*position]) {
+                                TextIndex::replace_file(&mut writer, &fields, &document);
+                            }
+                        }
+                        None => TextIndex::delete_file(&mut writer, &fields, path),
                     }
                 }
                 writer.commit().map_err(|error| error.to_string())?;
@@ -318,11 +402,7 @@ impl LocalIndex {
         };
 
         let index = Self {
-            file_by_path: files
-                .iter()
-                .enumerate()
-                .map(|(position, file)| (file.path.clone(), position))
-                .collect(),
+            file_by_path,
             root,
             storage,
             text,
@@ -330,61 +410,60 @@ impl LocalIndex {
             state,
             skipped,
             generation,
-            head: current_head.clone(),
+            head: current_head,
             changed_files,
             removed_files,
             writable,
+            max_file_bytes,
+            stamp,
+            unapplied: if writable { BTreeSet::new() } else { unapplied },
         };
         if writable {
             // 4.5: skipped files are named by category, never silently dropped.
             if index.skipped.total() > 0 {
                 crate::utils::debug::log_for_debugging(&format!(
-                    "retrieval index skipped {} files (binary {}, too large {}, sensitive {}, denied {}, unsupported {})",
+                    "retrieval index skipped {} files (binary {}, too large {}, sensitive {}, denied {}, unsupported {}, over the {MAX_INDEXED_FILES}-file cap {})",
                     index.skipped.total(),
                     index.skipped.binary,
                     index.skipped.too_large,
                     index.skipped.sensitive,
                     index.skipped.denied,
-                    index.skipped.unsupported
+                    index.skipped.unsupported,
+                    index.skipped.over_limit
                 ));
             }
             // Persist only when the on-disk state would change; a no-op
             // refresh must not rewrite a multi-megabyte index file on every
             // search.
-            let dirty = previous.is_none()
-                || stale_generation
+            let dirty = baseline.as_ref().is_none_or(|baseline| {
+                !baseline.unapplied.is_empty() || baseline.head != index.head
+            }) || stale_generation
                 || !index.changed_files.is_empty()
-                || !index.removed_files.is_empty()
-                || previous
-                    .as_ref()
-                    .and_then(|previous| previous.head.as_deref())
-                    != current_head.as_deref();
+                || !index.removed_files.is_empty();
             if dirty {
-                index.persist(current_head.as_deref())?;
+                index.persist()?;
             }
         }
         Ok(index)
     }
 
-    /// Cheap change check for the in-process cache (retrieval 4.5):
-    /// `Some(true/false)` when git can answer from `status` + `diff`,
-    /// `None` when there is no git evidence and the caller must fall back to
-    /// the time-based refresh.
-    pub fn needs_refresh(&self) -> Option<bool> {
-        let head_now = git_head(&self.root);
-        if self.head.is_none() && head_now.is_none() {
-            return None;
-        }
-        let changed = git_changed_files(
-            &self.root,
-            self.head.as_deref(),
-            head_now.as_deref(),
-            !self.files.is_empty(),
-        )?;
-        if !changed.is_empty() {
-            return Some(true);
-        }
-        Some(false)
+    /// Cheap change check for the in-process cache (retrieval 4.5): HEAD
+    /// moved, or a file was added, removed, resized or touched since this
+    /// index was built. The walk stats files and reads none, in git and
+    /// outside it alike. `git status` is not the evidence: it lists every
+    /// uncommitted edit, so a dirty tree would refresh on every search.
+    /// Changes a read-only build could not write also count, so they land as
+    /// soon as the writer lock is free.
+    pub fn needs_refresh(&self) -> bool {
+        !self.unapplied.is_empty()
+            || git_head(&self.root) != self.head
+            || worktree_stamp(&walk(&self.root)) != self.stamp
+    }
+
+    /// The `max_file_bytes` this index was built with; a different setting is
+    /// a different generation.
+    pub fn max_file_bytes(&self) -> u64 {
+        self.max_file_bytes
     }
 
     /// Search-path entry: open incrementally when a current-generation index
@@ -399,9 +478,17 @@ impl LocalIndex {
         let root = root.canonicalize().map_err(|error| error.to_string())?;
         let storage = storage_for(&root);
         let generation = generation_for(&root, max_file_bytes);
-        let current = load_persisted(&storage).is_some_and(|index| index.generation == generation);
-        if current {
-            return Self::open(root, max_file_bytes, permission_context).map(Some);
+        if let Persisted::Current(baseline) = load_persisted(&storage, &generation) {
+            return Self::build(
+                root,
+                storage,
+                generation,
+                max_file_bytes,
+                Some(baseline),
+                false,
+                permission_context,
+            )
+            .map(Some);
         }
         static BUILDING: std::sync::Mutex<Option<std::collections::BTreeSet<PathBuf>>> =
             std::sync::Mutex::new(None);
@@ -450,7 +537,7 @@ impl LocalIndex {
         &self.storage
     }
 
-    pub fn files(&self) -> &[IndexedFile] {
+    pub fn files(&self) -> &[Arc<IndexedFile>] {
         &self.files
     }
 
@@ -467,7 +554,7 @@ impl LocalIndex {
         self.writable
     }
 
-    pub fn file(&self, path: &str) -> Option<&IndexedFile> {
+    pub fn file(&self, path: &str) -> Option<&Arc<IndexedFile>> {
         self.file_by_path
             .get(path)
             .and_then(|position| self.files.get(*position))
@@ -675,8 +762,11 @@ impl LocalIndex {
     /// stale text. Each text is paired with the chunk record it was cut from:
     /// a chunk that yields no text must not shift the line ranges of the
     /// chunks after it.
-    pub fn file_chunks(&self, path: &str) -> Option<(IndexedFile, Vec<(ChunkRecord, String)>)> {
-        let file = self.file(path)?.clone();
+    pub fn file_chunks(
+        &self,
+        path: &str,
+    ) -> Option<(Arc<IndexedFile>, Vec<(ChunkRecord, String)>)> {
+        let file = Arc::clone(self.file(path)?);
         let bytes = std::fs::read(self.root.join(path)).ok()?;
         if hex_hash(&bytes) != file.file_hash_raw {
             return None;
@@ -709,21 +799,24 @@ impl LocalIndex {
         Some((file, contents))
     }
 
-    fn persist(&self, head: Option<&str>) -> Result<(), String> {
+    fn persist(&self) -> Result<(), String> {
+        use std::io::Write as _;
         let value = PersistedIndex {
-            schema: INDEX_SCHEMA_VERSION.to_string(),
-            generation: self.generation.clone(),
-            head: head.map(str::to_string),
-            skipped: self.skipped.clone(),
-            files: self.files.clone(),
+            schema: INDEX_SCHEMA_VERSION,
+            generation: &self.generation,
+            head: self.head.as_deref(),
+            skipped: &self.skipped,
+            files: self.files.iter().map(Arc::as_ref).collect(),
         };
         let temporary = self.storage.join("index.json.tmp");
         let final_path = self.storage.join("index.json");
-        std::fs::write(
-            &temporary,
-            serde_json::to_vec(&value).map_err(|error| error.to_string())?,
-        )
-        .map_err(|error| error.to_string())?;
+        // Streamed: the serialized table is never a second in-memory copy.
+        let mut writer = std::io::BufWriter::new(
+            std::fs::File::create(&temporary).map_err(|error| error.to_string())?,
+        );
+        serde_json::to_writer(&mut writer, &value).map_err(|error| error.to_string())?;
+        writer.flush().map_err(|error| error.to_string())?;
+        drop(writer);
         std::fs::rename(temporary, final_path).map_err(|error| error.to_string())
     }
 }
@@ -767,10 +860,47 @@ pub(crate) fn decode_for_snippet(bytes: &[u8], path: &str) -> Result<String, Str
         .map_err(|error| error.message(path))
 }
 
-fn load_persisted(storage: &Path) -> Option<PersistedIndex> {
-    let bytes = std::fs::read(storage.join("index.json")).ok()?;
-    let index: PersistedIndex = serde_json::from_slice(&bytes).ok()?;
-    (index.schema == INDEX_SCHEMA_VERSION).then_some(index)
+enum Persisted {
+    Current(Baseline),
+    /// An index of another schema or generation exists and will be replaced.
+    Stale,
+    Missing,
+}
+
+/// Load the persisted index once. The header is checked first with a
+/// streaming pass that allocates nothing for `files`, so an old-schema or
+/// other-generation index is never materialized just to be thrown away.
+fn load_persisted(storage: &Path, generation: &str) -> Persisted {
+    #[derive(Deserialize)]
+    struct Header {
+        schema: String,
+        generation: String,
+    }
+    #[derive(Deserialize)]
+    struct Body {
+        #[serde(default)]
+        head: Option<String>,
+        files: Vec<IndexedFile>,
+    }
+    let path = storage.join("index.json");
+    let reader = || std::fs::File::open(&path).ok().map(std::io::BufReader::new);
+    let Some(header) = reader() else {
+        return Persisted::Missing;
+    };
+    let Ok(header) = serde_json::from_reader::<_, Header>(header) else {
+        return Persisted::Missing;
+    };
+    if header.schema != INDEX_SCHEMA_VERSION || header.generation != generation {
+        return Persisted::Stale;
+    }
+    match reader().and_then(|file| serde_json::from_reader::<_, Body>(file).ok()) {
+        Some(index) => Persisted::Current(Baseline {
+            files: index.files.into_iter().map(Arc::new).collect(),
+            head: index.head,
+            unapplied: BTreeSet::new(),
+        }),
+        None => Persisted::Missing,
+    }
 }
 
 fn remove_other_text_generations(text_root: &Path, keep: &str) {
@@ -784,21 +914,120 @@ fn remove_other_text_generations(text_root: &Path, keep: &str) {
     }
 }
 
-/// Refresh the file table. Returns the files, skip counts, changed paths and
-/// removed paths. `previous` entries are reused unless git (or, without git,
-/// size/mtime) says the file changed.
+/// Hidden directories that hold project configuration rather than caches or
+/// tool state (`.venv`, `.cache`, `.next`, `.worktrees`, ...). Hidden files
+/// such as `.gitignore` are always walked.
+const HIDDEN_DIRS_KEPT: &[&str] = &[
+    ".github",
+    ".gitlab",
+    ".circleci",
+    ".buildkite",
+    ".cargo",
+    ".config",
+    ".devcontainer",
+    ".husky",
+    ".vscode",
+];
+
+struct WalkedFile {
+    path: PathBuf,
+    relative: String,
+    size: u64,
+    mtime_ms: u128,
+}
+
+/// Every file the index may contain, sorted by path bytes. Rules: `.gitignore`
+/// / `.ignore` / git excludes (honoured outside git too), no VCS metadata,
+/// no nested repository or worktree, and no hidden directory outside
+/// [`HIDDEN_DIRS_KEPT`].
+fn walk(root: &Path) -> Vec<WalkedFile> {
+    let mut walker = WalkBuilder::new(root);
+    walker
+        .hidden(false)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .require_git(false)
+        .follow_links(false)
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            if VCS_DIRS.contains(&name.as_ref()) {
+                return false;
+            }
+            if !entry.file_type().is_some_and(|kind| kind.is_dir()) {
+                return true;
+            }
+            if name.starts_with('.') && !HIDDEN_DIRS_KEPT.contains(&name.as_ref()) {
+                return false;
+            }
+            !NESTED_REPO_MARKERS
+                .iter()
+                .any(|marker| entry.path().join(marker).exists())
+        });
+    let mut files = walker
+        .build()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_some_and(|kind| kind.is_file()))
+        .filter_map(|entry| {
+            let relative = entry
+                .path()
+                .strip_prefix(root)
+                .ok()?
+                .to_string_lossy()
+                .replace('\\', "/");
+            let metadata = entry.metadata().ok()?;
+            let mtime_ms = metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map_or(0, |duration| duration.as_millis());
+            Some(WalkedFile {
+                path: entry.into_path(),
+                relative,
+                size: metadata.len(),
+                mtime_ms,
+            })
+        })
+        .collect::<Vec<_>>();
+    files.sort_by(|left, right| left.relative.as_bytes().cmp(right.relative.as_bytes()));
+    files
+}
+
+/// Change evidence for a worktree without git: any added, removed, resized or
+/// touched file changes the stamp.
+fn worktree_stamp(files: &[WalkedFile]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    for file in files {
+        hasher.update(file.relative.as_bytes());
+        hasher.update([0]);
+        hasher.update(file.size.to_le_bytes());
+        hasher.update(file.mtime_ms.to_le_bytes());
+    }
+    hasher.finalize().into()
+}
+
+struct Refreshed {
+    files: Vec<Arc<IndexedFile>>,
+    skipped: SkipCounts,
+    changed_files: Vec<String>,
+    removed_files: Vec<String>,
+    stamp: [u8; 32],
+}
+
+/// Refresh the file table. `previous` records are shared, not copied, unless
+/// git (or, without git, size/mtime) says the file changed.
 fn refresh_files(
     root: &Path,
     max_file_bytes: u64,
     permission_context: &crate::tool::ToolPermissionContext,
-    previous: &[IndexedFile],
+    previous: &[Arc<IndexedFile>],
     previous_head: Option<&str>,
     current_head: Option<&str>,
-) -> Result<(Vec<IndexedFile>, SkipCounts, Vec<String>, Vec<String>), String> {
+) -> Result<Refreshed, String> {
     let deny_patterns = read_deny_rg_globs(permission_context, root, root);
     let previous_by_path = previous
         .iter()
-        .map(|file| (file.path.clone(), file))
+        .map(|file| (file.path.as_str(), file))
         .collect::<HashMap<_, _>>();
     let changed_by_git = git_changed_files(root, previous_head, current_head, !previous.is_empty());
     let mut files = Vec::new();
@@ -806,76 +1035,56 @@ fn refresh_files(
     let mut changed_files = Vec::new();
     let mut seen = HashSet::new();
 
-    let mut walker = WalkBuilder::new(root);
-    walker
-        .hidden(false)
-        .git_ignore(true)
-        .git_global(true)
-        .git_exclude(true)
-        .follow_links(false);
-    let mut entries = walker
-        .build()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_some_and(|kind| kind.is_file()))
-        .collect::<Vec<_>>();
-    entries.sort_by(|left, right| left.path().cmp(right.path()));
-
-    for entry in entries {
-        let path = entry.path();
-        let Some(relative) = path.strip_prefix(root).ok() else {
-            continue;
-        };
-        let relative = relative.to_string_lossy().replace('\\', "/");
-        if relative.starts_with(".git/") {
-            continue;
-        }
+    let walked = walk(root);
+    let stamp = worktree_stamp(&walked);
+    for WalkedFile {
+        path,
+        relative,
+        size,
+        mtime_ms,
+    } in walked
+    {
         if sensitive_path(&relative) {
             skipped.sensitive += 1;
             continue;
         }
-        if denied_path(&relative, path, &deny_patterns) {
+        if denied_path(&relative, &path, &deny_patterns) {
             skipped.denied += 1;
             continue;
         }
-        let Ok(metadata) = std::fs::metadata(path) else {
-            continue;
-        };
-        if metadata.len() > max_file_bytes {
+        if size > max_file_bytes {
             skipped.too_large += 1;
             continue;
         }
-        let mtime_ms = metadata
-            .modified()
-            .ok()
-            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-            .map_or(0, |duration| duration.as_millis());
+        if files.len() >= MAX_INDEXED_FILES {
+            skipped.over_limit += 1;
+            continue;
+        }
         seen.insert(relative.clone());
 
-        let previous_entry = previous_by_path.get(&relative).copied();
+        let previous_entry = previous_by_path.get(relative.as_str()).copied();
         let must_check = match (previous_entry, changed_by_git.as_ref()) {
             (None, _) => true,
             (Some(existing), Some(changed)) => {
                 changed.contains(&relative)
-                    || existing.size != metadata.len()
+                    || existing.size != size
                     || existing.mtime_ms != mtime_ms
             }
-            (Some(existing), None) => {
-                existing.size != metadata.len() || existing.mtime_ms != mtime_ms
-            }
+            (Some(existing), None) => existing.size != size || existing.mtime_ms != mtime_ms,
         };
         if !must_check && let Some(existing) = previous_entry {
-            files.push(existing.clone());
+            files.push(Arc::clone(existing));
             continue;
         }
-        let Ok(bytes) = std::fs::read(path) else {
+        let Ok(bytes) = std::fs::read(&path) else {
             continue;
         };
         let hash = hex_hash(&bytes);
         if let Some(existing) = previous_entry
             && existing.file_hash_raw == hash
-            && existing.size == metadata.len()
+            && existing.size == size
         {
-            files.push(existing.clone());
+            files.push(Arc::clone(existing));
             continue;
         }
         let decoded = match decode_bytes(&bytes, None, &relative) {
@@ -913,10 +1122,10 @@ fn refresh_files(
         if previous_entry.is_some() {
             changed_files.push(relative.clone());
         }
-        files.push(IndexedFile {
+        files.push(Arc::new(IndexedFile {
             path: relative,
             file_hash_raw: hash,
-            size: metadata.len(),
+            size,
             mtime_ms,
             language,
             symbol_checked,
@@ -924,9 +1133,8 @@ fn refresh_files(
             references,
             symbol_note,
             chunks,
-        });
+        }));
     }
-    files.sort_by(|left, right| left.path.as_bytes().cmp(right.path.as_bytes()));
 
     // First build: everything counts as new for the semantic queue.
     if previous.is_empty() {
@@ -937,7 +1145,13 @@ fn refresh_files(
         .filter(|file| !seen.contains(&file.path))
         .map(|file| file.path.clone())
         .collect();
-    Ok((files, skipped, changed_files, removed_files))
+    Ok(Refreshed {
+        files,
+        skipped,
+        changed_files,
+        removed_files,
+        stamp,
+    })
 }
 
 /// `Some(set)` = "only these tracked files changed" (tracked and untracked
@@ -1270,7 +1484,7 @@ const RELATION_WORDS: &[&str] = &[
 
 /// `outline src/foo.rs` / `大纲 services/retrieval` returns the symbol table
 /// of matching files instead of a name lookup.
-fn outline_target(query: &str, files: &[IndexedFile]) -> Option<String> {
+fn outline_target(query: &str, files: &[Arc<IndexedFile>]) -> Option<String> {
     let lower = query.to_ascii_lowercase();
     if !(lower.contains("outline") || query.contains("大纲")) {
         return None;
@@ -1517,6 +1731,107 @@ mod tests {
         assert!(references.iter().any(|candidate| candidate.start_line == 3));
         let outline = index.search_symbols(&SearchRequest::new("outline a.rs"), false, false, 10);
         assert_eq!(outline.len(), 2);
+        let _ = std::fs::remove_dir_all(project.parent().unwrap());
+    }
+
+    #[test]
+    fn walk_skips_vcs_nested_worktrees_and_hidden_tool_directories() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let (config, project) = temp_project("walk-scope");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config);
+        let write = |path: &str, body: &str| {
+            let path = project.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        };
+        write("src/lib.rs", "fn kept() {}\n");
+        write(".github/workflows/ci.yml", "on: push\n");
+        write(".gitignore", "ignored/\n");
+        write("ignored/a.rs", "fn ignored() {}\n");
+        // The incident layout: a non-git root whose `.worktrees/` holds full
+        // checkouts. A git worktree marks itself with a `.git` file.
+        write(".worktrees/task/.git", "gitdir: /elsewhere\n");
+        write(".worktrees/task/src/lib.rs", "fn copy() {}\n");
+        write("vendor/clone/.git/HEAD", "ref: refs/heads/main\n");
+        write("vendor/clone/lib.rs", "fn nested() {}\n");
+        write(".venv/lib/site.py", "x = 1\n");
+        write(".hg/store", "x\n");
+        let index = open(&project);
+        let mut paths = index
+            .files()
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect::<Vec<_>>();
+        paths.sort_unstable();
+        assert_eq!(
+            paths,
+            [".github/workflows/ci.yml", ".gitignore", "src/lib.rs"]
+        );
+        let _ = std::fs::remove_dir_all(project.parent().unwrap());
+    }
+
+    #[test]
+    fn refresh_without_git_is_driven_by_the_walk_stamp_and_shares_records() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let (config, project) = temp_project("stamp");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config);
+        std::fs::write(project.join("a.rs"), "fn alpha() {}\n").unwrap();
+        std::fs::write(project.join("b.rs"), "fn beta() {}\n").unwrap();
+        let first = open(&project);
+        assert!(first.head.is_none(), "fixture must not be inside git");
+        assert!(!first.needs_refresh(), "nothing changed");
+
+        std::fs::write(project.join("b.rs"), "fn beta_two() {}\n").unwrap();
+        assert!(first.needs_refresh(), "a resized file changes the stamp");
+        let second = first
+            .refresh(&crate::tool::ToolPermissionContext::default())
+            .unwrap();
+        assert!(!second.needs_refresh());
+        assert_eq!(second.changed_files(), ["b.rs".to_string()]);
+        assert!(
+            Arc::ptr_eq(first.file("a.rs").unwrap(), second.file("a.rs").unwrap()),
+            "an unchanged record is shared, not copied"
+        );
+        assert!(
+            !second
+                .search_text(&SearchRequest::new("beta two"), 10)
+                .unwrap()
+                .is_empty()
+        );
+
+        std::fs::write(project.join("c.rs"), "fn gamma() {}\n").unwrap();
+        assert!(second.needs_refresh(), "an added file changes the stamp");
+        let _ = std::fs::remove_dir_all(project.parent().unwrap());
+    }
+
+    #[test]
+    fn read_only_refresh_keeps_its_changes_until_a_writer_applies_them() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let (config, project) = temp_project("unapplied");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config);
+        std::fs::write(project.join("a.rs"), "fn alpha() {}\n").unwrap();
+        let first = open(&project);
+        let lock = IndexLock::acquire(first.storage()).unwrap();
+        std::fs::write(project.join("a.rs"), "fn omega_new() {}\n").unwrap();
+        let context = crate::tool::ToolPermissionContext::default();
+        let read_only = first.refresh(&context).unwrap();
+        assert!(!read_only.is_writable());
+        assert!(read_only.needs_refresh(), "the text index is behind");
+        drop(lock);
+        let written = read_only.refresh(&context).unwrap();
+        assert!(written.is_writable());
+        assert!(!written.needs_refresh());
+        assert!(
+            !written
+                .search_text(&SearchRequest::new("omega new"), 10)
+                .unwrap()
+                .is_empty()
+        );
+        let reopened = open(&project);
+        assert!(
+            reopened.changed_files().is_empty(),
+            "index.json was updated"
+        );
         let _ = std::fs::remove_dir_all(project.parent().unwrap());
     }
 

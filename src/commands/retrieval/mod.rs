@@ -207,10 +207,8 @@ fn prune(context: &crate::tool::ToolUseContext, dry_run: bool) -> Result<String,
         retrieval.index().max_file_bytes(),
         &context.tool_permission_context,
     )?;
-    let client_for_task = client.clone();
-    let index_for_task = index.clone();
     let report = crate::utils::process_runtime::block_on_from_sync(async move {
-        client_for_task.prune(&index_for_task, &sync, dry_run).await
+        client.prune(&index, &sync, dry_run).await
     })
     .ok_or_else(|| "no runtime available to run prune".to_string())??;
     let mut lines = Vec::new();

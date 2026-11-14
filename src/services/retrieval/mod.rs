@@ -21,7 +21,7 @@ pub mod semantic;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 use crate::services::decision::DecisionProvider;
@@ -35,68 +35,59 @@ pub use outcome::{
 const MAX_BRANCH_CANDIDATES: usize = 50;
 const FUSION_KEEP: usize = 50;
 const FINAL_RESULTS: usize = 30;
-/// One prepared index per worktree per process. Re-opening walks the worktree
-/// and re-reads every changed file, so it runs once, not per CodeSearch.
-static INDEX_CACHE: OnceLock<std::sync::Mutex<BTreeMap<PathBuf, CachedIndex>>> = OnceLock::new();
-/// A cached index older than this is refreshed even if git reports no change
-/// (mtime prefilter without git).
-const INDEX_CACHE_TTL: Duration = Duration::from_secs(120);
-
-struct CachedIndex {
-    index: index::LocalIndex,
-    opened: Instant,
-}
+/// One prepared index per worktree per process, shared by every search and
+/// background sync. Each worktree has its own slot lock, so concurrent
+/// searches wait for one refresh and then share its result instead of each
+/// rebuilding the file table.
+type IndexSlot = Arc<Mutex<Option<Arc<index::LocalIndex>>>>;
+static INDEX_CACHE: OnceLock<Mutex<BTreeMap<PathBuf, IndexSlot>>> = OnceLock::new();
 
 /// The per-worktree index. A missing first build is deferred to a background
 /// task (`Ok(None)`), which the caller renders as `Building` rather than
-/// blocking the tool call on a full walk. Incremental refreshes (git tells us
-/// which files changed) stay cheap; either way the walk runs on the blocking
-/// pool, never on the async worker.
+/// blocking the tool call on a full walk. A cached index is refreshed only
+/// when [`index::LocalIndex::needs_refresh`] sees a change, and then from its
+/// in-memory table; either way the work runs on the blocking pool, never on
+/// the async worker.
 async fn cached_index(
     root: &Path,
     max_file_bytes: u64,
     permission_context: &crate::tool::ToolPermissionContext,
-) -> Result<Option<index::LocalIndex>, String> {
+) -> Result<Option<Arc<index::LocalIndex>>, String> {
     let root = root.to_path_buf();
     let permission = permission_context.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let cache = INDEX_CACHE.get_or_init(|| std::sync::Mutex::new(BTreeMap::new()));
-        let fresh = {
-            let mut guard = cache
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if let Some(cached) = guard.get(&root) {
-                // Git knows which files changed, so a fresh-looking cache is
-                // still refreshed when HEAD or the working tree moved.
-                match cached.index.needs_refresh() {
-                    Some(false) => return Ok(Some(cached.index.clone())),
-                    Some(true) => {}
-                    None if cached.opened.elapsed() < INDEX_CACHE_TTL => {
-                        return Ok(Some(cached.index.clone()));
-                    }
-                    None => {}
-                }
-            }
-            guard.remove(&root);
-            index::LocalIndex::open_or_defer(&root, max_file_bytes, &permission)?
-        };
-        let Some(fresh) = fresh else {
-            return Ok(None);
-        };
-        let mut guard = cache
+    tokio::task::spawn_blocking(move || cached_index_blocking(&root, max_file_bytes, &permission))
+        .await
+        .map_err(|error| format!("index task failed: {error}"))?
+}
+
+fn cached_index_blocking(
+    root: &Path,
+    max_file_bytes: u64,
+    permission_context: &crate::tool::ToolPermissionContext,
+) -> Result<Option<Arc<index::LocalIndex>>, String> {
+    let slot = Arc::clone(
+        INDEX_CACHE
+            .get_or_init(Default::default)
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        guard.insert(
-            root,
-            CachedIndex {
-                index: fresh.clone(),
-                opened: Instant::now(),
-            },
-        );
-        Ok(Some(fresh))
-    })
-    .await;
-    result.map_err(|error| format!("index task failed: {error}"))?
+            .unwrap_or_else(PoisonError::into_inner)
+            .entry(root.to_path_buf())
+            .or_default(),
+    );
+    let mut cached = slot.lock().unwrap_or_else(PoisonError::into_inner);
+    let fresh = match cached.as_ref() {
+        Some(index) if index.max_file_bytes() == max_file_bytes => {
+            // A read-only view whose text index another process is still
+            // building retries until that build lands.
+            if index.state == index::IndexState::Ready && !index.needs_refresh() {
+                return Ok(Some(Arc::clone(index)));
+            }
+            Some(index.refresh(permission_context)?)
+        }
+        _ => index::LocalIndex::open_or_defer(root, max_file_bytes, permission_context)?,
+    };
+    let fresh = fresh.map(Arc::new);
+    cached.clone_from(&fresh);
+    Ok(fresh)
 }
 
 /// Run the complete retrieval plan for a worktree.
@@ -369,7 +360,7 @@ pub async fn search_with_provider(
                     // it runs on the process-lifetime runtime rather than the
                     // per-query one (utils::process_runtime).
                     let sync_settings = retrieval.sync();
-                    let background_index = index.clone();
+                    let background_index = Arc::clone(index);
                     let background_client = client.clone();
                     let future = async move {
                         let report = background_client
@@ -768,6 +759,62 @@ mod tests {
                 .candidates
                 .iter()
                 .all(|candidate| candidate.snippet.is_some())
+        );
+        let _ = std::fs::remove_dir_all(root.parent().unwrap());
+    }
+
+    #[test]
+    fn cached_index_is_shared_until_the_worktree_changes() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let (config, root) = isolated_project("cache-share");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config);
+        std::fs::write(root.join("src/a.rs"), "fn alpha() {}\n").unwrap();
+        std::fs::write(root.join("src/b.rs"), "fn beta() {}\n").unwrap();
+        let root = root.canonicalize().unwrap();
+        let context = crate::tool::ToolPermissionContext::default();
+        // Persist the first build so the cache opens it synchronously.
+        drop(index::LocalIndex::open(&root, 1_048_576, &context).unwrap());
+        let get = || {
+            cached_index_blocking(&root, 1_048_576, &context)
+                .unwrap()
+                .unwrap()
+        };
+
+        let first = get();
+        let storage = first.storage().to_path_buf();
+        // A later open must not re-read index.json: make it unreadable.
+        std::fs::write(storage.join("index.json"), b"{").unwrap();
+        let hits = (0..3).map(|_| get()).collect::<Vec<_>>();
+        assert!(
+            hits.iter().all(|hit| Arc::ptr_eq(hit, &first)),
+            "an unchanged worktree is served from the same index"
+        );
+
+        std::fs::write(root.join("src/b.rs"), "fn beta_two() {}\n").unwrap();
+        let refreshed = get();
+        assert!(!Arc::ptr_eq(&refreshed, &first));
+        assert_eq!(refreshed.files().len(), 2, "refreshed in memory");
+        assert!(Arc::ptr_eq(
+            first.file("src/a.rs").unwrap(),
+            refreshed.file("src/a.rs").unwrap()
+        ));
+        assert!(Arc::ptr_eq(&get(), &refreshed));
+
+        // Concurrent callers after a change: one refresh, one shared result.
+        std::fs::write(root.join("src/a.rs"), "fn alpha_two() {}\n").unwrap();
+        let concurrent = std::thread::scope(|scope| {
+            let workers = (0..4).map(|_| scope.spawn(get)).collect::<Vec<_>>();
+            workers
+                .into_iter()
+                .map(|worker| worker.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        assert!(!Arc::ptr_eq(&concurrent[0], &refreshed));
+        assert!(
+            concurrent
+                .iter()
+                .all(|index| Arc::ptr_eq(index, &concurrent[0])),
+            "concurrent searches share one refresh"
         );
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
     }

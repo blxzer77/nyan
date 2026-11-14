@@ -221,10 +221,18 @@ query → 选分支（4.3 的规则）
   的路径，不是以 worktree 根为准的完整清单。本模块自己遍历：用 `ignore` crate 的 `WalkBuilder`（`Cargo.toml:99`
   已依赖 `ignore = "0.4.24"`，锁定 0.4.33），以 worktree 根为起点，规则来源为 `.gitignore` / `.ignore` / git 全局
   excludes（`WalkBuilder` 默认行为，与 `rg` 一致），另加 Read deny 规则（与 exact 分支同一个共享函数，见 4.3）
-  与 4.5"跳过"规则。git 与非 git 目录同一条路径，不分两套。
+  与 4.5"跳过"规则。git 与非 git 目录同一条路径，不分两套（`.gitignore` 在非 git 目录同样生效）。
+  不进入：版本控制元数据（`.git`/`.svn`/`.hg`/`.bzr`/`.jj`/`.sl`）；含 `.git`/`.hg`/`.jj` 的子目录（嵌套仓库、
+  `.worktrees/<task>` 等 worktree、submodule——在那里运行 nyan 时它们有自己的索引）；隐藏目录，白名单
+  `.github`/`.gitlab`/`.circleci`/`.buildkite`/`.cargo`/`.config`/`.devcontainer`/`.husky`/`.vscode` 除外。隐藏文件
+  （`.gitignore` 等）照常索引。单个 worktree 最多 50,000 个文件（路径序），超出部分计入 `skipped.over_limit`。
+  （2026-11-14 修订：此前隐藏目录全部扫入，非 git 根下的 `.worktrees/` 使索引膨胀到 945 MB。）
 - **变更检测**：有 git 时用 `git status --porcelain` + 上次索引时的 HEAD 与当前 HEAD 的 `git diff --name-only`
-  得到变更文件集合，只对这些文件比 mtime/size、再算 sha256；无 git 时对清单做 mtime/size 预筛。68 万行的本仓库
-  每次检索前全量 stat 太重，git 已经知道哪些文件变了。
+  得到变更文件集合，只对这些文件比 mtime/size、再算 sha256；无 git 时对清单做 mtime/size 预筛。
+  进程内缓存是否需要刷新，看 HEAD 是否变化以及遍历清单（路径 + size + mtime）的摘要是否变化：只 stat、不读内容，
+  git 与非 git 一致；`git status` 不作为依据，因为工作区有未提交修改时它每次都非空。刷新基于内存中的文件表，
+  未变化的记录以 `Arc` 共享，不重读 `index.json`；缓存命中、检索与后台 semantic sync 共用同一个 `Arc<LocalIndex>`，
+  每个 worktree 一把槽锁，并发请求等同一次刷新。
 - **何时更新**：会话启动时后台一次；之后在每次 `CodeSearch` 前做一次上述轻量变更检测（通常只有几个文件），
   以及 Inspect 发现 hash 不一致时把该文件入队。只重建变更文件的符号、chunk 与倒排条目；删除文件移除其条目。
   不做文件监听。
