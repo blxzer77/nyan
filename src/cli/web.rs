@@ -45,8 +45,8 @@ Options:
       --                 Treat every later word as a query word or URL
 
 Exit codes:
-  0 success   1 other error   2 usage error   3 configuration missing/invalid
-  4 refused (URL policy, range, session budget)
+  0 success   1 other error   2 usage error (incl. invalid or out-of-range --range)
+  3 configuration missing/invalid   4 refused (URL policy, session budget)
   5 network error or every provider failed   124 timeout
 ";
 
