@@ -598,9 +598,23 @@ pub struct AppState {
     pub effort_value: Option<crate::utils::effort::Effort>,
     /// CC cacheMissAckedAtOutputTokens: confirmation watermark.
     pub cache_miss_acked_at_output_tokens: i64,
-    /// Maps to: CC `AppState.expandedView` — persisted as the legacy
-    /// `showExpandedTodos`/`showSpinnerTree` globalConfig pair.
+    /// Maps to: CC `AppState.expandedView`.
+    ///
+    /// @nyan: session-only. CC persists it as the legacy
+    /// `showExpandedTodos`/`showSpinnerTree` globalConfig pair, but startup never
+    /// read it back (`AppState::default` is always `None`), so the write was dead.
+    /// `Tasks` is what the todo panel reads as "expanded".
     pub expanded_view: ExpandedView,
+    /// @nyan: bumped by TaskCreate / TaskUpdate after they write the task list
+    /// to disk. The todo panel re-reads the list only when this changes.
+    pub task_list_revision: u64,
+    /// @nyan: set when Ctrl+T collapses the todo panel, cleared when it expands
+    /// again. While set, TaskCreate / TaskUpdate do not auto-expand the panel.
+    pub todo_auto_expand_suppressed: bool,
+    /// @nyan: signature (`todo_panel::task_signature`) of the all-done task list
+    /// that a user turn already dismissed. The panel hides while the list still
+    /// has this signature; any change to an id or status makes it reappear.
+    pub todo_cleared_signature: Option<u64>,
     /// Maps to: CC `AppState.settings` (AppStateStore.ts:90) — the merged
     /// settings snapshot, replaced wholesale by `apply_settings_change` when
     /// settings files change on disk (CC `applySettingsChange`).
@@ -839,6 +853,9 @@ impl Default for AppState {
             effort_value: None,
             cache_miss_acked_at_output_tokens: -1,
             expanded_view: ExpandedView::None,
+            task_list_revision: 0,
+            todo_auto_expand_suppressed: false,
+            todo_cleared_signature: None,
             settings: Arc::new(crate::utils::settings::SettingsJson::default()),
             tool_permission_context: Arc::new(ToolPermissionContext::default()),
             denial_tracking: None,

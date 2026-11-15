@@ -763,10 +763,10 @@ pub fn SpinnerWithVerb(
     };
     let tree_leader_verb = Some(leader_verb.clone());
     let leader_is_idle = props.leader_is_idle;
-    let effective_next_task = props
-        .next_task
-        .clone()
-        .or_else(|| task_snapshot.next_pending_subject.clone());
+    // @nyan: no fallback to the task list's next pending subject — the todo
+    // panel mounted right below the spinner already lists it
+    // (docs/nyan/tui.md §4.2), so `Next: …` would duplicate it.
+    let effective_next_task = props.next_task.clone();
     let effective_effort_suffix = props.effort_suffix.clone().or_else(|| {
         let suffix = crate::utils::effort::get_effort_suffix(
             &crate::utils::model::model::get_main_loop_model(),

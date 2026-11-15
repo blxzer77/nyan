@@ -4493,6 +4493,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                     prepare_ide_integration_for_query(&app_store.get().mcp.clients);
                     // @nyan: speculation accept continues as a new user turn.
                     crate::state::footer_metrics::start_user_turn(&app_store);
+                    crate::components::task_list_v2::dismiss_finished_tasks(&app_store);
                     stream_mode.set(SpinnerMode::Responding);
                     response_length_ref.set(0);
                     active_query.set(Some(spawn_query(params, production_deps())));
@@ -5904,6 +5905,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
 
             // @nyan: MCP prompt submissions start a user turn.
             crate::state::footer_metrics::start_user_turn(&app_store_for_mcp);
+            crate::components::task_list_v2::dismiss_finished_tasks(&app_store_for_mcp);
             stream_mode.set(SpinnerMode::Responding);
             response_length_ref.set(0);
             active_query.set(Some(spawn_query(params, production_deps())));
@@ -6564,6 +6566,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                         // @nyan: keyboard submit that starts a query. Queued
                         // input rotates when it drains, not when it is parked.
                         crate::state::footer_metrics::start_user_turn(&app_store_for_submit);
+                        crate::components::task_list_v2::dismiss_finished_tasks(&app_store_for_submit);
                         stream_mode.set(SpinnerMode::Responding);
                         response_length_ref.set(0);
                         #[cfg(test)]
@@ -7433,6 +7436,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
 
                 // @nyan: inbox delivery is a new user turn.
                 crate::state::footer_metrics::start_user_turn(&app_store_for_inbox);
+                crate::components::task_list_v2::dismiss_finished_tasks(&app_store_for_inbox);
                 stream_mode.set(SpinnerMode::Responding);
                 response_length_ref.set(0);
                 active_query.set(Some(spawn_query(params, production_deps())));
@@ -7976,6 +7980,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
 
                 // @nyan: a drained queue or scheduled task starts a user turn.
                 crate::state::footer_metrics::start_user_turn(&app_store_for_cron);
+                crate::components::task_list_v2::dismiss_finished_tasks(&app_store_for_cron);
                 stream_mode.set(SpinnerMode::Responding);
                 response_length_ref.set(0);
                 active_query.set(Some(spawn_query(params, production_deps())));
@@ -9697,6 +9702,16 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             } else {
                 None
             })
+            // @nyan: todo panel, generating form (docs/nyan/tui.md §4.2). Mounted
+            // here rather than inside SpinnerWithVerb: entries hang off `⎿`
+            // under the spinner row, above the spacer.
+            #(if show_spinner && screen.get() == Screen::Prompt {
+                Some(element! {
+                    crate::components::task_list_v2::TodoPanel(spinner_active: true)
+                })
+            } else {
+                None
+            })
             // Preserve the inline-mode gap that followed the old spinner row;
             // this is an iocraft transport spacer, not Messages ownership.
             #(if show_spinner && screen.get() == Screen::Prompt {
@@ -9953,6 +9968,16 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             #((screen.get() == Screen::Transcript).then(|| element! {
                 TranscriptModeFooter(show_all_in_transcript: show_all_in_transcript.get())
             }))
+
+            // @nyan: todo panel, idle form — directly above PromptInput, after
+            // the local command UI (docs/nyan/tui.md §4.2).
+            #(if should_render_prompt_input && !show_spinner {
+                Some(element! {
+                    crate::components::task_list_v2::TodoPanel(spinner_active: false)
+                })
+            } else {
+                None
+            })
 
             #(if should_render_prompt_input {
                 Some(element! {

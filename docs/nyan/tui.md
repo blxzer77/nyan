@@ -119,9 +119,12 @@ worktree，不只 nyan 自己创建的会话（`get_current_worktree_session`，
 
 ### 4.1 数据与状态
 
-- 数据：当前会话任务列表（TaskCreate / TaskUpdate，interactive 默认 v2，`utils/tasks.rs:154`）；
-  v1 `TodoWrite` 启用时读其列表，渲染一致。
-- 现有 `TaskListV2`（`components/task_list_v2.rs`）生产未挂载，在其基础上改造并挂载。
+- 数据：当前任务列表（TaskCreate / TaskUpdate 写盘，`utils/tasks.rs`）。v1 `TodoWrite` 只在非交互模式启用，
+  没有 TUI，面板不接。`_internal` 任务不显示（同 TaskList 工具）。
+- 刷新：任务在磁盘上、无订阅。TaskCreate / TaskUpdate 写盘后递增 `AppState.task_list_revision`；面板只在
+  版本号或任务列表 id 变化（`/clear`、`/resume` 换 session id）时重读，不逐帧读盘。
+- 实现在 `components/task_list_v2.rs`（`TodoPanel` 连接状态，`TodoPanelView` 只绘制，布局为纯函数）。
+- spinner 不再从任务列表取 `Next: …` 提示（面板已列出），该位置回到 Tip。
 - 排序：已完成（折叠）→ 进行中 → 待办，组内按 id。
 
 | 状态 | 图标 | 样式 |
@@ -142,25 +145,27 @@ worktree，不只 nyan 自己创建的会话（`get_current_worktree_session`，
 **展开（空闲）**：
 
 ```
-  Tasks 3/7                                                  ctrl+t 收起
+  Tasks 3/7                                           ctrl+t to collapse
   ✔ 调研现状  +2
   ◼ 重构页脚布局
   ◻ 删除 statusLine 机制
 ```
 
-**收起**（只剩一行，显示当前进行中的条目）：
+**收起**（只剩一行，显示当前进行中的条目；没有进行中时用第一个待办 `◻`）：
 
 ```
   ⎿  ◼ 重构页脚布局 · 3/7                                         ctrl+t
 ```
 
-**全部完成**：一行 `✔ 7/7 done`，保留到下一次用户提交，然后整块消失。
+**全部完成**：一行 `✔ 7/7 done`，保留到下一次用户提交，然后整块消失（提交时记下任务签名
+`AppState.todo_cleared_signature`；任务有任何 id / status 变化即重新出现）。
 
 ### 4.3 展开规则
 
-- TaskCreate 时自动展开（沿用 `task_create_tool/mod.rs:248-260`、`task_update_tool/mod.rs:511-523` 的接线点）。
-- Ctrl+T 在展开 / 收起间切换。**手动收起后，本会话内不再自动展开**，直到再按 Ctrl+T。
-- 状态只在会话内有效，不持久化（不再写 `showExpandedTodos` / `showSpinnerTree`，`on_change_app_state.rs:77-92`）。
+- TaskCreate / TaskUpdate 时自动展开（`AppStoreRef::auto_expand_tasks_panel`，`tool.rs`）。
+- Ctrl+T 只在展开（`expanded_view = Tasks`）/ 收起（`None`）间切换，不再进入 `Teammates`（agent 面板取代，
+  见第六节）。**手动收起后，本会话内不再自动展开**（`todo_auto_expand_suppressed`），直到再按 Ctrl+T。
+- 状态只在会话内有效，不持久化（原先写 `showExpandedTodos` / `showSpinnerTree`，但启动从不读回，已删）。
 - 列表为空时不显示任何行。
 
 ## 五、指标口径
