@@ -442,12 +442,13 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::remove("DISABLE_COMPACT");
         crate::utils::process_env::remove("DISABLE_AUTO_COMPACT");
-        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
-        crate::utils::process_env::remove("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+        crate::utils::process_env::remove("NYAN_BLOCKING_LIMIT_OVERRIDE");
+        crate::utils::process_env::remove("NYAN_AUTO_COMPACT_WINDOW");
+        crate::utils::process_env::remove("NYAN_AUTOCOMPACT_PCT_OVERRIDE");
+        crate::utils::process_env::remove("NYAN_MAX_OUTPUT_TOKENS");
         crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
+        crate::utils::process_env::remove("NYAN_MAX_CONTEXT_TOKENS");
+        crate::utils::process_env::remove("NYAN_DISABLE_1M_CONTEXT");
         let config = crate::utils::config::GlobalConfig::default();
 
         let below =
