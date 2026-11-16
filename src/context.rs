@@ -101,16 +101,16 @@ pub fn get_user_context() -> BTreeMap<String, String> {
     {
         return context.clone();
     }
-    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_claude_md();
+    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_agents_md();
     let context = build_user_context(
         |key| crate::utils::process_env::var(key),
-        crate::utils::claudemd::build_claude_md_context,
+        crate::utils::agents_md::build_agents_md_context,
         crate::constants::common::get_local_iso_date,
         !additional_dirs.is_empty(),
     );
     // Maps to: CC `context.ts:176` — publish only after the canonical context
     // producer applies AGENTS.md gates; the classifier must never load it again.
-    crate::bootstrap::state::set_cached_claude_md_content(context.get("claudeMd").cloned());
+    crate::bootstrap::state::set_cached_agents_md_content(context.get("claudeMd").cloned());
     if let Ok(mut cache) = USER_CONTEXT_CACHE.write() {
         *cache = Some(context.clone());
     }
@@ -154,7 +154,7 @@ pub fn get_system_context() -> BTreeMap<String, String> {
 
 fn build_user_context(
     get_env: impl Fn(&str) -> Option<String>,
-    build_claude_md_context: impl Fn() -> String,
+    build_agents_md_context: impl Fn() -> String,
     get_local_iso_date: impl Fn() -> String,
     has_explicit_add_dir: bool,
 ) -> BTreeMap<String, String> {
@@ -162,16 +162,15 @@ fn build_user_context(
 
     // Maps to CC `context.ts` `shouldDisableClaudeMd`: hard-disable wins;
     // bare/simple mode skips auto-discovery but still honors explicit add-dir.
-    let should_disable_claude_md = crate::utils::env_utils::is_env_truthy(
-        get_env("CLAUDE_CODE_DISABLE_CLAUDE_MDS").as_deref(),
-    ) || (crate::utils::env_utils::is_env_truthy(
-        get_env("CLAUDE_CODE_SIMPLE").as_deref(),
-    ) && !has_explicit_add_dir);
-    if !should_disable_claude_md {
-        let claude_md = build_claude_md_context();
+    let should_disable_agents_md =
+        crate::utils::env_utils::is_env_truthy(get_env("NYAN_DISABLE_CLAUDE_MDS").as_deref())
+            || (crate::utils::env_utils::is_env_truthy(get_env("NYAN_SIMPLE").as_deref())
+                && !has_explicit_add_dir);
+    if !should_disable_agents_md {
+        let agents_md = build_agents_md_context();
         // CC uses string truthiness for both context and classifier cache.
-        if !claude_md.is_empty() {
-            context.insert("claudeMd".to_string(), claude_md);
+        if !agents_md.is_empty() {
+            context.insert("claudeMd".to_string(), agents_md);
         }
     }
 
@@ -207,10 +206,7 @@ fn build_system_context_with_cache_breaker(
 ) -> BTreeMap<String, String> {
     let mut context = BTreeMap::new();
 
-    // Maps to CC `context.ts`: skip git status in Claude Code Remote and when
-    // `utils/gitSettings.ts#shouldIncludeGitInstructions()` returns false.
-    if !crate::utils::env_utils::is_env_truthy(get_env("CLAUDE_CODE_REMOTE").as_deref())
-        && should_include_git_instructions(&get_env, include_git_instructions_setting)
+    if should_include_git_instructions(&get_env, include_git_instructions_setting)
         && let Some(git_status) = get_git_status()
     {
         context.insert("gitStatus".to_string(), git_status);
@@ -294,7 +290,7 @@ fn should_include_git_instructions(
     get_env: &impl Fn(&str) -> Option<String>,
     include_git_instructions_setting: Option<bool>,
 ) -> bool {
-    match get_env("CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS") {
+    match get_env("NYAN_DISABLE_GIT_INSTRUCTIONS") {
         Some(value) if crate::utils::env_utils::is_env_truthy(Some(&value)) => false,
         Some(value) if crate::utils::env_utils::is_env_defined_falsy(Some(&value)) => true,
         _ => include_git_instructions_setting.unwrap_or(true),
@@ -306,7 +302,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn get_user_context_shape_matches_official_current_date_and_claude_md() {
+    fn get_user_context_shape_matches_official_current_date_and_agents_md() {
         let context = build_user_context(
             |_| None,
             || "# Source: AGENTS.md\n\nproject memory".to_string(),
@@ -325,8 +321,8 @@ mod tests {
     }
 
     #[test]
-    fn get_user_context_respects_official_claude_md_disable_gates() {
-        for key in ["CLAUDE_CODE_DISABLE_CLAUDE_MDS", "CLAUDE_CODE_SIMPLE"] {
+    fn get_user_context_respects_official_agents_md_disable_gates() {
+        for key in ["NYAN_DISABLE_CLAUDE_MDS", "NYAN_SIMPLE"] {
             let context = build_user_context(
                 |requested| (requested == key).then(|| "1".to_string()),
                 || "should not be read into context".to_string(),
@@ -345,7 +341,7 @@ mod tests {
     #[test]
     fn get_user_context_honors_explicit_add_dir_in_simple_mode_like_official() {
         let context = build_user_context(
-            |requested| (requested == "CLAUDE_CODE_SIMPLE").then(|| "1".to_string()),
+            |requested| (requested == "NYAN_SIMPLE").then(|| "1".to_string()),
             || "# Source: /extra/AGENTS.md\n\nexplicit memory".to_string(),
             || "2026-07-03".to_string(),
             true,
@@ -413,15 +409,18 @@ mod tests {
     }
 
     #[test]
-    fn get_system_context_skips_git_status_for_remote_or_disabled_git_instructions() {
-        for key in ["CLAUDE_CODE_REMOTE", "CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS"] {
+    fn get_system_context_only_skips_git_status_for_disabled_git_instructions() {
+        for (key, included) in [
+            ("NYAN_REMOTE", true),
+            ("NYAN_DISABLE_GIT_INSTRUCTIONS", false),
+        ] {
             let context = build_system_context(
                 |requested| (requested == key).then(|| "1".to_string()),
                 None,
                 || Some("should not be inserted".to_string()),
             );
 
-            assert!(!context.contains_key("gitStatus"));
+            assert_eq!(context.contains_key("gitStatus"), included);
         }
     }
 
@@ -435,9 +434,7 @@ mod tests {
         assert!(!disabled_by_settings.contains_key("gitStatus"));
 
         let env_falsy_forces_enabled_like_official = build_system_context(
-            |requested| {
-                (requested == "CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS").then(|| "0".to_string())
-            },
+            |requested| (requested == "NYAN_DISABLE_GIT_INSTRUCTIONS").then(|| "0".to_string()),
             Some(false),
             || Some("setting was overridden by falsy env".to_string()),
         );

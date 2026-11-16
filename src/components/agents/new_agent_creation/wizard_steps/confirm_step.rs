@@ -34,7 +34,6 @@ pub fn tools_display(tool_names: Option<&[String]>) -> String {
 fn source(value: &str) -> AgentDefinitionSource {
     match value {
         "userSettings" => AgentDefinitionSource::UserSettings,
-        "policySettings" => AgentDefinitionSource::PolicySettings,
         "flagSettings" => AgentDefinitionSource::FlagSettings,
         _ => AgentDefinitionSource::ProjectSettings,
     }
@@ -44,7 +43,7 @@ fn location(agent: &AgentWizardFinal) -> String {
     if agent.source == "projectSettings" {
         format!(".nyan/agents/{}.md", agent.agent_type)
     } else {
-        crate::utils::env_utils::get_claude_config_home_dir()
+        crate::utils::env_utils::get_config_home_dir()
             .join("agents")
             .join(format!("{}.md", agent.agent_type))
             .display()
@@ -164,7 +163,7 @@ pub fn ConfirmStep<'a>(
                 MixedText(contents: vec![MixedTextContent::new("Tools").weight(Weight::Bold), MixedTextContent::new(format!(": {}", tools_display(agent.tools.as_deref())))])
                 MixedText(contents: vec![MixedTextContent::new("Model").weight(Weight::Bold), MixedTextContent::new(format!(": {}", get_agent_model_display(agent.model.as_deref())))])
                 #(memory.map(|memory| element! { MixedText(contents: vec![MixedTextContent::new("Memory").weight(Weight::Bold), MixedTextContent::new(format!(": {memory}"))]) }))
-                View(margin_top: 1u32) { MixedText(contents: vec![MixedTextContent::new("Description").weight(Weight::Bold), MixedTextContent::new(" (tells Claude when to use this agent):")]) }
+                View(margin_top: 1u32) { MixedText(contents: vec![MixedTextContent::new("Description").weight(Weight::Bold), MixedTextContent::new(" (tells nyan when to use this agent):")]) }
                 View(margin_left: 2u32, margin_top: 1u32) { Text(content: truncate_to_width(&agent.when_to_use, 240)) }
                 View(margin_top: 1u32) { MixedText(contents: vec![MixedTextContent::new("System prompt").weight(Weight::Bold), MixedTextContent::new(":")]) }
                 View(margin_left: 2u32, margin_top: 1u32) { Text(content: truncate_to_width(&agent.system_prompt, 240)) }

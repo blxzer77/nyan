@@ -1,31 +1,15 @@
 //! Maps to: CC `components/PromptInput/Notifications.tsx` +
 //! `context/notifications.tsx` for the main-screen-safe subset.
 //!
-//! Status rows match CC `NotificationContent`: inline overage/apiKeyHelper/auth/
+//! Status rows match CC `NotificationContent`: inline apiKeyHelper/auth/
 //! debug/verbose; mounts of root components (`IdeStatusIndicator`, `TokenWarning`,
-//! `AutoUpdaterWrapper`, `MemoryUsageIndicator`) and PromptInput-local
+//! `UpdateNotifier`) and PromptInput-local
 //! `SandboxPromptFooterHint`. No parallel `*_footer.rs` adapter layer.
 
 use super::prompt_input_footer::PromptFooterIndicator;
-use crate::components::auto_updater_wrapper::{
-    AutoUpdaterWrapper, auto_update_hint_row_count_from_app,
-};
-use crate::utils::auto_updater::InstallStatus;
-
-/// Maps to: CC `PromptInput/Notifications.tsx:119-122` `shouldShowAutoUpdater`
-/// — defined by its consumer (this file), imported by the wrapper's height
-/// helper (O-2: owner direction mirrors CC).
-pub fn should_show_auto_updater(
-    ide_selection_visible: bool,
-    is_updating: bool,
-    result_status: Option<InstallStatus>,
-) -> bool {
-    !ide_selection_visible || is_updating || result_status != Some(InstallStatus::Success)
-}
-use crate::components::ide_status_indicator::{
-    IdeStatusIndicator, ide_hint_row_count, ide_status_indicator_text,
-};
+use crate::components::ide_status_indicator::{IdeStatusIndicator, ide_hint_row_count};
 use crate::components::token_warning::{TokenWarning, token_warning_hint_row_count};
+use crate::components::update_notifier::{UpdateNotifier, update_notifier_row_count};
 use crate::context::notifications::use_notifications;
 use crate::context::notifications::{NotificationColor, NotificationSegment};
 use crate::hooks::notifs::ide_status_indicator::IdeConnectionStatus;
@@ -34,7 +18,6 @@ use crate::services::compact::auto_compact::is_auto_compact_enabled;
 use crate::state::store::AppStore;
 use crate::utils::auth::get_api_key_helper_elapsed_ms;
 use crate::utils::config::load_global_config;
-use crate::utils::env_utils::is_env_truthy;
 use crate::utils::format::format_duration;
 use crate::utils::theme::Theme;
 use iocraft::prelude::*;
@@ -45,35 +28,18 @@ pub const API_KEY_HELPER_SLOW_THRESHOLD_MS: u64 = 10_000;
 
 const DEFAULT_MODEL: &str = "claude-sonnet-4-5";
 
-/// Maps to: CC `Notifications.tsx` overage-mode footer row.
-pub fn overage_indicator(
-    is_in_overage_mode: bool,
-    is_team_or_enterprise: bool,
-) -> Option<PromptFooterIndicator> {
-    if is_in_overage_mode && !is_team_or_enterprise {
-        Some(PromptFooterIndicator::dim("Now using extra usage"))
-    } else {
-        None
-    }
-}
-
 /// Maps to: CC `Notifications.tsx` auth-error footer row.
 pub fn auth_status_indicator(
     credential_status: &CredentialStatus,
-    is_remote_mode: bool,
 ) -> Option<PromptFooterIndicator> {
     let CredentialStatus::Missing { provider } = credential_status else {
         return None;
     };
 
     Some(PromptFooterIndicator::colored(
-        if is_remote_mode {
-            "Authentication error · Try again".to_string()
-        } else {
-            format!(
-                "No credential for provider {provider} · check settings.nyan.providers.{provider}.credential"
-            )
-        },
+        format!(
+            "No credential for provider {provider} · check settings.nyan.providers.{provider}.credential"
+        ),
         NotificationColor::Error,
     ))
 }
@@ -106,7 +72,7 @@ fn configured_api_key_helper_present(store: &AppStore) -> bool {
 }
 
 /// Height budget for Notifications rows. Wake-dependent rows (apiKeyHelper /
-/// memory / sandbox) are computed live — no mirrored bag (D9).
+/// sandbox) are computed live — no mirrored bag (D9).
 ///
 /// @nyan: the verbose `N tokens` row is gone (docs/nyan/tui.md §3.4); the
 /// info line owns the token count, so `verbose` and `credential_missing` no
@@ -117,14 +83,12 @@ pub fn direct_footer_row_count(
     main_loop_model: Option<&str>,
     token_usage: u64,
     api_key_helper_slow: bool,
-    memory_visible: bool,
     sandbox_hint_visible: bool,
 ) -> usize {
     let mut count = usize::from(has_current_notification);
     count += usize::from(api_key_helper_slow);
     let model = main_loop_model.unwrap_or(DEFAULT_MODEL);
     count += token_warning_hint_row_count(token_usage, model, is_brief_only);
-    count += usize::from(memory_visible);
     count += usize::from(sandbox_hint_visible);
     count
 }
@@ -139,11 +103,10 @@ fn api_key_helper_slow_now(store: &AppStore) -> bool {
 /// Maps to: CC `components/PromptInput/Notifications.tsx:66-190` `Notifications`
 /// and `:199-359` `NotificationContent` row visibility.
 /// L1 (React/Ink → iocraft): projects the same visible branches into retained
-/// footer height without moving their auth, subscription, or environment policy.
+/// footer height without moving their auth or environment policy.
 /// `token_usage` is caller-derived from that caller's `messages` prop via
 /// [`token_usage_from_messages`] (CC Notifications.tsx:80-83 — not AppState).
-/// `auto_updater_result`/`is_auto_updating` are caller-threaded from their
-/// REPL/PromptInput owners (CC Notifications.tsx:53-55 props — not AppState).
+/// `update_available` is caller-threaded from the REPL owner.
 /// `ide_selection` is the REPL-owned selection state, prop-drilled through
 /// PromptInput/Footer (CC Notifications.tsx:60,75 props — not AppState).
 pub fn direct_footer_row_count_from_app(
@@ -152,15 +115,13 @@ pub fn direct_footer_row_count_from_app(
     debug: bool,
     credential_status: &CredentialStatus,
     token_usage: u64,
-    auto_updater_result: Option<&crate::utils::auto_updater::AutoUpdaterResult>,
-    is_auto_updating: bool,
+    update_available: Option<&crate::utils::auto_updater::UpdateAvailable>,
     ide_selection: Option<&crate::hooks::use_ide_selection::IdeSelection>,
 ) -> usize {
     let sandbox_enabled =
         crate::utils::sandbox::sandbox_adapter::get_sandbox_enabled_setting(&state.settings);
     let sandbox_hint_visible =
         sandbox_enabled && super::sandbox_prompt_footer_hint::sandbox_hint_recent_count() > 0;
-    let memory_visible = crate::components::memory_usage_indicator::memory_hint_visible_now();
     // apiKeyHelper: prefer live elapsed; store handle optional at height sites
     // that only have AppState (tests pass false via direct_footer_row_count).
     let api_key_helper_slow = {
@@ -183,18 +144,9 @@ pub fn direct_footer_row_count_from_app(
         )),
         token_usage,
         api_key_helper_slow,
-        memory_visible,
         sandbox_hint_visible,
     );
-    // There is no claude.ai subscription, so no team/enterprise suppression.
-    if state.claude_ai_limits.is_using_overage {
-        if overage_indicator(state.claude_ai_limits.is_using_overage, false).is_some() {
-            count += 1;
-        }
-    }
-    let is_remote_mode =
-        is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref());
-    if auth_status_indicator(credential_status, is_remote_mode).is_some() {
+    if auth_status_indicator(credential_status).is_some() {
         count += 1;
     }
     if debug {
@@ -204,12 +156,7 @@ pub fn direct_footer_row_count_from_app(
     let ide_status = ide_connected.then_some(IdeConnectionStatus::Connected);
     let ide_rows = ide_hint_row_count(ide_status, ide_selection);
     count += ide_rows;
-    count += auto_update_hint_row_count_from_app(
-        state,
-        auto_updater_result,
-        is_auto_updating,
-        ide_rows > 0,
-    );
+    count += update_notifier_row_count(update_available);
     count
 }
 
@@ -222,31 +169,12 @@ pub fn token_usage_from_messages(messages: &[crate::types::message::Message]) ->
         as u64
 }
 
-/// P6: overage flag (CC `useClaudeAiLimits().isUsingOverage`).
-pub fn set_overage_mode(store: &AppStore, enabled: bool) {
-    store.replace_with(|state| {
-        let mut limits = (*state.claude_ai_limits).clone();
-        limits.is_using_overage = enabled;
-        state.claude_ai_limits = std::sync::Arc::new(limits);
-    });
-}
-
-/// P6: apply limits service snapshot to AppState overage flag.
-pub fn apply_claude_ai_limits(
-    store: &AppStore,
-    limits: &crate::services::claude_ai_limits::ClaudeAiLimits,
-) {
-    store.replace_with(|state| {
-        state.claude_ai_limits = std::sync::Arc::new(limits.clone());
-    });
-}
-
 fn notification_color(color: Option<NotificationColor>, theme: &Theme) -> Color {
     match color {
         Some(NotificationColor::Error) => theme.error,
         Some(NotificationColor::Warning) => theme.warning,
         Some(NotificationColor::Success) => theme.success,
-        Some(NotificationColor::Claude) => theme.claude,
+        Some(NotificationColor::Nyan) => theme.nyan,
         Some(NotificationColor::Text) => theme.text,
         Some(NotificationColor::Ide) => theme.ide,
         Some(NotificationColor::Suggestion) => theme.suggestion,
@@ -259,18 +187,8 @@ pub struct NotificationsProps {
     /// Maps to: CC `NotificationsProps.apiKeyStatus`, passed from REPL through
     /// PromptInput rather than read from AppState.
     pub credential_status: CredentialStatus,
-    /// Maps to: CC `NotificationsProps.autoUpdaterResult` (Notifications.tsx:53)
-    /// — REPL-owned state, prop-drilled through PromptInput/Footer.
-    pub auto_updater_result: Option<crate::utils::auto_updater::AutoUpdaterResult>,
-    /// Maps to: CC `NotificationsProps.isAutoUpdating` (Notifications.tsx:54)
-    /// — PromptInput-owned state.
-    pub is_auto_updating: bool,
-    /// Maps to: CC `NotificationsProps.onAutoUpdaterResult` (Notifications.tsx:58)
-    /// — REPL `setAutoUpdaterResult`, forwarded to `AutoUpdaterWrapper`.
-    pub on_auto_updater_result: Handler<crate::utils::auto_updater::AutoUpdaterResult>,
-    /// Maps to: CC `NotificationsProps.onChangeIsUpdating` (Notifications.tsx:59)
-    /// — PromptInput `setIsAutoUpdating`, forwarded to `AutoUpdaterWrapper`.
-    pub on_change_is_updating: Handler<bool>,
+    /// REPL-owned newer release, prop-drilled through PromptInput/Footer.
+    pub update_available: Option<crate::utils::auto_updater::UpdateAvailable>,
     /// Maps to: CC `NotificationsProps.debug`, forwarded from REPL launch props.
     pub debug: bool,
     /// Maps to: CC NotificationsProps.messages (Notifications.tsx:57,72).
@@ -313,9 +231,6 @@ pub fn Notifications(
         crate::components::ide_status_indicator::ide_client_connected(&state.mcp)
     });
     let credential_status = props.credential_status.clone();
-    let is_in_overage_mode = crate::state::app_state::use_app_state(&mut hooks, |state| {
-        state.claude_ai_limits.is_using_overage
-    });
     let debug = props.debug;
     // Maps to: CC Notifications.tsx:80-83 tokenUsage useMemo. Dependency is the
     // messages Arc identity, matching CC's `[messages]` reference-equality dep.
@@ -326,10 +241,6 @@ pub fn Notifications(
         },
         std::sync::Arc::as_ptr(&props.messages) as usize,
     );
-    let is_remote_mode =
-        is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref());
-    // There is no claude.ai subscription, so no team/enterprise suppression.
-    let is_team_or_enterprise = false;
     let theme = hooks.use_context::<Theme>();
     let store = hooks.try_use_context::<AppStore>().map(|s| s.clone());
 
@@ -389,20 +300,15 @@ pub fn Notifications(
         };
         head_rows.push(FooterRow {
             segments,
-            inverse: false,
             default_color: current.color,
         });
-    }
-
-    if let Some(indicator) = overage_indicator(is_in_overage_mode, is_team_or_enterprise) {
-        head_rows.push(FooterRow::from_indicator(indicator));
     }
 
     if let Some(indicator) = api_key_helper_slow_indicator(api_key_elapsed) {
         mid_rows.push(FooterRow::from_indicator(indicator));
     }
 
-    if let Some(indicator) = auth_status_indicator(&credential_status, is_remote_mode) {
+    if let Some(indicator) = auth_status_indicator(&credential_status) {
         tail_rows.push(FooterRow::from_indicator(indicator));
     }
     if debug {
@@ -416,21 +322,6 @@ pub fn Notifications(
     // row below.
 
     let ide_status = ide_connected.then_some(IdeConnectionStatus::Connected);
-    let ide_visible = ide_status_indicator_text(ide_status, ide_selection.as_ref()).is_some();
-    // Maps to: CC Notifications.tsx:119-122 — gate from the prop-drilled
-    // REPL/PromptInput values (no AppState involvement).
-    let show_auto_updater = should_show_auto_updater(
-        ide_visible,
-        props.is_auto_updating,
-        props.auto_updater_result.as_ref().map(|r| r.status),
-    );
-    // Maps to: CC `showSuccessMessage={!isShowingCompactMessage}`.
-    let show_success = !crate::services::compact::auto_compact::calculate_token_warning_state(
-        token_usage as i64,
-        &main_loop_model,
-    )
-    .is_above_warning_threshold;
-
     let (col_pl, col_pr) = if props.inline {
         (0u32, 0u32)
     } else {
@@ -444,8 +335,8 @@ pub fn Notifications(
             padding_right: col_pr,
             overflow: Overflow::Hidden,
         ) {
-            // CC order: Ide → notif/overage → apiKeyHelper → auth/debug/verbose
-            // → TokenWarning → AutoUpdater → Memory → Sandbox.
+            // CC order: Ide → notif → apiKeyHelper → auth/debug/verbose
+            // → TokenWarning → AutoUpdater → Sandbox.
             IdeStatusIndicator(
                 ide_status: ide_status,
                 ide_selection: ide_selection,
@@ -464,23 +355,10 @@ pub fn Notifications(
             } else {
                 None
             })
-            #(if show_auto_updater {
-                // Maps to: CC Notifications.tsx:343-349 — forward the CC
-                // callback/value props; showSuccessMessage={!isShowingCompactMessage}.
-                Some(element! {
-                    AutoUpdaterWrapper(
-                        is_updating: props.is_auto_updating,
-                        auto_updater_result: props.auto_updater_result.clone(),
-                        on_auto_updater_result: props.on_auto_updater_result.clone(),
-                        on_change_is_updating: props.on_change_is_updating.clone(),
-                        show_success_message: show_success,
-                        verbose: verbose,
-                    )
-                })
-            } else {
-                None
-            })
-            crate::components::memory_usage_indicator::MemoryUsageIndicator
+            UpdateNotifier(
+                update_available: props.update_available.clone(),
+                verbose: verbose,
+            )
             super::sandbox_prompt_footer_hint::SandboxPromptFooterHint
         }
     }
@@ -490,7 +368,6 @@ pub fn Notifications(
 fn footer_row_view(row: FooterRow, theme: &Theme) -> AnyElement<'static> {
     let FooterRow {
         segments,
-        inverse,
         default_color,
     } = row;
     element! {
@@ -508,7 +385,6 @@ fn footer_row_view(row: FooterRow, theme: &Theme) -> AnyElement<'static> {
                         content: segment.text.clone(),
                         color: segment_color,
                         dim: segment.dim,
-                        invert: inverse,
                         wrap: TextWrap::NoWrap,
                     )
                 }
@@ -520,7 +396,6 @@ fn footer_row_view(row: FooterRow, theme: &Theme) -> AnyElement<'static> {
 
 struct FooterRow {
     segments: Vec<NotificationSegment>,
-    inverse: bool,
     default_color: Option<NotificationColor>,
 }
 
@@ -528,7 +403,6 @@ impl FooterRow {
     fn from_indicator(indicator: PromptFooterIndicator) -> Self {
         Self {
             segments: indicator.segments,
-            inverse: indicator.inverse,
             default_color: None,
         }
     }
@@ -538,24 +412,14 @@ impl FooterRow {
 mod tests {
     use super::*;
     use crate::context::notifications::{Notification, NotificationPriority, NotificationsState};
-    use crate::utils::auto_updater::{AutoUpdaterResult, InstallStatus};
     use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK, TestEnvGuard};
     use std::path::PathBuf;
 
     const NOTIFICATIONS_RUNTIME_ENV_KEYS: &[&str] = &[
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_AUTH_TOKEN",
-        "ANTHROPIC_UNIX_SOCKET",
-        "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR",
-        "CLAUDE_CODE_MANAGED_SETTINGS_PATH",
-        "CLAUDE_CODE_OAUTH_TOKEN",
-        "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
-        "CLAUDE_CODE_REMOTE",
-        "CLAUDE_CODE_SIMPLE",
-        "CLAUDE_CODE_USE_BEDROCK",
-        "CLAUDE_CODE_USE_FOUNDRY",
-        "CLAUDE_CODE_USE_VERTEX",
-        "CLAUDE_CONFIG_DIR",
+        "NYAN_API_KEY_FILE_DESCRIPTOR",
+        "NYAN_REMOTE",
+        "NYAN_SIMPLE",
+        "NYAN_CONFIG_DIR",
         "NODE_ENV",
     ];
 
@@ -572,7 +436,7 @@ mod tests {
     }
 
     impl NotificationsRuntimeFixture {
-        fn new(subscription_type: Option<&str>, remote: bool) -> Self {
+        fn new(remote: bool) -> Self {
             let lock = TEST_ENV_LOCK
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -593,16 +457,11 @@ mod tests {
                 uuid::Uuid::new_v4().simple()
             ));
             let workspace = root.join("workspace");
-            std::fs::create_dir_all(workspace.join(".claude"))
-                .expect("create notifications fixture");
+            std::fs::create_dir_all(workspace.join(".nyan")).expect("create notifications fixture");
 
-            crate::utils::process_env::set("CLAUDE_CONFIG_DIR", &root);
-            crate::utils::process_env::set(
-                "CLAUDE_CODE_MANAGED_SETTINGS_PATH",
-                root.join("missing-managed-settings.json"),
-            );
+            crate::utils::process_env::set("NYAN_CONFIG_DIR", &root);
             if remote {
-                crate::utils::process_env::set("CLAUDE_CODE_REMOTE", "1");
+                crate::utils::process_env::set("NYAN_REMOTE", "1");
             }
             std::env::set_current_dir(&workspace).expect("set notifications fixture cwd");
             crate::bootstrap::state::set_original_cwd(&workspace);
@@ -614,27 +473,9 @@ mod tests {
             crate::bootstrap::state::set_flag_settings_path(None);
             crate::bootstrap::state::set_flag_settings_inline(None);
             crate::bootstrap::state::reset_auth_file_descriptor_caches_for_testing();
-            crate::services::mock_rate_limits::reset_for_test();
             crate::utils::secure_storage::mac_os_keychain_helpers::clear_keychain_cache();
             std::fs::write(root.join("settings.json"), b"{}")
                 .expect("write notifications settings fixture");
-            if let Some(subscription_type) = subscription_type {
-                std::fs::write(
-                    root.join(".credentials.json"),
-                    serde_json::to_vec(&serde_json::json!({
-                        "claudeAiOauth": {
-                            "accessToken": "notifications-test-token",
-                            "refreshToken": "notifications-refresh-token",
-                            "expiresAt": 4_102_444_800_000u64,
-                            "scopes": ["user:inference"],
-                            "subscriptionType": subscription_type,
-                            "rateLimitTier": null
-                        }
-                    }))
-                    .expect("serialize notifications credentials fixture"),
-                )
-                .expect("write notifications credentials fixture");
-            }
 
             Self {
                 _lock: lock,
@@ -665,7 +506,6 @@ mod tests {
             let _ = std::env::set_current_dir(&self.previous_cwd);
             crate::bootstrap::state::set_original_cwd(&self.previous_original_cwd);
             drop(std::mem::take(&mut self.previous_env));
-            crate::services::mock_rate_limits::reset_for_test();
             crate::utils::secure_storage::mac_os_keychain_helpers::clear_keychain_cache();
             crate::bootstrap::state::reset_auth_file_descriptor_caches_for_testing();
             let _ = std::fs::remove_dir_all(&self.root);
@@ -737,6 +577,16 @@ mod tests {
     }
 
     #[test]
+    fn notification_color_nyan_uses_the_nyan_palette_entry() {
+        let theme = *crate::utils::theme::current();
+        assert_eq!(
+            notification_color(Some(NotificationColor::Nyan), &theme),
+            theme.nyan
+        );
+        assert_eq!(notification_color(None, &theme), theme.inactive);
+    }
+
+    #[test]
     fn notifications_render_current_text_notification() {
         let text = element!(NotificationsHarness).render(None).to_string();
         assert!(
@@ -763,17 +613,14 @@ mod tests {
     }
 
     #[test]
-    fn auth_status_indicator_names_the_provider_locally_and_stays_generic_remotely() {
-        let local = auth_status_indicator(&missing("deepseek"), false).unwrap();
-        let remote = auth_status_indicator(&missing("deepseek"), true).unwrap();
+    fn auth_status_indicator_names_the_provider() {
+        let indicator = auth_status_indicator(&missing("deepseek")).unwrap();
         assert_eq!(
-            local.text,
+            indicator.text,
             "No credential for provider deepseek · check settings.nyan.providers.deepseek.credential"
         );
-        assert_eq!(remote.text, "Authentication error · Try again");
-        assert_eq!(local.segments[0].color, Some(NotificationColor::Error));
-        assert_eq!(remote.segments[0].color, Some(NotificationColor::Error));
-        assert!(auth_status_indicator(&CredentialStatus::Ready, false).is_none());
+        assert_eq!(indicator.segments[0].color, Some(NotificationColor::Error));
+        assert!(auth_status_indicator(&CredentialStatus::Ready).is_none());
     }
 
     #[test]
@@ -786,14 +633,9 @@ mod tests {
 
     #[test]
     fn notifications_render_footer_indicator_rows_from_snapshot() {
-        let _runtime = NotificationsRuntimeFixture::new(None, false);
+        let _runtime = NotificationsRuntimeFixture::new(false);
         let mut initial = crate::state::app_state_store::AppState::default();
         initial.verbose = true;
-        initial.claude_ai_limits =
-            std::sync::Arc::new(crate::services::claude_ai_limits::ClaudeAiLimits {
-                is_using_overage: true,
-                ..Default::default()
-            });
         let store = crate::state::store::AppStore::new(initial, None);
         // CC: tokenUsage is derived from the messages prop, not AppState.
         let messages = std::sync::Arc::new(vec![assistant_message_with_usage(40, 2)]);
@@ -814,27 +656,14 @@ mod tests {
         }
         .render(Some(120))
         .to_string();
-        assert!(text.contains("Now using extra usage"), "canvas=\n{text}");
         assert!(text.contains("Debug mode"), "canvas=\n{text}");
         // @nyan: verbose no longer renders a `N tokens` row (tui.md §3.4).
         assert!(!text.contains("42 tokens"), "canvas=\n{text}");
     }
 
     #[test]
-    fn direct_footer_row_count_includes_memory_wake_channel() {
-        assert_eq!(
-            direct_footer_row_count(false, false, None, 0, false, true, false),
-            1
-        );
-        assert_eq!(
-            direct_footer_row_count(false, false, None, 0, false, false, false),
-            0
-        );
-    }
-
-    #[test]
     fn notifications_render_auth_error_row_from_repl_prop_matches_official() {
-        let _runtime = NotificationsRuntimeFixture::new(None, false);
+        let _runtime = NotificationsRuntimeFixture::new(false);
         let store = crate::state::store::AppStore::new(
             crate::state::app_state_store::AppState::default(),
             None,
@@ -864,8 +693,8 @@ mod tests {
     }
 
     #[test]
-    fn notifications_remote_auth_copy_uses_canonical_process_env() {
-        let _runtime = NotificationsRuntimeFixture::new(None, true);
+    fn notifications_retired_remote_env_keeps_provider_specific_auth_copy() {
+        let _runtime = NotificationsRuntimeFixture::new(true);
         let store = crate::state::store::AppStore::new(
             crate::state::app_state_store::AppState::default(),
             None,
@@ -887,43 +716,10 @@ mod tests {
         .render(Some(120))
         .to_string();
         assert!(
-            text.contains("Authentication error · Try again"),
+            text.contains(
+                "No credential for provider cpa · check settings.nyan.providers.cpa.credential"
+            ),
             "canvas=\n{text}"
-        );
-    }
-
-    #[test]
-    fn notifications_overage_row_ignores_a_claude_ai_credentials_file() {
-        // A leftover `.credentials.json` naming a team subscription must not
-        // suppress the overage row: stored claude.ai credentials are ignored.
-        let _runtime = NotificationsRuntimeFixture::new(Some("team"), false);
-
-        let mut initial = crate::state::app_state_store::AppState::default();
-        initial.claude_ai_limits =
-            std::sync::Arc::new(crate::services::claude_ai_limits::ClaudeAiLimits {
-                is_using_overage: true,
-                ..Default::default()
-            });
-        let store = crate::state::store::AppStore::new(initial, None);
-        let text = element! {
-            ContextProvider(value: Context::owned(*crate::utils::theme::current())) {
-                crate::state::app_state::AppStateProvider(
-                    prebuilt_store: Some(store),
-                    children: crate::state::app_state::ProviderChildren::new(|| element! {
-                        Notifications(
-                            credential_status: CredentialStatus::Ready,
-                            suppressed: false,
-                            inline: true,
-                        )
-                    }.into_any()),
-                )
-            }
-        }
-        .render(Some(120))
-        .to_string();
-        assert!(
-            text.contains("Now using extra usage"),
-            "stored team credentials must not suppress the overage row; canvas=\n{text}"
         );
     }
 
@@ -998,69 +794,12 @@ mod tests {
     }
 
     #[test]
-    fn should_show_auto_updater_hides_success_when_ide_selection_visible() {
-        assert!(!should_show_auto_updater(
-            true,
-            false,
-            Some(InstallStatus::Success)
-        ));
-        assert!(should_show_auto_updater(
-            true,
-            true,
-            Some(InstallStatus::Success)
-        ));
-    }
-
-    /// Maps to: CC Notifications.tsx:119-122 gate + the child render bodies —
-    /// the height row is driven by the REPL-owned result / PromptInput-owned
-    /// isAutoUpdating values (plus AppState verbose), not stale AppState. A
-    /// success result renders an empty row as executed (committed-null
-    /// updateSemver), so it counts 0 unless verbose adds the versions row;
-    /// failure statuses and in-flight installs count 1.
-    #[test]
-    fn auto_update_height_counts_as_executed_rows_from_owner_threaded_values() {
-        let state = crate::state::app_state_store::AppState::default();
-        let success = AutoUpdaterResult {
-            version: Some("1.0.0".into()),
-            status: InstallStatus::Success,
-            notifications: Vec::new(),
+    fn update_notifier_height_tracks_the_owner_threaded_version() {
+        let available = crate::utils::auto_updater::UpdateAvailable {
+            version: "1.1.0".to_string(),
         };
-        let failure = AutoUpdaterResult {
-            version: Some("1.0.0".into()),
-            status: InstallStatus::InstallFailed,
-            notifications: Vec::new(),
-        };
-        assert_eq!(
-            auto_update_hint_row_count_from_app(&state, Some(&success), false, false),
-            0,
-            "success copy never commits (CC render-phase discard)"
-        );
-        assert_eq!(
-            auto_update_hint_row_count_from_app(&state, Some(&failure), false, false),
-            1
-        );
-        assert_eq!(
-            auto_update_hint_row_count_from_app(&state, None, true, false),
-            1
-        );
-        assert_eq!(
-            auto_update_hint_row_count_from_app(&state, None, false, false),
-            0
-        );
-
-        let mut verbose_state = crate::state::app_state_store::AppState::default();
-        verbose_state.verbose = true;
-        assert_eq!(
-            auto_update_hint_row_count_from_app(&verbose_state, Some(&success), false, false),
-            1,
-            "verbose renders the versions row whenever the child gate passes"
-        );
-        assert_eq!(
-            auto_update_hint_row_count_from_app(&verbose_state, Some(&success), false, true),
-            0,
-            "a visible ⧉ ide row suppresses the success auto-updater row \
-             (CC Notifications.tsx:119-122 shouldShowAutoUpdater)"
-        );
+        assert_eq!(update_notifier_row_count(Some(&available)), 1);
+        assert_eq!(update_notifier_row_count(None), 0);
     }
 
     fn assistant_message_with_usage(
@@ -1106,15 +845,5 @@ mod tests {
             0,
             "post-compact, pre-new-response count must drop pre-boundary usage"
         );
-    }
-
-    #[test]
-    fn set_overage_mode_writes_app_state() {
-        let store = crate::state::store::AppStore::new(
-            crate::state::app_state_store::AppState::default(),
-            None,
-        );
-        set_overage_mode(&store, true);
-        assert!(store.get().claude_ai_limits.is_using_overage);
     }
 }

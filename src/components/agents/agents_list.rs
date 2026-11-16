@@ -18,7 +18,6 @@ pub enum AgentDisplaySource {
     User,
     Project,
     Local,
-    Managed,
     Plugin,
     Flag,
     BuiltIn,
@@ -29,7 +28,6 @@ impl AgentDisplaySource {
         match source {
             AgentDefinitionSource::UserSettings => Self::User,
             AgentDefinitionSource::ProjectSettings => Self::Project,
-            AgentDefinitionSource::PolicySettings => Self::Managed,
             AgentDefinitionSource::Plugin => Self::Plugin,
             AgentDefinitionSource::FlagSettings => Self::Flag,
             AgentDefinitionSource::BuiltIn => Self::BuiltIn,
@@ -41,7 +39,6 @@ impl AgentDisplaySource {
             Self::User => "User agents",
             Self::Project => "Project agents",
             Self::Local => "Local agents",
-            Self::Managed => "Managed agents",
             Self::Plugin => "Plugin agents",
             Self::Flag => "CLI arg agents",
             Self::BuiltIn => "Built-in agents",
@@ -53,7 +50,6 @@ impl AgentDisplaySource {
             Self::User => "user",
             Self::Project => "project",
             Self::Local => "project, gitignored",
-            Self::Managed => "managed",
             Self::Plugin => "plugin",
             Self::Flag => "cli flag",
             Self::BuiltIn => "built-in",
@@ -126,16 +122,14 @@ fn source_title(source: AgentsListSource) -> &'static str {
         AgentsListSource::Source(AgentDisplaySource::User) => "User",
         AgentsListSource::Source(AgentDisplaySource::Project) => "Project",
         AgentsListSource::Source(AgentDisplaySource::Local) => "Project, gitignored",
-        AgentsListSource::Source(AgentDisplaySource::Managed) => "Managed",
         AgentsListSource::Source(AgentDisplaySource::Flag) => "Cli flag",
     }
 }
 
-const GROUP_ORDER: [AgentDisplaySource; 7] = [
+const GROUP_ORDER: [AgentDisplaySource; 6] = [
     AgentDisplaySource::User,
     AgentDisplaySource::Project,
     AgentDisplaySource::Local,
-    AgentDisplaySource::Managed,
     AgentDisplaySource::Plugin,
     AgentDisplaySource::Flag,
     AgentDisplaySource::BuiltIn,
@@ -365,7 +359,7 @@ pub fn AgentsList<'a>(
             .collect::<Vec<_>>();
         element! { View(flex_direction: FlexDirection::Column, row_gap: 1u32) {
             #(create_row)
-            Text(content: "No agents found. Create specialized subagents that Claude can delegate to.".to_string(), dim: true)
+            Text(content: "No agents found. Create specialized subagents that nyan can delegate to.".to_string(), dim: true)
             Text(content: "Each subagent has its own context window, custom system prompt, and specific tools.".to_string(), dim: true)
             Text(content: "Try creating: Code Reviewer, Code Simplifier, Security Reviewer, Tech Lead, or UX Reviewer.".to_string(), dim: true)
             #((source != AgentsListSource::Source(AgentDisplaySource::BuiltIn) && !builtins.is_empty()).then(|| element! { View(flex_direction: FlexDirection::Column) {

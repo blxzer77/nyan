@@ -15,7 +15,7 @@ use crate::constants::query_source::QuerySource;
 use crate::tool::ToolUseContext;
 use crate::types::message::{AssistantContent, Message, UserContent};
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
 
@@ -98,7 +98,8 @@ static CACHED_MC_STATE: LazyLock<Mutex<CachedMicrocompactState>> =
     LazyLock::new(|| Mutex::new(CachedMicrocompactState::default()));
 
 #[cfg(test)]
-pub static TEST_CACHED_MC_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStateLock::new);
+pub static TEST_CACHED_MC_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::CachedMicrocompact);
 
 #[derive(Debug, Clone, Default)]
 pub struct MicrocompactResult {
@@ -133,7 +134,7 @@ pub fn cached_microcompact_config_from_env() -> CachedMicrocompactConfig {
     config.enabled = crate::utils::env_utils::is_env_truthy(
         crate::utils::process_env::var("NYAN_CACHED_MICROCOMPACT").as_deref(),
     ) || crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_CACHED_MICROCOMPACT").as_deref(),
+        crate::utils::process_env::var("NYAN_CACHED_MICROCOMPACT").as_deref(),
     );
     if let Some(value) = crate::utils::process_env::var("NYAN_CACHED_MC_TRIGGER_THRESHOLD")
         && let Ok(parsed) = value.parse::<usize>()
@@ -163,15 +164,15 @@ pub fn consume_pending_cache_edits() -> Option<CacheEditsBlock> {
 }
 
 /// Maps to CC `microCompact.ts#getPinnedCacheEdits`.
-pub fn get_pinned_cache_edits() -> Vec<crate::services::api::claude::CachedMcPinnedEdit> {
+pub fn get_pinned_cache_edits() -> Vec<crate::services::api::request::CachedMcPinnedEdit> {
     CACHED_MC_STATE
         .lock()
         .unwrap()
         .pinned_edits
         .iter()
-        .map(|pinned| crate::services::api::claude::CachedMcPinnedEdit {
+        .map(|pinned| crate::services::api::request::CachedMcPinnedEdit {
             user_message_index: pinned.user_message_index,
-            block: crate::services::api::claude::CachedMcEditsBlock::delete_refs(
+            block: crate::services::api::request::CachedMcEditsBlock::delete_refs(
                 pinned.block.deleted_tool_ids.clone(),
             ),
         })
@@ -334,7 +335,7 @@ pub fn mask_tool_results_if_needed(
 
     // @nyan: compaction.keep shadow mode (C14, decision-provider 4.4).
     // Evaluate keep-ordering vs actual-ordering and append comparison to
-    // $CLAUDE_CONFIG_DIR/decision/compaction.keep.jsonl. The actual compression
+    // $NYAN_CONFIG_DIR/decision/decisions.jsonl. The actual compression
     // outcome below remains 100% unchanged.
     if crate::services::compact::decision::is_keep_shadow_enabled() {
         let candidate_infos: Vec<_> = candidates
@@ -639,7 +640,7 @@ mod tests {
     use super::*;
     use crate::utils::test_env::TEST_ENV_LOCK;
 
-    fn lock_cached_mc_state_for_test() -> std::sync::MutexGuard<'static, ()> {
+    fn lock_cached_mc_state_for_test() -> crate::utils::test_env::TestStateGuard<'static> {
         let guard = TEST_CACHED_MC_LOCK.lock().unwrap();
         reset_microcompact_state();
         guard
@@ -830,7 +831,7 @@ mod tests {
     #[tokio::test]
     async fn threshold_mask_clears_old_results_but_not_the_current_user_round() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
+        crate::utils::process_env::set("NYAN_AUTO_COMPACT_WINDOW", "50000");
         let mut messages = vec![
             assistant_tool_message(&["toolu_old"], 0),
             user_tool_result_message(&["toolu_old"]),
@@ -869,7 +870,7 @@ mod tests {
                     if crate::utils::tool_result_storage::is_tool_result_cleared(&result.content)
             ))
         ));
-        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+        crate::utils::process_env::remove("NYAN_AUTO_COMPACT_WINDOW");
     }
 
     #[test]
@@ -894,7 +895,7 @@ mod tests {
     #[tokio::test]
     async fn cache_sharing_forks_replay_but_never_decide() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
+        crate::utils::process_env::set("NYAN_AUTO_COMPACT_WINDOW", "50000");
         let mut messages = vec![
             assistant_tool_message(&["toolu_old"], 0),
             user_tool_result_message(&["toolu_old"]),
@@ -917,7 +918,7 @@ mod tests {
         assert_eq!(result.masked_count, 0);
         assert!(result.newly_replaced.is_empty());
         assert!(state.replacements.is_empty());
-        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+        crate::utils::process_env::remove("NYAN_AUTO_COMPACT_WINDOW");
     }
 
     #[tokio::test]
@@ -962,13 +963,13 @@ mod tests {
         }
 
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
+        crate::utils::process_env::set("NYAN_AUTO_COMPACT_WINDOW", "50000");
 
         // Temporary config dir so shadow log writes to an isolated file
         let temp_dir =
             std::env::temp_dir().join(format!("nyan-keep-shadow-test-{}", uuid::Uuid::new_v4()));
         let _ = std::fs::create_dir_all(&temp_dir);
-        crate::utils::process_env::set("CLAUDE_CONFIG_DIR", temp_dir.to_str().unwrap());
+        crate::utils::process_env::set("NYAN_CONFIG_DIR", temp_dir.to_str().unwrap());
 
         // Install mock decision provider
         let mut decision_settings = crate::utils::settings::nyan::DecisionSettings::default();
@@ -1008,7 +1009,7 @@ mod tests {
 
         // Poll briefly until the background shadow task writes a full line:
         // the file is created before the record is written into it.
-        let log_file = temp_dir.join("decision/compaction.keep.jsonl");
+        let log_file = temp_dir.join("decision/decisions.jsonl");
         let start = std::time::Instant::now();
         while !std::fs::read_to_string(&log_file).is_ok_and(|content| content.ends_with('\n'))
             && start.elapsed() < std::time::Duration::from_secs(3)
@@ -1033,7 +1034,7 @@ mod tests {
         // Cleanup
         let _ = std::fs::remove_dir_all(&temp_dir);
         crate::services::compact::decision::test_override::clear();
-        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
-        crate::utils::process_env::remove("CLAUDE_CONFIG_DIR");
+        crate::utils::process_env::remove("NYAN_AUTO_COMPACT_WINDOW");
+        crate::utils::process_env::remove("NYAN_CONFIG_DIR");
     }
 }

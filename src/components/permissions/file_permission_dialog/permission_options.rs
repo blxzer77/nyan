@@ -10,8 +10,8 @@ use super::FileOperationType;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PermissionSessionScope {
-    ClaudeFolder,
-    GlobalClaudeFolder,
+    NyanFolder,
+    GlobalNyanFolder,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -59,8 +59,8 @@ pub struct FilePermissionOptionsParams {
     pub file_path: String,
     pub operation_type: FileOperationType,
     pub in_allowed_working_path: bool,
-    pub in_claude_folder: bool,
-    pub in_global_claude_folder: bool,
+    pub in_nyan_folder: bool,
+    pub in_global_nyan_folder: bool,
     pub directory_name: String,
     pub mode_cycle_shortcut: String,
     pub yes_input_mode: bool,
@@ -73,8 +73,8 @@ impl Default for FilePermissionOptionsParams {
             file_path: String::new(),
             operation_type: FileOperationType::Write,
             in_allowed_working_path: true,
-            in_claude_folder: false,
-            in_global_claude_folder: false,
+            in_nyan_folder: false,
+            in_global_nyan_folder: false,
             directory_name: "this directory".to_string(),
             mode_cycle_shortcut: "shift+tab".to_string(),
             yes_input_mode: false,
@@ -93,7 +93,7 @@ pub fn get_file_permission_options_from_params(
         options.push(PermissionOptionWithLabel::input(
             "yes",
             "Yes",
-            "and tell Claude what to do next",
+            "and tell nyan what to do next",
             PermissionOption::AcceptOnce,
         ));
     } else {
@@ -104,21 +104,21 @@ pub fn get_file_permission_options_from_params(
         ));
     }
 
-    if (params.in_claude_folder || params.in_global_claude_folder)
+    if (params.in_nyan_folder || params.in_global_nyan_folder)
         && params.operation_type != FileOperationType::Read
     {
         options.push(PermissionOptionWithLabel::select(
-            if params.in_global_claude_folder {
+            if params.in_global_nyan_folder {
                 "yes-global-claude-folder"
             } else {
                 "yes-claude-folder"
             },
-            "Yes, and allow Claude to edit its own settings for this session",
+            "Yes, and allow nyan to edit its own settings for this session",
             PermissionOption::AcceptSession {
-                scope: Some(if params.in_global_claude_folder {
-                    PermissionSessionScope::GlobalClaudeFolder
+                scope: Some(if params.in_global_nyan_folder {
+                    PermissionSessionScope::GlobalNyanFolder
                 } else {
-                    PermissionSessionScope::ClaudeFolder
+                    PermissionSessionScope::NyanFolder
                 }),
             },
         ));
@@ -154,7 +154,7 @@ pub fn get_file_permission_options_from_params(
         options.push(PermissionOptionWithLabel::input(
             "no",
             "No",
-            "and tell Claude what to do differently",
+            "and tell nyan what to do differently",
             PermissionOption::Reject,
         ));
     } else {
@@ -182,7 +182,7 @@ mod tests {
         assert_eq!(options[0].value, "yes");
         assert_eq!(
             options[0].input_placeholder.as_deref(),
-            Some("and tell Claude what to do next")
+            Some("and tell nyan what to do next")
         );
         assert_eq!(options[1].value, "yes-session");
         assert_eq!(
@@ -192,21 +192,21 @@ mod tests {
         assert_eq!(options[2].value, "no");
         assert_eq!(
             options[2].input_placeholder.as_deref(),
-            Some("and tell Claude what to do differently")
+            Some("and tell nyan what to do differently")
         );
     }
 
     #[test]
-    fn permission_options_match_official_claude_folder_and_external_read_branches() {
-        let claude = get_file_permission_options_from_params(&FilePermissionOptionsParams {
-            in_claude_folder: true,
+    fn permission_options_match_official_nyan_folder_and_external_read_branches() {
+        let nyan = get_file_permission_options_from_params(&FilePermissionOptionsParams {
+            in_nyan_folder: true,
             ..FilePermissionOptionsParams::default()
         });
-        assert_eq!(claude[1].value, "yes-claude-folder");
+        assert_eq!(nyan[1].value, "yes-claude-folder");
         assert_eq!(
-            claude[1].option,
+            nyan[1].option,
             PermissionOption::AcceptSession {
-                scope: Some(PermissionSessionScope::ClaudeFolder)
+                scope: Some(PermissionSessionScope::NyanFolder)
             }
         );
 

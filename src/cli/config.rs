@@ -115,14 +115,12 @@ pub struct CliConfig {
     pub teammate_mode: Option<String>,
     pub agent_type: Option<String>,
 
-    // --- Chrome ---
-    pub chrome: Option<bool>,
-
-    // --- Worktree / tmux / remote / bg / daemon / subcommands ---
+    // --- Worktree / tmux / bg / daemon / subcommands ---
     pub subcommand: Option<String>,
+    /// Words after a subcommand that parses its own arguments (`web`).
+    pub subcommand_args: Vec<String>,
     pub worktree: bool,
     pub tmux: bool,
-    pub remote: bool,
     pub background: bool,
     pub daemon: bool,
 
@@ -176,13 +174,11 @@ impl CliConfig {
             ("mcp", ImplStatus::Live),
             ("settings/dirs/agents/plugins", ImplStatus::Live),
             ("teammate/swarm", ImplStatus::Live),
-            ("chrome", ImplStatus::Live),
             (
-                "worktree/tmux/remote/bg/daemon/subcommands",
+                "worktree/tmux/bg/daemon/subcommands",
                 if self.subcommand.is_some()
                     || self.worktree
                     || self.tmux
-                    || self.remote
                     || self.background
                     || self.daemon
                 {
@@ -228,7 +224,7 @@ impl CliConfig {
         }
 
         if let Some(sub) = &self.subcommand {
-            if sub != "doctor" {
+            if !matches!(sub.as_str(), "doctor" | "update" | "web") {
                 reasons.push(sub.clone());
             }
         }
@@ -237,9 +233,6 @@ impl CliConfig {
         }
         if self.tmux {
             reasons.push("--tmux".to_string());
-        }
-        if self.remote {
-            reasons.push("--remote".to_string());
         }
         if self.background {
             reasons.push("--background".to_string());
@@ -265,6 +258,20 @@ impl CliConfig {
         reasons
     }
 
+    pub fn print_update_help() {
+        println!(
+            "\
+Usage: nyan update [options]
+
+Download and install the latest stable nyan release from GitHub Releases.
+Source and development builds must be updated from source.
+
+Options:
+  -h, --help                 Show this help
+"
+        );
+    }
+
     pub fn print_help() {
         println!(
             "\
@@ -277,7 +284,7 @@ Live:
       --debug-to-stderr      Debug to stderr instead of file (-d2e)
       --debug-file <path>    Debug log file (implies debug)
       --verbose              Verbose mode
-      --bare                 Minimal/simple mode (CLAUDE_CODE_SIMPLE)
+      --bare                 Minimal/simple mode (NYAN_SIMPLE)
       --model <model>        Session model (or `default`)
       --effort <level>       Effort: off|medium|high|max
       --thinking <mode>      adaptive|enabled|disabled
@@ -301,18 +308,19 @@ Live:
       --agents <json>        Inline agents JSON
       --agent <name>         Main-thread agent type (--agent / settings.agent)
       --plugin-dir <path>    Inline plugin directory (repeatable)
-      --chrome / --no-chrome Claude in Chrome onboarding
   -p, --print                Headless/print path
       --output-format / --input-format / --json-schema / --stream-json
       --include-partial-messages / --replay-user-messages
       --no-session-persistence  Disable transcript persistence in print mode
       Teammate flags         --agent-id/--agent-name/--team-name/...
+      update                 Download and install the latest stable release
+      web search|fetch       Non-interactive web search / page fetch (`nyan web --help`)
 
 Unimplemented (parsed, then exit 1):
       --session-id / --fork-session
-      Subcommands: mcp, auth, plugin, doctor, update, …
+      Subcommands: mcp, auth, plugin, doctor, …
       --init / --init-only / --maintenance
-      --worktree / --tmux / --remote / --bg / daemon
+      --worktree / --tmux / --bg / daemon
 "
         );
     }

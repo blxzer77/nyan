@@ -53,7 +53,7 @@ pub fn get_model_max_output_tokens(model: &str) -> ModelMaxOutputTokens {
 /// Maps to CC `utils/context.ts` `is1mContextDisabled()`.
 pub fn is_1m_context_disabled() -> bool {
     crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_1M_CONTEXT").as_deref(),
+        crate::utils::process_env::var("NYAN_DISABLE_1M_CONTEXT").as_deref(),
     )
 }
 
@@ -91,23 +91,8 @@ pub fn calculate_context_percentages(
     (Some(clamped_used), Some(100 - clamped_used))
 }
 
-/// Pure audience/environment form of CC `utils/context.ts#getContextWindowForModel`.
-pub fn get_context_window_for_model_for_audience(
-    model: &str,
-    betas: &[String],
-    audience: crate::utils::build_profile::BuildAudience,
-    get_env: &impl Fn(&str) -> Option<String>,
-) -> i64 {
-    if crate::utils::build_profile::audience_has_internal_capability(
-        audience,
-        crate::utils::build_profile::InternalCapability::Context,
-    ) && let Some(value) = get_env("CLAUDE_CODE_MAX_CONTEXT_TOKENS")
-        && let Ok(tokens) = value.parse::<i64>()
-        && tokens > 0
-    {
-        return tokens;
-    }
-
+/// Maps to CC `utils/context.ts#getContextWindowForModel`.
+pub fn get_context_window_for_model(model: &str, betas: &[String]) -> i64 {
     if let Some(tokens) = profile_context_window(model) {
         return tokens;
     }
@@ -147,16 +132,6 @@ fn profile_context_window(model: &str) -> Option<i64> {
         .filter_map(|name| resolve_profile(nyan, name).ok())
         .find(|profile| profile.model == model)
         .map(|profile| i64::from(profile.context_window))
-}
-
-/// Maps to CC `utils/context.ts#getContextWindowForModel`.
-pub fn get_context_window_for_model(model: &str, betas: &[String]) -> i64 {
-    get_context_window_for_model_for_audience(
-        model,
-        betas,
-        crate::utils::build_profile::build_audience(),
-        &|key| crate::utils::process_env::var(key),
-    )
 }
 
 #[cfg(test)]
@@ -214,7 +189,7 @@ mod tests {
     #[test]
     fn context_window_comes_from_the_profile() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
+        crate::utils::process_env::remove("NYAN_MAX_CONTEXT_TOKENS");
         crate::bootstrap::state::set_session_profile(None);
 
         install_profiles(anthropic_profiles(serde_json::json!({
@@ -247,7 +222,7 @@ mod tests {
     #[test]
     fn context_window_prefers_the_session_profile_for_a_shared_model() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
+        crate::utils::process_env::remove("NYAN_MAX_CONTEXT_TOKENS");
         install_profiles(anthropic_profiles(serde_json::json!({
             "main": { "provider": "anthropic", "model": "claude-opus-4-6" },
             "a-small": {
@@ -278,8 +253,8 @@ mod tests {
     #[test]
     fn context_window_defaults_to_official_200k() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
+        crate::utils::process_env::remove("NYAN_DISABLE_1M_CONTEXT");
+        crate::utils::process_env::remove("NYAN_MAX_CONTEXT_TOKENS");
 
         assert_eq!(
             get_context_window_for_model("claude-sonnet-4-20250514", &[]),
@@ -288,34 +263,19 @@ mod tests {
     }
 
     #[test]
-    fn context_window_honors_internal_override_and_1m_suffix() {
+    fn context_window_honors_1m_suffix() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
+        crate::utils::process_env::remove("NYAN_DISABLE_1M_CONTEXT");
         assert_eq!(
-            get_context_window_for_model_for_audience(
-                "claude-sonnet-4-20250514[1m]",
-                &[],
-                crate::utils::build_profile::BuildAudience::AnthropicInternal,
-                &|key| (key == "CLAUDE_CODE_MAX_CONTEXT_TOKENS").then(|| "123456".to_string()),
-            ),
-            123_456
-        );
-
-        assert_eq!(
-            get_context_window_for_model_for_audience(
-                "claude-sonnet-4-20250514[1m]",
-                &[],
-                crate::utils::build_profile::BuildAudience::AnthropicInternal,
-                &|_| None,
-            ),
+            get_context_window_for_model("claude-sonnet-4-20250514[1m]", &[]),
             1_000_000
         );
 
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_1M_CONTEXT", "1");
+        crate::utils::process_env::set("NYAN_DISABLE_1M_CONTEXT", "1");
         assert_eq!(
             get_context_window_for_model("claude-sonnet-4-20250514[1m]", &[]),
             MODEL_CONTEXT_WINDOW_DEFAULT
         );
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
+        crate::utils::process_env::remove("NYAN_DISABLE_1M_CONTEXT");
     }
 }

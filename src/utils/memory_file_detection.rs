@@ -30,7 +30,7 @@ fn to_comparable(path: &str) -> String {
 
 /// Maps to: CC `utils/memoryFileDetection.ts:40-58` `detectSessionFileType`.
 pub fn detect_session_file_type(file_path: &str) -> Option<SessionFileType> {
-    let config_dir = crate::utils::env_utils::get_claude_config_home_dir();
+    let config_dir = crate::utils::env_utils::get_config_home_dir();
     let normalized = to_comparable(file_path);
     let config_dir = to_comparable(&config_dir.display().to_string());
     if !normalized.starts_with(&config_dir) {
@@ -87,7 +87,6 @@ pub fn is_auto_managed_memory_file(file_path: &str) -> bool {
     if is_auto_mem_file(file_path) {
         return true;
     }
-    #[cfg(feature = "anthropic_internal")]
     if crate::memdir::team_mem_paths::is_team_mem_file(file_path) {
         return true;
     }
@@ -126,7 +125,6 @@ pub fn is_memory_directory(dir_path: &str) -> bool {
     {
         return true;
     }
-    #[cfg(feature = "anthropic_internal")]
     if crate::memdir::team_mem_paths::is_team_memory_enabled()
         && crate::memdir::team_mem_paths::is_team_mem_path(&normalized_path)
     {
@@ -137,7 +135,7 @@ pub fn is_memory_directory(dir_path: &str) -> bool {
     }
 
     let config_dir = to_comparable(
-        &crate::utils::env_utils::get_claude_config_home_dir()
+        &crate::utils::env_utils::get_config_home_dir()
             .display()
             .to_string(),
     );
@@ -167,7 +165,7 @@ static ABSOLUTE_SHELL_PATH: LazyLock<regex::Regex> = LazyLock::new(|| {
 /// Maps to: CC `utils/memoryFileDetection.ts:215-269`
 /// `isShellCommandTargetingMemory`.
 pub fn is_shell_command_targeting_memory(command: &str) -> bool {
-    let config_dir = crate::utils::env_utils::get_claude_config_home_dir();
+    let config_dir = crate::utils::env_utils::get_config_home_dir();
     let memory_base = crate::memdir::paths::get_memory_base_dir();
     let auto_memory_enabled = crate::memdir::paths::is_auto_memory_enabled();
     let auto_mem_dir = auto_memory_enabled.then(crate::memdir::paths::get_auto_mem_path);
@@ -231,11 +229,10 @@ mod tests {
     use super::*;
     use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK, TestEnvGuard};
 
-    const ENV_KEYS: [&str; 4] = [
-        "CLAUDE_CONFIG_DIR",
-        "CLAUDE_CODE_REMOTE_MEMORY_DIR",
-        "CLAUDE_COWORK_MEMORY_PATH_OVERRIDE",
-        "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
+    const ENV_KEYS: [&str; 3] = [
+        "NYAN_CONFIG_DIR",
+        "NYAN_MEMORY_PATH_OVERRIDE",
+        "NYAN_DISABLE_AUTO_MEMORY",
     ];
 
     struct DetectionTestEnv {
@@ -256,12 +253,9 @@ mod tests {
             for key in ENV_KEYS {
                 crate::utils::process_env::remove(key);
             }
-            crate::utils::process_env::set("CLAUDE_CONFIG_DIR", root.join("config"));
-            crate::utils::process_env::set(
-                "CLAUDE_COWORK_MEMORY_PATH_OVERRIDE",
-                root.join("auto-memory"),
-            );
-            crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
+            crate::utils::process_env::set("NYAN_CONFIG_DIR", root.join("config"));
+            crate::utils::process_env::set("NYAN_MEMORY_PATH_OVERRIDE", root.join("auto-memory"));
+            crate::utils::process_env::set("NYAN_DISABLE_AUTO_MEMORY", "false");
             let previous_cwd = crate::bootstrap::state::get_original_cwd();
             crate::bootstrap::state::set_original_cwd(root.join("project"));
             Self {
@@ -334,7 +328,7 @@ mod tests {
         let _env = DetectionTestEnv::new(&root);
         let auto_file = root.join("auto-memory/MEMORY.md");
         let session_dir = root.join("config/session-memory/nested");
-        let agent_file = root.join("project/.claude/agent-memory/reviewer/MEMORY.md");
+        let agent_file = root.join("project/.nyan/agent-memory/reviewer/MEMORY.md");
 
         assert!(is_auto_mem_file(&auto_file));
         assert!(is_auto_managed_memory_file(

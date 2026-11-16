@@ -420,9 +420,10 @@ fn build_initial_app_state_with_agents(
     };
     // Nyan extension (no CC counterpart) — user-authorized L2 (v3 ruling,
     // 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
-    // Unwraps mirror the authoritative factory defaults (both true); the merge
-    // path fills disk-absent keys from the factory, so these are safety nets.
-    initial.expand_thinking = global_config.expand_thinking.unwrap_or(true);
+    // Unwraps mirror the authoritative factory defaults (thinking collapsed,
+    // read/search expanded); the merge path fills disk-absent keys from the
+    // factory, so these are safety nets.
+    initial.expand_thinking = global_config.expand_thinking.unwrap_or(false);
     initial.expand_collapsed_read_search =
         global_config.expand_collapsed_read_search.unwrap_or(true);
     // Maps to: CC main.tsx:4069-4070 resolved agent + definitions fields.
@@ -442,7 +443,7 @@ fn build_initial_app_state_with_agents(
         crate::bootstrap::state::get_is_non_interactive_session(),
         crate::utils::agent_swarms_enabled::is_agent_swarms_enabled()
             && crate::utils::teammate::is_teammate(),
-        crate::utils::process_env::var("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION")
+        crate::utils::process_env::var("NYAN_ENABLE_PROMPT_SUGGESTION")
             .as_deref(),
     );
     // Maps to: CC main.tsx initialState notifications seeding.
@@ -472,16 +473,6 @@ pub struct McpStartupConfig {
 pub fn resolve_mcp_startup_config(
     cli: &crate::cli::CliConfig,
 ) -> Result<(McpStartupConfig, Vec<String>), String> {
-    resolve_mcp_startup_config_with_enterprise(
-        cli,
-        crate::services::mcp::config::does_enterprise_mcp_config_exist_readonly(),
-    )
-}
-
-fn resolve_mcp_startup_config_with_enterprise(
-    cli: &crate::cli::CliConfig,
-    enterprise_exists: bool,
-) -> Result<(McpStartupConfig, Vec<String>), String> {
     let parsed = crate::services::mcp::config::parse_dynamic_mcp_configs_readonly(&cli.mcp_config);
     if !parsed.errors.is_empty() {
         return Err(format!(
@@ -490,35 +481,9 @@ fn resolve_mcp_startup_config_with_enterprise(
         ));
     }
 
-    if parsed.servers.iter().any(|(name, config)| {
-        config.transport != crate::services::mcp::types::Transport::Sdk
-            && crate::services::mcp::normalization::normalize_name_for_mcp(name)
-                == "claude-in-chrome"
-    }) {
-        return Err(
-            "Error: Invalid MCP configuration: \"claude-in-chrome\" is a reserved MCP name."
-                .to_string(),
-        );
-    }
     // The gated Computer-Use reserved name remains tied to its unported
-    // CHICAGO_MCP startup branch; policy and enterprise boundaries are live.
-    if enterprise_exists && cli.strict_mcp_config {
-        return Err(
-            "You cannot use --strict-mcp-config when an enterprise MCP config is present"
-                .to_string(),
-        );
-    }
-    if enterprise_exists
-        && parsed
-            .servers
-            .values()
-            .any(|config| config.transport != crate::services::mcp::types::Transport::Sdk)
-    {
-        return Err(
-            "You cannot dynamically configure MCP servers when an enterprise MCP config is present"
-                .to_string(),
-        );
-    }
+    // CHICAGO_MCP startup branch. @nyan: no enterprise `managed-mcp.json`, so
+    // CC's enterprise conflicts with --strict-mcp-config / --mcp-config are gone.
 
     let warnings = if parsed.blocked.is_empty() {
         Vec::new()
@@ -697,11 +662,10 @@ pub fn register_mcp_connection_handlers(store: &AppStore) {
 /// - LSP notifications -> `use_lsp_initialization_notification`, called from
 ///   `Repl` (CC calls `useLspInitializationNotification()` there).
 pub fn start_settings_change_detector() {
-    // CC `startDeferredPrefetches` returns early in bare mode (`main.tsx:651-661`),
-    // and `initialize()` in remote mode (`changeDetector.ts:84`).
+    // CC `startDeferredPrefetches` returns early in bare mode (`main.tsx:651-661`).
     // `CLAUDE_CODE_EXIT_AFTER_FIRST_RENDER`, the other early return, is not
     // ported.
-    if crate::utils::env_utils::is_bare_mode() || crate::bootstrap::state::get_is_remote_mode() {
+    if crate::utils::env_utils::is_bare_mode() {
         return;
     }
     #[cfg(not(test))]
@@ -890,7 +854,7 @@ pub fn apply_live_startup_flags(argv: &[String]) -> Result<(), String> {
         .into_iter()
         .map(std::path::PathBuf::from)
         .collect::<Vec<_>>();
-    bootstrap::state::set_additional_directories_for_claude_md(add_dirs);
+    bootstrap::state::set_additional_directories_for_agents_md(add_dirs);
     if let Some(agents_json) =
         utils::cli_args::eager_parse_cli_flag("--agents", argv.iter().cloned())
     {
@@ -935,7 +899,6 @@ impl Default for MainProps {
             startup_settings: Arc::new(SettingsWithErrors {
                 settings: SettingsJson::default(),
                 errors: Vec::new(),
-                policy_settings: None,
             }),
             setup_snapshot: Arc::new(SetupScreensSnapshot::default()),
             repl_props: ReplProps::default(),
@@ -1027,15 +990,13 @@ fn Main(props: &MainProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     if setup_complete.get() && !plugin_hooks_loaded.get() {
         let policy =
             crate::utils::hooks::hooks_config_snapshot::load_hooks_config_from_settings_sources();
-        if !policy.allow_managed_hooks_only
-            && !policy.disable_all_hooks
+        if !policy.disable_all_hooks
             && let Err(error) = crate::utils::plugins::load_plugin_hooks::load_plugin_hooks()
         {
             crate::utils::debug::log_for_debugging(&format!(
                 "Warning: Failed to load plugin hooks after setup: {error}"
             ));
         }
-        crate::utils::plugins::load_plugin_hooks::setup_plugin_hook_hot_reload();
         plugin_hooks_loaded.set(true);
     }
 
@@ -1106,10 +1067,6 @@ fn Main(props: &MainProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                         state.agent_definitions = agent_definitions;
                     });
 
-                    // Maps to CC main.tsx background startup prefetches: quota
-                    // traffic starts only after setup/trust and remains off the
-                    // retained frame.
-                    crate::services::claude_ai_limits::spawn_quota_status_preflight();
                     // CC `renderAndRun` → `startDeferredPrefetches()`
                     // (`interactiveHelpers.tsx:142`, `main.tsx:689`): after setup.
                     start_settings_change_detector();
@@ -1366,7 +1323,7 @@ pub fn compute_is_non_interactive(cli_args: &[String], stdout_is_tty: bool) -> b
 /// has no `utils/earlyInput.ts` (no `seedEarlyInput`/capture buffer exists to
 /// stop), so only the `setIsInteractive` line ports. `initializeEntrypoint`
 /// (`:1123`) is likewise unported — nothing in the port writes
-/// `CLAUDE_CODE_ENTRYPOINT`.
+/// `NYAN_ENTRYPOINT`.
 pub(crate) fn apply_is_interactive(cli_args: &[String], stdout_is_tty: bool) {
     let is_non_interactive = compute_is_non_interactive(cli_args, stdout_is_tty);
     let is_interactive = !is_non_interactive;
@@ -1434,7 +1391,7 @@ pub(crate) enum HeadlessSystemPromptSlot {
 ///
 /// ```text
 /// let tools = getTools(toolPermissionContext)                        // :2755
-/// if (feature('COORDINATOR_MODE') && isEnvTruthy(CLAUDE_CODE_COORDINATOR_MODE))
+/// if (feature('COORDINATOR_MODE') && isEnvTruthy(NYAN_COORDINATOR_MODE))
 ///   tools = applyCoordinatorToolFilter(tools)                        // :2757-2767
 /// if (isSyntheticOutputToolEnabled({ isNonInteractiveSession }) && options.jsonSchema)
 ///   tools = [...tools, createSyntheticOutputTool(jsonSchema).tool]   // :2771-2785
@@ -1621,14 +1578,6 @@ pub fn run(config: crate::cli::CliConfig) {
     // Maps to CC `showSetupScreens(...)` launch boundary and Onboarding's
     // mount-once auth initializer. Materialize once; `Main` only reads this
     // Arc and therefore performs no auth/config/process IO during a frame.
-    // Maps to: CC main.tsx:3230-3233; recording starts before Ink mounts.
-    {
-        let _runtime = rt.enter();
-        if let Err(error) = utils::asciicast::install_asciicast_recorder() {
-            eprintln!("{error}");
-            utils::cleanup_registry::exit_process(1);
-        }
-    }
     let setup_snapshot = Arc::new(default_setup_screens_snapshot());
 
     // Maps to CC `loadKeybindingsSyncWithWarnings()` (loadUserBindings.ts,
@@ -1668,8 +1617,6 @@ pub fn run(config: crate::cli::CliConfig) {
     //     pre-mount: the Rust connection manager is process-scoped and has no
     //     remount cycle to clean up for. SEAM: a future remount would not
     //     re-seed.
-    //   * `claude_ai_limits::bind_app_store` — permanently exempt (approved
-    //     L1 `Compile-time distribution capability projection`).
     //   * keybinding warnings — no longer written here: REPL's
     //     `KeybindingSetup` mounts inside the provider and runs
     //     `useKeybindingWarnings` itself (KeybindingProviderSetup.tsx:68-121).
@@ -1706,11 +1653,6 @@ pub fn run(config: crate::cli::CliConfig) {
     initialize_lsp_if_trusted(workspace_trusted);
     seed_mcp_and_channel_permissions(&store, &mcp_startup);
     register_mcp_connection_handlers(&store);
-    // L1 equivalent of `useClaudeAiLimits()` + the warning notification hook:
-    // one launch-owned listener projects the service snapshot into AppState and
-    // is dropped after the retained tree unmounts.
-    let _claude_ai_limits_subscription =
-        crate::services::claude_ai_limits::bind_app_store(store.clone());
     // Maps to CC `initializeKeybindingWatcher()` (loadUserBindings.ts:353-404),
     // which CC starts from the first KeybindingSetup mount and keeps for the
     // process. The watcher and all reload I/O live outside the retained tree;
@@ -1765,7 +1707,7 @@ pub fn run(config: crate::cli::CliConfig) {
             let result = mount()
                 .render_loop()
                 .ignore_ctrl_c()
-                .stdout(utils::asciicast::RecordingStdout(std::io::stdout()))
+                .stdout(std::io::stdout())
                 .on_frame_profile(move |event| {
                     if profile_to_stderr {
                         eprintln!(
@@ -1788,7 +1730,7 @@ pub fn run(config: crate::cli::CliConfig) {
                         use std::io::Write as _;
                         let millis = |duration: std::time::Duration| duration.as_secs_f64() * 1e3;
                         // CC gates the expensive rss/cpu samples behind
-                        // CLAUDE_CODE_FRAME_TIMING_SAMPLE_EVERY; mirror it so
+                        // NYAN_FRAME_TIMING_SAMPLE_EVERY; mirror it so
                         // long captures can trade sample density for overhead.
                         let sample = utils::debug::frame_timing_sample_tick();
                         let mut line = serde_json::json!({
@@ -1850,7 +1792,6 @@ pub fn run(config: crate::cli::CliConfig) {
             utils::swarm::team_helpers::cleanup_session_teams().await;
             result
         });
-        utils::asciicast::dispose_asciicast_recorder();
         render_result.unwrap();
         let requested_exit_code = exit_code.load(Ordering::SeqCst);
         if requested_exit_code != 0 {
@@ -1876,7 +1817,7 @@ pub fn run(config: crate::cli::CliConfig) {
             let result = mount()
                 .render_loop()
                 .ignore_ctrl_c()
-                .stdout(utils::asciicast::RecordingStdout(std::io::stdout()))
+                .stdout(std::io::stdout())
                 .await;
             if let Err(error) = crate::cost_tracker::save_current_session_stats() {
                 utils::debug::log_for_debugging(&format!(
@@ -1896,7 +1837,6 @@ pub fn run(config: crate::cli::CliConfig) {
             utils::swarm::team_helpers::cleanup_session_teams().await;
             result
         });
-        utils::asciicast::dispose_asciicast_recorder();
         render_result.unwrap();
         let requested_exit_code = exit_code.load(Ordering::SeqCst);
         if requested_exit_code != 0 {
@@ -1988,7 +1928,7 @@ mod tests {
             fn capture() -> Self {
                 Self {
                     allowed_sources: bootstrap::state::get_allowed_setting_sources(),
-                    additional_dirs: bootstrap::state::get_additional_directories_for_claude_md(),
+                    additional_dirs: bootstrap::state::get_additional_directories_for_agents_md(),
                     cli_agents: bootstrap::state::get_cli_agents_json(),
                     inline_plugins: bootstrap::state::get_inline_plugins(),
                     use_cowork_plugins: bootstrap::state::get_use_cowork_plugins(),
@@ -1999,7 +1939,7 @@ mod tests {
         impl Drop for LiveFlagStateRestore {
             fn drop(&mut self) {
                 bootstrap::state::set_allowed_setting_sources(self.allowed_sources.clone());
-                bootstrap::state::set_additional_directories_for_claude_md(
+                bootstrap::state::set_additional_directories_for_agents_md(
                     self.additional_dirs.clone(),
                 );
                 bootstrap::state::set_cli_agents_json(self.cli_agents.clone());
@@ -2029,9 +1969,14 @@ mod tests {
     }
 
     #[test]
-    fn dynamic_mcp_startup_enforces_official_enterprise_conflicts_and_sdk_exemption() {
+    fn dynamic_mcp_startup_accepts_dynamic_and_sdk_servers() {
+        // No server name is reserved: the former Claude in Chrome name is an
+        // ordinary user server.
         let non_sdk_json = serde_json::json!({
-            "mcpServers": { "docs": { "command": "docs-server" } }
+            "mcpServers": {
+                "docs": { "command": "docs-server" },
+                "claude-in-chrome": { "command": "browser-server" }
+            }
         })
         .to_string();
         let sdk_json = serde_json::json!({
@@ -2039,47 +1984,26 @@ mod tests {
         })
         .to_string();
 
-        let reserved = crate::cli::CliConfig {
-            mcp_config: vec![
-                serde_json::json!({
-                    "mcpServers": { "claude-in-chrome": { "command": "fake" } }
-                })
-                .to_string(),
-            ],
-            ..crate::cli::CliConfig::default()
-        };
-        assert!(
-            resolve_mcp_startup_config_with_enterprise(&reserved, false)
-                .unwrap_err()
-                .contains("reserved MCP name")
-        );
-
-        let strict = crate::cli::CliConfig {
-            mcp_config: vec![non_sdk_json.clone()],
+        let dynamic = crate::cli::CliConfig {
+            mcp_config: vec![non_sdk_json],
             strict_mcp_config: true,
             ..crate::cli::CliConfig::default()
         };
-        assert!(
-            resolve_mcp_startup_config_with_enterprise(&strict, true)
-                .unwrap_err()
-                .contains("--strict-mcp-config")
+        let (resolved, _) = resolve_mcp_startup_config(&dynamic).unwrap();
+        assert_eq!(
+            resolved.dynamic["docs"].command.as_deref(),
+            Some("docs-server")
         );
-
-        let dynamic = crate::cli::CliConfig {
-            mcp_config: vec![non_sdk_json],
-            ..crate::cli::CliConfig::default()
-        };
-        assert!(
-            resolve_mcp_startup_config_with_enterprise(&dynamic, true)
-                .unwrap_err()
-                .contains("cannot dynamically configure MCP servers")
+        assert_eq!(
+            resolved.dynamic["claude-in-chrome"].command.as_deref(),
+            Some("browser-server")
         );
 
         let sdk = crate::cli::CliConfig {
             mcp_config: vec![sdk_json],
             ..crate::cli::CliConfig::default()
         };
-        let (resolved, warnings) = resolve_mcp_startup_config_with_enterprise(&sdk, true).unwrap();
+        let (resolved, warnings) = resolve_mcp_startup_config(&sdk).unwrap();
         assert!(warnings.is_empty());
         assert_eq!(
             resolved.dynamic["sdk"].transport,
@@ -2103,7 +2027,6 @@ mod tests {
             ide_running_in_windows: None,
             ide_name: None,
             auth_token: None,
-            id: None,
             plugin_source: None,
         };
         let startup = McpStartupConfig {
@@ -2136,11 +2059,10 @@ mod tests {
             std::env::temp_dir().join(format!("nyan-main-resume-order-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&cwd).unwrap();
         let cwd = fs::canonicalize(&cwd).unwrap();
-        let _process_state =
-            MainProcessStateGuard::enter(&cwd, &["CLAUDE_CODE_SIMPLE", "CLAUBBIT"]);
+        let _process_state = MainProcessStateGuard::enter(&cwd, &["NYAN_SIMPLE", "CLAUBBIT"]);
         let _projects_guard =
             utils::session_storage::set_test_projects_dir_override(cwd.join("projects"));
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
+        crate::utils::process_env::remove("NYAN_SIMPLE");
         crate::utils::process_env::set("CLAUBBIT", "1");
         utils::config::set_test_global_config(Some(utils::config::GlobalConfig::default()));
         utils::config::reset_trust_dialog_accepted_cache_for_testing();
@@ -2167,13 +2089,10 @@ mod tests {
             ..SettingsJson::default()
         };
         crate::utils::hooks::hooks_config_snapshot::reset_hooks_config_snapshot();
-        crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(
-            &settings, None, false,
-        );
+        crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(&settings);
         let startup_settings = Arc::new(SettingsWithErrors {
             settings: settings.clone(),
             errors: Vec::new(),
-            policy_settings: None,
         });
         let session_id = uuid::Uuid::new_v4().to_string();
         let session_file =
@@ -2197,11 +2116,8 @@ mod tests {
         .unwrap();
         let snapshot = SetupScreensSnapshot {
             show_onboarding: true,
-            api_key_needing_approval: None,
             offer_terminal_setup: false,
             terminal_name: Some("kitty".to_string()),
-            show_claude_in_chrome_onboarding: false,
-            claude_in_chrome_extension_installed: false,
         };
         let make_store = || {
             AppStore::new(
@@ -2314,7 +2230,6 @@ mod tests {
         let startup_settings = Arc::new(SettingsWithErrors {
             settings: SettingsJson::default(),
             errors: Vec::new(),
-            policy_settings: None,
         });
         let missing_session_id = uuid::Uuid::new_v4().to_string();
         let exit_code = Arc::new(AtomicI32::new(0));
@@ -2413,7 +2328,6 @@ mod tests {
         let startup_settings = Arc::new(SettingsWithErrors {
             settings: SettingsJson::default(),
             errors: Vec::new(),
-            policy_settings: None,
         });
         let store = AppStore::new(
             build_initial_app_state(
@@ -2500,12 +2414,12 @@ mod tests {
 
     #[test]
     fn configure_teammate_from_cli_sets_dynamic_context_and_mode_override_like_official() {
-        let _teammate_lock = utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK.lock().unwrap();
         let _backend_lock = utils::swarm::backends::registry::TEST_BACKEND_REGISTRY_LOCK
             .lock()
             .unwrap();
+        let _teammate_lock = utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK.lock().unwrap();
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+        crate::utils::process_env::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         utils::teammate::clear_dynamic_team_context();
         utils::swarm::backends::teammate_mode_snapshot::reset_teammate_mode_snapshot_for_test();
 
@@ -2551,13 +2465,13 @@ mod tests {
 
         utils::teammate::clear_dynamic_team_context();
         utils::swarm::backends::teammate_mode_snapshot::reset_teammate_mode_snapshot_for_test();
-        crate::utils::process_env::remove("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS");
+        crate::utils::process_env::remove("NYAN_EXPERIMENTAL_AGENT_TEAMS");
     }
 
     #[test]
     fn configure_teammate_from_cli_requires_identity_triplet_like_official() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+        crate::utils::process_env::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         let error = configure_teammate_from_cli(&argv(&[
             "--agent-id",
             "reviewer@alpha",
@@ -2567,7 +2481,7 @@ mod tests {
         .unwrap_err();
 
         assert!(error.contains("--agent-id, --agent-name, and --team-name"));
-        crate::utils::process_env::remove("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS");
+        crate::utils::process_env::remove("NYAN_EXPERIMENTAL_AGENT_TEAMS");
     }
 
     fn install_launch_profiles() {

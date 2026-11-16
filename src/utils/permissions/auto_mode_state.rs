@@ -54,6 +54,7 @@ mod tests {
 
     #[test]
     fn auto_mode_state_round_trips_each_flag_and_resets() {
+        let _lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         reset_for_testing();
         assert!(!is_auto_mode_active());
         assert!(!get_auto_mode_flag_cli());

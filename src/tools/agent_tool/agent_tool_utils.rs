@@ -492,26 +492,10 @@ pub async fn classify_handoff_if_needed(
         crate::tools::agent_tool::constants::AGENT_TOOL_NAME,
     ) {
         Some(decision) => crate::utils::permissions::yolo_classifier::decision_to_result(decision),
-        None => {
-            classify_yolo_action(
-                agent_messages,
-                &action,
-                tools,
-                tool_permission_context,
-                abort_signal,
-            )
-            .await
-        }
+        None => classify_yolo_action(agent_messages, &action, tools, abort_signal).await,
     };
     #[cfg(not(test))]
-    let result = classify_yolo_action(
-        agent_messages,
-        &action,
-        tools,
-        tool_permission_context,
-        abort_signal,
-    )
-    .await;
+    let result = classify_yolo_action(agent_messages, &action, tools, abort_signal).await;
 
     // `:461` — everything below is gated on shouldBlock.
     if !result.should_block {
@@ -682,7 +666,7 @@ mod tests {
     #[tokio::test]
     async fn filter_allows_in_process_teammate_task_tools_when_async() {
         let _env = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+        crate::utils::process_env::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         let teammate_context = crate::utils::teammate_context::create_teammate_context(
             crate::utils::teammate_context::CreateTeammateContextConfig {
                 agent_id: "worker@team".to_string(),
@@ -715,7 +699,7 @@ mod tests {
                 filter_tools_for_agent(&pool, false, true, None)
             })
             .await;
-        crate::utils::process_env::remove("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS");
+        crate::utils::process_env::remove("NYAN_EXPERIMENTAL_AGENT_TEAMS");
         let names = filtered
             .iter()
             .map(|tool| tool.name.as_str())

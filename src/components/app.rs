@@ -17,10 +17,8 @@
 
 use crate::interactive_helpers::default_status_notice_context;
 use crate::main::build_startup_diagnostics_snapshot;
-use crate::screens::repl::ReplStartupDialogSnapshot;
 use crate::state::app_state::{AppStateProvider, ProviderChildren};
 use crate::state::store::AppStore;
-use crate::utils::config::load_global_config;
 use crate::utils::settings::SettingsWithErrors;
 use iocraft::prelude::*;
 use std::sync::Arc;
@@ -95,10 +93,6 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
         }
     });
 
-    let startup_dialog_snapshot = hooks.use_const(|| {
-        ReplStartupDialogSnapshot::from_readonly_global_config(&load_global_config())
-    });
-
     // Maps to: CC `App.tsx:28-33` — the AppState provider wraps `children`.
     // FpsMetricsProvider (:26) / StatsProvider (:27) are diagnostics layers
     // with no Rust counterpart yet; their position is above this provider.
@@ -121,12 +115,10 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
                 element! {
                     ContextProvider(value: Context::owned((*runtime_config_snapshot).clone())) {
                         View {
-                            ContextProvider(value: Context::owned(startup_dialog_snapshot.clone())) {
-                                ContextProvider(value: Context::owned(status_notice_context.clone())) {
-                                    ContextProvider(value: Context::owned(external_editor_runtime)) {
-                                        ContextProvider(value: Context::owned(agent_generator_runtime.clone())) {
-                                            #(children.render())
-                                        }
+                            ContextProvider(value: Context::owned(status_notice_context.clone())) {
+                                ContextProvider(value: Context::owned(external_editor_runtime)) {
+                                    ContextProvider(value: Context::owned(agent_generator_runtime.clone())) {
+                                        #(children.render())
                                     }
                                 }
                             }
@@ -163,7 +155,6 @@ mod tests {
         let startup_settings = Arc::new(SettingsWithErrors {
             settings: crate::utils::settings::SettingsJson::default(),
             errors: Vec::new(),
-            policy_settings: None,
         });
         let store = crate::state::store::AppStore::new(
             crate::main::build_initial_app_state(

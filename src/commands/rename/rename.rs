@@ -3,9 +3,8 @@
 //! Explicit names complete synchronously because Rust's session-storage
 //! metadata append boundary is synchronous. Empty args return a typed request
 //! for REPL to await `generateSessionName` without blocking the retained frame.
-//! Bridge title synchronization is intentionally omitted with the deferred
-//! Remote Control/bridge subsystem; local title, agent-name, and AppState
-//! updates remain atomic from the command's perspective.
+//! Local title, agent-name, and AppState updates remain atomic from the
+//! command's perspective.
 
 use crate::state::store::AppStore;
 use crate::tool::ToolUseContext;
@@ -115,6 +114,10 @@ mod tests {
 
     #[test]
     fn rename_empty_args_uses_messages_after_official_compact_boundary() {
+        // `call` reads the process-wide teammate context first.
+        let _teammate = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
+            .lock()
+            .unwrap();
         let mut context = ToolUseContext::default().with_messages(vec![
             assistant("old"),
             Message::System(SystemMessage::compact_boundary(Some(
@@ -174,6 +177,9 @@ mod tests {
 
     #[test]
     fn rename_explicit_name_trims_persists_and_updates_app_state() {
+        let _teammate = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
+            .lock()
+            .unwrap();
         let store = AppStore::new(crate::state::app_state_store::AppState::default(), None);
         let context = ToolUseContext::default().with_app_store(store.clone());
         assert_eq!(

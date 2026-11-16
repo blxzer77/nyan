@@ -708,42 +708,6 @@
       "additionalProperties": false
     }
   },
-  "RemoteTriggerTool": {
-    "name": "RemoteTrigger",
-    "schema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "type": "object",
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": [
-            "list",
-            "get",
-            "create",
-            "update",
-            "run"
-          ]
-        },
-        "trigger_id": {
-          "description": "Required for get, update, and run",
-          "type": "string",
-          "pattern": "^[\\w-]+$"
-        },
-        "body": {
-          "description": "JSON body for create and update",
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {}
-        }
-      },
-      "required": [
-        "action"
-      ],
-      "additionalProperties": false
-    }
-  },
   "ScheduleCronTool::CronCreateTool": {
     "name": "CronCreate",
     "schema": {
@@ -763,7 +727,7 @@
           "type": "boolean"
         },
         "durable": {
-          "description": "true = persist to .claude/scheduled_tasks.json and survive restarts. false (default) = in-memory only, dies when this Claude session ends. Use true only when the user asks the task to survive across sessions.",
+          "description": "true = persist to .nyan/scheduled_tasks.json and survive restarts. false (default) = in-memory only, dies when this nyan session ends. Use true only when the user asks the task to survive across sessions.",
           "type": "boolean"
         }
       },

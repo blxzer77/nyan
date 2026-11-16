@@ -42,7 +42,7 @@
 use serde_json::json;
 
 use crate::constants::system::{get_attribution_header, get_cli_sysprompt_prefix};
-use crate::services::api::claude::get_api_metadata;
+use crate::services::api::request::get_api_metadata;
 use crate::utils::fingerprint::compute_fingerprint;
 use crate::utils::model::model::normalize_model_string_for_api;
 use anthropic_sdk::resources::beta::messages::{
@@ -114,6 +114,12 @@ pub struct SideQueryOptions {
     /// reporting.sampling_calls.
     /// Maps to: CC `querySource: QuerySource` (required in TS).
     pub query_source: String,
+    /// @nyan: the `selection.utility.<role>` entry that decides the model and
+    /// profile when `model` is empty (or names the utility model). Defaults to
+    /// the generic `side_query` role. Unlike `query_source`, this selects
+    /// settings, so a caller with its own role names it here instead of
+    /// pinning a model id.
+    pub utility_role: Option<String>,
 }
 
 /// System prompt input: string or array of text blocks.
@@ -153,6 +159,7 @@ impl Default for SideQueryOptions {
             thinking: None,
             stop_sequences: None,
             query_source: "side_query".to_string(),
+            utility_role: None,
         }
     }
 }
@@ -209,7 +216,7 @@ fn text_block(text: impl Into<String>) -> TextBlockParam {
 pub async fn side_query(opts: SideQueryOptions) -> anyhow::Result<Message> {
     let settings = crate::utils::settings::get_initial_settings();
     let utility = crate::utils::model::agent::resolve_utility_model_and_effort(
-        "side_query",
+        opts.utility_role.as_deref().unwrap_or("side_query"),
         &crate::utils::model::agent::ParentSelection::configured(),
         settings.nyan.as_deref(),
     );
@@ -731,24 +738,13 @@ mod tests {
             let original_cwd = crate::bootstrap::state::get_original_cwd();
             crate::bootstrap::state::set_original_cwd(&root);
             let mut env = vec![
-                EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root),
-                EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1"),
+                EnvVarGuard::set("NYAN_CONFIG_DIR", &root),
+                EnvVarGuard::set("NYAN_SIMPLE", "1"),
                 EnvVarGuard::set("NYAN_SIDE_QUERY_TEST_KEY", "sk-ant-local-side-query-test"),
                 EnvVarGuard::set("API_TIMEOUT_MS", "5000"),
                 EnvVarGuard::set("NO_PROXY", "*"),
                 EnvVarGuard::set("no_proxy", "*"),
             ];
-            for key in [
-                "CLAUDE_CODE_USE_BEDROCK",
-                "CLAUDE_CODE_USE_VERTEX",
-                "CLAUDE_CODE_USE_FOUNDRY",
-                "ANTHROPIC_AUTH_TOKEN",
-                "ANTHROPIC_CUSTOM_HEADERS",
-                "ANTHROPIC_UNIX_SOCKET",
-                "USE_STAGING_OAUTH",
-            ] {
-                env.push(EnvVarGuard::unset(key));
-            }
             crate::utils::settings::settings_cache::reset_settings_cache();
             crate::services::provider::anthropic::target::install_test_main_profile(
                 &format!("http://{address}"),

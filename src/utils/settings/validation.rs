@@ -32,8 +32,6 @@ pub struct ValidationError {
     pub message: String,
     pub expected: Option<String>,
     pub invalid_value: Option<String>,
-    /// Maps to: CC `utils/settings/validation.ts` `ValidationError.docLink`.
-    pub doc_link: Option<String>,
     pub suggestion: Option<String>,
 }
 
@@ -57,10 +55,6 @@ impl std::fmt::Display for ValidationError {
 pub struct SettingsWithErrors {
     pub settings: SettingsJson,
     pub errors: Vec<ValidationError>,
-    /// Source-specific policy settings, when available. This mirrors official
-    /// `getSettingsForSource('policySettings')` for hook gating
-    /// without changing the merged settings shape.
-    pub policy_settings: Option<SettingsJson>,
 }
 
 // ════════════════════════════════════════════════════════════
@@ -94,6 +88,22 @@ pub fn format_zod_error(error: &zod::ZodError, file_path: &str) -> Vec<Validatio
         .iter()
         .map(|issue| format_zod_issue(issue, file_path))
         .collect()
+}
+
+/// The quoted keys a `partialRecord` accepts, read from the enum arm of an
+/// `invalid_key` issue's nested union; empty when the issue has another shape.
+fn invalid_key_options(issue: &Issue) -> String {
+    issue
+        .issues
+        .iter()
+        .flat_map(|union| union.errors.iter().flatten())
+        .filter(|nested| nested.code == IssueCode::InvalidValue)
+        .filter_map(|nested| nested.values.as_ref())
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(|key| format!("\"{key}\""))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn format_zod_issue(issue: &Issue, file_path: &str) -> ValidationError {
@@ -188,6 +198,18 @@ fn format_zod_issue(issue: &Issue, file_path: &str) -> ValidationError {
                 plural(issue.keys.len(), "field", None)
             );
         }
+        IssueCode::InvalidKey => {
+            // The record key is the last path segment; the nested enum issue
+            // carries the keys the record accepts.
+            let valid = invalid_key_options(issue);
+            if let Some(PathSegment::Key(key)) = issue.path.last()
+                && !valid.is_empty()
+            {
+                message = format!("Unknown key {key:?}. Expected one of: {valid}");
+                expected = Some(valid);
+                invalid_value = Some(key.clone());
+            }
+        }
         IssueCode::TooSmall => {
             if let Some(minimum) = issue.minimum {
                 message = format!(
@@ -207,7 +229,6 @@ fn format_zod_issue(issue: &Issue, file_path: &str) -> ValidationError {
         message,
         expected,
         invalid_value,
-        doc_link: tip.doc_link,
         suggestion: tip.suggestion,
     }
 }
@@ -292,7 +313,6 @@ pub fn filter_invalid_permission_rules(
                     message: format!("Non-string value in {key} array was removed"),
                     expected: None,
                     invalid_value: Some(rule.to_string()),
-                    doc_link: None,
                     suggestion: None,
                 });
                 return false;
@@ -312,7 +332,6 @@ pub fn filter_invalid_permission_rules(
                     message,
                     expected: None,
                     invalid_value: Some(rule_str.to_string()),
-                    doc_link: None,
                     suggestion: None,
                 });
                 return false;
@@ -416,10 +435,6 @@ mod tests {
                 "Valid modes: \"acceptEdits\" (ask before file changes), \"plan\" (analysis only), \"bypassPermissions\" (auto-accept all), or \"default\" (standard behavior)"
             )
         );
-        assert_eq!(
-            mode_error.doc_link.as_deref(),
-            Some("https://code.claude.com/docs/en/iam#permission-modes")
-        );
 
         // invalid_type → "Expected X, but received Y".
         let error = zod::safe_parse(settings_schema(), &json!({"language": 5}))
@@ -445,6 +460,24 @@ mod tests {
     }
 
     #[test]
+    fn an_unknown_utility_role_names_the_key_and_lists_the_valid_roles() {
+        let error = zod::safe_parse(
+            settings_schema(),
+            &json!({"nyan": {"selection": {"utility": {"memory": "@light"}}}}),
+        )
+        .expect_err("memory is not a utility role");
+        let formatted = format_zod_error(&error, "settings");
+        assert_eq!(formatted.len(), 1, "{formatted:?}");
+        assert_eq!(formatted[0].path, "nyan.selection.utility.memory");
+        assert_eq!(formatted[0].invalid_value.as_deref(), Some("memory"));
+        let message = &formatted[0].message;
+        assert!(message.starts_with("Unknown key \"memory\"."), "{message}");
+        for role in crate::utils::settings::nyan::utility_role_names() {
+            assert!(message.contains(&format!("\"{role}\"")), "{message}");
+        }
+    }
+
+    #[test]
     fn validate_settings_file_content_is_strict_like_official() {
         // Valid content passes.
         assert!(matches!(
@@ -466,6 +499,48 @@ mod tests {
             validate_settings_file_content("{"),
             SettingsFileValidation::Invalid { error, .. } if error.starts_with("Invalid JSON: ")
         ));
+    }
+
+    #[test]
+    fn documented_settings_example_validates_and_parses() {
+        let example = include_str!("../../../docs/nyan/settings.example.json");
+        assert!(
+            matches!(
+                validate_settings_file_content(example),
+                SettingsFileValidation::Valid
+            ),
+            "docs/nyan/settings.example.json must match the settings schema"
+        );
+
+        let (settings, errors) =
+            validate_settings(example, Some("docs/nyan/settings.example.json"))
+                .expect("documented settings example parses");
+        assert!(
+            errors.is_empty(),
+            "documented settings example produced validation warnings"
+        );
+        let nyan = settings
+            .and_then(|settings| settings.nyan)
+            .expect("example defines the nyan settings family");
+        assert!(
+            nyan.providers
+                .as_ref()
+                .is_some_and(|providers| providers.contains_key("anthropic")),
+            "example must define the anthropic provider"
+        );
+        assert!(
+            nyan.models
+                .as_ref()
+                .is_some_and(|models| models.contains_key("main")),
+            "example must define the main profile"
+        );
+        assert_eq!(
+            nyan.selection
+                .as_ref()
+                .and_then(|selection| selection.main.as_deref()),
+            Some("main"),
+            "example must select the main profile"
+        );
     }
 
     #[test]

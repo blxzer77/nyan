@@ -9,7 +9,6 @@ pub mod ask_user_question_tool;
 pub mod bash_tool;
 pub mod brief_tool;
 pub mod code_search_tool;
-pub mod config_tool;
 pub mod enter_plan_mode_tool;
 pub mod enter_worktree_tool;
 pub mod exit_plan_mode_tool;
@@ -26,7 +25,6 @@ pub mod mcp_tool;
 pub mod notebook_edit_tool;
 pub mod powershell_tool;
 pub mod read_mcp_resource_tool;
-pub mod remote_trigger_tool;
 pub mod schedule_cron_tool;
 pub mod send_message_tool;
 pub mod shared;
@@ -67,7 +65,7 @@ fn special_tools() -> std::collections::HashSet<&'static str> {
 /// Maps to: CC `tools.ts` `getTools(...)`.
 pub fn get_tools(permission_context: &crate::tool::ToolPermissionContext) -> Vec<Tool> {
     let tools = if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_SIMPLE").as_deref(),
+        crate::utils::process_env::var("NYAN_SIMPLE").as_deref(),
     ) {
         // Maps to CC `tools.ts` simple mode: expose only Bash, Read, and Edit
         // primitives until REPL/coordinator mode wrappers are ported.
@@ -150,12 +148,13 @@ pub fn filter_tools_by_deny_rules(
 ///    model reads even though the call-time check would refuse it.
 /// 2. **Each partition is sorted separately and built-ins stay a contiguous
 ///    prefix** — NOT a flat sort. CC states the reason in-source at `:354-359`:
-///    "The server's `claude_code_system_cache_policy` places a global cache
-///    breakpoint after the last prefix-matched built-in tool; a flat sort would
-///    interleave MCP tools into built-ins and invalidate all downstream cache
-///    keys whenever an MCP tool sorts between existing built-ins." Determinism
-///    alone does not satisfy this — the partition boundary is the cache
-///    breakpoint.
+///    the Anthropic server-side policy named
+///    `claude_code_system_cache_policy` places a global cache breakpoint after
+///    the last prefix-matched built-in tool. Keeping built-ins contiguous lets
+///    a generic prefix cache reuse that whole stable prefix; a flat sort would
+///    interleave MCP tools into it and invalidate downstream cache keys whenever
+///    an MCP tool sorts between existing built-ins. Determinism alone does not
+///    satisfy this — the partition boundary is the cache breakpoint.
 /// 3. **`uniqBy` preserves insertion order** (`:363-366`), so the built-in wins
 ///    a name collision with an MCP tool.
 ///
@@ -202,7 +201,7 @@ pub fn get_tools_for_default_preset() -> Vec<String> {
 /// Maps to: CC `tools.ts` `getAllBaseTools()`.
 ///
 /// This Rust registry is intentionally housed in `src/tools`, not the API
-/// layer. `services/api/claude.rs` mirrors CC `claude.ts` by accepting tools and
+/// layer. `services/api/request.rs` mirrors CC `claude.ts` by accepting tools and
 /// converting them to Anthropic SDK request params.
 pub fn get_all_base_tools() -> Vec<Tool> {
     let mut tools = vec![
@@ -241,9 +240,6 @@ pub fn get_all_base_tools() -> Vec<Tool> {
         crate::tools::skill_tool::skill_tool_schema(),
         crate::tools::enter_plan_mode_tool::enter_plan_mode_tool_schema(),
     ]);
-    if crate::tools::config_tool::is_config_tool_enabled() {
-        tools.push(crate::tools::config_tool::config_tool_schema());
-    }
     if crate::utils::tasks::is_todo_v2_enabled() {
         tools.extend([
             crate::tools::task_create_tool::task_create_tool_schema(),
@@ -268,9 +264,6 @@ pub fn get_all_base_tools() -> Vec<Tool> {
         tools.push(crate::tools::schedule_cron_tool::cron_create_tool_schema());
         tools.push(crate::tools::schedule_cron_tool::cron_delete_tool_schema());
         tools.push(crate::tools::schedule_cron_tool::cron_list_tool_schema());
-    }
-    if crate::tools::remote_trigger_tool::prompt::is_remote_trigger_tool_enabled() {
-        tools.push(crate::tools::remote_trigger_tool::remote_trigger_tool_schema());
     }
     tools.push(crate::tools::brief_tool::brief_tool_schema());
     if crate::tools::powershell_tool::is_powershell_tool_enabled() {
@@ -454,11 +447,12 @@ mod tests {
     }
 
     /// CC `tools.ts:354-359`: each partition is sorted on its own and built-ins
-    /// stay a contiguous prefix, because "the server's
+    /// stay a contiguous prefix because the Anthropic server-side policy named
     /// `claude_code_system_cache_policy` places a global cache breakpoint after
-    /// the last prefix-matched built-in tool; a flat sort would interleave MCP
-    /// tools into built-ins and invalidate all downstream cache keys whenever an
-    /// MCP tool sorts between existing built-ins."
+    /// the last prefix-matched built-in tool. A generic prefix cache can reuse
+    /// that stable prefix; a flat sort would interleave MCP tools into it and
+    /// invalidate downstream cache keys whenever an MCP tool sorts between
+    /// existing built-ins.
     ///
     /// `aaa_server` is the point: under a flat sort `mcp__aaa_server__*` lands
     /// ahead of most built-ins and splits the prefix.
@@ -557,7 +551,7 @@ mod tests {
             .unwrap_or_else(|error| error.into_inner());
         let _restore = [
             EnvVarGuard::unset("EMBEDDED_SEARCH_TOOLS"),
-            EnvVarGuard::unset("CLAUDE_CODE_ENTRYPOINT"),
+            EnvVarGuard::unset("NYAN_ENTRYPOINT"),
         ];
         let ordinary = get_all_base_tools()
             .into_iter()
@@ -618,46 +612,28 @@ mod tests {
     }
 
     #[test]
-    fn web_search_tool_is_always_registered_and_enabled_only_when_gate_allows() {
-        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_BEDROCK");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_FOUNDRY");
-
-        let first_party = get_all_base_tools()
+    fn web_search_tool_is_always_registered() {
+        let base = get_all_base_tools()
             .into_iter()
             .map(|tool| tool.name)
             .collect::<Vec<_>>();
-        let web_fetch_index = first_party
+        let web_fetch_index = base
             .iter()
             .position(|name| name == "WebFetch")
             .expect("WebFetch should be present");
         assert_eq!(
-            first_party.get(web_fetch_index + 1),
+            base.get(web_fetch_index + 1),
             Some(&"TodoWrite".to_string())
         );
         assert_eq!(
-            first_party.get(web_fetch_index + 2),
+            base.get(web_fetch_index + 2),
             Some(&"WebSearch".to_string())
         );
-
-        crate::utils::process_env::set("CLAUDE_CODE_USE_BEDROCK", "1");
-        let bedrock_base = get_all_base_tools()
-            .into_iter()
-            .map(|tool| tool.name)
-            .collect::<std::collections::BTreeSet<_>>();
-        assert!(bedrock_base.contains("WebSearch"));
-        let bedrock = get_tools(&crate::tool::ToolPermissionContext::default())
-            .into_iter()
-            .map(|tool| tool.name)
-            .collect::<std::collections::BTreeSet<_>>();
-        assert!(!bedrock.contains("WebSearch"));
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_BEDROCK");
     }
 
     /// Reproduces the startup step CC performs in `maybeActivateBrief`.
     ///
-    /// `USER_MSG_OPT_IN` seeds itself from `CLAUDE_CODE_BRIEF` on its first read
+    /// `USER_MSG_OPT_IN` seeds itself from `NYAN_BRIEF` on its first read
     /// and never re-reads it (`bootstrap/state.rs:86-90`), so setting the
     /// variable inside a test body only takes effect when that test happens to
     /// be the process's first reader. The opt-in has to be driven directly.
@@ -679,7 +655,7 @@ mod tests {
     fn brief_tool_is_always_registered_and_enabled_only_when_override_is_set() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _opt_in = BriefOptInGuard::capture();
-        crate::utils::process_env::remove("CLAUDE_CODE_BRIEF");
+        crate::utils::process_env::remove("NYAN_BRIEF");
         crate::bootstrap::state::set_user_msg_opt_in(false);
         assert!(
             get_all_base_tools()
@@ -692,13 +668,13 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(!without.iter().any(|name| name == "SendUserMessage"));
 
-        crate::utils::process_env::set("CLAUDE_CODE_BRIEF", "1");
+        crate::utils::process_env::set("NYAN_BRIEF", "1");
         crate::bootstrap::state::set_user_msg_opt_in(true);
         let with = get_tools(&crate::tool::ToolPermissionContext::default())
             .into_iter()
             .map(|tool| tool.name)
             .collect::<Vec<_>>();
-        crate::utils::process_env::remove("CLAUDE_CODE_BRIEF");
+        crate::utils::process_env::remove("NYAN_BRIEF");
         assert!(with.iter().any(|name| name == "SendUserMessage"));
     }
 
@@ -724,7 +700,7 @@ mod tests {
     #[test]
     fn task_v2_tools_are_available_in_interactive_sessions_and_env_override() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_ENABLE_TASKS");
+        crate::utils::process_env::remove("NYAN_ENABLE_TASKS");
         crate::utils::process_env::remove("NYAN_NON_INTERACTIVE_SESSION");
         let interactive = get_all_base_tools()
             .into_iter()
@@ -741,13 +717,13 @@ mod tests {
             .collect::<std::collections::BTreeSet<_>>();
         assert!(!non_interactive.contains("TaskCreate"));
 
-        crate::utils::process_env::set("CLAUDE_CODE_ENABLE_TASKS", "1");
+        crate::utils::process_env::set("NYAN_ENABLE_TASKS", "1");
         let forced = get_all_base_tools()
             .into_iter()
             .map(|tool| tool.name)
             .collect::<std::collections::BTreeSet<_>>();
         assert!(forced.contains("TaskCreate"));
-        crate::utils::process_env::remove("CLAUDE_CODE_ENABLE_TASKS");
+        crate::utils::process_env::remove("NYAN_ENABLE_TASKS");
         crate::utils::process_env::remove("NYAN_NON_INTERACTIVE_SESSION");
     }
 
@@ -762,21 +738,15 @@ mod tests {
             .into_iter()
             .map(|tool| tool.name)
             .collect::<Vec<_>>();
-        assert_eq!(
-            names.iter().any(|name| name == "TaskOutput"),
-            crate::utils::build_profile::build_audience().is_external()
-        );
+        assert!(names.iter().any(|name| name == "TaskOutput"));
     }
 
     #[test]
-    fn config_tool_is_available_only_for_internal_build() {
-        let names = get_all_base_tools()
-            .into_iter()
-            .map(|tool| tool.name)
-            .collect::<Vec<_>>();
-        assert_eq!(
-            names.iter().any(|name| name == "Config"),
-            crate::utils::build_profile::build_audience().is_internal()
+    fn config_tool_is_not_registered() {
+        assert!(
+            get_all_base_tools()
+                .iter()
+                .all(|tool| tool.name != "Config")
         );
     }
 
@@ -794,7 +764,7 @@ mod tests {
     fn tool_search_tool_is_available_unless_explicit_beta_or_env_disable() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::remove("ENABLE_TOOL_SEARCH");
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
+        crate::utils::process_env::remove("NYAN_DISABLE_EXPERIMENTAL_BETAS");
         let with_default = get_all_base_tools()
             .into_iter()
             .map(|tool| tool.name)
@@ -811,23 +781,19 @@ mod tests {
     }
 
     #[test]
-    fn remote_trigger_tool_follows_hardcoded_feature_switch_default() {
-        let present = get_all_base_tools()
-            .into_iter()
-            .map(|tool| tool.name)
-            .any(|name| name == "RemoteTrigger");
-        assert_eq!(
-            present,
-            crate::utils::feature_flags::feature_enabled(
-                crate::utils::feature_flags::FeatureFlag::RemoteTrigger,
-            )
+    fn retired_remote_trigger_is_not_registered() {
+        assert!(
+            get_all_base_tools()
+                .iter()
+                .all(|tool| tool.name != "RemoteTrigger")
         );
+        assert!(crate::services::tools::tool_execution::find_tool_call("RemoteTrigger").is_none());
     }
 
     #[test]
     fn cron_tools_are_available_only_when_hardcoded_cron_switch_is_enabled() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_CRON");
+        crate::utils::process_env::remove("NYAN_DISABLE_CRON");
         let enabled = get_all_base_tools()
             .into_iter()
             .map(|tool| tool.name)
@@ -839,7 +805,7 @@ mod tests {
             assert_eq!(enabled.contains(tool_name), expected_enabled, "{tool_name}");
         }
 
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_CRON", "1");
+        crate::utils::process_env::set("NYAN_DISABLE_CRON", "1");
         let disabled = get_all_base_tools()
             .into_iter()
             .map(|tool| tool.name)
@@ -847,40 +813,33 @@ mod tests {
         for tool_name in ["CronCreate", "CronDelete", "CronList"] {
             assert!(!disabled.contains(tool_name), "unexpected {tool_name}");
         }
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_CRON");
+        crate::utils::process_env::remove("NYAN_DISABLE_CRON");
     }
 
     #[test]
     fn agent_swarm_tools_keep_send_message_registered_and_gate_active_tools() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS");
+        crate::utils::process_env::remove("NYAN_EXPERIMENTAL_AGENT_TEAMS");
         let without = get_all_base_tools()
             .into_iter()
             .map(|tool| tool.name)
             .collect::<std::collections::BTreeSet<_>>();
         assert!(without.contains("SendMessage"));
         for tool_name in ["TeamCreate", "TeamDelete"] {
-            assert_eq!(
-                without.contains(tool_name),
-                crate::utils::build_profile::build_audience().is_internal(),
-                "unexpected {tool_name}"
-            );
+            assert!(!without.contains(tool_name), "unexpected {tool_name}");
         }
         let active_without = get_tools(&crate::tool::ToolPermissionContext::default())
             .into_iter()
             .map(|tool| tool.name)
             .collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(
-            active_without.contains("SendMessage"),
-            crate::utils::build_profile::build_audience().is_internal()
-        );
+        assert!(!active_without.contains("SendMessage"));
 
-        crate::utils::process_env::set("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+        crate::utils::process_env::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         let with = get_all_base_tools()
             .into_iter()
             .map(|tool| tool.name)
             .collect::<std::collections::BTreeSet<_>>();
-        crate::utils::process_env::remove("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS");
+        crate::utils::process_env::remove("NYAN_EXPERIMENTAL_AGENT_TEAMS");
         for tool_name in ["SendMessage", "TeamCreate", "TeamDelete"] {
             assert!(with.contains(tool_name), "missing {tool_name}");
         }
@@ -907,9 +866,9 @@ mod tests {
     #[test]
     fn get_tools_honors_official_simple_mode_subset() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_SIMPLE", "true");
+        crate::utils::process_env::set("NYAN_SIMPLE", "true");
         let tools = get_tools(&crate::tool::ToolPermissionContext::default());
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
+        crate::utils::process_env::remove("NYAN_SIMPLE");
 
         let names = tools.into_iter().map(|tool| tool.name).collect::<Vec<_>>();
         assert_eq!(names, vec!["Bash", "Read", "Edit"]);
@@ -986,11 +945,9 @@ mod tests {
         tools.extend([
             crate::tools::powershell_tool::powershell_tool_schema(),
             crate::tools::lsp_tool::lsp_tool_schema(),
-            crate::tools::config_tool::config_tool_schema(),
             crate::tools::schedule_cron_tool::cron_create_tool_schema(),
             crate::tools::schedule_cron_tool::cron_delete_tool_schema(),
             crate::tools::schedule_cron_tool::cron_list_tool_schema(),
-            crate::tools::remote_trigger_tool::remote_trigger_tool_schema(),
             crate::tools::team_create_tool::team_create_tool_schema(),
             crate::tools::team_delete_tool::team_delete_tool_schema(),
             crate::tools::tool_search_tool::tool_search_tool_schema(),

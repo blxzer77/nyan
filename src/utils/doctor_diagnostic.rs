@@ -1,8 +1,8 @@
 //! Maps to: CC `utils/doctorDiagnostic.ts`.
 //!
 //! Official Claude Code probes npm/native/package-manager installs, ripgrep,
-//! shell aliases, managed-settings warnings, and updater permissions. This Rust
-//! port keeps the same data model and safe local probes that do not mutate the
+//! shell aliases, and updater permissions. This Rust port keeps the same data
+//! model and safe local probes that do not mutate the
 //! system or execute package-manager/OAuth flows. Expensive or potentially
 //! mutating checks (npm config, package-manager command execution, PID cleanup)
 //! remain deferred to their dedicated service slices.
@@ -13,7 +13,6 @@ use std::path::Path;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InstallationType {
     NpmGlobal,
-    NpmLocal,
     Native,
     PackageManager,
     Development,
@@ -24,7 +23,6 @@ impl InstallationType {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::NpmGlobal => "npm-global",
-            Self::NpmLocal => "npm-local",
             Self::Native => "native",
             Self::PackageManager => "package-manager",
             Self::Development => "development",
@@ -118,9 +116,6 @@ pub fn get_current_installation_type() -> InstallationType {
     if combined.contains("/target/debug/") || combined.contains("/target/release/") {
         return InstallationType::Development;
     }
-    if combined.contains("/.claude/local/") {
-        return InstallationType::NpmLocal;
-    }
     if combined.contains("/node_modules/")
         || combined.contains("/.nvm/versions/node/")
         || combined.contains("/npm/")
@@ -163,55 +158,32 @@ pub fn get_invoked_binary() -> String {
 }
 
 /// Maps to CC local `detectMultipleInstallations()` safe filesystem subset.
+///
+/// @nyan: probes nyan's own install location (`install.sh` /
+/// `install.ps1` put the binary in `~/.local/bin`), not Claude Code's
+/// `~/.claude/local` npm prefix or its `~/.local/{bin,share}/claude`.
 pub fn detect_multiple_installations() -> Vec<InstallationRecord> {
-    let mut installations = Vec::new();
-    let home = crate::utils::node_os::homedir();
-
-    let local_path = home.join(".claude").join("local");
-    if local_path.exists() {
-        installations.push(InstallationRecord {
-            install_type: "npm-local".to_string(),
-            path: local_path.display().to_string(),
-        });
-    }
-
-    let native_bin = home
+    let native_bin = crate::utils::node_os::homedir()
         .join(".local")
         .join("bin")
         .join(if cfg!(target_os = "windows") {
-            "claude.exe"
+            "nyan.exe"
         } else {
-            "claude"
+            "nyan"
         });
-    if native_bin.exists() {
-        installations.push(InstallationRecord {
-            install_type: "native".to_string(),
-            path: native_bin.display().to_string(),
-        });
+    if !native_bin.exists() {
+        return Vec::new();
     }
-
-    let config = crate::utils::config::load_global_config();
-    if config.install_method.as_deref() == Some("native") {
-        let native_data = home.join(".local").join("share").join("claude");
-        if native_data.exists()
-            && !installations
-                .iter()
-                .any(|installation| installation.install_type == "native")
-        {
-            installations.push(InstallationRecord {
-                install_type: "native".to_string(),
-                path: native_data.display().to_string(),
-            });
-        }
-    }
-
-    installations
+    vec![InstallationRecord {
+        install_type: "native".to_string(),
+        path: native_bin.display().to_string(),
+    }]
 }
 
-/// Maps to CC local `detectConfigurationIssues(type)` managed-settings and
-/// install-method warning branches that are safe to evaluate locally.
+/// Maps to CC local `detectConfigurationIssues(type)` install-method warning
+/// branches that are safe to evaluate locally.
 pub fn detect_configuration_issues(installation_type: &InstallationType) -> Vec<DiagnosticWarning> {
-    let mut warnings = detect_managed_strict_plugin_only_warnings();
+    let mut warnings = Vec::new();
     let config = crate::utils::config::load_global_config();
     let install_method = config.install_method.as_deref().unwrap_or("unknown");
 
@@ -230,15 +202,6 @@ pub fn detect_configuration_issues(installation_type: &InstallationType) -> Vec<
         crate::utils::process_env::var("DISABLE_INSTALLATION_CHECKS").as_deref(),
     );
     if !installation_checks_disabled {
-        if *installation_type == InstallationType::NpmLocal && install_method != "local" {
-            warnings.push(DiagnosticWarning {
-                issue: format!(
-                    "Running from local installation but config install method is '{install_method}'"
-                ),
-                fix: "Consider using native installation: claude install".to_string(),
-            });
-        }
-
         if *installation_type == InstallationType::Native && install_method != "native" {
             warnings.push(DiagnosticWarning {
                 issue: format!(
@@ -247,13 +210,6 @@ pub fn detect_configuration_issues(installation_type: &InstallationType) -> Vec<
                 fix: "Run claude install to update configuration".to_string(),
             });
         }
-    }
-
-    if *installation_type == InstallationType::NpmGlobal && local_installation_exists() {
-        warnings.push(DiagnosticWarning {
-            issue: "Local installation exists but not being used".to_string(),
-            fix: "Consider using native installation: claude install".to_string(),
-        });
     }
 
     warnings
@@ -281,35 +237,6 @@ pub fn get_doctor_diagnostic() -> DiagnosticInfo {
     let mut warnings = detect_configuration_issues(&installation_type);
     warnings.extend(detect_linux_glob_pattern_warnings());
 
-    if installation_type == InstallationType::Native {
-        let is_windows = cfg!(target_os = "windows");
-        for install in multiple_installations.iter().filter(|install| {
-            matches!(
-                install.install_type.as_str(),
-                "npm-global" | "npm-global-orphan" | "npm-local"
-            )
-        }) {
-            match install.install_type.as_str() {
-                "npm-global" => warnings.push(DiagnosticWarning {
-                    issue: format!("Leftover npm global installation at {}", install.path),
-                    fix: "Run: npm -g uninstall @anthropic-ai/claude-code".to_string(),
-                }),
-                "npm-global-orphan" | "npm-local" => warnings.push(DiagnosticWarning {
-                    issue: format!(
-                        "Leftover {} installation at {}",
-                        install.install_type, install.path
-                    ),
-                    fix: if is_windows {
-                        format!("Run: rmdir /s /q \"{}\"", install.path)
-                    } else {
-                        format!("Run: rm -rf {}", install.path)
-                    },
-                }),
-                _ => {}
-            }
-        }
-    }
-
     let config = crate::utils::config::load_global_config();
     let config_install_method = config
         .install_method
@@ -324,7 +251,7 @@ pub fn get_doctor_diagnostic() -> DiagnosticInfo {
     if let Err(err) = crate::utils::windows_paths::find_git_bash_path() {
         warnings.push(DiagnosticWarning {
             issue: format!("Git Bash is not available: {err}"),
-            fix: "Install Git for Windows (https://git-scm.com/downloads/win) or set CLAUDE_CODE_GIT_BASH_PATH to your bash.exe path".to_string(),
+            fix: "Install Git for Windows (https://git-scm.com/downloads/win) or set NYAN_GIT_BASH_PATH to your bash.exe path".to_string(),
         });
     }
     let git_bash = git_bash_display();
@@ -363,20 +290,25 @@ fn git_bash_display() -> Option<String> {
 }
 
 fn auto_updates_display() -> String {
-    if let Some(message) =
-        crate::utils::auto_updater::auto_update_message_for_platform(std::env::consts::OS)
-    {
-        return message.to_string();
+    if let Some(reason) = crate::utils::config::get_auto_updater_disabled_reason() {
+        return format!(
+            "disabled ({})",
+            crate::utils::config::format_auto_updater_disabled_reason(reason)
+        );
     }
 
-    crate::utils::config::get_auto_updater_disabled_reason()
-        .map(|reason| {
-            format!(
-                "disabled ({})",
-                crate::utils::config::format_auto_updater_disabled_reason(reason)
-            )
-        })
-        .unwrap_or_else(|| "enabled".to_string())
+    match crate::utils::auto_updater::current_update_support() {
+        crate::utils::auto_updater::UpdateSupport::ReleaseBinary => "enabled".to_string(),
+        crate::utils::auto_updater::UpdateSupport::DevelopmentBuild { .. } => {
+            "enabled (development build; no release replacement)".to_string()
+        }
+        crate::utils::auto_updater::UpdateSupport::SourceInstall { .. } => {
+            "enabled (source install; no release replacement)".to_string()
+        }
+        crate::utils::auto_updater::UpdateSupport::UnsupportedPlatform { platform } => {
+            format!("enabled (no release asset for {platform})")
+        }
+    }
 }
 
 /// Maps to CC `gatherDiagnosticInfo` ripgrepStatus shaping from
@@ -398,78 +330,6 @@ fn get_ripgrep_status() -> RipgrepStatus {
         },
         mode,
     }
-}
-
-fn detect_managed_strict_plugin_only_warnings() -> Vec<DiagnosticWarning> {
-    let managed_settings_path = crate::utils::settings::get_managed_settings_file_path();
-    let Ok(raw) = std::fs::read_to_string(&managed_settings_path) else {
-        return Vec::new();
-    };
-    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return Vec::new();
-    };
-    let Some(field) = parsed
-        .as_object()
-        .and_then(|object| object.get("strictPluginOnlyCustomization"))
-    else {
-        return Vec::new();
-    };
-
-    if field.is_boolean() {
-        return Vec::new();
-    }
-
-    if let Some(items) = field.as_array() {
-        let unknown = items
-            .iter()
-            .filter_map(|item| item.as_str())
-            .filter(|item| !crate::utils::settings::types::CUSTOMIZATION_SURFACES.contains(item))
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
-        if unknown.is_empty() {
-            return Vec::new();
-        }
-        return vec![DiagnosticWarning {
-            issue: format!(
-                "managed-settings.json: strictPluginOnlyCustomization has {} value(s) this client doesn't recognize: {}",
-                unknown.len(),
-                unknown.join(", ")
-            ),
-            fix: format!(
-                "These are silently ignored (forwards-compat). Known surfaces for this version: {}. Either remove them, or this client is older than the managed-settings intended.",
-                crate::utils::settings::types::CUSTOMIZATION_SURFACES.join(", ")
-            ),
-        }];
-    }
-
-    vec![DiagnosticWarning {
-        issue: format!(
-            "managed-settings.json: strictPluginOnlyCustomization has an invalid value (expected true or an array, got {})",
-            json_type_name(field)
-        ),
-        fix: format!(
-            "The field is silently ignored (schema .catch rescues it). Set it to true, or an array of: {}.",
-            crate::utils::settings::types::CUSTOMIZATION_SURFACES.join(", ")
-        ),
-    }]
-}
-
-fn json_type_name(value: &serde_json::Value) -> &'static str {
-    match value {
-        serde_json::Value::Null => "object",
-        serde_json::Value::Bool(_) => "boolean",
-        serde_json::Value::Number(_) => "number",
-        serde_json::Value::String(_) => "string",
-        serde_json::Value::Array(_) => "array",
-        serde_json::Value::Object(_) => "object",
-    }
-}
-
-fn local_installation_exists() -> bool {
-    crate::utils::node_os::homedir()
-        .join(".claude")
-        .join("local")
-        .exists()
 }
 
 fn path_contains_local_bin() -> bool {
@@ -562,27 +422,6 @@ mod tests {
             // be rewritten when it lands.
             RipgrepMode::Embedded => {}
         }
-    }
-
-    #[test]
-    fn managed_strict_plugin_only_warning_matches_official_forward_compat_copy() {
-        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let root = temp_dir("managed");
-        let config_home = temp_dir("config");
-        let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &root);
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
-        crate::utils::config::clear_global_config_cache_for_testing();
-        fs::write(
-            root.join("managed-settings.json"),
-            r#"{"strictPluginOnlyCustomization":["mcp","futureSurface"]}"#,
-        )
-        .expect("write managed settings");
-
-        let warnings = detect_configuration_issues(&InstallationType::Unknown);
-        assert!(warnings.iter().any(|warning| {
-            warning.issue.contains("futureSurface")
-                && warning.fix.contains("skills, agents, hooks, mcp")
-        }));
     }
 
     #[test]

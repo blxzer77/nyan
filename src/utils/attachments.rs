@@ -48,7 +48,7 @@ use serde::{Deserialize, Serialize};
 //     (state/app_state_store.rs)
 //   - `Task[]` (utils/tasks.ts:76-89) → `Vec<TaskRecord>` (utils/tasks.rs)
 //   - `MemoryFileInfo` (utils/claudemd.ts:229-243) → `MemoryFileInfo`
-//     (utils/claudemd.rs)
+//     (utils/agents_md.rs)
 //   - `HookBlockingError` (utils/hooks.ts:330-333) → `HookBlockingError`
 //     (services/hooks/mod.rs)
 //   - `MessageOrigin` (types/message.ts:6) → `MessageOrigin` alias
@@ -150,7 +150,7 @@ pub enum Attachment {
     #[serde(rename = "nested_memory", rename_all = "camelCase")]
     NestedMemory {
         path: String,
-        content: crate::utils::claudemd::MemoryFileInfo,
+        content: crate::utils::agents_md::MemoryFileInfo,
         #[serde(default)]
         display_path: String,
     },
@@ -1379,9 +1379,7 @@ pub(crate) fn get_deferred_tools_delta_attachment(
     model: &str,
     messages: &[Message],
 ) -> Option<AttachmentMessage> {
-    let delta_enabled = crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Prompts,
-    ) || crate::utils::feature_flags::feature_enabled(
+    let delta_enabled = crate::utils::feature_flags::feature_enabled(
         crate::utils::feature_flags::FeatureFlag::DeferredToolsDelta,
     );
     if !delta_enabled
@@ -1465,36 +1463,19 @@ pub(crate) fn get_agent_listing_delta_attachment(
 
 /// Maps to: CC `utils/attachments.ts:1559-1586`
 /// `getMcpInstructionsDeltaAttachment(mcpClients, tools, model, messages)`.
+///
+/// @nyan: only server-authored instructions are announced. CC's `tools` /
+/// `model` arguments fed the client-authored Claude in Chrome ToolSearch
+/// hint, which nyan does not ship.
 pub(crate) fn get_mcp_instructions_delta_attachment(
     mcp_clients: &[crate::services::mcp::types::McpServerConnection],
-    tools: &[crate::types::tools::Tool],
-    model: &str,
     messages: &[Message],
 ) -> Option<AttachmentMessage> {
-    use crate::utils::mcp_instructions_delta::ClientSideInstruction;
-
     if !crate::utils::mcp_instructions_delta::is_mcp_instructions_delta_enabled() {
         return None;
     }
-    // CC `:1567-1580`: the chrome ToolSearch hint is client-authored and
-    // ToolSearch-conditional, passed into the diff as a synthesized entry.
-    let mut client_side = Vec::<ClientSideInstruction>::new();
-    if crate::tools::tool_search_tool::prompt::is_tool_search_enabled_optimistic()
-        && crate::tools::tool_search_tool::prompt::model_supports_tool_reference(model)
-        && crate::tools::tool_search_tool::prompt::is_tool_search_tool_available(tools)
-    {
-        client_side.push(ClientSideInstruction {
-            server_name: crate::utils::claude_in_chrome::common::CLAUDE_IN_CHROME_MCP_SERVER_NAME
-                .to_string(),
-            block: crate::utils::claude_in_chrome::prompt::CHROME_TOOL_SEARCH_INSTRUCTIONS
-                .to_string(),
-        });
-    }
-    let delta = crate::utils::mcp_instructions_delta::get_mcp_instructions_delta(
-        mcp_clients,
-        messages,
-        &client_side,
-    )?;
+    let delta =
+        crate::utils::mcp_instructions_delta::get_mcp_instructions_delta(mcp_clients, messages)?;
     Some(AttachmentMessage::new(serde_json::json!({
         "type": "mcp_instructions_delta",
         "addedNames": delta.added_names,
@@ -1770,9 +1751,9 @@ pub async fn get_attachments(
     // silently drop them (Coworker runs with --bare and depends on
     // task-notification for mid-tool-call notifications).
     if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_ATTACHMENTS").as_deref(),
+        crate::utils::process_env::var("NYAN_DISABLE_ATTACHMENTS").as_deref(),
     ) || crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_SIMPLE").as_deref(),
+        crate::utils::process_env::var("NYAN_SIMPLE").as_deref(),
     ) {
         return get_queued_command_attachments(&queued_commands);
     }
@@ -1881,12 +1862,9 @@ pub async fn get_attachments(
     if let Some(attachment) = get_agent_listing_delta_attachment(tool_use_context, messages) {
         attachments.push(attachment_continuation(attachment));
     }
-    if let Some(attachment) = get_mcp_instructions_delta_attachment(
-        &tool_use_context.mcp_state.clients,
-        &tool_use_context.tools,
-        &model,
-        messages,
-    ) {
+    if let Some(attachment) =
+        get_mcp_instructions_delta_attachment(&tool_use_context.mcp_state.clients, messages)
+    {
         attachments.push(attachment_continuation(attachment));
     }
     attachments.extend(changed_files);
@@ -1900,6 +1878,10 @@ pub async fn get_attachments(
     // queued-command projection (`maybe('agent_pending_messages', …)`,
     // utils/attachments.ts:916-918, just before critical_system_reminder) —
     // the two are parallel chains, not an either/or on query source.
+    attachments.extend(get_todo_task_reminder_attachments(
+        messages,
+        tool_use_context,
+    ));
     attachments.extend(get_agent_pending_message_attachments(tool_use_context));
     attachments.extend(get_critical_system_reminder_attachments(tool_use_context));
     attachments.extend(ide_diagnostics);
@@ -1908,6 +1890,174 @@ pub async fn get_attachments(
         query_source,
     ));
     attachments
+}
+
+/// Maps to: CC `utils/attachments.ts` `TURNS_SINCE_WRITE` /
+/// `TURNS_BETWEEN_REMINDERS` in the 2.0 series.
+const TURNS_SINCE_WRITE: usize = 7;
+const TURNS_BETWEEN_REMINDERS: usize = 3;
+
+/// Maps to: CC `utils/attachments.ts` `countTurnsSinceLastTodoWrite` —
+/// thinking-only assistant messages do not advance either counter.
+fn reminder_turn_counts(messages: &[Message]) -> (usize, usize) {
+    let mut found_write = false;
+    let mut found_reminder = false;
+    let mut since_write = 0;
+    let mut since_reminder = 0;
+
+    for message in messages.iter().rev() {
+        if let Message::Assistant(assistant) = message {
+            if assistant.content.iter().all(|block| {
+                matches!(
+                    block,
+                    crate::types::message::AssistantContent::Thinking { .. }
+                        | crate::types::message::AssistantContent::RedactedThinking { .. }
+                )
+            }) {
+                continue;
+            }
+            if !found_write {
+                since_write += 1;
+            }
+            if !found_reminder {
+                since_reminder += 1;
+            }
+            if !found_write
+                && assistant.content.iter().any(|block| {
+                    matches!(
+                        block,
+                        crate::types::message::AssistantContent::ToolUse(tool)
+                            if tool.name == "TodoWrite"
+                    )
+                })
+            {
+                found_write = true;
+            }
+        } else if !found_reminder
+            && matches!(
+                message,
+                Message::Attachment(attachment)
+                    if matches!(attachment.attachment, Attachment::TodoReminder { .. })
+            )
+        {
+            found_reminder = true;
+        }
+
+        if found_write && found_reminder {
+            break;
+        }
+    }
+
+    (since_write, since_reminder)
+}
+
+/// Task tools whose use resets the task reminder clock.
+fn is_task_write_tool(name: &str) -> bool {
+    matches!(name, "TaskCreate" | "TaskUpdate")
+}
+
+/// CC 2.0-style counterpart of [`reminder_turn_counts`] for the TodoV2 task
+/// tools.
+fn task_reminder_turn_counts(messages: &[Message]) -> (usize, usize) {
+    let mut found_write = false;
+    let mut found_reminder = false;
+    let mut since_write = 0;
+    let mut since_reminder = 0;
+
+    for message in messages.iter().rev() {
+        if let Message::Assistant(assistant) = message {
+            if assistant.content.iter().all(|block| {
+                matches!(
+                    block,
+                    crate::types::message::AssistantContent::Thinking { .. }
+                        | crate::types::message::AssistantContent::RedactedThinking { .. }
+                )
+            }) {
+                continue;
+            }
+            if !found_write {
+                since_write += 1;
+            }
+            if !found_reminder {
+                since_reminder += 1;
+            }
+            if !found_write
+                && assistant.content.iter().any(|block| {
+                    matches!(
+                        block,
+                        crate::types::message::AssistantContent::ToolUse(tool)
+                            if is_task_write_tool(&tool.name)
+                    )
+                })
+            {
+                found_write = true;
+            }
+        } else if !found_reminder
+            && matches!(
+                message,
+                Message::Attachment(attachment)
+                    if matches!(attachment.attachment, Attachment::TaskReminder { .. })
+            )
+        {
+            found_reminder = true;
+        }
+
+        if found_write && found_reminder {
+            break;
+        }
+    }
+
+    (since_write, since_reminder)
+}
+
+/// Maps to: CC `utils/attachments.ts` `getTodoReminders`. The active task
+/// surface decides which reminder is emitted: TodoWrite below TodoV2, the
+/// task tools at or above it.
+fn get_todo_task_reminder_attachments(
+    messages: &[Message],
+    tool_use_context: &ToolUseContext,
+) -> Vec<AttachmentContinuation> {
+    if crate::utils::tasks::is_todo_v2_enabled() {
+        let (since_write, since_reminder) = task_reminder_turn_counts(messages);
+        if since_write < TURNS_SINCE_WRITE || since_reminder < TURNS_BETWEEN_REMINDERS {
+            return Vec::new();
+        }
+        let content = crate::utils::tasks::list_tasks(&crate::utils::tasks::get_task_list_id());
+        return vec![attachment_continuation(AttachmentMessage::new(
+            Attachment::TaskReminder {
+                item_count: content.len(),
+                content,
+            },
+        ))];
+    }
+
+    let (since_write, since_reminder) = reminder_turn_counts(messages);
+    if since_write < TURNS_SINCE_WRITE || since_reminder < TURNS_BETWEEN_REMINDERS {
+        return Vec::new();
+    }
+    let todo_key = tool_use_context
+        .agent_id
+        .clone()
+        .unwrap_or_else(crate::bootstrap::state::get_session_id);
+    let content = tool_use_context
+        .app_store
+        .store
+        .as_ref()
+        .map(|store| {
+            store
+                .get()
+                .todos
+                .get(&todo_key)
+                .cloned()
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+    vec![attachment_continuation(AttachmentMessage::new(
+        Attachment::TodoReminder {
+            item_count: content.len(),
+            content,
+        },
+    ))]
 }
 
 /// @nyan: M6 producer — retrieve relevant memories for the current user turn.
@@ -2125,20 +2275,19 @@ fn get_directories_to_process(
     nested_dirs
 }
 
-fn claude_md_kind_name(kind: crate::utils::claudemd::ClaudeMdKind) -> &'static str {
+fn agents_md_kind_name(kind: crate::utils::agents_md::AgentsMdKind) -> &'static str {
     match kind {
-        crate::utils::claudemd::ClaudeMdKind::Managed => "Managed",
-        crate::utils::claudemd::ClaudeMdKind::User => "User",
-        crate::utils::claudemd::ClaudeMdKind::Project => "Project",
-        crate::utils::claudemd::ClaudeMdKind::AutoMem => "AutoMem",
-        crate::utils::claudemd::ClaudeMdKind::TeamMem => "TeamMem",
+        crate::utils::agents_md::AgentsMdKind::User => "User",
+        crate::utils::agents_md::AgentsMdKind::Project => "Project",
+        crate::utils::agents_md::AgentsMdKind::AutoMem => "AutoMem",
+        crate::utils::agents_md::AgentsMdKind::TeamMem => "TeamMem",
     }
 }
 
 /// Maps to CC `memoryFilesToAttachments(...)` (:1724-1788).
 /// Maps to: CC `utils/attachments.ts:1710-1791` `memoryFilesToAttachments`.
 fn memory_files_to_attachments(
-    memory_files: Vec<crate::utils::claudemd::ClaudeMdFile>,
+    memory_files: Vec<crate::utils::agents_md::AgentsMdFile>,
     tool_use_context: &mut ToolUseContext,
     trigger_file_path: Option<&std::path::Path>,
 ) -> Vec<AttachmentContinuation> {
@@ -2155,13 +2304,12 @@ fn memory_files_to_attachments(
         }
         let display_path = relative_display_path(&cwd, &memory_file.path);
         let content = memory_file.content.clone();
-        let disk_projection = crate::utils::claudemd::claude_md_disk_projection(&memory_file);
+        let disk_projection = crate::utils::agents_md::agents_md_disk_projection(&memory_file);
         let instructions_hook = match memory_file.kind {
-            crate::utils::claudemd::ClaudeMdKind::Managed => Some("Managed"),
-            crate::utils::claudemd::ClaudeMdKind::User => Some("User"),
-            crate::utils::claudemd::ClaudeMdKind::Project => Some("Project"),
-            crate::utils::claudemd::ClaudeMdKind::AutoMem
-            | crate::utils::claudemd::ClaudeMdKind::TeamMem => None,
+            crate::utils::agents_md::AgentsMdKind::User => Some("User"),
+            crate::utils::agents_md::AgentsMdKind::Project => Some("Project"),
+            crate::utils::agents_md::AgentsMdKind::AutoMem
+            | crate::utils::agents_md::AgentsMdKind::TeamMem => None,
         }
         .map(|memory_type| {
             let load_reason = if disk_projection.globs.is_some() {
@@ -2186,9 +2334,9 @@ fn memory_files_to_attachments(
         // CC embeds the `MemoryFileInfo` object as `content`
         // (utils/attachments.ts:490-495,1710-1791); optional keys are present
         // only when set, matching JSON.stringify's undefined-omission.
-        let memory_info = crate::utils::claudemd::MemoryFileInfo {
+        let memory_info = crate::utils::agents_md::MemoryFileInfo {
             path: path.clone(),
-            memory_type: claude_md_kind_name(memory_file.kind).to_string(),
+            memory_type: agents_md_kind_name(memory_file.kind).to_string(),
             content,
             parent: memory_file
                 .parent
@@ -2279,7 +2427,7 @@ async fn get_nested_memory_attachments(
         tokio::task::yield_now().await;
         for directory in get_directories_to_process(&target, &original_cwd) {
             tokio::task::yield_now().await;
-            let files = crate::utils::claudemd::get_memory_files_for_nested_directory(
+            let files = crate::utils::agents_md::get_memory_files_for_nested_directory(
                 &directory,
                 &target,
                 &original_cwd,
@@ -2848,6 +2996,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn user_input_attachment_phase_keeps_file_then_agent_producer_order() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-user-attachment-order-{}",
             uuid::Uuid::new_v4().simple()
@@ -2887,6 +3036,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test(flavor = "current_thread")]
     async fn slow_at_mention_sibling_keeps_completed_file_attachment_and_state() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         use std::os::unix::ffi::OsStrExt as _;
 
         let root = std::env::temp_dir().join(format!(
@@ -2941,6 +3091,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn compact_file_restoration_keeps_file_unchanged_attachment() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-compact-file-unchanged-{}",
             uuid::Uuid::new_v4().simple()
@@ -2986,6 +3137,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn at_mention_file_and_directory_flow_through_read_attachment_owner() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let root =
             std::env::temp_dir().join(format!("nyan-at-mention-{}", uuid::Uuid::new_v4().simple()));
         let source = root.join("src");
@@ -3023,6 +3176,7 @@ mod tests {
 
     #[test]
     fn transformed_nested_memory_is_cached_as_partial_raw_disk_view() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-nested-memory-partial-{}",
             uuid::Uuid::new_v4().simple()
@@ -3035,7 +3189,7 @@ mod tests {
         let raw = "---\npaths: src/**/*.rs\n---\nrust instruction";
         std::fs::write(&agents, raw).unwrap();
         let mut processed = std::collections::HashSet::new();
-        let files = crate::utils::claudemd::get_memory_files_for_nested_directory(
+        let files = crate::utils::agents_md::get_memory_files_for_nested_directory(
             &nested,
             &target,
             &root,
@@ -3081,6 +3235,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn at_mention_token_fallback_keeps_truncated_read_state_range() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_runtime::initialize_test_process_runtime();
         let root = std::env::temp_dir().join(format!(
             "nyan-at-mention-token-fallback-{}",
@@ -3137,6 +3292,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn at_mention_read_discovers_nested_dynamic_skill_directory() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_runtime::initialize_test_process_runtime();
         crate::skills::load_skills_dir::clear_dynamic_skills();
         struct DynamicSkillsRestore;
         impl Drop for DynamicSkillsRestore {
@@ -3149,7 +3305,7 @@ mod tests {
             "nyan-at-mention-dynamic-skill-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let skill_dir = root.join("nested/.claude/skills");
+        let skill_dir = root.join("nested/.nyan/skills");
         let source_dir = root.join("nested/src");
         std::fs::create_dir_all(skill_dir.join("alpha")).unwrap();
         std::fs::create_dir_all(&source_dir).unwrap();
@@ -3196,7 +3352,7 @@ mod tests {
             "nyan-at-mention-missing-dynamic-skill-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let skill_dir = root.join("nested/.claude/skills");
+        let skill_dir = root.join("nested/.nyan/skills");
         std::fs::create_dir_all(skill_dir.join("alpha")).unwrap();
         std::fs::create_dir_all(root.join("nested/src")).unwrap();
         std::fs::write(skill_dir.join("alpha/SKILL.md"), "# Alpha").unwrap();
@@ -3219,6 +3375,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn nested_live_iteration_accepts_insertion_during_source_await() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         // At-mention reads resolve against the project dir.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = std::env::current_dir().unwrap();
@@ -3264,6 +3421,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn dynamic_snapshot_clears_insertion_that_arrives_during_source_await() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-dynamic-race-{}",
             uuid::Uuid::new_v4().simple()
@@ -3303,6 +3461,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn changed_image_uses_second_helper_without_replaying_read_effects() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         const TINY_PNG: &[u8] = &[
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
             0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00,
@@ -3357,6 +3516,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn changed_full_file_state_emits_edited_text_reminder_and_refreshes_cache() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-changed-file-{}",
             uuid::Uuid::new_v4().simple()
@@ -3559,6 +3719,8 @@ mod tests {
     /// `source_uuid`/`commandMode`/`isMeta` (:1075-1079).
     #[tokio::test]
     async fn queued_command_snapshot_projects_to_attachment_with_payload_fields() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let snapshot = vec![
             crate::utils::message_queue_manager::QueuedCommand {
                 value: "<task-notification><status>completed</status></task-notification>"
@@ -3636,6 +3798,7 @@ mod tests {
     /// enqueue site never set it — a `false` projects to the absent field.
     #[tokio::test]
     async fn queued_command_without_is_meta_omits_the_field() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let attachments = get_attachments(GetAttachmentMessagesParams {
             tool_use_context: &mut ToolUseContext::default(),
             messages: &[],
@@ -3661,11 +3824,12 @@ mod tests {
 
     #[tokio::test]
     async fn dynamic_skill_attachment_lists_discovered_skills_and_drains_triggers() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-dynamic-skill-attachment-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let skills_dir = root.join("nested/.claude/skills");
+        let skills_dir = root.join("nested/.nyan/skills");
         std::fs::create_dir_all(skills_dir.join("alpha")).unwrap();
         std::fs::write(skills_dir.join("alpha/SKILL.md"), "# Alpha").unwrap();
         let mut context = ToolUseContext::default();
@@ -3706,7 +3870,7 @@ mod tests {
                 skill_names,
                 display_path,
                 ..
-            }) if skill_names == &["alpha"] && display_path == "nested/.claude/skills"
+            }) if skill_names == &["alpha"] && display_path == "nested/.nyan/skills"
         ));
         let Message::Attachment(model) = &dynamic_attachments[0].model_message else {
             panic!("expected local dynamic_skill attachment")
@@ -3721,9 +3885,9 @@ mod tests {
         assert_eq!(
             relative_display_path(
                 std::path::Path::new("/tmp/project/worktree"),
-                std::path::Path::new("/tmp/project/shared/.claude/skills"),
+                std::path::Path::new("/tmp/project/shared/.nyan/skills"),
             ),
-            "../shared/.claude/skills"
+            "../shared/.nyan/skills"
         );
     }
 
@@ -3800,11 +3964,12 @@ mod tests {
 
     #[tokio::test]
     async fn dynamic_skill_precedes_main_thread_reminders_in_async_attachment_order() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-dynamic-skill-order-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let skills_dir = root.join("nested/.claude/skills");
+        let skills_dir = root.join("nested/.nyan/skills");
         std::fs::create_dir_all(skills_dir.join("alpha")).unwrap();
         std::fs::write(skills_dir.join("alpha/SKILL.md"), "# Alpha").unwrap();
         let mut context = ToolUseContext::default();
@@ -3847,6 +4012,8 @@ mod tests {
 
     #[tokio::test]
     async fn critical_system_reminder_attachment_matches_official_tool_context_field() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let mut context = ToolUseContext::default()
             .with_critical_system_reminder_experimental(Some("Verify every claim.".to_string()));
 
@@ -3888,6 +4055,8 @@ mod tests {
 
     #[tokio::test]
     async fn agent_pending_message_attachments_drain_agent_task_queue() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_runtime::initialize_test_process_runtime();
         let _task_lock = crate::tasks::local_agent_task::TEST_LOCAL_AGENT_TASK_LOCK
             .lock()
             .unwrap();
@@ -3952,6 +4121,7 @@ mod tests {
     /// CC query.ts:1566-1578; CC turn-0 callers pass `[]`).
     #[tokio::test]
     async fn get_attachments_never_touches_the_global_command_queue() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let _queue_lock = crate::utils::message_queue_manager::TEST_QUEUE_LOCK
             .lock()
             .unwrap();
@@ -4066,7 +4236,7 @@ mod tests {
     #[test]
     fn mcp_instruction_delta_reads_instructions_from_connected_records() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _gate = EnvVarGuard::set("CLAUDE_CODE_MCP_INSTR_DELTA", "true");
+        let _gate = EnvVarGuard::set("NYAN_MCP_INSTR_DELTA", "true");
         let clients = [
             crate::services::mcp::types::McpServerConnection::connected_with_instructions_for_test(
                 "docs",
@@ -4075,8 +4245,7 @@ mod tests {
         ];
 
         let attachment =
-            get_mcp_instructions_delta_attachment(&clients, &[], "claude-sonnet-4-6", &[])
-                .expect("instruction delta");
+            get_mcp_instructions_delta_attachment(&clients, &[]).expect("instruction delta");
         assert_eq!(attachment.attachment_type(), "mcp_instructions_delta");
         assert_eq!(
             attachment.attachment.to_wire()["addedBlocks"][0].as_str(),
@@ -4084,17 +4253,16 @@ mod tests {
         );
 
         // The gate is off: no attachment.
-        let _gate = EnvVarGuard::set("CLAUDE_CODE_MCP_INSTR_DELTA", "false");
-        assert!(
-            get_mcp_instructions_delta_attachment(&clients, &[], "claude-sonnet-4-6", &[])
-                .is_none()
-        );
+        let _gate = EnvVarGuard::set("NYAN_MCP_INSTR_DELTA", "false");
+        assert!(get_mcp_instructions_delta_attachment(&clients, &[]).is_none());
     }
 
+    /// No server name gets a client-authored block appended: with ToolSearch
+    /// on, the former Claude in Chrome name announces only its own text.
     #[test]
-    fn mcp_instruction_delta_appends_chrome_tool_search_instructions() {
+    fn mcp_instruction_delta_announces_only_server_authored_instructions() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _gate = EnvVarGuard::set("CLAUDE_CODE_MCP_INSTR_DELTA", "true");
+        let _gate = EnvVarGuard::set("NYAN_MCP_INSTR_DELTA", "true");
         let _tool_search = EnvVarGuard::set("ENABLE_TOOL_SEARCH", "true");
         let clients = [
             crate::services::mcp::types::McpServerConnection::connected_with_instructions_for_test(
@@ -4102,22 +4270,9 @@ mod tests {
                 "Server guidance.",
             ),
         ];
-        let tools = [crate::tools::tool_search_tool::tool_search_tool_schema()];
 
         let attachment =
-            get_mcp_instructions_delta_attachment(&clients, &tools, "claude-sonnet-4-6", &[])
-                .expect("chrome delta");
-        let wire = attachment.attachment.to_wire();
-        let block = wire["addedBlocks"][0].as_str().expect("instruction block");
-        assert!(block.starts_with("## claude-in-chrome\nServer guidance."));
-        assert!(block.contains("Before using any chrome browser tools"));
-        assert!(block.contains("select:mcp__claude-in-chrome__tabs_context_mcp"));
-
-        // ToolSearch off: no client-side block, only the server's own.
-        let _tool_search = EnvVarGuard::set("ENABLE_TOOL_SEARCH", "false");
-        let attachment =
-            get_mcp_instructions_delta_attachment(&clients, &tools, "claude-sonnet-4-6", &[])
-                .expect("server delta");
+            get_mcp_instructions_delta_attachment(&clients, &[]).expect("server delta");
         assert_eq!(
             attachment.attachment.to_wire()["addedBlocks"],
             serde_json::json!(["## claude-in-chrome\nServer guidance."])
@@ -4146,5 +4301,119 @@ mod tests {
         assert!(attachments.is_empty());
         assert_eq!(get_pending_lsp_diagnostic_count(), 1);
         reset_all_lsp_diagnostic_state();
+    }
+
+    fn assistant_text(text: &str) -> Message {
+        Message::Assistant(crate::types::message::AssistantMessage {
+            uuid: uuid::Uuid::new_v4().to_string(),
+            timestamp: chrono::Utc::now(),
+            content: vec![crate::types::message::AssistantContent::Text(
+                text.to_string(),
+            )],
+            model: None,
+            stop_reason: None,
+            usage: None,
+        })
+    }
+
+    fn assistant_tool(name: &str) -> Message {
+        Message::Assistant(crate::types::message::AssistantMessage {
+            uuid: uuid::Uuid::new_v4().to_string(),
+            timestamp: chrono::Utc::now(),
+            content: vec![crate::types::message::AssistantContent::ToolUse(
+                crate::types::message::ToolUseBlock {
+                    id: crate::types::ids::ToolUseId("toolu_reminder".to_string()),
+                    name: name.to_string(),
+                    input: serde_json::json!({}),
+                },
+            )],
+            model: None,
+            stop_reason: None,
+            usage: None,
+        })
+    }
+
+    fn todo_reminder_attachment() -> Message {
+        Message::Attachment(AttachmentMessage::new(Attachment::TodoReminder {
+            content: Vec::new(),
+            item_count: 0,
+        }))
+    }
+
+    #[test]
+    fn todo_reminder_counts_skip_thinking_and_reset_on_writes_and_reminders() {
+        let seven = (0..7).map(|_| assistant_text("work")).collect::<Vec<_>>();
+        assert_eq!(reminder_turn_counts(&seven), (7, 7));
+
+        // The write turn is counted, as in CC's reverse scan.
+        let mut with_write = vec![assistant_tool("TodoWrite")];
+        with_write.extend((0..6).map(|_| assistant_text("work")));
+        assert_eq!(reminder_turn_counts(&with_write), (7, 7));
+
+        // A later reminder resets only the reminder counter.
+        let with_reminder = todo_reminder_attachment_sequence();
+        assert_eq!(reminder_turn_counts(&with_reminder), (5, 5));
+
+        // Thinking-only assistant turns advance neither counter.
+        let mut thinking = Vec::new();
+        for _ in 0..10 {
+            thinking.push(Message::Assistant(
+                crate::types::message::AssistantMessage {
+                    uuid: uuid::Uuid::new_v4().to_string(),
+                    timestamp: chrono::Utc::now(),
+                    content: vec![crate::types::message::AssistantContent::Thinking {
+                        text: "thinking".to_string(),
+                        signature: String::new(),
+                    }],
+                    model: None,
+                    stop_reason: None,
+                    usage: None,
+                },
+            ));
+        }
+        thinking.extend((0..3).map(|_| assistant_text("work")));
+        assert_eq!(reminder_turn_counts(&thinking), (3, 3));
+    }
+
+    fn todo_reminder_attachment_sequence() -> Vec<Message> {
+        let mut messages = vec![todo_reminder_attachment()];
+        messages.extend((0..5).map(|_| assistant_text("work")));
+        messages
+    }
+
+    #[test]
+    fn todo_reminder_is_emitted_only_after_both_thresholds() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        let under = (0..6).map(|_| assistant_text("work")).collect::<Vec<_>>();
+        assert!(get_todo_task_reminder_attachments(&under, &ToolUseContext::default()).is_empty());
+
+        let ready = (0..7).map(|_| assistant_text("work")).collect::<Vec<_>>();
+        let attachments = get_todo_task_reminder_attachments(&ready, &ToolUseContext::default());
+        assert_eq!(attachments.len(), 1);
+    }
+
+    #[test]
+    fn first_turn_deferred_delta_lists_web_search_and_prompt_points_at_it() {
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
+        let _tool_search = EnvVarGuard::unset("ENABLE_TOOL_SEARCH");
+        let _betas = EnvVarGuard::unset("NYAN_DISABLE_EXPERIMENTAL_BETAS");
+        let tools = vec![
+            crate::tools::tool_search_tool::tool_search_tool_schema(),
+            crate::tools::web_search_tool::web_search_tool_schema(),
+            crate::tools::bash_tool::bash_tool_schema(),
+        ];
+
+        let delta = get_deferred_tools_delta_attachment(&tools, "claude-sonnet-4-6", &[])
+            .expect("first turn announces deferred tools");
+        let wire = delta.attachment.to_wire();
+        assert!(
+            wire["addedNames"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|name| name == "WebSearch"),
+            "{wire}"
+        );
+        assert!(crate::tools::tool_search_tool::prompt::get_prompt().contains("<system-reminder>"));
     }
 }

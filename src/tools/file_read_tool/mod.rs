@@ -1359,7 +1359,7 @@ impl FileReadTool {
         // conditional activation then runs synchronously. Simple mode skips
         // the complete block. There is no separate dynamic-discovery gate.
         if !crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_SIMPLE").as_deref(),
+            crate::utils::process_env::var("NYAN_SIMPLE").as_deref(),
         ) {
             let cwd = context.effective_cwd();
             let paths = vec![full_file_path.clone()];
@@ -2099,6 +2099,9 @@ impl FileReadTool {
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .clone();
                 let listener_path = resolved_file_path.display().to_string();
+                // §7 post-hoc probe: a successful Read is the usage evidence
+                // for a retained retrieval candidate. Must never fail the read.
+                crate::services::decision::probe::observe_file_read(&listener_path);
                 for listener in listeners {
                     listener(&listener_path, &output.content).map_err(FileReadCallFailure::new)?;
                 }
@@ -3186,7 +3189,7 @@ mod tests {
             r#"{"nyan": {"toolIo": {"maxLineChars": {"read": 100}}}}"#,
         )
         .unwrap();
-        let _home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.to_str().unwrap());
+        let _home = EnvVarGuard::set("NYAN_CONFIG_DIR", root.to_str().unwrap());
         let path = root.join("min.js");
         std::fs::write(&path, format!("{}\nnext\n", "x".repeat(5_000))).unwrap();
         let context = crate::tool::ToolUseContext::default();
@@ -3347,7 +3350,7 @@ mod tests {
             r#"{"nyan": {"toolIo": {"readBatchMax": 0}}}"#,
         )
         .unwrap();
-        let _home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.to_str().unwrap());
+        let _home = EnvVarGuard::set("NYAN_CONFIG_DIR", root.to_str().unwrap());
         let file = root.join("a.txt");
         std::fs::write(&file, "alpha\n").unwrap();
         let context = crate::tool::ToolUseContext::default();
@@ -3391,7 +3394,7 @@ mod tests {
             r#"{"nyan": {"toolIo": {"completionNotes": false}}}"#,
         )
         .unwrap();
-        let _home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.to_str().unwrap());
+        let _home = EnvVarGuard::set("NYAN_CONFIG_DIR", root.to_str().unwrap());
         let file = root.join("a.txt");
         std::fs::write(&file, "alpha\n").unwrap();
         let context = crate::tool::ToolUseContext::default();
@@ -3446,6 +3449,17 @@ mod tests {
     fn file_read_tool_schema_matches_official_input_shape() {
         let schema = file_read_tool_schema();
         assert_eq!(schema.name, "Read");
+        assert!(
+            schema
+                .description
+                .contains("This tool allows you to read images")
+        );
+        assert!(
+            schema
+                .description
+                .contains("presented visually to the model")
+        );
+        assert!(!schema.description.contains("Claude"));
         assert!(schema.strict.unwrap());
         // @nyan: T4 makes `file_path` one half of a mutually exclusive pair,
         // so nothing is required at the schema level; validate_input enforces
@@ -3743,7 +3757,7 @@ mod tests {
             r#"{"nyan": {"toolIo": {"readPartialOnOverflow": false}}}"#,
         )
         .unwrap();
-        let _home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.to_str().unwrap());
+        let _home = EnvVarGuard::set("NYAN_CONFIG_DIR", root.to_str().unwrap());
         let dir = root.join("work");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("large.txt");
@@ -3781,7 +3795,7 @@ mod tests {
             "nyan-read-preabort-effects-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let skill_dir = root.join("packages/pkg/.claude/skills");
+        let skill_dir = root.join("packages/pkg/.nyan/skills");
         let source = root.join("packages/pkg/src/value.txt");
         std::fs::create_dir_all(skill_dir.join("sample")).unwrap();
         std::fs::create_dir_all(source.parent().unwrap()).unwrap();
@@ -4884,36 +4898,10 @@ PY\n\
     }
 
     #[tokio::test]
-    async fn cached_read_dedup_killswitch_config_cannot_disable_dedup() {
+    async fn read_dedup_killswitch_switch_keeps_dedup_on() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        struct ConfigRestore(Option<crate::utils::config::GlobalConfig>);
-        impl Drop for ConfigRestore {
-            fn drop(&mut self) {
-                crate::utils::config::replace_test_global_config(self.0.take());
-            }
-        }
-        // Clear every analytics-disable condition so the injected disk cache
-        // would be reachable if the killswitch were still read from config;
-        // dedup must stay on because the switch table owns the answer.
-        let _env_restore = [
-            "NODE_ENV",
-            "CLAUDE_CODE_USE_BEDROCK",
-            "CLAUDE_CODE_USE_VERTEX",
-            "CLAUDE_CODE_USE_FOUNDRY",
-            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
-            "DISABLE_TELEMETRY",
-        ]
-        .into_iter()
-        .map(EnvVarGuard::unset)
-        .collect::<Vec<_>>();
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.cached_growth_book_features = Some(std::collections::HashMap::from([(
-            "tengu_read_dedup_killswitch".to_string(),
-            serde_json::Value::Bool(true),
-        )]));
-        let _restore = ConfigRestore(crate::utils::config::replace_test_global_config(Some(
-            config,
-        )));
+        // The killswitch is the source-controlled switch, which is off, so
+        // unchanged same-range Reads deduplicate.
         let dir = std::env::temp_dir().join(format!(
             "nyan-read-dedup-killswitch-{}",
             uuid::Uuid::new_v4().simple()

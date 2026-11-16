@@ -2,8 +2,9 @@
 //! Maps to: CC `utils/conversationRecovery.ts` — this file owns the
 //! **typed-message** segment of that module: `deserializeMessages`:154,
 //! `deserializeMessagesWithInterruptDetection`:164, `detectTurnInterruption`,
-//! `restoreSkillStateFromMessages`:382, the "Continue from where you left off."
-//! continuation sentinel, `DeserializeResult` / `TurnInterruptionState`, and the
+//! `restoreSkillStateFromMessages`:382, interruption detection (without CC's
+//! synthetic continuation/sentinel messages, see `detect_and_append_sentinel`),
+//! `DeserializeResult` / `TurnInterruptionState`, and the
 //! raw orphan/unresolved boundary filters. Whitespace filtering and user merging
 //! import their canonical `utils/messages.ts` owner.
 //! The **renderable-projection** segment of the same CC module lives in
@@ -19,7 +20,7 @@
 //!     ↓
 //! filterUnresolvedToolUses + filterOrphanedThinkingOnly + filterWhitespaceOnlyAssistant
 //!     ↓
-//! detectTurnInterruption + continuation/sentinel insertion
+//! detectTurnInterruption
 //!     ↓
 //! DeserializeResult { messages, turn_interruption_state }
 //! ```
@@ -37,15 +38,12 @@ use crate::types::message::{
     AssistantContent, AssistantMessage, AttachmentMessage, HookResultMessage, Message, StopReason,
     TokenUsage, ToolResult, ToolUseBlock, UserContent, UserMessage,
 };
-pub use crate::utils::messages::NO_RESPONSE_REQUESTED;
 
 use chrono::{DateTime, Utc};
 use std::collections::HashSet;
 
 // ════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════
-
-pub const CONTINUATION_MESSAGE: &str = "Continue from where you left off.";
 
 pub const TERMINAL_TOOL_NAMES: &[&str] = &[
     "SendUserMessage",   // BRIEF_TOOL_NAME (current)
@@ -65,8 +63,8 @@ pub struct DeserializeResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TurnInterruptionState {
     None,
-    /// Official converts interrupted_turn into this state after appending a
-    /// synthetic continuation message.
+    /// The resumed transcript ends mid-turn (trailing user prompt, tool_result
+    /// or attachment). Interactive resume offers press-Enter-to-continue.
     InterruptedPrompt,
 }
 
@@ -106,7 +104,6 @@ pub fn deserialize_messages(messages: Vec<serde_json::Value>) -> Vec<serde_json:
 ///   4. filterOrphanedThinkingOnlyMessages
 ///   5. filterWhitespaceOnlyAssistantMessages
 ///   6. detectTurnInterruption
-///   7. interrupted_turn → append continuation
 pub fn deserialize_messages_with_interrupt_detection(
     messages: Vec<serde_json::Value>,
 ) -> DeserializeResult {
@@ -141,9 +138,7 @@ pub fn deserialize_messages_with_interrupt_detection(
 
 /// Rust subset of official `messages.ts#normalizeMessages()`.
 /// It splits multi-block user/assistant messages into one message per content
-/// block and derives stable UUID-shaped keys after the first split. This is
-/// also used for synthetic resume continuation messages so their shape matches
-/// the official normalized user message (`content: [{ type: 'text', text }]`).
+/// block and derives stable UUID-shaped keys after the first split.
 pub fn normalize_messages(messages: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
     let mut is_new_chain = false;
     let mut normalized = Vec::new();
@@ -469,48 +464,23 @@ pub fn filter_orphaned_thinking_only(messages: Vec<serde_json::Value>) -> Vec<se
 // ════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════
 
+/// Maps to: CC conversationRecovery.ts:205-246 detection only.
+///
+/// @nyan: CC appends a meta "Continue from where you left off." user message
+/// for `interrupted_turn` and a synthetic "No response requested." assistant
+/// after a trailing user. Neither is added here: the REPL shows a
+/// press-Enter-to-continue hint instead (`TurnInterruptionState`), and the
+/// next query continues straight from the recovered transcript. The API
+/// accepts a trailing user/tool_result, and a new prompt merges into it.
 pub fn detect_and_append_sentinel(
-    mut messages: Vec<serde_json::Value>,
+    messages: Vec<serde_json::Value>,
 ) -> (Vec<serde_json::Value>, TurnInterruptionState) {
-    let interruption = detect_turn_interruption(&messages);
-
-    // Convert interrupted_turn into a synthetic continuation user message.
-    let final_interruption = match interruption {
-        InternalInterruptionState::InterruptedTurn => {
-            if let Some(continuation) =
-                normalize_messages(vec![crate::utils::messages::create_user_message_value(
-                    CONTINUATION_MESSAGE,
-                    true,
-                )])
-                .into_iter()
-                .next()
-            {
-                messages.push(continuation);
-            }
-            // Match official behavior: consumers only see interrupted_prompt.
-            TurnInterruptionState::InterruptedPrompt
-        }
-        InternalInterruptionState::InterruptedPrompt => TurnInterruptionState::InterruptedPrompt,
+    let interruption = match detect_turn_interruption(&messages) {
+        InternalInterruptionState::InterruptedTurn
+        | InternalInterruptionState::InterruptedPrompt => TurnInterruptionState::InterruptedPrompt,
         InternalInterruptionState::None => TurnInterruptionState::None,
     };
-
-    let last_relevant_idx = messages.iter().rposition(|m| {
-        let t = m.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        t != "system" && t != "progress"
-    });
-    if let Some(idx) = last_relevant_idx {
-        let is_user = messages[idx].get("type").and_then(|v| v.as_str()) == Some("user");
-        if is_user {
-            // Maps to: CC conversationRecovery.ts:240-244: the sentinel uses
-            // messages.ts#createAssistantMessage, including its API envelope.
-            let sentinel = crate::utils::messages::create_assistant_message_value(
-                NO_RESPONSE_REQUESTED.to_string(),
-            );
-            messages.insert(idx + 1, sentinel);
-        }
-    }
-
-    (messages, final_interruption)
+    (messages, interruption)
 }
 
 fn detect_turn_interruption(messages: &[serde_json::Value]) -> InternalInterruptionState {
@@ -1480,8 +1450,21 @@ mod tests {
         );
     }
 
+    /// The two CC recovery messages nyan no longer synthesizes on resume.
+    fn has_synthetic_resume_message(messages: &[serde_json::Value]) -> bool {
+        messages.iter().any(|message| {
+            matches!(
+                user_text_value(message),
+                Some(
+                    "Continue from where you left off."
+                        | crate::utils::messages::NO_RESPONSE_REQUESTED
+                )
+            )
+        })
+    }
+
     #[test]
-    fn deserialize_filters_unresolved_tool_uses_and_inserts_sentinel_before_trailing_system() {
+    fn deserialize_filters_unresolved_tool_uses_and_keeps_trailing_system() {
         let result = deserialize_messages_with_interrupt_detection(vec![
             user_text("user-1", "hello"),
             assistant_tool("assistant-1", "msg-1", "toolu_missing", "Read"),
@@ -1493,65 +1476,63 @@ mod tests {
             }),
         ]);
 
-        assert_eq!(result.messages.len(), 3);
         assert_eq!(
-            result.messages[0].get("uuid").and_then(|v| v.as_str()),
-            Some("user-1")
-        );
-        assert_eq!(
-            assistant_text_value(&result.messages[1]),
-            Some(NO_RESPONSE_REQUESTED)
-        );
-        assert_eq!(
-            result.messages[2].get("uuid").and_then(|v| v.as_str()),
-            Some("system-1")
-        );
-    }
-
-    #[test]
-    fn deserialize_interrupted_tool_result_adds_continuation_then_sentinel() {
-        let result = deserialize_messages_with_interrupt_detection(vec![
-            assistant_tool("assistant-1", "msg-1", "toolu_1", "Read"),
-            user_tool_result("result-1", "toolu_1"),
-        ]);
-
-        assert!(matches!(
             result.turn_interruption_state,
             TurnInterruptionState::InterruptedPrompt
-        ));
-        assert_eq!(result.messages.len(), 4);
-        assert_eq!(
-            user_text_value(&result.messages[2]),
-            Some(CONTINUATION_MESSAGE)
         );
-        assert_eq!(
-            assistant_text_value(&result.messages[3]),
-            Some(NO_RESPONSE_REQUESTED)
-        );
+        let uuids = result
+            .messages
+            .iter()
+            .map(|message| message["uuid"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(uuids, ["user-1", "system-1"]);
     }
 
     #[test]
-    fn deserialize_terminal_tool_result_does_not_add_continuation() {
-        let result = deserialize_messages_with_interrupt_detection(vec![
-            assistant_tool("assistant-1", "msg-1", "toolu_1", "SendUserMessage"),
+    fn deserialize_interrupted_tool_result_adds_no_synthetic_messages() {
+        let input = vec![
+            assistant_tool("assistant-1", "msg-1", "toolu_1", "Read"),
             user_tool_result("result-1", "toolu_1"),
-        ]);
+        ];
+        let result = deserialize_messages_with_interrupt_detection(input.clone());
 
-        assert!(matches!(
-            result.turn_interruption_state,
-            TurnInterruptionState::None
-        ));
-        assert_eq!(result.messages.len(), 3);
-        assert!(
-            result
-                .messages
-                .iter()
-                .all(|message| user_text_value(message) != Some(CONTINUATION_MESSAGE))
-        );
         assert_eq!(
-            assistant_text_value(&result.messages[2]),
-            Some(NO_RESPONSE_REQUESTED)
+            result.turn_interruption_state,
+            TurnInterruptionState::InterruptedPrompt
         );
+        assert_eq!(result.messages, input);
+        assert!(!has_synthetic_resume_message(&result.messages));
+        // Typed history (what the REPL seeds, records and sends) ends with
+        // the tool_result, so the next query continues the interrupted turn.
+        let typed = into_typed_messages(result.messages);
+        assert!(matches!(
+            typed.last(),
+            Some(Message::User(user))
+                if matches!(user.content.as_slice(), [UserContent::ToolResult(_)])
+        ));
+    }
+
+    #[test]
+    fn deserialize_completed_turns_are_not_interrupted() {
+        for input in [
+            vec![
+                assistant_tool("assistant-1", "msg-1", "toolu_1", "SendUserMessage"),
+                user_tool_result("result-1", "toolu_1"),
+            ],
+            vec![
+                user_text("user-1", "hello"),
+                json!({
+                    "type": "assistant",
+                    "uuid": "assistant-1",
+                    "message": {"id": "msg-1", "role": "assistant", "content": [{"type": "text", "text": "hi"}]},
+                    "timestamp": "2026-06-13T13:00:01.000Z"
+                }),
+            ],
+        ] {
+            let result = deserialize_messages_with_interrupt_detection(input.clone());
+            assert_eq!(result.turn_interruption_state, TurnInterruptionState::None);
+            assert_eq!(result.messages, input);
+        }
     }
 
     #[test]
@@ -1647,10 +1628,10 @@ mod tests {
         ));
     }
 
-    /// Maps to CC conversationRecovery.ts:205-246 and messages.ts:355-433.
-    /// Bun factory oracle: .test/cold-sentinel-followup/bun-factory.json.
+    /// Trailing system/progress bookkeeping survives recovery untouched and
+    /// no CC continuation/sentinel message is appended.
     #[test]
-    fn cold_sentinel_matches_official_shared_factory_envelope() {
+    fn interrupted_recovery_keeps_trailing_bookkeeping_without_synthetic_messages() {
         for interrupted_tool in [false, true] {
             let mut input = if interrupted_tool {
                 vec![
@@ -1662,92 +1643,28 @@ mod tests {
             };
             input.push(json!({"type":"system","uuid":"trailing-system"}));
             input.push(json!({"type":"progress","uuid":"trailing-progress"}));
-            let result = deserialize_messages_with_interrupt_detection(input);
+            let result = deserialize_messages_with_interrupt_detection(input.clone());
             assert_eq!(
                 result.turn_interruption_state,
                 TurnInterruptionState::InterruptedPrompt
             );
-            let sentinel_index = if interrupted_tool { 5 } else { 1 };
-            if interrupted_tool {
-                assert_eq!(result.messages.len(), 6);
-                assert_eq!(result.messages[2]["uuid"], "trailing-system");
-                assert_eq!(result.messages[3]["uuid"], "trailing-progress");
-                assert_eq!(
-                    user_text_value(&result.messages[4]),
-                    Some(CONTINUATION_MESSAGE)
-                );
-                assert_eq!(result.messages[4]["isMeta"], true);
-                // CC conversationRecovery.ts:209-214 delegates to
-                // messages.ts:460-524, then normalizeMessages :783-797.
-                let mut continuation = result.messages[4].clone();
-                let id = continuation["uuid"].as_str().unwrap();
-                assert_eq!(uuid::Uuid::parse_str(id).unwrap().get_version_num(), 4);
-                assert_ne!(id, result.messages[5]["uuid"].as_str().unwrap());
-                let timestamp = continuation["timestamp"].as_str().unwrap();
-                assert_eq!(timestamp.len(), 24);
-                assert!(timestamp.ends_with('Z'));
-                continuation.as_object_mut().unwrap().remove("uuid");
-                continuation.as_object_mut().unwrap().remove("timestamp");
-                assert_eq!(
-                    continuation,
-                    json!({
-                        "type":"user", "isMeta":true,
-                        "message":{"role":"user","content":[{
-                            "type":"text","text":"Continue from where you left off."
-                        }]}
-                    })
-                );
-                let repeated =
-                    deserialize_messages_with_interrupt_detection(result.messages.clone());
-                assert_eq!(repeated.messages, result.messages);
-            } else {
-                assert_eq!(result.messages[2]["uuid"], "trailing-system");
-                assert_eq!(result.messages[3]["uuid"], "trailing-progress");
-            }
-            let mut sentinel = result.messages[sentinel_index].clone();
-            let uuid = sentinel["uuid"].as_str().unwrap().to_owned();
-            let id = sentinel["message"]["id"]
-                .as_str()
-                .expect("source factory API id")
-                .to_owned();
-            assert!(uuid::Uuid::parse_str(&uuid).is_ok());
-            assert!(uuid::Uuid::parse_str(&id).is_ok());
-            assert_ne!(uuid, id);
-            let timestamp = sentinel["timestamp"].as_str().unwrap();
-            assert!(chrono::DateTime::parse_from_rfc3339(timestamp).is_ok());
-            assert_eq!(timestamp.len(), 24);
-            assert!(timestamp.ends_with('Z'));
-            sentinel.as_object_mut().unwrap().remove("uuid");
-            sentinel.as_object_mut().unwrap().remove("timestamp");
-            sentinel["message"].as_object_mut().unwrap().remove("id");
+            assert_eq!(result.messages, input);
+            assert!(!has_synthetic_resume_message(&result.messages));
+            let repeated = deserialize_messages_with_interrupt_detection(result.messages.clone());
+            assert_eq!(repeated.messages, result.messages);
             assert_eq!(
-                sentinel,
-                json!({
-                    "type":"assistant", "isApiErrorMessage":false,
-                    "message": {
-                        "container":null, "model":"<synthetic>", "role":"assistant",
-                        "stop_reason":"stop_sequence", "stop_sequence":"", "type":"message",
-                        "content":[{"type":"text","text":"No response requested."}],
-                        "context_management":null,
-                        "usage": {
-                            "input_tokens":0, "output_tokens":0,
-                            "cache_creation_input_tokens":0, "cache_read_input_tokens":0,
-                            "server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},
-                            "service_tier":null,
-                            "cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},
-                            "inference_geo":null,"iterations":null,"speed":null
-                        }
-                    }
-                })
+                repeated.turn_interruption_state,
+                TurnInterruptionState::InterruptedPrompt
             );
         }
     }
 
     /// Maps to CC conversationRecovery.ts:164-246 / 272-333 and
     /// messages.ts:843-852. Bun executes the actual predicate and detector;
-    /// this test drives the full Rust deserialize/continuation/sentinel chain.
+    /// this test drives the full Rust deserialize chain, which reports the
+    /// interruption without appending CC's continuation/sentinel messages.
     #[test]
-    fn tool_result_recovery_matches_official_interruption_and_continuation() {
+    fn tool_result_recovery_matches_official_interruption_detection() {
         // The predicate accepts a null first block, but the source's earlier
         // filterUnresolvedToolUses (:2808-2812) throws for that malformed log.
         // Its case stays in the predicate test, not this recovery-success set.
@@ -1779,7 +1696,6 @@ mod tests {
             original["message"]["role"] = json!("user");
             let result = deserialize_messages_with_interrupt_detection(vec![original.clone()]);
             let source_state = case["interruption"].as_str().unwrap();
-            let continued = source_state == "interrupted_turn";
             assert_eq!(
                 result.turn_interruption_state,
                 if source_state == "none" {
@@ -1789,24 +1705,7 @@ mod tests {
                 },
                 "input: {original}"
             );
-            assert_eq!(result.messages[0], original);
-            assert_eq!(
-                result.messages.len(),
-                if continued { 3 } else { 2 },
-                "input: {original}"
-            );
-            if continued {
-                assert_eq!(result.messages[1]["isMeta"], true);
-                assert_eq!(
-                    user_text_value(&result.messages[1]),
-                    Some(CONTINUATION_MESSAGE)
-                );
-            }
-            assert_eq!(
-                assistant_text_value(result.messages.last().unwrap()),
-                Some(NO_RESPONSE_REQUESTED)
-            );
-            // A second load of the recovered transcript must not duplicate the pair.
+            assert_eq!(result.messages, vec![original.clone()], "input: {original}");
             assert_eq!(
                 deserialize_messages(result.messages.clone()),
                 result.messages
@@ -1814,8 +1713,8 @@ mod tests {
         }
     }
 
-    /// Bun source whitespace filter + interruption detector; Rust actual
-    /// deserialize pipeline must insert a sentinel only after the remaining user.
+    /// Bun source whitespace filter + interruption detector; the Rust
+    /// deserialize pipeline reports the interruption and appends nothing.
     #[test]
     fn whitespace_cold_recovery_matches_official_bun_interruption() {
         let cases: serde_json::Value = serde_json::from_str(r#"[{"input":[{"type":"user","uuid":"recovery-user-0","timestamp":"2026-09-13T00:00:00.000Z","message":{"role":"user","content":"continue"}},{"type":"assistant","uuid":"recovery-assistant-0","timestamp":"2026-09-13T00:00:00.000Z","message":{"id":"msg_recovery-assistant-0","role":"assistant","content":[{"type":"text","text":"\ufeff"}]}}],"filtered":[{"type":"user","uuid":"recovery-user-0","timestamp":"2026-09-13T00:00:00.000Z","message":{"role":"user","content":"continue"}}],"interruption":"interrupted_prompt"},{"input":[{"type":"user","uuid":"recovery-user-1","timestamp":"2026-09-13T00:00:00.000Z","message":{"role":"user","content":"continue"}},{"type":"assistant","uuid":"recovery-assistant-1","timestamp":"2026-09-13T00:00:00.000Z","message":{"id":"msg_recovery-assistant-1","role":"assistant","content":[{"type":"text","text":"\u0085"}]}}],"filtered":[{"type":"user","uuid":"recovery-user-1","timestamp":"2026-09-13T00:00:00.000Z","message":{"role":"user","content":"continue"}},{"type":"assistant","uuid":"recovery-assistant-1","timestamp":"2026-09-13T00:00:00.000Z","message":{"id":"msg_recovery-assistant-1","role":"assistant","content":[{"type":"text","text":"\u0085"}]}}],"interruption":"none"}]"#).unwrap();
@@ -1829,17 +1728,7 @@ mod tests {
                 interrupted,
                 "{case}"
             );
-            assert_eq!(
-                recovered.messages.len(),
-                expected.len() + usize::from(interrupted)
-            );
-            assert_eq!(&recovered.messages[..expected.len()], expected);
-            if interrupted {
-                assert_eq!(
-                    assistant_text_value(recovered.messages.last().unwrap()),
-                    Some(NO_RESPONSE_REQUESTED)
-                );
-            }
+            assert_eq!(&recovered.messages, expected);
         }
     }
 }

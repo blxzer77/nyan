@@ -10,7 +10,7 @@ use std::sync::{LazyLock, Mutex};
 
 const MAX_PARENT_UNCACHED_TOKENS: u64 = 10_000;
 
-const SUGGESTION_PROMPT: &str = r#"[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]
+const SUGGESTION_PROMPT: &str = r#"[SUGGESTION MODE: Suggest what the user might naturally type next into nyan.]
 
 FIRST: Look at the user's recent messages and original request.
 
@@ -21,8 +21,8 @@ THE TEST: Would they think "I was just about to type that"?
 EXAMPLES:
 User asked "fix the bug and run tests", bug is fixed → "run the tests"
 After code written → "try it out"
-Claude offers options → suggest the one the user would likely pick, based on conversation
-Claude asks to continue → "yes" or "go ahead"
+Assistant offers options → suggest the one the user would likely pick, based on conversation
+Assistant asks to continue → "yes" or "go ahead"
 Task complete, obvious follow-up → "commit this" or "push it"
 After error or misunderstanding → silence (let them assess/correct)
 
@@ -31,7 +31,7 @@ Be specific: "run the tests" beats "continue".
 NEVER SUGGEST:
 - Evaluative ("looks good", "thanks")
 - Questions ("what about...?")
-- Claude-voice ("Let me...", "I'll...", "Here's...")
+- Assistant-voice ("Let me...", "I'll...", "Here's...")
 - New ideas they didn't ask about
 - Multiple sentences
 
@@ -105,7 +105,7 @@ pub fn should_enable_prompt_suggestion() -> bool {
         settings.prompt_suggestion_enabled,
         crate::bootstrap::state::get_is_non_interactive_session(),
         swarm_teammate,
-        crate::utils::process_env::var("CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION").as_deref(),
+        crate::utils::process_env::var("NYAN_ENABLE_PROMPT_SUGGESTION").as_deref(),
     )
 }
 
@@ -119,12 +119,8 @@ pub fn abort_prompt_suggestion() {
     }
 }
 
-/// Pure snapshot form of CC `getSuggestionSuppressReason(...)`.
-pub fn get_suggestion_suppress_reason_with_limits(
-    app_state: &AppState,
-    audience: crate::utils::build_profile::BuildAudience,
-    limits: &crate::services::claude_ai_limits::ClaudeAiLimits,
-) -> Option<&'static str> {
+/// Maps to CC `getSuggestionSuppressReason(...)`.
+pub fn get_suggestion_suppress_reason(app_state: &AppState) -> Option<&'static str> {
     if !app_state.prompt_suggestion_enabled {
         return Some("disabled");
     }
@@ -137,23 +133,7 @@ pub fn get_suggestion_suppress_reason_with_limits(
     if app_state.tool_permission_context.mode == crate::types::permissions::PermissionMode::Plan {
         return Some("plan_mode");
     }
-    if !crate::utils::build_profile::audience_has_internal_capability(
-        audience,
-        crate::utils::build_profile::InternalCapability::Speculation,
-    ) && limits.status != crate::services::claude_ai_limits::QuotaStatus::Allowed
-    {
-        return Some("rate_limit");
-    }
     None
-}
-
-/// Maps to CC `getSuggestionSuppressReason(...)` using live service state.
-pub fn get_suggestion_suppress_reason(app_state: &AppState) -> Option<&'static str> {
-    get_suggestion_suppress_reason_with_limits(
-        app_state,
-        crate::utils::build_profile::build_audience(),
-        &crate::services::claude_ai_limits::current_limits(),
-    )
 }
 
 pub fn get_parent_cache_suppress_reason(
@@ -235,6 +215,13 @@ where
     if get_suggestion_suppress_reason(&app_state).is_some() {
         return Ok(None);
     }
+    // @nyan: `prompt_suggestion.generate_gate` (decision-provider 4.6, slice
+    // K). The suggestion feature is already enabled here and every
+    // deterministic suppress reason has been checked, so the gate can only
+    // turn this generation into a skip — never the reverse.
+    if super::decision::should_skip_generation(messages, &abort_controller).await {
+        return Ok(None);
+    }
 
     let prompt_id = get_prompt_variant();
     let generated =
@@ -254,20 +241,6 @@ where
         prompt_id,
         generation_request_id: generated.generation_request_id,
     }))
-}
-
-pub async fn generate_suggestion(
-    abort_controller: AbortController,
-    prompt_id: PromptVariant,
-    cache_safe_params: CacheSafeParams,
-) -> anyhow::Result<SuggestionGeneration> {
-    generate_suggestion_with_deps(
-        abort_controller,
-        prompt_id,
-        cache_safe_params,
-        crate::query::deps::production_deps(),
-    )
-    .await
 }
 
 pub(crate) async fn generate_suggestion_with_deps<D>(
@@ -458,13 +431,12 @@ pub async fn execute_prompt_suggestion(cache_safe_params: CacheSafeParams) {
             state.prompt_suggestion.accepted_at = 0;
             state.prompt_suggestion.generation_request_id = generated.generation_request_id;
         });
-        if super::speculation::is_speculation_enabled() {
-            let speculation_cache = cache_safe_params.clone();
-            tokio::spawn(async move {
-                let _ = super::speculation::start_speculation(suggestion, speculation_cache, false)
-                    .await;
-            });
-        }
+        // @nyan: post-hoc signal for the generate gate (decision-provider §7):
+        // the first acceptance of a shown suggestion marks this probe used.
+        crate::services::decision::probe::register_suggestion(
+            crate::services::decision::DecisionPoint::PromptSuggestionGenerateGate,
+            &suggestion,
+        );
     }
     let mut current = CURRENT_ABORT_CONTROLLER
         .lock()
@@ -519,20 +491,9 @@ mod tests {
     }
 
     #[test]
-    fn prompt_suggestion_cohort_ignores_growthbook_delivery() {
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.cached_growth_book_features = Some(std::collections::HashMap::from([(
-            "tengu_chomp_inflection".to_string(),
-            serde_json::json!(true),
-        )]));
-        config.growth_book_overrides = Some(std::collections::HashMap::from([(
-            "tengu_chomp_inflection".to_string(),
-            serde_json::json!(true),
-        )]));
-        crate::utils::config::set_test_global_config(Some(config));
-
-        // The injected cache is inert; only CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION
-        // still opts in.
+    fn prompt_suggestion_cohort_follows_the_source_controlled_switch() {
+        // The cohort switch is off; only the explicit environment opt-in
+        // enables suggestions.
         assert_eq!(
             should_enable_prompt_suggestion_with_snapshots(None, false, false, None),
             crate::utils::feature_flags::feature_enabled(
@@ -548,41 +509,17 @@ mod tests {
             false,
             Some("1")
         ));
-
-        crate::utils::config::set_test_global_config(None);
     }
 
     #[test]
-    fn external_current_limits_gate_matches_official_non_allowed_semantics() {
-        use crate::services::claude_ai_limits::{ClaudeAiLimits, QuotaStatus};
-        use crate::utils::build_profile::BuildAudience;
-
+    fn suppress_reason_tracks_session_state_only() {
         let mut state = AppState::default();
+        assert_eq!(get_suggestion_suppress_reason(&state), Some("disabled"));
         state.prompt_suggestion_enabled = true;
-        let mut limits = ClaudeAiLimits::default();
-        assert_eq!(
-            get_suggestion_suppress_reason_with_limits(&state, BuildAudience::External, &limits,),
-            None
-        );
-
-        limits.status = QuotaStatus::AllowedWarning;
-        assert_eq!(
-            get_suggestion_suppress_reason_with_limits(&state, BuildAudience::External, &limits,),
-            Some("rate_limit")
-        );
-        limits.status = QuotaStatus::Rejected;
-        assert_eq!(
-            get_suggestion_suppress_reason_with_limits(&state, BuildAudience::External, &limits,),
-            Some("rate_limit")
-        );
-        assert_eq!(
-            get_suggestion_suppress_reason_with_limits(
-                &state,
-                BuildAudience::AnthropicInternal,
-                &limits,
-            ),
-            None
-        );
+        assert_eq!(get_suggestion_suppress_reason(&state), None);
+        std::sync::Arc::make_mut(&mut state.tool_permission_context).mode =
+            crate::types::permissions::PermissionMode::Plan;
+        assert_eq!(get_suggestion_suppress_reason(&state), Some("plan_mode"));
     }
 
     #[test]
@@ -662,7 +599,7 @@ mod tests {
             *self.request.lock().unwrap() = Some(request);
             Box::pin(async move {
                 let (tx, rx) = tokio::sync::mpsc::channel(3);
-                tx.send(crate::services::api::claude::QueryModelStreamItem::Stream(
+                tx.send(crate::services::api::request::QueryModelStreamItem::Stream(
                     crate::types::message::StreamEvent::ApiEvent {
                         event: serde_json::json!({
                             "type": "message_start",
@@ -674,7 +611,7 @@ mod tests {
                 .await
                 .ok();
                 tx.send(
-                    crate::services::api::claude::QueryModelStreamItem::Assistant(
+                    crate::services::api::request::QueryModelStreamItem::Assistant(
                         crate::types::message::AssistantMessage {
                             uuid: uuid::Uuid::new_v4().to_string(),
                             timestamp: chrono::Utc::now(),
@@ -738,6 +675,14 @@ mod tests {
             request.query_source,
             crate::constants::query_source::QuerySource::PromptSuggestion
         );
+        assert!(request.messages.iter().any(|message| {
+            matches!(message, Message::User(user) if user.content.iter().any(|content| {
+                matches!(content, UserContent::Text(text) if text.starts_with("[SUGGESTION MODE: Suggest what the user might naturally type next into nyan.]")
+                    && text.contains("Assistant offers options")
+                    && text.contains("Assistant-voice")
+                    && !text.contains("Claude"))
+            }))
+        }));
         assert_eq!(request.options.skip_cache_write, Some(true));
         assert_eq!(request.options.max_output_tokens_override, None);
     }

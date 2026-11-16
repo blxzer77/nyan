@@ -53,6 +53,9 @@ jobs:
       - name: Check quality drift
         shell: bash
         run: node scripts/ci/check-quality-drift.mjs
+      - name: Check UI branding
+        shell: bash
+        run: node scripts/ci/check-ui-branding.mjs
 
   build:
     name: build
@@ -123,10 +126,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/nyan-tools/actionlint"
           actionlint="$(node scripts/ci/fetch-tool.mjs actionlint --dest "$RUNNER_TEMP/nyan-tools/actionlint")"
           dirname "$actionlint" >> "$GITHUB_PATH"
-      - name: Check default and internal builds
-        run: |
-          cargo check --locked --lib --tests
-          cargo check --locked --lib --tests --features anthropic_internal
+      - name: Check build
+        run: cargo check --locked --lib --tests
       - name: Run clippy gates
         run: |
           cargo clippy --locked --lib --bins -- -D clippy::correctness -D clippy::disallowed_methods
@@ -286,8 +287,8 @@ jobs:
           $releaseVendor = Join-Path $env:GITHUB_WORKSPACE 'target/release/vendor/ripgrep/x64-win32'
           New-Item -ItemType Directory -Force $releaseVendor | Out-Null
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE 'vendor/ripgrep/x64-win32/rg.exe') (Join-Path $releaseVendor 'rg.exe')
-          $env:CLAUDE_CONFIG_DIR = Join-Path $env:RUNNER_TEMP 'nyan-config'
-          New-Item -ItemType Directory -Force $env:CLAUDE_CONFIG_DIR | Out-Null
+          $env:NYAN_CONFIG_DIR = Join-Path $env:RUNNER_TEMP 'nyan-config'
+          New-Item -ItemType Directory -Force $env:NYAN_CONFIG_DIR | Out-Null
 
           $version = & $exe --version
           if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^nyan ') { throw "nyan.exe --version failed: $version" }

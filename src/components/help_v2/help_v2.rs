@@ -36,7 +36,6 @@ use crate::utils::theme::Theme;
 use iocraft::prelude::*;
 
 const HELP_DISPLAY_NAME: &str = "nyan";
-const DOCS_URL: &str = "https://code.claude.com/docs/en/overview";
 
 #[derive(Default, Props)]
 pub struct HelpV2Props<'a> {
@@ -176,7 +175,7 @@ pub fn HelpV2<'a>(props: &mut HelpV2Props<'a>, mut hooks: Hooks) -> impl Into<An
             View(margin_top: 1u32) {
                 Text(segments: Some(vec![
                     StyledSegment::new("For more help: "),
-                    link_segment(DOCS_URL.to_string(), None, None, None),
+                    link_segment(format!("{}/README.md", product::DOCS_URL), None, None, None),
                 ]))
             }
             View(margin_top: 1u32) {
@@ -320,7 +319,9 @@ mod tests {
         );
         assert!(text.contains("Shortcuts"), "canvas=\n{text}");
         assert!(
-            text.contains("For more help: https://code.claude.com/docs/en/overview"),
+            text.contains(
+                "For more help: https://github.com/blxzer77/nyan/blob/master/docs/nyan/README.md"
+            ),
             "canvas=\n{text}"
         );
         assert!(text.contains("Esc to cancel"), "canvas=\n{text}");
@@ -345,6 +346,23 @@ mod tests {
             })
             .count();
         assert_eq!(listed, 3, "canvas=\n{text}");
+    }
+
+    #[test]
+    fn help_v2_commands_tab_omits_feedback_and_keeps_local_session_commands() {
+        let mut batches = keys(&[KeyCode::Tab, KeyCode::Down]);
+        batches.extend(
+            crate::commands::declared_commands_for_tests()
+                .iter()
+                .map(|_| vec![key(KeyCode::Down)]),
+        );
+        let (frames, _) = drive_frames(batches);
+        let text = frames.join("\n");
+        assert!(!text.contains("/feedback"), "canvas=\n{text}");
+        assert!(!text.contains("/bug"), "canvas=\n{text}");
+        for retained in ["/cost", "/stats", "/config", "/resume", "/export"] {
+            assert!(text.contains(retained), "missing {retained}");
+        }
     }
 
     #[test]

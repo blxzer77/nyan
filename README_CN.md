@@ -57,6 +57,36 @@ cargo run --release
 
 ## 安装
 
+支持的发布平台：
+
+- Linux x86_64（musl）
+- Linux aarch64（musl）
+- Windows x86_64（MSVC）
+
+不支持 macOS：不构建、也不发布 macOS 产物。
+
+### Linux
+
+使用 `install.sh` 安装最新版本：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/blxzer77/nyan/master/install.sh | bash
+```
+
+可在第一个参数传入版本或 tag：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/blxzer77/nyan/master/install.sh | bash -s -- nyan-v0.2.0
+```
+
+脚本默认安装到 `~/.local/bin`（可用 `NYAN_INSTALL_DIR` 覆盖），安装前会用 Release 的 `SHA256SUMS` 校验归档。
+
+从源码安装：
+
+```sh
+cargo install --git https://github.com/blxzer77/nyan.git --locked --bin nyan
+```
+
 ### Windows
 
 Windows 版需要预先安装 [Git for Windows](https://git-scm.com/downloads/win)，因为 nyan 的通用 shell 执行使用 Git Bash，而不是原生 PowerShell。使用 `install.ps1` 安装时，脚本不会安装 Git for Windows；检测不到 Git Bash 只会打印警告。
@@ -65,10 +95,10 @@ Windows 版需要预先安装 [Git for Windows](https://git-scm.com/downloads/wi
 .\install.ps1
 ```
 
-如果 Git Bash 安装在常见位置之外，请在启动 nyan 前将 `CLAUDE_CODE_GIT_BASH_PATH` 设置为 `bash.exe` 的完整路径，例如：
+如果 Git Bash 安装在常见位置之外，请在启动 nyan 前将 `NYAN_GIT_BASH_PATH` 设置为 `bash.exe` 的完整路径，例如：
 
 ```powershell
-$env:CLAUDE_CODE_GIT_BASH_PATH = 'C:\Program Files\Git\bin\bash.exe'
+$env:NYAN_GIT_BASH_PATH = 'C:\Program Files\Git\bin\bash.exe'
 ```
 
 #### 校验下载文件
@@ -97,6 +127,26 @@ Unblock-File -Path .\nyan.exe, .\vendor\ripgrep\x64-win32\rg.exe
 
 按钮文字随 Windows 显示语言而不同（英文系统为 More info / Run anyway）。
 
+### 更新
+
+从 GitHub Release 安装的版本（Linux x86_64/aarch64、Windows x86_64）会在后台检查 `blxzer77/nyan` 的新版本，发现更新时只在页脚提示，不会自行下载或替换二进制。需要更新时运行：
+
+```sh
+nyan update
+```
+
+该命令会从对应 Release 下载匹配的资产，用该 Release 的 `SHA256SUMS` 校验后原子替换正在运行的二进制；完成后重新启动 nyan。
+
+- `NYAN_REPO=owner/name` 覆盖 Release 仓库。
+- `DISABLE_AUTOUPDATER=1`、`NYAN_DISABLE_AUTOUPDATER=1` 或 `NYAN_DISABLE_NONESSENTIAL_TRAFFIC=1` 关闭后台检查；显式运行 `nyan update` 仍然有效。
+- 两者都使用已配置的代理与 CA（`HTTPS_PROXY`、`NO_PROXY`、`NODE_EXTRA_CA_CERTS`，包括用户 settings 的 `env`）。
+
+只提供稳定版：忽略 draft 和预发布版本，没有更新通道设置。
+
+安装目录不可写时（例如 root 所有的 `/usr/local/bin`），`nyan update` 不做任何改动，并提示重新运行安装脚本：Linux 用 `install.sh`，Windows 用 `install.ps1`。
+
+源码构建（`cargo build`、`cargo install`）不会被 `nyan update` 替换；命令会打印重新构建的说明。
+
 ### 交叉编译 Windows 版
 
 需要 mingw-w64 工具链。
@@ -105,6 +155,13 @@ Unblock-File -Path .\nyan.exe, .\vendor\ripgrep\x64-win32\rg.exe
 rustup target add x86_64-pc-windows-gnu
 cargo build --release --target x86_64-pc-windows-gnu
 ```
+
+## 配置
+
+nyan 从 `~/.nyan/settings.json` 读取 provider 与模型 profile。可从
+[docs/nyan/settings.example.json](docs/nyan/settings.example.json) 开始：它定义一个
+Anthropic provider 与模型 profile，将其设为 `nyan.selection.main`，并从
+`ANTHROPIC_API_KEY` 环境变量读取 API key。
 
 ## ripgrep
 

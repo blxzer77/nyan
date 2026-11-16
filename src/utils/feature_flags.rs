@@ -1,10 +1,11 @@
-//! Hardcoded feature-switch collection for CC GrowthBook-controlled gates.
+//! Hardcoded feature-switch collection for CC GrowthBook/Statsig-controlled
+//! gates and build features.
 //!
 //! Maps to CC GrowthBook feature reads such as
 //! `getFeatureValue_CACHED_MAY_BE_STALE(...)` and
-//! `getFeatureValue_CACHED_WITH_REFRESH(...)`, but intentionally does not
-//! implement cloud delivery, cache parsing, refresh windows, or config override
-//! ingestion. Nyan keeps a single source-controlled switch table instead.
+//! `checkStatsigFeatureGate_CACHED_MAY_BE_STALE(...)`. @nyan: there is no
+//! GrowthBook or Statsig client, cache, or override layer; this
+//! source-controlled table is the only place these gates are decided.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FeatureFlag {
@@ -17,8 +18,6 @@ pub enum FeatureFlag {
     /// Maps to CC GrowthBook `tengu_amber_stoat` (Explore/Plan built-in
     /// agents A/B gate; fallback true).
     BuiltinExplorePlanAgents,
-    /// Maps to CC GrowthBook voice-mode killswitch `tengu_amber_quartz_disabled`.
-    VoiceModeDisabledKillswitch,
     /// Maps to CC GrowthBook channels runtime gate `tengu_harbor`.
     ChannelsEnabled,
     /// Maps to CC GrowthBook channel permission-relay gate `tengu_harbor_permissions`.
@@ -27,8 +26,6 @@ pub enum FeatureFlag {
     KairosCron,
     /// Maps to CC GrowthBook `tengu_kairos_cron_durable`.
     DurableCron,
-    /// Maps to CC GrowthBook `tengu_surreal_dali`.
-    RemoteTrigger,
     /// Maps to CC GrowthBook `tengu_glacier_2xr`.
     DeferredToolsDelta,
     /// Maps to CC Statsig/GrowthBook gate `tengu_streaming_tool_execution2`.
@@ -63,11 +60,6 @@ pub enum FeatureFlag {
     /// `AskUserQuestionTool.tsx:232`, `EnterPlanModeTool.ts:61`,
     /// `ExitPlanModeV2Tool.ts:172`).
     KairosChannels,
-    /// Maps to CC `feature('KAIROS_PUSH_NOTIFICATION')` build feature; every CC
-    /// reader pairs it as `feature('KAIROS') || feature('KAIROS_PUSH_NOTIFICATION')`
-    /// (`tools/ConfigTool/supportedSettings.ts:164`, `tools.ts:46`,
-    /// `components/Settings/Config.tsx:766/:791`).
-    KairosPushNotification,
     /// Maps to CC `feature('KAIROS_BRIEF')` build feature; lets Brief ship
     /// independently of the rest of Kairos.
     KairosBrief,
@@ -93,8 +85,6 @@ pub enum FeatureFlag {
     CompactLinePrefixKillswitch,
     /// Maps to CC GrowthBook `tengu_skill_dynamic_discovery`.
     DynamicSkillDiscovery,
-    /// Maps to CC `feature('BRIDGE_MODE')` build feature.
-    BridgeMode,
     /// Maps to CC build feature `MCP_SKILLS` (enabled in CC 2.1.88).
     McpSkills,
     /// Maps to CC build feature `EXPERIMENTAL_SKILL_SEARCH`.
@@ -117,18 +107,12 @@ pub enum FeatureFlag {
     PerMessageBudgetLimitOverride,
     /// Maps to CC GrowthBook `tengu_attribution_header` (fallback true).
     AttributionHeader,
-    /// Maps to CC GrowthBook `tengu_quartz_lantern` remote single-file git diff gate.
-    RemoteGitDiff,
     /// Maps to CC GrowthBook `tengu_chomp_inflection` prompt-suggestion cohort gate.
     PromptSuggestion,
     /// Maps to CC GrowthBook `tengu_harbor_ledger` channel allowlist payload.
     ChannelAllowlistLedger,
     /// Maps to CC GrowthBook `tengu_herring_clock` team-memory cohort gate.
     TeamMemory,
-    /// Maps to CC GrowthBook `tengu_lapis_finch` plugin hint-recommendation gate.
-    PluginHintRecommendation,
-    /// Maps to CC GrowthBook dynamic config `tengu_desktop_upsell`.
-    DesktopUpsell,
     /// Maps to CC GrowthBook dynamic config `tengu-top-of-feed-tip`.
     EmergencyTip,
     /// Maps to CC GrowthBook `tengu_iron_gate_closed` auto-mode classifier fail-closed gate.
@@ -141,6 +125,18 @@ pub enum FeatureFlag {
     /// Maps to CC GrowthBook `tengu_disable_keepalive_on_econnreset`
     /// (`services/api/withRetry.ts:220-223`, fallback false).
     DisableKeepaliveOnEconnreset,
+    /// Maps to CC GrowthBook kill switch `tengu_slim_subagent_claudemd`
+    /// (`tools/AgentTool/runAgent.ts`, fallback true).
+    SlimSubagentAgentsMd,
+    /// Maps to CC Statsig gate `tengu_chair_sermon`
+    /// (`utils/messages.ts#mergeUserContentBlocks`, fallback false).
+    UniversalToolResultMerge,
+    /// Maps to CC Statsig security gate `tengu_disable_bypass_permissions_mode`
+    /// (`utils/permissions/permissionSetup.ts`, fallback false).
+    DisableBypassPermissionsMode,
+    /// Maps to CC GrowthBook config `tengu_sage_compass`
+    /// (`utils/advisor.ts#getAdvisorConfig`, fallback `{}`).
+    Advisor,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,7 +156,7 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         flag: FeatureFlag::ImmediateModelCommand,
         cc_growthbook_name: "tengu_immediate_model_command",
         enabled: false,
-        note: "External /model immediate command gate; the anthropic_internal build remains enabled separately.",
+        note: "/model and /effort immediate command gate.",
     },
     FeatureSwitch {
         flag: FeatureFlag::KeybindingCustomization,
@@ -179,12 +175,6 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         cc_growthbook_name: "tengu_amber_stoat",
         enabled: true,
         note: "Explore/Plan built-in agents gate; CC fallback true ('3P default: true — Bedrock/Vertex keep agents enabled'), A/B treatment false is the exception. Build feature BUILTIN_EXPLORE_PLAN_AGENTS is ON in production (build.ts:44).",
-    },
-    FeatureSwitch {
-        flag: FeatureFlag::VoiceModeDisabledKillswitch,
-        cc_growthbook_name: "tengu_amber_quartz_disabled",
-        enabled: false,
-        note: "Voice-mode emergency-off GrowthBook flag; default false means voice UI is not killed when the build feature and auth allow it.",
     },
     FeatureSwitch {
         flag: FeatureFlag::ChannelsEnabled,
@@ -211,16 +201,10 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         note: "Official default true; durable store, polling scheduler, and lease lock are wired.",
     },
     FeatureSwitch {
-        flag: FeatureFlag::RemoteTrigger,
-        cc_growthbook_name: "tengu_surreal_dali",
-        enabled: false,
-        note: "Remote trigger API remains disabled until CCR auth/policy/network execution is ported.",
-    },
-    FeatureSwitch {
         flag: FeatureFlag::DeferredToolsDelta,
         cc_growthbook_name: "tengu_glacier_2xr",
-        enabled: false,
-        note: "Deferred-tool delta announcements use the pre-gate available-deferred-tools wording by default.",
+        enabled: true,
+        note: "The delta announcement is the only deferred-tool listing nyan emits, so the ToolSearch prompt's system-reminder wording must match it.",
     },
     FeatureSwitch {
         flag: FeatureFlag::StreamingToolExecution,
@@ -262,7 +246,7 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         flag: FeatureFlag::NewInit,
         cc_growthbook_name: "NEW_INIT",
         enabled: true,
-        note: "Build feature is present; /init still requires the anthropic_internal build or CLAUDE_CODE_NEW_INIT at runtime.",
+        note: "Build feature is present; /init still requires NYAN_NEW_INIT at runtime.",
     },
     FeatureSwitch {
         flag: FeatureFlag::BreakCacheCommand,
@@ -292,7 +276,7 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         flag: FeatureFlag::CoordinatorMode,
         cc_growthbook_name: "COORDINATOR_MODE",
         enabled: true,
-        note: "Build feature for coordinator system prompt / mode detection; runtime still requires CLAUDE_CODE_COORDINATOR_MODE.",
+        note: "Build feature for coordinator system prompt / mode detection; runtime still requires NYAN_COORDINATOR_MODE.",
     },
     FeatureSwitch {
         flag: FeatureFlag::Proactive,
@@ -313,14 +297,6 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         note: "Build feature for the channels-only Kairos slice; CC always reads it OR-ed with KAIROS. Off until the channels runtime is ported.",
     },
     FeatureSwitch {
-        flag: FeatureFlag::KairosPushNotification,
-        cc_growthbook_name: "KAIROS_PUSH_NOTIFICATION",
-        // Build feature, not GrowthBook: `scripts/build.ts:111` lists
-        // `KAIROS_PUSH_NOTIFICATION: isDev`, i.e. OFF in production.
-        enabled: false,
-        note: "Build feature for the push-notification-only Kairos slice; CC always reads it OR-ed with KAIROS. The Config push-notification settings (supportedSettings.ts:164-185) honour the OR; the other two CC readers have no Rust counterpart yet (PushNotificationTool is unported, Settings/Config.tsx:766/:791 is not in components/settings/config.rs).",
-    },
-    FeatureSwitch {
         flag: FeatureFlag::KairosBrief,
         cc_growthbook_name: "KAIROS_BRIEF",
         enabled: true,
@@ -330,7 +306,7 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         flag: FeatureFlag::KairosBriefEntitlement,
         cc_growthbook_name: "tengu_kairos_brief",
         enabled: false,
-        note: "Official default false; CLAUDE_CODE_BRIEF and assistant mode grant entitlement without it.",
+        note: "Official default false; NYAN_BRIEF and assistant mode grant entitlement without it.",
     },
     FeatureSwitch {
         flag: FeatureFlag::TranscriptClassifier,
@@ -387,15 +363,7 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         flag: FeatureFlag::DynamicSkillDiscovery,
         cc_growthbook_name: "tengu_skill_dynamic_discovery",
         enabled: true,
-        note: "Read-time nested .claude/skills discovery is locally available; remote cohort delivery is represented by this explicit source-controlled seam.",
-    },
-    FeatureSwitch {
-        flag: FeatureFlag::BridgeMode,
-        cc_growthbook_name: "BRIDGE_MODE",
-        // CC ships BRIDGE_MODE on in production builds (scripts/build.ts:41
-        // "Generally available (ON in production)").
-        enabled: true,
-        note: "Remote Control build gate mirrors CC production (on); pill/dialog reachability still requires the isBridgeEnabled entitlement and a replBridgeEnabled producer (absent in Nyan — no bridge transport or settings-screen toggle).",
+        note: "Read-time nested .nyan/skills discovery is locally available; remote cohort delivery is represented by this explicit source-controlled seam.",
     },
     FeatureSwitch {
         flag: FeatureFlag::McpSkills,
@@ -413,7 +381,7 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         flag: FeatureFlag::UdsInbox,
         cc_growthbook_name: "UDS_INBOX",
         enabled: false,
-        note: "Cross-session peer addressing (uds:/bridge: targets, ListPeers, peer transports) is unported; SendMessage keeps the official bypass-immune bridge consent gate wired behind this switch so enabling the transport cannot silently skip it.",
+        note: "Local cross-session peer addressing (uds: targets, ListPeers, peer transports) is unported.",
     },
     FeatureSwitch {
         flag: FeatureFlag::PersistThresholdOverrides,
@@ -437,13 +405,13 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         flag: FeatureFlag::FineGrainedToolStreaming,
         cc_growthbook_name: "tengu_fgts",
         enabled: false,
-        note: "Official default false; eager_input_streaming still opts in through CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING on first-party Anthropic base URLs.",
+        note: "Official default false; eager_input_streaming still opts in through NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING on first-party Anthropic base URLs.",
     },
     FeatureSwitch {
         flag: FeatureFlag::FileReadLimitsOverride,
         cc_growthbook_name: "tengu_amber_wren",
         enabled: false,
-        note: "Official default is an empty override map, so Read keeps MAX_OUTPUT_SIZE / DEFAULT_MAX_OUTPUT_TOKENS; CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS still overrides the token cap.",
+        note: "Official default is an empty override map, so Read keeps MAX_OUTPUT_SIZE / DEFAULT_MAX_OUTPUT_TOKENS; NYAN_FILE_READ_MAX_OUTPUT_TOKENS still overrides the token cap.",
     },
     FeatureSwitch {
         flag: FeatureFlag::ToolResultContentReplacement,
@@ -463,19 +431,13 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         flag: FeatureFlag::AttributionHeader,
         cc_growthbook_name: "tengu_attribution_header",
         enabled: true,
-        note: "Official fallback is true (constants/system.ts:56 getFeatureValue_CACHED_MAY_BE_STALE('tengu_attribution_header', true)). Production still stays off because CLAUDE_CODE_ATTRIBUTION_HEADER defaults to 0; flip this switch to kill the header even when the env is enabled.",
-    },
-    FeatureSwitch {
-        flag: FeatureFlag::RemoteGitDiff,
-        cc_growthbook_name: "tengu_quartz_lantern",
-        enabled: false,
-        note: "Official default false; Write/Edit skip the single-file git diff attachment even when CLAUDE_CODE_REMOTE is truthy.",
+        note: "Official fallback is true (constants/system.ts:56 getFeatureValue_CACHED_MAY_BE_STALE('tengu_attribution_header', true)). Production still stays off because NYAN_ATTRIBUTION_HEADER defaults to 0; flip this switch to kill the header even when the env is enabled.",
     },
     FeatureSwitch {
         flag: FeatureFlag::PromptSuggestion,
         cc_growthbook_name: "tengu_chomp_inflection",
         enabled: false,
-        note: "Official default false; CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION still opts in explicitly and the settings toggle stays hidden without it.",
+        note: "Official default false; NYAN_ENABLE_PROMPT_SUGGESTION still opts in explicitly and the settings toggle stays hidden without it.",
     },
     FeatureSwitch {
         flag: FeatureFlag::ChannelAllowlistLedger,
@@ -488,18 +450,6 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         cc_growthbook_name: "tengu_herring_clock",
         enabled: false,
         note: "Official default false; team-memory paths stay unrecognized and the auto-memory setting alone cannot enable them.",
-    },
-    FeatureSwitch {
-        flag: FeatureFlag::PluginHintRecommendation,
-        cc_growthbook_name: "tengu_lapis_finch",
-        enabled: false,
-        note: "Official default false; Bash/PowerShell plugin hints are stripped without ever reaching the startup recommendation dialog.",
-    },
-    FeatureSwitch {
-        flag: FeatureFlag::DesktopUpsell,
-        cc_growthbook_name: "tengu_desktop_upsell",
-        enabled: false,
-        note: "Official default disables both the shortcut tip and the startup dialog, so the desktop handoff upsell never renders.",
     },
     FeatureSwitch {
         flag: FeatureFlag::EmergencyTip,
@@ -531,13 +481,79 @@ pub const FEATURE_SWITCHES: &[FeatureSwitch] = &[
         enabled: false,
         note: "CC's own fallback is false (withRetry.ts:220-223 getFeatureValue_CACHED_MAY_BE_STALE(..., false)): a stale ECONNRESET/EPIPE connection does not call disableKeepAlive unless this switch is flipped.",
     },
+    FeatureSwitch {
+        flag: FeatureFlag::SlimSubagentAgentsMd,
+        cc_growthbook_name: "tengu_slim_subagent_claudemd",
+        enabled: true,
+        note: "Official fallback true: agents whose definition sets omitClaudeMd drop the AGENTS.md user context unless the caller overrides it.",
+    },
+    FeatureSwitch {
+        flag: FeatureFlag::UniversalToolResultMerge,
+        cc_growthbook_name: "tengu_chair_sermon",
+        enabled: false,
+        note: "Official fallback false: only text-only follow-ups fold into a preceding tool_result; attachments stay separate user messages.",
+    },
+    FeatureSwitch {
+        flag: FeatureFlag::DisableBypassPermissionsMode,
+        cc_growthbook_name: "tengu_disable_bypass_permissions_mode",
+        enabled: false,
+        note: "Official fallback false: bypass-permissions mode is only disabled by the permissions.disableBypassPermissionsMode setting.",
+    },
+    FeatureSwitch {
+        flag: FeatureFlag::Advisor,
+        cc_growthbook_name: "tengu_sage_compass",
+        enabled: false,
+        note: "Official fallback is an empty config, so the advisor tool and /advisor stay disabled; enabling this switch also lets the user configure the advisor model.",
+    },
 ];
 
 pub fn feature_enabled(flag: FeatureFlag) -> bool {
+    #[cfg(test)]
+    if let Some(enabled) = test_override(flag) {
+        return enabled;
+    }
     FEATURE_SWITCHES
         .iter()
         .find(|switch| switch.flag == flag)
         .is_some_and(|switch| switch.enabled)
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_OVERRIDES: std::cell::RefCell<std::collections::HashMap<FeatureFlag, bool>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+#[cfg(test)]
+fn test_override(flag: FeatureFlag) -> Option<bool> {
+    TEST_OVERRIDES.with(|overrides| overrides.borrow().get(&flag).copied())
+}
+
+/// Test-only: flips `flag` on the current thread until the guard drops, so a
+/// test can exercise the non-default arm of a source-controlled switch.
+#[cfg(test)]
+pub(crate) fn override_for_test(flag: FeatureFlag, enabled: bool) -> FeatureOverrideGuard {
+    let previous = TEST_OVERRIDES.with(|overrides| overrides.borrow_mut().insert(flag, enabled));
+    FeatureOverrideGuard { flag, previous }
+}
+
+#[cfg(test)]
+pub(crate) struct FeatureOverrideGuard {
+    flag: FeatureFlag,
+    previous: Option<bool>,
+}
+
+#[cfg(test)]
+impl Drop for FeatureOverrideGuard {
+    fn drop(&mut self) {
+        TEST_OVERRIDES.with(|overrides| {
+            let mut overrides = overrides.borrow_mut();
+            match self.previous {
+                Some(enabled) => overrides.insert(self.flag, enabled),
+                None => overrides.remove(&self.flag),
+            };
+        });
+    }
 }
 
 pub fn feature_switch_by_growthbook_name(name: &str) -> Option<&'static FeatureSwitch> {
@@ -561,12 +577,10 @@ mod tests {
             "tengu_immediate_model_command",
             "tengu_keybinding_customization_release",
             "tengu_amber_flint",
-            "tengu_amber_quartz_disabled",
             "tengu_harbor",
             "tengu_harbor_permissions",
             "tengu_kairos_cron",
             "tengu_kairos_cron_durable",
-            "tengu_surreal_dali",
             "tengu_glacier_2xr",
             "tengu_streaming_tool_execution2",
             "tengu_scratch",
@@ -583,7 +597,6 @@ mod tests {
             "COORDINATOR_MODE",
             "PROACTIVE",
             "KAIROS",
-            "BRIDGE_MODE",
             "MCP_SKILLS",
             "EXPERIMENTAL_SKILL_SEARCH",
             "AGENT_MEMORY_SNAPSHOT",
@@ -598,7 +611,6 @@ mod tests {
             .expect("agent swarms switch should exist");
         assert_eq!(switch.flag, FeatureFlag::AgentSwarmsExternalKillswitch);
         assert!(feature_enabled(FeatureFlag::AgentSwarmsExternalKillswitch));
-        assert!(!feature_enabled(FeatureFlag::VoiceModeDisabledKillswitch));
         assert!(!feature_enabled(FeatureFlag::ChannelsEnabled));
         assert!(!feature_enabled(FeatureFlag::ChannelPermissionRelay));
         assert!(!feature_enabled(FeatureFlag::ImmediateModelCommand));

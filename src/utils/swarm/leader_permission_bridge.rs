@@ -31,7 +31,7 @@
 
 use crate::types::permissions::ToolUseConfirm;
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 
 /// Maps to: CC `leaderPermissionBridge.ts:16-18`
@@ -424,8 +424,8 @@ pub fn recheck_queued_permissions(app_store: &crate::state::store::AppStore) {
 }
 
 #[cfg(test)]
-pub static TEST_LEADER_PERMISSION_BRIDGE_LOCK: LazyLock<TestStateLock> =
-    LazyLock::new(TestStateLock::new);
+pub static TEST_LEADER_PERMISSION_BRIDGE_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::LeaderPermissionBridge);
 
 /// A queue owner for tests: the `Vec<ToolUseConfirm>` the REPL keeps in
 /// `useState` (`REPL.tsx:1529`), the applier that reaches it, and a stream of

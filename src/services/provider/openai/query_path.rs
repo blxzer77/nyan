@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use serde_json::{Value, json};
 
 use super::mock::{MockOpenAi, Reply};
-use crate::services::api::claude::{Options, QueryModelStreamItem, query_model_with_streaming};
+use crate::services::api::request::{Options, QueryModelStreamItem, query_model_with_streaming};
 use crate::types::ids::ToolUseId;
 use crate::types::message::{
     AssistantContent, AssistantMessage, Message, ToolResult, ToolUseBlock, UserContent,
@@ -66,17 +66,14 @@ impl Env {
         std::fs::create_dir_all(&root).unwrap();
         let mut guards = extra();
         guards.extend([
-            EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root),
-            EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1"),
+            EnvVarGuard::set("NYAN_CONFIG_DIR", &root),
+            EnvVarGuard::set("NYAN_SIMPLE", "1"),
             EnvVarGuard::set(KEY_VAR, "sk-query-path"),
             EnvVarGuard::set("API_TIMEOUT_MS", "5000"),
             EnvVarGuard::set("NO_PROXY", "*"),
             EnvVarGuard::set("no_proxy", "*"),
             // A stray Anthropic key must change nothing for an OpenAI profile.
             EnvVarGuard::set("ANTHROPIC_API_KEY", "sk-ant-must-not-be-used"),
-            EnvVarGuard::unset("CLAUDE_CODE_USE_BEDROCK"),
-            EnvVarGuard::unset("CLAUDE_CODE_USE_VERTEX"),
-            EnvVarGuard::unset("CLAUDE_CODE_USE_FOUNDRY"),
             EnvVarGuard::unset("HTTPS_PROXY"),
             EnvVarGuard::unset("HTTP_PROXY"),
         ]);

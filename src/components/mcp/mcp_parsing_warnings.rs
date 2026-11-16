@@ -45,22 +45,20 @@ pub fn mcp_config_diagnostic_sections(
     global_config: &GlobalConfig,
     project_config: &ProjectConfig,
 ) -> Vec<McpConfigDiagnosticSection> {
-    [
-        ConfigScope::User,
-        ConfigScope::Project,
-        ConfigScope::Local,
-        ConfigScope::Enterprise,
-    ]
-    .into_iter()
-    .map(|scope| {
-        let config = get_mcp_configs_by_scope_readonly(scope, global_config, project_config);
-        McpConfigDiagnosticSection {
-            scope,
-            parsing_errors: filter_mcp_config_errors(&config.errors, McpConfigErrorSeverity::Fatal),
-            warnings: filter_mcp_config_errors(&config.errors, McpConfigErrorSeverity::Warning),
-        }
-    })
-    .collect()
+    [ConfigScope::User, ConfigScope::Project, ConfigScope::Local]
+        .into_iter()
+        .map(|scope| {
+            let config = get_mcp_configs_by_scope_readonly(scope, global_config, project_config);
+            McpConfigDiagnosticSection {
+                scope,
+                parsing_errors: filter_mcp_config_errors(
+                    &config.errors,
+                    McpConfigErrorSeverity::Fatal,
+                ),
+                warnings: filter_mcp_config_errors(&config.errors, McpConfigErrorSeverity::Warning),
+            }
+        })
+        .collect()
 }
 
 fn format_error_detail(error: &McpConfigValidationError) -> String {
@@ -158,10 +156,6 @@ pub fn McpParsingWarnings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     element! {
         View(flex_direction: FlexDirection::Column, margin_top: 1u32, margin_bottom: 1u32) {
             Text(content: "MCP Config Diagnostics".to_string(), weight: Weight::Bold, wrap: TextWrap::NoWrap)
-            View(margin_top: 1u32, flex_direction: FlexDirection::Row) {
-                Text(content: "For help configuring MCP servers, see: ".to_string(), dim: true, wrap: TextWrap::NoWrap)
-                Link(url: "https://code.claude.com/docs/en/mcp".to_string())
-            }
             #(sections.into_iter().filter_map(|section| render_section(section, theme)))
         }
     }.into_any()

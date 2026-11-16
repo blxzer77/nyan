@@ -14,7 +14,7 @@ pub fn should_inject_agent_list_in_messages() -> bool {
     // `false`: GrowthBook delivery is intentionally absent; preserve the source
     // default rather than assigning this process to a fabricated cohort.
     crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES").as_deref(),
+        crate::utils::process_env::var("NYAN_AGENT_LIST_IN_MESSAGES").as_deref(),
     )
 }
 
@@ -172,7 +172,7 @@ pub fn get_prompt(agent_definitions: &[AgentDefinition], is_coordinator: bool) -
     };
 
     let background_notes = if !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS").as_deref(),
+        crate::utils::process_env::var("NYAN_DISABLE_BACKGROUND_TASKS").as_deref(),
     ) && !fork_enabled
     {
         "\n- You can optionally run agents in the background using the run_in_background parameter. When an agent runs in the background, you will be automatically notified when it completes — do NOT sleep, poll, or proactively check on its progress. Continue with other work or respond to the user instead.\n- **Foreground vs background**: Use foreground (default) when you need the agent's results before you can proceed — e.g., research agents whose findings inform your next steps. Use background when you have genuinely independent work to do in parallel."
@@ -191,14 +191,6 @@ pub fn get_prompt(agent_definitions: &[AgentDefinition], is_coordinator: bool) -
         ", since it is not aware of the user's intent"
     };
 
-    let remote_isolation_note = if crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Prompts,
-    ) {
-        "\n- You can set `isolation: \"remote\"` to run the agent in a remote CCR environment. This is always a background task; you'll be notified when it completes. Use for long-running tasks that need a fresh sandbox."
-    } else {
-        ""
-    };
-
     let teammate_note = if crate::utils::teammate::is_teammate() {
         "\n- The name, team_name, and mode parameters are not available in this context — teammates cannot spawn other teammates. Omit them to spawn a subagent."
     } else {
@@ -212,7 +204,7 @@ pub fn get_prompt(agent_definitions: &[AgentDefinition], is_coordinator: bool) -
     };
 
     format!(
-        "{shared}\n{when_not_to_use_section}\n\nUsage notes:\n- Always include a short description (3-5 words) summarizing what the agent will do{concurrency_note}\n- When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.{background_notes}\n- To continue a previously spawned agent, use {SEND_MESSAGE_TOOL_NAME} with the agent's ID or name as the `to` field. The agent resumes with its full context preserved. {resume_note}\n- The agent's outputs should generally be trusted\n- Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.){research_note}\n- If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.\n- If the user specifies that they want you to run agents \"in parallel\", you MUST send a single message with multiple {AGENT_TOOL_NAME} tool use content blocks. For example, if you need to launch both a build-validator agent and a test-runner agent in parallel, send a single message with both tool calls.\n- You can optionally set `isolation: \"worktree\"` to run the agent in a temporary git worktree, giving it an isolated copy of the repository. The worktree is automatically cleaned up if the agent makes no changes; if changes are made, the worktree path and branch are returned in the result.{remote_isolation_note}{teammate_note}{when_to_fork}{writing_the_prompt}\n\n{examples}",
+        "{shared}\n{when_not_to_use_section}\n\nUsage notes:\n- Always include a short description (3-5 words) summarizing what the agent will do{concurrency_note}\n- When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.{background_notes}\n- To continue a previously spawned agent, use {SEND_MESSAGE_TOOL_NAME} with the agent's ID or name as the `to` field. The agent resumes with its full context preserved. {resume_note}\n- The agent's outputs should generally be trusted\n- Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.){research_note}\n- If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.\n- If the user specifies that they want you to run agents \"in parallel\", you MUST send a single message with multiple {AGENT_TOOL_NAME} tool use content blocks. For example, if you need to launch both a build-validator agent and a test-runner agent in parallel, send a single message with both tool calls.\n- You can optionally set `isolation: \"worktree\"` to run the agent in a temporary git worktree, giving it an isolated copy of the repository. The worktree is automatically cleaned up if the agent makes no changes; if changes are made, the worktree path and branch are returned in the result.{teammate_note}{when_to_fork}{writing_the_prompt}\n\n{examples}",
         writing_the_prompt = writing_the_prompt_section(fork_enabled),
     )
 }
@@ -259,7 +251,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _list_in_messages = EnvVarGuard::unset("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES");
+        let _list_in_messages = EnvVarGuard::unset("NYAN_AGENT_LIST_IN_MESSAGES");
 
         let prompt = get_prompt(
             &[
@@ -280,7 +272,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let prompt = {
-            let _list_in_messages = EnvVarGuard::set("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES", "true");
+            let _list_in_messages = EnvVarGuard::set("NYAN_AGENT_LIST_IN_MESSAGES", "true");
             get_prompt(&[agent("general-purpose", "Use for general tasks")], false)
         };
 
@@ -299,8 +291,8 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _list_in_messages = EnvVarGuard::unset("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES");
-        let _background = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+        let _list_in_messages = EnvVarGuard::unset("NYAN_AGENT_LIST_IN_MESSAGES");
+        let _background = EnvVarGuard::unset("NYAN_DISABLE_BACKGROUND_TASKS");
         let _fork_gate = crate::tools::agent_tool::fork_subagent::fork_gate_environment();
 
         let prompt = get_prompt(&[agent("general-purpose", "Use for general tasks")], false);
@@ -341,8 +333,8 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _list_in_messages = EnvVarGuard::unset("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES");
-        let _background = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+        let _list_in_messages = EnvVarGuard::unset("NYAN_AGENT_LIST_IN_MESSAGES");
+        let _background = EnvVarGuard::unset("NYAN_DISABLE_BACKGROUND_TASKS");
         let _fork_vetoed = crate::tools::agent_tool::fork_subagent::fork_veto_environment();
 
         let prompt = get_prompt(&[agent("general-purpose", "Use for general tasks")], false);
@@ -369,7 +361,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _list_in_messages = EnvVarGuard::unset("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES");
+        let _list_in_messages = EnvVarGuard::unset("NYAN_AGENT_LIST_IN_MESSAGES");
 
         let prompt = get_prompt(&[agent("general-purpose", "Use for general tasks")], true);
 
@@ -391,10 +383,10 @@ mod tests {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let _list_in_messages = EnvVarGuard::unset("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES");
+        let _list_in_messages = EnvVarGuard::unset("NYAN_AGENT_LIST_IN_MESSAGES");
         let _fork_vetoed = crate::tools::agent_tool::fork_subagent::fork_veto_environment();
         let prompt = {
-            let _background = EnvVarGuard::set("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1");
+            let _background = EnvVarGuard::set("NYAN_DISABLE_BACKGROUND_TASKS", "1");
             get_prompt(&[agent("general-purpose", "Use for general tasks")], false)
         };
 

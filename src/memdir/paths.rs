@@ -7,7 +7,6 @@ use std::path::{Component, Path, PathBuf};
 use chrono::Datelike;
 
 use crate::utils::env_utils::{is_env_defined_falsy, is_env_truthy};
-use crate::utils::process_env::JsTruthy;
 #[cfg(test)]
 use crate::utils::settings::types::SettingsJson;
 
@@ -16,21 +15,14 @@ const AUTO_MEM_ENTRYPOINT_NAME: &str = "MEMORY.md";
 
 /// Maps to CC `memdir/paths.ts:30-55` `isAutoMemoryEnabled()`.
 pub fn is_auto_memory_enabled() -> bool {
-    let env_val = crate::utils::process_env::var("CLAUDE_CODE_DISABLE_AUTO_MEMORY");
+    let env_val = crate::utils::process_env::var("NYAN_DISABLE_AUTO_MEMORY");
     if is_env_truthy(env_val.as_deref()) {
         return false;
     }
     if is_env_defined_falsy(env_val.as_deref()) {
         return true;
     }
-    if is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_SIMPLE").as_deref()) {
-        return false;
-    }
-    if is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref())
-        && crate::utils::process_env::var("CLAUDE_CODE_REMOTE_MEMORY_DIR")
-            .truthy()
-            .is_none()
-    {
+    if is_env_truthy(crate::utils::process_env::var("NYAN_SIMPLE").as_deref()) {
         return false;
     }
     crate::utils::settings::get_initial_settings()
@@ -40,16 +32,13 @@ pub fn is_auto_memory_enabled() -> bool {
 
 /// Maps to CC `memdir/paths.ts:85-90` `getMemoryBaseDir()`.
 pub fn get_memory_base_dir() -> PathBuf {
-    crate::utils::process_env::var("CLAUDE_CODE_REMOTE_MEMORY_DIR")
-        .truthy()
-        .map(PathBuf::from)
-        .unwrap_or_else(crate::utils::env_utils::get_claude_config_home_dir)
+    crate::utils::env_utils::get_config_home_dir()
 }
 
 /// Maps to CC `memdir/paths.ts:161-166` `getAutoMemPathOverride()`.
 fn get_auto_mem_path_override() -> Option<PathBuf> {
     validate_memory_path(
-        crate::utils::process_env::var("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE").as_deref(),
+        crate::utils::process_env::var("NYAN_MEMORY_PATH_OVERRIDE").as_deref(),
         false,
     )
 }
@@ -65,7 +54,6 @@ fn get_auto_mem_path_setting() -> Option<PathBuf> {
     use crate::utils::settings::get_settings_for_source;
 
     let dir = [
-        SettingSource::Policy,
         SettingSource::Flag,
         SettingSource::Local,
         SettingSource::User,
@@ -192,8 +180,8 @@ fn sanitize_auto_memory_project_key(path: &Path) -> String {
 
 /// Test-only: seeds the settings this module reads. `initial` is what
 /// `getInitialSettings()` returns (`isAutoMemoryEnabled`); `user` is the only
-/// trusted source `getAutoMemPathSetting` finds settings in, the other three
-/// are cached as having none so the machine's own managed settings cannot
+/// trusted source `getAutoMemPathSetting` finds settings in, the other two
+/// are cached as having none so the machine's own flag/local settings cannot
 /// reach in. The caller holds `TEST_ENV_LOCK`, whose guard resets these
 /// caches when it is taken and when it is released.
 #[cfg(test)]
@@ -207,11 +195,7 @@ pub(crate) fn seed_settings(initial: SettingsJson, user: Option<SettingsJson>) {
             ..Default::default()
         },
     );
-    for source in [
-        SettingSource::Policy,
-        SettingSource::Flag,
-        SettingSource::Local,
-    ] {
+    for source in [SettingSource::Flag, SettingSource::Local] {
         settings_cache::set_cached_settings_for_source(source, None);
     }
     settings_cache::set_cached_settings_for_source(SettingSource::User, user);
@@ -250,7 +234,7 @@ mod tests {
         let env = AUTO_MEMORY_ENV_KEYS
             .into_iter()
             .map(|key| match key {
-                "CLAUDE_CONFIG_DIR" => EnvVarGuard::set(key, CONFIG_HOME),
+                "NYAN_CONFIG_DIR" => EnvVarGuard::set(key, CONFIG_HOME),
                 _ => EnvVarGuard::unset(key),
             })
             .chain([EnvVarGuard::set(HOME_VAR, HOME)])
@@ -271,14 +255,11 @@ mod tests {
             .join(AUTO_MEM_DIRNAME)
     }
 
-    const AUTO_MEMORY_ENV_KEYS: [&str; 7] = [
-        "CLAUDE_COWORK_MEMORY_PATH_OVERRIDE",
-        "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
-        "CLAUDE_CODE_SIMPLE",
-        "CLAUDE_CODE_REMOTE",
-        "CLAUDE_CODE_REMOTE_MEMORY_DIR",
-        "CLAUDE_CONFIG_DIR",
-        "CLAUDE_CODE_MANAGED_SETTINGS_PATH",
+    const AUTO_MEMORY_ENV_KEYS: [&str; 4] = [
+        "NYAN_MEMORY_PATH_OVERRIDE",
+        "NYAN_DISABLE_AUTO_MEMORY",
+        "NYAN_SIMPLE",
+        "NYAN_CONFIG_DIR",
     ];
 
     struct IsolatedAutoMemoryEnv {
@@ -317,24 +298,27 @@ mod tests {
         );
         assert!(is_auto_memory_enabled());
         {
-            let _env = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "true");
+            let _env = EnvVarGuard::set("NYAN_DISABLE_AUTO_MEMORY", "true");
             assert!(!is_auto_memory_enabled());
         }
 
         seed_settings(disabled_in_settings, None);
         {
-            let _env = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
+            let _env = EnvVarGuard::set("NYAN_DISABLE_AUTO_MEMORY", "false");
             assert!(is_auto_memory_enabled());
         }
 
         seed_settings(default_settings(), None);
         {
-            let _env = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+            let _env = EnvVarGuard::set("NYAN_SIMPLE", "1");
             assert!(!is_auto_memory_enabled());
         }
         {
-            let _env = EnvVarGuard::set("CLAUDE_CODE_REMOTE", "1");
-            assert!(!is_auto_memory_enabled());
+            let _env = EnvVarGuard::set("NYAN_REMOTE", "1");
+            assert!(is_auto_memory_enabled());
+            let _memory = EnvVarGuard::set("NYAN_REMOTE_MEMORY_DIR", "/retired/memory");
+            assert_eq!(get_memory_base_dir(), PathBuf::from(CONFIG_HOME));
+            assert_eq!(get_auto_mem_path(), default_auto_mem_path());
         }
     }
 
@@ -352,14 +336,14 @@ mod tests {
         );
         assert_eq!(get_auto_mem_path(), PathBuf::from(HOME).join("memory-dir"));
 
-        let _override = EnvVarGuard::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", "/mnt/memory");
+        let _override = EnvVarGuard::set("NYAN_MEMORY_PATH_OVERRIDE", "/mnt/memory");
         assert_eq!(get_auto_mem_path(), PathBuf::from("/mnt/memory"));
     }
 
     #[test]
     fn programmatic_memory_override_is_not_trimmed_into_a_valid_path() {
         let _inputs = pin_auto_memory_inputs();
-        let _override = EnvVarGuard::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", " /mnt/memory ");
+        let _override = EnvVarGuard::set("NYAN_MEMORY_PATH_OVERRIDE", " /mnt/memory ");
         assert_eq!(get_auto_mem_path(), default_auto_mem_path());
     }
 
@@ -373,20 +357,16 @@ mod tests {
         let project = root.join("project");
         let config = root.join("config");
         let malicious = root.join("project-selected-sensitive-path");
-        std::fs::create_dir_all(project.join(".claude")).unwrap();
+        std::fs::create_dir_all(project.join(".nyan")).unwrap();
         std::fs::create_dir_all(&config).unwrap();
         std::fs::write(
-            project.join(".claude/settings.json"),
+            project.join(".nyan/settings.json"),
             serde_json::json!({"autoMemoryDirectory": malicious}).to_string(),
         )
         .unwrap();
         // `projectSettings` is rooted at the original cwd, not the process cwd.
         let _project = PinnedProjectDir::at(&project);
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config);
-        let _managed = EnvVarGuard::set(
-            "CLAUDE_CODE_MANAGED_SETTINGS_PATH",
-            root.join("missing-managed-root"),
-        );
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config);
         // The redirect is really in the merged settings, so only the
         // trusted-source chain keeps it out of the path.
         assert_eq!(
@@ -410,7 +390,7 @@ mod tests {
             ("relative/memory", false),
             ("/", false),
         ] {
-            let _override = EnvVarGuard::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", value);
+            let _override = EnvVarGuard::set("NYAN_MEMORY_PATH_OVERRIDE", value);
             assert_eq!(has_auto_mem_path_override(), valid, "{value}");
         }
     }
@@ -418,7 +398,7 @@ mod tests {
     #[test]
     fn auto_mem_entrypoint_and_daily_log_paths_match_official_shape() {
         let _guard = isolated_auto_memory_env();
-        crate::utils::process_env::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", "/tmp/nyan-memory");
+        crate::utils::process_env::set("NYAN_MEMORY_PATH_OVERRIDE", "/tmp/nyan-memory");
         let date = chrono::NaiveDate::from_ymd_opt(2026, 7, 3).unwrap();
 
         assert_eq!(
@@ -438,7 +418,7 @@ mod tests {
     #[test]
     fn is_auto_mem_path_matches_normalized_descendants_only() {
         let _guard = isolated_auto_memory_env();
-        crate::utils::process_env::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", "/tmp/nyan-memory");
+        crate::utils::process_env::set("NYAN_MEMORY_PATH_OVERRIDE", "/tmp/nyan-memory");
 
         assert!(is_auto_mem_path(Path::new("/tmp/nyan-memory/topic.md")));
         assert!(is_auto_mem_path(Path::new(

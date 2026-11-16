@@ -15,7 +15,7 @@
 
 1. **核心 Bash 执行依赖 Git Bash**，不是原生 PowerShell；没有 Git for Windows 时主 shell 不可用。
 2. **sandbox 在 Windows 明确关闭**：seccomp/bwrap/Seatbelt 都没有 Windows 实现。若把 sandbox 当作安全保证，当前 Windows 版不能宣称安全隔离。
-3. **搜索、凭据、内存指标、更新器和安装器存在行为缺口**：其中 Global Search 直接执行 PATH 中的 `rg`，不会使用发布包旁的 vendored `rg.exe`；凭据在 Windows 退回明文文件；RSS 指标在 Windows 恒为 0；自动更新/安装器是 no-op。
+3. **搜索、凭据、内存指标、更新器和安装器存在行为缺口**：其中 Global Search 直接执行 PATH 中的 `rg`，不会使用发布包旁的 vendored `rg.exe`；凭据在 Windows 退回明文文件；RSS 指标在 Windows 恒为 0；自动更新曾为 no-op，现已由 GitHub Releases 实现（见 §7 的 2026-11-09 更新）。
 4. **PTY/终端交互没有 Windows ConPTY 路径**。当前 shell 使用 stdin/stdout/stderr pipe，适合非交互命令，不适合需要真实终端的程序。
 5. **当前 `windows-check` 只验证编译**，不运行 Windows 测试、不构建 release binary、不运行 `.exe` 冒烟、不验证归档布局和外部二进制。
 
@@ -36,7 +36,7 @@
 | 位置 | 现状 | 建议方案 | 工作量 |
 |---|---|---|---|
 | `src/utils/shell/mod.rs:93-96`、`src/utils/windows_paths.rs:62-120` | **能编译但有部署前置条件**。Windows 默认直接寻找 Git Bash；优先固定安装路径，再调用 `where.exe git` 推导 `bash.exe`。Git Bash 不存在时主 shell 不可用。 | 发布说明和启动诊断明确要求 Git for Windows；缺失时给出安装/配置提示。 | S |
-| `src/utils/shell/mod.rs:98-136` | **能编译但行为受限**。`CLAUDE_CODE_SHELL` 的 bash/zsh override 在 Windows 早于该分支返回，因此 Windows 不走 Unix shell 选择逻辑。 | 保持“Git Bash 是 Bash provider”的契约，或明确支持 Windows 下的 `CLAUDE_CODE_GIT_BASH_PATH`；不要把任意 PowerShell 路径当作 Bash。 | S |
+| `src/utils/shell/mod.rs:98-136` | **能编译但行为受限**。`NYAN_SHELL` 的 bash/zsh override 在 Windows 早于该分支返回，因此 Windows 不走 Unix shell 选择逻辑。 | 保持“Git Bash 是 Bash provider”的契约，或明确支持 Windows 下的 `NYAN_GIT_BASH_PATH`；不要把任意 PowerShell 路径当作 Bash。 | S |
 | `src/utils/shell/bash_provider.rs:101-164`、`src/utils/bash/shell_snapshot.rs:100-217` | **正常（前提是 Git Bash）**。snapshot、`source`、`shopt`、`pwd -P` 和 POSIX 路径转换都是 Bash 语义；原生 `cmd.exe`/PowerShell 不能执行这些脚本。 | 把 Git Bash 写入 Windows 发行版运行时要求；不要求原生 PowerShell 兼容 Bash snapshot。 | S |
 | `src/utils/shell/powershell_detection.rs:28-43`、`:66-89` | **正常**。按 `pwsh.exe` → `powershell.exe` 探测，Windows 不检查 Unix execute bit。 | 保持；补 Windows runner 的真实探测/执行测试，而不是只做编译。 | S |
 | `src/tools/powershell_tool/mod.rs:292-345` | **正常（可选能力）**。PowerShell tool 会使用探测到的 `pwsh`/`powershell`，不存在时返回缺失提示。 | 在 Windows 冒烟中分别验证 PowerShell 5.1 和 PowerShell 7；没有时只禁用 PowerShell tool。 | M |
@@ -62,14 +62,11 @@
 | `src/utils/native_installer/pid_lock.rs:51-71`、`:87-95` | **能编译但行为不对**。非 Unix `is_process_running_platform` 恒为 `false`，Windows 上所有 PID lock 都会被诊断为非运行。 | 用 `OpenProcess` + `GetExitCodeProcess`（并验证 executable path，避免 PID reuse）；再实现 acquire/release/清理。 | L |
 | `src/utils/native_installer/pid_lock.rs:125-133` | **不可用**。stale lock cleanup 当前是安全禁用的 no-op，与平台无关，但 Windows native installer 还没有可用的安装锁生命周期。 | 在安装器实现前明确禁用自动安装；完成 Windows installer 后再接入 lock mutation。 | L |
 
-### 5. PTY、终端尺寸和录制
+### 5. PTY 和终端尺寸
 
 | 位置 | 现状 | 建议方案 | 工作量 |
 |---|---|---|---|
 | `src/utils/shell/mod.rs:288-309`、`:426-432` | **能编译但行为不对（需要真实终端的命令）**。Bash 执行使用 stdin null 或普通 pipe，不创建 PTY；PowerShell streaming 也使用普通 pipe。交互式程序可能阻塞、检测不到终端或无法正确渲染。 | 最小发布版把 shell 定位为 non-interactive，检测到交互提示时给出明确建议；若要完整支持，增加 Windows ConPTY backend。 | M（明确降级）/XL（ConPTY） |
-| `src/utils/asciicast.rs:141-161` | **正常**。Windows 走 crossterm `terminal::size()`，失败回退 `(80,24)`。 | 在 Windows console、非 TTY 和 CI 三种环境验证尺寸回退。 | S |
-| `src/utils/asciicast.rs:216-235` | **能编译但行为不完整**。resize 监听只编译 Unix `SIGWINCH`；Windows 录制不会收到同等的 console resize 事件。 | 用 Windows console resize/ConPTY 事件补录制 resize；在未实现前把 Windows 录制标成“不保证 resize 事件”。 | M |
-| `src/utils/asciicast.rs:185-191` | **能编译但权限语义不同**。Windows 不设置 `0o600`，录制文件使用默认 ACL。 | 录制文件按 Windows ACL 处理，或在 Windows 文档中说明其访问范围。 | M |
 
 ### 6. Keychain / 凭据存储
 
@@ -81,11 +78,16 @@
 
 ### 7. 自动更新、安装器和发布资产
 
+> 2026-11-09 更新（取代下方前三行的当时结论）：自动更新已改为读取 `blxzer77/nyan`
+> GitHub Releases。Windows 发布 zip 带 `SHA256SUMS` 校验，`nyan update` 用
+> rename-swap 原子替换正在运行的 `nyan.exe`，后台检查只提示不安装。npm、
+> package-manager 与 local-installer 更新路径已从代码中删除。
+
 | 位置 | 现状 | 建议方案 | 工作量 |
 |---|---|---|---|
-| `src/utils/auto_updater.rs:86-91`、`:146-190`、`:193-210` | **不可用**。网络检查与 npm/GCS/native install 仍是 short-circuit/no-op；安装结果是 `InstallFailed` 或空结果。 | Windows 首发采用手动下载/覆盖安装，UI 明确显示“自动更新不可用”；后续实现签名更新包和原子替换。 | L–XL |
-| `src/utils/native_installer/package_managers.rs:7-14`、`:62-70` | **不可用**。实际 package-manager detector 尚未实现，只读 `NYAN_PACKAGE_MANAGER`。Windows 的 winget 只是枚举值，不代表可安装。 | 选择并实现一种发行渠道（winget/MSIX/独立 installer），不要把环境变量 seam 当成生产更新能力。 | L |
-| `src/utils/local_installer.rs:1-8`、`:23-31` | **不可用**。只有 local npm 安装存在性 probe，安装/更新动作未移植；且 probe 只查 `.bin/claude`，Windows npm 常见的 `claude.cmd` 不在检查范围内。 | Windows 二进制不要依赖 Node/npm local install；用独立 zip/MSIX 安装器。若保留 npm 兼容路径，至少同时识别 `.cmd`/`.exe`。 | L |
+| `src/utils/auto_updater.rs`（原 `:86-91`、`:146-190`、`:193-210`） | **已实现（2026-11-09）**。GitHub Releases 查询、`nyan-vX.Y.Z` 解析、平台资产选择、`SHA256SUMS` 校验、tar.gz/zip 解包、原子替换与 Windows rename-swap 均在 `src/utils/auto_updater.rs`；后台只通知，`nyan update` 才安装。 | 保持 SHA256 校验；签名/SmartScreen 见 P1。 | 已完成 |
+| `src/utils/native_installer/package_managers.rs`（已删除） | **已删除**。Nyan 没有 package-manager 发行渠道，原检测 seam 只服务已移除的更新 UI。 | 未来若发布 winget/MSIX，再单独引入对应安装器。 | —— |
+| `src/utils/local_installer.rs`（已删除） | **已删除**。只探测 Claude Code 的 npm local install，与 Nyan 的发布方式无关。 | Windows 二进制不依赖 Node/npm。 | —— |
 | `.github/workflows/release.yml`（发布）、`.github/workflows/ci.yml:233-251`（windows-check） | **部分可用（发布）**。`release.yml` 已存在：tag 触发构建 `x86_64-pc-windows-msvc` zip，冒烟运行 `nyan.exe --version` 和内置 `rg.exe --version`；zip 内带 `vendor/ripgrep/x64-win32/rg.exe`（ripgrep 15.2.0，SHA256 固定）。`ci.yml` 的 windows-check 仍只做 GNU target 编译。剩余缺口：代码签名与 SmartScreen；Grep、Global Search、Git Bash 的运行时 smoke。 | 签名/SmartScreen 作为发布前置或明确限制；补 Grep、Global Search、Git Bash 的 Windows 运行时 smoke。 | 待重估 |
 
 ### 8. ripgrep 和其他外部二进制
@@ -146,15 +148,16 @@ Job 会下载固定版本的 MSVC `ripgrep`，校验 SHA256，运行 `vendor/rip
 ### P0：发布前必须完成
 
 - [x] 发布包提供并验证 `vendor/ripgrep/x64-win32/rg.exe`；修复 Global Search 的直接 `rg` 调用，使其复用统一 resolver。（#26、#28）
-- [x] 发布说明和启动诊断明确要求 Git for Windows/Git Bash；验证 `CLAUDE_CODE_GIT_BASH_PATH`、盘符、UNC、worktree 和基本 Bash 命令。（#28、#29、#37）
-  - 已完成：README 要求 Git for Windows；启动诊断与 doctor 运行时校验 `CLAUDE_CODE_GIT_BASH_PATH`（存在性、可执行、是 bash，支持盘符与 UNC 路径，缺失或错误时给出清晰提示）；Windows runner 上的基本 Bash 命令 smoke；Git worktree 下基本 Bash 命令执行与路径转换 smoke；`CLAUDE_CODE_GIT_BASH_PATH` 运行时覆盖与错误提示验证。
+- [x] 发布说明和启动诊断明确要求 Git for Windows/Git Bash；验证 `NYAN_GIT_BASH_PATH`、盘符、UNC、worktree 和基本 Bash 命令。（#28、#29、#37）
+  - 已完成：README 要求 Git for Windows；启动诊断与 doctor 运行时校验 `NYAN_GIT_BASH_PATH`（存在性、可执行、是 bash，支持盘符与 UNC 路径，缺失或错误时给出清晰提示）；Windows runner 上的基本 Bash 命令 smoke；Git worktree 下基本 Bash 命令执行与路径转换 smoke；`NYAN_GIT_BASH_PATH` 运行时覆盖与错误提示验证。
 - [x] Windows `--version`、`--help`、一次无模型启动冒烟通过；release 构建实际产出并可执行，而不只是 `cargo check`。（#28）
 - [x] Windows sandbox 默认明确显示 unavailable；不能把普通 Bash 执行宣称为 sandboxed。涉及不可信代码时给出降级提示。（#27）
 - [x] 凭据方案至少做出明确选择：首发若暂时使用 plaintext，必须限制 config 目录 ACL、显示 warning，并在发布说明中明确风险；更好的最小方案是 Credential Manager/DPAPI。
   - 决定（2026-11-03，Yuki 已定）：首发用明文文件 + owner-only ACL + 警告；Credential Manager/DPAPI 后续再做。
-  - 已完成：Windows `PlainTextStorage` 写入成功后设置受保护 DACL，仅授予当前用户读写权限；不继承父目录 ACL，因此 Everyone/Users 无访问 ACE。写入成功仍返回 `Warning: Storing credentials in plaintext.`，ACL 设置失败则拒绝保存并提示使用 `CLAUDE_CODE_OAUTH_TOKEN`。
+  - 已完成：Windows `PlainTextStorage` 写入成功后设置受保护 DACL，仅授予当前用户读写权限；不继承父目录 ACL，因此 Everyone/Users 无访问 ACE。写入成功仍返回 `Warning: Storing credentials in plaintext.`，ACL 设置失败则拒绝保存并报错（凭据未保存）。
   - 后续：Credential Manager/DPAPI；继续保留明文存储风险说明。
 - [x] 自动更新/安装器 UI 不得显示“可更新但实际 no-op”；首发改为手动下载提示，或完成一个可验证的 Windows installer/update path。（#27）
+  - 2026-11-09 更新：已完成 GitHub Releases 更新路径；后台只提示，`nyan update` 校验 SHA256 后原子替换 `nyan.exe`。
 - [x] 在 Windows runner 至少运行一组定向 runtime smoke：Git Bash shell、PowerShell tool、`rg.exe --version`、Global Search、超时/杀进程树、路径转换。（#28、#31）
 
 ### P1：首发后尽快补齐
@@ -164,9 +167,10 @@ Job 会下载固定版本的 MSVC `ripgrep`，校验 SHA256，运行 `vendor/rip
 - [ ] 补 Windows ACL、junction/symlink、文件锁和共享删除的测试（部分完成，#30、#35、#37）。
   - 已有：junction 不能逃逸工作目录（`src/utils/permissions/filesystem.rs`）；junction/symlink 解析（`windows_link_tests.rs`）；独占句柄下 Write/Edit 报错且不截断（`file_write_tool`、`file_edit_tool`）；共享删除 unlink/rename（`src/utils/fs_operations/tests.rs:191`，用 `share_mode(0x7)` 即 FILE_SHARE_DELETE）；Windows 凭据文件 owner-only DACL 生效断言（`SE_DACL_PROTECTED`、单用户 ACE、access mask 与 SID 校验，#37）。
   - 缺口：共享删除只测允许删除/重命名成功的路径，未测被拒绝路径；file symlink 测试在无 SeCreateSymbolicLinkPrivilege 的 runner 上直接跳过（只打印原因），不算覆盖。
-- [ ] 为 Windows 增加 release zip、SHA256、可选签名和 SmartScreen 限制说明；实现后再接自动更新。
-  - 决定（2026-11-03，Yuki 已定）：不签名，靠 SHA256 校验 + SmartScreen 说明；Windows 自动更新暂不做，提示手动从 GitHub Releases 下载（`src/utils/auto_updater.rs:27`）。
+- [x] 为 Windows 增加 release zip、SHA256、可选签名和 SmartScreen 限制说明；实现后再接自动更新。
+  - 决定（2026-11-03，Yuki 已定）：不签名，靠 SHA256 校验 + SmartScreen 说明。
   - 已完成：release.yml 产出 zip 与 `SHA256SUMS`；README 写明校验与 SmartScreen 警告（#32）。
+  - 2026-11-09 更新：Windows 自动更新已实现，取代“暂不做、提示手动下载”的旧结论；仍然不签名。
 
 ### 明确不列入“最小可用”
 

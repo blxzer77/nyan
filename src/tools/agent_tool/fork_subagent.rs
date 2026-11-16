@@ -85,10 +85,9 @@ pub fn is_fork_subagent_enabled() -> bool {
 /// [`fork_veto_environment`] is the inverse, for the branches CC still takes
 /// when a session cannot host a fork.
 #[cfg(test)]
-pub(crate) fn fork_gate_environment() -> [EnvVarGuard; 4] {
+pub(crate) fn fork_gate_environment() -> [EnvVarGuard; 3] {
     [
-        EnvVarGuard::unset("CLAUDE_CODE_COORDINATOR_MODE"),
-        EnvVarGuard::unset("CLAUDE_CODE_NON_INTERACTIVE"),
+        EnvVarGuard::unset("NYAN_COORDINATOR_MODE"),
         EnvVarGuard::unset("NYAN_NON_INTERACTIVE"),
         EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION"),
     ]
@@ -100,7 +99,7 @@ pub(crate) fn fork_gate_environment() -> [EnvVarGuard; 4] {
 /// code on both sides, not a compatibility shim.
 #[cfg(test)]
 pub(crate) fn fork_veto_environment() -> EnvVarGuard {
-    EnvVarGuard::set("CLAUDE_CODE_NON_INTERACTIVE", "1")
+    EnvVarGuard::set("NYAN_NON_INTERACTIVE", "1")
 }
 
 /// Maps to CC `forkSubagent.ts#FORK_AGENT`.
@@ -348,8 +347,8 @@ mod tests {
     #[test]
     fn build_worktree_notice_matches_official_copy() {
         assert_eq!(
-            build_worktree_notice("/repo", "/repo/.claude/worktrees/agent"),
-            "You've inherited the conversation context above from a parent agent working in /repo. You are operating in an isolated git worktree at /repo/.claude/worktrees/agent — same repository, same relative file structure, separate working copy. Paths in the inherited context refer to the parent's working directory; translate them to your worktree root. Re-read files before editing if the parent may have modified them since they appear in the context. Your changes stay in this worktree and will not affect the parent's files."
+            build_worktree_notice("/repo", "/repo/.nyan/worktrees/agent"),
+            "You've inherited the conversation context above from a parent agent working in /repo. You are operating in an isolated git worktree at /repo/.nyan/worktrees/agent — same repository, same relative file structure, separate working copy. Paths in the inherited context refer to the parent's working directory; translate them to your worktree root. Re-read files before editing if the parent may have modified them since they appear in the context. Your changes stay in this worktree and will not affect the parent's files."
         );
     }
 
@@ -390,7 +389,7 @@ mod tests {
         assert!(is_fork_subagent_enabled());
 
         {
-            let _coordinator_on = EnvVarGuard::set("CLAUDE_CODE_COORDINATOR_MODE", "1");
+            let _coordinator_on = EnvVarGuard::set("NYAN_COORDINATOR_MODE", "1");
             assert!(
                 !is_fork_subagent_enabled(),
                 "forkSubagent.ts:34 — coordinator mode owns orchestration"

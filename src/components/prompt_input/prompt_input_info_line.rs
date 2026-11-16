@@ -26,6 +26,9 @@ const MIN_DIRECTORY_WIDTH: usize = 4;
 
 const LEFT_SEPARATOR: &str = "  ";
 
+/// Linked-worktree marker (§3.1).
+const WORKTREE_MARKER: &str = "◇";
+
 /// Everything the info line can show, already formatted. Pure input to
 /// [`layout_info_line`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -160,7 +163,7 @@ fn build_layout(segments: &InfoLineSegments, flags: &BuildFlags) -> InfoLineLayo
     if segments.worktree {
         left.push(InfoLineSegment {
             kind: InfoSegmentKind::Worktree,
-            text: crate::constants::figures::DIAMOND_OPEN.to_string(),
+            text: WORKTREE_MARKER.to_string(),
         });
     }
 
@@ -580,7 +583,7 @@ fn info_segment_text(
 ) -> AnyElement<'static> {
     let color = match segment.kind {
         InfoSegmentKind::Directory => theme.text,
-        InfoSegmentKind::Worktree => theme.claude_blue,
+        InfoSegmentKind::Worktree => theme.nyan_blue,
         InfoSegmentKind::Context => context_color,
         InfoSegmentKind::Cache if cache_warning => theme.warning,
         InfoSegmentKind::Tps if tps_generating => theme.text,
@@ -1033,7 +1036,7 @@ mod tests {
     }
 
     #[test]
-    fn worktree_diamond_is_claude_blue() {
+    fn worktree_diamond_is_nyan_blue() {
         let _fixture = InfoLineFixture::new("claude-sonnet-4-20250514");
         let mut metrics = crate::state::footer_metrics::FooterMetrics::default();
         metrics.git = git_snapshot(Some("master"), false, true);
@@ -1042,7 +1045,7 @@ mod tests {
         assert!(text.contains("◇"), "canvas=\n{text}");
         assert_eq!(
             style_at(&canvas, "◇"),
-            crate::utils::theme::current().claude_blue
+            crate::utils::theme::current().nyan_blue
         );
     }
 

@@ -20,7 +20,7 @@ pub fn validate_input_for_settings_file_edit(
     cwd: &Path,
 ) -> Option<String> {
     // Only validate Claude settings files.
-    if !crate::utils::permissions::filesystem::is_claude_settings_path(
+    if !crate::utils::permissions::filesystem::is_nyan_settings_path(
         &file_path.display().to_string(),
         cwd,
     ) {
@@ -49,7 +49,7 @@ mod tests {
     use super::*;
 
     fn settings_path() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".claude/settings.json")
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".nyan/settings.json")
     }
 
     fn cwd() -> std::path::PathBuf {
@@ -111,20 +111,6 @@ mod tests {
     }
 
     #[test]
-    fn zod_catch_fields_accept_invalid_or_future_values() {
-        // .catch(undefined) fields degrade instead of failing the edit.
-        assert!(
-            validate_input_for_settings_file_edit(
-                &settings_path(),
-                r#"{"language": "zh"}"#,
-                r#"{"language": "zh", "strictPluginOnlyCustomization": "skills"}"#,
-                &cwd(),
-            )
-            .is_none()
-        );
-    }
-
-    #[test]
     fn source_zod_coercions_and_refinements_control_valid_to_invalid_gate() {
         // env values coerce, so numbers stay valid.
         assert!(
@@ -140,14 +126,10 @@ mod tests {
         let message = validate_input_for_settings_file_edit(
             &settings_path(),
             r#"{"language": "zh"}"#,
-            r#"{"extraKnownMarketplaces": {"agent-skills": {"source": {"source": "settings", "name": "agent-skills", "plugins": []}}}}"#,
+            r#"{"extraKnownMarketplaces": {"builtin": {"source": {"source": "settings", "name": "builtin", "plugins": []}}}}"#,
             &cwd(),
         )
         .expect("reserved marketplace name must block");
-        assert!(
-            message.contains(
-                "Reserved official marketplace names cannot be used with settings sources"
-            )
-        );
+        assert!(message.contains("is reserved for built-in plugins"));
     }
 }

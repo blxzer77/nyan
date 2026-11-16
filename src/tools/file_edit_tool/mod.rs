@@ -372,14 +372,6 @@ pub(crate) fn validate_edit_input(
     })
 }
 
-/// Maps to `getFeatureValue_CACHED_MAY_BE_STALE('tengu_quartz_lantern', false)`,
-/// resolved from the source-controlled switch table instead of GrowthBook.
-fn remote_git_diff_enabled() -> bool {
-    crate::utils::feature_flags::feature_enabled(
-        crate::utils::feature_flags::FeatureFlag::RemoteGitDiff,
-    )
-}
-
 fn edit_error(
     message: impl Into<String>,
     dynamic_skill_dirs: Vec<String>,
@@ -657,7 +649,7 @@ impl crate::tool::ToolCall for FileEditTool {
             let touched_paths = [full_path.clone()];
             let mut dynamic_skill_dirs = Vec::new();
             if !crate::utils::env_utils::is_env_truthy(
-                crate::utils::process_env::var("CLAUDE_CODE_SIMPLE").as_deref(),
+                crate::utils::process_env::var("NYAN_SIMPLE").as_deref(),
             ) {
                 let skill_dirs = crate::skills::load_skills_dir::discover_skill_dirs_for_paths(
                     &touched_paths,
@@ -839,19 +831,6 @@ impl crate::tool::ToolCall for FileEditTool {
                 });
             }
 
-            // Maps to: CC `FileEditTool.ts:518` notifyVscodeFileUpdated.
-            let vscode_path = full_path.display().to_string();
-            let vscode_original = original_file.clone();
-            let vscode_updated = updated_file.clone();
-            tokio::spawn(async move {
-                let _ = crate::services::mcp::vscode_sdk_mcp::notify_vscode_file_updated(
-                    &vscode_path,
-                    Some(&vscode_original),
-                    Some(&vscode_updated),
-                )
-                .await;
-            });
-
             let read_timestamp_ms =
                 match crate::utils::file::get_file_modification_time_result(&critical_target) {
                     Ok(timestamp) => timestamp,
@@ -881,18 +860,6 @@ impl crate::tool::ToolCall for FileEditTool {
             // CC: logEvent('tengu_edit_string_lengths', {oldStringBytes,
             // newStringBytes, replaceAll}) — joins with analytics.
 
-            let git_diff = if crate::utils::env_utils::is_env_truthy(
-                crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref(),
-            ) && remote_git_diff_enabled()
-            {
-                // CC: logEvent('tengu_tool_use_diff_computed', {isEditTool,
-                // durationMs, hasDiff}) after the fetch — joins with
-                // analytics.
-                crate::utils::git_diff::fetch_single_file_git_diff(&full_path).await
-            } else {
-                None
-            };
-
             crate::tool::ToolResult {
                 data: crate::tool::ToolOutput::Edit(FileEditOutput {
                     file_path: input.file_path,
@@ -902,7 +869,7 @@ impl crate::tool::ToolCall for FileEditTool {
                     structured_patch: patch,
                     user_modified: context.user_modified.unwrap_or(false),
                     replace_all: input.replace_all,
-                    git_diff,
+                    git_diff: None,
                     updated_file,
                     read_timestamp_ms,
                     dynamic_skill_dirs,
@@ -1329,29 +1296,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[cfg(feature = "anthropic_internal")]
-    #[test]
-    fn validation_blocks_secrets_introduced_into_team_memory() {
-        let _guard = TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let input = FileEditInput {
-            file_path: crate::memdir::team_mem_paths::get_team_mem_path()
-                .join("shared.md")
-                .display()
-                .to_string(),
-            old_string: String::new(),
-            new_string: format!("token: ghp_{}", "a".repeat(36)),
-            replace_all: false,
-        };
-        let error = validate_edit_input(&input, &ToolUseContext::default()).unwrap_err();
-        assert_eq!(error.error_code, 0);
-        assert_eq!(
-            error.message,
-            "Content contains potential secrets (GitHub PAT) and cannot be written to team memory. Team memory is shared with all repository collaborators. Remove the sensitive content and try again."
-        );
-    }
-
     #[cfg(unix)]
     #[test]
     fn validation_rejects_fifo_without_opening_it() {
@@ -1379,7 +1323,7 @@ mod tests {
 
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let root = temp_root("exclusive");
         let path = root.join("locked.txt");
         std::fs::write(&path, "original\n").unwrap();
@@ -1457,7 +1401,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let root = temp_root("settings");
-        let path = root.join(".claude/settings.json");
+        let path = root.join(".nyan/settings.json");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let original = "{\"defaultShell\":\"bash\"}\n";
         std::fs::write(&path, original).unwrap();
@@ -1486,7 +1430,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let root = temp_root("disabled");
         let path = root.join("missing/disabled.txt");
         let request = request(&path, "", "content\n");
@@ -1517,7 +1461,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let root = temp_root("empty-old");
 
         let missing = root.join("nested/new.txt");
@@ -1567,7 +1511,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let root = temp_root("encoding");
         let path = root.join("encoded.txt");
         let original = "alpha\r\nold\r\n";
@@ -1628,7 +1572,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let root = temp_root("replace-all");
         let path = root.join("values.txt");
         std::fs::write(&path, "old\nold\n").unwrap();
@@ -1663,11 +1607,11 @@ mod tests {
             .unwrap_or_else(|error| error.into_inner());
         let _bootstrap = BootstrapRestore::capture();
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
-        let _checkpointing = EnvVarGuard::set("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING", "0");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
+        let _checkpointing = EnvVarGuard::set("NYAN_DISABLE_FILE_CHECKPOINTING", "0");
         let root = temp_root("history");
         let config_dir = root.join("config");
-        let _config_dir = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_dir);
+        let _config_dir = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_dir);
         let _config_restore =
             TestGlobalConfigRestore::set(crate::utils::config::GlobalConfig::default());
         let path = root.join("existing.txt");
@@ -1761,22 +1705,14 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn remote_git_diff_gate_reads_switch_table_not_growthbook_cache() {
+    async fn retired_remote_env_does_not_attach_diff_but_generic_diff_still_works() {
         let _guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
-        let _remote = EnvVarGuard::set("CLAUDE_CODE_REMOTE", "1");
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.cached_growth_book_features = Some(std::collections::HashMap::from([(
-            "tengu_quartz_lantern".to_string(),
-            serde_json::Value::Bool(true),
-        )]));
-        config.growth_book_overrides = Some(std::collections::HashMap::from([(
-            "tengu_quartz_lantern".to_string(),
-            serde_json::Value::Bool(true),
-        )]));
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
+        let _remote = EnvVarGuard::set("NYAN_REMOTE", "1");
+        let config = crate::utils::config::GlobalConfig::default();
         let _config_restore = TestGlobalConfigRestore::set(config);
         let root = temp_root("remote-diff");
         let git = |args: &[&str]| {
@@ -1810,14 +1746,9 @@ mod tests {
         let ToolOutput::Edit(output) = result.data else {
             panic!("expected Edit output")
         };
-        assert!(!remote_git_diff_enabled());
-        assert!(
-            output.git_diff.is_none(),
-            "cached/override GrowthBook delivery must not open the remote diff gate"
-        );
+        assert!(output.git_diff.is_none());
 
-        // The attachment payload itself stays covered: the same file still
-        // produces the official single-file diff once the gate is on.
+        // Generic single-file diffs remain available independently of cloud sessions.
         let diff = crate::utils::git_diff::fetch_single_file_git_diff(&path)
             .await
             .expect("remote diff payload");
@@ -1836,12 +1767,12 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "0");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "0");
         let _skills = crate::skills::load_skills_dir::DynamicSkillsTestSnapshot::capture();
         crate::skills::load_skills_dir::clear_dynamic_skills();
         let root = temp_root("dynamic-error");
         let package = root.join("package");
-        let skill_dir = package.join(".claude/skills");
+        let skill_dir = package.join(".nyan/skills");
         std::fs::create_dir_all(skill_dir.join("edit-skill")).unwrap();
         std::fs::write(
             skill_dir.join("edit-skill/SKILL.md"),
@@ -1875,7 +1806,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let root = temp_root("retarget");
         let package = root.join("package");
         std::fs::create_dir_all(&package).unwrap();
@@ -1915,7 +1846,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let root = temp_root("user-path-update");
         let original_path = root.join("original.txt");
         let updated_path = root.join("updated.txt");
@@ -1952,7 +1883,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let root = temp_root("user-modified");
         let path = root.join("value.txt");
         std::fs::write(&path, "old\n").unwrap();

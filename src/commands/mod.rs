@@ -22,6 +22,7 @@ pub mod color;
 pub mod compact;
 pub mod context;
 pub mod copy;
+pub mod decision;
 pub mod diff;
 pub mod doctor;
 pub mod effort;
@@ -68,19 +69,11 @@ pub enum CommandKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandSource {
     Builtin,
-    PolicySettings,
     UserSettings,
     ProjectSettings,
     Plugin,
     Bundled,
     Mcp,
-}
-
-/// Maps to: CC `types/command.ts::CommandAvailability`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CommandAvailability {
-    ClaudeAi,
-    Console,
 }
 
 /// Metadata half of CC `types/command.ts::Command`.
@@ -164,7 +157,6 @@ pub struct Command {
     pub user_facing_name: Option<Cow<'static, str>>,
     pub kind: CommandKind,
     pub source: CommandSource,
-    pub availability: Vec<CommandAvailability>,
     pub is_enabled: Option<fn() -> bool>,
     /// Maps to CC prompt-command `getPromptForCommand`.
     pub get_prompt_for_command: Option<GetPromptForCommand>,
@@ -213,7 +205,6 @@ impl PartialEq for Command {
             && self.user_facing_name == other.user_facing_name
             && self.kind == other.kind
             && self.source == other.source
-            && self.availability == other.availability
             && self.is_enabled.is_some() == other.is_enabled.is_some()
             && self.get_prompt_for_command.is_some() == other.get_prompt_for_command.is_some()
             && self.call.is_some() == other.call.is_some()
@@ -253,7 +244,6 @@ impl Command {
             user_facing_name: None,
             kind,
             source: CommandSource::Builtin,
-            availability: Vec::new(),
             is_enabled: None,
             get_prompt_for_command: None,
             call: None,
@@ -301,11 +291,6 @@ impl Command {
 
     fn argument_hint_when(mut self, resolver: fn() -> String) -> Self {
         self.argument_hint_resolver = Some(resolver);
-        self
-    }
-
-    fn availability(mut self, availability: &'static [CommandAvailability]) -> Self {
-        self.availability = availability.to_vec();
         self
     }
 
@@ -397,7 +382,6 @@ impl Command {
             )),
             kind: CommandKind::Prompt,
             source: CommandSource::Mcp,
-            availability: Vec::new(),
             is_enabled: None,
             // MCP prompt retrieval is async: REPL's prompt action calls
             // `get_mcp_prompt_for_command` over `mcp_prompt` before generic
@@ -431,7 +415,6 @@ impl Command {
         use crate::skills::load_skills_dir::SkillSource;
 
         let source = match skill.source {
-            SkillSource::PolicySettings => CommandSource::PolicySettings,
             SkillSource::UserSettings => CommandSource::UserSettings,
             SkillSource::ProjectSettings => CommandSource::ProjectSettings,
         };
@@ -458,7 +441,6 @@ impl Command {
             user_facing_name: skill.display_name.clone().map(Cow::Owned),
             kind: CommandKind::Prompt,
             source,
-            availability: Vec::new(),
             is_enabled: None,
             get_prompt_for_command: Some(
                 crate::utils::process_user_input::process_slash_command::call_skill_prompt,
@@ -491,18 +473,6 @@ fn is_interactive() -> bool {
     !is_non_interactive()
 }
 
-fn is_internal_build() -> bool {
-    crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Commands,
-    )
-}
-
-/// CC `commands.ts:343`: `USER_TYPE === 'ant' && !process.env.IS_DEMO`.
-fn is_internal_non_demo() -> bool {
-    use crate::utils::process_env::JsTruthy as _;
-    is_internal_build() && crate::utils::process_env::var("IS_DEMO").truthy().is_none()
-}
-
 fn compact_enabled() -> bool {
     !crate::utils::env_utils::is_env_truthy(
         crate::utils::process_env::var("DISABLE_COMPACT").as_deref(),
@@ -515,40 +485,6 @@ fn doctor_enabled() -> bool {
     )
 }
 
-fn install_github_app_enabled() -> bool {
-    !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("DISABLE_INSTALL_GITHUB_APP_COMMAND").as_deref(),
-    )
-}
-
-fn is_using_3p_services() -> bool {
-    [
-        "CLAUDE_CODE_USE_BEDROCK",
-        "CLAUDE_CODE_USE_VERTEX",
-        "CLAUDE_CODE_USE_FOUNDRY",
-    ]
-    .into_iter()
-    .any(|key| {
-        crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var(key).as_deref())
-    })
-}
-
-/// There is no claude.ai subscriber: Anthropic is API-key only, so every
-/// first-party API user is a Console user and `ClaudeAi`-only commands are
-/// never available.
-fn is_console_user() -> bool {
-    !is_using_3p_services() && crate::utils::model::providers::is_first_party_anthropic_base_url()
-}
-
-fn chrome_enabled() -> bool {
-    is_interactive()
-}
-
-fn desktop_supported() -> bool {
-    cfg!(all(target_os = "macos", target_arch = "aarch64"))
-        || cfg!(all(target_os = "windows", target_arch = "x86_64"))
-}
-
 fn cost_hidden() -> bool {
     false
 }
@@ -559,56 +495,11 @@ fn terminal_setup_hidden() -> bool {
     )
 }
 
-fn session_enabled() -> bool {
-    crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref(),
-    )
-}
-
-fn feedback_enabled() -> bool {
-    !is_using_3p_services()
-        && !crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("DISABLE_FEEDBACK_COMMAND").as_deref(),
-        )
-        && !crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("DISABLE_BUG_COMMAND").as_deref(),
-        )
-        && !is_internal_build()
-}
-
-fn remote_env_enabled() -> bool {
-    false
-}
-
-fn rate_limit_options_enabled() -> bool {
-    false
-}
-
 fn privacy_settings_enabled() -> bool {
     false
 }
 
-fn upgrade_enabled() -> bool {
-    if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("DISABLE_UPGRADE_COMMAND").as_deref(),
-    ) {
-        return false;
-    }
-    true
-}
-
-fn passes_hidden() -> bool {
-    let config = crate::utils::config::load_global_config();
-    let now_ms = chrono::Utc::now().timestamp_millis();
-    let cached = crate::services::api::referral::check_cached_passes_eligibility(&config, now_ms);
-    !cached.eligible || !cached.has_cache
-}
-
 fn ultrareview_enabled() -> bool {
-    false
-}
-
-fn extra_usage_enabled() -> bool {
     false
 }
 
@@ -618,12 +509,11 @@ fn thinkback_enabled() -> bool {
 
 /// Maps to: CC `commands.ts` `COMMANDS()` direct/provider catalog.
 ///
-/// Order intentionally matches the source. Duplicate names (`context`,
-/// `extra-usage`) are alternate interactive/non-interactive implementations;
-/// `get_commands` filters the inactive one.
+/// Order intentionally matches the source. The duplicate `context` entries are
+/// alternate interactive/non-interactive implementations; `get_commands`
+/// filters the inactive one.
 fn commands() -> Vec<Command> {
     use crate::utils::process_user_input::process_slash_command as execution;
-    use CommandAvailability::{ClaudeAi, Console};
 
     let mut result = vec![
         Command::local_ui("add-dir", "Add a new working directory").argument_hint("<path>").executable(add_dir::dispatch),
@@ -635,9 +525,6 @@ fn commands() -> Vec<Command> {
             .argument_hint("<question>")
             .immediate()
             .executable(btw::call),
-        Command::local_ui("chrome", "Claude in Chrome (Beta) settings")
-            .availability(&[ClaudeAi])
-            .enabled_when(chrome_enabled),
         Command::local("clear", "Clear conversation history and free up context")
             .aliases(&["reset", "new"])
             .executable(execution::call_clear),
@@ -652,14 +539,9 @@ fn commands() -> Vec<Command> {
             .executable(execution::call_config),
         Command::local_ui(
             "copy",
-            "Copy Claude's last response to clipboard (or /copy N for the Nth-latest)",
+            "Copy nyan's last response to clipboard (or /copy N for the Nth-latest)",
         )
         .executable(execution::call_copy),
-        Command::local_ui("desktop", "Continue the current session in Claude Desktop")
-            .aliases(&["app"])
-            .availability(&[ClaudeAi])
-            .enabled_when(desktop_supported)
-            .hidden_when(|| !desktop_supported()),
         Command::local_ui(context::NAME, context::INTERACTIVE_DESCRIPTION)
             .enabled_when(is_interactive)
             .executable(execution::call_context),
@@ -689,9 +571,6 @@ fn commands() -> Vec<Command> {
             .aliases(&["quit"])
             .immediate()
             .executable(execution::call_exit),
-        Command::local("files", "List all files currently in context")
-            .enabled_when(is_internal_build)
-            .supports_non_interactive(),
         Command::local("heapdump", "Dump the JS heap to ~/Desktop")
             .hidden()
             .supports_non_interactive(),
@@ -706,22 +585,12 @@ fn commands() -> Vec<Command> {
                 crate::keybindings::load_user_bindings::is_keybinding_customization_enabled,
             )
             .executable(keybindings::call),
-        Command::local_ui(
-            "install-github-app",
-            "Set up Claude GitHub Actions for a repository",
-        )
-        .availability(&[ClaudeAi, Console])
-        .enabled_when(install_github_app_enabled),
-        Command::local("install-slack-app", "Install the Claude Slack app")
-            .availability(&[ClaudeAi]),
         Command::local_ui("mcp", "Manage MCP servers")
             .argument_hint("[enable|disable [server-name]]")
             .immediate()
             .executable(execution::call_mcp),
-        Command::local_ui("memory", "Edit Claude memory files")
+        Command::local_ui("memory", "Edit nyan memory files")
             .executable(execution::call_memory),
-        Command::local_ui("mobile", "Show QR code to download the Claude mobile app")
-            .aliases(&["ios", "android"]),
         Command::local_ui("model", "Set the AI model for nyan")
             .description_when(model::description)
             .argument_hint("[model]")
@@ -730,16 +599,11 @@ fn commands() -> Vec<Command> {
             )
             .executable(execution::call_model),
         output_style::command(),
-        Command::local_ui(
-            "remote-env",
-            "Configure the default remote environment for teleport sessions",
-        )
-        .enabled_when(remote_env_enabled)
-        .hidden_when(|| !remote_env_enabled()),
         plugin::command(),
         Command::prompt("pr-comments", "Get comments from a GitHub pull request")
             .prompt_metadata("fetching PR comments", 0),
         Command::local("release-notes", "View release notes").supports_non_interactive(),
+        decision::command(),
         reload_plugins::command(),
         retrieval::command(),
         Command::local_ui("rename", "Rename the current conversation")
@@ -750,10 +614,6 @@ fn commands() -> Vec<Command> {
             .aliases(&["continue"])
             .argument_hint("[conversation id or search term]")
             .executable(execution::call_resume),
-        Command::local_ui("session", "Show remote session URL and QR code")
-            .aliases(&["remote"])
-            .enabled_when(session_enabled)
-            .hidden_when(|| !session_enabled()),
         Command::local_ui("skills", "List available skills")
             .executable(execution::call_skills),
         Command::local_ui(stats::NAME, stats::DESCRIPTION).executable(stats::call),
@@ -764,15 +624,8 @@ fn commands() -> Vec<Command> {
         .immediate()
         .executable(execution::call_status),
         Command::local("stickers", "Order nyan stickers"),
-        Command::local_ui("tag", "Toggle a searchable tag on the current session")
-            .argument_hint("<tag-name>")
-            .enabled_when(is_internal_build),
         Command::local_ui("theme", "Change the theme")
             .executable(execution::call_theme),
-        Command::local_ui("feedback", "Submit feedback about nyan")
-            .aliases(&["bug"])
-            .argument_hint("[report]")
-            .enabled_when(feedback_enabled),
         review::command(),
         Command::local_ui(
             "ultrareview",
@@ -796,27 +649,6 @@ fn commands() -> Vec<Command> {
         )
         .hidden_when(terminal_setup_hidden)
         .executable(execution::call_terminal_setup),
-        Command::local_ui("upgrade", "Upgrade to Max for higher rate limits and more Opus")
-            .availability(&[ClaudeAi])
-            .enabled_when(upgrade_enabled),
-        Command::local_ui(
-            "extra-usage",
-            "Configure extra usage to keep working when limits are hit",
-        )
-        .enabled_when(|| extra_usage_enabled() && is_interactive()),
-        Command::local(
-            "extra-usage",
-            "Configure extra usage to keep working when limits are hit",
-        )
-        .enabled_when(|| extra_usage_enabled() && is_non_interactive())
-        .hidden_when(is_interactive)
-        .supports_non_interactive(),
-        Command::local_ui("rate-limit-options", "Show options when rate limit is reached")
-            .enabled_when(rate_limit_options_enabled)
-            .hidden(),
-        Command::local_ui("usage", "Show plan usage limits")
-            .availability(&[ClaudeAi])
-            .executable(execution::call_usage),
         Command::prompt(
             "insights",
             "Generate a report analyzing your nyan sessions",
@@ -852,29 +684,10 @@ fn commands() -> Vec<Command> {
     ];
 
     result.push(
-        Command::local_ui("passes", "Share a free week of nyan with friends")
-            .hidden_when(passes_hidden),
-    );
-    result.push(
         Command::local_ui(tasks::NAME, tasks::DESCRIPTION)
             .aliases(tasks::ALIASES)
             .executable(tasks::call),
     );
-
-    // Maps to CC internal-distribution + `!IS_DEMO` command registry gate.
-    // `/version` is the only internal command with a live Rust implementation;
-    // no-source internal descriptors are not advertised as executable.
-    if is_internal_non_demo() {
-        result.push(
-            Command::local(
-                "version",
-                "Print the version this session is running (not what autoupdate downloaded)",
-            )
-            .enabled_when(is_internal_build)
-            .supports_non_interactive()
-            .executable(execution::call_version),
-        );
-    }
 
     result
 }
@@ -927,22 +740,6 @@ pub fn command_description(command: &Command) -> Cow<'_, str> {
         Some(resolver) => Cow::Owned(resolver()),
         None => Cow::Borrowed(command.description.as_ref()),
     }
-}
-
-/// Maps to: CC `commands.ts::meetsAvailabilityRequirement`.
-pub fn meets_availability_requirement(command: &Command) -> bool {
-    meets_availability_requirement_with(command, false, is_console_user())
-}
-
-fn meets_availability_requirement_with(command: &Command, claude_ai: bool, console: bool) -> bool {
-    command.availability.is_empty()
-        || command
-            .availability
-            .iter()
-            .any(|requirement| match requirement {
-                CommandAvailability::ClaudeAi => claude_ai,
-                CommandAvailability::Console => console,
-            })
 }
 
 /// Maps to CC's cwd-keyed memoization around `loadAllCommands(cwd)`.
@@ -1037,11 +834,12 @@ pub fn clear_commands_cache() {
 
 /// Maps to: CC `commands.ts::getCommands(cwd)`.
 ///
-/// Availability and enablement are reevaluated for each launch snapshot, just
-/// as CC does after the memoized expensive source load.
+/// Enablement is reevaluated for each launch snapshot, just as CC does after
+/// the memoized expensive source load.
+///
+/// @nyan: CC's claude.ai/Console `availability` filter is gone; every builtin
+/// that declared one was an Anthropic account or app integration.
 pub fn get_commands(cwd: &Path) -> Vec<Command> {
-    let claude_ai = false;
-    let console = is_console_user();
     let resolve = |mut command: Command| {
         if let Some(resolver) = command.description_resolver.take() {
             command.description = Cow::Owned(resolver());
@@ -1056,7 +854,6 @@ pub fn get_commands(cwd: &Path) -> Vec<Command> {
     };
     let base_commands = load_all_commands(cwd)
         .into_iter()
-        .filter(|command| meets_availability_requirement_with(command, claude_ai, console))
         .filter(is_command_enabled)
         .map(resolve)
         .collect::<Vec<_>>();
@@ -1078,7 +875,6 @@ pub fn get_commands(cwd: &Path) -> Vec<Command> {
         .into_iter()
         .map(Command::from_skill)
         .filter(|command| !base_command_names.contains(command.name.as_ref()))
-        .filter(|command| meets_availability_requirement_with(command, claude_ai, console))
         .filter(is_command_enabled)
         .map(resolve)
         .collect::<Vec<_>>();
@@ -1232,49 +1028,6 @@ pub fn filter_commands<'a>(commands: &'a [Command], query: &str) -> Vec<&'a Comm
         .collect()
 }
 
-/// Maps to: CC `commands.ts::REMOTE_SAFE_COMMANDS`.
-pub fn filter_commands_for_remote_mode(commands: Vec<Command>) -> Vec<Command> {
-    const REMOTE_SAFE_NAMES: &[&str] = &[
-        "session",
-        "exit",
-        "clear",
-        "help",
-        "theme",
-        "color",
-        "vim",
-        "cost",
-        "usage",
-        "copy",
-        "btw",
-        "feedback",
-        "plan",
-        "keybindings",
-        "stickers",
-        "mobile",
-    ];
-    commands
-        .into_iter()
-        .filter(|command| REMOTE_SAFE_NAMES.contains(&command.name.as_ref()))
-        .collect()
-}
-
-/// Maps to: CC `commands.ts::isBridgeSafeCommand`.
-pub fn is_bridge_safe_command(command: &Command) -> bool {
-    const BRIDGE_SAFE_LOCAL_NAMES: &[&str] = &[
-        "compact",
-        "clear",
-        "cost",
-        "summary",
-        "release-notes",
-        "files",
-    ];
-    match command.kind {
-        CommandKind::LocalUi => false,
-        CommandKind::Prompt => true,
-        CommandKind::Local => BRIDGE_SAFE_LOCAL_NAMES.contains(&command.name.as_ref()),
-    }
-}
-
 /// Maps to: CC `commands.ts::formatDescriptionWithSource`.
 /// Workflow metadata remains unrepresented; plugin provenance uses pluginInfo.
 pub fn format_description_with_source(command: &Command) -> String {
@@ -1291,7 +1044,6 @@ pub fn format_description_with_source(command: &Command) -> String {
             }
             _ => format!("{description} (plugin)"),
         },
-        CommandSource::PolicySettings => format!("{description} (managed)"),
         CommandSource::UserSettings => format!("{description} (user)"),
         CommandSource::ProjectSettings => format!("{description} (project)"),
     }
@@ -1315,7 +1067,7 @@ pub fn declared_commands_for_tests() -> Vec<Command> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+    use crate::utils::test_env::TEST_ENV_LOCK;
 
     #[test]
     fn description_source_annotations_match_bun_prompt_and_plugin_gates() {
@@ -1369,12 +1121,6 @@ mod tests {
                 CommandSource::Bundled,
                 None,
                 "CUSTOM_METADATA_0916 (bundled)",
-            ),
-            (
-                CommandKind::Prompt,
-                CommandSource::PolicySettings,
-                None,
-                "CUSTOM_METADATA_0916 (managed)",
             ),
             (
                 CommandKind::Prompt,
@@ -1446,19 +1192,37 @@ mod tests {
     #[test]
     fn commands_catalog_matches_official_direct_and_provider_shape() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _demo = EnvVarGuard::unset("IS_DEMO");
 
         let catalog = commands();
-        // 70 direct descriptors + internal /version, plus @nyan `/retrieval`.
-        // `/login` and `/logout` are gone: Anthropic is API-key only; `/fast`
-        // is gone with Fast mode.
-        let base_len = if crate::utils::build_profile::build_audience().is_internal() {
-            71
-        } else {
-            70
-        };
-        assert_eq!(catalog.len(), base_len);
-        for removed in ["login", "logout"] {
+        // 53 direct descriptors plus @nyan `/retrieval` and `/decision`.
+        // `/statusline` is gone with the built-in footer info line (docs/nyan/tui.md). `/login` and `/logout` are gone: Anthropic is
+        // API-key only; `/fast` is gone with Fast mode; `/passes` is gone
+        // with claude.ai guest passes; `/upgrade`, `/extra-usage`,
+        // `/rate-limit-options` and `/usage` are gone with the claude.ai
+        // subscription quota; `/chrome` is gone with Claude in Chrome;
+        // `/desktop`, `/mobile`, `/install-slack-app` and
+        // `/install-github-app` are gone with the official client apps;
+        // `/feedback` and `/bug` are gone with Anthropic feedback submission.
+        assert_eq!(catalog.len(), 55);
+        for removed in [
+            "statusline",
+            "login",
+            "logout",
+            "passes",
+            "upgrade",
+            "extra-usage",
+            "rate-limit-options",
+            "usage",
+            "chrome",
+            "desktop",
+            "mobile",
+            "install-slack-app",
+            "install-github-app",
+            "remote-env",
+            "session",
+            "feedback",
+            "bug",
+        ] {
             assert!(
                 catalog.iter().all(|command| command.name != removed),
                 "/{removed} must not be declared"
@@ -1475,56 +1239,42 @@ mod tests {
             "agents",
             "branch",
             "btw",
-            "chrome",
             "clear",
             "color",
             "compact",
             "config",
             "copy",
-            "desktop",
             "context",
             "cost",
             "diff",
             "doctor",
             "effort",
             "exit",
-            "files",
             "heapdump",
             "help",
             "ide",
             "init",
             "keybindings",
-            "install-github-app",
-            "install-slack-app",
             "mcp",
             "memory",
-            "mobile",
             "model",
             "output-style",
-            "remote-env",
             "plugin",
             "pr-comments",
             "release-notes",
             "reload-plugins",
             "rename",
             "resume",
-            "session",
             "skills",
             "stats",
             "status",
             "stickers",
-            "tag",
             "theme",
-            "feedback",
             "review",
             "ultrareview",
             "rewind",
             "security-review",
             "terminal-setup",
-            "upgrade",
-            "extra-usage",
-            "rate-limit-options",
-            "usage",
             "insights",
             "vim",
             "think-back",
@@ -1535,32 +1285,39 @@ mod tests {
             "hooks",
             "export",
             "sandbox",
-            "passes",
             "tasks",
         ] {
             assert!(declared_names.contains(expected), "missing /{expected}");
         }
-        assert_eq!(
-            catalog.iter().any(|command| command.name == "version"),
-            crate::utils::build_profile::build_audience().is_internal()
-        );
+        assert!(catalog.iter().all(|command| command.name != "version"));
+        // Removed aliases must not resurface on another command either.
+        for alias in ["app", "ios", "android", "remote", "bug", "feedback"] {
+            assert!(
+                catalog
+                    .iter()
+                    .all(|command| command.aliases.iter().all(|declared| declared != alias)),
+                "/{alias} must not be an alias"
+            );
+        }
     }
 
     #[test]
     fn get_commands_loads_and_executes_filesystem_skill_before_builtins() {
+        // clear_commands_cache resets the process-wide command catalog.
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-command-registry-skill-{}",
             uuid::Uuid::new_v4()
         ));
         let skill_file = root
-            .join(".claude")
+            .join(".nyan")
             .join("skills")
             .join("registry-review")
             .join("SKILL.md");
         std::fs::create_dir_all(skill_file.parent().unwrap()).unwrap();
         std::fs::write(
             &skill_file,
-            "---\ndescription: Review the requested scope\nargument-hint: [scope]\n---\nReview $ARGUMENTS for session ${CLAUDE_SESSION_ID}",
+            "---\ndescription: Review the requested scope\nargument-hint: [scope]\n---\nReview $ARGUMENTS for session ${NYAN_SESSION_ID}",
         )
         .unwrap();
 
@@ -1599,7 +1356,7 @@ mod tests {
         );
 
         let second_skill = root
-            .join(".claude")
+            .join(".nyan")
             .join("skills")
             .join("registry-second")
             .join("SKILL.md");
@@ -1650,7 +1407,7 @@ mod tests {
             "nyan-dynamic-builtin-collision-{}",
             uuid::Uuid::new_v4()
         ));
-        let discovered = root.join("packages/pkg/.claude/skills");
+        let discovered = root.join("packages/pkg/.nyan/skills");
         std::fs::create_dir_all(discovered.join("clear")).unwrap();
         std::fs::write(
             discovered.join("clear").join("SKILL.md"),
@@ -1714,7 +1471,7 @@ mod tests {
         std::fs::create_dir_all(root.join("commands")).unwrap();
         std::fs::write(
             root.join("commands").join("inspect.md"),
-            "---\ndescription: Inspect through plugin\n---\nRoot=${CLAUDE_PLUGIN_ROOT} Args=$ARGUMENTS",
+            "---\ndescription: Inspect through plugin\n---\nRoot=${NYAN_PLUGIN_ROOT} Args=$ARGUMENTS",
         )
         .unwrap();
         std::fs::create_dir_all(root.join("skills").join("verify")).unwrap();
@@ -1725,6 +1482,9 @@ mod tests {
         .unwrap();
 
         crate::bootstrap::state::set_inline_plugins(vec![root.clone()]);
+        // The plugin loader memoizes its result independently of the command
+        // caches; an earlier test's load would otherwise omit this plugin.
+        crate::utils::plugins::plugin_loader::clear_plugin_cache(None);
         clear_commands_cache();
         let catalog = get_commands(&root);
         let plugin_command = find_command("registry-plugin:inspect", &catalog)
@@ -1766,8 +1526,9 @@ mod tests {
             )
         )));
 
-        clear_commands_cache();
         crate::bootstrap::state::set_inline_plugins(previous_inline);
+        crate::utils::plugins::plugin_loader::clear_plugin_cache(None);
+        clear_commands_cache();
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -1808,6 +1569,38 @@ mod tests {
         );
         assert_eq!(init.content_length, Some(0));
         assert!(init.get_prompt_for_command.is_some());
+    }
+
+    #[test]
+    fn cloud_session_commands_are_unknown_even_with_the_legacy_remote_switch() {
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        let _remote = crate::utils::test_env::EnvVarGuard::set("NYAN_REMOTE", "1");
+        let catalog = commands();
+        for name in [
+            "session",
+            "remote",
+            "remote-env",
+            "teleport",
+            "remote-control",
+            "bridge",
+        ] {
+            assert!(!built_in_command_names().contains(name));
+            let input = format!("/{name}");
+            let result =
+                crate::utils::process_user_input::process_slash_command::process_slash_command(
+                    &input, None, &catalog,
+                );
+            assert!(!result.should_query, "{input}");
+            assert!(
+                result.messages.iter().any(|message| matches!(
+                    &message.kind,
+                    crate::types::message::RenderableMessageKind::System(
+                        crate::types::message::SystemMessage::Informational { content, .. },
+                    ) if content == &format!("Unknown command: {input}")
+                )),
+                "{input}"
+            );
+        }
     }
 
     #[test]
@@ -1891,23 +1684,6 @@ mod tests {
         let branch = find_command("branch", &catalog).expect("/branch is declared");
         assert!(branch.aliases.is_empty());
         assert!(find_command("fork", &catalog).is_none());
-    }
-
-    #[test]
-    fn remote_and_bridge_safety_sets_match_official_membership() {
-        let catalog = commands();
-        let remote = filter_commands_for_remote_mode(catalog.clone());
-        assert!(remote.iter().any(|command| command.name == "copy"));
-        assert!(!remote.iter().any(|command| command.name == "model"));
-        assert!(is_bridge_safe_command(
-            find_command("compact", &catalog).unwrap()
-        ));
-        assert!(!is_bridge_safe_command(
-            find_command("config", &catalog).unwrap()
-        ));
-        assert!(is_bridge_safe_command(
-            find_command("review", &catalog).unwrap()
-        ));
     }
 
     /// CC commands.ts:563-583: source qualifications are independent of the

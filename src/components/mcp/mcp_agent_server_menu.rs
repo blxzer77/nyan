@@ -88,7 +88,6 @@ pub fn agent_server_oauth_config(server: &AgentMcpServerInfo) -> Option<ScopedMc
         ide_running_in_windows: None,
         ide_name: None,
         auth_token: None,
-        id: None,
         plugin_source: None,
     })
 }
@@ -288,7 +287,7 @@ pub fn MCPAgentServerMenu<'a>(
         let authorization_url_value = { authorization_url.read().clone() };
         return element! {
             View(flex_direction: FlexDirection::Column, padding: 1u32) {
-                Text(content: format!("Authenticating with {}…", agent_server.name), color: theme.claude, wrap: TextWrap::NoWrap)
+                Text(content: format!("Authenticating with {}…", agent_server.name), color: theme.nyan, wrap: TextWrap::NoWrap)
                 View(flex_direction: FlexDirection::Row) {
                     Spinner
                     Text(content: " A browser window will open for authentication".to_string(), wrap: TextWrap::NoWrap)

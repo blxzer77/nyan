@@ -16,18 +16,10 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-/// Maps to: CC `services/mcp/config.ts:62-64` `getEnterpriseMcpFilePath`:
-/// `join(getManagedFilePath(), 'managed-mcp.json')`. The managed root's
-/// `CLAUDE_CODE_MANAGED_SETTINGS_PATH` override is Ant-only there, so an
-/// external build cannot point the enterprise MCP file elsewhere.
-pub fn get_enterprise_mcp_file_path_readonly() -> PathBuf {
-    crate::utils::settings::managed_path::get_managed_file_path().join("managed-mcp.json")
-}
-
 /// Maps to: CC `services/mcp/utils.ts#describeMcpConfigFilePath`.
 pub fn describe_mcp_config_file_path(scope: ConfigScope) -> String {
     match scope {
-        ConfigScope::User => crate::utils::env::get_global_claude_file()
+        ConfigScope::User => crate::utils::env::get_global_state_file()
             .display()
             .to_string(),
         ConfigScope::Project => std::env::current_dir()
@@ -37,15 +29,10 @@ pub fn describe_mcp_config_file_path(scope: ConfigScope) -> String {
             .to_string(),
         ConfigScope::Local => format!(
             "{} [project: {}]",
-            crate::utils::env::get_global_claude_file().display(),
+            crate::utils::env::get_global_state_file().display(),
             std::env::current_dir().unwrap_or_default().display()
         ),
         ConfigScope::Dynamic => "Dynamically configured".to_string(),
-        ConfigScope::Enterprise => get_enterprise_mcp_file_path_readonly()
-            .display()
-            .to_string(),
-        ConfigScope::ClaudeAi => "claude.ai".to_string(),
-        ConfigScope::Managed => "managed".to_string(),
     }
 }
 
@@ -56,21 +43,10 @@ pub fn get_scope_label(scope: ConfigScope) -> &'static str {
         ConfigScope::Project => "Project config (shared via .mcp.json)",
         ConfigScope::User => "User config (available in all your projects)",
         ConfigScope::Dynamic => "Dynamic config (from command line)",
-        ConfigScope::Enterprise => "Enterprise config (managed by your organization)",
-        ConfigScope::ClaudeAi => "claude.ai config",
-        ConfigScope::Managed => "managed",
     }
 }
 
-const CONFIG_SCOPE_OPTIONS: &[&str] = &[
-    "local",
-    "user",
-    "project",
-    "dynamic",
-    "enterprise",
-    "claudeai",
-    "managed",
-];
+const CONFIG_SCOPE_OPTIONS: &[&str] = &["local", "user", "project", "dynamic"];
 
 fn config_scope_from_str(scope: &str) -> Option<ConfigScope> {
     match scope {
@@ -78,9 +54,6 @@ fn config_scope_from_str(scope: &str) -> Option<ConfigScope> {
         "user" => Some(ConfigScope::User),
         "project" => Some(ConfigScope::Project),
         "dynamic" => Some(ConfigScope::Dynamic),
-        "enterprise" => Some(ConfigScope::Enterprise),
-        "claudeai" => Some(ConfigScope::ClaudeAi),
-        "managed" => Some(ConfigScope::Managed),
         _ => None,
     }
 }
@@ -241,11 +214,7 @@ pub fn get_mcp_server_scope_from_tool_name(tool_name: &str) -> Option<ConfigScop
         return None;
     }
     let info = mcp_info_from_string(tool_name)?;
-    let server_config = super::config::get_mcp_config_by_name_readonly(&info.server_name);
-    if server_config.is_none() && info.server_name.starts_with("claude_ai_") {
-        return Some(ConfigScope::ClaudeAi);
-    }
-    server_config.map(|config| config.scope)
+    super::config::get_mcp_config_by_name_readonly(&info.server_name).map(|config| config.scope)
 }
 
 fn strip_url_query_like_js_url_search_clear(url: &str) -> String {
@@ -355,9 +324,6 @@ fn scoped_mcp_config_hash_payload(config: &ScopedMcpServerConfig) -> Value {
     }
     if let Some(auth_token) = &config.auth_token {
         object.insert("authToken".to_string(), Value::String(auth_token.clone()));
-    }
-    if let Some(id) = &config.id {
-        object.insert("id".to_string(), Value::String(id.clone()));
     }
     let value = Value::Object(object);
     sorted_json_value(&value)
@@ -525,16 +491,12 @@ mod tests {
 
     #[test]
     fn describe_mcp_config_file_path_matches_official_scope_shapes() {
-        assert!(describe_mcp_config_file_path(ConfigScope::User).contains(".claude"));
+        assert!(describe_mcp_config_file_path(ConfigScope::User).ends_with("state.json"));
         assert!(describe_mcp_config_file_path(ConfigScope::Project).ends_with(".mcp.json"));
         assert!(describe_mcp_config_file_path(ConfigScope::Local).contains("[project:"));
         assert_eq!(
             describe_mcp_config_file_path(ConfigScope::Dynamic),
             "Dynamically configured"
-        );
-        assert_eq!(
-            describe_mcp_config_file_path(ConfigScope::ClaudeAi),
-            "claude.ai"
         );
     }
 
@@ -544,23 +506,19 @@ mod tests {
             get_scope_label(ConfigScope::Project),
             "Project config (shared via .mcp.json)"
         );
-        assert_eq!(get_scope_label(ConfigScope::ClaudeAi), "claude.ai config");
-        assert_eq!(get_scope_label(ConfigScope::Managed), "managed");
     }
 
     #[test]
     fn ensure_config_scope_transport_and_headers_match_official_cli_helpers() {
         assert_eq!(ensure_config_scope(None).unwrap(), ConfigScope::Local);
         assert_eq!(ensure_config_scope(Some("")).unwrap(), ConfigScope::Local);
-        assert_eq!(
-            ensure_config_scope(Some("enterprise")).unwrap(),
-            ConfigScope::Enterprise
-        );
+        assert!(ensure_config_scope(Some("claudeai")).is_err());
+        assert!(ensure_config_scope(Some("enterprise")).is_err());
         assert_eq!(
             ensure_config_scope(Some("workspace"))
                 .unwrap_err()
                 .to_string(),
-            "Invalid scope: workspace. Must be one of: local, user, project, dynamic, enterprise, claudeai, managed"
+            "Invalid scope: workspace. Must be one of: local, user, project, dynamic"
         );
 
         assert_eq!(ensure_transport(None).unwrap(), Transport::Stdio);
@@ -694,10 +652,6 @@ mod tests {
         assert!(!excluded.contains_key("docs"));
         assert!(excluded.contains_key("memory"));
 
-        assert_eq!(
-            get_mcp_server_scope_from_tool_name("mcp__claude_ai_slack__search"),
-            Some(ConfigScope::ClaudeAi)
-        );
         assert_eq!(get_mcp_server_scope_from_tool_name("Write"), None);
 
         let mut config = scoped_config(Transport::Http);
@@ -876,7 +830,6 @@ mod tests {
             ide_running_in_windows: None,
             ide_name: None,
             auth_token: None,
-            id: None,
             plugin_source: None,
         }
     }

@@ -265,7 +265,6 @@ pub fn get_initial_tab(view: &ViewState) -> &'static str {
 #[derive(Default, Props)]
 pub struct PluginSettingsProps {
     pub args: Option<String>,
-    pub show_mcp_redirect_message: bool,
     pub on_complete: Handler<Option<String>>,
 }
 
@@ -556,25 +555,10 @@ pub fn PluginSettings(
                 element!{Tab(id:Some(id.into()),title:title){#(if tab==id{body.take()}else{None})}}
             }).collect::<Vec<_>>();
             element!{Pane(color:Some(theme.suggestion)){
-                Tabs(title:Some("Plugins".into()),color:Some(theme.suggestion),selected_tab:Some(tab.clone()),on_tab_change:handle_tab_change,disable_navigation:child_search_active.get(),banner:if props.show_mcp_redirect_message&&tab=="installed"{vec![element!{McpRedirectBanner}.into_any()]}else{vec![]}){#(tabs)}
+                Tabs(title:Some("Plugins".into()),color:Some(theme.suggestion),selected_tab:Some(tab.clone()),on_tab_change:handle_tab_change,disable_navigation:child_search_active.get()){#(tabs)}
             }}.into_any()
         },
     }
-}
-
-/// Maps to: CC PluginSettings.tsx:70-101#McpRedirectBanner.
-#[component]
-fn McpRedirectBanner(hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    if !crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Prompts,
-    ) {
-        return element! {View}.into_any();
-    }
-    let theme = *hooks.use_context::<crate::utils::theme::Theme>();
-    element!{View(flex_direction:FlexDirection::Row,align_items:AlignItems::FLEX_START,padding_left:1u32,margin_top:1u32,border_style:BorderStyle::Single,border_left:true,border_right:false,border_top:false,border_bottom:false,border_color:theme.permission){
-        View(flex_shrink:0.0f32){Text(content:"i ",weight:Weight::Bold,italic:true,color:theme.permission)}
-        Text(content:"[ANT-ONLY] MCP servers are now managed in /plugins. Use /mcp no-redirect to test old UI")
-    }}.into_any()
 }
 
 /// Maps to: CC PluginSettings.tsx#ErrorRowAction.
@@ -591,9 +575,6 @@ enum ErrorRowAction {
     RemoveInstalledMarketplace {
         name: String,
     },
-    ManagedOnly {
-        name: String,
-    },
     None,
 }
 /// Maps to: CC PluginSettings.tsx#ErrorRow.
@@ -606,9 +587,11 @@ struct ErrorRow {
     scope: Option<String>,
 }
 /// Maps to: CC PluginSettings.tsx#getExtraMarketplaceSourceInfo.
+/// @nyan: without a managed settings source there is no `isFromPolicy`
+/// half; only the editable sources are reported.
 fn get_extra_marketplace_source_info(
     name: &str,
-) -> (Vec<(crate::utils::settings::SettingSource, String)>, bool) {
+) -> Vec<(crate::utils::settings::SettingSource, String)> {
     use crate::utils::settings::{SettingSource, get_settings_for_source};
     let mut editable = Vec::new();
     for (source, scope) in [
@@ -624,22 +607,16 @@ fn get_extra_marketplace_source_info(
             editable.push((source, scope.into()));
         }
     }
-    let policy = get_settings_for_source(SettingSource::Policy)
-        .and_then(|s| s.extra_known_marketplaces)
-        .and_then(|m| m.get(name).cloned())
-        .is_some_and(|v| !v.is_null() && v != false);
-    (editable, policy)
+    editable
 }
 /// Maps to: CC PluginSettings.tsx#buildMarketplaceAction.
 fn build_marketplace_action(name: &str) -> ErrorRowAction {
-    let (sources, policy) = get_extra_marketplace_source_info(name);
+    let sources = get_extra_marketplace_source_info(name);
     if !sources.is_empty() {
         ErrorRowAction::RemoveExtraMarketplace {
             name: name.into(),
             sources,
         }
-    } else if policy {
-        ErrorRowAction::ManagedOnly { name: name.into() }
     } else {
         ErrorRowAction::Navigate {
             tab: "marketplaces".into(),
@@ -722,21 +699,16 @@ fn build_error_rows(
     for m in failed {
         shown.insert(m.name.clone());
         let action = build_marketplace_action(&m.name);
-        let (editable, policy) = get_extra_marketplace_source_info(&m.name);
+        let editable = get_extra_marketplace_source_info(&m.name);
         rows.push(ErrorRow {
             label: m.name.clone(),
             message: m
                 .error
                 .clone()
                 .unwrap_or_else(|| "Installation failed".into()),
-            guidance: matches!(action, ErrorRowAction::ManagedOnly { .. })
-                .then(|| "Managed by your organization — contact your admin".into()),
+            guidance: None,
             action,
-            scope: if policy {
-                Some("managed".into())
-            } else {
-                editable.first().map(|(_, scope)| scope.clone())
-            },
+            scope: editable.first().map(|(_, scope)| scope.clone()),
         });
     }
     for error in extra {
@@ -749,21 +721,13 @@ fn build_error_rows(
             continue;
         }
         let action = build_marketplace_action(name);
-        let (editable, policy) = get_extra_marketplace_source_info(name);
+        let editable = get_extra_marketplace_source_info(name);
         rows.push(ErrorRow {
             label: name.into(),
             message: format_error_message(error),
-            guidance: if matches!(action, ErrorRowAction::ManagedOnly { .. }) {
-                Some("Managed by your organization — contact your admin".into())
-            } else {
-                get_error_guidance(error)
-            },
+            guidance: get_error_guidance(error),
             action,
-            scope: if policy {
-                Some("managed".into())
-            } else {
-                editable.first().map(|(_, scope)| scope.clone())
-            },
+            scope: editable.first().map(|(_, scope)| scope.clone()),
         });
     }
     for m in broken {
@@ -918,9 +882,7 @@ fn ErrorsTabContent(
         }
         if matches!(
             error,
-            PluginError::MarketplaceNotFound { .. }
-                | PluginError::MarketplaceLoadFailed { .. }
-                | PluginError::MarketplaceBlockedByPolicy { .. }
+            PluginError::MarketplaceNotFound { .. } | PluginError::MarketplaceLoadFailed { .. }
         ) {
             let value = serde_json::to_value(error).unwrap();
             if !names.contains(value["marketplace"].as_str().unwrap_or("")) {
@@ -1025,7 +987,7 @@ fn ErrorsTabContent(
                                 let changed = mark_plugins_changed.clone();
                                 crate::utils::process_runtime::runtime_handle_for_detached_work().expect("plugin runtime").spawn(async move{match crate::utils::plugins::marketplace_manager::remove_marketplace_source(&name).await{Ok(())=>{crate::utils::plugins::cache_utils::clear_all_caches();failures.update(|next|next.retain(|f|f.name!=name));action_message.set(Some(format!("✔ Removed marketplace \"{name}\"")));changed(());},Err(e)=>action_message.set(Some(format!("Failed to remove \"{name}\": {e}"))),}});
                             }
-                            ErrorRowAction::ManagedOnly { .. } | ErrorRowAction::None => {}
+                            ErrorRowAction::None => {}
                         }
                     }
                     true
@@ -1040,12 +1002,9 @@ fn ErrorsTabContent(
         selected_index.set(clamped);
     }
     let theme = *hooks.use_context::<crate::utils::theme::Theme>();
-    let has_action = rows.get(clamped).is_some_and(|r| {
-        !matches!(
-            r.action,
-            ErrorRowAction::None | ErrorRowAction::ManagedOnly { .. }
-        )
-    });
+    let has_action = rows
+        .get(clamped)
+        .is_some_and(|r| !matches!(r.action, ErrorRowAction::None));
     if rows.is_empty() {
         return element!{View(flex_direction:FlexDirection::Column){View(margin_left:1u32){Text(content:"No plugin errors",dim:true)}View(margin_top:1u32){crate::components::configurable_shortcut_hint::ConfigurableShortcutHint(action:"confirm:no",context:"Confirmation",fallback:"Esc",description:"back",dim:true,italic:true)}}}.into_any();
     }
@@ -1054,7 +1013,7 @@ fn ErrorsTabContent(
             View{Text(content:if idx==clamped{"❯ "}else{"✘ "},color:if idx==clamped{theme.suggestion}else{theme.error})Text(content:row.label,weight:if idx==clamped{Weight::Bold}else{Weight::Normal})#(row.scope.map(|scope|element!{Text(content:format!(" ({scope})"),dim:true)}))}
             View(margin_left:3u32){Text(content:row.message,color:theme.error)}#(row.guidance.filter(|s|!s.is_empty()).map(|guidance|element!{View(margin_left:3u32){Text(content:guidance,dim:true,italic:true)}}))
         }}))
-        #(action_message.read().clone().filter(|s|!s.is_empty()).map(|message|element!{View(margin_top:1u32,margin_left:1u32){Text(content:message,color:theme.claude)}}))
+        #(action_message.read().clone().filter(|s|!s.is_empty()).map(|message|element!{View(margin_top:1u32,margin_left:1u32){Text(content:message,color:theme.nyan)}}))
         View(margin_top:1u32){crate::components::design_system::byline::Byline{
             crate::components::configurable_shortcut_hint::ConfigurableShortcutHint(action:"select:previous",context:"Select",fallback:"↑",description:"navigate",dim:true,italic:true)
             #(has_action.then(||element!{crate::components::configurable_shortcut_hint::ConfigurableShortcutHint(action:"select:accept",context:"Select",fallback:"Enter",description:"resolve",dim:true,italic:true)}))
@@ -1101,7 +1060,7 @@ mod tests {
         let _env = TEST_ENV_LOCK.lock().unwrap();
         let home = std::env::temp_dir().join(format!("nyan-plugin-burst-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&home).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &home);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &home);
         for (paste, query) in [
             (false, "frontend"),
             (true, "frontend"),

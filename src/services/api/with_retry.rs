@@ -389,12 +389,9 @@ fn should_retry_529(query_source: Option<&RetryQuerySource>) -> bool {
 ///
 /// Maps to: CC `services/api/withRetry.ts:100-104`
 fn is_persistent_retry_enabled() -> bool {
-    // @nyan: retry-forever would outlive the managed cap, so a managed cap
-    // switches it off.
-    !crate::services::provider::retry::managed_cap_set()
-        && crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_UNATTENDED_RETRY").as_deref(),
-        )
+    crate::utils::env_utils::is_env_truthy(
+        crate::utils::process_env::var("NYAN_UNATTENDED_RETRY").as_deref(),
+    )
 }
 
 /// Check if an error is a transient capacity error (429 or 529).
@@ -434,100 +431,13 @@ fn is_529_error_retryable(error: &RetryableError) -> bool {
     }
 }
 
-/// Whether the error is a 403 "OAuth token has been revoked".
-///
-/// Maps to: CC `services/api/withRetry.ts:623-629`
-fn is_oauth_token_revoked_error(error: &RetryableError) -> bool {
-    match error.as_api() {
-        Some(api) => {
-            api.status == Some(403) && api.message.contains("OAuth token has been revoked")
-        }
-        None => false,
-    }
-}
-
-/// Whether the error is a Bedrock auth error.
-///
-/// Maps to: CC `services/api/withRetry.ts:631-644`
-fn is_bedrock_auth_error(error: &RetryableError) -> bool {
-    if !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_USE_BEDROCK").as_deref(),
-    ) {
-        return false;
-    }
-    // AWS libs reject with CredentialsProviderError or API returns 403
-    // TODO: Check for AWS CredentialsProviderError once aws utils are ported.
-    // See CC `utils/aws.ts` isAwsCredentialsProviderError.
-    error.status() == Some(403)
-}
-
-/// Whether the error is a Vertex (GCP) auth error.
-///
-/// Maps to: CC `services/api/withRetry.ts:670-682`
-fn is_vertex_auth_error(error: &RetryableError) -> bool {
-    if !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_USE_VERTEX").as_deref(),
-    ) {
-        return false;
-    }
-    // google-auth-library credential failure messages
-    let msg = error.message();
-    if msg.contains("Could not load the default credentials")
-        || msg.contains("Could not refresh access token")
-        || msg.contains("invalid_grant")
-    {
-        return true;
-    }
-    error.status() == Some(401)
-}
-
-/// Handle AWS credential errors by clearing caches.
-///
-/// Maps to: CC `services/api/withRetry.ts:650-656`
-fn handle_aws_credential_error(error: &RetryableError) -> bool {
-    if is_bedrock_auth_error(error) {
-        // TODO: Call clearAwsCredentialsCache() once auth module is ported.
-        // See CC `utils/auth.ts` clearAwsCredentialsCache.
-        true
-    } else {
-        false
-    }
-}
-
-/// Handle GCP credential errors by clearing caches.
-///
-/// Maps to: CC `services/api/withRetry.ts:688-694`
-fn handle_gcp_credential_error(error: &RetryableError) -> bool {
-    if is_vertex_auth_error(error) {
-        // TODO: Call clearGcpCredentialsCache() once auth module is ported.
-        // See CC `utils/auth.ts` clearGcpCredentialsCache.
-        true
-    } else {
-        false
-    }
-}
-
 /// Whether the error is retryable (standard retry predicate).
 ///
 /// Maps to: CC `services/api/withRetry.ts:696-787`
 fn should_retry(error: &ApiError) -> bool {
-    // Maps to CC `isMockRateLimitError`: internal mock 429s are terminal and
-    // must never enter ordinary retry/persistent backoff.
-    if crate::services::rate_limit_mocking::is_mock_rate_limit_error(error.status) {
-        return false;
-    }
-
     // Persistent mode: 429/529 always retryable
     if is_persistent_retry_enabled()
         && (error.status == Some(429) || error.status == Some(529) || is_529_error(error))
-    {
-        return true;
-    }
-
-    // CCR mode: auth errors are transient blips
-    if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref(),
-    ) && (error.status == Some(401) || error.status == Some(403))
     {
         return true;
     }
@@ -545,22 +455,10 @@ fn should_retry(error: &ApiError) -> bool {
     // x-should-retry header
     let should_retry_header = error.header("x-should-retry");
     if should_retry_header == Some("true") {
-        // For Max/Pro users should-retry is true but retry-after is hours.
-        // Enterprise users can retry.
-        // TODO: Check isClaudeAISubscriber/isEnterpriseSubscriber once auth is ported.
-        // See CC `utils/auth.ts:isClaudeAISubscriber`, `isEnterpriseSubscriber`.
-        // For now: allow retry (safe default for API-key users).
         return true;
     }
     if should_retry_header == Some("false") {
-        let is_5xx = error.status.is_some_and(|s| s >= 500);
-        // Internal builds can ignore x-should-retry:false for 5xx only.
-        if !crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Api,
-        ) || !is_5xx
-        {
-            return false;
-        }
+        return false;
     }
 
     // Connection errors are retryable (handled separately in the error enum)
@@ -569,11 +467,7 @@ fn should_retry(error: &ApiError) -> bool {
         None => false,
         Some(408) => true, // Request timeout
         Some(409) => true, // Lock timeout
-        Some(429) => {
-            // TODO: Subscriber gate — see CC `utils/auth.ts`.
-            // Default: allow retry for API-key users.
-            true
-        }
+        Some(429) => true, // Rate limited
         Some(401) => {
             // TODO: clearApiKeyHelperCache() once auth is ported.
             // See CC `utils/auth.ts:clearApiKeyHelperCache`.
@@ -691,27 +585,6 @@ fn get_retry_after(error: &RetryableError) -> Option<String> {
     error.as_api()?.header("retry-after").map(|s| s.to_string())
 }
 
-/// Parse the `anthropic-ratelimit-unified-reset` header to compute how long
-/// until the rate limit window resets.
-///
-/// Maps to: CC `services/api/withRetry.ts:814-822`
-fn get_rate_limit_reset_delay_ms(error: &ApiError) -> Option<u64> {
-    let reset_header = error.header("anthropic-ratelimit-unified-reset")?;
-    let reset_unix_sec: f64 = reset_header.parse().ok()?;
-    if !reset_unix_sec.is_finite() {
-        return None;
-    }
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
-    let reset_ms = (reset_unix_sec * 1000.0) as u64;
-    if reset_ms <= now_ms {
-        return None;
-    }
-    Some((reset_ms - now_ms).min(PERSISTENT_RESET_CAP_MS))
-}
-
 // ---------------------------------------------------------------------------
 // Default max retries
 // Maps to: CC services/api/withRetry.ts:789-797
@@ -720,9 +593,8 @@ fn get_rate_limit_reset_delay_ms(error: &ApiError) -> Option<u64> {
 /// The default maximum number of retries.
 ///
 /// @nyan: decisions 19 and 23. CC defaults to 10; nyan's unified controller
-/// defaults to 2 (`CLAUDE_CODE_MAX_RETRIES` may lower it) and the managed
-/// global cap (`nyan.retry.maxRetries` in managed settings, default 2, hard
-/// limit 5) bounds whatever is asked, so the environment cannot raise it.
+/// defaults to 2 (`NYAN_MAX_RETRIES` may lower it) and the global cap
+/// of 2 bounds whatever is asked, so the environment cannot raise it.
 ///
 /// Maps to: CC `services/api/withRetry.ts:789-794`
 pub fn get_default_max_retries() -> u32 {
@@ -733,11 +605,11 @@ pub fn get_default_max_retries() -> u32 {
 ///
 /// Maps to: CC `services/api/withRetry.ts:795-797`
 fn get_max_retries(options: &RetryOptions) -> u32 {
-    // @nyan: whoever asks, the managed global cap (hard limit 5) wins.
+    // @nyan: whoever asks, the global cap (decision 19) wins.
     options
         .max_retries
         .unwrap_or_else(get_default_max_retries)
-        .min(crate::services::provider::retry::global_cap())
+        .min(crate::services::provider::retry::DEFAULT_MAX_RETRIES)
 }
 
 /// Cancellation-aware async sleep.
@@ -850,16 +722,9 @@ where
             .into());
         }
 
-        // Maps to CC `withRetry.ts:201-211`: mock rejection occurs before
-        // client construction, so mock scenarios never make a network call.
-        let mock_error =
-            crate::services::rate_limit_mocking::check_mock_rate_limit_error(&retry_context.model);
-
         // Maps to CC `withRetry.ts:217-230`: after a stale keep-alive socket,
         // behind its gate, stop pooling so the retry opens a fresh connection.
-        // CC throws a mock error (`:207-209`) before this runs.
-        if mock_error.is_none()
-            && last_error.as_ref().is_some_and(is_stale_connection_error)
+        if last_error.as_ref().is_some_and(is_stale_connection_error)
             && crate::utils::feature_flags::feature_enabled(
                 crate::utils::feature_flags::FeatureFlag::DisableKeepaliveOnEconnreset,
             )
@@ -874,18 +739,10 @@ where
         let needs_client_refresh = !client_initialized
             || last_error
                 .as_ref()
-                .map(|e| {
-                    e.status() == Some(401)
-                        || is_oauth_token_revoked_error(e)
-                        || is_bedrock_auth_error(e)
-                        || is_vertex_auth_error(e)
-                        || is_stale_connection_error(e)
-                })
+                .map(|e| e.status() == Some(401) || is_stale_connection_error(e))
                 .unwrap_or(false);
 
-        if mock_error.is_none() && needs_client_refresh {
-            // TODO: On 401/403 OAuth, call handleOAuth401Error once auth module is ported.
-            // See CC `utils/auth.ts:handleOAuth401Error`.
+        if needs_client_refresh {
             match (get_client)().await {
                 Ok(()) => {
                     client_initialized = true;
@@ -916,24 +773,7 @@ where
             }),
         );
 
-        // Execute the operation, or inject the internal mock 429 before I/O.
-        let operation_result = if let Some(mock) = mock_error {
-            crate::services::claude_ai_limits::extract_quota_status_from_error(
-                Some(429),
-                Some(&mock.headers),
-            );
-            Err(RetryableError::Api(ApiError {
-                status: Some(429),
-                message: mock.message.clone(),
-                headers: mock.headers,
-                body: Some(serde_json::json!({
-                    "error": {"type": "rate_limit_error", "message": mock.message}
-                })),
-            }))
-        } else {
-            (operation)(attempt, retry_context.clone()).await
-        };
-        match operation_result {
+        match (operation)(attempt, retry_context.clone()).await {
             Ok(result) => return Ok(result),
             Err(error) => {
                 // Log the error (debug level)
@@ -987,9 +827,7 @@ where
                             }
 
                             // External users (non-sandbox, non-persistent) get a terminal error
-                            if !crate::utils::build_profile::has_internal_capability(
-                                crate::utils::build_profile::InternalCapability::Api,
-                            ) && crate::utils::process_env::var("IS_SANDBOX")
+                            if crate::utils::process_env::var("IS_SANDBOX")
                                 .truthy()
                                 .is_none()
                                 && !is_persistent_retry_enabled()
@@ -1030,48 +868,42 @@ where
                     .into());
                 }
 
-                // --- Cloud auth error handling ---
-                // Maps to: CC services/api/withRetry.ts:375-382
-                let handled_cloud_auth =
-                    handle_aws_credential_error(&error) || handle_gcp_credential_error(&error);
-                if !handled_cloud_auth {
-                    match error.as_api() {
-                        // @nyan: an adapter policy already judged this one. A
-                        // max_tokens overflow stays retryable here because the
-                        // adjustment block below repairs it.
-                        Some(api) if error.verdict().is_some() => {
-                            if !matches!(
-                                error.verdict(),
-                                Some(crate::services::provider::retry::Verdict::Retry { .. })
-                            ) && parse_max_tokens_context_overflow(api).is_none()
-                            {
-                                return Err(CannotRetryError {
-                                    original_error: error,
-                                    retry_context,
-                                }
-                                .into());
-                            }
-                        }
-                        Some(api) => {
-                            if !should_retry(api) {
-                                return Err(CannotRetryError {
-                                    original_error: error,
-                                    retry_context,
-                                }
-                                .into());
-                            }
-                        }
-                        None if !error.is_connection() => {
-                            // Non-API, non-connection errors are not retryable
+                match error.as_api() {
+                    // @nyan: an adapter policy already judged this one. A
+                    // max_tokens overflow stays retryable here because the
+                    // adjustment block below repairs it.
+                    Some(api) if error.verdict().is_some() => {
+                        if !matches!(
+                            error.verdict(),
+                            Some(crate::services::provider::retry::Verdict::Retry { .. })
+                        ) && parse_max_tokens_context_overflow(api).is_none()
+                        {
                             return Err(CannotRetryError {
                                 original_error: error,
                                 retry_context,
                             }
                             .into());
                         }
-                        _ => {
-                            // Connection errors are retryable
+                    }
+                    Some(api) => {
+                        if !should_retry(api) {
+                            return Err(CannotRetryError {
+                                original_error: error,
+                                retry_context,
+                            }
+                            .into());
                         }
+                    }
+                    None if !error.is_connection() => {
+                        // Non-API, non-connection errors are not retryable
+                        return Err(CannotRetryError {
+                            original_error: error,
+                            retry_context,
+                        }
+                        .into());
+                    }
+                    _ => {
+                        // Connection errors are retryable
                     }
                 }
 
@@ -1121,34 +953,12 @@ where
 
                 if persistent {
                     persistent_attempt += 1;
-                    if let Some(api_err) = error.as_api() {
-                        if api_err.status == Some(429) {
-                            // Window-based rate limits: wait until reset
-                            let reset_delay = get_rate_limit_reset_delay_ms(api_err);
-                            delay_ms = reset_delay.unwrap_or_else(|| {
-                                get_retry_delay(
-                                    persistent_attempt,
-                                    retry_after.as_deref(),
-                                    PERSISTENT_MAX_BACKOFF_MS,
-                                )
-                                .min(PERSISTENT_RESET_CAP_MS)
-                            });
-                        } else {
-                            delay_ms = get_retry_delay(
-                                persistent_attempt,
-                                retry_after.as_deref(),
-                                PERSISTENT_MAX_BACKOFF_MS,
-                            )
-                            .min(PERSISTENT_RESET_CAP_MS);
-                        }
-                    } else {
-                        delay_ms = get_retry_delay(
-                            persistent_attempt,
-                            retry_after.as_deref(),
-                            PERSISTENT_MAX_BACKOFF_MS,
-                        )
-                        .min(PERSISTENT_RESET_CAP_MS);
-                    }
+                    delay_ms = get_retry_delay(
+                        persistent_attempt,
+                        retry_after.as_deref(),
+                        PERSISTENT_MAX_BACKOFF_MS,
+                    )
+                    .min(PERSISTENT_RESET_CAP_MS);
                 } else {
                     delay_ms = match &error {
                         // @nyan: the adapter policy parsed the server's wait
@@ -1270,6 +1080,19 @@ mod tests {
     use crate::utils::test_env::TEST_ENV_LOCK;
 
     // -- BASE_DELAY_MS --
+
+    #[test]
+    fn retired_remote_env_does_not_make_forbidden_retryable() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _remote = crate::utils::test_env::EnvVarGuard::set("NYAN_REMOTE", "1");
+        let error = ApiError {
+            status: Some(403),
+            message: "forbidden".to_string(),
+            headers: std::collections::HashMap::new(),
+            body: None,
+        };
+        assert!(!should_retry(&error));
+    }
 
     #[test]
     fn base_delay_ms_value() {
@@ -1396,7 +1219,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::settings::settings_cache::reset_settings_cache();
         // Decisions 19/23: the default dropped from CC's 10 to 2.
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_RETRIES");
+        crate::utils::process_env::remove("NYAN_MAX_RETRIES");
         assert_eq!(get_default_max_retries(), 2);
         assert_eq!(
             get_max_retries(&RetryOptions {
@@ -1417,16 +1240,16 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::settings::settings_cache::reset_settings_cache();
         {
-            let _one = crate::utils::test_env::EnvVarGuard::set("CLAUDE_CODE_MAX_RETRIES", "1");
+            let _one = crate::utils::test_env::EnvVarGuard::set("NYAN_MAX_RETRIES", "1");
             assert_eq!(get_default_max_retries(), 1);
         }
         // The old CC default, asked for explicitly, is held to the cap (2).
-        let _ten = crate::utils::test_env::EnvVarGuard::set("CLAUDE_CODE_MAX_RETRIES", "10");
+        let _ten = crate::utils::test_env::EnvVarGuard::set("NYAN_MAX_RETRIES", "10");
         assert_eq!(get_default_max_retries(), 2);
     }
 
     #[test]
-    fn an_explicit_budget_is_held_to_the_managed_cap() {
+    fn an_explicit_budget_is_held_to_the_global_cap() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::settings::settings_cache::reset_settings_cache();
         let options = |max_retries| RetryOptions {
@@ -1637,37 +1460,41 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "anthropic_internal")]
-    #[tokio::test]
-    async fn internal_mock_429_short_circuits_network_and_normal_retry() {
+    /// Unattended 429 backoff waits on the standard `retry-after` header; a
+    /// subscription quota-window reset header does not stretch the wait.
+    #[tokio::test(start_paused = true)]
+    async fn persistent_429_waits_on_retry_after_not_a_quota_window_reset() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::services::mock_rate_limits::reset_for_test();
-        crate::services::claude_ai_limits::reset_for_test();
-        crate::services::mock_rate_limits::set_mock_rate_limit_scenario(
-            crate::services::mock_rate_limits::MockScenario::SessionLimitReached,
-        );
-        let client_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let operation_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let client_calls_for_closure = client_calls.clone();
-        let operation_calls_for_closure = operation_calls.clone();
-        let (heartbeat_tx, _heartbeat_rx) = tokio::sync::mpsc::channel(2);
+        let _unattended = crate::utils::test_env::EnvVarGuard::set("NYAN_UNATTENDED_RETRY", "1");
+        let window_reset = (chrono::Utc::now().timestamp() + 60 * 60).to_string();
+        let (heartbeat_tx, mut heartbeat_rx) = tokio::sync::mpsc::channel(4);
+        let attempts = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let attempts_for_closure = attempts.clone();
         let result: Result<(), WithRetryError> = with_retry(
-            move || {
-                let calls = client_calls_for_closure.clone();
-                async move {
-                    calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    Ok(())
-                }
-            },
+            || async { Ok(()) },
             move |_attempt, _context| {
-                let calls = operation_calls_for_closure.clone();
+                let attempts = attempts_for_closure.clone();
+                let window_reset = window_reset.clone();
                 async move {
-                    calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    Ok(())
+                    if attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst) > 0 {
+                        return Ok(());
+                    }
+                    Err(RetryableError::Api(ApiError {
+                        status: Some(429),
+                        message: "rate limited".to_string(),
+                        headers: std::collections::HashMap::from([
+                            ("retry-after".to_string(), "7".to_string()),
+                            (
+                                "anthropic-ratelimit-unified-reset".to_string(),
+                                window_reset,
+                            ),
+                        ]),
+                        body: None,
+                    }))
                 }
             },
             RetryOptions {
-                max_retries: Some(3),
+                max_retries: Some(2),
                 model: "claude-sonnet-4-6".to_string(),
                 fallback_model: None,
                 thinking_config: ThinkingConfig::Disabled,
@@ -1679,15 +1506,12 @@ mod tests {
         )
         .await;
 
-        assert!(matches!(result, Err(WithRetryError::CannotRetry(_))));
-        assert_eq!(client_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
-        assert_eq!(operation_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
-        assert_eq!(
-            crate::services::claude_ai_limits::current_limits().status,
-            crate::services::claude_ai_limits::QuotaStatus::Rejected
-        );
-        crate::services::mock_rate_limits::reset_for_test();
-        crate::services::claude_ai_limits::reset_for_test();
+        assert!(result.is_ok());
+        assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 2);
+        match heartbeat_rx.try_recv() {
+            Ok(SystemMessage::ApiError { retry_in_ms, .. }) => assert_eq!(retry_in_ms, 7_000),
+            other => panic!("expected one ApiError heartbeat, got {other:?}"),
+        }
     }
 
     // -- random_unit_interval --

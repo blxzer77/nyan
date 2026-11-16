@@ -926,8 +926,8 @@ fn run_tool_use_permission_gate_for_request_with_assistant(
             );
         }
     };
-    // CC CanUseToolFn may rewrite input (speculation overlay paths). The
-    // rewritten request must flow through hooks, permission UI, and tool.call.
+    // CC CanUseToolFn may rewrite input via `updatedInput`. The rewritten
+    // request must flow through hooks, permission UI, and tool.call.
     let mut effective_tool_use = parsed_tool_use;
     if let Some(updated_input) = callback_decision
         .as_ref()
@@ -3728,7 +3728,7 @@ fn post_tool_hook_event(status: Option<ToolResultStatus>, aborted: bool) -> Post
 ///
 /// `session_id` and `transcript_path` used to be left at `Default::default()`
 /// here; the JSON rail hid that (its `is_empty()` fallbacks re-derive both).
-/// The env rail is CC's `{ ...subprocessEnv(), CLAUDE_PROJECT_DIR }`
+/// The env rail is CC's `{ ...subprocessEnv(), NYAN_PROJECT_DIR }`
 /// (`hooks.ts:882-885`), which `exec_command_hook` sets itself; the
 /// session/agent variables this port used to add there were removed on
 /// 2026-10-03 (env C7).
@@ -3757,13 +3757,13 @@ pub(crate) fn tool_hook_context(context: &ToolUseContext) -> crate::services::ho
 /// of the same `ToolUseContext` that every `*_with_config` hop already carries,
 /// so both rails are the same value by construction and no call site can hand
 /// the two halves a mismatched pair. The tool family adds nothing to the hook
-/// env (`exec_command_hook` sets `CLAUDE_PROJECT_DIR`), so `base_env` is empty.
+/// env (`exec_command_hook` sets `NYAN_PROJECT_DIR`), so `base_env` is empty.
 fn load_tool_hooks_config_and_env(
     context: &ToolUseContext,
 ) -> Option<(RegisteredHooks, Vec<(String, String)>)> {
     let loaded_hooks = crate::services::hooks::load_hooks_config();
     let mut config = loaded_hooks.config;
-    if !loaded_hooks.allow_managed_hooks_only {
+    if !loaded_hooks.disable_all_hooks {
         // CC reads the session id as `toolUseContext.agentId ?? getSessionId()`
         // — six times in hooks.ts (`:2003 :3409 :3504 :3540 :3655 :3836`), plus
         // four that call `getSessionId()` outright. Not one of them skips the
@@ -4171,7 +4171,7 @@ mod tests {
     /// whole path (five-source settings merge, session-hook merge, the
     /// managed-only gate, HookContext/env construction) ran in no test build.
     /// This is its first direct execution: the pinned harness environment
-    /// (CLAUDE_CONFIG_DIR + NYAN_TEST_PROJECT_DIR) has no hooks, so the
+    /// (NYAN_CONFIG_DIR + NYAN_TEST_PROJECT_DIR) has no hooks, so the
     /// loader returns None; registering a session hook makes the merge leg
     /// produce a config, exactly as CC merges `getSessionHooks` into the
     /// loaded settings (hooks.ts session merge the doc comment cites).
@@ -4205,7 +4205,7 @@ mod tests {
         crate::utils::hooks::session_hooks::clear_session_hooks(&session_id);
         let (config, base_env) = loaded.expect("session hook must surface through the loader");
         assert!(!config.is_empty());
-        // `exec_command_hook` sets `CLAUDE_PROJECT_DIR` for every caller
+        // `exec_command_hook` sets `NYAN_PROJECT_DIR` for every caller
         // (CC `hooks.ts:816,882-885`); the tool family adds nothing.
         assert!(base_env.is_empty(), "{base_env:?}");
     }
@@ -4218,7 +4218,7 @@ mod tests {
     /// BOTH rails are asserted from ONE hook run, because they are two
     /// projections of the same `HookContext`. The JSON rail carries the session,
     /// transcript, cwd and agent fields; the env rail is CC's
-    /// `{ ...subprocessEnv(), CLAUDE_PROJECT_DIR }` (`hooks.ts:882-885`) and
+    /// `{ ...subprocessEnv(), NYAN_PROJECT_DIR }` (`hooks.ts:882-885`) and
     /// carries none of them.
     ///
     /// `agent_id` / `agent_type` / `permission_mode` (CC `:324-326`) are the
@@ -4229,14 +4229,9 @@ mod tests {
     async fn tool_hook_input_carries_the_official_base_fields_and_env_only_the_project_dir() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         // A host value would be inherited through `subprocessEnv()`, as in CC.
-        let _absent = [
-            "CLAUDE_SESSION_ID",
-            "CLAUDE_TRANSCRIPT_PATH",
-            "CLAUDE_AGENT_ID",
-        ]
-        .map(EnvVarGuard::unset);
+        let _absent =
+            ["NYAN_SESSION_ID", "NYAN_TRANSCRIPT_PATH", "NYAN_AGENT_ID"].map(EnvVarGuard::unset);
         let _settings = IsolatedProjectSettings::pin();
-        let _managed = crate::services::hooks::test_support::ManagedSettingsGuard::install(None);
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
 
         let input_capture = std::env::temp_dir().join(format!(
@@ -4267,7 +4262,7 @@ mod tests {
             "Bash",
             crate::services::hooks::HookCommand {
                 command: format!(
-                    "cat > '{}'; printf '%s\\n%s\\n%s\\n%s\\n' \"${{CLAUDE_SESSION_ID-<unset>}}\" \"${{CLAUDE_TRANSCRIPT_PATH-<unset>}}\" \"${{CLAUDE_AGENT_ID-<unset>}}\" \"$CLAUDE_PROJECT_DIR\" > '{}'",
+                    "cat > '{}'; printf '%s\\n%s\\n%s\\n%s\\n' \"${{NYAN_SESSION_ID-<unset>}}\" \"${{NYAN_TRANSCRIPT_PATH-<unset>}}\" \"${{NYAN_AGENT_ID-<unset>}}\" \"$NYAN_PROJECT_DIR\" > '{}'",
                     input_capture.display(),
                     env_capture.display()
                 ),
@@ -4323,7 +4318,7 @@ mod tests {
         assert_eq!(payload["agent_type"], "code-reviewer");
         assert_eq!(payload["permission_mode"], "acceptEdits");
 
-        // The env rail: `CLAUDE_PROJECT_DIR` only, from the project root that
+        // The env rail: `NYAN_PROJECT_DIR` only, from the project root that
         // `exec_command_hook` reads (the original cwd stands in for it).
         let project_dir = crate::bootstrap::state::get_original_cwd()
             .display()
@@ -4689,8 +4684,7 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&config).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", config.to_string_lossy().as_ref());
-        let _overrides = EnvVarGuard::unset("CLAUDE_INTERNAL_FC_OVERRIDES");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", config.to_string_lossy().as_ref());
         let content = "p".repeat(60_000);
         // The raw `toolUseResult` rides the row (trait projection), and
         // the display records only the emit-gate decision.
@@ -4734,8 +4728,7 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&config).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", config.to_string_lossy().as_ref());
-        let _overrides = EnvVarGuard::unset("CLAUDE_INTERNAL_FC_OVERRIDES");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", config.to_string_lossy().as_ref());
         let content = "g".repeat(25_000);
         // The raw `toolUseResult` rides the row (trait projection), and
         // the display records only the emit-gate decision.
@@ -5897,7 +5890,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let root = std::env::temp_dir().join(format!(
             "nyan-edit-pinned-destination-{}",
             uuid::Uuid::new_v4().simple()
@@ -6241,7 +6234,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         let _skills = crate::skills::load_skills_dir::DynamicSkillsTestSnapshot::capture();
         crate::skills::load_skills_dir::clear_dynamic_skills();
         let root = std::env::temp_dir().join(format!(
@@ -6333,7 +6326,7 @@ mod tests {
             "nyan-edit-dynamic-context-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let skill_dir = root.join("packages/pkg/.claude/skills");
+        let skill_dir = root.join("packages/pkg/.nyan/skills");
         std::fs::create_dir_all(skill_dir.join("nested")).unwrap();
         std::fs::write(
             skill_dir.join("nested/SKILL.md"),
@@ -6414,7 +6407,7 @@ mod tests {
             "nyan-write-dynamic-context-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let skill_dir = root.join("packages/pkg/.claude/skills");
+        let skill_dir = root.join("packages/pkg/.nyan/skills");
         std::fs::create_dir_all(skill_dir.join("nested")).unwrap();
         std::fs::write(
             skill_dir.join("nested/SKILL.md"),
@@ -6484,7 +6477,7 @@ mod tests {
             "nyan-write-failed-dynamic-context-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let skill_dir = root.join("packages/pkg/.claude/skills");
+        let skill_dir = root.join("packages/pkg/.nyan/skills");
         std::fs::create_dir_all(skill_dir.join("nested")).unwrap();
         std::fs::write(
             skill_dir.join("nested/SKILL.md"),
@@ -6623,7 +6616,7 @@ mod tests {
     #[test]
     fn run_tool_use_deferred_schema_validation_adds_tool_search_hint_when_schema_was_not_sent() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _disable_betas_guard = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
+        let _disable_betas_guard = EnvVarGuard::unset("NYAN_DISABLE_EXPERIMENTAL_BETAS");
         let _tool_search_guard = EnvVarGuard::unset("ENABLE_TOOL_SEARCH");
         let block = ToolUseBlock {
             id: crate::types::ids::ToolUseId("toolu_invalid_web_fetch".to_string()),
@@ -6670,7 +6663,7 @@ mod tests {
     #[test]
     fn run_tool_use_deferred_schema_validation_skips_tool_search_hint_after_discovery() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _disable_betas_guard = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
+        let _disable_betas_guard = EnvVarGuard::unset("NYAN_DISABLE_EXPERIMENTAL_BETAS");
         let _tool_search_guard = EnvVarGuard::unset("ENABLE_TOOL_SEARCH");
         let block = ToolUseBlock {
             id: crate::types::ids::ToolUseId("toolu_invalid_web_fetch_discovered".to_string()),
@@ -6830,11 +6823,11 @@ mod tests {
     #[test]
     fn run_tool_use_nested_schema_validation_rejects_invalid_ask_user_question() {
         // `ToolUseContext::with_permission_context` resolves the live tool pool,
-        // which sibling tests narrow through `CLAUDE_CODE_SIMPLE`.
+        // which sibling tests narrow through `NYAN_SIMPLE`.
         let _env_guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         let block = ToolUseBlock {
             id: crate::types::ids::ToolUseId("toolu_invalid_ask".to_string()),
             name: "AskUserQuestion".to_string(),
@@ -6941,7 +6934,7 @@ mod tests {
             uuid::Uuid::new_v4()
         ));
         let skill_file = root
-            .join(".claude")
+            .join(".nyan")
             .join("skills")
             .join("release")
             .join("SKILL.md");
@@ -7154,7 +7147,6 @@ mod tests {
     async fn failing_tool_fires_post_tool_use_failure_with_is_interrupt_false() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
-        let _managed = crate::services::hooks::test_support::ManagedSettingsGuard::install(None);
         let capture = std::env::temp_dir().join(format!(
             "nyan-post-failure-{}.json",
             uuid::Uuid::new_v4().simple()
@@ -9696,12 +9688,10 @@ static TOOL_CALL_REGISTRY: &[&dyn crate::tool::ToolCall] = &[
     &crate::tools::schedule_cron_tool::CronCreateTool,
     &crate::tools::schedule_cron_tool::CronDeleteTool,
     &crate::tools::schedule_cron_tool::CronListTool,
-    &crate::tools::remote_trigger_tool::RemoteTriggerTool,
     &crate::tools::tool_search_tool::ToolSearchTool,
     &crate::tools::web_fetch_tool::WebFetchTool,
     &crate::tools::web_search_tool::WebSearchTool,
     &crate::tools::lsp_tool::LspTool,
-    &crate::tools::config_tool::ConfigTool,
     &crate::tools::todo_write_tool::TodoWriteTool,
     &crate::tools::ask_user_question_tool::AskUserQuestionTool,
     &crate::tools::brief_tool::BriefTool,
@@ -10381,7 +10371,6 @@ rl.on('line', line => {
                     ide_running_in_windows: None,
                     ide_name: None,
                     auth_token: None,
-                    id: None,
                     plugin_source: None,
                 };
                 let discovery =
@@ -10869,7 +10858,7 @@ rl.on('line', line => {
     #[tokio::test]
     async fn local_tool_executor_times_out_bash_command() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _background = EnvVarGuard::set("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1");
+        let _background = EnvVarGuard::set("NYAN_DISABLE_BACKGROUND_TASKS", "1");
         let request = mock_permission_request_with_input(
             "perm-bash-timeout".to_string(),
             "toolu_bash_timeout".to_string(),
@@ -11268,10 +11257,6 @@ rl.on('line', line => {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _api_key = EnvVarGuard::unset("ANTHROPIC_API_KEY");
         let _auth_token = EnvVarGuard::unset("ANTHROPIC_AUTH_TOKEN");
-        let _oauth_token = EnvVarGuard::unset("CLAUDE_CODE_OAUTH_TOKEN");
-        let _bedrock = EnvVarGuard::unset("CLAUDE_CODE_USE_BEDROCK");
-        let _vertex = EnvVarGuard::unset("CLAUDE_CODE_USE_VERTEX");
-        let _foundry = EnvVarGuard::unset("CLAUDE_CODE_USE_FOUNDRY");
         let path = std::env::temp_dir().join(format!(
             "nyan-read-listener-token-{}.txt",
             uuid::Uuid::new_v4()
@@ -11925,7 +11910,7 @@ rl.on('line', line => {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let config_home =
             std::env::temp_dir().join(format!("nyan-exit-plan-tool-{}", uuid::Uuid::new_v4()));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let expected_plan_path = crate::utils::plans::get_plan_file_path(None);
 
         let enter_request = mock_permission_request_with_input(
@@ -11986,7 +11971,7 @@ rl.on('line', line => {
             "approve plan".to_string(),
             serde_json::json!({
                 "plan": "## Plan\nShip it",
-                "planFilePath": "/tmp/project/.claude/plans/plan.md"
+                "planFilePath": "/tmp/project/.nyan/plans/plan.md"
             }),
             PermissionMode::Plan,
         );
@@ -12226,7 +12211,7 @@ rl.on('line', line => {
     }
 
     #[tokio::test]
-    async fn local_tool_executor_remote_trigger_returns_explicit_501_payload_without_network() {
+    async fn local_tool_executor_retired_remote_trigger_returns_unknown_tool_error() {
         let request = mock_permission_request_with_input(
             "perm-remote-trigger".to_string(),
             "toolu_remote_trigger".to_string(),
@@ -12246,31 +12231,20 @@ rl.on('line', line => {
             .await
             .expect("RemoteTrigger should produce a tool_result");
 
-        match user_tool_result_block(&message) {
-            Some(block) => {
-                assert_eq!(block.tool_use_id.0, "toolu_remote_trigger");
-                // CC pairs `validateStatus: () => true` with a result block that
-                // never sets `is_error`, leaving the status code for the model to
-                // read (RemoteTriggerTool.ts:152-158).
-                assert_eq!(block.derived_status(), ToolResultStatus::Success);
-                assert!(block.content.starts_with("HTTP 501\n"));
-                assert!(block.content.contains("no remote API request was sent"));
-                // No display shape — the raw Output object rides the row.
-                let raw = block
-                    .tool_use_result
-                    .as_ref()
-                    .expect("raw output should ride the row");
-                assert_eq!(raw.get("status"), Some(&serde_json::json!(501)));
-                assert!(
-                    raw.get("json")
-                        .and_then(serde_json::Value::as_str)
-                        .is_some_and(
-                            |json| json.contains("Remote trigger execution is unavailable")
-                        )
-                );
-            }
-            other => panic!("unexpected RemoteTrigger result: {other:?}"),
-        }
+        let block = user_tool_result_block(&message).expect("unknown tool result block");
+        assert_eq!(block.tool_use_id.0, "toolu_remote_trigger");
+        assert_eq!(block.derived_status(), ToolResultStatus::Error);
+        assert!(
+            block
+                .content
+                .contains("No such tool available: RemoteTrigger")
+        );
+        assert_eq!(
+            block.tool_use_result,
+            Some(serde_json::json!(
+                "Error: Error: No such tool available: RemoteTrigger"
+            ))
+        );
     }
 
     #[tokio::test]
@@ -12390,7 +12364,7 @@ rl.on('line', line => {
             "nyan-executor-team-tools-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_root);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_root);
         let _team_io_guard = EnvVarGuard::unset("NYAN_TEST_TEAM_FILE_IO");
         *TEAM_TOOL_STATE.lock().unwrap() = None;
         crate::utils::tasks::clear_leader_team_name();
@@ -12421,7 +12395,7 @@ rl.on('line', line => {
                 assert_eq!(payload["team_name"], "reviewers");
                 assert_eq!(payload["lead_agent_id"], "team-lead@reviewers");
                 assert!(payload["team_file_path"].as_str().is_some_and(|path| {
-                    path.ends_with(".claude/teams/reviewers/config.json")
+                    path.ends_with(".nyan/teams/reviewers/config.json")
                         || path.ends_with("teams/reviewers/config.json")
                 }));
                 // CC TeamCreateTool defines no renderToolResultMessage
@@ -12471,60 +12445,6 @@ rl.on('line', line => {
         crate::utils::tasks::clear_leader_team_name();
         TASK_TOOL_STORE.lock().unwrap().clear();
         let _ = std::fs::remove_dir_all(config_root);
-    }
-
-    #[tokio::test]
-    async fn local_tool_executor_config_get_returns_official_model_result_without_writes() {
-        let request = mock_permission_request_with_input(
-            "perm-config".to_string(),
-            "toolu_config".to_string(),
-            "Config".to_string(),
-            "theme".to_string(),
-            serde_json::json!({"setting": "theme"}),
-            PermissionMode::Default,
-        );
-
-        let message = LocalToolExecutor
-            .result_after_permission(
-                &request,
-                PermissionPromptChoice::AllowOnce,
-                &crate::tool::ToolUseContext::default(),
-                None,
-                None,
-            )
-            .await
-            .expect("Config get should produce a tool_result");
-
-        match user_tool_result_block(&message) {
-            Some(block) => {
-                assert_eq!(block.tool_use_id.0, "toolu_config");
-                assert_eq!(block.derived_status(), ToolResultStatus::Success);
-                assert!(block.content.starts_with("theme = "));
-                let model_message = transcript_tool_result_to_model_message(
-                    &RenderableMessage::user_tool_result(
-                        "config-result",
-                        block.tool_use_id.0.clone(),
-                        block.content.clone(),
-                        block.is_error,
-                    ),
-                    "Config",
-                )
-                .expect("Config mapped content should be forwarded as model content");
-                assert!(matches!(
-                    model_message.content.first(),
-                    Some(UserContent::ToolResult(result)) if result.content == block.content
-                ));
-                // No display shape — the raw Output object rides the row.
-                let raw = block
-                    .tool_use_result
-                    .as_ref()
-                    .expect("raw output should ride the row");
-                assert_eq!(raw.get("success"), Some(&serde_json::json!(true)));
-                assert_eq!(raw.get("operation"), Some(&serde_json::json!("get")));
-                assert_eq!(raw.get("setting"), Some(&serde_json::json!("theme")));
-            }
-            None => panic!("unexpected Config result: {:?}", message.kind),
-        }
     }
 
     #[tokio::test]
@@ -13830,8 +13750,7 @@ mod permission_request_hook_decision_tests {
     async fn permission_request_hook_deny_message_reason_and_terminal_result_matches_official() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
-        let _managed = crate::services::hooks::test_support::ManagedSettingsGuard::install(None);
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         for reason in [Some("policy blocks this read"), Some(""), None] {
             let mut decision = json!({"behavior": "deny"});
             if let Some(reason) = reason {
@@ -13934,8 +13853,7 @@ mod permission_request_hook_decision_tests {
     async fn permission_request_hook_winning_allow_isolation_matches_official() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
-        let _managed = crate::services::hooks::test_support::ManagedSettingsGuard::install(None);
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         let config = competing_decisions(
             json!({"behavior": "allow", "updatedInput": {"file_path": "/tmp/winner"}}),
             json!({"behavior": "deny", "message": "losing deny", "interrupt": true}),
@@ -14058,8 +13976,7 @@ mod pre_tool_hook_decision_tests {
     async fn pre_tool_hook_prepare_message_and_reason_matches_official() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
-        let _managed = crate::services::hooks::test_support::ManagedSettingsGuard::install(None);
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         for behavior in ["allow", "ask", "deny"] {
             for reason in [Some("completion reason"), Some(""), None] {
                 let config = ordered_config(hook_output(behavior, reason), None);
@@ -14111,8 +14028,7 @@ mod pre_tool_hook_decision_tests {
     async fn pre_tool_hook_aggregated_deny_configured_terminal_matches_official() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
-        let _managed = crate::services::hooks::test_support::ManagedSettingsGuard::install(None);
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         for (later, expected_reason, expected_message) in [
             (
                 hook_output("allow", Some("later allow reason")),

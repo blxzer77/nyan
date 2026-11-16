@@ -7,20 +7,17 @@
 
 use std::collections::HashMap;
 
-use crate::utils::process_env::{EnvSnapshot, JsTruthy};
+use crate::utils::process_env::EnvSnapshot;
 
 /// Headers sent for every model request, regardless of provider.
 pub fn common_headers() -> HashMap<String, Option<String>> {
-    HashMap::from([
-        (
-            "User-Agent".to_string(),
-            Some(crate::utils::http::user_agent()),
-        ),
-        ("x-app".to_string(), Some("cli".to_string())),
-    ])
+    HashMap::from([(
+        "User-Agent".to_string(),
+        Some(crate::utils::http::user_agent()),
+    )])
 }
 
-/// Anthropic-shaped adapter headers. Session and remote ids are nyan's; the
+/// Anthropic-shaped adapter headers. The session id is nyan's; the
 /// additional-protection flag keeps Anthropic's own header name because that
 /// is the provider wire field, not our product name.
 pub fn anthropic_adapter_headers(env: &EnvSnapshot) -> HashMap<String, Option<String>> {
@@ -28,19 +25,7 @@ pub fn anthropic_adapter_headers(env: &EnvSnapshot) -> HashMap<String, Option<St
         "X-Nyan-Session-Id".to_string(),
         Some(crate::bootstrap::state::get_session_id()),
     )]);
-    if let Some(container_id) = env.var("CLAUDE_CODE_CONTAINER_ID").truthy() {
-        headers.insert(
-            "x-nyan-remote-container-id".to_string(),
-            Some(container_id.to_string()),
-        );
-    }
-    if let Some(remote_session_id) = env.var("CLAUDE_CODE_REMOTE_SESSION_ID").truthy() {
-        headers.insert(
-            "x-nyan-remote-session-id".to_string(),
-            Some(remote_session_id.to_string()),
-        );
-    }
-    if crate::utils::env_utils::is_env_truthy(env.var("CLAUDE_CODE_ADDITIONAL_PROTECTION")) {
+    if crate::utils::env_utils::is_env_truthy(env.var("NYAN_ADDITIONAL_PROTECTION")) {
         headers.insert(
             "x-anthropic-additional-protection".to_string(),
             Some("true".to_string()),
@@ -99,13 +84,13 @@ mod tests {
     }
 
     #[test]
-    fn common_layer_uses_the_shared_nyan_user_agent() {
+    fn common_layer_uses_the_shared_nyan_user_agent_without_x_app() {
         let headers = common_headers();
         assert_eq!(
             headers.get("User-Agent").and_then(Option::as_deref),
             Some(crate::utils::http::user_agent()).as_deref()
         );
-        assert_eq!(headers.get("x-app").and_then(Option::as_deref), Some("cli"));
+        assert!(!headers.contains_key("x-app"));
         assert!(!headers.contains_key("anthropic-beta"));
         assert!(!headers.contains_key("X-Nyan-Session-Id"));
     }
@@ -115,10 +100,10 @@ mod tests {
         let _lock = crate::utils::test_env::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _container =
-            crate::utils::test_env::EnvVarGuard::set("CLAUDE_CODE_CONTAINER_ID", "box");
+        let _container = crate::utils::test_env::EnvVarGuard::set("NYAN_CONTAINER_ID", "box");
+        let _remote = crate::utils::test_env::EnvVarGuard::set("NYAN_REMOTE_SESSION_ID", "retired");
         let _protection =
-            crate::utils::test_env::EnvVarGuard::set("CLAUDE_CODE_ADDITIONAL_PROTECTION", "1");
+            crate::utils::test_env::EnvVarGuard::set("NYAN_ADDITIONAL_PROTECTION", "1");
         let env = crate::utils::process_env::snapshot();
         let headers = anthropic_adapter_headers(&env);
         assert!(headers.contains_key("X-Nyan-Session-Id"));
@@ -126,7 +111,7 @@ mod tests {
             headers
                 .get("x-nyan-remote-container-id")
                 .and_then(Option::as_deref),
-            Some("box")
+            None
         );
         assert_eq!(
             headers
@@ -134,6 +119,7 @@ mod tests {
                 .and_then(Option::as_deref),
             Some("true")
         );
+        assert!(!headers.contains_key("x-nyan-remote-session-id"));
         assert!(!headers.contains_key("x-claude-remote-container-id"));
     }
 
@@ -151,7 +137,6 @@ mod tests {
                 ..SettingsJson::default()
             },
             errors: Vec::new(),
-            policy_settings: None,
         });
         let mut headers =
             HashMap::from([("anthropic-beta".to_string(), Some("computed".to_string()))]);

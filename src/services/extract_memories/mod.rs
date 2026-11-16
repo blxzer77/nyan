@@ -232,7 +232,7 @@ pub(crate) fn memory_tool_callback(
 
 /// Input side of a fork's usage: cache reads/creations are input tokens too
 /// and dominate a cache-sharing fork's bill.
-fn input_total(usage: &crate::services::api::claude::NonNullableUsage) -> u64 {
+fn input_total(usage: &crate::services::api::request::NonNullableUsage) -> u64 {
     usage
         .input_tokens
         .saturating_add(usage.cache_creation_input_tokens)
@@ -541,7 +541,7 @@ mod tests {
                     abort.abort();
                 }
                 let (tx, rx) = tokio::sync::mpsc::channel(8);
-                tx.send(crate::services::api::claude::QueryModelStreamItem::Stream(
+                tx.send(crate::services::api::request::QueryModelStreamItem::Stream(
                     crate::types::message::StreamEvent::ApiEvent {
                         event: serde_json::json!({
                             "type": "message_delta",
@@ -553,7 +553,7 @@ mod tests {
                 .await
                 .unwrap();
                 tx.send(
-                    crate::services::api::claude::QueryModelStreamItem::Assistant(
+                    crate::services::api::request::QueryModelStreamItem::Assistant(
                         crate::types::message::AssistantMessage {
                             uuid: uuid::Uuid::new_v4().to_string(),
                             timestamp: chrono::Utc::now(),
@@ -589,7 +589,7 @@ mod tests {
         let lock = TEST_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let root = std::env::temp_dir().join(format!("nyan-extract-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let env = EnvVarGuard::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", &root);
+        let env = EnvVarGuard::set("NYAN_MEMORY_PATH_OVERRIDE", &root);
         Fixture {
             root,
             _lock: lock,

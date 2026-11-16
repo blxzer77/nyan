@@ -20,11 +20,6 @@ const SUBCOMMANDS: &[&str] = &[
     "install",
     "setup-token",
     "migrate",
-    "remote-control",
-    "rc",
-    "remote",
-    "sync",
-    "bridge",
     "ps",
     "logs",
     "attach",
@@ -35,6 +30,7 @@ const SUBCOMMANDS: &[&str] = &[
     "environment-runner",
     "self-hosted-runner",
     "daemon",
+    "web",
 ];
 
 fn take_value(args: &[String], index: &mut usize) -> Option<String> {
@@ -99,13 +95,24 @@ pub fn parse_cli_config(argv: &[String]) -> CliConfig {
             if *sub == "daemon" {
                 config.daemon = true;
             }
-            if matches!(*sub, "remote-control" | "rc" | "remote" | "sync" | "bridge") {
-                config.remote = true;
-            }
             if matches!(*sub, "ps" | "logs" | "attach" | "kill") {
                 config.background = true;
             }
-            // Consume remaining as opaque for now.
+            if *sub == "update" {
+                let mut options = true;
+                for arg in &args[index + 1..] {
+                    match arg.as_str() {
+                        "--" if options => options = false,
+                        "-h" | "--help" if options => config.show_help = true,
+                        _ => config.unknown_flags.push(arg.clone()),
+                    }
+                }
+            }
+            if *sub == "web" {
+                // `cli::web` owns its own grammar, including `--help`.
+                config.subcommand_args = args[index + 1..].to_vec();
+            }
+            // Other subcommands still consume remaining arguments as opaque.
             index = args.len();
             break;
         }
@@ -154,11 +161,8 @@ pub fn parse_cli_config(argv: &[String]) -> CliConfig {
             "--mcp-debug" => config.mcp_debug = true,
             "--strict-mcp-config" => config.strict_mcp_config = true,
             "--cowork" | "--cowork=true" => config.cowork = true,
-            "--chrome" => config.chrome = Some(true),
-            "--no-chrome" => config.chrome = Some(false),
             "--worktree" => config.worktree = true,
             "--tmux" => config.tmux = true,
-            "--remote" => config.remote = true,
             "--bg" | "--background" => config.background = true,
             "--init" => config.init = true,
             "--init-only" => config.init_only = true,
@@ -399,9 +403,7 @@ pub fn parse_cli_config(argv: &[String]) -> CliConfig {
                 config.agent = strip_eq("--agent", other).or_else(|| take_value(&args, &mut index));
             }
             other
-                if other.starts_with("--claude-in-chrome-mcp")
-                    || other.starts_with("--chrome-native-host")
-                    || other.starts_with("--computer-use-mcp")
+                if other.starts_with("--computer-use-mcp")
                     || other.starts_with("--dump-system-prompt")
                     || other == "--update"
                     || other == "--upgrade" =>
@@ -432,6 +434,61 @@ mod tests {
         std::iter::once("nyan".to_string())
             .chain(args.iter().map(|a| (*a).to_string()))
             .collect()
+    }
+
+    #[test]
+    fn parse_update_help_before_and_after_subcommand() {
+        for args in [
+            vec!["update", "--help"],
+            vec!["update", "-h"],
+            vec!["--help", "update"],
+            vec!["-h", "update"],
+        ] {
+            let config = parse_cli_config(&argv(&args));
+            assert_eq!(config.subcommand.as_deref(), Some("update"), "{args:?}");
+            assert!(config.show_help, "{args:?}");
+            assert!(config.unimplemented_reasons().is_empty(), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn parse_update_rejects_unsupported_arguments() {
+        for arg in ["--check", "--unknown", "unexpected", "--help=bad"] {
+            let config = parse_cli_config(&argv(&["update", arg]));
+            assert!(!config.show_help);
+            assert_eq!(config.unknown_flags, vec![arg]);
+            assert_eq!(config.unimplemented_reasons(), vec![arg]);
+        }
+    }
+
+    #[test]
+    fn parse_update_respects_option_terminator() {
+        let config = parse_cli_config(&argv(&["update", "--"]));
+        assert!(!config.show_help);
+        assert!(config.unimplemented_reasons().is_empty());
+
+        for flag in ["--help", "-h"] {
+            let config = parse_cli_config(&argv(&["update", "--", flag]));
+            assert!(!config.show_help);
+            assert_eq!(config.unimplemented_reasons(), vec![flag]);
+        }
+    }
+
+    #[test]
+    fn retired_remote_words_follow_normal_prompt_routing() {
+        for word in ["remote-control", "rc", "remote", "sync", "bridge"] {
+            let config = parse_cli_config(&argv(&[word, "hello"]));
+            assert_eq!(config.prompt.as_deref(), Some(word));
+            assert!(config.unknown_flags.is_empty());
+            assert!(config.subcommand.is_none());
+            assert!(config.unimplemented_reasons().is_empty());
+        }
+        let config = parse_cli_config(&argv(&["--remote", "hello"]));
+        assert_eq!(config.unknown_flags, vec!["--remote"]);
+        assert_eq!(config.prompt.as_deref(), Some("hello"));
+        assert!(!config.unimplemented_reasons().is_empty());
+        assert!(parse_cli_config(&argv(&["--bg"])).background);
+        assert!(parse_cli_config(&argv(&["daemon"])).daemon);
     }
 
     #[test]
@@ -671,5 +728,16 @@ mod tests {
     fn parse_unknown_flag() {
         let c = parse_cli_config(&argv(&["--not-a-real-flag"]));
         assert_eq!(c.unknown_flags, vec!["--not-a-real-flag".to_string()]);
+    }
+
+    /// Claude in Chrome is not shipped, so its flags are not accepted.
+    #[test]
+    fn parse_rejects_unsupported_chrome_flags() {
+        let c = parse_cli_config(&argv(&["--chrome", "--no-chrome", "--chrome-native-host"]));
+        assert_eq!(
+            c.unknown_flags,
+            vec!["--chrome", "--no-chrome", "--chrome-native-host"]
+        );
+        assert!(!c.unimplemented_reasons().is_empty());
     }
 }

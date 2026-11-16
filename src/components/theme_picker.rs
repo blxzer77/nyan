@@ -77,7 +77,7 @@ pub fn theme_picker_syntax_footer(
     shortcut: &str,
 ) -> String {
     if let Some(value) = syntax_disabled_env_value {
-        return format!("Syntax highlighting disabled (via CLAUDE_CODE_SYNTAX_HIGHLIGHT={value})");
+        return format!("Syntax highlighting disabled (via NYAN_SYNTAX_HIGHLIGHT={value})");
     }
     if syntax_highlighting_disabled {
         return format!("Syntax highlighting disabled ({shortcut} to enable)");
@@ -110,7 +110,7 @@ fn theme_picker_demo_diff_lines(
         lines: vec![
             " function greet() {".to_string(),
             "-  console.log(\"Hello, World!\");".to_string(),
-            "+  console.log(\"Hello, Claude!\");".to_string(),
+            "+  console.log(\"Hello, nyan!\");".to_string(),
             " }".to_string(),
         ],
     };
@@ -486,7 +486,7 @@ mod tests {
     fn theme_picker_syntax_footer_matches_official_branches() {
         assert_eq!(
             theme_picker_syntax_footer(ThemeName::Dark, false, Some("0"), "ctrl+t"),
-            "Syntax highlighting disabled (via CLAUDE_CODE_SYNTAX_HIGHLIGHT=0)"
+            "Syntax highlighting disabled (via NYAN_SYNTAX_HIGHLIGHT=0)"
         );
         assert_eq!(
             theme_picker_syntax_footer(ThemeName::Dark, true, None, "ctrl+t"),
@@ -597,7 +597,7 @@ mod tests {
         // StructuredDiff's filePath only picks the language: no header row.
         assert!(!text.contains("demo.js"), "canvas=\n{text}");
         assert!(text.contains("Hello, World!"), "canvas=\n{text}");
-        assert!(text.contains("Hello, Claude!"), "canvas=\n{text}");
+        assert!(text.contains("Hello, nyan!"), "canvas=\n{text}");
         assert!(
             text.contains("Syntax theme: Monokai Extended (ctrl+t to disable)"),
             "canvas=\n{text}"
@@ -703,8 +703,8 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &dir);
-        let _syntax = EnvVarGuard::unset("CLAUDE_CODE_SYNTAX_HIGHLIGHT");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &dir);
+        let _syntax = EnvVarGuard::unset("NYAN_SYNTAX_HIGHLIGHT");
         let mut ctrl_t = KeyEvent::new(KeyEventKind::Press, KeyCode::Char('t'));
         ctrl_t.modifiers = KeyModifiers::CONTROL;
         let frames = drive(vec![vec![TerminalEvent::Key(ctrl_t)]]);

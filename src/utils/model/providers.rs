@@ -1,71 +1,43 @@
 //! API provider helpers.
 //! Maps to CC `utils/model/providers.ts`.
 
-use crate::utils::process_env::JsTruthy;
-
-/// Maps to CC `utils/model/providers.ts` `APIProvider`.
+/// The only supported API provider. Provider configuration is supplied by the
+/// selected settings.nyan profile, never by provider-selection environment
+/// variables.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ApiProvider {
     FirstParty,
-    Bedrock,
-    Vertex,
-    Foundry,
 }
 
-/// Maps to CC `utils/model/providers.ts` `getAPIProvider()`.
 pub fn get_api_provider() -> ApiProvider {
-    let env = crate::utils::process_env::snapshot();
-    if crate::utils::env_utils::is_env_truthy(env.var("CLAUDE_CODE_USE_BEDROCK")) {
-        ApiProvider::Bedrock
-    } else if crate::utils::env_utils::is_env_truthy(env.var("CLAUDE_CODE_USE_VERTEX")) {
-        ApiProvider::Vertex
-    } else if crate::utils::env_utils::is_env_truthy(env.var("CLAUDE_CODE_USE_FOUNDRY")) {
-        ApiProvider::Foundry
-    } else {
-        ApiProvider::FirstParty
-    }
+    ApiProvider::FirstParty
 }
 
-/// Maps to CC `utils/model/providers.ts` `getAPIProviderForStatsig()`.
-pub fn get_api_provider_for_statsig() -> &'static str {
-    match get_api_provider() {
-        ApiProvider::FirstParty => "firstParty",
-        ApiProvider::Bedrock => "bedrock",
-        ApiProvider::Vertex => "vertex",
-        ApiProvider::Foundry => "foundry",
-    }
+/// Wire name of the API provider, as reported in the SDK `account` payload.
+pub fn get_api_provider_name() -> &'static str {
+    "firstParty"
 }
 
-/// Pure audience/value form of CC `utils/model/providers.ts#isFirstPartyAnthropicBaseUrl`.
-pub fn is_first_party_anthropic_base_url_for_audience(
-    base_url: Option<&str>,
-    audience: crate::utils::build_profile::BuildAudience,
-) -> bool {
+/// Pure value form of CC `utils/model/providers.ts#isFirstPartyAnthropicBaseUrl`.
+pub fn is_first_party_anthropic_base_url_for(base_url: Option<&str>) -> bool {
     // CC `if (!baseUrl) return true`.
-    let Some(base_url) = base_url.truthy() else {
+    let Some(base_url) = base_url.filter(|value| !value.is_empty()) else {
         return true;
     };
-    let allowed_hosts: &[&str] = if crate::utils::build_profile::audience_has_internal_capability(
-        audience,
-        crate::utils::build_profile::InternalCapability::Models,
-    ) {
-        &["api.anthropic.com", "api-staging.anthropic.com"]
-    } else {
-        &["api.anthropic.com"]
-    };
-
-    parse_url_host(base_url)
-        .as_deref()
-        .is_some_and(|host| allowed_hosts.contains(&host))
+    parse_url_host(base_url).as_deref() == Some("api.anthropic.com")
 }
 
 /// Maps to CC `utils/model/providers.ts#isFirstPartyAnthropicBaseUrl`.
+///
+/// The endpoint comes from the selected nyan profile. No profile (or no
+/// configured endpoint) is the SDK's first-party default.
 pub fn is_first_party_anthropic_base_url() -> bool {
-    let base_url = crate::utils::process_env::var("ANTHROPIC_BASE_URL");
-    is_first_party_anthropic_base_url_for_audience(
-        base_url.as_deref(),
-        crate::utils::build_profile::build_audience(),
+    let base_url = crate::utils::model::profile::resolve_main_profile(
+        &crate::utils::settings::get_initial_settings(),
     )
+    .ok()
+    .and_then(|profile| profile.base_url);
+    is_first_party_anthropic_base_url_for(base_url.as_deref())
 }
 
 /// CC `new URL(baseUrl).host` (`providers.ts:31`): the WHATWG host, with a
@@ -83,64 +55,69 @@ fn parse_url_host(url: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::test_env::TEST_ENV_LOCK;
-
-    #[test]
-    fn get_api_provider_matches_official_env_precedence() {
-        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_BEDROCK");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_FOUNDRY");
-        assert_eq!(get_api_provider(), ApiProvider::FirstParty);
-
-        crate::utils::process_env::set("CLAUDE_CODE_USE_FOUNDRY", "1");
-        assert_eq!(get_api_provider(), ApiProvider::Foundry);
-
-        crate::utils::process_env::set("CLAUDE_CODE_USE_VERTEX", "1");
-        assert_eq!(get_api_provider(), ApiProvider::Vertex);
-
-        crate::utils::process_env::set("CLAUDE_CODE_USE_BEDROCK", "1");
-        assert_eq!(get_api_provider(), ApiProvider::Bedrock);
-
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_BEDROCK");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_FOUNDRY");
-    }
+    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
 
     #[test]
     fn first_party_base_url_matches_official_host_allowlist() {
-        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("ANTHROPIC_BASE_URL");
-        assert!(is_first_party_anthropic_base_url());
-
-        crate::utils::process_env::set("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1");
-        assert!(is_first_party_anthropic_base_url());
-        // `new URL(...).host` drops a default port and keeps any other.
-        crate::utils::process_env::set("ANTHROPIC_BASE_URL", "https://api.anthropic.com:443");
-        assert!(is_first_party_anthropic_base_url());
-        crate::utils::process_env::set("ANTHROPIC_BASE_URL", "https://api.anthropic.com:8443");
-        assert!(!is_first_party_anthropic_base_url());
-        crate::utils::process_env::set("ANTHROPIC_BASE_URL", "HTTPS://API.Anthropic.COM/v1");
-        assert!(is_first_party_anthropic_base_url());
+        // No base URL is the SDK's first-party default.
+        assert!(is_first_party_anthropic_base_url_for(None));
         // `!baseUrl`: an empty value is unset.
-        crate::utils::process_env::set("ANTHROPIC_BASE_URL", "");
+        assert!(is_first_party_anthropic_base_url_for(Some("")));
+
+        assert!(is_first_party_anthropic_base_url_for(Some(
+            "https://api.anthropic.com/v1"
+        )));
+        // `new URL(...).host` drops a default port and keeps any other.
+        assert!(is_first_party_anthropic_base_url_for(Some(
+            "https://api.anthropic.com:443"
+        )));
+        assert!(!is_first_party_anthropic_base_url_for(Some(
+            "https://api.anthropic.com:8443"
+        )));
+        assert!(is_first_party_anthropic_base_url_for(Some(
+            "HTTPS://API.Anthropic.COM/v1"
+        )));
+
+        assert!(!is_first_party_anthropic_base_url_for(Some(
+            "https://api-staging.anthropic.com"
+        )));
+
+        assert!(!is_first_party_anthropic_base_url_for(Some(
+            "api.anthropic.com"
+        )));
+        assert!(!is_first_party_anthropic_base_url_for(Some("not a url")));
+    }
+
+    #[test]
+    fn first_party_base_url_comes_from_the_main_profile_not_the_environment() {
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "nyan-first-party-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
+        let _ambient = EnvVarGuard::set("ANTHROPIC_BASE_URL", "https://ambient.example");
+        crate::utils::settings::settings_cache::reset_settings_cache();
+
+        // No profile: the first-party default, regardless of the environment.
         assert!(is_first_party_anthropic_base_url());
 
-        crate::utils::process_env::set("ANTHROPIC_BASE_URL", "https://api-staging.anthropic.com");
-        assert!(is_first_party_anthropic_base_url_for_audience(
-            Some("https://api-staging.anthropic.com"),
-            crate::utils::build_profile::BuildAudience::AnthropicInternal,
-        ));
-        assert!(!is_first_party_anthropic_base_url_for_audience(
-            Some("https://api-staging.anthropic.com"),
-            crate::utils::build_profile::BuildAudience::External,
-        ));
-
-        crate::utils::process_env::set("ANTHROPIC_BASE_URL", "api.anthropic.com");
+        std::fs::write(
+            root.join("settings.json"),
+            r#"{
+                "nyan": {
+                    "providers": {"anthropic": {"kind": "anthropic", "protocol": "anthropicMessages", "baseUrl": "https://proxy.example"}},
+                    "models": {"main": {"provider": "anthropic", "model": "claude-sonnet-4-6", "capabilities": {"contextWindow": 200000, "maxOutputTokens": 128000}}},
+                    "selection": {"main": "main"}
+                }
+            }"#,
+        )
+        .unwrap();
+        crate::utils::settings::settings_cache::reset_settings_cache();
         assert!(!is_first_party_anthropic_base_url());
-        crate::utils::process_env::set("ANTHROPIC_BASE_URL", "not a url");
-        assert!(!is_first_party_anthropic_base_url());
 
-        crate::utils::process_env::remove("ANTHROPIC_BASE_URL");
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        let _ = std::fs::remove_dir_all(root);
     }
 }

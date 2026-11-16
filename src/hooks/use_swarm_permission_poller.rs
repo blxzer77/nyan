@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::types::permissions::PermissionUpdate;
 use crate::utils::swarm::permission_sync::PermissionResponse;
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 
 /// Maps to: CC `PermissionResponseCallback`.
 pub struct PermissionResponseCallback {
@@ -179,7 +179,8 @@ pub fn clear_pending_callbacks_for_test() {
 
 /// Serializes tests that touch the module-level callback registries.
 #[cfg(test)]
-pub static TEST_PENDING_CALLBACKS_LOCK: TestStateLock = TestStateLock::new();
+pub static TEST_PENDING_CALLBACKS_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::PendingCallbacks);
 
 /// Test helper retained for existing callers.
 #[cfg(test)]

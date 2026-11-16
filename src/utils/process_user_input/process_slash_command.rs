@@ -7,7 +7,6 @@
 
 use super::ProcessUserInputBaseResult;
 use crate::commands::{self, Command, CommandKind};
-use crate::constants::product;
 use crate::constants::query_source::QuerySource;
 use crate::types::message::{
     RenderableMessage, RenderableMessageKind, SystemMessage, SystemMessageLevel, UserContent,
@@ -19,7 +18,6 @@ use uuid::Uuid;
 pub enum LocalSettingsTab {
     Status,
     Config,
-    Usage,
 }
 
 /// Rust name for official CC local-jsx slash command UI payloads.
@@ -387,7 +385,6 @@ fn get_messages_for_prompt_slash_command(
     }
     let source = match command.source {
         commands::CommandSource::Builtin => "builtin",
-        commands::CommandSource::PolicySettings => "policySettings",
         commands::CommandSource::UserSettings => "userSettings",
         commands::CommandSource::ProjectSettings => "projectSettings",
         commands::CommandSource::Plugin => "plugin",
@@ -805,12 +802,6 @@ define_local_ui_call!(
         default_tab: LocalSettingsTab::Status
     }
 );
-define_local_ui_call!(
-    call_usage,
-    LocalCommandUi::Settings {
-        default_tab: LocalSettingsTab::Usage
-    }
-);
 define_local_ui_call!(call_help, LocalCommandUi::Help);
 define_local_ui_call!(call_hooks, LocalCommandUi::Hooks);
 define_local_ui_call!(call_theme, LocalCommandUi::Theme);
@@ -895,22 +886,6 @@ pub(crate) fn call_clear(
         "",
         false,
         Some(SlashCommandAction::ClearConversation),
-    )
-}
-
-pub(crate) fn call_version(
-    command: &Command,
-    args: &str,
-    uuid: Option<String>,
-    _context: &crate::tool::ToolUseContext,
-) -> ProcessUserInputBaseResult {
-    local_command_result(
-        uuid,
-        commands::get_command_name(command),
-        args,
-        product::VERSION,
-        false,
-        None,
     )
 }
 
@@ -1670,8 +1645,8 @@ mod tests {
             Some(|_, args, _| Ok(vec![UserContent::Text(format!("prompt:{args}"))]));
         for (declared, expected) in [
             (
-                vec!["Agent", "Read(~/**)", "Edit(~/.claude/settings.json)"],
-                vec!["Agent", "Read(~/**)", "Edit(~/.claude/settings.json)"],
+                vec!["Agent", "Read(~/**)", "Edit(~/.nyan/settings.json)"],
+                vec!["Agent", "Read(~/**)", "Edit(~/.nyan/settings.json)"],
             ),
             (
                 vec!["Read,Grep", "Bash(echo hi)"],
@@ -1881,22 +1856,6 @@ mod tests {
     }
 
     #[test]
-    fn process_slash_command_usage_opens_settings_usage_tab() {
-        let result = process_slash_command("/usage", Some("cmd-1".to_string()), get_commands());
-
-        assert!(!result.should_query);
-        assert_eq!(
-            result.local_action,
-            Some(SlashCommandAction::OpenLocalCommandUi {
-                command: LocalCommandUi::Settings {
-                    default_tab: LocalSettingsTab::Usage,
-                },
-                invocation: SlashCommandInvocation::new("usage", ""),
-            })
-        );
-    }
-
-    #[test]
     fn process_slash_command_status_opens_settings_status_tab() {
         let result = process_slash_command("/status", Some("cmd-1".to_string()), get_commands());
 
@@ -1994,23 +1953,6 @@ mod tests {
         assert_eq!(
             local_output(&result),
             "<local-command-stdout></local-command-stdout>"
-        );
-    }
-
-    #[cfg(feature = "anthropic_internal")]
-    #[test]
-    fn process_slash_command_version_outputs_product_version_for_internal_registry() {
-        let registry = declared_commands_for_tests();
-        let result = process_slash_command("/version", Some("cmd-1".to_string()), &registry);
-
-        assert!(!result.should_query);
-        assert!(result.local_action.is_none());
-        assert_eq!(
-            local_output(&result),
-            format!(
-                "<local-command-stdout>{}</local-command-stdout>",
-                product::VERSION
-            )
         );
     }
 
@@ -2452,10 +2394,13 @@ mod tests {
     fn rename_receipts_match_official_system_display_without_caveat() {
         // CC rename/rename.ts:27-30,82 and processSlashCommand.tsx:783-798,
         // 675-681: normal onDone paths are two local_command System rows.
+        let _team_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
+            .lock()
+            .unwrap();
         let _env = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("rename-receipt-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _project = PinnedProjectDir::at(&root);
         struct RestoreSession(String, Option<std::path::PathBuf>, std::path::PathBuf);
         impl Drop for RestoreSession {
@@ -2472,9 +2417,6 @@ mod tests {
             root.clone(),
         );
         crate::bootstrap::state::switch_session(Uuid::new_v4().to_string(), Some(root));
-        let _team_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
-            .lock()
-            .unwrap();
         struct RestoreTeam(Option<crate::utils::teammate::DynamicTeamContext>);
         impl Drop for RestoreTeam {
             fn drop(&mut self) {
@@ -2644,7 +2586,7 @@ mod tests {
         // rows are omitted; default user output and other system output stay.
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         for fullscreen in ["0", "1"] {
-            let _env = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", fullscreen);
+            let _env = EnvVarGuard::set("NYAN_NO_FLICKER", fullscreen);
             for output in [
                 "Permissions dialog dismissed",
                 "Workspace dialog dismissed",

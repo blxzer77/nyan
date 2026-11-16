@@ -10,10 +10,6 @@
 //! supplies its key and client. EMRank is the first such provider; TypeSafe /
 //! OpenRouter serve the identical protocol and need no new client.
 //!
-//! What is *not* generic: a chat-completion backend (`chat`, a structured-JSON
-//! prompt to a gateway model) is a different protocol and gets its own
-//! backend; it can reuse [`super::super::DecisionBackend`] but not this file.
-//!
 //! Measured behaviour this module is shaped around (corp-pc, 2026-10-27):
 //! one request with 20 batched candidates costs about the same as one request
 //! with one candidate (0.5–0.6 s), while 20 independent requests cost far
@@ -118,6 +114,11 @@ pub struct SystemOneClient {
     client: reqwest::Client,
     health: Arc<service_health::ServiceHealth>,
     transport: Arc<dyn SystemOneTransport>,
+    /// Model used by the health probe. The service rejects a model id the
+    /// account has not enabled; the old hardcoded `nyan-probe` produced a 404
+    /// that looked like a dead backend. Callers pass the configured `fast`
+    /// alias, which is the model real decisions use.
+    probe_model: String,
     prewarmed: AtomicBool,
 }
 
@@ -138,6 +139,7 @@ impl SystemOneClient {
         client: reqwest::Client,
         health: Arc<service_health::ServiceHealth>,
         transport: Arc<dyn SystemOneTransport>,
+        probe_model: impl Into<String>,
     ) -> Arc<Self> {
         let backend = Arc::new(Self {
             base_url: base_url.into(),
@@ -147,6 +149,7 @@ impl SystemOneClient {
             client,
             health,
             transport,
+            probe_model: probe_model.into(),
             prewarmed: AtomicBool::new(false),
         });
         backend.install_probe();
@@ -195,9 +198,9 @@ impl SystemOneClient {
             "ping".to_string(),
             json!({"type": "noul", "instructions": "Is this a ping?"}),
         );
-        let body = self
-            .transport
-            .encode("nyan-probe", &Value::String("ping".into()), &questions);
+        let body =
+            self.transport
+                .encode(&self.probe_model, &Value::String("ping".into()), &questions);
         self.post(&body, timeout).await.map(|_| ()).map_err(|_| ())
     }
 
@@ -234,12 +237,21 @@ impl SystemOneClient {
         };
 
         if !status.is_success() {
-            let (reason, failure) = match status.as_u16() {
-                429 => (FallbackReason::RateLimited, FailureKind::RateLimited),
-                402 => (FallbackReason::BudgetExhausted, FailureKind::Budget),
-                401 | 403 => (FallbackReason::BackendDown, FailureKind::Auth),
-                _ => (FallbackReason::BackendDown, FailureKind::Unreachable),
-            };
+            let (reason, failure) = classify_failure(status.as_u16(), &bytes);
+            // Keep the service's own reason visible: a model id the account
+            // has not enabled is a configuration error, not an unreachable
+            // backend, and the old mapping hid the difference.
+            let detail = error_summary(&bytes);
+            crate::utils::debug::log_for_debugging(&format!(
+                "DecisionProvider: HTTP {} ({}) for model {:?}{}",
+                status.as_u16(),
+                reason.as_str(),
+                body_model(body),
+                detail
+                    .as_deref()
+                    .map(|detail| format!(": {detail}"))
+                    .unwrap_or_default(),
+            ));
             return Err(PostError {
                 reason,
                 failure,
@@ -260,6 +272,107 @@ fn body_model(body: &Value) -> &str {
     body.get("model")
         .and_then(Value::as_str)
         .unwrap_or_default()
+}
+
+/// Map an HTTP failure to a fallback reason and a health failure kind.
+///
+/// A 404 that names an unknown/disabled model is `ModelNotFound`, not
+/// `BackendDown`: the endpoint is healthy, the configuration is not. A 400 is
+/// a malformed request and therefore `InvalidResponse`. Everything else keeps
+/// the documented 429 / 402 / 401-403 mapping.
+fn classify_failure(status: u16, body: &[u8]) -> (FallbackReason, FailureKind) {
+    match status {
+        429 => (FallbackReason::RateLimited, FailureKind::RateLimited),
+        402 => (FallbackReason::BudgetExhausted, FailureKind::Budget),
+        401 | 403 => (FallbackReason::BackendDown, FailureKind::Auth),
+        // Some deployments answer 400 for an unknown model, some 404.
+        400 | 404 | 422 if mentions_model_not_found(body) => {
+            (FallbackReason::ModelNotFound, FailureKind::ModelNotFound)
+        }
+        400 | 422 => (
+            FallbackReason::InvalidResponse,
+            FailureKind::InvalidResponse,
+        ),
+        _ => (FallbackReason::BackendDown, FailureKind::Unreachable),
+    }
+}
+
+/// Whether a failed decision is evidence about the *service's* health, rather
+/// than just about this one request.
+///
+/// decision-provider.md §5.2 names three signals: 429 → `rate_limited`,
+/// 402 → `budget_exhausted`, 401 → `backend_down`. Client and configuration
+/// errors — a malformed request (400/422), an unknown model id, a response
+/// that cannot be parsed — happen while the endpoint itself is healthy, so
+/// they fail only the decision that produced them and leave the shared gate
+/// open for other decision points.
+///
+/// Timeouts, connection failures and 5xx responses still close the gate: the
+/// document does not classify them, and closing the gate is what lets the
+/// decision path fail fast when the backend is genuinely unreachable.
+fn counts_as_health_failure(failure: FailureKind) -> bool {
+    !matches!(
+        failure,
+        FailureKind::InvalidResponse | FailureKind::ModelNotFound
+    )
+}
+
+/// Whether the service's error payload says the model does not exist or is
+/// not enabled. The provider uses both an English code and a Chinese message.
+fn mentions_model_not_found(body: &[u8]) -> bool {
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return false;
+    };
+    let error = value.get("error").unwrap_or(&value);
+    ["code", "type", "message"]
+        .iter()
+        .filter_map(|key| error.get(*key))
+        .filter_map(Value::as_str)
+        .any(|text| {
+            let lower = text.to_ascii_lowercase();
+            lower.contains("model_not_found")
+                || lower.contains("model not found")
+                || lower.contains("not enabled")
+                || text.contains("模型不存在")
+                || text.contains("未启用")
+        })
+}
+
+/// A short, log-safe summary of the service's error payload. The decision
+/// request body is never logged; this only reads the response.
+fn error_summary(body: &[u8]) -> Option<String> {
+    let value: Value = serde_json::from_slice(body).ok()?;
+    let error = value.get("error").unwrap_or(&value);
+    let mut parts = Vec::new();
+    for key in ["code", "type", "message"] {
+        let Some(value) = error.get(key) else {
+            continue;
+        };
+        let text = match value {
+            Value::String(text) => text.clone(),
+            Value::Number(number) => number.to_string(),
+            _ => continue,
+        };
+        let text = text.trim();
+        if text.is_empty() {
+            continue;
+        }
+        parts.push(format!("{key}={text}"));
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    let mut summary = parts.join(" ");
+    // `String::truncate` panics off a char boundary; the service's messages
+    // are Chinese, so cut at the last boundary at or below 200 bytes.
+    if summary.len() > 200 {
+        let mut end = 200;
+        while !summary.is_char_boundary(end) {
+            end -= 1;
+        }
+        summary.truncate(end);
+    }
+    Some(summary)
 }
 
 struct Posted {
@@ -521,7 +634,9 @@ impl DecisionBackend for SystemOneClient {
             let posted = match posted {
                 Ok(posted) => posted,
                 Err(error) => {
-                    self.health.record_failure(error.failure);
+                    if counts_as_health_failure(error.failure) {
+                        self.health.record_failure(error.failure);
+                    }
                     crate::utils::debug::log_for_debugging(&format!(
                         "DecisionProvider: {} {} -> {} after {} ms",
                         backend_name,
@@ -534,7 +649,15 @@ impl DecisionBackend for SystemOneClient {
             };
 
             let invalid = |request_id: Option<String>| {
-                self.health.record_failure(FailureKind::InvalidResponse);
+                // A malformed or unparseable response fails this decision only;
+                // it is not one of the documented health signals (§5.2).
+                crate::utils::debug::log_for_debugging(&format!(
+                    "DecisionProvider: {} {} -> {} after {} ms",
+                    backend_name,
+                    req.point.as_str(),
+                    FallbackReason::InvalidResponse.as_str(),
+                    latency.as_millis()
+                ));
                 DecisionOutcome::Fallback {
                     reason: FallbackReason::InvalidResponse,
                     receipt: receipt(
@@ -685,6 +808,10 @@ mod tests {
             200 => {
                 r#"{"model":"typesafe/jev-1.14.0","answers":{"answers":{"type":"noul","noul":0.91}},"usage":{"input_tokens":210,"output_tokens":3}}"#
             }
+            // Matches the account's real 404 for `typesafe/jev-1.14.0`.
+            404 => {
+                r#"{"error":{"message":"模型不存在或未启用","type":"model_not_found","code":"model_not_found"}}"#
+            }
             _ => "{}",
         }
     }
@@ -701,6 +828,7 @@ mod tests {
                 Duration::from_millis(2_000),
             )),
             Arc::new(NativeSystemOneTransport),
+            "typesafe/jev-1.14.0",
         )
     }
 
@@ -855,18 +983,35 @@ mod tests {
 
     #[test]
     fn http_429_402_and_401_map_to_the_documented_fallback_reasons() {
-        for (status, reason, expected) in [
-            (429u16, "Too Many Requests", FallbackReason::RateLimited),
-            (402, "Payment Required", FallbackReason::BudgetExhausted),
-            (401, "Unauthorized", FallbackReason::BackendDown),
+        for (status, reason, expected, kind) in [
+            (
+                429u16,
+                "Too Many Requests",
+                FallbackReason::RateLimited,
+                FailureKind::RateLimited,
+            ),
+            (
+                402,
+                "Payment Required",
+                FallbackReason::BudgetExhausted,
+                FailureKind::Budget,
+            ),
+            (
+                401,
+                "Unauthorized",
+                FallbackReason::BackendDown,
+                FailureKind::Auth,
+            ),
         ] {
             runtime().block_on(async {
                 let mock = mock(vec![(status, reason)]).await;
                 let backend = client(&mock.url);
                 let outcome = run(&backend, &request()).await;
                 assert_eq!(outcome.fallback_reason(), Some(expected), "status {status}");
+                assert_eq!(backend.health.last_failure(), Some(kind), "status {status}");
                 // The service is now Down; a second call must not reach the
                 // mock (which would panic on a missing accept).
+                assert!(backend.health.is_down(), "status {status}");
                 let second = run(&backend, &request()).await;
                 assert_eq!(second.fallback_reason(), Some(FallbackReason::BackendDown));
                 mock.handle.await.unwrap();
@@ -875,7 +1020,41 @@ mod tests {
     }
 
     #[test]
-    fn a_malformed_response_is_invalid_and_marks_the_service_down() {
+    fn http_400_is_a_request_error_and_does_not_close_the_health_gate() {
+        runtime().block_on(async {
+            // First request: the endpoint rejects the request with a 400.
+            // Second request: the endpoint is still reachable and answers.
+            let mock = mock(vec![(400, "Bad Request"), (200, "OK")]).await;
+            let backend = client(&mock.url);
+
+            let first = run(&backend, &request()).await;
+            assert_eq!(
+                first.fallback_reason(),
+                Some(FallbackReason::InvalidResponse)
+            );
+            assert!(
+                !backend.health.is_down(),
+                "a client request error must not close the shared gate"
+            );
+            assert_eq!(
+                backend.health.last_failure(),
+                None,
+                "the last failure must not name a request error as a health signal"
+            );
+
+            // Other decision points must still be able to use the service.
+            let second = run(&backend, &request()).await;
+            assert!(
+                second.answers().is_some(),
+                "second call should reach the endpoint: {:?}",
+                second.fallback_reason()
+            );
+            mock.handle.await.unwrap();
+        });
+    }
+
+    #[test]
+    fn a_malformed_response_is_invalid_without_closing_the_health_gate() {
         runtime().block_on(async {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let address = listener.local_addr().unwrap();
@@ -896,6 +1075,11 @@ mod tests {
                 outcome.fallback_reason(),
                 Some(FallbackReason::InvalidResponse)
             );
+            assert!(
+                !backend.health.is_down(),
+                "an unparseable response must not close the shared gate"
+            );
+            assert_eq!(backend.health.last_failure(), None);
             handle.await.unwrap();
         });
     }
@@ -983,6 +1167,58 @@ mod tests {
     }
 
     #[test]
+    fn the_health_probe_uses_the_configured_model() {
+        runtime().block_on(async {
+            let mock = mock(vec![(200, "OK")]).await;
+            let backend = client(&mock.url);
+            backend.ping(Duration::from_secs(1)).await.unwrap();
+            let raw = mock.handle.await.unwrap();
+            assert!(
+                raw[0].contains("\"model\":\"typesafe/jev-1.14.0\""),
+                "probe must use the configured model: {}",
+                raw[0]
+            );
+            assert!(!raw[0].contains("nyan-probe"), "{}", raw[0]);
+        });
+    }
+
+    #[test]
+    fn an_unknown_model_is_model_not_found_not_a_health_failure() {
+        runtime().block_on(async {
+            let mock = mock(vec![(404, "Not Found")]).await;
+            let backend = client(&mock.url);
+            let outcome = run(&backend, &request()).await;
+            assert_eq!(
+                outcome.fallback_reason(),
+                Some(FallbackReason::ModelNotFound)
+            );
+            // The endpoint is healthy; only the configuration is wrong, so
+            // the shared gate stays open for decision points using another
+            // model.
+            assert_eq!(backend.health.last_failure(), None);
+            assert!(!backend.health.is_down());
+            mock.handle.await.unwrap();
+        });
+    }
+
+    #[test]
+    fn a_long_multibyte_error_is_summarized_without_panicking() {
+        // This shape puts byte 200 inside a Chinese character: the old
+        // `String::truncate(200)` panicked here (release builds abort).
+        let body = json!({
+            "error": {
+                "code": "400",
+                "type": "E",
+                "message": "模型不存在或未启用".repeat(30),
+            }
+        });
+        let bytes = serde_json::to_vec(&body).unwrap();
+        let summary = error_summary(&bytes).expect("summary");
+        assert!(summary.len() <= 200, "{} bytes", summary.len());
+        assert!(summary.starts_with("code=400 type=E message=模型"));
+    }
+
+    #[test]
     fn a_down_service_is_skipped_without_reaching_the_network() {
         runtime().block_on(async {
             crate::utils::tls_provider::install_crypto_provider();
@@ -996,6 +1232,7 @@ mod tests {
                     Duration::from_millis(50),
                 )),
                 Arc::new(NativeSystemOneTransport),
+                "typesafe/jev-1.14.0",
             );
             backend.health.record_failure(FailureKind::Unreachable);
             let started = Instant::now();

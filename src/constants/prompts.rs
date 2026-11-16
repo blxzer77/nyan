@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use crate::services::api::claude::SystemPrompt;
+use crate::services::api::request::SystemPrompt;
 use crate::utils::process_env::JsTruthy;
 
 /// Maps to CC `constants/prompts.ts` `SYSTEM_PROMPT_DYNAMIC_BOUNDARY`.
@@ -17,7 +17,7 @@ const ISSUES_EXPLAINER: &str =
     "report the issue at https://github.com/anthropics/claude-code/issues";
 
 /// Maps to: CC `constants/prompts.ts:758` `DEFAULT_AGENT_PROMPT`.
-pub const DEFAULT_AGENT_PROMPT: &str = "You are an agent for Claude Code, Anthropic's official CLI for Claude. Given the user's message, you should use the tools available to complete the task. Complete the task fully—don't gold-plate, but don't leave it half-done. When you complete the task, respond with a concise report covering what was done and any key findings — the caller will relay this to the user, so it only needs the essentials.";
+pub const DEFAULT_AGENT_PROMPT: &str = "You are an agent for nyan. Given the user's message, you should use the tools available to complete the task. Complete the task fully—don't gold-plate, but don't leave it half-done. When you complete the task, respond with a concise report covering what was done and any key findings — the caller will relay this to the user, so it only needs the essentials.";
 
 const CLAUDE_4_5_OR_4_6_OPUS_MODEL_ID: &str = "claude-opus-4-6";
 const CLAUDE_4_5_OR_4_6_SONNET_MODEL_ID: &str = "claude-sonnet-4-6";
@@ -31,7 +31,7 @@ const TOKEN_BUDGET_SECTION: &str = "When the user specifies a token target (e.g.
 /// additionalWorkingDirectories?, mcpClients?)`.
 ///
 /// The official function returns the simple single-block prompt when
-/// `CLAUDE_CODE_SIMPLE` is truthy; otherwise it assembles the cacheable static
+/// `NYAN_SIMPLE` is truthy; otherwise it assembles the cacheable static
 /// sections plus registry-managed dynamic sections. This Rust port keeps the
 /// same ordering, including safe no-op seams for dynamic subsections whose
 /// owning services are not yet ported.
@@ -74,7 +74,7 @@ pub fn get_system_prompt_with_settings(
     crate::constants::system_prompt_sections::clear_system_prompt_sections();
 
     if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_SIMPLE").as_deref(),
+        crate::utils::process_env::var("NYAN_SIMPLE").as_deref(),
     ) {
         return get_simple_system_prompt_if_enabled();
     }
@@ -123,7 +123,6 @@ pub fn get_system_prompt_with_settings(
             get_session_specific_guidance_section(&enabled_tools, &skill_tool_commands)
         }),
         system_prompt_section("memory", get_memory_prompt_section),
-        system_prompt_section("ant_model_override", get_ant_model_override_section),
         system_prompt_section("language", || {
             get_language_section(settings.language.as_deref())
         }),
@@ -194,7 +193,7 @@ fn prompt_settings_snapshot() -> crate::utils::settings::types::SettingsJson {
 /// Maps to: CC `constants/prompts.ts` `getSystemPrompt(...)` simple-mode branch.
 pub fn get_simple_system_prompt_if_enabled() -> SystemPrompt {
     if !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_SIMPLE").as_deref(),
+        crate::utils::process_env::var("NYAN_SIMPLE").as_deref(),
     ) {
         return Vec::new();
     }
@@ -203,7 +202,7 @@ pub fn get_simple_system_prompt_if_enabled() -> SystemPrompt {
         .map(|path| path.display().to_string())
         .unwrap_or_default();
     vec![format!(
-        "You are Claude Code, Anthropic's official CLI for Claude.\n\nCWD: {cwd}\nDate: {}",
+        "You are nyan, an AI assistant.\n\nCWD: {cwd}\nDate: {}",
         crate::constants::common::get_session_start_date()
     )]
 }
@@ -274,30 +273,16 @@ fn get_simple_system_section() -> String {
 
 /// Maps to CC `constants/prompts.ts` `getSimpleDoingTasksSection()`.
 fn get_simple_doing_tasks_section() -> String {
-    let is_internal = crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Prompts,
-    );
-    let mut code_style_subitems = vec![
+    let code_style_subitems = [
         "Don't add features, refactor code, or make \"improvements\" beyond what was asked. A bug fix doesn't need surrounding code cleaned up. A simple feature doesn't need extra configurability. Don't add docstrings, comments, or type annotations to code you didn't change. Only add comments where the logic isn't self-evident.".to_string(),
         "Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.".to_string(),
         "Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is what the task actually requires—no speculative abstractions, but no half-finished implementations either. Three similar lines of code is better than a premature abstraction.".to_string(),
     ];
-    if is_internal {
-        code_style_subitems.extend([
-            "Default to writing no comments. Only add one when the WHY is non-obvious: a hidden constraint, a subtle invariant, a workaround for a specific bug, behavior that would surprise a reader. If removing the comment wouldn't confuse a future reader, don't write it.".to_string(),
-            "Don't explain WHAT the code does, since well-named identifiers already do that. Don't reference the current task, fix, or callers (\"used by X\", \"added for the Y flow\", \"handles the case from issue #123\"), since those belong in the PR description and rot as the codebase evolves.".to_string(),
-            "Don't remove existing comments unless you're removing the code they describe or you know they're wrong. A comment that looks pointless to you may encode a constraint or a lesson from a past bug that isn't visible in the current diff.".to_string(),
-            "Before reporting a task complete, verify it actually works: run the test, execute the script, check the output. Minimum complexity means no gold-plating, not skipping the finish line. If you can't verify (no test exists, can't run the code), say so explicitly rather than claiming success.".to_string(),
-        ]);
-    }
 
     let mut items = vec![
         PromptItem::Text("The user will primarily request you to perform software engineering tasks. These may include solving bugs, adding new functionality, refactoring code, explaining code, and more. When given an unclear or generic instruction, consider it in the context of these software engineering tasks and the current working directory. For example, if the user asks you to change \"methodName\" to snake case, do not reply with just \"method_name\", instead find the method in the code and modify the code.".to_string()),
         PromptItem::Text("You are highly capable and often allow users to complete ambitious tasks that would otherwise be too complex or take too long. You should defer to user judgement about whether a task is too large to attempt.".to_string()),
     ];
-    if is_internal {
-        items.push(PromptItem::Text("If you notice the user's request is based on a misconception, or spot a bug adjacent to what they asked about, say so. You're a collaborator, not just an executor—users benefit from your judgment, not just your compliance.".to_string()));
-    }
     items.extend([
         PromptItem::Text("In general, do not propose changes to code you haven't read. If a user asks about or wants you to modify a file, read it first. Understand existing code before suggesting modifications.".to_string()),
         PromptItem::Text("Do not create files unless they're absolutely necessary for achieving your goal. Generally prefer editing an existing file to creating a new one, as this prevents file bloat and builds on existing work more effectively.".to_string()),
@@ -311,15 +296,9 @@ fn get_simple_doing_tasks_section() -> String {
     items.extend([
         PromptItem::Text("Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.".to_string()),
     ]);
-    if is_internal {
-        items.extend([
-            PromptItem::Text("Report outcomes faithfully: if tests fail, say so with the relevant output; if you did not run a verification step, say that rather than implying it succeeded. Never claim \"all tests pass\" when output shows failures, never suppress or simplify failing checks (tests, lints, type errors) to manufacture a green result, and never characterize incomplete or broken work as done. Equally, when a check did pass or a task is complete, state it plainly — do not hedge confirmed results with unnecessary disclaimers, downgrade finished work to \"partial,\" or re-verify things you already checked. The goal is an accurate report, not a defensive one.".to_string()),
-            PromptItem::Text("If the user reports a bug, slowness, or unexpected behavior with Claude Code itself (as opposed to asking you to fix their own code), recommend the appropriate slash command: /issue for model-related problems (odd outputs, wrong tool choices, hallucinations, refusals), or /share to upload the full session transcript for product bugs, crashes, slowness, or general issues. Only recommend these when the user is describing a problem with Claude Code. After /share produces a ccshare link, if you have a Slack MCP tool available, offer to post the link to #claude-code-feedback (channel ID C07VBSHV7EV) for the user.".to_string()),
-        ]);
-    }
     // Maps to CC `prompts.ts:216-219` `userHelpSubitems`.
     let user_help_subitems = vec![
-        "/help: Get help with using Claude Code".to_string(),
+        "/help: Get help with using nyan".to_string(),
         format!("To give feedback, users should {}", ISSUES_EXPLAINER),
     ];
     items.extend([
@@ -481,15 +460,6 @@ fn get_memory_prompt_section() -> Option<String> {
     crate::memdir::memdir::load_memory_prompt()
 }
 
-/// Maps to CC `constants/prompts.ts` `getAntModelOverrideSection()`.
-///
-/// TODO: Port the ant-only model override config if/when internal build support
-/// is added. External Nyan builds keep this section absent like upstream
-/// external bundles.
-fn get_ant_model_override_section() -> Option<String> {
-    None
-}
-
 /// Maps to CC `constants/prompts.ts` `getLanguageSection(...)`.
 fn get_language_section(language_preference: Option<&str>) -> Option<String> {
     let language = language_preference?.trim();
@@ -588,35 +558,21 @@ fn get_function_result_clearing_section(_model: &str) -> Option<String> {
 
 /// Maps to CC `constants/prompts.ts` `getSimpleToneAndStyleSection()`.
 fn get_simple_tone_and_style_section() -> String {
-    let mut items = vec![
+    let items = vec![
         PromptItem::Text(
             "Only use emojis if the user explicitly requests it. Avoid using emojis in all communication unless asked."
                 .to_string(),
         ),
-    ];
-    if !crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Prompts,
-    ) {
-        items.push(PromptItem::Text(
-            "Your responses should be short and concise.".to_string(),
-        ));
-    }
-    items.extend([
+        PromptItem::Text("Your responses should be short and concise.".to_string()),
         PromptItem::Text("When referencing specific functions or pieces of code include the pattern file_path:line_number to allow the user to easily navigate to the source code location.".to_string()),
         PromptItem::Text("When referencing GitHub issues or pull requests, use the owner/repo#123 format (e.g. anthropics/claude-code#100) so they render as clickable links.".to_string()),
         PromptItem::Text("Do not use a colon before tool calls. Your tool calls may not be shown directly in the output, so text like \"Let me read the file:\" followed by a read tool call should just be \"Let me read the file.\" with a period.".to_string()),
-    ]);
+    ];
     section("Tone and style", items)
 }
 
 /// Maps to CC `constants/prompts.ts` `getOutputEfficiencySection()` external branch.
 fn get_output_efficiency_section() -> String {
-    if crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Prompts,
-    ) {
-        return "# Communicating with the user\nWhen sending user-facing text, you're writing for a person, not logging to a console. Assume users can't see most tool calls or thinking - only your text output. Before your first tool call, briefly state what you're about to do. While working, give short updates at key moments: when you find something load-bearing (a bug, a root cause), when changing direction, when you've made progress without an update.\n\nWhen making updates, assume the person has stepped away and lost the thread. They don't know codenames, abbreviations, or shorthand you created along the way, and didn't track your process. Write so they can pick back up cold: use complete, grammatically correct sentences without unexplained jargon. Expand technical terms. Err on the side of more explanation. Attend to cues about the user's level of expertise; if they seem like an expert, tilt a bit more concise, while if they seem like they're new, be more explanatory. \n\nWrite user-facing text in flowing prose while eschewing fragments, excessive em dashes, symbols and notation, or similarly hard-to-parse content. Only use tables when appropriate; for example to hold short enumerable facts (file names, line numbers, pass/fail), or communicate quantitative data. Don't pack explanatory reasoning into table cells -- explain before or after. Avoid semantic backtracking: structure each sentence so a person can read it linearly, building up meaning without having to re-parse what came before. \n\nWhat's most important is the reader understanding your output without mental overhead or follow-ups, not how terse you are. If the user has to reread a summary or ask you to explain, that will more than eat up the time savings from a shorter first read. Match responses to the task: a simple question gets a direct answer in prose, not headers and numbered sections. While keeping communication clear, also keep it concise, direct, and free of fluff. Avoid filler or stating the obvious. Get straight to the point. Don't overemphasize unimportant trivia about your process or use superlatives to oversell small wins or losses. Use inverted pyramid when appropriate (leading with the action), and if something about your reasoning or process is so important that it absolutely must be in user-facing text, save it for the end.\n\nThese user-facing text instructions do not apply to code or tool calls.".to_string();
-    }
-
     "# Output efficiency\n\nIMPORTANT: Go straight to the point. Try the simplest approach first without going in circles. Do not overdo it. Be extra concise.\n\nKeep your text output brief and direct. Lead with the answer or action, not the reasoning. Skip filler words, preamble, and unnecessary transitions. Do not restate what the user said — just do it. When explaining, include only what is necessary for the user to understand.\n\nFocus text output on:\n- Decisions that need the user's input\n- High-level status updates at natural milestones\n- Errors or blockers that change the plan\n\nIf you can say it in one sentence, don't use three. Prefer short, direct sentences over long explanations. This does not apply to code or tool calls.".to_string()
 }
 
@@ -633,21 +589,13 @@ pub fn compute_env_info(
 ) -> String {
     let is_git = crate::utils::git::get_is_git(cwd);
     let uname_sr = get_uname_sr();
-    // Internal partial seam: utils/undercover.ts:36-43 stays ON while the
-    // commitAttribution repo-class cache is unprimed (null). Its transition to
-    // OFF for verified internal repos needs the unported classification chain.
-    let mut model_description = String::new();
-    if !crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Prompts,
-    ) {
-        model_description = match crate::utils::model::model::get_marketing_name_for_model(model_id)
-        {
-            Some(marketing_name) => format!(
-                "You are powered by the model named {marketing_name}. The exact model ID is {model_id}."
-            ),
-            None => format!("You are powered by the model {model_id}."),
-        };
-    }
+    let model_description = match crate::utils::model::model::get_marketing_name_for_model(model_id)
+    {
+        Some(marketing_name) => format!(
+            "You are powered by the model named {marketing_name}. The exact model ID is {model_id}."
+        ),
+        None => format!("You are powered by the model {model_id}."),
+    };
     let additional_dirs_info = if additional_working_directories.is_empty() {
         String::new()
     } else {
@@ -727,33 +675,25 @@ pub fn compute_simple_env_info_with_cwd(
         PromptItem::Text(get_shell_info_line()),
         PromptItem::Text(format!("OS Version: {uname_sr}")),
     ]);
-    if !crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Prompts,
-    ) {
-        let model_description = match crate::utils::model::model::get_marketing_name_for_model(
-            model_id,
-        ) {
-            Some(marketing_name) => format!(
-                "You are powered by the model named {marketing_name}. The exact model ID is {model_id}."
-            ),
-            None => format!("You are powered by the model {model_id}."),
-        };
-        env_items.push(PromptItem::Text(model_description));
-    }
+    let model_description = match crate::utils::model::model::get_marketing_name_for_model(model_id)
+    {
+        Some(marketing_name) => format!(
+            "You are powered by the model named {marketing_name}. The exact model ID is {model_id}."
+        ),
+        None => format!("You are powered by the model {model_id}."),
+    };
+    env_items.push(PromptItem::Text(model_description));
     if let Some(cutoff) = get_knowledge_cutoff(model_id) {
         env_items.push(PromptItem::Text(format!(
             "Assistant knowledge cutoff is {cutoff}."
         )));
     }
-    // Same unprimed internal undercover seam as computeEnvInfo above.
-    if !crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Prompts,
-    ) {
-        env_items.push(PromptItem::Text(format!(
+    env_items.push(PromptItem::Text(format!(
         "The most recent Claude model family is Claude 4.5/4.6. Model IDs — Opus 4.6: '{CLAUDE_4_5_OR_4_6_OPUS_MODEL_ID}', Sonnet 4.6: '{CLAUDE_4_5_OR_4_6_SONNET_MODEL_ID}', Haiku 4.5: '{CLAUDE_4_5_HAIKU_MODEL_ID}'. When building AI applications, default to the latest and most capable Claude models."
-        )));
-        env_items.push(PromptItem::Text("Claude Code is available as a CLI in the terminal, desktop app (Mac/Windows), web app (claude.ai/code), and IDE extensions (VS Code, JetBrains).".to_string()));
-    }
+    )));
+    env_items.push(PromptItem::Text(
+        "nyan runs as a CLI in the terminal.".to_string(),
+    ));
 
     format!(
         "# Environment\nYou have been invoked in the following environment: \n{}",
@@ -869,12 +809,15 @@ mod tests {
     #[test]
     fn simple_system_prompt_matches_official_shape_when_enabled() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_SIMPLE", "1");
+        crate::utils::process_env::set("NYAN_SIMPLE", "1");
         let prompt = get_simple_system_prompt_if_enabled();
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
+        crate::utils::process_env::remove("NYAN_SIMPLE");
 
         assert_eq!(prompt.len(), 1);
-        assert!(prompt[0].starts_with("You are Claude Code, Anthropic's official CLI for Claude."));
+        assert_eq!(
+            prompt[0].split("\n\n").next(),
+            Some("You are nyan, an AI assistant.")
+        );
         assert!(prompt[0].contains("\n\nCWD: "));
         assert!(prompt[0].contains("\nDate: "));
     }
@@ -882,20 +825,20 @@ mod tests {
     #[test]
     fn simple_system_prompt_is_absent_when_official_gate_is_disabled() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
+        crate::utils::process_env::remove("NYAN_SIMPLE");
         assert!(get_simple_system_prompt_if_enabled().is_empty());
     }
 
     #[test]
     fn default_system_prompt_uses_official_section_order_and_environment() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_GLOBAL_CACHE_SCOPE");
-        crate::utils::process_env::remove("ANTHROPIC_USE_GLOBAL_CACHE_SCOPE");
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
+        crate::utils::process_env::remove("NYAN_SIMPLE");
+        crate::utils::process_env::remove("NYAN_USE_GLOBAL_CACHE_SCOPE");
+        crate::utils::process_env::remove("NYAN_USE_GLOBAL_CACHE_SCOPE");
+        crate::utils::process_env::set("NYAN_DISABLE_AUTO_MEMORY", "1");
         let tools = crate::tools::get_all_base_tools();
         let prompt = get_system_prompt(&tools, "claude-sonnet-4-6", &[], &[]);
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_AUTO_MEMORY");
+        crate::utils::process_env::remove("NYAN_DISABLE_AUTO_MEMORY");
 
         assert!(prompt[0].starts_with("\nYou are an interactive agent"));
         assert!(prompt.iter().any(|section| section.starts_with("# System")));
@@ -915,29 +858,24 @@ mod tests {
                 .any(|section| section.starts_with("# Using your tools"))
         );
         // CC constants/prompts.ts#computeSimpleEnvInfo uses the canonical marketing
-        // name ("Sonnet 4.6") and suppresses model disclosure under undercover.
+        // name ("Sonnet 4.6").
         let environment = prompt
             .iter()
             .find(|section| section.starts_with("# Environment"))
             .unwrap();
         assert!(environment.contains("Primary working directory:"));
-        assert_eq!(
-            environment.contains("You are powered by the model named Sonnet 4.6."),
-            !crate::utils::build_profile::has_internal_capability(
-                crate::utils::build_profile::InternalCapability::Prompts
-            )
-        );
+        assert!(environment.contains("You are powered by the model named Sonnet 4.6."));
     }
 
     #[test]
     fn default_system_prompt_includes_global_cache_boundary_when_enabled() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
-        crate::utils::process_env::set("CLAUDE_CODE_USE_GLOBAL_CACHE_SCOPE", "1");
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
+        crate::utils::process_env::remove("NYAN_SIMPLE");
+        crate::utils::process_env::set("NYAN_USE_GLOBAL_CACHE_SCOPE", "1");
+        crate::utils::process_env::set("NYAN_DISABLE_AUTO_MEMORY", "1");
         let prompt = get_system_prompt(&[], "claude-opus-4-6", &[], &[]);
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_GLOBAL_CACHE_SCOPE");
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_AUTO_MEMORY");
+        crate::utils::process_env::remove("NYAN_USE_GLOBAL_CACHE_SCOPE");
+        crate::utils::process_env::remove("NYAN_DISABLE_AUTO_MEMORY");
 
         assert!(
             prompt
@@ -954,8 +892,8 @@ mod tests {
         use crate::services::mcp::types::{McpServerConnection, ScopedMcpServerConfig};
 
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
-        let _memory = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
+        crate::utils::process_env::remove("NYAN_SIMPLE");
+        let _memory = EnvVarGuard::set("NYAN_DISABLE_AUTO_MEMORY", "1");
         let clients = [
             McpServerConnection::connected_with_instructions_for_test("docs", "Read first."),
             McpServerConnection::connected_with_instructions_for_test("lint", "Run last."),
@@ -977,7 +915,7 @@ mod tests {
                 .cloned()
         };
 
-        let _delta = EnvVarGuard::set("CLAUDE_CODE_MCP_INSTR_DELTA", "false");
+        let _delta = EnvVarGuard::set("NYAN_MCP_INSTR_DELTA", "false");
         let prompt = get_system_prompt(&[], "claude-sonnet-4-6", &[], &clients);
         assert_eq!(
             section(&prompt).as_deref(),
@@ -988,42 +926,9 @@ mod tests {
         let prompt = get_system_prompt(&[], "claude-sonnet-4-6", &[], &clients[2..]);
         assert_eq!(section(&prompt), None);
 
-        let _delta = EnvVarGuard::set("CLAUDE_CODE_MCP_INSTR_DELTA", "true");
+        let _delta = EnvVarGuard::set("NYAN_MCP_INSTR_DELTA", "true");
         let prompt = get_system_prompt(&[], "claude-sonnet-4-6", &[], &clients);
         assert_eq!(section(&prompt), None);
-    }
-
-    #[cfg(feature = "anthropic_internal")]
-    #[test]
-    fn default_system_prompt_includes_internal_static_guidance() {
-        let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_GLOBAL_CACHE_SCOPE");
-        crate::utils::process_env::remove("ANTHROPIC_USE_GLOBAL_CACHE_SCOPE");
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
-        let prompt = get_system_prompt_with_settings(
-            &[],
-            "claude-sonnet-4-6",
-            &[],
-            &[],
-            &crate::utils::settings::types::SettingsJson::default(),
-        );
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_AUTO_MEMORY");
-
-        let doing_tasks = prompt
-            .iter()
-            .find(|section| section.starts_with("# Doing tasks"))
-            .expect("doing tasks section");
-        assert!(doing_tasks.contains("Default to writing no comments"));
-        assert!(doing_tasks.contains("Report outcomes faithfully"));
-        assert!(doing_tasks.contains("recommend the appropriate slash command"));
-
-        let communicating = prompt
-            .iter()
-            .find(|section| section.starts_with("# Communicating with the user"))
-            .expect("internal communicating section");
-        assert!(communicating.contains("Write user-facing text in flowing prose"));
-        assert!(communicating.contains("These user-facing text instructions do not apply"));
     }
 
     #[test]
@@ -1038,22 +943,25 @@ mod tests {
         assert!(env_info.contains("Additional working directories:"));
         assert!(env_info.contains("/workspace/extra"));
         assert!(env_info.contains("Assistant knowledge cutoff is February 2025."));
+        assert!(env_info.contains("nyan runs as a CLI in the terminal."));
+        assert!(!env_info.contains("desktop app"));
+        assert!(!env_info.contains("claude.ai/code"));
     }
 
     #[test]
     fn default_system_prompt_threads_language_and_output_style_dynamic_sections() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_GLOBAL_CACHE_SCOPE");
-        crate::utils::process_env::remove("ANTHROPIC_USE_GLOBAL_CACHE_SCOPE");
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
+        crate::utils::process_env::remove("NYAN_SIMPLE");
+        crate::utils::process_env::remove("NYAN_USE_GLOBAL_CACHE_SCOPE");
+        crate::utils::process_env::remove("NYAN_USE_GLOBAL_CACHE_SCOPE");
+        crate::utils::process_env::set("NYAN_DISABLE_AUTO_MEMORY", "1");
         let settings = crate::utils::settings::types::SettingsJson {
             language: Some("French".to_string()),
             output_style: Some("Explanatory".to_string()),
             ..Default::default()
         };
         let prompt = get_system_prompt_with_settings(&[], "claude-sonnet-4-6", &[], &[], &settings);
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_AUTO_MEMORY");
+        crate::utils::process_env::remove("NYAN_DISABLE_AUTO_MEMORY");
 
         assert!(prompt[0].contains("according to your \"Output Style\" below"));
         let env_idx = prompt
@@ -1102,12 +1010,9 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         ));
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
-        crate::utils::process_env::set(
-            "CLAUDE_COWORK_MEMORY_PATH_OVERRIDE",
-            temp.display().to_string(),
-        );
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
+        crate::utils::process_env::remove("NYAN_SIMPLE");
+        crate::utils::process_env::set("NYAN_MEMORY_PATH_OVERRIDE", temp.display().to_string());
+        crate::utils::process_env::set("NYAN_DISABLE_AUTO_MEMORY", "false");
         let prompt = get_system_prompt_with_settings(
             &[],
             "claude-sonnet-4-6",
@@ -1115,8 +1020,8 @@ mod tests {
             &[],
             &crate::utils::settings::types::SettingsJson::default(),
         );
-        crate::utils::process_env::remove("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE");
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_AUTO_MEMORY");
+        crate::utils::process_env::remove("NYAN_MEMORY_PATH_OVERRIDE");
+        crate::utils::process_env::remove("NYAN_DISABLE_AUTO_MEMORY");
 
         let boundary_idx = prompt
             .iter()
@@ -1219,16 +1124,15 @@ mod tests {
     /// test: the env overrides (a `cfg(test)`-only seam, `bootstrap/state.rs`)
     /// and `IS_INTERACTIVE` itself, which is what a real run computes
     /// (`main.tsx:1104-1120`). Reading only one of them would let an ambient
-    /// `CLAUDE_CODE_NON_INTERACTIVE` silently flip the "interactive" case into
+    /// `NYAN_NON_INTERACTIVE` silently flip the "interactive" case into
     /// a second copy of the headless one.
     fn pin_session_interactivity(
         non_interactive: bool,
     ) -> (
-        [EnvVarGuard; 3],
+        [EnvVarGuard; 2],
         crate::bootstrap::state::IsInteractiveGuard,
     ) {
         let env = [
-            EnvVarGuard::unset("CLAUDE_CODE_NON_INTERACTIVE"),
             EnvVarGuard::unset("NYAN_NON_INTERACTIVE"),
             EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION"),
         ];
@@ -1258,7 +1162,7 @@ mod tests {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         // Keep `getAgentToolSection()`'s own gate off this test's back: the
         // coordinator veto is the other half of `isForkSubagentEnabled()`.
-        let _coordinator = EnvVarGuard::unset("CLAUDE_CODE_COORDINATOR_MODE");
+        let _coordinator = EnvVarGuard::unset("NYAN_COORDINATOR_MODE");
         let enabled_tools =
             HashSet::from([crate::tools::agent_tool::constants::AGENT_TOOL_NAME.to_string()]);
 
@@ -1361,11 +1265,11 @@ mod tests {
     }
 
     #[test]
-    fn default_agent_prompt_matches_official_verbatim() {
-        // CC constants/prompts.ts:758.
+    fn default_agent_prompt_matches_nyan_copy() {
+        // CC constants/prompts.ts:758, with nyan identity.
         assert_eq!(
             DEFAULT_AGENT_PROMPT,
-            r#"You are an agent for Claude Code, Anthropic's official CLI for Claude. Given the user's message, you should use the tools available to complete the task. Complete the task fully—don't gold-plate, but don't leave it half-done. When you complete the task, respond with a concise report covering what was done and any key findings — the caller will relay this to the user, so it only needs the essentials."#
+            r#"You are an agent for nyan. Given the user's message, you should use the tools available to complete the task. Complete the task fully—don't gold-plate, but don't leave it half-done. When you complete the task, respond with a concise report covering what was done and any key findings — the caller will relay this to the user, so it only needs the essentials."#
         );
     }
 
@@ -1373,7 +1277,6 @@ mod tests {
     fn compute_env_info_matches_official_xml_dirs_and_model_format() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _shell = EnvVarGuard::set("SHELL", "/custom/bin/zsh");
-        let _foundry = EnvVarGuard::unset("CLAUDE_CODE_USE_FOUNDRY");
         let root = TestDir::new();
         let dirs = vec!["/z-last".to_string(), "/a-first".to_string()];
         let actual = compute_env_info("claude-sonnet-4-6[1m]", &dirs, root.path());
@@ -1389,15 +1292,8 @@ mod tests {
         } else {
             "Shell: zsh"
         };
-        let model = if crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Prompts,
-        ) {
-            ""
-        } else {
-            "You are powered by the model named Sonnet 4.6 (with 1M context). The exact model ID is claude-sonnet-4-6[1m]."
-        };
+        let model = "You are powered by the model named Sonnet 4.6 (with 1M context). The exact model ID is claude-sonnet-4-6[1m].";
         // CC constants/prompts.ts:624-648; getMarketingNameForModel :589-591.
-        // Internal case is source's null/unprimed repo classification only.
         assert_eq!(
             actual,
             format!(
@@ -1419,51 +1315,19 @@ mod tests {
         assert!(actual.contains("\nShell: unknown"));
         assert!(!actual.contains("Additional working directories"));
         assert!(!actual.contains("Assistant knowledge cutoff"));
-        if crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Prompts,
-        ) {
-            assert!(actual.ends_with("</env>\n"));
-        } else {
-            assert!(actual.ends_with("</env>\nYou are powered by the model deployment-private."));
-        }
+        assert!(actual.ends_with("</env>\nYou are powered by the model deployment-private."));
     }
 
     #[test]
-    fn compute_env_info_matches_official_foundry_marketing_name_omission() {
+    fn compute_simple_env_info_matches_official_marketing_name() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _foundry = EnvVarGuard::set("CLAUDE_CODE_USE_FOUNDRY", "1");
-        let root = TestDir::new();
-        let actual = compute_env_info("claude-opus-4-6", &[], root.path());
-        // CC utils/model/model.ts:571-574 declines deployment marketing labels.
-        assert!(!actual.contains("model named"));
-        if !crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Prompts,
-        ) {
-            assert!(actual.contains("You are powered by the model claude-opus-4-6."));
-        }
-        assert!(actual.ends_with("Assistant knowledge cutoff is May 2025."));
-    }
-
-    #[test]
-    fn compute_simple_env_info_matches_official_marketing_name_and_undercover_omission() {
-        let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _foundry = EnvVarGuard::unset("CLAUDE_CODE_USE_FOUNDRY");
         let root = TestDir::new();
         let actual = compute_simple_env_info_with_cwd("claude-opus-4-5", &[], root.path());
         // CC constants/prompts.ts:659-668 and :691-702 retain the original model
-        // ID and delegate to model.ts, or omit every model-identifying bullet
-        // while undercover (only the unprimed internal case is implemented).
-        if crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Prompts,
-        ) {
-            assert!(!actual.contains("You are powered"));
-            assert!(!actual.contains("The most recent Claude model family"));
-            assert!(!actual.contains("Claude Code is available"));
-        } else {
-            assert!(actual.contains(
-                "You are powered by the model named Opus 4.5. The exact model ID is claude-opus-4-5."
-            ));
-        }
+        // ID and delegate to model.ts.
+        assert!(actual.contains(
+            "You are powered by the model named Opus 4.5. The exact model ID is claude-opus-4-5."
+        ));
         assert!(actual.contains("Assistant knowledge cutoff is May 2025."));
     }
 
@@ -1528,13 +1392,13 @@ mod tests {
             }
         }
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         let _dynamic = crate::skills::load_skills_dir::DynamicSkillsTestSnapshot::capture();
         let _sources =
             AllowedSourcesRestore(crate::bootstrap::state::get_allowed_setting_sources());
         crate::bootstrap::state::set_allowed_setting_sources(vec!["projectSettings".to_string()]);
         let root = TestDir::new();
-        let skills_dir = root.path().join(".claude/skills");
+        let skills_dir = root.path().join(".nyan/skills");
         let skill_dir = skills_dir.join("system-guidance-wiring");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "Review the working tree.\n").unwrap();
@@ -1575,10 +1439,10 @@ mod tests {
     #[test]
     fn system_prompt_places_all_dynamic_content_after_cache_boundary() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_GLOBAL_CACHE_SCOPE");
-        crate::utils::process_env::remove("ANTHROPIC_USE_GLOBAL_CACHE_SCOPE");
-        let _memory = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
+        crate::utils::process_env::remove("NYAN_SIMPLE");
+        crate::utils::process_env::remove("NYAN_USE_GLOBAL_CACHE_SCOPE");
+        crate::utils::process_env::remove("NYAN_USE_GLOBAL_CACHE_SCOPE");
+        let _memory = EnvVarGuard::set("NYAN_DISABLE_AUTO_MEMORY", "1");
 
         let tools = crate::tools::get_all_base_tools();
         let prompt = get_system_prompt(
@@ -1653,11 +1517,11 @@ mod tests {
     #[test]
     fn system_prompt_prefix_is_byte_identical_across_different_directories() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
+        crate::utils::process_env::remove("NYAN_SIMPLE");
 
         // Case 1: Memory disabled — static prefix before boundary is identical.
         {
-            let _memory = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
+            let _memory = EnvVarGuard::set("NYAN_DISABLE_AUTO_MEMORY", "1");
             let tools = crate::tools::get_all_base_tools();
             let prompt_dir_a =
                 get_system_prompt(&tools, "claude-sonnet-4-6", &["/path/a".to_string()], &[]);
@@ -1689,12 +1553,12 @@ mod tests {
             let temp_a = TestDir::new();
             let temp_b = TestDir::new();
 
-            let _memory_gate = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
+            let _memory_gate = EnvVarGuard::set("NYAN_DISABLE_AUTO_MEMORY", "false");
             let tools = crate::tools::get_all_base_tools();
 
             let prompt_a = {
                 let _override = EnvVarGuard::set(
-                    "CLAUDE_COWORK_MEMORY_PATH_OVERRIDE",
+                    "NYAN_MEMORY_PATH_OVERRIDE",
                     temp_a.path().display().to_string(),
                 );
                 get_system_prompt(&tools, "claude-sonnet-4-6", &[], &[])
@@ -1702,7 +1566,7 @@ mod tests {
 
             let prompt_b = {
                 let _override = EnvVarGuard::set(
-                    "CLAUDE_COWORK_MEMORY_PATH_OVERRIDE",
+                    "NYAN_MEMORY_PATH_OVERRIDE",
                     temp_b.path().display().to_string(),
                 );
                 get_system_prompt(&tools, "claude-sonnet-4-6", &[], &[])

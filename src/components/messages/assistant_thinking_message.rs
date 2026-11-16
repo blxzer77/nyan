@@ -26,7 +26,7 @@ pub struct AssistantThinkingMessageProps {
     /// 2026-08-01). SINGLE-SOURCE expansion control REPLACING CC's
     /// `isTranscriptMode || verbose` gate (AssistantThinkingMessage.tsx:38);
     /// transcript mode stays a separate disjunct, `verbose` is excluded.
-    /// Default true (factory `expandThinking`, `AppState.expand_thinking`).
+    /// Default false (factory `expandThinking`, `AppState.expand_thinking`).
     /// When false, show the collapsed `∴ Thinking (ctrl+o to expand)` hint.
     pub expand_by_default: bool,
 }

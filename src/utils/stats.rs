@@ -73,7 +73,7 @@ pub struct StreakStats {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ClaudeCodeStats {
+pub struct NyanStats {
     pub total_sessions: u64,
     pub total_messages: u64,
     pub total_days: u64,
@@ -87,7 +87,6 @@ pub struct ClaudeCodeStats {
     pub model_usage: BTreeMap<String, ModelUsageStats>,
     pub first_session_date: Option<String>,
     pub last_session_date: Option<String>,
-    pub total_speculation_time_saved_ms: u64,
     pub shot_distribution: Option<BTreeMap<u64, u64>>,
     pub one_shot_rate: Option<u64>,
 }
@@ -107,7 +106,6 @@ pub(crate) struct ProcessedStats {
     pub(crate) session_stats: Vec<LongestSessionStats>,
     pub(crate) hour_counts: BTreeMap<u8, u64>,
     pub(crate) total_messages: u64,
-    pub(crate) total_speculation_time_saved_ms: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -216,18 +214,6 @@ pub(crate) fn process_session_files(paths: &[PathBuf], options: ProcessOptions) 
                 continue;
             }
         };
-
-        for entry in &entries {
-            if entry.get("type").and_then(Value::as_str) == Some("speculation-accept") {
-                stats.total_speculation_time_saved_ms =
-                    stats.total_speculation_time_saved_ms.saturating_add(
-                        entry
-                            .get("timeSavedMs")
-                            .and_then(Value::as_u64)
-                            .unwrap_or(0),
-                    );
-            }
-        }
 
         let messages = entries
             .iter()
@@ -474,7 +460,7 @@ pub(crate) fn calculate_streaks(activity: &[DailyActivity], today: NaiveDate) ->
     }
 }
 
-fn processed_stats_to_claude_code_stats(stats: ProcessedStats) -> ClaudeCodeStats {
+fn processed_stats_to_nyan_stats(stats: ProcessedStats) -> NyanStats {
     let daily_activity = stats.daily_activity.into_values().collect::<Vec<_>>();
     let daily_model_tokens = stats
         .daily_model_tokens
@@ -532,7 +518,7 @@ fn processed_stats_to_claude_code_stats(stats: ProcessedStats) -> ClaudeCodeStat
     };
     let today = Local::now().date_naive();
 
-    ClaudeCodeStats {
+    NyanStats {
         total_sessions: stats.session_stats.len() as u64,
         total_messages: stats.total_messages,
         total_days,
@@ -546,18 +532,17 @@ fn processed_stats_to_claude_code_stats(stats: ProcessedStats) -> ClaudeCodeStat
         model_usage: stats.model_usage,
         first_session_date,
         last_session_date,
-        total_speculation_time_saved_ms: stats.total_speculation_time_saved_ms,
         shot_distribution: None,
         one_shot_rate: None,
     }
 }
 
-pub fn empty_stats() -> ClaudeCodeStats {
-    ClaudeCodeStats::default()
+pub fn empty_stats() -> NyanStats {
+    NyanStats::default()
 }
 
 /// Maps to: CC `utils/stats.ts#aggregateClaudeCodeStats`.
-pub fn aggregate_claude_code_stats() -> anyhow::Result<ClaudeCodeStats> {
+pub fn aggregate_nyan_stats() -> anyhow::Result<NyanStats> {
     let files = get_all_session_files()?;
     if files.is_empty() {
         return Ok(empty_stats());
@@ -608,11 +593,9 @@ pub fn aggregate_claude_code_stats() -> anyhow::Result<ClaudeCodeStats> {
 }
 
 /// Maps to: CC `utils/stats.ts#aggregateClaudeCodeStatsForRange`.
-pub fn aggregate_claude_code_stats_for_range(
-    range: StatsDateRange,
-) -> anyhow::Result<ClaudeCodeStats> {
+pub fn aggregate_nyan_stats_for_range(range: StatsDateRange) -> anyhow::Result<NyanStats> {
     if range == StatsDateRange::All {
-        return aggregate_claude_code_stats();
+        return aggregate_nyan_stats();
     }
     let files = get_all_session_files()?;
     if files.is_empty() {
@@ -630,7 +613,7 @@ pub fn aggregate_claude_code_stats_for_range(
         },
         StatsDateRange::All => unreachable!("all-time stats use the bounded cache path"),
     };
-    Ok(processed_stats_to_claude_code_stats(process_session_files(
+    Ok(processed_stats_to_nyan_stats(process_session_files(
         &files, options,
     )))
 }
@@ -664,7 +647,7 @@ mod tests {
             &[
                 serde_json::json!({"type":"user","timestamp":"2026-07-18T10:00:00Z","message":{"role":"user","content":"hello"}}),
                 serde_json::json!({"type":"assistant","timestamp":"2026-07-18T10:30:00Z","message":{"role":"assistant","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":3},"content":[{"type":"tool_use","id":"t1","name":"Read","input":{}}]}}),
-                serde_json::json!({"type":"speculation-accept","timeSavedMs":250}),
+                serde_json::json!({"type":"speculation-accept","timestamp":"2026-07-18T10:31:00Z","timeSavedMs":250}),
             ],
         );
         write_lines(
@@ -677,17 +660,13 @@ mod tests {
             ],
         );
 
-        let stats = aggregate_claude_code_stats().unwrap();
+        let stats = aggregate_nyan_stats().unwrap();
         assert_eq!(stats.total_sessions, 1);
         assert_eq!(stats.total_messages, 2);
         assert_eq!(stats.longest_session.as_ref().unwrap().duration, 1_800_000);
         assert_eq!(stats.model_usage["claude-sonnet-4-6"].input_tokens, 15);
         assert_eq!(stats.model_usage["claude-sonnet-4-6"].output_tokens, 3);
         assert_eq!(stats.daily_activity[0].tool_call_count, 2);
-        // CC accumulates speculation-accept entries before applying the
-        // session-date filter, so a cold historical + today pass observes the
-        // fixture entry in both passes.
-        assert_eq!(stats.total_speculation_time_saved_ms, 500);
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -712,7 +691,7 @@ mod tests {
             &[serde_json::json!({"type":"user","timestamp":"not-a-date"})],
         );
 
-        let stats = aggregate_claude_code_stats().unwrap();
+        let stats = aggregate_nyan_stats().unwrap();
         assert_eq!(stats.total_sessions, 1);
         assert!(stats.model_usage.is_empty());
         let _ = std::fs::remove_dir_all(root);

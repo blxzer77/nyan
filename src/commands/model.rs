@@ -227,7 +227,7 @@ mod tests {
                 std::env::temp_dir().join(format!("nyan-model-cmd-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&root).unwrap();
             std::fs::write(root.join("settings.json"), user_settings).unwrap();
-            let config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+            let config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
             crate::utils::settings::settings_cache::reset_settings_cache();
             crate::bootstrap::state::set_session_profile(None);
             Self {
@@ -436,9 +436,9 @@ mod tests {
     fn ctrl_s_reports_a_project_selection_that_still_wins() {
         let fixture = Fixture::new(PROFILES);
         let project = fixture.root.join("project");
-        std::fs::create_dir_all(project.join(".claude")).unwrap();
+        std::fs::create_dir_all(project.join(".nyan")).unwrap();
         std::fs::write(
-            project.join(".claude/settings.json"),
+            project.join(".nyan/settings.json"),
             r#"{"nyan": {"selection": {"main": "qwen3:32b"}}}"#,
         )
         .unwrap();

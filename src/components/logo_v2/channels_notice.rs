@@ -13,10 +13,7 @@ pub use crate::bootstrap::state::ChannelEntry;
 use crate::services::mcp::channel_allowlist::{
     ChannelAllowlistEntry, get_channel_allowlist, is_channels_enabled,
 };
-use crate::services::mcp::channel_notification::{
-    ChannelAllowlistSource, EffectiveChannelAllowlist,
-    allowed_channel_plugins_from_settings_values, get_effective_channel_allowlist,
-};
+use crate::services::mcp::channel_notification::EffectiveChannelAllowlist;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnmatchedChannelEntry {
@@ -29,8 +26,6 @@ pub struct ChannelsNoticeSnapshot {
     pub channels: Vec<ChannelEntry>,
     pub has_dev_channels: bool,
     pub disabled: bool,
-    pub no_auth: bool,
-    pub policy_blocked: bool,
     pub unmatched: Vec<UnmatchedChannelEntry>,
 }
 
@@ -102,15 +97,7 @@ pub fn find_unmatched_channels(
                 {
                     out.push(UnmatchedChannelEntry {
                         entry: entry.clone(),
-                        why: match allowlist.source {
-                            ChannelAllowlistSource::Org => {
-                                "not on your org's approved channels list"
-                            }
-                            ChannelAllowlistSource::Ledger => {
-                                "not on the approved channels allowlist"
-                            }
-                        }
-                        .to_string(),
+                        why: "not on the approved channels allowlist".to_string(),
                     });
                 }
             }
@@ -148,34 +135,24 @@ fn configured_mcp_server_names_readonly(
 /// Maps to: CC `components/LogoV2/ChannelsNotice.tsx` mount-time snapshot.
 ///
 /// A `get_env` parameter was removed here: the body never read it, and the
-/// subscription facts it appears to gate (formerly `get_subscription_type`,
-/// `get_allowed_channels`) come from process state exactly as at the source.
-/// Leaving it in place made callers — and their tests — look like they could
-/// steer the result.
+/// session facts it appears to gate (`get_allowed_channels`) come from process
+/// state exactly as at the source. Leaving it in place made callers — and their
+/// tests — look like they could steer the result.
+/// @nyan: CC's `noAuth` branch is gone; channels need no claude.ai account.
 pub fn channels_notice_snapshot_from_readonly_sources(
     global_config: &crate::utils::config::GlobalConfig,
     project_config: &crate::utils::config::ProjectConfig,
-    policy_settings: Option<&crate::utils::settings::SettingsJson>,
 ) -> ChannelsNoticeSnapshot {
     let channels = crate::bootstrap::state::get_allowed_channels();
     if channels.is_empty() {
         return ChannelsNoticeSnapshot::default();
     }
 
-    // No claude.ai subscription exists, so channels are never org-managed.
-    let subscription_type: Option<String> = None;
-    let managed = false;
-    let org_list = policy_settings.and_then(|settings| {
-        settings
-            .allowed_channel_plugins
-            .as_deref()
-            .map(|values| allowed_channel_plugins_from_settings_values(Some(values)))
-    });
-    let allowlist = get_effective_channel_allowlist(
-        subscription_type.as_deref(),
-        org_list,
-        get_channel_allowlist(),
-    );
+    // @nyan: no managed settings, so channels are never org-managed and the
+    // allowlist is always the ledger.
+    let allowlist = EffectiveChannelAllowlist {
+        entries: get_channel_allowlist(),
+    };
     let configured_servers = configured_mcp_server_names_readonly(global_config, project_config);
     // CC ChannelsNotice.tsx#findUnmatched reads loadInstalledPluginsV2().plugins.
     let installed = crate::utils::plugins::installed_plugins_manager::load_installed_plugins_v2();
@@ -196,9 +173,6 @@ pub fn channels_notice_snapshot_from_readonly_sources(
         channels,
         has_dev_channels: crate::bootstrap::state::get_has_dev_channels(),
         disabled: !is_channels_enabled(),
-        no_auth: true,
-        policy_blocked: managed
-            && policy_settings.and_then(|settings| settings.channels_enabled) != Some(true),
     }
 }
 
@@ -221,24 +195,12 @@ pub fn ChannelsNotice(props: &ChannelsNoticeProps, hooks: Hooks) -> impl Into<An
 
     let title = if snapshot.disabled {
         format!("{flag} ignored ({list})")
-    } else if snapshot.no_auth {
-        format!("{flag} ignored ({list})")
-    } else if snapshot.policy_blocked {
-        format!("{flag} blocked by org policy ({list})")
     } else {
         format!("Listening for channel messages from: {list}")
     };
 
     let dim_lines: Vec<String> = if snapshot.disabled {
         vec!["Channels are not currently available".to_string()]
-    } else if snapshot.no_auth {
-        vec!["Channels require claude.ai authentication, which nyan does not support".to_string()]
-    } else if snapshot.policy_blocked {
-        vec![
-            "Inbound messages will be silently dropped".to_string(),
-            "Have an administrator set channelsEnabled: true in managed settings to enable"
-                .to_string(),
-        ]
     } else {
         vec![format!(
             "Experimental · inbound messages will be pushed into this session, this carries prompt injection risks. Restart nyan without {flag} to disable."
@@ -261,7 +223,7 @@ pub fn ChannelsNotice(props: &ChannelsNoticeProps, hooks: Hooks) -> impl Into<An
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+    use crate::utils::test_env::TEST_ENV_LOCK;
     use crate::utils::theme;
 
     fn render(snapshot: ChannelsNoticeSnapshot) -> String {
@@ -298,7 +260,6 @@ mod tests {
         let installed = HashSet::new();
         let allowlist = EffectiveChannelAllowlist {
             entries: Vec::new(),
-            source: ChannelAllowlistSource::Org,
         };
         let unmatched = find_unmatched_channels(&entries, &configured, &installed, &allowlist);
         assert_eq!(unmatched.len(), 4);
@@ -316,37 +277,16 @@ mod tests {
         assert!(
             unmatched
                 .iter()
-                .any(|u| u.why == "not on your org's approved channels list")
+                .any(|u| u.why == "not on the approved channels allowlist")
         );
     }
 
     #[test]
-    fn channels_notice_cached_ledger_and_effective_allowlist_match_official_shapes() {
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.cached_growth_book_features = Some(std::collections::HashMap::from([(
-            "tengu_harbor_ledger".to_string(),
-            serde_json::json!([{"plugin": "mailbox", "marketplace": "anthropic"}]),
-        )]));
-        crate::utils::config::set_test_global_config(Some(config));
-        let ledger = get_channel_allowlist();
-        assert_eq!(
-            ledger.len(),
-            0,
-            "the cached GrowthBook ledger is inert; the switch table ships the official empty payload"
+    fn channels_notice_ledger_matches_official_empty_payload() {
+        assert!(
+            get_channel_allowlist().is_empty(),
+            "the switch table ships the official empty payload"
         );
-        crate::utils::config::set_test_global_config(None);
-
-        let org = vec![ChannelAllowlistEntry {
-            plugin: "org-plugin".to_string(),
-            marketplace: "org-market".to_string(),
-        }];
-        let effective =
-            get_effective_channel_allowlist(Some("team"), Some(org.clone()), ledger.clone());
-        assert_eq!(effective.source, ChannelAllowlistSource::Org);
-        assert_eq!(effective.entries, org);
-
-        let unmanaged = get_effective_channel_allowlist(Some("max"), Some(org), ledger);
-        assert_eq!(unmanaged.source, ChannelAllowlistSource::Ledger);
     }
 
     #[test]
@@ -360,9 +300,6 @@ mod tests {
         }
 
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        // An ambient OAuth token must not count as authentication: channels
-        // need a claude.ai login, which nyan does not support.
-        let _oauth = EnvVarGuard::set("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-channels-notice");
 
         let _channels = BootstrapChannelsGuard;
         crate::bootstrap::state::set_allowed_channels(vec![
@@ -377,7 +314,7 @@ mod tests {
             ..crate::utils::config::ProjectConfig::default()
         };
         let snapshot =
-            channels_notice_snapshot_from_readonly_sources(&global_config, &project_config, None);
+            channels_notice_snapshot_from_readonly_sources(&global_config, &project_config);
 
         assert_eq!(snapshot.channels.len(), 2);
         assert!(snapshot.has_dev_channels);
@@ -385,7 +322,6 @@ mod tests {
             snapshot.disabled,
             "source-controlled tengu_harbor default is off"
         );
-        assert!(snapshot.no_auth);
         assert!(
             snapshot
                 .unmatched
@@ -422,20 +358,6 @@ mod tests {
         assert!(
             active.contains("plugin:mailbox@anthropic · plugin not installed"),
             "canvas=\n{active}"
-        );
-
-        let blocked = render(ChannelsNoticeSnapshot {
-            channels: vec![channel],
-            policy_blocked: true,
-            ..ChannelsNoticeSnapshot::default()
-        });
-        assert!(
-            blocked.contains("--channels blocked by org policy"),
-            "canvas=\n{blocked}"
-        );
-        assert!(
-            blocked.contains("Inbound messages will be silently dropped"),
-            "canvas=\n{blocked}"
         );
     }
 }

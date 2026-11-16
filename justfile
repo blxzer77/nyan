@@ -15,15 +15,15 @@
 # clock, which is worth it for a result you can act on.
 #
 # The env pinning below is worth the remaining handful, in both directions:
-#   CLAUDE_CONFIG_DIR  redirects the settings root AND ~/.claude.json
-#                      (utils/config.rs:119-120), so tests stop asserting
-#                      against the developer's own config.
-#   privacy vars       gate analytics, which decides whether growthbook
-#                      features are read at all (services/analytics/config.rs:6).
-#                      A dev shell exporting CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
-#                      turned those tests into no-ops that passed for the wrong
-#                      reason.
-#   CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR
+#   NYAN_CONFIG_DIR    redirects the settings root and the state.json inside
+#                      it (utils/env.rs `get_global_state_file`), so tests stop
+#                      asserting against the developer's own config.
+#   NYAN_DISABLE_NONESSENTIAL_TRAFFIC / NODE_ENV
+#                      suppress error logging and the update check
+#                      (utils/privacy_level.rs) and switch test-only shortcuts
+#                      (`NODE_ENV=test`). A dev shell exporting either turned
+#                      tests into no-ops that passed for the wrong reason.
+#   NYAN_BASH_MAINTAIN_PROJECT_WORKING_DIR
 #                      short-circuits `reset_cwd_if_outside_project`
 #                      (bash_tool/utils.rs:184) to always report the project
 #                      root, whatever the shell actually did. A dev shell
@@ -34,11 +34,11 @@
 # It is recipe-scoped, so `cargo run` still uses the real config.
 #
 # What the pinning does NOT cover: `projectSettings`. Settings merge from five
-# sources (utils/settings/mod.rs:1-8) and CLAUDE_CONFIG_DIR only moves the USER
-# one. `projectSettings` is `${cwd}/.claude/settings.json`, rooted at
+# sources (utils/settings/mod.rs:1-8) and NYAN_CONFIG_DIR only moves the USER
+# one. `projectSettings` is `${cwd}/.nyan/settings.json`, rooted at
 # `get_original_cwd()` — process state, not an env var, so no recipe can pin it.
 # A test that reads settings therefore reads THIS repository's
-# `.claude/settings.json`, which configures hooks; that is how a
+# `.nyan/settings.json`, which configures hooks; that is how a
 # `UserPromptSubmit` assertion in process_user_input silently picked up the
 # repo's own Trellis hook and failed. Tests that care must pin it themselves
 # with `bootstrap::state::set_original_cwd(...)` plus a Drop guard that restores
@@ -47,12 +47,9 @@
 # reference guard.
 #
 # Mutable harness state lives under `target/test-home`, so a clean checkout has
-# every immutable input and `cargo clean` reliably resets generated state. CC
-# puts BOTH the settings root and the global config file under CLAUDE_CONFIG_DIR when it is set
-# (utils/env.ts:25
-# `join(process.env.CLAUDE_CONFIG_DIR || homedir(), '.claude.json')`), even
-# though ~/.claude.json is a sibling of ~/.claude/ by default — so one variable
-# really does cover both.
+# every immutable input and `cargo clean` reliably resets generated state. The
+# settings root and the global state file both live in the config home, so one
+# variable covers both.
 
 home    := justfile_directory() / "target/test-home"
 project := justfile_directory() / "tests/fixtures/isolated-project"
@@ -104,47 +101,6 @@ test-one filter:
 test-doc:
     cargo test --doc
 
-# --- Anthropic-internal build profile ---------------------------------------
-#
-# CC gates ~510 sites on `USER_TYPE === 'ant'`, which its bundler substitutes at
-# build time (`"external" === 'ant'` in the external source). Nyan models it
-# as a Cargo feature (utils/build_profile.rs). The recipes above only ever build
-# `external`, which leaves a hole in the gate that the env pinning above does
-# not cover: the audience is a THIRD axis, next to host state and process
-# isolation.
-#
-# Measured 2026-08-05:
-#   131  production gate sites
-#    50  `#[cfg(feature = "anthropic_internal")]`  — NOT COMPILED by `just check`
-#    13  `cfg!(feature = "anthropic_internal")`    — compiled, branch never taken
-#    29  tests that exist only under the feature   — invisible to `just test`
-#
-# The 50 attribute-gated sites are the real hazard: a signature change in shared
-# code cannot break them visibly, because rustc never sees them. Run `just
-# check-ant` after any cross-cutting refactor; run `just test-ant` before
-# claiming a batch is green.
-check-ant *args:
-    cargo check --lib --tests --features anthropic_internal {{args}}
-
-test-ant *args:
-    {{quote(test_runner)}} --features anthropic_internal {{args}}
-
-# Substring filter under the internal build: `just t-ant sandbox_permission`.
-# `test-ant *args` word-splits, so a filterset containing `(` needs this form.
-t-ant pattern:
-    {{quote(test_runner)}} --features anthropic_internal -E {{quote("test(/" + pattern + "/)")}}
-
-# Both audiences, for a release-shaped gate. Runs BOTH even when the first
-# fails — a bare `just test; just test-ant` aborts on the first non-zero exit,
-# which would silently skip the audience this recipe exists to cover.
-test-all-audiences:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    rc=0
-    just test || rc=1
-    just test-ant || rc=1
-    exit $rc
-
 # EMPTY as of 2026-08-05. `just test` is expected to be fully green; a red test
 # is a red test.
 #
@@ -164,7 +120,7 @@ test-all-audiences:
 #     early return (env.rs:165-175). "Expected 2 results, got 0" read as a
 #     product bug for as long as the note stood.
 #   foreground_shell_reports_persistent_physical_cwd
-#     CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR leaked from the developer's
+#     NYAN_BASH_MAINTAIN_PROJECT_WORKING_DIR leaked from the developer's
 #     shell and short-circuits reset_cwd_if_outside_project. Cleared by the
 #     test harness (scripts/ci/test.sh).
 #   status_notice_context_uses_official_api_key_approval_for_conflict_source

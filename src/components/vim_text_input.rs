@@ -56,7 +56,6 @@ pub struct VimTextInputProps<'a> {
     pub highlights: Vec<TextHighlight>,
     pub argument_hint: Option<String>,
     pub dim_color: bool,
-    pub voice_recording: bool,
     pub reduced_motion: bool,
     pub initial_mode: Option<VimMode>,
     pub current_mode: VimMode,
@@ -98,7 +97,6 @@ pub fn VimTextInput<'a>(
                     cursor_offset: cursor_offset.get(),
                     argument_hint: props.argument_hint.clone(),
                     dim_color: props.dim_color,
-                    hide_placeholder_text: props.voice_recording,
                     highlights: props.highlights.clone(),
                 )
             }
@@ -154,7 +152,6 @@ pub fn VimTextInput<'a>(
                 cursor_offset: cursor_offset.get(),
                 argument_hint: props.argument_hint.clone(),
                 dim_color: props.dim_color,
-                hide_placeholder_text: props.voice_recording,
                 highlights: props.highlights.clone(),
             )
         }
@@ -202,7 +199,7 @@ mod tests {
                     multiline: true,
                     columns: 40usize,
                     show_cursor: true,
-                    placeholder: Some("Ask Claude".to_string()),
+                    placeholder: Some("Ask nyan".to_string()),
                     initial_mode: Some(VimMode::Insert),
                     current_mode: VimMode::Insert,
                 )
@@ -217,6 +214,6 @@ mod tests {
                 VimTextInputHarness
             }
         }.render(Some(80)).to_string();
-        assert_eq!(text, "Ask Claude\n");
+        assert_eq!(text, "Ask nyan\n");
     }
 }

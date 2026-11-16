@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use super::system_one::{NativeSystemOneTransport, SystemOneClient};
 use crate::services::service_health::{self, ServiceKind};
-use crate::utils::settings::nyan::EmrankSettings;
+use crate::utils::settings::nyan::{DecisionModel, EmrankSettings};
 
 /// Build the EMRank client from settings.
 ///
@@ -32,6 +32,9 @@ pub fn from_settings(settings: &EmrankSettings) -> anyhow::Result<Arc<SystemOneC
         client,
         service_health::shared(ServiceKind::Emrank),
         Arc::new(NativeSystemOneTransport),
+        // The probe must use a model this account can actually call; a
+        // hardcoded placeholder id 404s and used to be recorded as "down".
+        settings.model_id(DecisionModel::Fast),
     ))
 }
 
@@ -42,7 +45,7 @@ pub fn build_client(pool_idle_timeout_ms: u64) -> anyhow::Result<reqwest::Client
     let (connect_timeout, _) = ServiceKind::Emrank.default_timeouts();
     // Outbound goes through the same proxy construction as external search
     // (§5.2, external-search 4.2 rule 1).
-    crate::utils::proxy::get_proxy_fetch_options(false)?
+    crate::utils::proxy::get_proxy_fetch_options()?
         .connect_timeout(connect_timeout)
         .pool_idle_timeout(std::time::Duration::from_millis(pool_idle_timeout_ms))
         .pool_max_idle_per_host(4)

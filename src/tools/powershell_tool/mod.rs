@@ -177,7 +177,7 @@ pub(crate) fn is_search_or_read_powershell_command(
 }
 
 /// Maps to CC `PowerShellTool` metadata and `toolToAPISchema(...)` input schema
-/// projection. This lives with the tool instead of `services/api/claude.rs` so
+/// projection. This lives with the tool instead of `services/api/request.rs` so
 /// the API layer only converts tool definitions it is given.
 /// Maps to: CC `PowerShellTool.tsx:277-296` `fullInputSchema`.
 fn full_input_fields() -> Vec<crate::utils::zod::ObjectField> {
@@ -225,7 +225,7 @@ fn full_input_fields() -> Vec<crate::utils::zod::ObjectField> {
 pub(crate) static IS_BACKGROUND_TASKS_DISABLED: std::sync::LazyLock<bool> =
     std::sync::LazyLock::new(|| {
         crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS").as_deref(),
+            crate::utils::process_env::var("NYAN_DISABLE_BACKGROUND_TASKS").as_deref(),
         )
     });
 
@@ -1074,36 +1074,19 @@ mod tests {
 
     #[test]
     fn powershell_tool_visibility_matches_official_windows_build_gate() {
-        use crate::utils::build_profile::BuildAudience;
-
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        assert!(!is_powershell_tool_enabled_for_platform(
-            "macos",
-            BuildAudience::AnthropicInternal,
-            Some("1")
-        ));
-        assert!(is_powershell_tool_enabled_for_platform(
-            "windows",
-            BuildAudience::AnthropicInternal,
-            None
-        ));
+        assert!(!is_powershell_tool_enabled_for_platform("macos", Some("1")));
+        assert!(!is_powershell_tool_enabled_for_platform("windows", None));
         assert!(!is_powershell_tool_enabled_for_platform(
             "windows",
-            BuildAudience::AnthropicInternal,
             Some("0")
         ));
-        assert!(!is_powershell_tool_enabled_for_platform(
-            "windows",
-            BuildAudience::External,
-            None
-        ));
         assert!(is_powershell_tool_enabled_for_platform(
             "windows",
-            BuildAudience::External,
             Some("true")
         ));
 
-        let _disabled = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+        let _disabled = EnvVarGuard::unset("NYAN_DISABLE_BACKGROUND_TASKS");
         let schema = powershell_tool_schema();
         assert_eq!(schema.name, "PowerShell");
         assert!(schema.description.contains("PowerShell Syntax Notes"));
@@ -1134,7 +1117,7 @@ mod tests {
     #[test]
     fn powershell_tool_schema_omits_background_when_gate_is_off() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _enabled = EnvVarGuard::set("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "true");
+        let _enabled = EnvVarGuard::set("NYAN_DISABLE_BACKGROUND_TASKS", "true");
         let schema = powershell_tool_schema();
         assert!(
             schema

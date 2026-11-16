@@ -28,7 +28,6 @@ pub enum ContextSource {
     User,
     Local,
     Flag,
-    Managed,
     Plugin,
     #[default]
     BuiltIn,
@@ -41,7 +40,6 @@ impl ContextSource {
             Self::User => "User",
             Self::Local => "Local",
             Self::Flag => "Flag",
-            Self::Managed => "Managed",
             Self::Plugin => "Plugin",
             Self::BuiltIn => "Built-in",
         }
@@ -223,14 +221,13 @@ fn extract_section_name(content: &str) -> String {
     }
 }
 
-fn memory_type_name(kind: crate::utils::claudemd::ClaudeMdKind) -> &'static str {
-    use crate::utils::claudemd::ClaudeMdKind;
+fn memory_type_name(kind: crate::utils::agents_md::AgentsMdKind) -> &'static str {
+    use crate::utils::agents_md::AgentsMdKind;
     match kind {
-        ClaudeMdKind::Managed => "Managed",
-        ClaudeMdKind::User => "User",
-        ClaudeMdKind::Project => "Project",
-        ClaudeMdKind::AutoMem => "Auto memory",
-        ClaudeMdKind::TeamMem => "Team memory",
+        AgentsMdKind::User => "User",
+        AgentsMdKind::Project => "Project",
+        AgentsMdKind::AutoMem => "Auto memory",
+        AgentsMdKind::TeamMem => "Team memory",
     }
 }
 
@@ -239,7 +236,6 @@ fn agent_source(source: AgentDefinitionSource) -> ContextSource {
         AgentDefinitionSource::ProjectSettings => ContextSource::Project,
         AgentDefinitionSource::FlagSettings => ContextSource::Flag,
         AgentDefinitionSource::UserSettings => ContextSource::User,
-        AgentDefinitionSource::PolicySettings => ContextSource::Managed,
         AgentDefinitionSource::Plugin => ContextSource::Plugin,
         AgentDefinitionSource::BuiltIn => ContextSource::BuiltIn,
     }
@@ -249,7 +245,6 @@ fn command_source(source: CommandSource) -> ContextSource {
     match source {
         CommandSource::ProjectSettings => ContextSource::Project,
         CommandSource::UserSettings => ContextSource::User,
-        CommandSource::PolicySettings => ContextSource::Managed,
         CommandSource::Plugin | CommandSource::Mcp => ContextSource::Plugin,
         CommandSource::Builtin | CommandSource::Bundled => ContextSource::BuiltIn,
     }
@@ -560,7 +555,7 @@ pub fn analyze_context_usage(input: AnalyzeContextUsageInput<'_>) -> ContextData
         .map(|section| section.tokens)
         .sum::<u64>();
 
-    let memory_files = crate::utils::claudemd::discover_claude_md_files()
+    let memory_files = crate::utils::agents_md::discover_agents_md_files()
         .into_iter()
         .map(|file| ContextMemoryFileInfo {
             path: file.path.display().to_string(),
@@ -672,13 +667,7 @@ pub fn analyze_context_usage(input: AnalyzeContextUsageInput<'_>) -> ContextData
     }
     if built_in_tool_tokens > 0 {
         categories.push(ContextCategory {
-            name: if crate::utils::build_profile::has_internal_capability(
-                crate::utils::build_profile::InternalCapability::Context,
-            ) {
-                "[ANT-ONLY] System tools".to_string()
-            } else {
-                "System tools".to_string()
-            },
+            name: "System tools".to_string(),
             tokens: built_in_tool_tokens.saturating_sub(skill_tokens),
             color: theme.inactive,
             is_deferred: false,
@@ -704,7 +693,7 @@ pub fn analyze_context_usage(input: AnalyzeContextUsageInput<'_>) -> ContextData
         categories.push(ContextCategory {
             name: "Memory files".to_string(),
             tokens: memory_tokens,
-            color: theme.claude,
+            color: theme.nyan,
             is_deferred: false,
         });
     }
@@ -900,8 +889,8 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        crate::utils::process_env::remove("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES");
-        crate::utils::process_env::remove("CLAUDE_CODE_COORDINATOR_MODE");
+        crate::utils::process_env::remove("NYAN_AGENT_LIST_IN_MESSAGES");
+        crate::utils::process_env::remove("NYAN_COORDINATOR_MODE");
 
         let agents = vec![
             AgentDefinition::new(

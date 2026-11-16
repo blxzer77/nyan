@@ -66,7 +66,7 @@ pub fn input_schema() -> &'static crate::utils::zod::Schema {
         let to_description = if crate::utils::feature_flags::feature_enabled(
             crate::utils::feature_flags::FeatureFlag::UdsInbox,
         ) {
-            "Recipient: teammate name, \"*\" for broadcast, \"uds:<socket-path>\" for a local peer, or \"bridge:<session-id>\" for a Remote Control peer (use ListPeers to discover)"
+            "Recipient: teammate name, \"*\" for broadcast, or \"uds:<socket-path>\" for a local peer (use ListPeers to discover)"
         } else {
             "Recipient: teammate name, or \"*\" for broadcast to all teammates"
         };
@@ -334,6 +334,18 @@ fn send_message_output_for_context(
         .filter(|value| !value.trim().is_empty())
         .unwrap_or("unknown")
         .to_string();
+    if crate::utils::peer_address::parse_address(&recipient).scheme
+        == crate::utils::peer_address::PeerAddressScheme::Unsupported
+    {
+        return SendMessageOutput {
+            success: false,
+            message: "Unsupported address scheme".to_string(),
+            recipients: Vec::new(),
+            request_id: None,
+            target: Some(recipient),
+            routing: None,
+        };
+    }
     let summary = input
         .get("summary")
         .and_then(|value| value.as_str())
@@ -616,7 +628,8 @@ fn send_message_output_for_context(
             let Some(team) = team_name.as_deref() else {
                 return SendMessageOutput {
                     success: false,
-                    message: "Not in a team context. Create a team with Teammate spawnTeam first, or set CLAUDE_CODE_TEAM_NAME.".to_string(),
+                    message: "Not in a team context. Create a team with Teammate spawnTeam first."
+                        .to_string(),
                     recipients: Vec::new(),
                     request_id: None,
                     target: None,
@@ -903,55 +916,6 @@ impl crate::tool::ToolCall for SendMessageTool {
         }
     }
 
-    /// Maps to: CC `SendMessageTool.ts:585-602` `checkPermissions(...)`.
-    ///
-    /// The bridge consent prompt is a `safetyCheck`, not a mode decision:
-    /// `permissions.ts` evaluates it ahead of both bypassPermissions (step 1g)
-    /// and auto-mode's allowlist/classifier, so cross-machine prompt injection
-    /// stays bypass-immune.
-    fn check_permissions(
-        &self,
-        args: &serde_json::Value,
-        _context: &crate::tool::ToolUseContext,
-    ) -> crate::utils::permissions::permission_result::PermissionResult {
-        let recipient = args
-            .get("to")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default();
-        if is_uds_inbox_enabled()
-            && crate::utils::peer_address::parse_address(recipient).scheme
-                == crate::utils::peer_address::PeerAddressScheme::Bridge
-        {
-            return crate::utils::permissions::permission_result::PermissionResult::Ask {
-                message: format!(
-                    "Send a message to Remote Control session {recipient}? It arrives as a user prompt on the receiving Claude (possibly another machine) via Anthropic's servers."
-                ),
-                updated_input: None,
-                decision_reason: Some(
-                    crate::utils::permissions::permission_result::PermissionDecisionReason::SafetyCheck {
-                        reason: "Cross-machine bridge message requires explicit user consent"
-                            .to_string(),
-                        classifier_approvable: false,
-                    },
-                ),
-                suggestions: Vec::new(),
-                blocked_path: None,
-                metadata: None,
-                is_bash_security_check_for_misparsing: false,
-                pending_classifier_check: None,
-                content_blocks: Vec::new(),
-            };
-        }
-        crate::utils::permissions::permission_result::PermissionResult::Allow {
-            updated_input: Some(args.clone()),
-            user_modified: None,
-            decision_reason: None,
-            tool_use_id: None,
-            accept_feedback: None,
-            content_blocks: Vec::new(),
-        }
-    }
-
     /// Maps to: CC `SendMessageTool.ts:604-718` `validateInput(...)`.
     fn validate_input(
         &self,
@@ -969,11 +933,10 @@ impl crate::tool::ToolCall for SendMessageTool {
             return ValidationResult::error("to must not be empty", 9);
         }
         let address = parse_address(recipient);
-        if matches!(
-            address.scheme,
-            PeerAddressScheme::Bridge | PeerAddressScheme::Uds
-        ) && address.target.trim().is_empty()
-        {
+        if address.scheme == PeerAddressScheme::Unsupported {
+            return ValidationResult::error("Unsupported address scheme", 9);
+        }
+        if address.scheme == PeerAddressScheme::Uds && address.target.trim().is_empty() {
             return ValidationResult::error("address target must not be empty", 9);
         }
         if recipient.contains('@') {
@@ -984,23 +947,6 @@ impl crate::tool::ToolCall for SendMessageTool {
         }
         let message = args.get("message");
         let plain_text = message.and_then(|value| value.as_str());
-        if is_uds_inbox_enabled() && address.scheme == PeerAddressScheme::Bridge {
-            // Structured-message rejection first — it's the permanent
-            // constraint, so the user isn't sent to reconnect only to hit it.
-            if plain_text.is_none() {
-                return ValidationResult::error(
-                    "structured messages cannot be sent cross-session — only plain text",
-                    9,
-                );
-            }
-            // CC re-derives `from=` through `getReplBridgeHandle()`. No bridge
-            // transport is ported, so the handle is permanently absent and this
-            // is the branch a `bridge:` target reaches.
-            return ValidationResult::error(
-                "Remote Control is not connected — cannot send to a bridge: target. Reconnect with /remote-control first.",
-                9,
-            );
-        }
         if is_uds_inbox_enabled()
             && address.scheme == PeerAddressScheme::Uds
             && plain_text.is_some()
@@ -1142,10 +1088,77 @@ impl crate::tool::ToolCall for SendMessageTool {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK, TestStateLock};
+    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK, TestLockRank, TestStateLock};
 
-    static SEND_MESSAGE_TEAM_MAILBOX_TEST_LOCK: std::sync::LazyLock<TestStateLock> =
-        std::sync::LazyLock::new(TestStateLock::new);
+    static SEND_MESSAGE_TEAM_MAILBOX_TEST_LOCK: TestStateLock =
+        TestStateLock::new(TestLockRank::SendMessageMailbox);
+
+    #[test]
+    fn unsupported_address_schemes_fail_before_delivery_regardless_of_peer_gate() {
+        use crate::tool::{ToolCall, ValidationResult};
+        let _lock = SEND_MESSAGE_TEAM_MAILBOX_TEST_LOCK.lock().unwrap();
+        let _team_state_lock = crate::utils::swarm::team_helpers::TEST_TEAM_HELPERS_LOCK
+            .lock()
+            .unwrap();
+        let _mailbox_lock = crate::utils::teammate_mailbox::TEST_TEAMMATE_MAILBOX_LOCK
+            .lock()
+            .unwrap();
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let _guards = seed_team_for_send_message("alpha");
+        let context = crate::tool::ToolUseContext::default();
+        for enabled in [false, true] {
+            let _gate = crate::utils::feature_flags::override_for_test(
+                crate::utils::feature_flags::FeatureFlag::UdsInbox,
+                enabled,
+            );
+            for recipient in ["bridge:session", "bridge:", "https://peer", "custom:peer"] {
+                for message in [
+                    serde_json::json!("hello"),
+                    serde_json::json!({"type": "shutdown_request"}),
+                ] {
+                    let input = serde_json::json!({
+                        "to": recipient, "summary": "hello", "message": message,
+                    });
+                    assert!(matches!(
+                        super::SendMessageTool.validate_input(&input, &context),
+                        ValidationResult::Error { message, error_code: 9 }
+                            if message == "Unsupported address scheme"
+                    ));
+                    let output = super::send_message_output(&input);
+                    assert!(!output.success);
+                    assert_eq!(output.message, "Unsupported address scheme");
+                    assert!(output.routing.is_none());
+                }
+                // Rejected before delivery: nothing lands in a mailbox.
+                assert!(
+                    crate::utils::teammate_mailbox::read_mailbox(recipient, Some("alpha"))
+                        .is_empty(),
+                    "{recipient} must not be written to a mailbox"
+                );
+            }
+            let input = serde_json::json!({"to": "uds:", "message": "hello"});
+            assert!(matches!(
+                super::SendMessageTool.validate_input(&input, &context),
+                ValidationResult::Error { message, .. } if message == "address target must not be empty"
+            ));
+            if enabled {
+                let input = serde_json::json!({"to": "uds:/tmp/peer.sock", "message": "hello"});
+                assert!(
+                    super::SendMessageTool
+                        .validate_input(&input, &context)
+                        .is_ok()
+                );
+                let input = serde_json::json!({
+                    "to": "uds:/tmp/peer.sock", "message": {"type": "shutdown_request"},
+                });
+                assert!(matches!(
+                    super::SendMessageTool.validate_input(&input, &context),
+                    ValidationResult::Error { message, .. }
+                        if message == "structured messages cannot be sent cross-session — only plain text"
+                ));
+            }
+        }
+    }
 
     #[test]
     fn send_message_queues_plain_text_for_running_local_agent_like_official() {
@@ -1348,14 +1361,14 @@ mod tests {
 
     /// Seeds the team both in memory AND on disk: broadcast and
     /// shutdown-approval read the team file like CC `readTeamFileAsync`, so
-    /// the returned guards (CLAUDE_CONFIG_DIR + NYAN_TEST_TEAM_FILE_IO)
+    /// the returned guards (NYAN_CONFIG_DIR + NYAN_TEST_TEAM_FILE_IO)
     /// must stay alive for the test body.
     fn seed_team_for_send_message(team_name: &str) -> (EnvVarGuard, EnvVarGuard, EnvVarGuard) {
         let root = std::env::temp_dir().join(format!(
             "nyan-send-message-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         // The mailbox write path also checks the session write gate.
         let write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
@@ -1444,6 +1457,15 @@ mod tests {
         );
         assert_eq!(inbox[0].text, "please review this patch");
         assert_eq!(inbox[0].summary.as_deref(), Some("review request"));
+
+        let output = super::send_message_output(&serde_json::json!({
+            "to": "unregistered-name", "summary": "hello", "message": "still a mailbox name",
+        }));
+        assert!(output.success);
+        let inbox =
+            crate::utils::teammate_mailbox::read_mailbox("unregistered-name", Some("alpha"));
+        assert_eq!(inbox.len(), 1);
+        assert_eq!(inbox[0].text, "still a mailbox name");
     }
 
     #[test]

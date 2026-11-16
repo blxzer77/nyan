@@ -6,8 +6,6 @@ use super::settings_errors::settings_errors_notification_from_errors;
 use crate::context::notifications::{
     Notification, NotificationColor, NotificationPriority, NotificationsState,
 };
-use crate::utils::auto_updater::auto_update_message_for_platform;
-use crate::utils::config::is_auto_updater_disabled;
 use crate::utils::sandbox::sandbox_adapter::sandbox_unavailable_message_for_platform;
 use crate::utils::settings::{SettingsJson, ValidationError};
 
@@ -17,11 +15,10 @@ pub struct StartupNotificationState {
 }
 
 pub fn apply_startup_notifications_once(
-    is_remote_mode: bool,
     state: &mut StartupNotificationState,
     notifications: impl IntoIterator<Item = Notification>,
 ) -> NotificationsState {
-    if is_remote_mode || state.has_run {
+    if state.has_run {
         return NotificationsState::default();
     }
 
@@ -39,23 +36,7 @@ pub fn startup_notifications(
     errors: &[ValidationError],
 ) -> NotificationsState {
     let mut state = StartupNotificationState::default();
-    startup_notifications_with_gate(settings, errors, false, &mut state)
-}
-
-fn auto_update_startup_notification_for_platform(
-    platform: &str,
-    disabled: bool,
-) -> Option<Notification> {
-    if disabled {
-        return None;
-    }
-    auto_update_message_for_platform(platform).map(|message| {
-        Notification::text(
-            "windows-auto-updater-unavailable",
-            message,
-            NotificationPriority::Low,
-        )
-    })
+    startup_notifications_with_gate(settings, errors, &mut state)
 }
 
 fn git_bash_startup_notification_for_platform(
@@ -73,19 +54,12 @@ fn git_bash_startup_notification_for_platform(
 pub fn startup_notifications_with_gate(
     settings: &SettingsJson,
     errors: &[ValidationError],
-    is_remote_mode: bool,
     state: &mut StartupNotificationState,
 ) -> NotificationsState {
     let mut notifications = settings_errors_notification_from_errors(errors)
         .into_iter()
         .collect::<Vec<_>>();
     let platform = std::env::consts::OS;
-    if platform == "windows"
-        && let Some(notification) =
-            auto_update_startup_notification_for_platform(platform, is_auto_updater_disabled())
-    {
-        notifications.push(notification);
-    }
     #[cfg(target_os = "windows")]
     let git_bash_reason = crate::utils::windows_paths::find_git_bash_path().err();
     #[cfg(not(target_os = "windows"))]
@@ -108,7 +82,7 @@ pub fn startup_notifications_with_gate(
             .with_color(NotificationColor::Warning),
         );
     }
-    apply_startup_notifications_once(is_remote_mode, state, notifications)
+    apply_startup_notifications_once(state, notifications)
 }
 
 #[cfg(test)]
@@ -124,28 +98,13 @@ mod tests {
             message: "invalid setting".to_string(),
             expected: None,
             invalid_value: None,
-            doc_link: None,
             suggestion: None,
         }
     }
 
     #[test]
-    fn windows_auto_update_startup_notification_is_low_priority_and_disabled_aware() {
-        let notification = auto_update_startup_notification_for_platform("windows", false)
-            .expect("enabled Windows updater should produce a startup notification");
-        assert_eq!(notification.key, "windows-auto-updater-unavailable");
-        assert_eq!(
-            notification.text,
-            "Windows 暂不支持自动更新，请从 GitHub Releases 手动下载"
-        );
-        assert_eq!(notification.priority, NotificationPriority::Low);
-        assert!(auto_update_startup_notification_for_platform("windows", true).is_none());
-        assert!(auto_update_startup_notification_for_platform("linux", false).is_none());
-    }
-
-    #[test]
     fn windows_git_bash_startup_notification_is_low_priority_and_platform_gated() {
-        let reason = "CLAUDE_CODE_GIT_BASH_PATH file does not exist: \"C:\\x\\bash.exe\"";
+        let reason = "NYAN_GIT_BASH_PATH file does not exist: \"C:\\x\\bash.exe\"";
         let notification = git_bash_startup_notification_for_platform("windows", Some(reason))
             .expect("unavailable Git Bash should produce a startup notification");
         assert_eq!(notification.key, "windows-git-bash-unavailable");
@@ -187,10 +146,9 @@ mod tests {
     }
 
     #[test]
-    fn startup_notification_gate_matches_official_remote_mode_and_once_guard() {
+    fn startup_notification_gate_preserves_once_guard() {
         let mut state = StartupNotificationState::default();
         let first = apply_startup_notifications_once(
-            false,
             &mut state,
             [Notification::text(
                 "first-startup",
@@ -212,7 +170,6 @@ mod tests {
         assert!(state.has_run);
 
         let second = apply_startup_notifications_once(
-            false,
             &mut state,
             [Notification::text(
                 "second-startup",
@@ -225,30 +182,12 @@ mod tests {
     }
 
     #[test]
-    fn startup_notification_gate_skips_remote_mode_without_setting_once_guard() {
-        let mut state = StartupNotificationState::default();
-        let remote = apply_startup_notifications_once(
-            true,
-            &mut state,
-            [Notification::text(
-                "remote-startup",
-                "remote startup notification",
-                NotificationPriority::Medium,
-            )],
-        );
-
-        assert!(remote.current.is_none());
-        assert!(remote.queue.is_empty());
-        assert!(!state.has_run);
-    }
-
-    #[test]
     fn startup_notifications_with_gate_uses_settings_errors_as_compute_result() {
         let settings = SettingsJson::default();
         let errors = vec![validation_error("permissions")];
         let mut state = StartupNotificationState::default();
 
-        let first = startup_notifications_with_gate(&settings, &errors, false, &mut state);
+        let first = startup_notifications_with_gate(&settings, &errors, &mut state);
         // Seed shape (CC `main.tsx:4107-4110`): queued, not promoted.
         assert!(first.current.is_none());
         assert_eq!(
@@ -260,7 +199,7 @@ mod tests {
             vec![SETTINGS_ERRORS_NOTIFICATION_KEY]
         );
 
-        let second = startup_notifications_with_gate(&settings, &errors, false, &mut state);
+        let second = startup_notifications_with_gate(&settings, &errors, &mut state);
         assert!(second.current.is_none());
         assert!(second.queue.is_empty());
     }

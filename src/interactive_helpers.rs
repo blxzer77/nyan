@@ -1,12 +1,12 @@
 //! Maps to: CC `interactiveHelpers.tsx` (single file).
 //!
 //! Owns `showSetupScreens` gate order, snapshot derivation, Trust /
-//! ClaudeMdExternalIncludes persistence, and the setup-screen UI host
+//! AgentsMdExternalIncludes persistence, and the setup-screen UI host
 //! ([`SetupScreensHost`]) — matching official JSX in the same file.
 
 use crate::commands::terminal_setup::terminal_setup::should_offer_terminal_setup_for;
-use crate::components::claude_md_external_includes_dialog::{
-    ClaudeMdExternalIncludesChoice, ClaudeMdExternalIncludesDialog,
+use crate::components::agents_md_external_includes_dialog::{
+    AgentsMdExternalIncludesChoice, AgentsMdExternalIncludesDialog,
 };
 use crate::components::trust_dialog::utils::{
     get_api_key_helper_sources_from_settings, get_aws_commands_sources_from_settings,
@@ -20,22 +20,19 @@ use crate::components::trust_dialog::{
 use crate::services::mcp::config::get_mcp_configs_by_scope_readonly;
 use crate::services::mcp::types::ConfigScope;
 use crate::tools::agent_tool::load_agents_dir::get_agent_definitions_with_overrides;
-use crate::utils::claude_in_chrome::setup::should_enable_claude_in_chrome_from_readonly_runtime;
-use crate::utils::claudemd::{ClaudeMdFile, discover_claude_md_files};
-use crate::utils::claudemd::{
-    ExternalClaudeMdInclude, discover_claude_md_files_with_external_policy,
-    get_external_claude_md_includes, should_show_claude_md_external_includes_warning,
+use crate::utils::agents_md::{AgentsMdFile, discover_agents_md_files};
+use crate::utils::agents_md::{
+    ExternalAgentsMdInclude, discover_agents_md_files_with_external_policy,
+    get_external_agents_md_includes, should_show_agents_md_external_includes_warning,
 };
 use crate::utils::config::{
-    CustomApiKeyStatus, GlobalConfig, ProjectConfig, get_custom_api_key_status, load_global_config,
-    normalize_api_key_for_config, normalize_project_path,
+    GlobalConfig, ProjectConfig, load_global_config, normalize_project_path,
 };
 use crate::utils::config::{
     check_has_trust_dialog_accepted, get_current_project_config,
     reset_trust_dialog_accepted_cache_for_testing, save_current_project_config,
 };
 use crate::utils::env as runtime_env;
-use crate::utils::env_utils::is_running_on_homespace;
 use crate::utils::ide::IDEExtensionInstallationStatus;
 use crate::utils::ide::{is_jetbrains_ide, to_ide_display_name};
 use crate::utils::process_env::JsTruthy;
@@ -45,7 +42,6 @@ use crate::utils::status_notice_definitions::{MemoryFileInfo, StatusNoticeContex
 use std::path::Path;
 use std::sync::atomic::{AtomicI32, Ordering};
 
-use crate::components::claude_in_chrome_onboarding::ClaudeInChromeOnboarding;
 use crate::components::mcp_server_approval_dialog::{
     MCPServerApprovalChoice, MCPServerApprovalDialog,
 };
@@ -62,11 +58,8 @@ use std::sync::Arc;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SetupScreensSnapshot {
     pub show_onboarding: bool,
-    pub api_key_needing_approval: Option<String>,
     pub offer_terminal_setup: bool,
     pub terminal_name: Option<String>,
-    pub show_claude_in_chrome_onboarding: bool,
-    pub claude_in_chrome_extension_installed: bool,
 }
 
 pub fn project_config_for_cwd(global_config: &GlobalConfig, cwd: &Path) -> ProjectConfig {
@@ -78,26 +71,9 @@ pub fn project_config_for_cwd(global_config: &GlobalConfig, cwd: &Path) -> Proje
         .unwrap_or_default()
 }
 
-fn api_key_needing_onboarding_approval(
-    global_config: &GlobalConfig,
-    get_env: &impl Fn(&str) -> Option<String>,
-) -> Option<String> {
-    if is_running_on_homespace() {
-        return None;
-    }
-    // CC Onboarding.tsx:132-138: only an empty value is absent, and the
-    // suffix is taken from the value as set; auth matches the same
-    // untrimmed bytes, so a trimmed suffix would never be found approved.
-    let api_key = get_env("ANTHROPIC_API_KEY").truthy()?;
-    let truncated = normalize_api_key_for_config(&api_key);
-    (get_custom_api_key_status(global_config, &truncated) == CustomApiKeyStatus::New)
-        .then_some(truncated)
-}
-
 pub fn setup_screens_snapshot_from_readonly_runtime(
     global_config: &GlobalConfig,
     get_env: &impl Fn(&str) -> Option<String>,
-    args: impl IntoIterator<Item = String>,
     terminal_name: Option<String>,
     platform: runtime_env::Platform,
 ) -> SetupScreensSnapshot {
@@ -114,21 +90,15 @@ pub fn setup_screens_snapshot_from_readonly_runtime(
         .filter(|value| !value.is_empty());
     let show_onboarding =
         configured_theme.is_none() || global_config.has_completed_onboarding != Some(true);
-    let enable_claude_in_chrome =
-        should_enable_claude_in_chrome_from_readonly_runtime(global_config, args, get_env);
 
     SetupScreensSnapshot {
         show_onboarding,
-        api_key_needing_approval: api_key_needing_onboarding_approval(global_config, get_env),
         offer_terminal_setup: should_offer_terminal_setup_for(terminal_name.as_deref(), platform),
         terminal_name,
-        show_claude_in_chrome_onboarding: enable_claude_in_chrome
-            && global_config.has_completed_claude_in_chrome_onboarding != Some(true),
-        claude_in_chrome_extension_installed: false,
     }
 }
 
-fn status_notice_memory_files(files: Vec<ClaudeMdFile>) -> Vec<MemoryFileInfo> {
+fn status_notice_memory_files(files: Vec<AgentsMdFile>) -> Vec<MemoryFileInfo> {
     files
         .into_iter()
         .map(|file| MemoryFileInfo {
@@ -141,7 +111,7 @@ fn status_notice_memory_files(files: Vec<ClaudeMdFile>) -> Vec<MemoryFileInfo> {
 pub fn status_notice_context_from_readonly_runtime(
     global_config: &GlobalConfig,
     cwd: &Path,
-    memory_files: Vec<ClaudeMdFile>,
+    memory_files: Vec<AgentsMdFile>,
     ide_installation_status: Option<&IDEExtensionInstallationStatus>,
 ) -> StatusNoticeContext {
     let ide_type = ide_installation_status.and_then(|status| status.ide_type.as_deref());
@@ -184,7 +154,6 @@ pub fn default_setup_screens_snapshot() -> SetupScreensSnapshot {
     setup_screens_snapshot_from_readonly_runtime(
         &load_global_config(),
         &|key| crate::utils::process_env::var(key),
-        std::env::args(),
         detected.terminal.clone(),
         detected.platform,
     )
@@ -197,7 +166,7 @@ pub fn default_status_notice_context(
     status_notice_context_from_readonly_runtime(
         &load_global_config(),
         &cwd,
-        discover_claude_md_files(),
+        discover_agents_md_files(),
         ide_installation_status,
     )
 }
@@ -284,7 +253,7 @@ pub fn show_setup_screens(
 }
 
 /// Component implementation for [`show_setup_screens`].
-/// Gate order: onboarding → trust → mcpjson → ClaudeMd → chrome → complete.
+/// Gate order: onboarding → trust → mcpjson → AgentsMd → complete.
 #[component]
 fn SetupScreensHost<'a>(
     props: &mut SetupScreensHostProps<'a>,
@@ -302,11 +271,10 @@ fn SetupScreensHost<'a>(
     // Gate visibility from props each render; dismissal is local state.
     // (Do not seed use_state from props — iocraft may first-mount with Default props.)
     let mut onboarding_dismissed = hooks.use_state(|| false);
-    let mut chrome_dismissed = hooks.use_state(|| false);
     let mut trust_dismissed = hooks.use_state(|| false);
-    let mut claude_md_dismissed = hooks.use_state(|| false);
+    let mut agents_md_dismissed = hooks.use_state(|| false);
     let trust_risk_snapshot = hooks.use_const(build_trust_dialog_risk_snapshot);
-    let claude_md_external_includes = hooks.use_const(load_claude_md_external_includes_for_setup);
+    let agents_md_external_includes = hooks.use_const(load_agents_md_external_includes_for_setup);
     // The Onboarding store's settings seed, built once (see the Onboarding
     // arm below).
     let onboarding_settings_seed = hooks.use_const({
@@ -331,11 +299,9 @@ fn SetupScreensHost<'a>(
     }
 
     let show_onboarding = setup_screens_snapshot.show_onboarding && !onboarding_dismissed.get();
-    let show_claude_in_chrome_onboarding =
-        setup_screens_snapshot.show_claude_in_chrome_onboarding && !chrome_dismissed.get();
     let show_trust_dialog = should_show_trust_dialog() && !trust_dismissed.get();
-    let show_claude_md_external_includes =
-        should_show_claude_md_external_includes_gate() && !claude_md_dismissed.get();
+    let show_agents_md_external_includes =
+        should_show_agents_md_external_includes_gate() && !agents_md_dismissed.get();
 
     let pending_mcpjson_servers = { pending_mcpjson_servers_state.read().clone() };
     // CC `:154-161`: demo mode returns before every step, the env application
@@ -347,24 +313,17 @@ fn SetupScreensHost<'a>(
             show_onboarding,
             show_trust_dialog,
             !pending_mcpjson_servers.is_empty(),
-            show_claude_md_external_includes,
-            show_claude_in_chrome_onboarding,
+            show_agents_md_external_includes,
         )
     };
 
     // Maps to: CC `interactiveHelpers.tsx:248-252`. The full settings env,
     // potentially dangerous variables included, applies once trust is settled.
     // That is after the trust dialog, the `.mcp.json` approvals and the
-    // AGENTS.md external-includes warning, and before the dialogs that follow,
-    // among them Claude in Chrome (:390-400). It applies whether or not the
-    // trust dialog showed, as CC's call does, but not in demo mode, which
-    // returns first.
-    if matches!(
-        setup_gate,
-        SetupScreenGate::ClaudeInChrome | SetupScreenGate::Ready
-    ) && !config_env_applied.get()
-        && !is_demo_mode()
-    {
+    // AGENTS.md external-includes warning, the last setup gates. It applies
+    // whether or not the trust dialog showed, as CC's call does, but not in
+    // demo mode, which returns first.
+    if setup_gate == SetupScreenGate::Ready && !config_env_applied.get() && !is_demo_mode() {
         config_env_applied.set(true);
         // Settings may have changed on disk during the dialogs. `Main`'s
         // completion re-reads them right after this, so reset the cache
@@ -404,7 +363,6 @@ fn SetupScreensHost<'a>(
                                     on_done: move |_| {
                                         dismissed.set(true);
                                     },
-                                    api_key_needing_approval: snapshot.api_key_needing_approval.clone(),
                                     offer_terminal_setup: snapshot.offer_terminal_setup,
                                     terminal_name: snapshot.terminal_name.clone(),
                                 )
@@ -500,27 +458,15 @@ fn SetupScreensHost<'a>(
                 .into_any()
             }
         }
-        SetupScreenGate::ClaudeMdExternalIncludes => {
-            let includes = claude_md_external_includes.clone();
+        SetupScreenGate::AgentsMdExternalIncludes => {
+            let includes = agents_md_external_includes.clone();
             element! {
-                ClaudeMdExternalIncludesDialog(
+                AgentsMdExternalIncludesDialog(
                     is_standalone_dialog: true,
                     external_includes: includes,
                     on_done: move |choice| {
-                        apply_claude_md_external_includes_choice(choice);
-                        claude_md_dismissed.set(true);
-                    },
-                )
-            }
-            .into_any()
-        }
-        SetupScreenGate::ClaudeInChrome => {
-            let snapshot = setup_screens_snapshot.clone();
-            element! {
-                ClaudeInChromeOnboarding(
-                    is_extension_installed: snapshot.claude_in_chrome_extension_installed,
-                    on_done: move |_| {
-                        chrome_dismissed.set(true);
+                        apply_agents_md_external_includes_choice(choice);
+                        agents_md_dismissed.set(true);
                     },
                 )
             }
@@ -556,40 +502,16 @@ fn SetupScreensHost<'a>(
 #[cfg(test)]
 mod setup_screens_snapshot_tests {
     use super::*;
-    use crate::utils::config::CustomApiKeyResponses;
     use crate::utils::test_env::{EnvVarGuard, HOME_VAR, TEST_ENV_LOCK};
     use std::fs;
     use std::path::Path;
 
     #[test]
-    fn api_key_needing_approval_keeps_the_key_as_set() {
-        // CC Onboarding.tsx:132-138: `normalizeApiKeyForConfig` of the raw
-        // value, as auth later matches it; only an empty value is absent.
-        let _lock = TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _homespace = EnvVarGuard::unset("COO_RUNNING_ON_HOMESPACE");
-        let config = GlobalConfig::default();
-        let with_key = |value: &'static str| {
-            move |key: &str| (key == "ANTHROPIC_API_KEY").then(|| value.to_string())
-        };
-        assert_eq!(
-            api_key_needing_onboarding_approval(&config, &with_key("sk-ant-test-key\r")),
-            Some(normalize_api_key_for_config("sk-ant-test-key\r"))
-        );
-        assert_eq!(
-            api_key_needing_onboarding_approval(&config, &with_key("")),
-            None
-        );
-    }
-
-    #[test]
-    fn setup_screens_snapshot_matches_official_onboarding_gate_and_api_key_step() {
+    fn setup_screens_snapshot_matches_official_onboarding_gate() {
         let mut config = GlobalConfig::default();
         let snapshot = setup_screens_snapshot_from_readonly_runtime(
             &config,
             &|_| None,
-            Vec::<String>::new(),
             Some("vscode".to_string()),
             runtime_env::Platform::MacOS,
         );
@@ -601,48 +523,15 @@ mod setup_screens_snapshot_tests {
         let completed = setup_screens_snapshot_from_readonly_runtime(
             &config,
             &|_| None,
-            Vec::<String>::new(),
             Some("kitty".to_string()),
             runtime_env::Platform::MacOS,
         );
         assert!(!completed.show_onboarding);
         assert!(!completed.offer_terminal_setup);
 
-        let with_new_key = setup_screens_snapshot_from_readonly_runtime(
-            &config,
-            &|key| {
-                (key == "ANTHROPIC_API_KEY")
-                    .then(|| "sk-ant-abcdefghijklmnopqrstuvwxyz".to_string())
-            },
-            Vec::<String>::new(),
-            None,
-            runtime_env::Platform::Linux,
-        );
-        assert_eq!(
-            with_new_key.api_key_needing_approval.as_deref(),
-            Some("ghijklmnopqrstuvwxyz")
-        );
-
-        config.custom_api_key_responses = Some(CustomApiKeyResponses {
-            approved: Some(vec!["ghijklmnopqrstuvwxyz".to_string()]),
-            rejected: None,
-        });
-        let approved_key = setup_screens_snapshot_from_readonly_runtime(
-            &config,
-            &|key| {
-                (key == "ANTHROPIC_API_KEY")
-                    .then(|| "sk-ant-abcdefghijklmnopqrstuvwxyz".to_string())
-            },
-            Vec::<String>::new(),
-            None,
-            runtime_env::Platform::Linux,
-        );
-        assert!(approved_key.api_key_needing_approval.is_none());
-
         let demo = setup_screens_snapshot_from_readonly_runtime(
             &GlobalConfig::default(),
             &|key| (key == "IS_DEMO").then(|| "1".to_string()),
-            Vec::<String>::new(),
             None,
             runtime_env::Platform::Linux,
         );
@@ -650,76 +539,13 @@ mod setup_screens_snapshot_tests {
     }
 
     #[test]
-    fn setup_screens_snapshot_matches_official_claude_in_chrome_gate() {
-        let mut config = GlobalConfig::default();
-        config.theme = Some("dark".to_string());
-        config.has_completed_onboarding = Some(true);
-
-        let by_flag = setup_screens_snapshot_from_readonly_runtime(
-            &config,
-            &|_| None,
-            vec!["nyan".to_string(), "--chrome".to_string()],
-            None,
-            runtime_env::Platform::Linux,
-        );
-        assert!(by_flag.show_claude_in_chrome_onboarding);
-
-        let by_no_flag = setup_screens_snapshot_from_readonly_runtime(
-            &config,
-            &|_| None,
-            vec!["nyan".to_string(), "--no-chrome".to_string()],
-            None,
-            runtime_env::Platform::Linux,
-        );
-        assert!(!by_no_flag.show_claude_in_chrome_onboarding);
-
-        let by_env = setup_screens_snapshot_from_readonly_runtime(
-            &config,
-            &|key| (key == "CLAUDE_CODE_ENABLE_CFC").then(|| "true".to_string()),
-            Vec::<String>::new(),
-            None,
-            runtime_env::Platform::Linux,
-        );
-        assert!(by_env.show_claude_in_chrome_onboarding);
-
-        config.claude_in_chrome_default_enabled = Some(true);
-        let env_falsy_wins = setup_screens_snapshot_from_readonly_runtime(
-            &config,
-            &|key| (key == "CLAUDE_CODE_ENABLE_CFC").then(|| "false".to_string()),
-            Vec::<String>::new(),
-            None,
-            runtime_env::Platform::Linux,
-        );
-        assert!(!env_falsy_wins.show_claude_in_chrome_onboarding);
-
-        let by_config = setup_screens_snapshot_from_readonly_runtime(
-            &config,
-            &|_| None,
-            Vec::<String>::new(),
-            None,
-            runtime_env::Platform::Linux,
-        );
-        assert!(by_config.show_claude_in_chrome_onboarding);
-
-        config.has_completed_claude_in_chrome_onboarding = Some(true);
-        let completed = setup_screens_snapshot_from_readonly_runtime(
-            &config,
-            &|_| None,
-            vec!["nyan".to_string(), "--chrome".to_string()],
-            None,
-            runtime_env::Platform::Linux,
-        );
-        assert!(!completed.show_claude_in_chrome_onboarding);
-    }
-
-    #[test]
     fn status_notice_context_from_readonly_runtime_builds_memory_and_ide_snapshot() {
         let mut global_config = GlobalConfig::default();
         global_config.auto_install_ide_extension = Some(true);
-        let memory_file = ClaudeMdFile {
+        let memory_file = AgentsMdFile {
             path: Path::new("/repo/AGENTS.md").to_path_buf(),
-            source: crate::utils::claudemd::ClaudeMdSource::Project,
-            kind: crate::utils::claudemd::ClaudeMdKind::Project,
+            source: crate::utils::agents_md::AgentsMdSource::Project,
+            kind: crate::utils::agents_md::AgentsMdKind::Project,
             content: "project memory".to_string(),
             parent: None,
             is_nested: false,
@@ -745,26 +571,26 @@ mod setup_screens_snapshot_tests {
     }
 
     #[test]
-    fn auth_token_and_api_key_guards_restore_distinct_sentinels() {
+    fn env_guards_restore_distinct_sentinels() {
         let _env_guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _restore_token = EnvVarGuard::preserve("ANTHROPIC_AUTH_TOKEN");
-        let _restore_api_key = EnvVarGuard::preserve("ANTHROPIC_API_KEY");
-        crate::utils::process_env::set("ANTHROPIC_AUTH_TOKEN", "token-sentinel");
-        crate::utils::process_env::set("ANTHROPIC_API_KEY", "api-key-sentinel");
+        let _restore_token = EnvVarGuard::preserve("NYAN_AUTH_TOKEN");
+        let _restore_api_key = EnvVarGuard::preserve("NYAN_API_KEY");
+        crate::utils::process_env::set("NYAN_AUTH_TOKEN", "token-sentinel");
+        crate::utils::process_env::set("NYAN_API_KEY", "api-key-sentinel");
 
         {
-            let _token = EnvVarGuard::set("ANTHROPIC_AUTH_TOKEN", "token-under-test");
-            let _api_key = EnvVarGuard::set("ANTHROPIC_API_KEY", "api-key-under-test");
+            let _token = EnvVarGuard::set("NYAN_AUTH_TOKEN", "token-under-test");
+            let _api_key = EnvVarGuard::set("NYAN_API_KEY", "api-key-under-test");
         }
 
         assert_eq!(
-            crate::utils::process_env::var("ANTHROPIC_AUTH_TOKEN").as_deref(),
+            crate::utils::process_env::var("NYAN_AUTH_TOKEN").as_deref(),
             Some("token-sentinel")
         );
         assert_eq!(
-            crate::utils::process_env::var("ANTHROPIC_API_KEY").as_deref(),
+            crate::utils::process_env::var("NYAN_API_KEY").as_deref(),
             Some("api-key-sentinel")
         );
     }
@@ -811,16 +637,10 @@ mod setup_screens_snapshot_tests {
         .expect("write agent definition");
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _home = EnvVarGuard::set(HOME_VAR, &root);
-        // A host's `CLAUDE_CODE_SIMPLE` (CC `--bare`) would skip custom agents;
-        // unsetting the managed override would read the machine's real managed
-        // root, so point it at a directory that does not exist.
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
-        let _managed = EnvVarGuard::set(
-            "CLAUDE_CODE_MANAGED_SETTINGS_PATH",
-            root.join("missing-managed-root"),
-        );
+        // A host's `NYAN_SIMPLE` (CC `--bare`) would skip custom agents.
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         let context = status_notice_context_from_readonly_runtime(
             &GlobalConfig::default(),
             &cwd,
@@ -854,8 +674,7 @@ pub enum SetupScreenGate {
     Onboarding,
     Trust,
     Mcpjson,
-    ClaudeMdExternalIncludes,
-    ClaudeInChrome,
+    AgentsMdExternalIncludes,
     Ready,
 }
 
@@ -883,25 +702,25 @@ pub fn should_show_trust_dialog() -> bool {
 
 /// Maps to: CC showSetupScreens ClaudeMdExternalIncludes gate predicate.
 /// Skipped under CLAUBBIT, inside the same trust block as official.
-pub fn should_show_claude_md_external_includes_gate() -> bool {
+pub fn should_show_agents_md_external_includes_gate() -> bool {
     if should_skip_trust_dialog_for_env() {
         return false;
     }
-    should_show_claude_md_external_includes_warning()
+    should_show_agents_md_external_includes_warning()
 }
 
 /// Snapshot of external includes for the standalone setup dialog.
-pub fn load_claude_md_external_includes_for_setup() -> Vec<ExternalClaudeMdInclude> {
-    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_claude_md();
+pub fn load_agents_md_external_includes_for_setup() -> Vec<ExternalAgentsMdInclude> {
+    let additional_dirs = crate::bootstrap::state::get_additional_directories_for_agents_md();
     let include_default_discovery = !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_SIMPLE").as_deref(),
+        crate::utils::process_env::var("NYAN_SIMPLE").as_deref(),
     );
-    let files = discover_claude_md_files_with_external_policy(
+    let files = discover_agents_md_files_with_external_policy(
         include_default_discovery,
         &additional_dirs,
         true,
     );
-    get_external_claude_md_includes(&files)
+    get_external_agents_md_includes(&files)
 }
 
 fn paths_equal(a: &Path, b: &Path) -> bool {
@@ -982,11 +801,11 @@ pub fn apply_trust_dialog_accept(result: &TrustDialogAcceptResult) {
 }
 
 /// Maps to: CC `ClaudeMdExternalIncludesDialog` `handleSelection` config writes.
-pub fn apply_claude_md_external_includes_choice(choice: ClaudeMdExternalIncludesChoice) {
-    let approved = matches!(choice, ClaudeMdExternalIncludesChoice::Yes);
+pub fn apply_agents_md_external_includes_choice(choice: AgentsMdExternalIncludesChoice) {
+    let approved = matches!(choice, AgentsMdExternalIncludesChoice::Yes);
     let _ = save_current_project_config(|project| {
-        project.has_claude_md_external_includes_approved = Some(approved);
-        project.has_claude_md_external_includes_warning_shown = Some(true);
+        project.has_agents_md_external_includes_approved = Some(approved);
+        project.has_agents_md_external_includes_warning_shown = Some(true);
     });
 }
 
@@ -1000,8 +819,7 @@ pub fn resolve_setup_screen_gate(
     show_onboarding: bool,
     show_trust: bool,
     pending_mcpjson: bool,
-    show_claude_md_external: bool,
-    show_chrome: bool,
+    show_agents_md_external: bool,
 ) -> SetupScreenGate {
     if show_onboarding {
         SetupScreenGate::Onboarding
@@ -1009,10 +827,8 @@ pub fn resolve_setup_screen_gate(
         SetupScreenGate::Trust
     } else if pending_mcpjson {
         SetupScreenGate::Mcpjson
-    } else if show_claude_md_external {
-        SetupScreenGate::ClaudeMdExternalIncludes
-    } else if show_chrome {
-        SetupScreenGate::ClaudeInChrome
+    } else if show_agents_md_external {
+        SetupScreenGate::AgentsMdExternalIncludes
     } else {
         SetupScreenGate::Ready
     }
@@ -1026,27 +842,23 @@ mod tests {
     #[test]
     fn setup_screen_gate_order_matches_official_show_setup_screens() {
         assert_eq!(
-            resolve_setup_screen_gate(true, true, true, true, true),
+            resolve_setup_screen_gate(true, true, true, true),
             SetupScreenGate::Onboarding
         );
         assert_eq!(
-            resolve_setup_screen_gate(false, true, true, true, true),
+            resolve_setup_screen_gate(false, true, true, true),
             SetupScreenGate::Trust
         );
         assert_eq!(
-            resolve_setup_screen_gate(false, false, true, true, true),
+            resolve_setup_screen_gate(false, false, true, true),
             SetupScreenGate::Mcpjson
         );
         assert_eq!(
-            resolve_setup_screen_gate(false, false, false, true, true),
-            SetupScreenGate::ClaudeMdExternalIncludes
+            resolve_setup_screen_gate(false, false, false, true),
+            SetupScreenGate::AgentsMdExternalIncludes
         );
         assert_eq!(
-            resolve_setup_screen_gate(false, false, false, false, true),
-            SetupScreenGate::ClaudeInChrome
-        );
-        assert_eq!(
-            resolve_setup_screen_gate(false, false, false, false, false),
+            resolve_setup_screen_gate(false, false, false, false),
             SetupScreenGate::Ready
         );
     }
@@ -1101,7 +913,7 @@ mod tests {
             r#"{"env":{"NYAN_SETUP_ENV_PROBE":"applied"}}"#,
         )
         .unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _probe = EnvVarGuard::unset("NYAN_SETUP_ENV_PROBE");
         // `.mcp.json` approvals walk up from the cwd; keep a host's out.
         let project = root.join("project");

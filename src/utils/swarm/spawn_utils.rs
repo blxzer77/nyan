@@ -20,13 +20,7 @@ use crate::utils::swarm::constants::TEAMMATE_COMMAND_ENV_VAR;
 
 /// Maps to: CC `utils/swarm/spawnUtils.ts#TEAMMATE_ENV_VARS`.
 pub const TEAMMATE_ENV_VARS: &[&str] = &[
-    "CLAUDE_CODE_USE_BEDROCK",
-    "CLAUDE_CODE_USE_VERTEX",
-    "CLAUDE_CODE_USE_FOUNDRY",
-    "ANTHROPIC_BASE_URL",
-    "CLAUDE_CONFIG_DIR",
-    "CLAUDE_CODE_REMOTE",
-    "CLAUDE_CODE_REMOTE_MEMORY_DIR",
+    "NYAN_CONFIG_DIR",
     "HTTPS_PROXY",
     "https_proxy",
     "HTTP_PROXY",
@@ -75,7 +69,7 @@ pub fn get_teammate_command() -> String {
 /// Maps to: CC `buildInheritedCliFlags(...)` input options.
 ///
 /// CC's parameter object is only `{ planModeRequired?, permissionMode? }`; the
-/// other five fields are read from `bootstrap/state.ts` module state inside the
+/// other four fields are read from `bootstrap/state.ts` module state inside the
 /// function body. This struct widens those reads into inputs so both copies of
 /// the function stay testable without process-global state. Shared by
 /// [`build_inherited_cli_flags_with_options`] here and by the module-local copy
@@ -90,7 +84,6 @@ pub struct BuildInheritedCliFlagsOptions {
     pub model_override: Option<String>,
     pub settings_path: Option<PathBuf>,
     pub inline_plugins: Vec<PathBuf>,
-    pub chrome_flag_override: Option<bool>,
 }
 
 /// Maps to: CC `spawnUtils.ts:38-87#buildInheritedCliFlags`.
@@ -135,17 +128,13 @@ pub fn build_inherited_cli_flags_with_options(options: BuildInheritedCliFlagsOpt
         get_teammate_mode_from_snapshot().as_str()
     ));
 
-    if let Some(chrome) = options.chrome_flag_override {
-        flags.push(if chrome { "--chrome" } else { "--no-chrome" }.to_string());
-    }
-
     flags.join(" ")
 }
 
 /// Maps to: CC `buildInheritedCliFlags(...)`.
 ///
 /// Rust does not yet carry every official CLI override in `bootstrap/state.ts`
-/// (notably inline plugin dirs and chrome flag override). This function keeps
+/// (notably inline plugin dirs). This function keeps
 /// the official boundary and threads the state nyan currently stores.
 pub fn build_inherited_cli_flags(
     plan_mode_required: bool,
@@ -162,8 +151,8 @@ pub fn build_inherited_cli_flags(
 /// Maps to: CC `buildInheritedEnvVars()`.
 pub fn build_inherited_env_vars_from_map(env: &BTreeMap<String, String>) -> String {
     let mut env_vars = vec![
-        "CLAUDECODE=1".to_string(),
-        "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1".to_string(),
+        "NYAN=1".to_string(),
+        "NYAN_EXPERIMENTAL_AGENT_TEAMS=1".to_string(),
     ];
 
     for key in TEAMMATE_ENV_VARS {
@@ -202,20 +191,21 @@ mod tests {
     }
 
     #[test]
-    fn build_inherited_env_vars_forwards_official_provider_and_proxy_subset() {
+    fn build_inherited_env_vars_forwards_official_config_and_proxy_subset() {
         let mut env = BTreeMap::new();
-        env.insert("CLAUDE_CODE_USE_VERTEX".to_string(), "1".to_string());
         env.insert(
-            "ANTHROPIC_BASE_URL".to_string(),
-            "https://example.test/with space".to_string(),
+            "NYAN_CONFIG_DIR".to_string(),
+            "/tmp/nyan home/with space".to_string(),
         );
         env.insert("UNRELATED".to_string(), "ignored".to_string());
+        env.insert("NYAN_REMOTE".to_string(), "1".to_string());
+        env.insert("NYAN_REMOTE_MEMORY_DIR".to_string(), "/retired".to_string());
 
         let rendered = build_inherited_env_vars_from_map(&env);
-        assert!(rendered.starts_with("CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"));
-        assert!(rendered.contains("CLAUDE_CODE_USE_VERTEX=1"));
-        assert!(rendered.contains("ANTHROPIC_BASE_URL='https://example.test/with space'"));
+        assert!(rendered.starts_with("NYAN=1 NYAN_EXPERIMENTAL_AGENT_TEAMS=1"));
+        assert!(rendered.contains("NYAN_CONFIG_DIR='/tmp/nyan home/with space'"));
         assert!(!rendered.contains("UNRELATED"));
+        assert!(!rendered.contains("NYAN_REMOTE"));
     }
 
     #[test]
@@ -234,7 +224,6 @@ mod tests {
             model_override: Some("claude model".to_string()),
             settings_path: Some(PathBuf::from("/tmp/settings.json")),
             inline_plugins: vec![PathBuf::from("/tmp/plugin dir")],
-            chrome_flag_override: Some(false),
             ..Default::default()
         });
         assert!(flags.contains("--permission-mode acceptEdits"));
@@ -242,7 +231,7 @@ mod tests {
         assert!(flags.contains("--settings /tmp/settings.json"));
         assert!(flags.contains("--plugin-dir '/tmp/plugin dir'"));
         assert!(flags.contains("--teammate-mode tmux"));
-        assert!(flags.contains("--no-chrome"));
+        assert!(!flags.contains("chrome"));
 
         let plan_flags = build_inherited_cli_flags_with_options(BuildInheritedCliFlagsOptions {
             plan_mode_required: true,

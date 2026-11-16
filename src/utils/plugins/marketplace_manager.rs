@@ -355,9 +355,7 @@ const DEFAULT_PLUGIN_GIT_TIMEOUT_MS: f64 = 120_000.0;
 
 /// Maps to: CC `utils/plugins/marketplaceManager.ts:517-526#getPluginGitTimeoutMs`.
 fn get_plugin_git_timeout_ms() -> f64 {
-    if let Some(value) =
-        crate::utils::process_env::var("CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS").truthy()
-    {
+    if let Some(value) = crate::utils::process_env::var("NYAN_PLUGIN_GIT_TIMEOUT_MS").truthy() {
         // ECMAScript trim and decimal-prefix parseInt; preserve Number rounding.
         let trimmed = value.trim_start_matches(|c: char| matches!(c, '\u{9}'..='\u{d}' | '\u{20}' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}'));
         let digits = trimmed.strip_prefix(['+', '-']).unwrap_or(trimmed);
@@ -566,7 +564,7 @@ fn enhance_git_pull_error_messages(
             .format((get_plugin_git_timeout_ms() / 1000.0).round())
             .to_owned();
         Some(format!(
-            "Git pull timed out after {timeout_sec}s. Try increasing the timeout via CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS environment variable."
+            "Git pull timed out after {timeout_sec}s. Try increasing the timeout via NYAN_PLUGIN_GIT_TIMEOUT_MS environment variable."
         ))
     } else if result
         .stderr
@@ -815,7 +813,7 @@ pub(crate) async fn git_clone(
         .is_some_and(|e| e.contains("timed out"))
     {
         result.stderr = format!(
-            "Git clone timed out after {}s. The repository may be too large for the current timeout. Set CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS to increase it (e.g., 300000 for 5 minutes).\n\nOriginal error: {}",
+            "Git clone timed out after {}s. The repository may be too large for the current timeout. Set NYAN_PLUGIN_GIT_TIMEOUT_MS to increase it (e.g., 300000 for 5 minutes).\n\nOriginal error: {}",
             ryu_js::Buffer::new().format((timeout_ms / 1000.0).round()),
             result.stderr
         );
@@ -953,9 +951,6 @@ pub(crate) async fn cache_marketplace_from_git(
     on_progress: Option<&MarketplaceProgressCallback<'_>>,
     disable_credential_helper: bool,
 ) -> anyhow::Result<()> {
-    use super::fetch_telemetry::{
-        PluginFetchOutcome, PluginFetchSource, classify_fetch_error, log_plugin_fetch,
-    };
     use crate::utils::debug::{DebugLogLevel, log_for_debugging, log_for_debugging_with_level};
     let fs = crate::utils::fs_operations::get_fs_implementation();
     let timeout_sec = ryu_js::Buffer::new()
@@ -967,7 +962,6 @@ pub(crate) async fn cache_marketplace_from_git(
     );
     let reconcile_result = reconcile_sparse_checkout(cache_path, sparse_paths).await;
     if reconcile_result.code == 0 {
-        let pull_started = std::time::Instant::now();
         let pull_result = git_pull(
             cache_path,
             git_ref,
@@ -977,17 +971,6 @@ pub(crate) async fn cache_marketplace_from_git(
             }),
         )
         .await;
-        log_plugin_fetch(
-            PluginFetchSource::MarketplacePull,
-            Some(git_url),
-            if pull_result.code == 0 {
-                PluginFetchOutcome::Success
-            } else {
-                PluginFetchOutcome::Failure
-            },
-            pull_started.elapsed().as_secs_f64() * 1000.0,
-            (pull_result.code != 0).then(|| classify_fetch_error(&pull_result.stderr)),
-        );
         if pull_result.code == 0 {
             return Ok(());
         }
@@ -1044,19 +1027,7 @@ pub(crate) async fn cache_marketplace_from_git(
             redact_url_credentials(git_url)
         ),
     );
-    let clone_started = std::time::Instant::now();
     let result = git_clone(git_url, cache_path, git_ref, sparse_paths).await;
-    log_plugin_fetch(
-        PluginFetchSource::MarketplaceClone,
-        Some(git_url),
-        if result.code == 0 {
-            PluginFetchOutcome::Success
-        } else {
-            PluginFetchOutcome::Failure
-        },
-        clone_started.elapsed().as_secs_f64() * 1000.0,
-        (result.code != 0).then(|| classify_fetch_error(&result.stderr)),
-    );
     if result.code != 0 {
         let _ = fs
             .rm(
@@ -1133,32 +1104,13 @@ pub fn get_marketplaces_cache_dir() -> PathBuf {
 }
 
 /// Maps to: CC `utils/plugins/marketplaceManager.ts:138-152#DeclaredMarketplace`.
-/// Validated source object, with the code-only optional sourceIsFallback field.
 pub type DeclaredMarketplace = serde_json::Value;
 /// Maps to: CC `utils/plugins/marketplaceManager.ts:161-192#getDeclaredMarketplaces`.
+/// @nyan: CC implicitly declares Anthropic's official marketplace whenever an
+/// enabled plugin references it; nyan only declares what settings name.
 pub fn get_declared_marketplaces() -> serde_json::Map<String, serde_json::Value> {
-    use super::official_marketplace::{OFFICIAL_MARKETPLACE_NAME, OFFICIAL_MARKETPLACE_SOURCE};
     let settings = crate::utils::settings::get_initial_settings();
-    let mut enabled = super::add_dir_plugin_settings::get_add_dir_enabled_plugins();
-    if let Some(serde_json::Value::Object(entries)) = settings.enabled_plugins {
-        enabled.extend(entries);
-    }
-    let mut result = serde_json::Map::new();
-    for (id, value) in enabled {
-        if value.as_bool().unwrap_or(false)
-            && super::plugin_identifier::parse_plugin_identifier(&id)
-                .marketplace
-                .as_deref()
-                == Some(OFFICIAL_MARKETPLACE_NAME)
-        {
-            result.insert(
-                OFFICIAL_MARKETPLACE_NAME.into(),
-                serde_json::json!({"source":&*OFFICIAL_MARKETPLACE_SOURCE,"sourceIsFallback":true}),
-            );
-            break;
-        }
-    }
-    result.extend(super::add_dir_plugin_settings::get_add_dir_extra_marketplaces());
+    let mut result = super::add_dir_plugin_settings::get_add_dir_extra_marketplaces();
     if let Some(serde_json::Value::Object(entries)) = settings.extra_known_marketplaces {
         result.extend(entries);
     }
@@ -1374,9 +1326,6 @@ fn cache_marketplace_from_url(
     custom_headers: Option<&serde_json::Map<String, serde_json::Value>>,
     on_progress: Option<&MarketplaceProgressCallback<'_>>,
 ) -> impl std::future::Future<Output = anyhow::Result<()>> {
-    use super::fetch_telemetry::{
-        PluginFetchOutcome, PluginFetchSource, classify_fetch_error, log_plugin_fetch,
-    };
     let fs = crate::utils::fs_operations::get_fs_implementation();
     async move {
         let redacted = redact_url_credentials(url);
@@ -1393,8 +1342,7 @@ fn cache_marketplace_from_url(
                 crate::utils::slow_operations::json_stringify(&redact_headers(headers), 0)
             ));
         }
-        let started = std::time::Instant::now();
-        let fetched:anyhow::Result<serde_json::Value>=async {
+        let data:serde_json::Value=async {
         // CC `axios.get` (`marketplaceManager.ts:1282-1285`), through the
         // global interceptor.
         let client=crate::utils::proxy::create_axios_instance()?.timeout(std::time::Duration::from_secs(10)).build()?;
@@ -1405,32 +1353,12 @@ fn cache_marketplace_from_url(
         let request=client.get(url).headers(headers);
         let response=request.send().await.map_err(|error|{let message=if error.is_connect(){format!("Could not connect to {redacted}. Please check your internet connection and verify the URL is correct.\n\nTechnical details: {error}")}else{format!("Failed to download marketplace from {redacted}: {error}")};anyhow::anyhow!(message)})?;
         let status=response.status();if !status.is_success(){anyhow::bail!("HTTP {} error while downloading marketplace from {redacted}. The marketplace file may not exist at this URL.\n\nTechnical details: Request failed with status code {}",status.as_u16(),status.as_u16());}
-        let text=response.text().await?;Ok(crate::utils::slow_operations::json_parse(&text).map(|v|v.to_json()).unwrap_or(serde_json::Value::String(text)))
-    }.await;
-        let data = match fetched {
-            Ok(v) => v,
-            Err(error) => {
-                log_plugin_fetch(
-                    PluginFetchSource::MarketplaceUrl,
-                    Some(url),
-                    PluginFetchOutcome::Failure,
-                    started.elapsed().as_secs_f64() * 1000.0,
-                    Some(classify_fetch_error(&error)),
-                );
-                return Err(error);
-            }
-        };
+        let text=response.text().await?;anyhow::Ok(crate::utils::slow_operations::json_parse(&text).map(|v|v.to_json()).unwrap_or(serde_json::Value::String(text)))
+    }.await?;
         safe_call_progress(on_progress, "Validating marketplace data");
         let parsed =
             crate::utils::zod::safe_parse(super::schemas::plugin_marketplace_schema(), &data)
                 .map_err(|error| {
-                    log_plugin_fetch(
-                        PluginFetchSource::MarketplaceUrl,
-                        Some(url),
-                        PluginFetchOutcome::Failure,
-                        started.elapsed().as_secs_f64() * 1000.0,
-                        Some("invalid_schema"),
-                    );
                     let issues = error
                         .issues
                         .iter()
@@ -1456,13 +1384,6 @@ fn cache_marketplace_from_url(
                         data,
                     )
                 })?;
-        log_plugin_fetch(
-            PluginFetchSource::MarketplaceUrl,
-            Some(url),
-            PluginFetchOutcome::Success,
-            started.elapsed().as_secs_f64() * 1000.0,
-            None,
-        );
         safe_call_progress(on_progress, "Saving marketplace to cache");
         fs.mkdir(&marketplace_path!(cache_path, ".."), None).await?;
         crate::utils::slow_operations::write_file_sync_deprecated(
@@ -1602,36 +1523,6 @@ pub async fn add_marketplace_source(
             .into_owned()
             .into();
     }
-    if !is_source_allowed_by_policy(&source) {
-        let display = format_source_for_display(&source);
-        if is_source_in_blocklist(&source) {
-            anyhow::bail!("Marketplace source '{display}' is blocked by enterprise policy.");
-        }
-        let allowlist = get_strict_known_marketplaces().unwrap_or_default();
-        let host_patterns = get_host_patterns_from_allowlist();
-        let mut message = format!("Marketplace source '{display}'");
-        if let Some(host) = extract_host_from_source(&source).filter(|s| !s.is_empty()) {
-            message.push_str(&format!(" ({host})"));
-        }
-        message.push_str(" is blocked by enterprise policy.");
-        if allowlist.is_empty() {
-            message.push_str(" No external marketplaces are allowed.");
-        } else {
-            message.push_str(&format!(
-                " Allowed sources: {}",
-                allowlist
-                    .iter()
-                    .map(format_source_for_display)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-        if source["source"] == "github" && !host_patterns.is_empty() {
-            let repo = source["repo"].as_str().unwrap_or("");
-            message.push_str(&format!("\n\nTip: The shorthand \"{repo}\" assumes github.com. For internal GitHub Enterprise, use the full URL:\n  git@your-github-host.com:{repo}.git"));
-        }
-        anyhow::bail!(message);
-    }
     let existing_config = load_known_marketplaces_config().await?;
     for (name, entry) in crate::utils::process_env::ecmascript_object_entries(&existing_config) {
         if entry["source"] == source {
@@ -1647,9 +1538,6 @@ pub async fn add_marketplace_source(
     }
     let loaded = load_and_cache_marketplace(&source, on_progress).await?;
     let name = loaded.marketplace["name"].as_str().unwrap().to_owned();
-    if let Some(error) = super::schemas::validate_official_name_source(&name, &source) {
-        anyhow::bail!(error);
-    }
     let mut config = load_known_marketplaces_config().await?;
     if let Some(old) = config.get(&name) {
         let location = old["installLocation"].as_str().unwrap_or("");
@@ -1698,7 +1586,7 @@ pub async fn remove_marketplace_source(name: &str) -> anyhow::Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Marketplace '{name}' not found"))?;
     if let Some(seed) = seed_dir_for(entry["installLocation"].as_str().unwrap_or("")) {
         anyhow::bail!(
-            "Marketplace '{name}' is registered from the read-only seed directory ({}) and will be re-registered on next startup. To stop using its plugins: claude plugin disable <plugin>@{name}",
+            "Marketplace '{name}' is registered from the read-only seed directory ({}) and will be re-registered on next startup. To stop using its plugins: nyan plugin disable <plugin>@{name}",
             seed.display()
         );
     }
@@ -1898,29 +1786,6 @@ pub async fn refresh_all_marketplaces() -> anyhow::Result<()> {
         if entry["source"]["source"] == "settings" {
             continue;
         }
-        if name == super::official_marketplace::OFFICIAL_MARKETPLACE_NAME {
-            if super::official_marketplace_gcs::fetch_official_marketplace_from_gcs(
-                Path::new(entry["installLocation"].as_str().unwrap_or("")),
-                &get_marketplaces_cache_dir(),
-            )
-            .await
-            .is_some()
-            {
-                entry["lastUpdated"] = chrono::Utc::now()
-                    .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-                    .into();
-                continue;
-            }
-            if !crate::services::analytics::growthbook::get_feature_value_cached_may_be_stale(
-                "tengu_plugin_official_mkt_git_fallback",
-                true,
-            ) {
-                crate::utils::debug::log_for_debugging(
-                    "Skipping official marketplace bulk refresh: GCS failed, git fallback disabled",
-                );
-                continue;
-            }
-        }
         match load_and_cache_marketplace(&entry["source"], None).await {
             Ok(loaded) => {
                 entry["lastUpdated"] = chrono::Utc::now()
@@ -1963,19 +1828,14 @@ pub async fn refresh_marketplace(
     let refreshed:anyhow::Result<()>=async {
         let location=entry["installLocation"].as_str().unwrap_or("");let path=Path::new(location);let source=&entry["source"];
         if let Some(seed)=seed_dir_for(location){anyhow::bail!("Marketplace '{name}' is seed-managed ({}) and its content is controlled by the seed image. To update: ask your admin to update the seed.",seed.display());}
-        if !super::schemas::is_local_marketplace_source(source){let cache=marketplace_resolve!(get_marketplaces_cache_dir());let resolved=marketplace_resolve!(path);if !resolved.starts_with(&cache){anyhow::bail!("Marketplace '{name}' has a corrupted installLocation ({location}) — expected a path inside {}. This can happen after cross-platform path writes or manual edits to known_marketplaces.json. Run: claude plugin marketplace remove \"{name}\" and re-add it.",cache.display());}}
-        if name==super::official_marketplace::OFFICIAL_MARKETPLACE_NAME {
-            if super::official_marketplace_gcs::fetch_official_marketplace_from_gcs(path,&get_marketplaces_cache_dir()).await.is_some(){config.get_mut(name).unwrap()["lastUpdated"]=chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis,true).into();save_known_marketplaces_config(config.clone()).await?;return Ok(());}
-            if !crate::services::analytics::growthbook::get_feature_value_cached_may_be_stale("tengu_plugin_official_mkt_git_fallback",true){anyhow::bail!("Official marketplace GCS fetch failed and git fallback is disabled");}crate::utils::debug::log_for_debugging_with_level("Official marketplace GCS failed; falling back to git",crate::utils::debug::DebugLogLevel::Warn);
-        }
+        if !super::schemas::is_local_marketplace_source(source){let cache=marketplace_resolve!(get_marketplaces_cache_dir());let resolved=marketplace_resolve!(path);if !resolved.starts_with(&cache){anyhow::bail!("Marketplace '{name}' has a corrupted installLocation ({location}) — expected a path inside {}. This can happen after cross-platform path writes or manual edits to known_marketplaces.json. Run: nyan plugin marketplace remove \"{name}\" and re-add it.",cache.display());}}
         match source["source"].as_str().unwrap_or(""){
             "github"|"git"=>{
                 let sparse=source["sparsePaths"].as_array().map(|a|a.iter().map(|v|v.as_str().unwrap_or("").to_owned()).collect::<Vec<_>>());let git_ref=source["ref"].as_str();
                 if source["source"]=="github"{let repo=source["repo"].as_str().unwrap_or("");let ssh=format!("git@github.com:{repo}.git");let https=format!("https://github.com/{repo}.git");
-                    if crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref()){cache_marketplace_from_git(&https,path,git_ref,sparse.as_deref(),on_progress,disable_credential_helper).await?;}
-                    else{let configured=is_github_ssh_likely_configured().await;let(first,second)=if configured{(&ssh,&https)}else{(&https,&ssh)};if cache_marketplace_from_git(first,path,git_ref,sparse.as_deref(),on_progress,disable_credential_helper).await.is_err(){crate::utils::debug::log_for_debugging_with_level(&format!("Marketplace refresh failed with {} for {repo}, falling back to {}",if configured{"SSH"}else{"HTTPS"},if configured{"HTTPS"}else{"SSH"}),crate::utils::debug::DebugLogLevel::Info);cache_marketplace_from_git(second,path,git_ref,sparse.as_deref(),on_progress,disable_credential_helper).await?;}}
+                    let configured=is_github_ssh_likely_configured().await;let(first,second)=if configured{(&ssh,&https)}else{(&https,&ssh)};if cache_marketplace_from_git(first,path,git_ref,sparse.as_deref(),on_progress,disable_credential_helper).await.is_err(){crate::utils::debug::log_for_debugging_with_level(&format!("Marketplace refresh failed with {} for {repo}, falling back to {}",if configured{"SSH"}else{"HTTPS"},if configured{"HTTPS"}else{"SSH"}),crate::utils::debug::DebugLogLevel::Info);cache_marketplace_from_git(second,path,git_ref,sparse.as_deref(),on_progress,disable_credential_helper).await?;}
                 }else{cache_marketplace_from_git(source["url"].as_str().unwrap_or(""),path,git_ref,sparse.as_deref(),on_progress,disable_credential_helper).await?;}
-                if read_cached_marketplace(path).await.is_err(){let display=if source["source"]=="github"{source["repo"].as_str().unwrap_or("").to_owned()}else{redact_url_credentials(source["url"].as_str().unwrap_or(""))};let reason=if name=="claude-code-plugins"{"We've deprecated \"claude-code-plugins\" in favor of \"claude-plugins-official\"."}else{"This marketplace may have been deprecated or moved to a new location."};anyhow::bail!("The marketplace.json file is no longer present in this repository.\n\n{reason}\nSource: {display}\n\nYou can remove this marketplace with: claude plugin marketplace remove \"{name}\"");}
+                if read_cached_marketplace(path).await.is_err(){let display=if source["source"]=="github"{source["repo"].as_str().unwrap_or("").to_owned()}else{redact_url_credentials(source["url"].as_str().unwrap_or(""))};anyhow::bail!("The marketplace.json file is no longer present in this repository.\n\nThis marketplace may have been deprecated or moved to a new location.\nSource: {display}\n\nYou can remove this marketplace with: nyan plugin marketplace remove \"{name}\"");}
             }
             "url"=>cache_marketplace_from_url(source["url"].as_str().unwrap_or(""),path,source["headers"].as_object(),on_progress).await?,
             "file"|"directory"=>{safe_call_progress(on_progress,"Validating local marketplace");read_cached_marketplace(path).await?;},
@@ -2043,13 +1903,47 @@ mod tests {
         pub(super) static CONFIG_READS: std::cell::RefCell<std::collections::VecDeque<Vec<u8>>>;
     }
 
+    #[test]
+    fn enabled_plugins_do_not_implicitly_declare_an_official_marketplace() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "nyan-declared-marketplaces-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let _env = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
+        // A leftover Claude Code style entry naming the former Anthropic
+        // marketplace is an ordinary undeclared plugin, not a source.
+        std::fs::write(
+            root.join("settings.json"),
+            serde_json::json!({
+                "enabledPlugins": {"mail@claude-plugins-official": true},
+                "extraKnownMarketplaces": {
+                    "acme": {"source": {"source": "github", "repo": "acme/plugins"}}
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        let declared = get_declared_marketplaces();
+        crate::utils::settings::settings_cache::reset_settings_cache();
+        assert_eq!(
+            serde_json::Value::Object(declared),
+            serde_json::json!({
+                "acme": {"source": {"source": "github", "repo": "acme/plugins"}}
+            })
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     #[tokio::test]
     async fn resolves_plugin_metadata_from_marketplace_cache_only() {
         let root = std::env::temp_dir().join(format!(
             "nyan-hint-marketplace-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let _env = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _env = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let marketplace = root.join("market");
         std::fs::create_dir_all(marketplace.join(".claude-plugin")).unwrap();
         std::fs::create_dir_all(root.join("plugins")).unwrap();
@@ -2085,9 +1979,9 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("marketplace-reader-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _cache = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_CACHE_DIR", "");
-        let _cowork = EnvVarGuard::set("CLAUDE_CODE_USE_COWORK_PLUGINS", "0");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
+        let _cache = EnvVarGuard::set("NYAN_PLUGIN_CACHE_DIR", "");
+        let _cowork = EnvVarGuard::set("NYAN_USE_COWORK_PLUGINS", "0");
         // Verbatim Bun oracle outputs for marketplaceManager.ts:264-299 and
         // schemas.ts:1593-1629. Native JSON syntax diagnostics are a recorded
         // shared-parser boundary; schema messages/error identity are compared only
@@ -2168,7 +2062,7 @@ mod tests {
         ));
         std::fs::create_dir_all(&first).unwrap();
         std::fs::create_dir_all(&second).unwrap();
-        let _cache = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_CACHE_DIR", &first);
+        let _cache = EnvVarGuard::set("NYAN_PLUGIN_CACHE_DIR", &first);
         let file = get_known_marketplaces_file();
         std::fs::create_dir(&file).unwrap();
         // marketplaceManager.ts:284-298: only ENOENT is empty; EISDIR is Error.
@@ -2180,7 +2074,7 @@ mod tests {
         assert!(!error.is::<crate::utils::errors::ConfigParseError>());
         assert!(file.is_dir());
         // :265-266 resolves the path on every call; no memo or seed overlay.
-        let _second = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_CACHE_DIR", &second);
+        let _second = EnvVarGuard::set("NYAN_PLUGIN_CACHE_DIR", &second);
         assert!(load_known_marketplaces_config().await.unwrap().is_empty());
         assert!(!get_known_marketplaces_file().exists());
         std::fs::remove_dir_all(first).unwrap();
@@ -2193,10 +2087,7 @@ mod tests {
         std::fs::create_dir_all(&cache).unwrap();
         let value = serde_json::json!({"m": {"source": {"source":"directory","path":""}, "installLocation":"", "lastUpdated":""}});
         std::fs::write(cache.join("known_marketplaces.json"), value.to_string()).unwrap();
-        let _cache = EnvVarGuard::set(
-            "CLAUDE_CODE_PLUGIN_CACHE_DIR",
-            root.join("missing/../cache"),
-        );
+        let _cache = EnvVarGuard::set("NYAN_PLUGIN_CACHE_DIR", root.join("missing/../cache"));
         // marketplaceManager.ts:103 join normalizes even nonexistent components.
         assert_eq!(
             get_known_marketplaces_file(),
@@ -2216,7 +2107,7 @@ mod tests {
                 "cafe\u{301}/known_marketplaces.json",
             ),
         ] {
-            let _case = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_CACHE_DIR", input);
+            let _case = EnvVarGuard::set("NYAN_PLUGIN_CACHE_DIR", input);
             assert_eq!(get_known_marketplaces_file(), PathBuf::from(expected));
         }
         std::fs::remove_dir_all(root).unwrap();
@@ -2228,8 +2119,8 @@ mod tests {
         let root = std::env::temp_dir().join(format!("marketplace-cache-{}", uuid::Uuid::new_v4()));
         let primary = root.join("primary");
         std::fs::create_dir_all(&primary).unwrap();
-        let _cache = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_CACHE_DIR", &primary);
-        let _seed = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_SEED_DIR", root.join("seed"));
+        let _cache = EnvVarGuard::set("NYAN_PLUGIN_CACHE_DIR", &primary);
+        let _seed = EnvVarGuard::set("NYAN_PLUGIN_SEED_DIR", root.join("seed"));
         let config = get_known_marketplaces_file();
         let catalog = root.join("catalog.json");
         let manifest = json!({"name":"m","owner":{"name":"Owner"},"plugins":[
@@ -2392,7 +2283,7 @@ mod tests {
         use serde_json::json;
         let root = std::env::temp_dir().join(format!("marketplace-race-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let _cache = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_CACHE_DIR", &root);
+        let _cache = EnvVarGuard::set("NYAN_PLUGIN_CACHE_DIR", &root);
         std::fs::write(get_known_marketplaces_file(), "{}").unwrap();
         let catalog = root.join("catalog.json");
         std::fs::write(
@@ -2450,11 +2341,11 @@ mod tests {
             ("\u{85}50", 120000.0),
             ("9007199254740993", 9007199254740992.0),
         ] {
-            let _env = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS", raw);
+            let _env = EnvVarGuard::set("NYAN_PLUGIN_GIT_TIMEOUT_MS", raw);
             assert_eq!(get_plugin_git_timeout_ms(), expected, "{raw:?}");
         }
         let large = "9".repeat(400);
-        let _env = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS", &large);
+        let _env = EnvVarGuard::set("NYAN_PLUGIN_GIT_TIMEOUT_MS", &large);
         assert_eq!(get_plugin_git_timeout_ms(), f64::INFINITY);
     }
 
@@ -2462,7 +2353,7 @@ mod tests {
     fn git_pull_error_precedence_preserves_returned_fields() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         use crate::utils::exec_file_no_throw::ExecFileOutput;
-        let _env = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS", "1499");
+        let _env = EnvVarGuard::set("NYAN_PLUGIN_GIT_TIMEOUT_MS", "1499");
         for (code, stderr, error, prefix) in [
             (
                 0,
@@ -2646,7 +2537,7 @@ mod tests {
         .unwrap();
         let _global = EnvVarGuard::set("GIT_CONFIG_GLOBAL", &config);
         let _system = EnvVarGuard::set("GIT_CONFIG_NOSYSTEM", "1");
-        let _timeout = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS", "10000");
+        let _timeout = EnvVarGuard::set("NYAN_PLUGIN_GIT_TIMEOUT_MS", "10000");
         let _hooks = EnvVarGuard::unset("GIT_TEMPLATE_DIR");
         // Test-only fixture setup feeds the same existing runner, no new process loop.
         for args in [
@@ -2772,7 +2663,7 @@ mod tests {
     async fn marketplace_service_local_settings_memo_and_mutations_match_original() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("market-service-{}", uuid::Uuid::new_v4()));
-        let _env = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _env = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let name = format!("fixture-{}", uuid::Uuid::new_v4().simple());
         let source = serde_json::json!({"source":"settings","name":name,"plugins":[]});
         let added = add_marketplace_source(&source, None).await.unwrap();

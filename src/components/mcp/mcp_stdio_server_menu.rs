@@ -386,7 +386,6 @@ mod tests {
                 ide_running_in_windows: None,
                 ide_name: None,
                 auth_token: None,
-                id: None,
                 plugin_source: None,
             },
             reconnect_attempt: None,
@@ -458,7 +457,7 @@ mod tests {
         let project_dir = temp_dir.join("project");
         std::fs::create_dir_all(&project_dir).unwrap();
         let previous_cwd = std::env::current_dir().unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &temp_dir);
         let _session_write = EnvVarGuard::set("SESSION_WRITE_ENABLED", "1");
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         std::env::set_current_dir(&project_dir).unwrap();

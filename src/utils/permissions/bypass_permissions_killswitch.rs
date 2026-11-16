@@ -24,7 +24,7 @@ pub async fn check_and_disable_bypass_permissions_if_needed(
     if !tool_permission_context.is_bypass_permissions_mode_available {
         return;
     }
-    if !super::permission_setup::should_disable_bypass_permissions().await {
+    if !super::permission_setup::should_disable_bypass_permissions() {
         return;
     }
     store.set_state(|prev| {
@@ -98,9 +98,6 @@ pub fn use_kick_off_check_and_disable_bypass_permissions_if_needed(hooks: &mut H
     let store = crate::state::app_state::use_app_state_store(hooks);
     hooks.use_effect(
         move || {
-            if crate::bootstrap::state::get_is_remote_mode() {
-                return;
-            }
             if let Some(runtime) = crate::utils::process_runtime::runtime_handle_for_detached_work()
             {
                 runtime.spawn(async move {
@@ -121,9 +118,6 @@ pub fn use_kick_off_check_and_disable_auto_mode_if_needed(hooks: &mut Hooks) {
     let first_run = hooks.use_const(|| Arc::new(AtomicBool::new(true))).clone();
     hooks.use_effect(
         move || {
-            if crate::bootstrap::state::get_is_remote_mode() {
-                return;
-            }
             if !first_run.swap(false, Ordering::SeqCst) {
                 reset_auto_mode_gate_check();
             }
@@ -143,23 +137,16 @@ pub fn use_kick_off_check_and_disable_auto_mode_if_needed(hooks: &mut Hooks) {
 mod tests {
     use super::*;
     use crate::types::permissions::PermissionMode;
-    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+    use crate::utils::test_env::TEST_ENV_LOCK;
 
     #[tokio::test]
     async fn bypass_gate_matches_official_run_once_and_fresh_store_transform() {
         // CC :19-49: the input controls whether to check; CURRENT state is modified.
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _telemetry = EnvVarGuard::unset("DISABLE_TELEMETRY");
-        let _traffic = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC");
-        let _node = EnvVarGuard::unset("NODE_ENV");
-        let _override = EnvVarGuard::unset("CLAUDE_INTERNAL_FC_OVERRIDES");
-        crate::services::analytics::growthbook::reset_growth_book();
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.cached_statsig_gates = Some(std::collections::HashMap::from([(
-            "tengu_disable_bypass_permissions_mode".into(),
+        let _gate = crate::utils::feature_flags::override_for_test(
+            crate::utils::feature_flags::FeatureFlag::DisableBypassPermissionsMode,
             true,
-        )]));
-        crate::utils::config::set_test_global_config(Some(config));
+        );
         let stale = ToolPermissionContext {
             mode: PermissionMode::BypassPermissions,
             is_bypass_permissions_mode_available: true,
@@ -196,22 +183,17 @@ mod tests {
             "unavailable first call still consumes run-once flag"
         );
         reset_bypass_permissions_check();
-        crate::utils::config::set_test_global_config(None);
     }
 
     #[tokio::test]
     async fn auto_gate_matches_official_notification_queue_and_noop_store_identity() {
         // CC :94-125: unchanged context returns prev; notification appends to queue.
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _override = EnvVarGuard::unset("CLAUDE_INTERNAL_FC_OVERRIDES");
-        crate::services::analytics::growthbook::reset_growth_book();
-        crate::utils::config::set_test_global_config(Some(Default::default()));
         crate::utils::settings::settings_cache::set_session_settings_cache(
             crate::utils::settings::validation::SettingsWithErrors {
                 settings: serde_json::from_value(serde_json::json!({"disableAutoMode":"disable"}))
                     .unwrap(),
                 errors: vec![],
-                policy_settings: None,
             },
         );
         let mut state = crate::state::app_state_store::AppState::default();
@@ -240,6 +222,5 @@ mod tests {
         assert_eq!(notification.priority, NotificationPriority::High);
         assert_eq!(notification.color, Some(NotificationColor::Warning));
         reset_auto_mode_gate_check();
-        crate::utils::config::set_test_global_config(None);
     }
 }

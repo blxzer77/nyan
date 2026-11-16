@@ -139,10 +139,6 @@ pub async fn load_plugins_from_marketplaces(
         .map(|(id, value)| (id.clone(), value.clone()))
         .collect();
     let known = load_known_marketplaces_config_safe().await;
-    let allowlist = get_strict_known_marketplaces();
-    let blocklist = get_blocked_marketplaces();
-    let active_policy =
-        allowlist.is_some() || blocklist.as_ref().is_some_and(|list| !list.is_empty());
     let mut names = Vec::new();
     for (id, _) in &entries {
         if let Some(name) = super::plugin_identifier::parse_plugin_identifier(id).marketplace
@@ -170,54 +166,12 @@ pub async fn load_plugins_from_marketplaces(
         let known = &known;
         let catalogs = &catalogs;
         let installed = &installed;
-        let allowlist = &allowlist;
         let errors = &errors;
         async move {
             let parsed = super::plugin_identifier::parse_plugin_identifier(id);
             let name = parsed.name;
             let marketplace = parsed.marketplace.expect("validated marketplace ID");
             let config = known.get(&marketplace);
-            if config.is_none() && active_policy {
-                errors
-                    .lock()
-                    .unwrap()
-                    .push(PluginError::MarketplaceBlockedByPolicy {
-                        source: id.clone(),
-                        plugin: Some(name),
-                        marketplace,
-                        blocked_by_blocklist: Some(allowlist.is_none()),
-                        allowed_sources: allowlist
-                            .iter()
-                            .flatten()
-                            .map(format_source_for_display)
-                            .collect(),
-                    });
-                return None;
-            }
-            if let Some(config) = config
-                && !is_source_allowed_by_policy(&config["source"])
-            {
-                let blocked = is_source_in_blocklist(&config["source"]);
-                errors
-                    .lock()
-                    .unwrap()
-                    .push(PluginError::MarketplaceBlockedByPolicy {
-                        source: id.clone(),
-                        plugin: Some(name),
-                        marketplace,
-                        blocked_by_blocklist: Some(blocked),
-                        allowed_sources: if blocked {
-                            vec![]
-                        } else {
-                            get_strict_known_marketplaces()
-                                .into_iter()
-                                .flatten()
-                                .map(|s| format_source_for_display(&s))
-                                .collect()
-                        },
-                    });
-                return None;
-            }
             let result =
                 if let (Some(Some(catalog)), Some(config)) = (catalogs.get(&marketplace), config) {
                     catalog["plugins"]
@@ -667,8 +621,6 @@ pub async fn git_clone(
     reference: Option<&str>,
     sha: Option<&str>,
 ) -> anyhow::Result<()> {
-    use super::fetch_telemetry::*;
-    let started = std::time::Instant::now();
     let git = crate::utils::git::git_exe().to_string_lossy().into_owned();
     let mut args = vec![
         "clone".into(),
@@ -684,78 +636,44 @@ pub async fn git_clone(
         args.push("--no-checkout".into());
     }
     args.extend([url.into(), target.display().to_string()]);
-    let result = async {
-        let cloned = plugin_exec(
+    let cloned = plugin_exec(
+        &git,
+        &args,
+        Some(
+            &std::env::current_dir()
+                .unwrap_or_else(|_| crate::bootstrap::state::get_original_cwd()),
+        ),
+    )
+    .await;
+    if cloned.code != 0 {
+        anyhow::bail!("Failed to clone repository: {}", cloned.stderr);
+    }
+    if let Some(sha) = sha.filter(|s| !s.is_empty()) {
+        let fetched = plugin_exec(
             &git,
-            &args,
-            Some(
-                &std::env::current_dir()
-                    .unwrap_or_else(|_| crate::bootstrap::state::get_original_cwd()),
-            ),
+            &[
+                "fetch".into(),
+                "--depth".into(),
+                "1".into(),
+                "origin".into(),
+                sha.into(),
+            ],
+            Some(target),
         )
         .await;
-        if cloned.code != 0 {
-            return Err((
-                format!("Failed to clone repository: {}", cloned.stderr),
-                cloned.stderr,
-            ));
-        }
-        if let Some(sha) = sha.filter(|s| !s.is_empty()) {
-            let fetched = plugin_exec(
-                &git,
-                &[
-                    "fetch".into(),
-                    "--depth".into(),
-                    "1".into(),
-                    "origin".into(),
-                    sha.into(),
-                ],
-                Some(target),
-            )
-            .await;
-            if fetched.code != 0 {
-                let full =
-                    plugin_exec(&git, &["fetch".into(), "--unshallow".into()], Some(target)).await;
-                if full.code != 0 {
-                    return Err((
-                        format!("Failed to fetch commit {sha}: {}", full.stderr),
-                        full.stderr,
-                    ));
-                }
-            }
-            let checkout = plugin_exec(&git, &["checkout".into(), sha.into()], Some(target)).await;
-            if checkout.code != 0 {
-                return Err((
-                    format!("Failed to checkout commit {sha}: {}", checkout.stderr),
-                    checkout.stderr,
-                ));
+        if fetched.code != 0 {
+            let full =
+                plugin_exec(&git, &["fetch".into(), "--unshallow".into()], Some(target)).await;
+            if full.code != 0 {
+                anyhow::bail!("Failed to fetch commit {sha}: {}", full.stderr);
             }
         }
-        Ok(())
-    }
-    .await;
-    match result {
-        Ok(()) => {
-            log_plugin_fetch(
-                PluginFetchSource::PluginClone,
-                Some(url),
-                PluginFetchOutcome::Success,
-                started.elapsed().as_secs_f64() * 1000.,
-                None,
-            );
-            Ok(())
-        }
-        Err((message, stderr)) => {
-            log_plugin_fetch(
-                PluginFetchSource::PluginClone,
-                Some(url),
-                PluginFetchOutcome::Failure,
-                started.elapsed().as_secs_f64() * 1000.,
-                Some(classify_fetch_error(&stderr)),
-            );
-            Err(anyhow::anyhow!(message))
+        let checkout = plugin_exec(&git, &["checkout".into(), sha.into()], Some(target)).await;
+        if checkout.code != 0 {
+            anyhow::bail!("Failed to checkout commit {sha}: {}", checkout.stderr);
         }
     }
+    Ok(())
 }
 /// Maps to: CC pluginLoader.ts:645-656#installFromGit.
 async fn install_from_git(
@@ -790,15 +708,7 @@ fn resolve_git_subdir_url(url: &str) -> anyhow::Result<String> {
         .find(url)
         .is_some()
     {
-        Ok(
-            if crate::utils::env_utils::is_env_truthy(
-                crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref(),
-            ) {
-                format!("https://github.com/{url}.git")
-            } else {
-                format!("git@github.com:{url}.git")
-            },
-        )
+        Ok(format!("git@github.com:{url}.git"))
     } else {
         validate_git_url(url).map(str::to_owned)
     }
@@ -1734,7 +1644,7 @@ pub fn load_all_plugins_cache_only()
 {
     use futures::FutureExt;
     let promise = if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_SYNC_PLUGIN_INSTALL").as_deref(),
+        crate::utils::process_env::var("NYAN_SYNC_PLUGIN_INSTALL").as_deref(),
     ) {
         return futures::future::Either::Left(load_all_plugins());
     } else {
@@ -1766,15 +1676,12 @@ async fn assemble_plugin_load_result(
         .into_iter()
         .chain(builtin.disabled)
         .collect::<Vec<_>>();
-    let managed = super::managed_plugins::get_managed_plugin_names();
-    let (mut plugins, merge_errors) = merge_plugin_sources(PluginSources {
+    let mut plugins = merge_plugin_sources(PluginSources {
         session: &session,
         marketplace: &marketplace,
         builtin: &builtin,
-        managed_names: managed.as_ref(),
     });
     errors.extend(session_errors);
-    errors.extend(merge_errors);
     let (demoted, dep_errors) = super::dependency_resolver::verify_and_demote(&plugins);
     for plugin in &mut plugins {
         if demoted.contains(&plugin.source) {
@@ -1998,7 +1905,6 @@ pub struct PluginSources<'a> {
     pub session: &'a [LoadedPlugin],
     pub marketplace: &'a [LoadedPlugin],
     pub builtin: &'a [LoadedPlugin],
-    pub managed_names: Option<&'a HashSet<String>>,
 }
 
 /// Merge session, marketplace, and built-in plugin sources using official
@@ -2006,38 +1912,10 @@ pub struct PluginSources<'a> {
 ///
 /// Maps to: CC `utils/plugins/pluginLoader.ts#mergePluginSources`.
 /// Session `--plugin-dir` plugins override installed marketplace plugins with
-/// the same name, except names locked by managed policy settings are dropped
-/// before the override set is computed.
-pub fn merge_plugin_sources(sources: PluginSources<'_>) -> (Vec<LoadedPlugin>, Vec<PluginError>) {
-    let mut errors = Vec::new();
-
-    let session_plugins = sources
-        .session
-        .iter()
-        .filter(|plugin| {
-            if sources
-                .managed_names
-                .is_some_and(|managed| managed.contains(&plugin.name))
-            {
-                tracing::warn!(
-                    plugin = %plugin.name,
-                    source = %plugin.source,
-                    "session plugin is blocked by managed settings"
-                );
-                errors.push(PluginError::GenericError {
-                    source: plugin.source.clone(),
-                    plugin: None,
-                    error: format!(
-                        "--plugin-dir copy of \"{}\" ignored: plugin is locked by managed settings",
-                        plugin.name
-                    ),
-                });
-                return false;
-            }
-            true
-        })
-        .cloned()
-        .collect::<Vec<_>>();
+/// the same name. @nyan: no managed policy layer, so no session plugin is ever
+/// locked out (CC drops names locked by managed settings first).
+pub fn merge_plugin_sources(sources: PluginSources<'_>) -> Vec<LoadedPlugin> {
+    let session_plugins = sources.session.to_vec();
 
     let session_names = session_plugins
         .iter()
@@ -2059,12 +1937,11 @@ pub fn merge_plugin_sources(sources: PluginSources<'_>) -> (Vec<LoadedPlugin>, V
         })
         .cloned();
 
-    let plugins = session_plugins
+    session_plugins
         .into_iter()
         .chain(marketplace_plugins)
         .chain(sources.builtin.iter().cloned())
-        .collect();
-    (plugins, errors)
+        .collect()
 }
 
 /// Native borrowed-source DTO projection of PluginMarketplaceEntry, whose schema lives in schemas.rs.
@@ -2186,6 +2063,20 @@ mod tests {
         fs::write(path, content).unwrap();
     }
 
+    #[test]
+    fn git_subdir_shorthand_uses_ssh_and_ignores_retired_remote_env() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _remote = EnvVarGuard::set("NYAN_REMOTE", "1");
+        assert_eq!(
+            resolve_git_subdir_url("owner/repo").unwrap(),
+            "git@github.com:owner/repo.git"
+        );
+        assert_eq!(
+            resolve_git_subdir_url("https://example.com/owner/repo.git").unwrap(),
+            "https://example.com/owner/repo.git"
+        );
+    }
+
     #[tokio::test]
     async fn marketplace_loader_matches_official_catalog_and_installed_cache_gates() {
         // The production entrypoint publishes the process executor before
@@ -2193,9 +2084,8 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let cache = temp_dir("cache");
-        let _env = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_CACHE_DIR", &cache);
+        let _env = EnvVarGuard::set("NYAN_PLUGIN_CACHE_DIR", &cache);
         settings_cache::reset_settings_cache();
-        settings_cache::set_cached_settings_for_source(SettingSource::Policy, None);
         super::super::installed_plugins_manager::clear_installed_plugins_cache();
         let enabled_root = temp_dir("installed-enabled");
         write_file(
@@ -2288,10 +2178,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn marketplace_loader_matches_official_unknown_source_policy_guard() {
+    async fn marketplace_loader_resolves_unknown_source_marketplace_from_raw_cache() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let cache = temp_dir("policy");
-        let _env = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_CACHE_DIR", &cache);
+        let _env = EnvVarGuard::set("NYAN_PLUGIN_CACHE_DIR", &cache);
         settings_cache::reset_settings_cache();
         super::super::installed_plugins_manager::clear_installed_plugins_cache();
         let settings = crate::utils::settings::SettingsJson {
@@ -2302,24 +2192,9 @@ mod tests {
             settings,
             ..Default::default()
         });
-        // :1920-1938 includes empty allowlist, but excludes empty blocklist.
-        for (policy, blocked, by_blocklist) in [
-            (
-                serde_json::json!({"strictKnownMarketplaces":[]}),
-                true,
-                false,
-            ),
-            (serde_json::json!({"blockedMarketplaces":[]}), false, false),
-            (
-                serde_json::json!({"blockedMarketplaces":[{"source":"github","repo":"team/repo"}]}),
-                true,
-                true,
-            ),
-        ] {
-            settings_cache::set_cached_settings_for_source(
-                SettingSource::Policy,
-                Some(serde_json::from_value(policy).unwrap()),
-            );
+        // @nyan: no managed marketplace policy, so an unknown-source
+        // marketplace is never blocked; only the raw-cast lookup decides.
+        {
             for raw_usable in [false, true] {
                 // Original Safe config rejects missing source, while cache-only
                 // lookup deliberately raw-casts and can still find this catalog.
@@ -2338,13 +2213,7 @@ mod tests {
                 };
                 write_file(&cache.join("known_marketplaces.json"), &raw);
                 let (plugins, errors) = load_plugins_from_marketplaces(true).await;
-                if blocked {
-                    assert!(plugins.is_empty());
-                    assert_eq!(errors.len(), 1);
-                    assert!(
-                        matches!(&errors[0], PluginError::MarketplaceBlockedByPolicy { blocked_by_blocklist: Some(value), allowed_sources, .. } if *value == by_blocklist && allowed_sources.is_empty())
-                    );
-                } else if raw_usable {
+                if raw_usable {
                     assert_eq!(plugins.len(), 1);
                     assert!(errors.is_empty());
                 } else {
@@ -2467,19 +2336,17 @@ mod tests {
         }
     }
 
-    fn merge_plugin_sources_drops_managed_session_plugins_and_preserves_precedence() {
+    #[test]
+    fn merge_plugin_sources_lets_session_plugins_override_marketplace_by_name() {
         let session_alpha = test_loaded_plugin("alpha", "alpha@inline", true);
-        let session_beta = test_loaded_plugin("beta", "beta@inline", true);
         let marketplace_alpha = test_loaded_plugin("alpha", "alpha@market", true);
         let marketplace_beta = test_loaded_plugin("beta", "beta@market", true);
         let builtin_gamma = test_loaded_plugin("gamma", "gamma@builtin", true);
-        let managed = HashSet::from(["alpha".to_string()]);
 
-        let (plugins, errors) = merge_plugin_sources(PluginSources {
-            session: &[session_alpha, session_beta],
+        let plugins = merge_plugin_sources(PluginSources {
+            session: &[session_alpha],
             marketplace: &[marketplace_alpha, marketplace_beta],
             builtin: &[builtin_gamma],
-            managed_names: Some(&managed),
         });
 
         assert_eq!(
@@ -2487,13 +2354,7 @@ mod tests {
                 .iter()
                 .map(|plugin| plugin.source.as_str())
                 .collect::<Vec<_>>(),
-            vec!["beta@inline", "alpha@market", "gamma@builtin"]
-        );
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].source(), "alpha@inline");
-        assert!(
-            crate::types::plugin::get_plugin_error_message(&errors[0])
-                .contains("plugin is locked by managed settings")
+            vec!["alpha@inline", "beta@market", "gamma@builtin"]
         );
     }
 
@@ -2527,18 +2388,18 @@ mod tests {
         let first = temp_dir("add-dir-first");
         let second = temp_dir("add-dir-second");
         write_file(
-            &first.join(".claude/settings.json"),
+            &first.join(".nyan/settings.json"),
             r#"{"enabledPlugins":{"alpha@market":true,"beta@market":true}}"#,
         );
         write_file(
-            &first.join(".claude/settings.local.json"),
+            &first.join(".nyan/settings.local.json"),
             r#"{"enabledPlugins":{"beta@market":false}}"#,
         );
         write_file(
-            &second.join(".claude/settings.json"),
+            &second.join(".nyan/settings.json"),
             r#"{"enabledPlugins":{"alpha@market":false,"gamma@market":true}}"#,
         );
-        crate::bootstrap::state::set_additional_directories_for_claude_md(vec![first, second]);
+        crate::bootstrap::state::set_additional_directories_for_agents_md(vec![first, second]);
         let add_dir = super::super::add_dir_plugin_settings::get_add_dir_enabled_plugins();
         assert_eq!(add_dir.get("alpha@market"), Some(&Value::Bool(false)));
         assert_eq!(add_dir.get("beta@market"), Some(&Value::Bool(false)));

@@ -1921,13 +1921,13 @@ mod tests {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _bootstrap = BootstrapRestore::capture();
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _checkpointing = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING");
+        let _checkpointing = EnvVarGuard::unset("NYAN_DISABLE_FILE_CHECKPOINTING");
         let root = std::env::temp_dir().join(format!(
             "nyan-notebook-history-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_dir = root.join("config");
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_dir);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_dir);
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("history.ipynb");
         let original = serde_json::json!({

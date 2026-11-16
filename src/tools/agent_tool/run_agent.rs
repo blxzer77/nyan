@@ -15,7 +15,7 @@ use super::agent_tool_utils::{
 };
 use super::load_agents_dir::AgentDefinition;
 use crate::constants::query_source::QuerySource;
-use crate::services::api::claude::SystemPrompt;
+use crate::services::api::request::SystemPrompt;
 use crate::tool::{ToolCallProgressFn, ToolUseContext};
 use crate::types::message::{AssistantContent, Message, TokenUsage, UserContent};
 use crate::types::permissions::{
@@ -581,22 +581,12 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
         .system_context
         .clone()
         .unwrap_or_else(crate::context::get_system_context);
-    let should_omit_claude_md = input.agent_definition.omit_claude_md
+    let should_omit_agents_md = input.agent_definition.omit_agents_md
         && input.r#override.user_context.is_none()
-        // CC's generic cached read is a cast, not validation. Its result is
-        // used by && / a ternary, so retain JavaScript truthiness even when
-        // an override/cache contains null, 0, an empty string, or an object.
-        && match crate::services::analytics::growthbook::get_feature_value_cached_may_be_stale(
-            "tengu_slim_subagent_claudemd",
-            serde_json::Value::Bool(true),
-        ) {
-            serde_json::Value::Null => false,
-            serde_json::Value::Bool(value) => value,
-            serde_json::Value::Number(value) => value.as_f64() != Some(0.0),
-            serde_json::Value::String(value) => !value.is_empty(),
-            serde_json::Value::Array(_) | serde_json::Value::Object(_) => true,
-        };
-    if should_omit_claude_md {
+        && crate::utils::feature_flags::feature_enabled(
+            crate::utils::feature_flags::FeatureFlag::SlimSubagentAgentsMd,
+        );
+    if should_omit_agents_md {
         resolved_user_context.remove("claudeMd");
     }
     if matches!(
@@ -765,14 +755,14 @@ pub async fn run_agent(input: RunAgentInput<'_>) -> anyhow::Result<RunAgentOutco
     // `prompt_messages` is CC's `initialMessages` and goes in WHOLE, hook
     // attachment included — that write is the one place CC hands an attachment
     // to `recordSidechainTranscript`, and `cleanMessagesForLogging` is what
-    // decides its fate per audience. Everything the query LOOP produces passes
+    // decides its fate. Everything the query LOOP produces passes
     // [`is_recordable_message`] first (CC `:231-246`), so no other attachment
     // can reach the file.
     //
     // This used to hand-roll its own message→entry conversion and hand the
     // result straight to `record_sidechain_transcript`, i.e. it wrote CC's
     // whole drop set to disk: the SubagentStart `hook_additional_context`
-    // attachment pushed above on EVERY audience, every `Message::Attachment`
+    // attachment pushed above, every `Message::Attachment`
     // the query loop yields (CC yields those WITHOUT recording,
     // `runAgent.ts:770-790`), hook results, and progress as a literal `null`
     // JSONL line. The conversion and the `cleanMessagesForLogging` privacy
@@ -1359,14 +1349,6 @@ fn register_agent_frontmatter_hooks_for_run(
     let Some(hooks) = agent_definition.hooks.as_ref() else {
         return AgentFrontmatterHookGuard { session_id: None };
     };
-    let hooks_allowed_for_this_agent =
-        !crate::utils::settings::plugin_only_policy::is_restricted_to_plugin_only("hooks")
-            || crate::utils::settings::plugin_only_policy::is_source_admin_trusted(
-                agent_definition.source.official_name(),
-            );
-    if !hooks_allowed_for_this_agent {
-        return AgentFrontmatterHookGuard { session_id: None };
-    }
     let registered = crate::utils::hooks::register_frontmatter_hooks::register_frontmatter_hooks(
         agent_id,
         hooks,
@@ -1425,7 +1407,7 @@ async fn execute_subagent_stop_hooks_from_settings(
 fn subagent_hook_config(agent_id: &str) -> Option<crate::services::hooks::RegisteredHooks> {
     let loaded_hooks = crate::services::hooks::load_hooks_config();
     let mut config = loaded_hooks.config;
-    if !loaded_hooks.allow_managed_hooks_only {
+    if !loaded_hooks.disable_all_hooks {
         crate::utils::hooks::session_hooks::merge_session_hooks_into_config(&mut config, agent_id);
     }
     (!config.is_empty()).then_some(config)
@@ -1664,9 +1646,8 @@ fn record_query_event_to_agent_transcript(
 /// would reject them anyway. The port sends the same values through
 /// `QueryEvent::Message` (`query.rs` `emit_max_turns_reached`, the
 /// hook/skill/system-reminder attachments), so without this gate they reached
-/// the writer, where only `isLoggableMessage`'s audience check stood between
-/// them and the file: on an `ant` build every attachment was persisted, and
-/// each one also took the parent cursor, so the chain CC writes as
+/// the writer, where only `isLoggableMessage` stood between them and the
+/// file, and each one also took the parent cursor, so the chain CC writes as
 /// `assistant → user` was written as `assistant → attachment → user`.
 ///
 /// `hook_result` has no CC counterpart in this union (it is the port's carrier
@@ -2158,12 +2139,12 @@ mod tests {
     #[test]
     fn agent_system_prompt_appends_persistent_agent_memory_prompt() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
+        crate::utils::process_env::set("NYAN_DISABLE_AUTO_MEMORY", "false");
         let root = std::env::temp_dir().join(format!(
             "nyan-agent-system-memory-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let memory_dir = root.join(".claude/agent-memory/reviewer");
+        let memory_dir = root.join(".nyan/agent-memory/reviewer");
         std::fs::create_dir_all(&memory_dir).unwrap();
         std::fs::write(memory_dir.join("MEMORY.md"), "- Use focused review notes\n").unwrap();
 
@@ -2182,7 +2163,7 @@ mod tests {
         assert!(joined.contains("Persistent Agent Memory"));
         assert!(joined.contains("- Use focused review notes"));
         let _ = std::fs::remove_dir_all(&root);
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_AUTO_MEMORY");
+        crate::utils::process_env::remove("NYAN_DISABLE_AUTO_MEMORY");
     }
 
     #[test]
@@ -2577,14 +2558,12 @@ mod tests {
     fn preloads_agent_frontmatter_skills_like_official_run_agent() {
         let root =
             std::env::temp_dir().join(format!("nyan-agent-skill-preload-{}", uuid::Uuid::new_v4()));
-        let skills_dir = root.join(".claude").join("skills");
+        let skills_dir = root.join(".nyan").join("skills");
         let skill_file = skills_dir.join("audit").join("SKILL.md");
         std::fs::create_dir_all(skill_file.parent().unwrap()).unwrap();
         let mut file = std::fs::File::create(&skill_file).unwrap();
-        file.write_all(
-            b"---\ndescription: Audit code\n---\nAudit instructions ${CLAUDE_SESSION_ID}",
-        )
-        .unwrap();
+        file.write_all(b"---\ndescription: Audit code\n---\nAudit instructions ${NYAN_SESSION_ID}")
+            .unwrap();
 
         let commands = crate::skills::load_skills_dir::load_skills_from_skills_dir(
             &skills_dir,
@@ -2665,7 +2644,7 @@ mod tests {
         let discovered = root
             .join("packages")
             .join("pkg")
-            .join(".claude")
+            .join(".nyan")
             .join("skills");
         std::fs::create_dir_all(discovered.join("dynamic-audit")).unwrap();
         std::fs::write(
@@ -2708,7 +2687,7 @@ mod tests {
             "nyan-agent-plugin-skill-preload-{}",
             uuid::Uuid::new_v4()
         ));
-        let skills_dir = root.join(".claude").join("skills");
+        let skills_dir = root.join(".nyan").join("skills");
         let skill_file = skills_dir.join("plugin:docs").join("SKILL.md");
         std::fs::create_dir_all(skill_file.parent().unwrap()).unwrap();
         let mut file = std::fs::File::create(&skill_file).unwrap();
@@ -2923,27 +2902,23 @@ mod tests {
 
     /// CC `recordSidechainTranscript` (sessionStorage.ts:1451-1462) filters
     /// through `cleanMessagesForLogging` → `isLoggableMessage` (:4351-4367)
-    /// before writing, so the sidechain JSONL never receives progress, and on
-    /// non-`ant` builds never receives attachments — "they have sensitive info
+    /// before writing, so the sidechain JSONL never receives progress or
+    /// attachments — "they have sensitive info
     /// for training that we don't want exposed to the public". The single
     /// exception is `hook_additional_context`, and only behind
-    /// `CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT`.
+    /// `NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT`.
     ///
     /// The regression this pins: `run_agent` pushes the SubagentStart
     /// `hook_additional_context` attachment into `prompt_messages`
     /// (CC runAgent.ts:546-555) and hands the whole vec to
     /// `SidechainTranscriptRecorder::start` (CC :735), so a writer that skips
     /// the filter puts raw hook output on disk with no env gate at all.
-    ///
-    /// `getUserType() !== 'ant'` is a build audience here (compile-time), so
-    /// this asserts against the CURRENT build and both sides are covered by
-    /// `just test-all-audiences`.
     #[test]
     fn sidechain_write_set_matches_official_is_loggable_message() {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        crate::utils::process_env::remove("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT");
+        crate::utils::process_env::remove("NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT");
 
         // Byte-for-byte the attachment `run_agent` pushes after SubagentStart.
         let subagent_start_hook_context = Message::Attachment(
@@ -2987,8 +2962,6 @@ mod tests {
             origin: None,
             summarize_metadata: None,
         });
-        let internal = crate::utils::build_profile::build_audience().is_internal();
-
         let entries = sidechain_entries(&[
             prompt.clone(),
             subagent_start_hook_context.clone(),
@@ -3000,7 +2973,7 @@ mod tests {
             .map(|entry| entry["type"].as_str().unwrap_or_default().to_string())
             .collect::<Vec<_>>();
 
-        // Progress is dropped on EVERY audience, and never as the `null` line
+        // Progress is dropped, and never as the `null` line
         // a value-returning serializer would emit.
         assert!(
             !types.iter().any(|kind| kind == "progress"),
@@ -3012,28 +2985,23 @@ mod tests {
         );
         assert_eq!(types.first().map(String::as_str), Some("user"));
 
-        if internal {
-            assert_eq!(types, vec!["user", "attachment", "attachment"]);
-        } else {
-            assert_eq!(types, vec!["user"]);
-            let flat = serde_json::to_string(&entries).expect("entries serialize");
-            assert!(
-                !flat.contains("SECRET-FROM-HOOK"),
-                "SubagentStart hook context leaked into the sidechain: {flat}"
-            );
-        }
+        assert_eq!(types, vec!["user"]);
+        let flat = serde_json::to_string(&entries).expect("entries serialize");
+        assert!(
+            !flat.contains("SECRET-FROM-HOOK"),
+            "SubagentStart hook context leaked into the sidechain: {flat}"
+        );
 
-        // Flag on: the hook exception opens on every audience; plain
-        // attachments stay withheld externally.
-        crate::utils::process_env::set("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT", "1");
+        // Flag on: the hook exception opens; plain attachments stay withheld.
+        crate::utils::process_env::set("NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT", "1");
         let gated = sidechain_entries(&[subagent_start_hook_context, plain_attachment]);
         assert_eq!(
             gated.len(),
-            if internal { 2 } else { 1 },
+            1,
             "the env flag is not a blanket opt-in for attachments"
         );
         assert_eq!(gated[0]["attachment"]["type"], "hook_additional_context");
-        crate::utils::process_env::remove("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT");
+        crate::utils::process_env::remove("NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT");
     }
 
     #[test]
@@ -3724,7 +3692,7 @@ mod tests {
     }
 
     #[test]
-    fn general_purpose_system_prompt_uses_official_builtin_copy() {
+    fn general_purpose_system_prompt_uses_nyan_builtin_copy() {
         let agent = super::super::built_in::general_purpose_agent::general_purpose_agent();
         let prompt = get_agent_system_prompt(
             &agent,
@@ -3734,7 +3702,7 @@ mod tests {
             &[tool("Read")],
         )
         .join("\n");
-        assert!(prompt.contains("You are an agent for Claude Code"));
+        assert!(prompt.starts_with("You are an agent for nyan."));
         assert!(prompt.contains("NEVER proactively create documentation files"));
         assert!(prompt.contains("<env>"));
         assert!(prompt.contains("Working directory:"));
@@ -3850,7 +3818,7 @@ mod tests {
                         let assistant = completed_block(text);
                         stamped.lock().unwrap().push(assistant.uuid.clone());
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 assistant,
                             ),
                         )
@@ -3858,7 +3826,7 @@ mod tests {
                         .ok();
                     }
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::AssistantDelta {
+                        crate::services::api::request::QueryModelStreamItem::AssistantDelta {
                             stop_reason: Some(crate::types::message::StopReason::EndTurn),
                             usage: Some(final_usage()),
                         },
@@ -3874,7 +3842,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _skip_history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
 
         struct PersistenceRestore(bool);
         impl Drop for PersistenceRestore {
@@ -4019,20 +3987,12 @@ mod tests {
     /// and system `compact_boundary` — nothing else. Attachments are handled
     /// one branch earlier (`:770-790`) and are yielded WITHOUT being recorded.
     ///
-    /// The port had no gate, so every `Message` variant the actor emitted went
-    /// to the recorder and only `isLoggableMessage`'s audience check stood
-    /// between an attachment and the file. That check passes on `ant`
-    /// (`sessionStorage.ts:4357` `getUserType() !== 'ant'`), so an internal
-    /// build wrote hook/system-reminder attachment rows CC never writes AND
-    /// gave each one the parent cursor: `assistant → user` became
-    /// `assistant → attachment → user`, and a resumed agent's chain walk
-    /// (`get_agent_transcript_from_path` ← CC `:4210-4224`) reconstructed a
-    /// different conversation than CC does from the same run.
-    ///
-    /// The assertions are audience-INDEPENDENT by design: the gate, not the
-    /// privacy filter, is what keeps these off disk, so `just test` and
-    /// `just test-ant` must produce the identical file. Before the gate the
-    /// two audiences disagreed.
+    /// The gate, not `isLoggableMessage`'s privacy filter, is what keeps
+    /// attachment rows off disk and out of the parent cursor: without it
+    /// `assistant → user` would become `assistant → attachment → user`, and a
+    /// resumed agent's chain walk (`get_agent_transcript_from_path` ← CC
+    /// `:4210-4224`) would reconstruct a different conversation than CC does
+    /// from the same run.
     #[test]
     fn agent_transcript_records_only_the_official_recordable_message_types() {
         use crate::utils::session_storage::{
@@ -4044,12 +4004,12 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _skip_history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         // The one attachment CC does hand to the writer is `initialMessages`'
         // trailing hook context, and only behind this flag off-`ant`. Nothing
         // in this test goes through that path, so hold it cleared: any
         // attachment row here came from the loop.
-        let _hook_context = EnvVarGuard::unset("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT");
+        let _hook_context = EnvVarGuard::unset("NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT");
 
         struct PersistenceRestore(bool);
         impl Drop for PersistenceRestore {
@@ -4202,7 +4162,7 @@ mod tests {
         let flat = std::fs::read_to_string(get_agent_transcript_path(agent_id)).unwrap();
         assert!(
             !flat.contains("SECRET-FROM-HOOK"),
-            "no attachment the query loop yields may be persisted on ANY audience: {flat}"
+            "no attachment the query loop yields may be persisted: {flat}"
         );
 
         assert_eq!(
@@ -4279,8 +4239,8 @@ mod input_contract_tests {
     #[test]
     fn get_agent_system_prompt_matches_official_custom_memory_inside_original_block() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let previous = crate::utils::process_env::var("CLAUDE_CODE_DISABLE_AUTO_MEMORY");
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
+        let previous = crate::utils::process_env::var("NYAN_DISABLE_AUTO_MEMORY");
+        crate::utils::process_env::set("NYAN_DISABLE_AUTO_MEMORY", "false");
         let root = std::env::temp_dir().join(format!("nyan-agent-input-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let context = ToolUseContext::default().with_cwd_override(Some(root.clone()));
@@ -4302,8 +4262,8 @@ mod input_contract_tests {
         assert_eq!(builtin[0], "Review carefully.");
         std::fs::remove_dir_all(&root).unwrap();
         match previous {
-            Some(value) => crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", value),
-            None => crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_AUTO_MEMORY"),
+            Some(value) => crate::utils::process_env::set("NYAN_DISABLE_AUTO_MEMORY", value),
+            None => crate::utils::process_env::remove("NYAN_DISABLE_AUTO_MEMORY"),
         }
     }
 
@@ -4353,7 +4313,7 @@ mod input_contract_tests {
                 "NYAN_AGENT_TEST_KEY",
                 "sk-ant-test-agent-contract".to_string(),
             ),
-            ("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1".to_string()),
+            ("NYAN_DISABLE_AUTO_MEMORY", "1".to_string()),
             ("DISABLE_AUTO_COMPACT", "1".to_string()),
             ("NODE_ENV", String::new()),
         ];
@@ -4448,7 +4408,7 @@ mod input_contract_tests {
                 AgentDefinitionSource::ProjectSettings,
             );
             agent.system_prompt = Some("SYSTEM_PROMPT_SENTINEL".to_string());
-            agent.omit_claude_md = true;
+            agent.omit_agents_md = true;
             agent.max_turns = Some(1);
             // CC runAgent.ts:504-506 reads directory keys from live AppState, not
             // bootstrap's separate CLAUDE.md directories or the stale context copy.
@@ -4650,9 +4610,9 @@ mod input_contract_tests {
         if let Some(root) = crate::utils::process_env::var_os(CHILD) {
             assert!(crate::utils::process_runtime::process_runtime_handle().is_none());
             let root = std::path::PathBuf::from(root);
-            crate::utils::process_env::set("CLAUDE_CONFIG_DIR", root.join("config"));
-            crate::utils::process_env::set("CLAUDE_CODE_SIMPLE", "0");
-            crate::utils::process_env::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
+            crate::utils::process_env::set("NYAN_CONFIG_DIR", root.join("config"));
+            crate::utils::process_env::set("NYAN_SIMPLE", "0");
+            crate::utils::process_env::set("NYAN_DISABLE_AUTO_MEMORY", "1");
             crate::bootstrap::state::set_original_cwd(&root);
             crate::bootstrap::state::set_inline_plugins(vec![root.join("plugin")]);
             crate::commands::clear_commands_cache();

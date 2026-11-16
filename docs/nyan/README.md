@@ -33,7 +33,7 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 4. **cache 是第一约束**：不允许任何因时间流逝而丢 cache 的机制；会改变请求前缀的操作必须换来足够的 token 节省，
    且之后字节稳定。子代理 / 分叉（摘要、提取、合并）优先共享主会话 cache。
 5. **失败不伪装**：所有降级、跳过、截断都以具名状态出现在结果里，不变成空结果或静默成功。
-6. **存储位置**：全部在 `$CLAUDE_CONFIG_DIR`（本机为 `~/.nyan`）下，永不写进工作树。
+6. **存储位置**：全部在 `$NYAN_CONFIG_DIR`（本机为 `~/.nyan`）下，永不写进工作树。
    - 记忆：按 canonical git root（沿用 CC memdir）；
    - 检索索引：按 worktree 根（不同 worktree 内容不同）；
    - 网页快照：全局一份、内容寻址。
@@ -49,7 +49,7 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
    |---|---|---|
    | `Compact` | 摘要（压缩 C6） | 已有，`compact.rs:1044` |
    | `SideQuestion` | `/btw` | 已有，`side_question.rs:94` |
-   | `PromptSuggestion`、`Speculation` | CC 的建议 / 预测 | 枚举已有 |
+   | `PromptSuggestion` | CC 的建议 | 枚举已有 |
    | `ExtractMemories`、`AutoDream` | 记忆提取 / 合并（记忆 M2 / M5） | 枚举已有，nyan 实现 |
    | `CacheWarm`（新增） | 保活（压缩 C12） | nyan 新增 |
 
@@ -68,7 +68,7 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
    [external-search-provider-health.md](external-search-provider-health.md)。
 
 10. **Decision Provider**（[decision-provider.md](decision-provider.md)）：四个模块以及宿主运行时里需要"快速判断"的场景都可接入
-    同一个分类后端（权限分流、建议 / speculation 门控、agent / plan / skill 路由、结果质量判断等）；统一接口、批量、超时、回退与评测接缝。
+    同一个分类后端（权限分流、建议门控、agent / plan / skill 路由、结果质量判断等）；统一接口、批量、超时、回退与评测接缝。
     硬安全规则和生成型文本不由它替代；不可用时一律回退到当前确定性 / 原模型路径。
 
 ## 二、开发与验证流程（每个切片）
@@ -76,7 +76,7 @@ citationPointer、状态字段、回收站、远端协调器、按美元算的�
 1. 读相关代码与调用链，确认文档里引用的 `file:line` 仍然成立（上游可能已变）。
 2. 实现；偏离处加 `@nyan`。
 3. 受影响的已有测试改为断言新行为；新行为各有测试。
-4. 跑测试——**必须用 justfile 的隔离方式**（`CLAUDE_CONFIG_DIR` 指向 `target/test-home`，清掉宿主的模型 / 网关
+4. 跑测试——**必须用 justfile 的隔离方式**（`NYAN_CONFIG_DIR` 指向 `target/test-home`，清掉宿主的模型 / 网关
    环境变量），否则测试会读写真实的 `~/.nyan`：
    - 有 `just` 与 `cargo-nextest` 时：`just t <模块名>`，收尾跑 `just test`；
    - 没有时：`cargo test --lib --no-run` 后，按 justfile `t` recipe 的环境变量逐个进程跑受影响模块的测试。

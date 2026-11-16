@@ -69,12 +69,11 @@ pub fn mock_permission_request_with_input(
 }
 
 /// Maps to: CC `utils/permissions/permissions.ts:109-129#PERMISSION_RULE_SOURCES`.
-pub const PERMISSION_RULE_SOURCES: [PermissionRuleSource; 8] = [
+pub const PERMISSION_RULE_SOURCES: [PermissionRuleSource; 7] = [
     PermissionRuleSource::UserSettings,
     PermissionRuleSource::ProjectSettings,
     PermissionRuleSource::LocalSettings,
     PermissionRuleSource::FlagSettings,
-    PermissionRuleSource::PolicySettings,
     PermissionRuleSource::CliArg,
     PermissionRuleSource::Command,
     PermissionRuleSource::Session,
@@ -196,7 +195,6 @@ pub fn permission_rule_source_display_string(source: PermissionRuleSource) -> &'
         PermissionRuleSource::ProjectSettings => "shared project settings",
         PermissionRuleSource::LocalSettings => "project local settings",
         PermissionRuleSource::FlagSettings => "command line arguments",
-        PermissionRuleSource::PolicySettings => "enterprise managed settings",
         PermissionRuleSource::CliArg => "CLI argument",
         PermissionRuleSource::Command => "command configuration",
         PermissionRuleSource::Session => "current session",
@@ -233,17 +231,10 @@ pub fn create_permission_request_message(
 ) -> String {
     let Some(reason) = decision_reason else {
         return format!(
-            "Claude requested permissions to use {tool_name}, but you haven't granted it yet."
+            "nyan requested permissions to use {tool_name}, but you haven't granted it yet."
         );
     };
     match reason {
-        PermissionDecisionReason::Classifier { classifier, reason }
-            if cfg!(feature = "anthropic_internal") =>
-        {
-            format!(
-                "Classifier '{classifier}' requires approval for this {tool_name} command: {reason}"
-            )
-        }
         PermissionDecisionReason::Hook {
             hook_name, reason, ..
         } => reason.as_ref().map_or_else(
@@ -310,7 +301,7 @@ pub fn create_permission_request_message(
             super::permission_mode::permission_mode_title(*mode)
         ),
         PermissionDecisionReason::Classifier { .. } => format!(
-            "Claude requested permissions to use {tool_name}, but you haven't granted it yet."
+            "nyan requested permissions to use {tool_name}, but you haven't granted it yet."
         ),
     }
 }
@@ -849,7 +840,7 @@ fn get_updated_input_or_fallback(
 ///   WebSearch — all have a CC counterpart that defines `checkPermissions`.
 /// - Rust tools WITHOUT an override — TaskOutput, TaskStop, TaskCreate, TaskGet,
 ///   TaskUpdate, TaskList, TeamCreate, TeamDelete, CronCreate, CronDelete,
-///   CronList, RemoteTrigger, ToolSearch, Brief/SendUserMessage,
+///   CronList, ToolSearch, Brief/SendUserMessage,
 ///   ListMcpResourcesTool, ReadMcpResourceTool, EnterPlanMode, EnterWorktree,
 ///   ExitWorktree — none of their CC counterparts defines `checkPermissions`
 ///   either, so CC also resolves them through `TOOL_DEFAULTS` to `allow`.
@@ -1279,8 +1270,7 @@ fn has_permissions_to_use_tool_inner<'a>(
     // check. Both are CC's passthrough seed (permissions.ts:1210-1213), so this
     // tail is CC steps 2a/2b/3 plus the outer dontAsk + classifier transforms.
     //
-    // The `tool_has_builtin_allow_permission` / `config_get_allows` /
-    // `remote_trigger_read_allows` allow-list that used to sit here had no CC
+    // The action-specific allow-lists that used to sit here had no CC
     // owner: it existed only because the branch above discarded the tool's own
     // `allow`. Every name on it now gets that allow back from its own
     // `check_permissions` (see the audit note above `has_permissions_to_use_tool_inner`).
@@ -1549,7 +1539,7 @@ async fn resolve_headless_ask_async(
 /// `agentId`) — the agent's declared permission policy never ran on the one
 /// permission path that agent actually uses. The merge is the shared
 /// `session_hooks::merge_session_hooks_into_config` under its
-/// `allow_managed_hooks_only` gate (CC `:1515` + `:1541`), as in
+/// `disable_all_hooks` gate (CC `:1515` + `:1541`), as in
 /// `tool_execution.rs#load_tool_hooks_config_and_env`,
 /// `run_agent.rs#subagent_hook_config_and_env`, `process_user_input/mod.rs` and
 /// `cli/print.rs#execute_permission_request_hooks_for_sdk`. Session FUNCTION
@@ -1565,33 +1555,10 @@ async fn resolve_headless_ask_owned(
     let loaded = crate::services::hooks::load_hooks_config();
     let mut config = loaded.config;
     // Maps to: CC `hooks.ts:1534-1541` — `getHooksConfig` gates its session arm
-    // on `managedOnly` (`:1516`, `shouldAllowManagedHooksOnly()`) and on nothing
-    // else. `shouldDisableAllHooksIncludingManaged()` belongs to a DIFFERENT
-    // layer: CC evaluates it once at execution entry (`:1978-1980`, the first
-    // statement of `executeHooks`), never at merge time.
-    //
-    // The port now matches, because it now has that execution layer. When
-    // a772a9d added `!loaded.disable_all_hooks` here, `services/hooks/tool.rs`
-    // "carrie[d] no such guard" — its own words — and `load_hooks_config()`
-    // applies the policy only to the two sources it owns (empty snapshot via
-    // `get_hooks_from_allowed_sources`, `mod.rs:184` for the registered arm), so
-    // this merge site was the only thing standing between an enterprise
-    // `disableAllHooks` and an agent's own permission hooks. 8bb2e62 then routed
-    // every executor through `should_skip_hook_execution`, and this tail reaches
-    // it: `execute_permission_request_hooks` (`permission_request.rs:88`)
-    // delegates to `tool::execute_hooks`, which opens with the gate
-    // (`tool.rs:169`) ahead of `get_matching_hooks`. The conjunct had become a
-    // SECOND copy of an admin control, and duplicated admin controls are what
-    // drift apart — so it is gone, and which layer stops the hook is pinned by
-    // `headless_ask_skips_session_hooks_under_a_disable_all_hooks_policy`.
-    //
-    // The managed-ONLY conjunct stays, and has no execution-layer twin to be
-    // redundant with: in CC it is a per-source merge FILTER (`:1516`, `:1541`),
-    // not a per-call gate — the distinction
-    // `untrusted_workspace_stops_every_executor_family_without_filtering`
-    // documents from the other side. Its own layer is pinned by
-    // `headless_ask_skips_session_hooks_under_an_allow_managed_hooks_only_policy`.
-    if !loaded.allow_managed_hooks_only {
+    // on `managedOnly` (`:1516`, `shouldAllowManagedHooksOnly()`), which with no
+    // managed settings is the merged `disableAllHooks`. Pinned by
+    // `headless_ask_skips_session_hooks_under_disable_all_hooks`.
+    if !loaded.disable_all_hooks {
         // CC never skips the lookup when there is no agentId — `?? getSessionId()`
         // is the main-session arm, and it is what a `/hooks`-registered or
         // skill-registered PermissionRequest hook lives under.
@@ -1843,28 +1810,14 @@ enum AutoModePreClassifier {
 /// - `:532-548` the non-`classifierApprovable` safetyCheck immunity;
 /// - `:549-551` `requiresUserInteraction && ask`.
 ///
-/// The 2026-08-26 re-verification of the #129 "the `:532-548` guard cannot
-/// change either fast-path's answer today" argument found it **false**, which is
-/// why the guard landed with this fix rather than later. Rust has two
-/// `classifier_approvable: false` producers, not one:
-/// - `filesystem.rs:525-530` (suspicious Windows path). For this one the #129
-///   argument does hold: `filesystem.rs:1279-1288` returns the `Ask` before the
-///   acceptEdits allow at `:1314-1320`, so the fast-path below re-derives the
-///   same `Ask`, and no write tool is on the allowlist.
-/// - `tools/send_message_tool/mod.rs:918-932` (`SendMessageTool.ts:585-602`
-///   cross-machine bridge consent). `SendMessage` **is** on the auto-mode
-///   allowlist (`classifierDecision.ts:83`, `classifier_decision.rs:34`), so
-///   without `:532-548` the allowlist fast-path below would ALLOW exactly the
-///   prompt-injection vector CC's `:590-592` comment says must stay immune.
-///   It is currently unreachable only because `FeatureFlag::UdsInbox` is
-///   `enabled: false`, whose own note promises that "enabling the transport
-///   cannot silently skip" this gate.
+/// Safety checks with `classifier_approvable: false`, such as suspicious
+/// Windows paths in `filesystem.rs`, must bypass neither user consent nor the
+/// classifier-approval restriction.
 ///
-/// SEAM (analytics unported): CC emits `logEvent('tengu_auto_mode_decision', …)`
-/// at `:626-640` (acceptEdits fast-path) and `:666-677` (allowlist fast-path),
-/// both with `decision: 'allowed'`, `confidence: 'high'` and a `fastPath`
-/// discriminator. There is no `log_event` in this tree; the two call sites are
-/// marked below so they can be filled in one pass when analytics lands.
+/// @nyan: CC emits `logEvent('tengu_auto_mode_decision', …)` at `:626-640`
+/// (acceptEdits fast-path) and `:666-677` (allowlist fast-path), both with
+/// `decision: 'allowed'`, `confidence: 'high'` and a `fastPath` discriminator.
+/// nyan has no analytics, so those events are intentionally absent.
 fn auto_mode_pre_classifier_fast_path(
     params: &mut HasPermissionsToUseToolParams<'_>,
     request: PermissionRequest,
@@ -1876,14 +1829,8 @@ fn auto_mode_pre_classifier_fast_path(
         load_denial_tracking(params.app_store, params.local_denial_tracking.as_ref());
 
     // Maps to: CC `:572-591`. `feature('POWERSHELL_AUTO_MODE')` is CC's own
-    // "ant-only build flag" (`:561`), so in the external profile this port
-    // targets the guard is live. Porting the guard rather than its outcome
-    // keeps the internal profile.
-    if params.tool_name == crate::tools::powershell_tool::tool_name::POWERSHELL_TOOL_NAME
-        && !crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Permissions,
-        )
-    {
+    // "ant-only build flag" (`:561`), so the guard is always live here.
+    if params.tool_name == crate::tools::powershell_tool::tool_name::POWERSHELL_TOOL_NAME {
         if params.context.should_avoid_permission_prompts {
             // CC `:576-586`.
             let mut deny_req = request;
@@ -1973,8 +1920,8 @@ fn auto_mode_pre_classifier_fast_path(
                         "Skipping auto mode classifier for {}: would be allowed in acceptEdits mode",
                         params.tool_name
                     );
-                    // SEAM (analytics unported): CC `:626-640`
-                    // logEvent('tengu_auto_mode_decision', { fastPath: 'acceptEdits' }).
+                    // @nyan: CC `:626-640` logs `tengu_auto_mode_decision`
+                    // (`fastPath: 'acceptEdits'`) here; no analytics.
                     //
                     // CC `:641-648` returns
                     // `{behavior:'allow', updatedInput: acceptEditsResult.updatedInput ?? input,
@@ -2020,8 +1967,8 @@ fn auto_mode_pre_classifier_fast_path(
             "Skipping auto mode classifier for {}: tool is on the safe allowlist",
             params.tool_name
         );
-        // SEAM (analytics unported): CC `:666-677`
-        // logEvent('tengu_auto_mode_decision', { fastPath: 'allowlist' }).
+        // @nyan: CC `:666-677` logs `tengu_auto_mode_decision`
+        // (`fastPath: 'allowlist'`) here; no analytics.
         //
         // CC `:678-685` returns `{behavior:'allow', updatedInput: input,
         // decisionReason:{type:'mode', mode:'auto'}}`.
@@ -2047,8 +1994,6 @@ fn apply_auto_mode_classifier_to_ask(
     request: PermissionRequest,
     tool_use_context: Option<&crate::tool::ToolUseContext>,
 ) -> HasPermissionsToUseToolResult {
-    use crate::utils::permissions::yolo_classifier::classify_yolo_action_sync_with_signal;
-
     let mut params = params;
     let request = match auto_mode_pre_classifier_fast_path(&mut params, request, tool_use_context) {
         AutoModePreClassifier::Decided(result) => return result,
@@ -2070,17 +2015,14 @@ fn apply_auto_mode_classifier_to_ask(
         );
     }
     // Maps to: CC `classifyYoloAction(context.messages, action, ..., signal)`.
-    // Sync bridge kept for orchestration / thread workers until they await.
-    let decision = classify_yolo_action_sync_with_signal(
-        params.messages,
-        params.tool_name,
-        // RAW input, as in the async path: the per-tool projection belongs to
-        // `to_compact` and must run exactly once.
-        params.input,
-        classifier_tool_lookup(tool_use_context),
-        params.context,
-        params.abort_signal.clone(),
-    );
+    // The Decision Provider risk probe runs beside it inside the same bridge,
+    // so a shadow point does not add latency to the deterministic classifier.
+    let (decision, escalate) = classify_and_assess_sync(&params, tool_use_context);
+    // The probe runs beside the classifier, so its answer is only meaningful
+    // when the deterministic result was an allow.
+    if escalate && classifies_as_allow(&decision) {
+        return escalate_after_classifier_allow(request);
+    }
     resolve_auto_mode_classifier_decision(params, request, decision)
 }
 
@@ -2106,6 +2048,18 @@ async fn apply_auto_mode_classifier_to_ask_async(
     if let Some(forced) =
         crate::utils::permissions::yolo_classifier::forced_classifier_decision(params.tool_name)
     {
+        let cwd = tool_use_context.map(|context| context.effective_cwd());
+        let escalate = classifies_as_allow(&forced)
+            && crate::utils::permissions::decision::should_escalate(
+                params.tool_name,
+                params.input,
+                cwd.as_deref(),
+                params.abort_signal.clone(),
+            )
+            .await;
+        if escalate {
+            return escalate_after_classifier_allow(request);
+        }
         return resolve_auto_mode_classifier_decision(params, request, forced);
     }
 
@@ -2135,16 +2089,130 @@ async fn apply_auto_mode_classifier_to_ask_async(
         params.tool_name,
         params.input.clone(),
     );
-    let result = classify_yolo_action(
-        params.messages,
-        &action,
-        classifier_tool_lookup(tool_use_context),
-        params.context,
-        params.abort_signal.clone(),
-    )
-    .await;
+    let cwd = tool_use_context.map(|context| context.effective_cwd());
+    // Run the risk probe beside the classifier: in shadow it must not add
+    // latency, and in active it can only escalate an eventual allow.
+    let (result, escalate) = tokio::join!(
+        classify_yolo_action(
+            params.messages,
+            &action,
+            classifier_tool_lookup(tool_use_context),
+            params.abort_signal.clone(),
+        ),
+        crate::utils::permissions::decision::should_escalate(
+            params.tool_name,
+            params.input,
+            cwd.as_deref(),
+            params.abort_signal.clone(),
+        )
+    );
     let decision = yolo_result_to_decision(result);
+    if escalate && classifies_as_allow(&decision) {
+        return escalate_after_classifier_allow(request);
+    }
     resolve_auto_mode_classifier_decision(params, request, decision)
+}
+
+fn classifies_as_allow(
+    decision: &crate::utils::permissions::yolo_classifier::YoloClassifierDecision,
+) -> bool {
+    matches!(
+        decision,
+        crate::utils::permissions::yolo_classifier::YoloClassifierDecision::Allow { .. }
+    )
+}
+
+/// Sync twin of the async `tokio::join!`: one bridge runs the classifier and
+/// the `permissions.yolo_stage1` risk probe side by side.
+fn classify_and_assess_sync(
+    params: &HasPermissionsToUseToolParams<'_>,
+    tool_use_context: Option<&crate::tool::ToolUseContext>,
+) -> (
+    crate::utils::permissions::yolo_classifier::YoloClassifierDecision,
+    bool,
+) {
+    use crate::utils::permissions::yolo_classifier::{
+        YoloClassifierDecision, classify_yolo_action, format_action_for_classifier,
+        get_classifier_model, yolo_result_to_decision,
+    };
+
+    #[cfg(test)]
+    if let Some(forced) =
+        crate::utils::permissions::yolo_classifier::forced_classifier_decision(params.tool_name)
+    {
+        let escalate = classifies_as_allow(&forced)
+            && assess_risk_blocking(
+                params.tool_name,
+                params.input,
+                tool_use_context,
+                params.abort_signal.clone(),
+            );
+        return (forced, escalate);
+    }
+
+    let messages = params.messages.to_vec();
+    let tool_name = params.tool_name.to_string();
+    let input = params.input.clone();
+    let tools = classifier_tool_lookup(tool_use_context).to_vec();
+    let signal = params.abort_signal.clone();
+    let cwd = tool_use_context.map(|context| context.effective_cwd());
+
+    crate::utils::process_runtime::block_on_from_sync(async move {
+        let action = format_action_for_classifier(&tool_name, input.clone());
+        let (result, escalate) = tokio::join!(
+            classify_yolo_action(&messages, &action, &tools, signal.clone()),
+            crate::utils::permissions::decision::should_escalate(
+                &tool_name,
+                &input,
+                cwd.as_deref(),
+                signal,
+            )
+        );
+        (yolo_result_to_decision(result), escalate)
+    })
+    .unwrap_or_else(|| {
+        (
+            YoloClassifierDecision::Unavailable {
+                reason: "Failed to create runtime for the auto-mode classifier".into(),
+                model: get_classifier_model(),
+                transcript_too_long: false,
+            },
+            false,
+        )
+    })
+}
+
+#[cfg(test)]
+fn assess_risk_blocking(
+    tool_name: &str,
+    input: &serde_json::Value,
+    tool_use_context: Option<&crate::tool::ToolUseContext>,
+    signal: Option<anthropic_sdk::AbortSignal>,
+) -> bool {
+    let tool_name = tool_name.to_string();
+    let input = input.clone();
+    let cwd = tool_use_context.map(|context| context.effective_cwd());
+    crate::utils::process_runtime::block_on_from_sync(async move {
+        crate::utils::permissions::decision::should_escalate(
+            &tool_name,
+            &input,
+            cwd.as_deref(),
+            signal,
+        )
+        .await
+    })
+    .unwrap_or(false)
+}
+
+/// The deterministic classifier allowed the action, but the Decision Provider
+/// judged it risky. Keep the ask and make the reason visible; do not record a
+/// classifier approval, because the action is not being allowed.
+fn escalate_after_classifier_allow(request: PermissionRequest) -> HasPermissionsToUseToolResult {
+    let mut request = request;
+    request.decision_reason = Some(PermissionDecisionReason::Other {
+        reason: "The action was judged risky — confirm before running it.".to_string(),
+    });
+    HasPermissionsToUseToolResult::Ask(request)
 }
 
 /// Shared post-classify branch (unavailable / allow / block + denial tracking).
@@ -2544,7 +2612,7 @@ fn normalize_permission_path(path: &std::path::Path) -> std::path::PathBuf {
 fn path_has_sensitive_component(path: &std::path::Path) -> bool {
     path.components().any(|component| {
         let value = component.as_os_str().to_string_lossy();
-        matches!(value.as_ref(), ".git" | ".claude" | ".vscode" | ".idea")
+        matches!(value.as_ref(), ".git" | ".nyan" | ".vscode" | ".idea")
     })
 }
 
@@ -2554,7 +2622,7 @@ fn path_has_sensitive_component(path: &std::path::Path) -> bool {
 /// `getToolNameForPermissionCheck(tool)`. The Rust seam only receives the
 /// requested `PermissionRuleValue`, so `mcp_info` rides alongside it and takes
 /// priority over the requested name — otherwise an unprefixed SDK MCP tool
-/// (`CLAUDE_AGENT_SDK_MCP_NO_PREFIX`) would share a rule-match name with the
+/// (`NYAN_SDK_MCP_NO_PREFIX`) would share a rule-match name with the
 /// builtin it shadows.
 fn tool_matches_rule(
     requested: &PermissionRuleValue,
@@ -2726,9 +2794,7 @@ pub fn delete_permission_rule(
     rule: &PermissionRule,
 ) -> anyhow::Result<ToolPermissionContext> {
     let destination = match rule.source {
-        PermissionRuleSource::PolicySettings
-        | PermissionRuleSource::FlagSettings
-        | PermissionRuleSource::Command => {
+        PermissionRuleSource::FlagSettings | PermissionRuleSource::Command => {
             anyhow::bail!("Cannot delete permission rules from read-only settings")
         }
         PermissionRuleSource::UserSettings => PermissionUpdateDestination::UserSettings,
@@ -2777,25 +2843,20 @@ pub fn apply_permission_rules_to_permission_context(
 }
 
 /// Maps to: CC `utils/permissions/permissions.ts:1419-1471#syncPermissionRulesFromDisk`.
-/// Replaces the literal source/behavior groups handled by upstream reload.
-/// Managed-only additionally clears CLI and session, while command and flag
-/// survive; policy/flag groups are replaced only when the fresh loader emits
-/// that exact group.
+/// Replaces the literal source/behavior groups handled by upstream reload;
+/// command, CLI, session and flag survive, and the flag group is replaced only
+/// when the fresh loader emits that exact group. @nyan: no managed-only mode
+/// (CC's `allowManagedPermissionRulesOnly` also cleared CLI and session).
 pub fn sync_permission_rules_from_disk(
     context: &ToolPermissionContext,
     rules: &[PermissionRule],
-    managed_only: bool,
 ) -> ToolPermissionContext {
     let mut next = context.clone();
-    let mut sources_to_clear = vec![
+    for source in [
         PermissionRuleSource::UserSettings,
         PermissionRuleSource::ProjectSettings,
         PermissionRuleSource::LocalSettings,
-    ];
-    if managed_only {
-        sources_to_clear.extend([PermissionRuleSource::CliArg, PermissionRuleSource::Session]);
-    }
-    for source in sources_to_clear {
+    ] {
         next.always_allow_rules.insert(source, Vec::new());
         next.always_deny_rules.insert(source, Vec::new());
         next.always_ask_rules.insert(source, Vec::new());
@@ -3075,6 +3136,7 @@ mod tests {
 
     #[test]
     fn read_outer_rules_and_filesystem_order_match_official() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let input = serde_json::json!({"file_path": "/tmp/.../secret.txt"});
 
         let mut content_denied = ToolPermissionContext::default();
@@ -3128,6 +3190,7 @@ mod tests {
 
     #[test]
     fn read_permission_parse_retains_raw_input_matches_official() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let raw_valid = serde_json::json!({"file_path": "/tmp/.../secret.txt", "offset": "2"});
         let valid_context = ToolPermissionContext::default();
         let valid_tool_context =
@@ -3267,6 +3330,7 @@ mod tests {
 
     #[test]
     fn read_working_directory_ask_is_bypassable_but_explicit_ask_is_not() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-read-bypass-{}",
             uuid::Uuid::new_v4().simple()
@@ -3339,6 +3403,7 @@ mod tests {
 
     #[test]
     fn bash_permission_uses_tool_check_permissions_before_generic_prompt() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let context = ToolPermissionContext::default();
         let git_status = serde_json::json!({"command": "git status"});
         assert!(matches!(
@@ -3408,6 +3473,7 @@ mod tests {
 
     #[test]
     fn bash_permission_integration_respects_tool_wide_rule_ordering() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut deny_context = ToolPermissionContext::default();
         deny_context.always_deny_rules.insert(
             PermissionRuleSource::Session,
@@ -3677,6 +3743,202 @@ mod tests {
             )
         );
 
+        crate::utils::process_env::remove("NYAN_AUTO_CLASSIFIER_FORCE");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
+        crate::utils::permissions::auto_mode_state::reset_for_testing();
+    }
+
+    /// A scripted `permissions.yolo_stage1` provider that always answers
+    /// "risky" with confidence.
+    mod risk_probe_support {
+        use crate::services::decision::{
+            Answer, BackendFuture, DecisionBackend, DecisionOutcome, DecisionProvider,
+            DecisionRequest, DecisionUsage, Receipt,
+        };
+        use crate::utils::settings::nyan::{DecisionMode, DecisionPointConfig, DecisionSettings};
+        use std::collections::BTreeMap;
+        use std::sync::Arc;
+
+        struct RiskyBackend;
+
+        impl DecisionBackend for RiskyBackend {
+            fn decide<'a>(
+                &'a self,
+                _req: &'a DecisionRequest,
+                _deadline: std::time::Duration,
+                _abort: &'a crate::tool::AbortController,
+            ) -> BackendFuture<'a> {
+                let mut answers = BTreeMap::new();
+                answers.insert("risk".to_string(), Answer::Noul { probability: 0.99 });
+                let outcome = DecisionOutcome::Answered {
+                    receipt: Receipt {
+                        backend: "mock".into(),
+                        model: "mock".into(),
+                        usage: Some(DecisionUsage {
+                            input_tokens: 1,
+                            output_tokens: 1,
+                        }),
+                        answers: answers.clone(),
+                        ..Default::default()
+                    },
+                    answers,
+                };
+                Box::pin(async move { outcome })
+            }
+
+            fn name(&self) -> &'static str {
+                "mock"
+            }
+        }
+
+        pub fn provider(mode: DecisionMode) -> Arc<DecisionProvider> {
+            let mut settings = DecisionSettings::default();
+            settings.enabled = Some(true);
+            settings.points = Some(
+                [(
+                    "permissions.yolo_stage1".to_string(),
+                    DecisionPointConfig {
+                        mode: Some(mode),
+                        model: None,
+                        min_confidence: Some(0.9),
+                        max_prob: None,
+                        keep_at_least: None,
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            );
+            let backend: Arc<dyn DecisionBackend> = Arc::new(RiskyBackend);
+            Arc::new(DecisionProvider::with_backend(settings, backend))
+        }
+    }
+
+    /// `permissions.yolo_stage1`: an active risky answer turns the classifier's
+    /// allow into an ask; shadow keeps the identical allow.
+    #[test]
+    fn auto_mode_risk_probe_escalates_only_when_active() {
+        use crate::utils::settings::nyan::DecisionMode;
+
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "allow");
+        crate::utils::permissions::auto_mode_state::reset_for_testing();
+        crate::utils::permissions::auto_mode_state::set_auto_mode_active(true);
+
+        let input = serde_json::json!({"command": "npm publish --access public"});
+        let mut context = ToolPermissionContext {
+            mode: PermissionMode::Auto,
+            ..ToolPermissionContext::default()
+        };
+        context.always_ask_rules.insert(
+            PermissionRuleSource::Session,
+            vec![PermissionRuleValue::new("Bash", None)],
+        );
+
+        crate::utils::permissions::decision::test_override::set(risk_probe_support::provider(
+            DecisionMode::Active,
+        ));
+        let active = has_permissions_to_use_tool(HasPermissionsToUseToolParams {
+            tool_use_id: "toolu_risk_active",
+            tool_name: "Bash",
+            mcp_info: None,
+            input_summary: "npm publish --access public",
+            input: &input,
+            context: &context,
+            messages: &[],
+            app_store: None,
+            local_denial_tracking: None,
+            abort_signal: None,
+        });
+        match active {
+            HasPermissionsToUseToolResult::Ask(request) => assert!(
+                matches!(
+                    request.decision_reason,
+                    Some(PermissionDecisionReason::Other { .. })
+                ),
+                "the escalation must explain itself, got {:?}",
+                request.decision_reason
+            ),
+            other => panic!("active risky answer must ask, got {other:?}"),
+        }
+
+        crate::utils::permissions::decision::test_override::set(risk_probe_support::provider(
+            DecisionMode::Shadow,
+        ));
+        let shadow = has_permissions_to_use_tool(HasPermissionsToUseToolParams {
+            tool_use_id: "toolu_risk_shadow",
+            tool_name: "Bash",
+            mcp_info: None,
+            input_summary: "npm publish --access public",
+            input: &input,
+            context: &context,
+            messages: &[],
+            app_store: None,
+            local_denial_tracking: None,
+            abort_signal: None,
+        });
+        assert_eq!(
+            shadow,
+            expected_allow(
+                &input,
+                PermissionDecisionReason::Classifier {
+                    classifier: "auto-mode".into(),
+                    reason: "forced allow for Bash".into()
+                }
+            ),
+            "shadow must keep the deterministic allow"
+        );
+
+        crate::utils::permissions::decision::test_override::clear();
+        crate::utils::process_env::remove("NYAN_AUTO_CLASSIFIER_FORCE");
+        crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
+        crate::utils::permissions::auto_mode_state::reset_for_testing();
+    }
+
+    /// The async twin of the classifier path must make the same escalation
+    /// decision as the sync bridge.
+    #[tokio::test]
+    async fn auto_mode_risk_probe_escalates_on_the_async_path_too() {
+        use crate::utils::settings::nyan::DecisionMode;
+
+        let _guard = TEST_ENV_LOCK.lock().unwrap();
+        crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
+        crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "allow");
+        crate::utils::permissions::auto_mode_state::reset_for_testing();
+        crate::utils::permissions::auto_mode_state::set_auto_mode_active(true);
+
+        let input = serde_json::json!({"command": "npm publish --access public"});
+        let mut context = ToolPermissionContext {
+            mode: PermissionMode::Auto,
+            ..ToolPermissionContext::default()
+        };
+        context.always_ask_rules.insert(
+            PermissionRuleSource::Session,
+            vec![PermissionRuleValue::new("Bash", None)],
+        );
+
+        crate::utils::permissions::decision::test_override::set(risk_probe_support::provider(
+            DecisionMode::Active,
+        ));
+        let result = has_permissions_to_use_tool_async(HasPermissionsToUseToolParams {
+            tool_use_id: "toolu_risk_async",
+            tool_name: "Bash",
+            mcp_info: None,
+            input_summary: "npm publish --access public",
+            input: &input,
+            context: &context,
+            messages: &[],
+            app_store: None,
+            local_denial_tracking: None,
+            abort_signal: None,
+        })
+        .await;
+        assert!(
+            matches!(result, HasPermissionsToUseToolResult::Ask(_)),
+            "active risky answer must ask on the async path, got {result:?}"
+        );
+
+        crate::utils::permissions::decision::test_override::clear();
         crate::utils::process_env::remove("NYAN_AUTO_CLASSIFIER_FORCE");
         crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
@@ -4035,33 +4297,6 @@ mod tests {
         crate::utils::process_env::remove("NYAN_TRANSCRIPT_CLASSIFIER");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
 
-        if crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Permissions,
-        ) {
-            // CC permissions.ts:572-591,600-648,918-926: internal permits
-            // classification; an explicit content ask prevents the acceptEdits
-            // fast-path, so both interactive and headless use the classifier.
-            for result in [interactive, headless] {
-                let HasPermissionsToUseToolResult::Allow {
-                    updated_input,
-                    decision_reason,
-                    ..
-                } = result
-                else {
-                    panic!("internal profile classifies PowerShell in auto mode, got {result:?}");
-                };
-                assert_eq!(updated_input, Some(input.clone()));
-                assert_eq!(
-                    decision_reason,
-                    Some(PermissionDecisionReason::Classifier {
-                        classifier: "auto-mode".into(),
-                        reason: "forced allow for PowerShell".into(),
-                    })
-                );
-            }
-            return;
-        }
-
         assert!(
             matches!(interactive, HasPermissionsToUseToolResult::Ask(_)),
             "CC :590 returns the untouched ask rather than the forced classifier allow, got {interactive:?}"
@@ -4099,6 +4334,7 @@ mod tests {
     /// with the ask's own `createPermissionRequestMessage` copy instead.
     #[test]
     fn headless_non_auto_ask_denies_with_async_agent_reason_and_auto_reject_message() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let context = ToolPermissionContext {
             mode: PermissionMode::Default,
             should_avoid_permission_prompts: true,
@@ -4150,8 +4386,6 @@ mod tests {
                 })),
                 ..Default::default()
             },
-            None,
-            false,
         );
     }
 
@@ -4163,8 +4397,6 @@ mod tests {
     fn capture_no_settings_hooks() {
         crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(
             &crate::utils::settings::SettingsJson::default(),
-            None,
-            false,
         );
         crate::bootstrap::state::clear_registered_hooks();
     }
@@ -4519,149 +4751,26 @@ mod tests {
         );
     }
 
-    /// Installs a managed policy file for the lifetime of the returned guards
-    /// and pins the settings cache to it.
-    ///
-    /// `CLAUDE_CONFIG_DIR` (pinned by `just test`) does NOT cover the managed
-    /// settings root, so a test that means to assert on policy behaviour has to
-    /// redirect `CLAUDE_CODE_MANAGED_SETTINGS_PATH` itself. Requires
-    /// `TEST_ENV_LOCK`. Trust is untouched: this relocates the POLICY root, not
-    /// the config root or the cwd, so the harness's own trusted workspace still
-    /// answers `check_has_trust_dialog_accepted()` — which is what lets these
-    /// tests tell the managed arm of `should_skip_hook_execution` apart from
-    /// its trust arm.
-    fn managed_policy_root(contents: &str) -> (std::path::PathBuf, EnvVarGuard) {
-        let root =
-            std::env::temp_dir().join(format!("nyan-headless-policy-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&root).expect("create managed root");
-        std::fs::write(root.join("managed-settings.json"), contents)
-            .expect("write policy settings");
-        let guard = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &root);
-        // A direct disk write bypasses production invalidation, so the test
-        // states the invariant itself (same note as `settings/mod.rs` tests).
-        crate::utils::settings::settings_cache::reset_settings_cache();
-        (root, guard)
-    }
-
-    /// Maps to: CC `hooks.ts:1978-1980` — `executeHooks` returns before doing
-    /// anything when `shouldDisableAllHooksIncludingManaged()`, i.e. when POLICY
-    /// settings carry `disableAllHooks`. That is an EXECUTION-time gate; CC's
-    /// merge-time assembly (`getHooksConfig`, `:1491-1565`) never consults it.
-    ///
-    /// The outcome assertion alone cannot tell those two layers apart, and for
-    /// one batch it did not have to: `resolve_headless_ask_owned` carried its
-    /// own `!loaded.disable_all_hooks` copy of the policy at the MERGE site
-    /// (a772a9d), because when that landed no port executor had the gate. It
-    /// passed identically with and without that conjunct — a redundancy and a
-    /// regression looked the same from here. So the assertions below name the
-    /// layer instead of the outcome:
-    ///
-    /// - the merge-time filter is INERT (`allow_managed_hooks_only == false`),
-    ///   so it is provably not what stopped the hook;
-    /// - the execution-time gate FIRES, and fires on its managed arm rather than
-    ///   its trust arm.
-    ///
-    /// Old shape: with the shared entry removed from `tool::execute_hooks`, the
-    /// `should_skip_hook_execution` assertion fails and the deny below carries
-    /// the hook's own message instead of the auto-deny reason.
-    #[tokio::test]
-    async fn headless_ask_skips_session_hooks_under_a_disable_all_hooks_policy() {
-        use crate::services::hooks::HookEvent;
-        use crate::utils::hooks::session_hooks;
-
-        let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let (managed_root, _managed_guard) = managed_policy_root(r#"{"disableAllHooks": true}"#);
-        capture_no_settings_hooks();
-        session_hooks::clear_all_session_hooks();
-        session_hooks::add_session_hook(
-            "agent-headless-policy",
-            HookEvent::PermissionRequest,
-            "Write",
-            session_deny_hook("denied by agent frontmatter hook"),
-        );
-
-        let tool_use_context =
-            crate::tool::ToolUseContext::with_permission_context(ToolPermissionContext::default())
-                .with_agent_id(Some("agent-headless-policy".to_string()));
-        let context = ToolPermissionContext {
-            mode: PermissionMode::Default,
-            should_avoid_permission_prompts: true,
-            ..ToolPermissionContext::default()
-        };
-        let input = serde_json::json!({"file_path": "/tmp/hooked.txt", "content": "x"});
-        let result = has_permissions_to_use_tool_async_with_context(
-            headless_write_params(&input, &context),
-            Some(&tool_use_context),
-        )
-        .await;
-
-        // WHICH layer stopped it — read while the policy is still installed.
-        let loaded = crate::services::hooks::load_hooks_config();
-        assert!(
-            loaded.disable_all_hooks,
-            "precondition: the managed policy is in force"
-        );
-        assert!(
-            !loaded.allow_managed_hooks_only,
-            "CC's merge-time filter (`hooks.ts:1516`, `:1541`) is inert under \
-             `disableAllHooks`, so the session arm IS merged and the merge site \
-             cannot be what stopped the hook"
-        );
-        assert!(
-            crate::services::hooks::should_disable_all_hooks_including_managed_from_settings(),
-            "the managed arm of the execution gate is the one that fires"
-        );
-        assert!(
-            crate::services::hooks::should_skip_hook_execution(
-                HookEvent::PermissionRequest,
-                "Write",
-            ),
-            "CC `hooks.ts:1978-1980` at execution entry is what stops it, reached \
-             here through `permission_request.rs:88` -> `tool.rs:169`"
-        );
-
-        session_hooks::clear_all_session_hooks();
-        let _ = std::fs::remove_dir_all(&managed_root);
-
-        let HasPermissionsToUseToolResult::Deny(deny) = result else {
-            panic!("CC :944-951 auto-denies with no hook decision, got {result:?}");
-        };
-        assert_eq!(
-            deny.decision_reason,
-            Some(PermissionDecisionReason::AsyncAgent {
-                reason: "Permission prompts are not available in this context".to_string(),
-            }),
-            "a disableAllHooks policy must stop the session hook before it can decide"
-        );
-    }
-
-    /// The complementary layer, and the reason the merge site keeps its SECOND
-    /// conjunct after the first one was dropped as redundant.
-    ///
     /// Maps to: CC `hooks.ts:1534-1541` — "Skip session hooks entirely when
     /// allowManagedHooksOnly is set — this prevents frontmatter hooks from
-    /// agents/skills from bypassing the policy". Unlike `disableAllHooks`, this
-    /// policy has NO execution-time twin: `executeHooks` never checks it as a
-    /// gate (it reads it only for telemetry, `:2080-2082`), because it is a
-    /// per-SOURCE filter — managed hooks still run. So an agent's own session
-    /// hooks can only be stopped where they are merged.
+    /// agents/skills from bypassing the policy". With no managed settings that
+    /// filter is the merged `disableAllHooks`, applied where session hooks are
+    /// merged: an agent's own permission hook must not decide the ask.
     ///
-    /// Old shape (verified 2026-08-30 by dropping `!loaded.allow_managed_hooks_only`
-    /// too): the session hook merges and decides the ask, so the deny carries
+    /// Old shape (dropping `!loaded.disable_all_hooks` at the merge site): the
+    /// session hook merges and decides, so the deny carries
     /// `PermissionDecisionReason::Hook` with "denied by agent frontmatter hook"
-    /// instead of the auto-deny reason — a failed assertion, not a hang.
+    /// instead of the auto-deny reason.
     #[tokio::test]
-    async fn headless_ask_skips_session_hooks_under_an_allow_managed_hooks_only_policy() {
+    async fn headless_ask_skips_session_hooks_under_disable_all_hooks() {
         use crate::services::hooks::HookEvent;
         use crate::utils::hooks::session_hooks;
 
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let (managed_root, _managed_guard) =
-            managed_policy_root(r#"{"allowManagedHooksOnly": true}"#);
-        capture_no_settings_hooks();
+        let _hooks_off = crate::services::hooks::test_support::HooksDisabledGuard::install();
         session_hooks::clear_all_session_hooks();
         session_hooks::add_session_hook(
-            "agent-headless-managed-only",
+            "agent-headless-hooks-off",
             HookEvent::PermissionRequest,
             "Write",
             session_deny_hook("denied by agent frontmatter hook"),
@@ -4669,7 +4778,7 @@ mod tests {
 
         let tool_use_context =
             crate::tool::ToolUseContext::with_permission_context(ToolPermissionContext::default())
-                .with_agent_id(Some("agent-headless-managed-only".to_string()));
+                .with_agent_id(Some("agent-headless-hooks-off".to_string()));
         let context = ToolPermissionContext {
             mode: PermissionMode::Default,
             should_avoid_permission_prompts: true,
@@ -4682,29 +4791,11 @@ mod tests {
         )
         .await;
 
-        // The mirror image of the `disableAllHooks` test: here the MERGE filter
-        // fires and the execution gate does not.
-        let loaded = crate::services::hooks::load_hooks_config();
         assert!(
-            loaded.allow_managed_hooks_only,
-            "precondition: the managed-only policy is in force"
+            crate::services::hooks::load_hooks_config().disable_all_hooks,
+            "precondition: disableAllHooks is in force"
         );
-        assert!(
-            !loaded.disable_all_hooks,
-            "managed hooks still run under this policy — it is a filter, not an off switch"
-        );
-        assert!(
-            !crate::services::hooks::should_skip_hook_execution(
-                HookEvent::PermissionRequest,
-                "Write",
-            ),
-            "the execution gate does NOT cover this policy, which is why the \
-             merge site has to: `executeHooks` reads `shouldAllowManagedHooksOnly()` \
-             only for telemetry (`hooks.ts:2080-2082`)"
-        );
-
         session_hooks::clear_all_session_hooks();
-        let _ = std::fs::remove_dir_all(&managed_root);
 
         let HasPermissionsToUseToolResult::Deny(deny) = result else {
             panic!("CC :944-951 auto-denies with no hook decision, got {result:?}");
@@ -4714,7 +4805,7 @@ mod tests {
             Some(PermissionDecisionReason::AsyncAgent {
                 reason: "Permission prompts are not available in this context".to_string(),
             }),
-            "an allowManagedHooksOnly policy must stop the session hook at the merge"
+            "disableAllHooks must stop the session hook at the merge"
         );
     }
 
@@ -4770,6 +4861,7 @@ mod tests {
     /// to `BashTool.checkPermissions` and lose the rule reason.
     #[test]
     fn bash_whole_tool_ask_rule_asks_with_rule_reason_when_sandbox_auto_allow_is_off() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut context = ToolPermissionContext::default();
         context.always_ask_rules.insert(
             PermissionRuleSource::Session,
@@ -4987,6 +5079,7 @@ mod tests {
     /// ask into the outer branch changes what AUTO does with it and nothing else.
     #[test]
     fn bypass_permissions_content_ask_rule_matches_official_step_1f_immunity() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut bypass_context = ToolPermissionContext {
             mode: PermissionMode::BypassPermissions,
             ..ToolPermissionContext::default()
@@ -5044,6 +5137,7 @@ mod tests {
 
     #[test]
     fn bash_permission_integration_respects_deny_rules_and_security_checks() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut context = ToolPermissionContext::default();
         context.always_deny_rules.insert(
             PermissionRuleSource::Session,
@@ -5116,6 +5210,7 @@ mod tests {
     /// end-to-end carrier: the gate result must carry the SAME input back.
     #[test]
     fn tool_allow_updated_input_survives_the_gate() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let context = ToolPermissionContext::default();
         let input = serde_json::json!({ "output": "final answer" });
         let result = has_permissions_to_use_tool(HasPermissionsToUseToolParams {
@@ -5142,6 +5237,7 @@ mod tests {
 
     #[test]
     fn web_fetch_permission_uses_official_domain_rule_and_preapproved_hosts() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let context = ToolPermissionContext::default();
         let preapproved_input = serde_json::json!({
             "url": "https://doc.rust-lang.org/book/",
@@ -5267,6 +5363,7 @@ mod tests {
     /// unapproved domain in Auto mode took the empty-projection allow.
     #[test]
     fn web_fetch_routes_through_the_tool_check_permissions_and_the_auto_classifier() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let unapproved_input = serde_json::json!({
             "url": "https://example.com/docs/page",
             "prompt": "summarize"
@@ -5336,7 +5433,6 @@ mod tests {
             "an empty projection is what let Auto mode skip the classifier"
         );
 
-        let _guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::set("NYAN_TRANSCRIPT_CLASSIFIER", "1");
         crate::utils::process_env::set("NYAN_AUTO_CLASSIFIER_FORCE", "block");
         crate::utils::permissions::auto_mode_state::reset_for_testing();
@@ -5396,6 +5492,7 @@ mod tests {
 
     #[test]
     fn write_permission_uses_invocation_cwd_override_in_generic_gate() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let invocation_cwd = std::env::temp_dir().join(format!(
             "nyan-write-permission-cwd-{}",
             uuid::Uuid::new_v4().simple()
@@ -5437,6 +5534,7 @@ mod tests {
 
     #[test]
     fn write_permission_retains_filesystem_suggestions_in_generic_gate() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let path = crate::bootstrap::state::get_original_cwd().join("new-write.txt");
         let path = path.display().to_string();
         let input = serde_json::json!({"file_path": path, "content": "hello"});
@@ -5467,6 +5565,7 @@ mod tests {
 
     #[test]
     fn edit_ordinary_filesystem_ask_is_overridden_by_bypass_modes() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let path = crate::bootstrap::state::get_original_cwd().join("bypass-edit.txt");
         let path = path.display().to_string();
         let input = serde_json::json!({
@@ -5508,6 +5607,7 @@ mod tests {
 
     #[test]
     fn notebook_edit_ordinary_filesystem_ask_is_overridden_by_bypass_mode() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let path = crate::bootstrap::state::get_original_cwd().join("bypass-notebook.ipynb");
         let path = path.display().to_string();
         let input = serde_json::json!({
@@ -5543,6 +5643,7 @@ mod tests {
 
     #[test]
     fn edit_explicit_ask_rule_stays_bypass_immune_but_safety_check_does_not() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let cwd = crate::bootstrap::state::get_original_cwd();
         let ordinary_path = cwd.join("explicit-ask-edit.txt").display().to_string();
         let mut context = ToolPermissionContext {
@@ -5648,6 +5749,7 @@ mod tests {
 
     #[test]
     fn dont_ask_mode_transforms_prompt_into_deny_after_allow_fast_paths() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut context = ToolPermissionContext::default();
         context.mode = PermissionMode::DontAsk;
 
@@ -5745,6 +5847,7 @@ mod tests {
 
     #[test]
     fn dont_ask_runs_after_whole_tool_allow_matches_official_order() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let input = serde_json::json!({"file_path": "/tmp/.../secret.txt"});
         let mut context = ToolPermissionContext {
             mode: PermissionMode::DontAsk,
@@ -5798,6 +5901,7 @@ mod tests {
 
     #[test]
     fn requires_user_interaction_ask_precedes_bypass_and_whole_tool_allow() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let input = serde_json::json!({});
         let decide = |context: &ToolPermissionContext| {
             let tool_context =
@@ -5881,6 +5985,7 @@ mod tests {
     /// `{behavior:'allow'}` — CC never prompts for a subagent spawn.
     #[test]
     fn agent_spawn_is_allowed_without_a_prompt_matches_official() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let input = serde_json::json!({
             "description": "audit permissions",
             "prompt": "Check the permission pipeline.",
@@ -5896,21 +6001,10 @@ mod tests {
                 &input,
                 &context,
             );
-            if crate::utils::build_profile::has_internal_capability(
-                crate::utils::build_profile::InternalCapability::Permissions,
-            ) && mode == PermissionMode::Auto
-            {
-                // The ant-only passthrough branch; it reaches the classifier.
-                assert!(
-                    !matches!(decision, HasPermissionsToUseToolResult::Allow { .. }),
-                    "internal builds keep the auto-mode passthrough"
-                );
-            } else {
-                assert!(
-                    matches!(decision, HasPermissionsToUseToolResult::Allow { .. }),
-                    "AgentTool.checkPermissions returns allow in {mode:?}; CC returns it verbatim"
-                );
-            }
+            assert!(
+                matches!(decision, HasPermissionsToUseToolResult::Allow { .. }),
+                "AgentTool.checkPermissions returns allow in {mode:?}; CC returns it verbatim"
+            );
         }
 
         // The tool's allow is the LAST word, not the first: CC still evaluates
@@ -5954,6 +6048,7 @@ mod tests {
     /// on the floor. Each row cites the CC owner of the expected behavior.
     #[test]
     fn tool_check_permissions_result_is_final_matches_official() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let context = ToolPermissionContext::default();
 
         // CC has no `checkPermissions` on these tools, so `TOOL_DEFAULTS`
@@ -5965,11 +6060,6 @@ mod tests {
             ("TaskStop", serde_json::json!({ "task_id": "t1" })),
             ("EnterWorktree", serde_json::json!({})),
             ("ExitWorktree", serde_json::json!({ "action": "keep" })),
-            (
-                "RemoteTrigger",
-                // Not just the read actions: CC allows every action here.
-                serde_json::json!({ "action": "create", "body": {} }),
-            ),
             (
                 "CronCreate",
                 serde_json::json!({ "cron": "*/5 * * * *", "prompt": "ping" }),
@@ -5994,24 +6084,6 @@ mod tests {
                 &context
             ),
             HasPermissionsToUseToolResult::Allow { .. }
-        ));
-
-        // Maps to: CC `ConfigTool.ts:98-107` — reads allow, writes ask.
-        assert!(matches!(
-            decide_tool(
-                "Config",
-                &serde_json::json!({ "setting": "theme" }),
-                &context
-            ),
-            HasPermissionsToUseToolResult::Allow { .. }
-        ));
-        assert!(matches!(
-            decide_tool(
-                "Config",
-                &serde_json::json!({ "setting": "theme", "value": "dark" }),
-                &context
-            ),
-            HasPermissionsToUseToolResult::Ask(_)
         ));
 
         // Fail-closed side of the same change: a tool that returns `passthrough`
@@ -6139,7 +6211,6 @@ mod tests {
     #[test]
     fn delete_permission_rule_matches_official_read_only_source_guard() {
         for source in [
-            PermissionRuleSource::PolicySettings,
             PermissionRuleSource::FlagSettings,
             PermissionRuleSource::Command,
         ] {
@@ -6238,7 +6309,7 @@ mod tests {
 
     /// Maps to: CC `toolMatchesRule` resolving through
     /// `getToolNameForPermissionCheck`, which is what keeps an unprefixed SDK
-    /// MCP tool (`CLAUDE_AGENT_SDK_MCP_NO_PREFIX`) from answering to the rules
+    /// MCP tool (`NYAN_SDK_MCP_NO_PREFIX`) from answering to the rules
     /// written for the builtin whose name it borrows.
     #[test]
     fn unprefixed_mcp_tool_and_builtin_do_not_share_rule_match_names() {
@@ -6351,7 +6422,7 @@ mod tests {
     }
 
     #[test]
-    fn managed_reload_matches_official_literal_clear_and_preservation_matrix() {
+    fn reload_matches_official_literal_clear_and_preservation_matrix() {
         let mut context = ToolPermissionContext::default();
         for source in PERMISSION_RULE_SOURCES {
             context.always_allow_rules.insert(
@@ -6359,40 +6430,20 @@ mod tests {
                 vec![PermissionRuleValue::new(format!("Old{source:?}"), None)],
             );
         }
-        let fresh_policy = PermissionRule {
-            source: PermissionRuleSource::PolicySettings,
+        let fresh_user = PermissionRule {
+            source: PermissionRuleSource::UserSettings,
             rule_behavior: PermissionBehavior::Allow,
-            rule_value: PermissionRuleValue::new("FreshPolicy", None),
+            rule_value: PermissionRuleValue::new("FreshUser", None),
         };
-        let managed =
-            sync_permission_rules_from_disk(&context, std::slice::from_ref(&fresh_policy), true);
-
+        let normal = sync_permission_rules_from_disk(&context, std::slice::from_ref(&fresh_user));
+        assert_eq!(
+            normal.always_allow_rules[&PermissionRuleSource::UserSettings]
+                .iter()
+                .map(|rule| rule.tool_name.as_str())
+                .collect::<Vec<_>>(),
+            ["FreshUser"]
+        );
         for source in [
-            PermissionRuleSource::UserSettings,
-            PermissionRuleSource::ProjectSettings,
-            PermissionRuleSource::LocalSettings,
-            PermissionRuleSource::CliArg,
-            PermissionRuleSource::Session,
-        ] {
-            assert!(managed.always_allow_rules[&source].is_empty(), "{source:?}");
-        }
-        assert_eq!(
-            managed.always_allow_rules[&PermissionRuleSource::Command][0].tool_name,
-            "OldCommand"
-        );
-        assert_eq!(
-            managed.always_allow_rules[&PermissionRuleSource::FlagSettings][0].tool_name,
-            "OldFlagSettings"
-        );
-        assert_eq!(
-            managed.always_allow_rules[&PermissionRuleSource::PolicySettings][0].tool_name,
-            "FreshPolicy"
-        );
-
-        let normal =
-            sync_permission_rules_from_disk(&context, std::slice::from_ref(&fresh_policy), false);
-        for source in [
-            PermissionRuleSource::UserSettings,
             PermissionRuleSource::ProjectSettings,
             PermissionRuleSource::LocalSettings,
         ] {
@@ -6620,6 +6671,7 @@ mod tests {
     /// carries the flag.
     #[test]
     fn isolated_subagent_denials_stay_local_matches_official() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         use crate::utils::permissions::denial_tracking::{DenialTrackingState, record_denial};
 
         let parent_state = DenialTrackingState {
@@ -6801,6 +6853,7 @@ mod tests {
 
     #[test]
     fn bypass_and_plan_allow_after_tool_allow_match_official_complete_decision() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let input = serde_json::json!({"todos":[]});
         for mode in [PermissionMode::BypassPermissions, PermissionMode::Plan] {
             let permission = ToolPermissionContext {
@@ -6856,6 +6909,7 @@ mod tests {
 
     #[test]
     fn aborted_permission_call_matches_official_rejection_before_rules_and_denial_reset() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let input = serde_json::json!({"todos":[]});
         let context = crate::tool::ToolUseContext::default();
         context.abort_controller.abort();
@@ -6882,6 +6936,7 @@ mod tests {
 
     #[tokio::test]
     async fn rule_only_powershell_check_matches_official_content_deny_without_store_mutation() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut permissions = ToolPermissionContext {
             mode: PermissionMode::Default,
             ..Default::default()
@@ -6919,6 +6974,7 @@ mod tests {
 
     #[test]
     fn schema_failure_still_reaches_bypass_matches_official_inner_catch() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         // CC permissions.ts:1218-1224 catches parse failures then proceeds to 2a.
         let input = serde_json::json!({"questions":42});
         let permission = ToolPermissionContext {
@@ -7019,6 +7075,7 @@ mod tests {
 
     #[test]
     fn live_deny_rule_precedes_stale_bypass_snapshot_matches_official_get_app_state() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let mut permission = ToolPermissionContext::default();
         permission.always_deny_rules.insert(
             PermissionRuleSource::Session,

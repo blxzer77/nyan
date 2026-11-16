@@ -1,6 +1,6 @@
 //! Task utility seam.
 //!
-//! Maps to CC `utils/tasks.ts` (TodoV2 disk store under `~/.claude/tasks/`).
+//! Maps to CC `utils/tasks.ts` (TodoV2 disk store under `~/.nyan/tasks/`).
 //! Local Bash lifecycle state belongs to `tasks/local_shell_task`, matching
 //! CC's source ownership.
 
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::utils::process_env::JsTruthy;
 #[cfg(test)]
-use crate::utils::test_env::{EnvVarGuard, TestStateLock};
+use crate::utils::test_env::{EnvVarGuard, TestLockRank, TestStateLock};
 
 const HIGH_WATER_MARK_FILE: &str = ".highwatermark";
 
@@ -59,8 +59,7 @@ pub fn clear_leader_team_name() {
 
 /// Maps to: CC `utils/tasks.ts#getTaskListId`.
 pub fn get_task_list_id() -> String {
-    if let Some(task_list_id) = crate::utils::process_env::var("CLAUDE_CODE_TASK_LIST_ID").truthy()
-    {
+    if let Some(task_list_id) = crate::utils::process_env::var("NYAN_TASK_LIST_ID").truthy() {
         return task_list_id;
     }
     crate::utils::teammate::get_team_name(None)
@@ -70,7 +69,7 @@ pub fn get_task_list_id() -> String {
 
 /// Maps to: CC `utils/tasks.ts#getTasksDir`.
 pub fn get_tasks_dir(task_list_id: &str) -> std::path::PathBuf {
-    crate::utils::env_utils::get_claude_config_home_dir()
+    crate::utils::env_utils::get_config_home_dir()
         .join("tasks")
         .join(sanitize_path_component(task_list_id))
 }
@@ -147,13 +146,13 @@ pub fn reset_task_list(task_list_id: &str) -> std::io::Result<()> {
 
 /// Maps to: CC `utils/tasks.ts:133-139` `isTodoV2Enabled()`.
 ///
-/// Force-enable tasks in non-interactive mode via `CLAUDE_CODE_ENABLE_TASKS`
+/// Force-enable tasks in non-interactive mode via `NYAN_ENABLE_TASKS`
 /// (SDK users who want Task tools over TodoWrite); otherwise Task tools are
 /// interactive-only, keyed off the bootstrap session flag
 /// (`getIsNonInteractiveSession()`), not an env var.
 pub fn is_todo_v2_enabled() -> bool {
     if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_ENABLE_TASKS").as_deref(),
+        crate::utils::process_env::var("NYAN_ENABLE_TASKS").as_deref(),
     ) {
         return true;
     }
@@ -460,13 +459,13 @@ pub(crate) fn clear_task_tool_store_for_test() {
     let _ = reset_task_list(&get_task_list_id());
 }
 
-/// Isolates TodoV2 disk IO under a temp `CLAUDE_CONFIG_DIR` for tests.
+/// Isolates TodoV2 disk IO under a temp `NYAN_CONFIG_DIR` for tests.
 #[cfg(test)]
 pub(crate) struct TempTaskConfig {
     pub root: std::path::PathBuf,
     _guards: Vec<EnvVarGuard>,
-    /// Redirecting `CLAUDE_CONFIG_DIR` also redirects `~/.claude.json`
-    /// (`utils/config.rs:119-120`), so the temp root below carries no
+    /// Redirecting `NYAN_CONFIG_DIR` also redirects the state file
+    /// (`utils/env.rs` `get_global_state_file`), so the temp root below carries no
     /// `hasTrustDialogAccepted` for any path and the workspace reads as
     /// UNTRUSTED. CC skips every hook in an untrusted interactive session
     /// (`utils/hooks.ts:1994-1999` over `computeTrustDialogAccepted`'s `false`
@@ -486,8 +485,8 @@ impl TempTaskConfig {
         let root =
             std::env::temp_dir().join(format!("nyan-tasks-{}", uuid::Uuid::new_v4().simple()));
         let guards = vec![
-            EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root),
-            EnvVarGuard::set("CLAUDE_CODE_TASK_LIST_ID", list_id),
+            EnvVarGuard::set("NYAN_CONFIG_DIR", &root),
+            EnvVarGuard::set("NYAN_TASK_LIST_ID", list_id),
         ];
         let _ = reset_task_list(list_id);
         Self {
@@ -558,7 +557,7 @@ impl TaskToolStoreCompatInner {
 }
 
 #[cfg(test)]
-pub(crate) static TASK_TOOL_TEST_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStateLock::new);
+pub(crate) static TASK_TOOL_TEST_LOCK: TestStateLock = TestStateLock::new(TestLockRank::TaskTool);
 
 #[cfg(test)]
 mod tests {
@@ -571,8 +570,8 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root =
             std::env::temp_dir().join(format!("nyan-task-claim-{}", uuid::Uuid::new_v4().simple()));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _list_guard = EnvVarGuard::set("CLAUDE_CODE_TASK_LIST_ID", "session");
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
+        let _list_guard = EnvVarGuard::set("NYAN_TASK_LIST_ID", "session");
         let _ = reset_task_list("session");
         create_task(
             "session",
@@ -636,7 +635,7 @@ mod tests {
             .lock()
             .unwrap();
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _task_list_guard = EnvVarGuard::set("CLAUDE_CODE_TASK_LIST_ID", "");
+        let _task_list_guard = EnvVarGuard::set("NYAN_TASK_LIST_ID", "");
         clear_leader_team_name();
         crate::utils::teammate::clear_dynamic_team_context();
 
@@ -655,10 +654,10 @@ mod tests {
         ));
         assert_eq!(get_task_list_id(), "pane-team");
 
-        crate::utils::process_env::set("CLAUDE_CODE_TASK_LIST_ID", "explicit-list");
+        crate::utils::process_env::set("NYAN_TASK_LIST_ID", "explicit-list");
         assert_eq!(get_task_list_id(), "explicit-list");
 
-        crate::utils::process_env::set("CLAUDE_CODE_TASK_LIST_ID", "");
+        crate::utils::process_env::set("NYAN_TASK_LIST_ID", "");
         crate::utils::teammate::clear_dynamic_team_context();
         clear_leader_team_name();
     }
@@ -669,7 +668,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let root =
             std::env::temp_dir().join(format!("nyan-task-reset-{}", uuid::Uuid::new_v4().simple()));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let task_list_id = "alpha";
         let dir = get_tasks_dir(task_list_id);
         ensure_tasks_dir(task_list_id).unwrap();
@@ -705,16 +704,16 @@ mod tests {
     #[test]
     fn is_todo_v2_enabled_matches_official_interactive_default_and_env_override() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_ENABLE_TASKS");
+        crate::utils::process_env::remove("NYAN_ENABLE_TASKS");
         crate::utils::process_env::remove("NYAN_NON_INTERACTIVE_SESSION");
         assert!(super::is_todo_v2_enabled());
 
         crate::utils::process_env::set("NYAN_NON_INTERACTIVE_SESSION", "1");
         assert!(!super::is_todo_v2_enabled());
 
-        crate::utils::process_env::set("CLAUDE_CODE_ENABLE_TASKS", "1");
+        crate::utils::process_env::set("NYAN_ENABLE_TASKS", "1");
         assert!(super::is_todo_v2_enabled());
-        crate::utils::process_env::remove("CLAUDE_CODE_ENABLE_TASKS");
+        crate::utils::process_env::remove("NYAN_ENABLE_TASKS");
         crate::utils::process_env::remove("NYAN_NON_INTERACTIVE_SESSION");
     }
 }

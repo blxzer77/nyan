@@ -4,7 +4,7 @@
 //! replaces the corresponding AppState snapshots.
 
 use super::SettingSource;
-use super::{get_settings_for_source, get_settings_with_errors};
+use super::get_settings_with_errors;
 use crate::state::store::AppStore;
 use std::sync::Arc;
 
@@ -17,39 +17,14 @@ pub fn apply_settings_change(source: SettingSource, store: &AppStore) {
     ));
     let permission_rules =
         crate::utils::permissions::permissions_loader::load_all_permission_rules_from_disk();
-    let managed_only =
-        crate::utils::permissions::permissions_loader::should_allow_managed_permission_rules_only();
-    let policy_settings = get_settings_for_source(SettingSource::Policy);
-    crate::utils::hooks::hooks_config_snapshot::update_hooks_config_snapshot(
-        &fresh.settings,
-        policy_settings.as_ref(),
-        crate::utils::settings::plugin_only_policy::is_restricted_to_plugin_only("hooks"),
-    );
+    crate::utils::hooks::hooks_config_snapshot::update_hooks_config_snapshot(&fresh.settings);
     store.replace_with(|state| {
         let mut permission_context =
             crate::utils::permissions::permissions::sync_permission_rules_from_disk(
                 &state.tool_permission_context,
                 &permission_rules,
-                managed_only,
             );
 
-        // Maps to CC's internal-distribution broad-shell re-strip after sync.
-        if crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Permissions,
-        ) && crate::utils::process_env::var("CLAUDE_CODE_ENTRYPOINT").as_deref() != Some("local-agent")
-        {
-            let dangerous =
-                crate::utils::permissions::permission_setup::find_overly_broad_bash_permissions(
-                    &permission_rules,
-                    &[],
-                );
-            if !dangerous.is_empty() {
-                permission_context = crate::utils::permissions::permission_setup::remove_dangerous_permissions(
-                    &permission_context,
-                    &dangerous,
-                );
-            }
-        }
         if permission_context.is_bypass_permissions_mode_available
             && crate::utils::permissions::permission_setup::is_bypass_permissions_mode_disabled()
         {
@@ -74,6 +49,7 @@ mod tests {
 
     #[test]
     fn apply_settings_change_replaces_app_state_settings_snapshot() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let store = AppStore::new(AppState::default(), None);
         let before = store.get().settings.clone();
         apply_settings_change(SettingSource::User, &store);

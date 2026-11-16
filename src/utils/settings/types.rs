@@ -40,8 +40,6 @@ where
 // `utils/permissions/PermissionMode.ts`.
 pub use crate::utils::permissions::permission_mode::{EXTERNAL_PERMISSION_MODES, PERMISSION_MODES};
 
-pub const CUSTOMIZATION_SURFACES: &[&str] = &["skills", "agents", "hooks", "mcp"];
-
 pub const DEFAULT_SHELLS: &[&str] = &["bash", "powershell"];
 
 pub const LOGIN_METHODS: &[&str] = &["claudeai", "console"];
@@ -59,9 +57,6 @@ pub const DEFAULT_VIEWS: &[&str] = &["chat", "transcript"];
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct SettingsJson {
-    #[serde(rename = "$schema")]
-    pub schema: Option<String>,
-
     pub api_key_helper: Option<String>,
     pub aws_credential_export: Option<String>,
     pub aws_auth_refresh: Option<String>,
@@ -83,7 +78,6 @@ pub struct SettingsJson {
     // ── Hooks ──
     pub hooks: Option<serde_json::Value>,
     pub disable_all_hooks: Option<bool>,
-    pub allow_managed_hooks_only: Option<bool>,
     pub allowed_http_hook_urls: Option<Vec<String>>,
     pub http_hook_allowed_env_vars: Option<Vec<String>>,
 
@@ -93,7 +87,6 @@ pub struct SettingsJson {
     pub disabled_mcpjson_servers: Option<Vec<String>>,
     pub allowed_mcp_servers: Option<Vec<AllowedMcpServerEntry>>,
     pub denied_mcp_servers: Option<Vec<DeniedMcpServerEntry>>,
-    pub allow_managed_mcp_servers_only: Option<bool>,
 
     pub output_style: Option<String>,
     pub language: Option<String>,
@@ -120,7 +113,6 @@ pub struct SettingsJson {
     pub always_thinking_enabled: Option<bool>,
     pub prompt_suggestion_enabled: Option<bool>,
     pub terminal_title_from_rename: Option<bool>,
-    pub feedback_survey_rate: Option<f64>,
     pub skip_web_fetch_preflight: Option<bool>,
 
     pub auto_mode_threshold: Option<String>,
@@ -150,16 +142,11 @@ pub struct SettingsJson {
 
     // ── Plugins ──
     pub enabled_plugins: Option<serde_json::Value>,
-    pub strict_plugin_only_customization: Option<serde_json::Value>,
     pub plugin_configs: Option<serde_json::Value>,
-    pub plugin_trust_message: Option<String>,
 
     // ── Marketplace ──
     pub extra_known_marketplaces: Option<serde_json::Value>,
-    pub strict_known_marketplaces: Option<Vec<serde_json::Value>>,
-    pub blocked_marketplaces: Option<Vec<serde_json::Value>>,
 
-    pub allow_managed_permission_rules_only: Option<bool>,
     pub skip_dangerous_mode_permission_prompt: Option<bool>,
     pub classifier_permissions_enabled: Option<bool>,
 
@@ -167,23 +154,17 @@ pub struct SettingsJson {
     pub allowed_channel_plugins: Option<Vec<serde_json::Value>>,
 
     // ── Memory ──
-    pub claude_md_excludes: Option<Vec<String>>,
+    #[serde(rename = "claudeMdExcludes")]
+    pub agents_md_excludes: Option<Vec<String>>,
     pub auto_memory_enabled: Option<bool>,
     pub auto_memory_directory: Option<String>,
     pub auto_dream_enabled: Option<bool>,
-
-    // ── Remote ──
-    pub remote: Option<RemoteSettings>,
-
-    pub auto_updates_channel: Option<String>,
-    pub minimum_version: Option<String>,
 
     pub plans_directory: Option<String>,
     pub show_clear_context_on_plan_accept: Option<bool>,
     pub agent: Option<String>,
     pub company_announcements: Option<Vec<String>>,
 
-    pub voice_enabled: Option<bool>,
     pub assistant: Option<bool>,
     pub assistant_name: Option<String>,
     pub default_view: Option<String>,
@@ -192,8 +173,6 @@ pub struct SettingsJson {
 
     // ── XAA IdP (feature-gated) ──
     pub xaa_idp: Option<XaaIdpSettings>,
-
-    pub disable_deep_link_registration: Option<String>,
 
     /// @nyan: one formal family for every nyan module's settings (compaction,
     /// cache warming, memory, retrieval, web search, decision provider, tool
@@ -277,14 +256,7 @@ pub struct AutoModeSettings {
     pub allow: Option<Vec<String>>,
     #[serde(rename = "soft_deny")]
     pub soft_deny: Option<Vec<String>>,
-    pub deny: Option<Vec<String>>,
     pub environment: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoteSettings {
-    pub default_environment_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -538,25 +510,6 @@ pub fn extra_known_marketplace_schema() -> &'static crate::utils::zod::Schema {
     })
 }
 
-/// Maps to: CC `utils/settings/types.ts:255-282` `strictPluginOnlyCustomization`'s
-/// preprocess — forwards-compat: drop unknown surface names so a future enum
-/// value doesn't fail safeParse and null out the ENTIRE managed-settings file.
-/// Degrades to less-locked, never to everything-unlocked.
-fn drop_unknown_customization_surfaces(v: &serde_json::Value) -> serde_json::Value {
-    match v.as_array() {
-        Some(arr) => serde_json::Value::Array(
-            arr.iter()
-                .filter(|x| {
-                    x.as_str()
-                        .is_some_and(|s| CUSTOMIZATION_SURFACES.contains(&s))
-                })
-                .cloned()
-                .collect(),
-        ),
-        None => v.clone(),
-    }
-}
-
 /// Maps to: CC `utils/settings/types.ts:570-596` — the `extraKnownMarketplaces`
 /// `.check`: for settings sources, the dict key must equal `source.name`, or
 /// the marketplace reconciler never converges (key-lookup misses every
@@ -594,17 +547,13 @@ fn extra_known_marketplaces_settings_key_check(
 ///
 /// Build-time gates, frozen at first access exactly as CC's memoized
 /// lazySchema freezes module-load state:
-/// - `CLAUDE_CODE_ENABLE_XAA` env → `xaaIdp`
-/// - `USER_TYPE=ant` → `classifierPermissionsEnabled` and the
-///   `autoMode.deny` back-compat alias
+/// - `NYAN_ENABLE_XAA` env → `xaaIdp`
 /// - `feature('TRANSCRIPT_CLASSIFIER')` (on) → `skipAutoPermissionPrompt`,
 ///   `useAutoModeDuringPlan`, `autoMode`
 /// - `feature('KAIROS') || feature('KAIROS_BRIEF')` (Brief on) → `defaultView`
-/// - `feature('LODESTONE')` / `feature('PROACTIVE')` / `feature('KAIROS')` /
-///   `feature('VOICE_MODE')` are absent or off here, so
-///   `disableDeepLinkRegistration`, the Sleep bounds, `voiceEnabled`,
-///   `assistant`, and `assistantName` do not enter the shape — same result as
-///   CC with those build features off.
+/// - `feature('PROACTIVE')` / `feature('KAIROS')` are absent or off here,
+///   so the Sleep bounds, `assistant`, and `assistantName` do not enter the
+///   shape — same result as CC with those build features off.
 ///
 /// `enabledPlugins`' `z.undefined()` union arm is unreachable from JSON input
 /// (no JSON value parses to undefined) and is not mirrored.
@@ -622,18 +571,11 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
         let transcript_classifier = feature_enabled(FeatureFlag::TranscriptClassifier);
         let kairos_or_brief =
             feature_enabled(FeatureFlag::Kairos) || feature_enabled(FeatureFlag::KairosBrief);
-        // USER_TYPE is a build-time define in CC. Keep the same axis for the
-        // remaining internal-only schema fields.
-        let is_ant = crate::utils::build_profile::build_audience().is_internal();
-        let xaa = is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_ENABLE_XAA").as_deref());
+        let xaa = is_env_truthy(crate::utils::process_env::var("NYAN_ENABLE_XAA").as_deref());
 
+        // @nyan: no `$schema` key. CC's points at the SchemaStore schema for
+        // Claude Code settings, which rejects nyan's own keys.
         let mut shape = vec![
-            (
-                "$schema",
-                zod::literal(json!(super::constants::CLAUDE_CODE_SETTINGS_SCHEMA_URL))
-                    .optional()
-                    .describe("JSON Schema reference for nyan settings"),
-            ),
             (
                 "apiKeyHelper",
                 zod::string()
@@ -659,7 +601,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 ),
             ),
         ];
-        // Gated so the SDK generator (which runs without CLAUDE_CODE_ENABLE_XAA)
+        // Gated so the SDK generator (which runs without NYAN_ENABLE_XAA)
         // doesn't surface this; the outer .passthrough() keeps an existing key
         // alive across env-var-off sessions.
         if xaa {
@@ -742,13 +684,13 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
             (
                 "includeCoAuthoredBy",
                 zod::boolean().optional().describe(
-                    "Deprecated: Use attribution instead. Whether to include Claude's co-authored by attribution in commits and PRs (defaults to true)",
+                    "Deprecated: Use attribution instead. Whether to include nyan's co-authored by attribution in commits and PRs (defaults to true)",
                 ),
             ),
             (
                 "includeGitInstructions",
                 zod::boolean().optional().describe(
-                    "Include built-in commit and PR workflow instructions in Claude's system prompt (default: true)",
+                    "Include built-in commit and PR workflow instructions in nyan's system prompt (default: true)",
                 ),
             ),
             (
@@ -831,12 +773,6 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 ),
             ),
             (
-                "allowManagedHooksOnly",
-                zod::boolean().optional().describe(
-                    "When true (and set in managed settings), only hooks from managed settings run. User, project, and local hooks are ignored.",
-                ),
-            ),
-            (
                 "allowedHttpHookUrls",
                 zod::array(zod::string()).optional().describe(
                     "Allowlist of URL patterns that HTTP hooks may target. Supports * as a wildcard (e.g. \"https://hooks.example.com/*\"). When set, HTTP hooks with non-matching URLs are blocked. If undefined, all URLs are allowed. If empty array, no HTTP hooks are allowed. Arrays merge across settings sources (same semantics as allowedMcpServers).",
@@ -849,35 +785,6 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 ),
             ),
             (
-                "allowManagedPermissionRulesOnly",
-                zod::boolean().optional().describe(
-                    "When true (and set in managed settings), only permission rules (allow/deny/ask) from managed settings are respected. User, project, local, and CLI argument permission rules are ignored.",
-                ),
-            ),
-            (
-                "allowManagedMcpServersOnly",
-                zod::boolean().optional().describe(
-                    "When true (and set in managed settings), allowedMcpServers is only read from managed settings. deniedMcpServers still merges from all sources, so users can deny servers for themselves. Users can still add their own MCP servers, but only the admin-defined allowlist applies.",
-                ),
-            ),
-            (
-                "strictPluginOnlyCustomization",
-                zod::preprocess(
-                    drop_unknown_customization_surfaces,
-                    zod::union(vec![
-                        zod::boolean(),
-                        zod::array(zod::enumeration(CUSTOMIZATION_SURFACES.to_vec())),
-                    ]),
-                )
-                .optional()
-                // Non-array invalid values would fail the union and null the
-                // whole managed-settings file; .catch drops the field instead.
-                .catch_undefined()
-                .describe(
-                    "When set in managed settings, blocks non-plugin customization sources for the listed surfaces. Array form locks specific surfaces (e.g. [\"skills\", \"hooks\"]); `true` locks all four; `false` is an explicit no-op. Blocked: ~/.claude/{surface}/, .claude/{surface}/ (project), settings.json hooks, .mcp.json. NOT blocked: managed (policySettings) sources, plugin-provided customizations. Composes with strictKnownMarketplaces for end-to-end admin control — plugins gated by marketplace allowlist, everything else blocked here.",
-                ),
-            ),
-            (
                 "enabledPlugins",
                 zod::record(zod::union(vec![
                     zod::array(zod::string()),
@@ -885,7 +792,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 ]))
                 .optional()
                 .describe(
-                    "Enabled plugins using plugin-id@marketplace-id format. Example: { \"formatter@anthropic-tools\": true }. Also supports extended format with version constraints.",
+                    "Enabled plugins using plugin-id@marketplace-id format. Example: { \"formatter@example-tools\": true }. Also supports extended format with version constraints.",
                 ),
             ),
             (
@@ -894,23 +801,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                     .check(extra_known_marketplaces_settings_key_check)
                     .optional()
                     .describe(
-                        "Additional marketplaces to make available for this repository. Typically used in repository .claude/settings.json to ensure team members have required plugin sources.",
-                    ),
-            ),
-            (
-                "strictKnownMarketplaces",
-                zod::array(marketplace_source_schema().clone())
-                    .optional()
-                    .describe(
-                        "Enterprise strict list of allowed marketplace sources. When set in managed settings, ONLY these exact sources can be added as marketplaces. The check happens BEFORE downloading, so blocked sources never touch the filesystem. Note: this is a policy gate only — it does NOT register marketplaces. To pre-register allowed marketplaces for users, also set extraKnownMarketplaces.",
-                    ),
-            ),
-            (
-                "blockedMarketplaces",
-                zod::array(marketplace_source_schema().clone())
-                    .optional()
-                    .describe(
-                        "Enterprise blocklist of marketplace sources. When set in managed settings, these exact sources are blocked from being added as marketplaces. The check happens BEFORE downloading, so blocked sources never touch the filesystem.",
+                        "Additional marketplaces to make available for this repository. Typically used in repository .nyan/settings.json to ensure team members have required plugin sources.",
                     ),
             ),
             (
@@ -940,7 +831,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
             (
                 "language",
                 zod::string().optional().describe(
-                    "Preferred language for Claude responses and voice dictation (e.g., \"japanese\", \"spanish\")",
+                    "Preferred language for nyan responses (e.g., \"japanese\", \"spanish\")",
                 ),
             ),
             (
@@ -950,12 +841,6 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 ),
             ),
             ("sandbox", sandbox_settings_schema().clone().optional()),
-            (
-                "feedbackSurveyRate",
-                zod::number().min(0).max(1).optional().describe(
-                    "Probability (0–1) that the session quality survey appears when eligible. 0.05 is a reasonable starting point.",
-                ),
-            ),
             (
                 "spinnerTipsEnabled",
                 zod::boolean()
@@ -1066,43 +951,12 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 ),
             ),
             (
-                "remote",
-                zod::object(vec![(
-                    "defaultEnvironmentId",
-                    zod::string()
-                        .optional()
-                        .describe("Default environment ID to use for remote sessions"),
-                )])
-                .optional()
-                .describe("Remote session configuration"),
-            ),
-            (
-                "autoUpdatesChannel",
-                zod::enumeration(vec!["latest", "stable"])
-                    .optional()
-                    .describe("Release channel for auto-updates (latest or stable)"),
-            ),
-            (
-                "minimumVersion",
-                zod::string().optional().describe(
-                    "Minimum version to stay on - prevents downgrades when switching to stable channel",
-                ),
-            ),
-            (
                 "plansDirectory",
                 zod::string().optional().describe(
-                    "Custom directory for plan files, relative to project root. If not set, defaults to ~/.claude/plans/",
+                    "Custom directory for plan files, relative to project root. If not set, defaults to ~/.nyan/plans/",
                 ),
             ),
         ]);
-        if is_ant {
-            shape.push((
-                "classifierPermissionsEnabled",
-                zod::boolean().optional().describe(
-                    "Enable AI-based classification for Bash(prompt:...) permission rules",
-                ),
-            ));
-        }
         shape.extend(vec![
             (
                 "channelsEnabled",
@@ -1118,7 +972,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 ]))
                 .optional()
                 .describe(
-                    "Teams/Enterprise allowlist of channel plugins. When set, replaces the default Anthropic allowlist — admins decide which plugins may push inbound messages. Undefined falls back to the default. Requires channelsEnabled: true.",
+                    "Teams/Enterprise allowlist of channel plugins. When set, replaces the default allowlist — admins decide which plugins may push inbound messages. Undefined falls back to the default. Requires channelsEnabled: true.",
                 ),
             ),
         ]);
@@ -1140,13 +994,13 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
             (
                 "autoMemoryEnabled",
                 zod::boolean().optional().describe(
-                    "Enable auto-memory for this project. When false, Claude will not read from or write to the auto-memory directory.",
+                    "Enable auto-memory for this project. When false, nyan will not read from or write to the auto-memory directory.",
                 ),
             ),
             (
                 "autoMemoryDirectory",
                 zod::string().optional().describe(
-                    "Custom directory path for auto-memory storage. Supports ~/ prefix for home directory expansion. Ignored if set in projectSettings (checked-in .claude/settings.json) for security. When unset, defaults to ~/.claude/projects/<sanitized-cwd>/memory/.",
+                    "Custom directory path for auto-memory storage. Supports ~/ prefix for home directory expansion. Ignored if set in projectSettings (checked-in .nyan/settings.json) for security. When unset, defaults to ~/.nyan/projects/<sanitized-cwd>/memory/.",
                 ),
             ),
             (
@@ -1169,7 +1023,7 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
             ),
         ]);
         if transcript_classifier {
-            let mut auto_mode_shape = vec![
+            let auto_mode_shape = vec![
                 (
                     "allow",
                     zod::array(zod::string())
@@ -1182,17 +1036,13 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                         .optional()
                         .describe("Rules for the auto mode classifier deny section"),
                 ),
+                (
+                    "environment",
+                    zod::array(zod::string())
+                        .optional()
+                        .describe("Entries for the auto mode classifier environment section"),
+                ),
             ];
-            if is_ant {
-                // Back-compat alias for ant users; external users use soft_deny.
-                auto_mode_shape.push(("deny", zod::array(zod::string()).optional()));
-            }
-            auto_mode_shape.push((
-                "environment",
-                zod::array(zod::string())
-                    .optional()
-                    .describe("Entries for the auto mode classifier environment section"),
-            ));
             shape.extend(vec![
                 (
                     "skipAutoPermissionPrompt",
@@ -1269,12 +1119,6 @@ pub fn settings_schema() -> &'static crate::utils::zod::Schema {
                 "claudeMdExcludes",
                 zod::array(zod::string()).optional().describe(
                     "Glob patterns or absolute paths of AGENTS.md files to exclude from loading. Patterns are matched against absolute file paths using picomatch. Applies to User and Project memory types (Managed/policy files cannot be excluded). Examples: \"/home/user/monorepo/AGENTS.md\", \"**/code/AGENTS.md\"",
-                ),
-            ),
-            (
-                "pluginTrustMessage",
-                zod::string().optional().describe(
-                    "Custom message to append to the plugin trust warning shown before installation. Only read from policy settings (managed-settings.json / MDM). Useful for enterprise administrators to add organization-specific context (e.g., \"All plugins from our internal marketplace are vetted and approved.\").",
                 ),
             ),
             // @nyan: the strict top-level schema must know this key, otherwise
@@ -1464,6 +1308,46 @@ mod zod_schema_tests {
         );
     }
 
+    #[test]
+    fn settings_schema_omits_cloud_remote_configuration_and_keeps_ssh() {
+        let projected = crate::utils::zod::to_json_schema(settings_schema());
+        assert!(projected["properties"].get("remote").is_none());
+        assert!(
+            projected["properties"]
+                .get("disableDeepLinkRegistration")
+                .is_none()
+        );
+        assert!(projected["properties"].get("sshConfigs").is_some());
+        let strict = settings_schema().clone().strict();
+        for removed in [
+            serde_json::json!({"remote": {"defaultEnvironmentId": "env_test"}}),
+            serde_json::json!({"disableDeepLinkRegistration": "enabled"}),
+        ] {
+            assert!(crate::utils::zod::safe_parse(&strict, &removed).is_err());
+        }
+        let serialized = serde_json::to_value(SettingsJson::default()).unwrap();
+        assert!(serialized.get("remote").is_none());
+        assert!(serialized.get("disableDeepLinkRegistration").is_none());
+    }
+
+    #[test]
+    fn settings_schema_omits_feedback_survey_configuration() {
+        let projected = crate::utils::zod::to_json_schema(settings_schema());
+        assert!(projected["properties"].get("feedbackSurveyRate").is_none());
+        assert!(
+            crate::utils::zod::safe_parse(
+                &settings_schema().clone().strict(),
+                &serde_json::json!({"feedbackSurveyRate": 0.05}),
+            )
+            .is_err()
+        );
+        let serialized = serde_json::to_value(SettingsJson::default()).unwrap();
+        assert!(serialized.get("feedbackSurveyRate").is_none());
+        let state = serde_json::to_value(crate::utils::config::GlobalConfig::default()).unwrap();
+        assert!(state.get("feedbackSurveyState").is_none());
+        assert!(state.get("transcriptShareDismissed").is_none());
+    }
+
     /// @nyan: `nyan` is a formal top-level key. The strict edit-time schema
     /// must accept it (and its documented shape), or any nyan configuration
     /// would be rejected as an unknown field; a typo inside `nyan` is stripped
@@ -1510,7 +1394,6 @@ mod zod_schema_tests {
     #[test]
     fn settings_schema_parses_a_realistic_file_end_to_end() {
         let ok = serde_json::json!({
-            "$schema": "https://json.schemastore.org/claude-code-settings.json",
             "language": "zh",
             "env": {"PORT": 8080},
             "permissions": {"allow": ["Bash(npm run:*)"], "defaultMode": "plan"},
@@ -1525,38 +1408,15 @@ mod zod_schema_tests {
         // The env family coerced through the carrier.
         assert_eq!(parsed["env"]["PORT"], "8080");
 
-        // A wrong $schema literal fails.
+        // `$schema` is not a nyan settings key: the edit-time strict schema
+        // rejects it like any other unknown top-level key.
         assert!(
             crate::utils::zod::safe_parse(
-                settings_schema(),
-                &serde_json::json!({"$schema": "https://example.com/other.json"}),
+                &settings_schema().clone().strict(),
+                &serde_json::json!({"$schema": "https://json.schemastore.org/claude-code-settings.json"}),
             )
             .is_err()
         );
-    }
-
-    /// Maps to: CC `strictPluginOnlyCustomization` — the preprocess drops
-    /// unknown surfaces (forwards-compat) and `.catch(undefined)` swallows
-    /// invalid gated values instead of nulling the whole file.
-    #[test]
-    fn settings_schema_degrades_gated_fields_like_official() {
-        let filtered = crate::utils::zod::safe_parse(
-            settings_schema(),
-            &serde_json::json!({"strictPluginOnlyCustomization": ["skills", "commands"]}),
-        )
-        .expect("unknown surface filtered, not fatal");
-        assert_eq!(
-            filtered["strictPluginOnlyCustomization"],
-            serde_json::json!(["skills"])
-        );
-
-        let swallowed = crate::utils::zod::safe_parse(
-            settings_schema(),
-            &serde_json::json!({"strictPluginOnlyCustomization": "skills", "language": "zh"}),
-        )
-        .expect("invalid raw value swallowed by catch");
-        assert!(swallowed.get("strictPluginOnlyCustomization").is_none());
-        assert_eq!(swallowed["language"], "zh");
     }
 
     /// Maps to: CC `extraKnownMarketplaces` `.check` — a settings-sourced
@@ -1600,6 +1460,24 @@ mod zod_schema_tests {
     /// CC settings env objects retain ECMAScript own-key order when consumed by
     /// `utils/managedEnv.ts`, while `state/onChangeAppState.ts:164` gates on the
     /// nested env object's reference identity.
+    #[test]
+    fn settings_keeps_agents_md_excludes_json_key() {
+        let settings: SettingsJson = serde_json::from_value(serde_json::json!({
+            "claudeMdExcludes": ["**/private.md"],
+        }))
+        .expect("settings should deserialize the existing AgentsMd excludes key");
+
+        assert_eq!(
+            settings.agents_md_excludes,
+            Some(vec!["**/private.md".to_string()])
+        );
+        let serialized = serde_json::to_value(&settings).unwrap();
+        assert_eq!(
+            serialized["claudeMdExcludes"],
+            serde_json::json!(["**/private.md"])
+        );
+    }
+
     #[test]
     fn settings_env_matches_official_own_key_order_and_reference_identity() {
         let settings: SettingsJson = serde_json::from_str(

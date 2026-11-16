@@ -56,7 +56,7 @@ pub struct QueryParams {
     pub model_messages: Vec<Message>,
     /// Maps to: CC `query.ts` `QueryParams.systemPrompt`; REPL snapshots the
     /// effective prompt once before starting the query actor.
-    pub system_prompt: crate::services::api::claude::SystemPrompt,
+    pub system_prompt: crate::services::api::request::SystemPrompt,
     /// Maps to: CC `query.ts` `QueryParams.userContext`.
     pub user_context: std::collections::BTreeMap<String, String>,
     /// Maps to: CC `query.ts` `QueryParams.systemContext`.
@@ -68,7 +68,7 @@ pub struct QueryParams {
     pub token_budget: Option<i64>,
     /// Maps to: CC `query.ts` `QueryParams.taskBudget` (API-side task_budget,
     /// distinct from the local token-budget auto-continue feature).
-    pub task_budget: Option<crate::services::api::claude::TaskBudget>,
+    pub task_budget: Option<crate::services::api::request::TaskBudget>,
     /// Maps to: CC `query.ts` `QueryParams.maxTurns`. Interactive REPL leaves
     /// this `None`; SDK/headless callers may bound recursive tool continuations.
     pub max_turns: Option<u32>,
@@ -718,7 +718,7 @@ where
     let system_prompt = params.system_prompt.clone();
     let user_context = params.user_context.clone();
     let request = build_call_model_request(
-        prepare_call_model_messages(initial_messages, &user_context, false),
+        prepare_call_model_messages(initial_messages, &user_context),
         params.tool_use_context.tool_permission_context.clone(),
         &params.query_source,
         &system_prompt,
@@ -891,7 +891,7 @@ where
     let query_chain_id = deps.uuid();
     let mut next_query_depth = 0u32;
     let mut model_fallback_retry_tracking: Option<
-        crate::services::api::claude::QueryChainTracking,
+        crate::services::api::request::QueryChainTracking,
     > = None;
     // Maps to CC `query.ts` `pendingToolUseSummary`: the previous tool batch
     // starts a non-critical Haiku summary task; the next loop iteration yields
@@ -918,13 +918,13 @@ where
         // because upstream retries inside the API loop, not as a new turn.
         let query_tracking = if retrying_model_fallback {
             model_fallback_retry_tracking.take().unwrap_or_else(|| {
-                crate::services::api::claude::QueryChainTracking {
+                crate::services::api::request::QueryChainTracking {
                     chain_id: query_chain_id.clone(),
                     depth: next_query_depth.saturating_sub(1),
                 }
             })
         } else {
-            let tracking = crate::services::api::claude::QueryChainTracking {
+            let tracking = crate::services::api::request::QueryChainTracking {
                 chain_id: query_chain_id.clone(),
                 depth: next_query_depth,
             };
@@ -1293,13 +1293,12 @@ where
         // Prepend user context immediately before `deps.callModel(...)`. The
         // current REPL path has no user-context provider yet, so this is
         // normally a no-op in production. The loop also owns official
-        // `FallbackTriggeredError` handling: switch to the fallback model,
-        // strip model-bound thinking signatures for ant-internal retries, and
+        // `FallbackTriggeredError` handling: switch to the fallback model and
         // rerun the entire request without leaking partial tool results.
         let mut fallback_retry_used = current_model_override.is_some();
         let mut stream = loop {
             let messages_for_model =
-                prepare_call_model_messages(messages_for_query.clone(), &user_context, false);
+                prepare_call_model_messages(messages_for_query.clone(), &user_context);
             let cached_mc_new_user_message_index = pending_cache_edits.as_ref().and_then(|_| {
                 messages_for_model
                     .iter()
@@ -1322,7 +1321,7 @@ where
             request.options.query_tracking = Some(query_tracking.clone());
             request.options.max_output_tokens_override = max_output_tokens_override;
             if let Some(task_budget) = params.task_budget.as_ref() {
-                request.options.task_budget = Some(crate::services::api::claude::TaskBudget {
+                request.options.task_budget = Some(crate::services::api::request::TaskBudget {
                     total: task_budget.total,
                     remaining: task_budget_remaining.or(task_budget.remaining),
                 });
@@ -1331,7 +1330,7 @@ where
                 request.options.cached_mc_enabled = true;
                 request.options.cached_mc_pinned_edits = cached_mc_pinned_edits.clone();
                 request.options.cached_mc_new_cache_edits = Some(
-                    crate::services::api::claude::CachedMcEditsBlock::delete_refs(
+                    crate::services::api::request::CachedMcEditsBlock::delete_refs(
                         pending_cache_edits.deleted_tool_ids.clone(),
                     ),
                 );
@@ -1365,8 +1364,6 @@ where
                         && let Some(fallback) = model_fallback_from_error(&error)
                     {
                         fallback_retry_used = true;
-                        messages_for_query =
-                            strip_signature_blocks_for_model_fallback_retry(messages_for_query);
                         current_model_override = Some(fallback.fallback_model.clone());
                         if event_tx
                             .send(QueryEvent::Message(model_fallback_warning_message(
@@ -1797,8 +1794,8 @@ where
                             },
                         };
             match item {
-                crate::services::api::claude::QueryModelStreamItem::Content(item) => match item {
-                    crate::services::api::claude::ClaudeStreamItem::Text(text) => {
+                crate::services::api::request::QueryModelStreamItem::Content(item) => match item {
+                    crate::services::api::request::RequestStreamItem::Text(text) => {
                         if text.is_empty() {
                             continue;
                         }
@@ -1812,7 +1809,7 @@ where
                         streaming_text_buffer.push_str(&text);
                         continue;
                     }
-                    crate::services::api::claude::ClaudeStreamItem::Thinking { text, .. } => {
+                    crate::services::api::request::RequestStreamItem::Thinking { text, .. } => {
                         if text.is_empty() {
                             continue;
                         }
@@ -1827,7 +1824,7 @@ where
                         continue;
                     }
                     other => {
-                        let Some(content) = claude_stream_item_to_assistant_content(other) else {
+                        let Some(content) = stream_item_to_assistant_content(other) else {
                             continue;
                         };
                         if let Some(kind) = assistant_content_to_source_event_kind_with_status(
@@ -1899,8 +1896,8 @@ where
                             }
                     }
                 },
-                crate::services::api::claude::QueryModelStreamItem::CompletedContent(item) => {
-                    let Some(content) = claude_stream_item_to_assistant_content(item) else {
+                crate::services::api::request::QueryModelStreamItem::CompletedContent(item) => {
+                    let Some(content) = stream_item_to_assistant_content(item) else {
                         continue;
                     };
                     if let Some(kind) = assistant_content_to_source_event_kind_with_status(
@@ -1957,7 +1954,7 @@ where
                     assistant_content.push(content);
                     continue;
                 }
-                crate::services::api::claude::QueryModelStreamItem::StreamingFallback => {
+                crate::services::api::request::QueryModelStreamItem::StreamingFallback => {
                     // Maps to CC `query.ts` `options.onStreamingFallback()`:
                     // tombstone/discard partial streamed assistant state before
                     // accepting the non-streaming fallback assistant. This
@@ -2019,14 +2016,14 @@ where
                     }
                     continue;
                 }
-                crate::services::api::claude::QueryModelStreamItem::ModelFallback {
+                crate::services::api::request::QueryModelStreamItem::ModelFallback {
                     original_model,
                     fallback_model,
                 } => {
                     // Maps to CC `query.ts` catch of `FallbackTriggeredError`
                     // thrown by a streaming-to-non-streaming fallback: discard
-                    // partial stream state, switch to the fallback model, strip
-                    // model-bound thinking signatures, and retry this turn.
+                    // partial stream state, switch to the fallback model, and
+                    // retry this turn.
                     if fallback_retry_used {
                         let error = anyhow::Error::new(
                             crate::services::api::with_retry::FallbackTriggeredError {
@@ -2057,8 +2054,6 @@ where
                     if let Some(executor) = streaming_tool_executor.as_mut() {
                         executor.discard();
                     }
-                    messages_for_query =
-                        strip_signature_blocks_for_model_fallback_retry(messages_for_query);
                     model_fallback_retry_messages = Some(messages_for_query.clone());
                     model_fallback_retry_tracking = Some(query_tracking.clone());
                     current_model_override = Some(fallback_model.clone());
@@ -2075,7 +2070,7 @@ where
                     }
                     continue 'query_loop;
                 }
-                crate::services::api::claude::QueryModelStreamItem::Assistant(message) => {
+                crate::services::api::request::QueryModelStreamItem::Assistant(message) => {
                     // Maps to CC claude.ts:2192-2211 → query.ts:823-827: every
                     // `content_block_stop` yields a whole fresh-uuid
                     // single-block AssistantMessage that the REPL appends to
@@ -2196,7 +2191,7 @@ where
                     }
                     assistant_messages.push(message);
                 }
-                crate::services::api::claude::QueryModelStreamItem::AssistantDelta {
+                crate::services::api::request::QueryModelStreamItem::AssistantDelta {
                     stop_reason,
                     usage,
                 } => {
@@ -2238,7 +2233,7 @@ where
                         }
                     }
                 }
-                crate::services::api::claude::QueryModelStreamItem::SystemApiError(
+                crate::services::api::request::QueryModelStreamItem::SystemApiError(
                     system_message,
                 ) => {
                     // CC `query.ts:659,824`: the retry heartbeat passes
@@ -2258,7 +2253,7 @@ where
                         return Ok(transitions::Terminal::new("aborted_streaming"));
                     }
                 }
-                crate::services::api::claude::QueryModelStreamItem::SystemError(error)
+                crate::services::api::request::QueryModelStreamItem::SystemError(error)
                     if crate::services::context_collapse::is_withheld_prompt_too_long(
                         &error,
                         &params.query_source,
@@ -2267,19 +2262,19 @@ where
                     withheld_prompt_too_long_error = Some(error);
                     break;
                 }
-                crate::services::api::claude::QueryModelStreamItem::SystemError(error)
+                crate::services::api::request::QueryModelStreamItem::SystemError(error)
                     if crate::services::compact::reactive_compact::is_withheld_media_size_error(&error) =>
                 {
                     withheld_media_size_error = Some(error);
                     break;
                 }
-                crate::services::api::claude::QueryModelStreamItem::SystemError(error)
+                crate::services::api::request::QueryModelStreamItem::SystemError(error)
                     if system_api_error_is_max_output_tokens(&error) =>
                 {
                     withheld_api_error = Some(error);
                     break;
                 }
-                crate::services::api::claude::QueryModelStreamItem::SystemError(_error)
+                crate::services::api::request::QueryModelStreamItem::SystemError(_error)
                     if abort_controller.is_aborted() =>
                 {
                     // Maps to CC `APIUserAbortError` mid-stream: do not treat as
@@ -2287,7 +2282,7 @@ where
                     // query.ts / REPL (`[Request interrupted by user]`).
                     return Ok(transitions::Terminal::new("aborted_streaming"));
                 }
-                crate::services::api::claude::QueryModelStreamItem::SystemError(error) => {
+                crate::services::api::request::QueryModelStreamItem::SystemError(error) => {
                     let last_assistant_message = if !streaming_text_buffer.trim().is_empty() {
                         Some(streaming_text_buffer.as_str())
                     } else {
@@ -2404,7 +2399,7 @@ where
                             .await;
                     return Ok(transitions::Terminal::new(terminal_reason));
                 }
-                crate::services::api::claude::QueryModelStreamItem::Stream(event) => {
+                crate::services::api::request::QueryModelStreamItem::Stream(event) => {
                     if event_tx.send(QueryEvent::Stream(event)).await.is_err() {
                         return Ok(transitions::Terminal::new("aborted_streaming"));
                     }
@@ -4198,7 +4193,7 @@ fn should_escalate_max_output_tokens(current_override: Option<u32>) -> bool {
             crate::utils::feature_flags::FeatureFlag::MaxOutputTokensEscalation,
         ),
         current_override,
-        crate::utils::process_env::var_os("CLAUDE_CODE_MAX_OUTPUT_TOKENS")
+        crate::utils::process_env::var_os("NYAN_MAX_OUTPUT_TOKENS")
             .as_deref()
             .truthy()
             .is_some(),
@@ -4257,18 +4252,6 @@ fn should_preempt_context_blocking_limit_with_owners(
     )
 }
 
-fn strip_signature_blocks_for_model_fallback_retry(
-    messages_for_query: Vec<Message>,
-) -> Vec<Message> {
-    if crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Api,
-    ) {
-        crate::utils::messages::strip_signature_blocks(messages_for_query)
-    } else {
-        messages_for_query
-    }
-}
-
 fn model_fallback_from_error(
     error: &anyhow::Error,
 ) -> Option<&crate::services::api::with_retry::FallbackTriggeredError> {
@@ -4300,22 +4283,9 @@ fn model_fallback_warning_message(
 fn prepare_call_model_messages(
     messages_for_query: Vec<Message>,
     user_context: &std::collections::BTreeMap<String, String>,
-    strip_signature_blocks_for_fallback_retry: bool,
 ) -> Vec<Message> {
     // Maps to CC `query.ts` `deps.callModel({ messages:
-    // prependUserContext(messagesForQuery, userContext), ... })`. The
-    // `stripSignatureBlocks(messagesForQuery)` branch is only official on an
-    // ant-internal model-fallback retry after `FallbackTriggeredError`; Rust
-    // toggles this on the retry path owned by `query_loop(...)`, matching the
-    // official placement immediately before `deps.callModel(...)`.
-    let messages_for_query = if strip_signature_blocks_for_fallback_retry
-        && crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Api,
-        ) {
-        crate::utils::messages::strip_signature_blocks(messages_for_query)
-    } else {
-        messages_for_query
-    };
+    // prependUserContext(messagesForQuery, userContext), ... })`.
     crate::utils::api::prepend_user_context(messages_for_query, user_context)
 }
 
@@ -4456,8 +4426,10 @@ pub(crate) fn build_call_model_request(
         .main_loop_model
         .clone()
         .unwrap_or_else(crate::utils::model::model::get_main_loop_model);
-    let mut options =
-        crate::services::api::claude::Options::new(model, query_source.as_api_source().to_string());
+    let mut options = crate::services::api::request::Options::new(
+        model,
+        query_source.as_api_source().to_string(),
+    );
     options.profile = tool_use_context.main_loop_profile.clone();
     options.query_source = query_source.as_api_source().to_string();
     // Maps to CC `services/api/claude.ts:697` `agentId?: AgentId // Only set
@@ -4474,10 +4446,9 @@ pub(crate) fn build_call_model_request(
     options.skip_cache_write = Some(tool_use_context.skip_cache_write);
     options.is_non_interactive_session = tool_use_context.is_non_interactive_session;
     // Maps to CC `query.ts:685-686` `hasAppendSystemPrompt:
-    // !!toolUseContext.options.appendSystemPrompt` — selects the Agent SDK
-    // "Claude Code preset" prefix in `getCLISyspromptPrefix` for headless
-    // sessions that append to the default prompt. `!!` treats an empty
-    // string as absent.
+    // !!toolUseContext.options.appendSystemPrompt` — selects the non-interactive
+    // assistant prefix in `getCLISyspromptPrefix` for headless sessions that
+    // append to the default prompt. `!!` treats an empty string as absent.
     options.has_append_system_prompt = tool_use_context
         .append_system_prompt
         .as_deref()
@@ -5142,20 +5113,20 @@ async fn execute_stop_failure_hooks_for_api_error(
     .await;
 }
 
-fn claude_stream_item_to_assistant_content(
-    item: crate::services::api::claude::ClaudeStreamItem,
+fn stream_item_to_assistant_content(
+    item: crate::services::api::request::RequestStreamItem,
 ) -> Option<crate::types::message::AssistantContent> {
     match item {
-        crate::services::api::claude::ClaudeStreamItem::Text(text) => {
+        crate::services::api::request::RequestStreamItem::Text(text) => {
             Some(crate::types::message::AssistantContent::Text(text))
         }
-        crate::services::api::claude::ClaudeStreamItem::Thinking { text, signature } => {
+        crate::services::api::request::RequestStreamItem::Thinking { text, signature } => {
             Some(crate::types::message::AssistantContent::Thinking { text, signature })
         }
-        crate::services::api::claude::ClaudeStreamItem::RedactedThinking(data) => {
+        crate::services::api::request::RequestStreamItem::RedactedThinking(data) => {
             Some(crate::types::message::AssistantContent::RedactedThinking { data })
         }
-        crate::services::api::claude::ClaudeStreamItem::ToolUse {
+        crate::services::api::request::RequestStreamItem::ToolUse {
             id,
             name,
             input,
@@ -5174,7 +5145,7 @@ fn claude_stream_item_to_assistant_content(
                 Some(crate::types::message::AssistantContent::ToolUse(block))
             }
         }
-        crate::services::api::claude::ClaudeStreamItem::WebSearchToolResult {
+        crate::services::api::request::RequestStreamItem::WebSearchToolResult {
             tool_use_id,
             content,
         } => Some(
@@ -5288,7 +5259,7 @@ fn assistant_output_tokens(messages: &[crate::types::message::AssistantMessage])
 /// messages, records tool-use blocks, and only then proceeds to tool execution.
 pub(crate) fn query_model_stream_items_to_pending_events(
     turn_id: &str,
-    items: Vec<crate::services::api::claude::QueryModelStreamItem>,
+    items: Vec<crate::services::api::request::QueryModelStreamItem>,
 ) -> Vec<PendingQueryEvent> {
     let mut pending = Vec::new();
     let mut index = 0usize;
@@ -5299,7 +5270,7 @@ pub(crate) fn query_model_stream_items_to_pending_events(
 
     for item in items {
         match item {
-            crate::services::api::claude::QueryModelStreamItem::Assistant(message) => {
+            crate::services::api::request::QueryModelStreamItem::Assistant(message) => {
                 let envelope_uuid = Some(message.uuid.clone());
                 let mut envelope_content_index = 0usize;
                 for content in message.content {
@@ -5339,12 +5310,12 @@ pub(crate) fn query_model_stream_items_to_pending_events(
                     }
                 }
             }
-            crate::services::api::claude::QueryModelStreamItem::SystemError(error) => {
+            crate::services::api::request::QueryModelStreamItem::SystemError(error) => {
                 pending.push(sdk_error_event(turn_id, &error.content));
                 index += 1;
             }
-            crate::services::api::claude::QueryModelStreamItem::CompletedContent(item) => {
-                if let Some(content) = claude_stream_item_to_assistant_content(item) {
+            crate::services::api::request::QueryModelStreamItem::CompletedContent(item) => {
+                if let Some(content) = stream_item_to_assistant_content(item) {
                     completed_contents.push(content.clone());
                     if let Some(kind) = assistant_content_to_source_event_kind(content.clone()) {
                         pending.push(PendingQueryEvent {
@@ -5365,12 +5336,12 @@ pub(crate) fn query_model_stream_items_to_pending_events(
             // Retry heartbeats are non-terminal system messages; side-query
             // consumers only extract assistant content (CC side queries drive
             // the same generator and ignore the SystemAPIErrorMessage yields).
-            crate::services::api::claude::QueryModelStreamItem::SystemApiError(_)
-            | crate::services::api::claude::QueryModelStreamItem::Stream(_)
-            | crate::services::api::claude::QueryModelStreamItem::Content(_)
-            | crate::services::api::claude::QueryModelStreamItem::AssistantDelta { .. }
-            | crate::services::api::claude::QueryModelStreamItem::StreamingFallback
-            | crate::services::api::claude::QueryModelStreamItem::ModelFallback { .. } => {}
+            crate::services::api::request::QueryModelStreamItem::SystemApiError(_)
+            | crate::services::api::request::QueryModelStreamItem::Stream(_)
+            | crate::services::api::request::QueryModelStreamItem::Content(_)
+            | crate::services::api::request::QueryModelStreamItem::AssistantDelta { .. }
+            | crate::services::api::request::QueryModelStreamItem::StreamingFallback
+            | crate::services::api::request::QueryModelStreamItem::ModelFallback { .. } => {}
         }
     }
 
@@ -5796,7 +5767,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "anthropic_internal")]
     fn install_primary_model_profile() {
         crate::utils::settings::settings_cache::install_test_settings(
             serde_json::from_value(serde_json::json!({
@@ -6216,48 +6186,6 @@ mod tests {
         assert_eq!(texts[2], "tool result B");
     }
 
-    #[cfg(feature = "anthropic_internal")]
-    #[test]
-    fn prepare_call_model_messages_strips_signature_blocks_only_for_fallback_retry() {
-        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("NODE_ENV", "test");
-        let messages = vec![crate::types::message::Message::Assistant(
-            crate::types::message::AssistantMessage {
-                uuid: uuid::Uuid::new_v4().to_string(),
-                timestamp: chrono::Utc::now(),
-                content: vec![
-                    crate::types::message::AssistantContent::Thinking {
-                        text: "signed thinking".to_string(),
-                        signature: "sig".to_string(),
-                    },
-                    crate::types::message::AssistantContent::Text("visible".to_string()),
-                    crate::types::message::AssistantContent::RedactedThinking {
-                        data: "signature".to_string(),
-                    },
-                ],
-                model: None,
-                stop_reason: Some(crate::types::message::StopReason::EndTurn),
-                usage: None,
-            },
-        )];
-        let context = std::collections::BTreeMap::new();
-
-        let normal = prepare_call_model_messages(messages.clone(), &context, false);
-        let fallback = prepare_call_model_messages(messages, &context, true);
-
-        assert!(matches!(
-            &normal[0],
-            crate::types::message::Message::Assistant(message)
-                if message.content.len() == 3
-        ));
-        assert!(matches!(
-            &fallback[0],
-            crate::types::message::Message::Assistant(message)
-                if message.content == vec![crate::types::message::AssistantContent::Text("visible".to_string())]
-        ));
-        crate::utils::process_env::remove("NODE_ENV");
-    }
-
     #[tokio::test]
     async fn prompt_query_creates_real_app_store_file_history_snapshot_before_model_call() {
         #[derive(Clone)]
@@ -6270,7 +6198,7 @@ mod tests {
                 Box::pin(async {
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -6312,10 +6240,9 @@ mod tests {
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _non_interactive = EnvVarGuard::unset("CLAUDE_CODE_NON_INTERACTIVE");
-        let _nyan_non_interactive = EnvVarGuard::unset("NYAN_NON_INTERACTIVE");
-        let _nyan_non_interactive_session = EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION");
-        let _checkpointing = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING");
+        let _non_interactive = EnvVarGuard::unset("NYAN_NON_INTERACTIVE");
+        let _non_interactive_session = EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION");
+        let _checkpointing = EnvVarGuard::unset("NYAN_DISABLE_FILE_CHECKPOINTING");
         let _bootstrap = BootstrapRestore {
             interactive: crate::bootstrap::state::get_is_interactive(),
             persistence_disabled: crate::bootstrap::state::is_session_persistence_disabled(),
@@ -6494,7 +6421,6 @@ mod tests {
             gates: config::QueryConfigGates {
                 streaming_tool_execution: false,
                 emit_tool_use_summaries: true,
-                is_ant: false,
             },
         };
         let block = crate::types::message::ToolUseBlock {
@@ -6732,7 +6658,7 @@ mod tests {
         #[derive(Clone, Debug)]
         struct TaskBudgetDeps {
             seen_task_budgets: std::sync::Arc<
-                std::sync::Mutex<Vec<Option<crate::services::api::claude::TaskBudget>>>,
+                std::sync::Mutex<Vec<Option<crate::services::api::request::TaskBudget>>>,
             >,
         }
 
@@ -6785,7 +6711,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -6850,7 +6776,7 @@ mod tests {
             system_context: std::collections::BTreeMap::new(),
             query_source: QuerySource::Prompt,
             token_budget: None,
-            task_budget: Some(crate::services::api::claude::TaskBudget {
+            task_budget: Some(crate::services::api::request::TaskBudget {
                 total: 1_000,
                 remaining: None,
             }),
@@ -6879,7 +6805,7 @@ mod tests {
         assert_eq!(terminal.reason, "completed");
         assert_eq!(
             *seen_task_budgets.lock().unwrap(),
-            vec![Some(crate::services::api::claude::TaskBudget {
+            vec![Some(crate::services::api::request::TaskBudget {
                 total: 1_000,
                 remaining: Some(850),
             })]
@@ -6921,7 +6847,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -7022,9 +6948,8 @@ mod tests {
         assert!(!tracking.chain_id.is_empty());
     }
 
-    #[cfg(feature = "anthropic_internal")]
     #[test]
-    fn query_actor_retries_call_model_after_model_fallback_and_strips_signature_blocks() {
+    fn query_actor_retries_call_model_after_model_fallback() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::set("NODE_ENV", "test");
         install_primary_model_profile();
@@ -7059,7 +6984,7 @@ mod tests {
                     }
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -7163,20 +7088,7 @@ mod tests {
             ]
         );
         let seen_messages = seen_messages.lock().unwrap();
-        assert!(seen_messages[0].iter().any(|message| matches!(
-            message,
-            crate::types::message::Message::Assistant(assistant)
-                if assistant.content.iter().any(|content| matches!(
-                    content,
-                    crate::types::message::AssistantContent::Thinking { .. }
-                        | crate::types::message::AssistantContent::RedactedThinking { .. }
-                ))
-        )));
-        assert!(seen_messages[1].iter().any(|message| matches!(
-            message,
-            crate::types::message::Message::Assistant(assistant)
-                if assistant.content == vec![crate::types::message::AssistantContent::Text("visible".to_string())]
-        )));
+        assert_eq!(seen_messages[0], seen_messages[1]);
         let mut events = Vec::new();
         while let Ok(event) = event_rx.try_recv() {
             events.push(event);
@@ -7191,7 +7103,6 @@ mod tests {
         )));
     }
 
-    #[cfg(feature = "anthropic_internal")]
     #[test]
     fn query_actor_retries_after_streaming_non_streaming_model_fallback_signal() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
@@ -7244,7 +7155,7 @@ mod tests {
                     let (tx, rx) = tokio::sync::mpsc::channel(2);
                     if call == 0 {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::ModelFallback {
+                            crate::services::api::request::QueryModelStreamItem::ModelFallback {
                                 original_model: "claude-primary-model".to_string(),
                                 fallback_model: "claude-fallback-model".to_string(),
                             },
@@ -7253,7 +7164,7 @@ mod tests {
                         .ok();
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -7364,11 +7275,7 @@ mod tests {
             ]
         );
         let seen_messages = seen_messages.lock().unwrap();
-        assert!(seen_messages[1].iter().any(|message| matches!(
-            message,
-            crate::types::message::Message::Assistant(assistant)
-                if assistant.content == vec![crate::types::message::AssistantContent::Text("visible".to_string())]
-        )));
+        assert_eq!(seen_messages[0], seen_messages[1]);
         let mut events = Vec::new();
         while let Ok(event) = event_rx.try_recv() {
             events.push(event);
@@ -7390,7 +7297,6 @@ mod tests {
         )));
     }
 
-    #[cfg(feature = "anthropic_internal")]
     #[test]
     fn query_actor_keeps_fallback_model_for_tool_result_continuation() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
@@ -7453,7 +7359,7 @@ mod tests {
                         }
                     };
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(assistant),
+                        crate::services::api::request::QueryModelStreamItem::Assistant(assistant),
                     )
                     .await
                     .ok();
@@ -7539,16 +7445,20 @@ mod tests {
             ) -> crate::query::deps::CallModelStreamFuture {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(4);
-                    tx.send(crate::services::api::claude::QueryModelStreamItem::Content(
-                        crate::services::api::claude::ClaudeStreamItem::Text("partial".to_string()),
-                    ))
+                    tx.send(
+                        crate::services::api::request::QueryModelStreamItem::Content(
+                            crate::services::api::request::RequestStreamItem::Text(
+                                "partial".to_string(),
+                            ),
+                        ),
+                    )
                     .await
                     .ok();
-                    tx.send(crate::services::api::claude::QueryModelStreamItem::StreamingFallback)
+                    tx.send(crate::services::api::request::QueryModelStreamItem::StreamingFallback)
                         .await
                         .ok();
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -7656,7 +7566,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -7797,7 +7707,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -7903,7 +7813,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -8013,7 +7923,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -8091,9 +8001,9 @@ mod tests {
     #[test]
     fn build_call_model_request_matches_official_simple_prompt_then_caller_system_context() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_SIMPLE", "1");
+        crate::utils::process_env::set("NYAN_SIMPLE", "1");
         let base_system_prompt = crate::constants::prompts::get_simple_system_prompt_if_enabled();
-        crate::utils::process_env::remove("CLAUDE_CODE_SIMPLE");
+        crate::utils::process_env::remove("NYAN_SIMPLE");
         let mut system_context = std::collections::BTreeMap::new();
         system_context.insert("gitStatus".to_string(), "Current branch: main".to_string());
 
@@ -8110,10 +8020,7 @@ mod tests {
         // CC query.ts:450 appends only the supplied systemContext; runtime
         // session/config fields are not a second implicit context producer.
         assert_eq!(request.system_prompt.len(), 2);
-        assert!(
-            request.system_prompt[0]
-                .starts_with("You are Claude Code, Anthropic's official CLI for Claude.")
-        );
+        assert!(request.system_prompt[0].starts_with("You are nyan, an AI assistant."));
         assert!(request.system_prompt[0].contains("\n\nCWD: "));
         assert!(request.system_prompt[0].contains("\nDate: "));
         assert!(
@@ -8129,7 +8036,7 @@ mod tests {
     fn build_call_model_request_threads_non_interactive_session_like_official_options() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::bootstrap::state::set_is_interactive(true);
-        crate::utils::process_env::remove("CLAUDE_CODE_NON_INTERACTIVE");
+        crate::utils::process_env::remove("NYAN_NON_INTERACTIVE");
         let interactive_ctx =
             crate::tool::ToolUseContext::default().with_non_interactive_session(
                 crate::bootstrap::state::get_is_non_interactive_session(),
@@ -8145,7 +8052,7 @@ mod tests {
         );
         assert!(!interactive_request.options.is_non_interactive_session);
 
-        crate::utils::process_env::set("CLAUDE_CODE_NON_INTERACTIVE", "1");
+        crate::utils::process_env::set("NYAN_NON_INTERACTIVE", "1");
         let non_interactive_ctx =
             crate::tool::ToolUseContext::default().with_non_interactive_session(
                 crate::bootstrap::state::get_is_non_interactive_session(),
@@ -8161,7 +8068,7 @@ mod tests {
         );
         assert!(non_interactive_request.options.is_non_interactive_session);
 
-        crate::utils::process_env::remove("CLAUDE_CODE_NON_INTERACTIVE");
+        crate::utils::process_env::remove("NYAN_NON_INTERACTIVE");
         crate::bootstrap::state::set_is_interactive(true);
     }
 
@@ -8368,18 +8275,20 @@ mod tests {
             ) -> crate::query::deps::CallModelStreamFuture {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(8);
-                    tx.send(crate::services::api::claude::QueryModelStreamItem::Content(
-                        crate::services::api::claude::ClaudeStreamItem::ToolUse {
-                            id: "toolu_error_pair".to_string(),
-                            name: "Bash".to_string(),
-                            input: serde_json::json!({"command": "echo interrupted"}),
-                            is_server: false,
-                        },
-                    ))
+                    tx.send(
+                        crate::services::api::request::QueryModelStreamItem::Content(
+                            crate::services::api::request::RequestStreamItem::ToolUse {
+                                id: "toolu_error_pair".to_string(),
+                                name: "Bash".to_string(),
+                                input: serde_json::json!({"command": "echo interrupted"}),
+                                is_server: false,
+                            },
+                        ),
+                    )
                     .await
                     .ok();
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::SystemError(
+                        crate::services::api::request::QueryModelStreamItem::SystemError(
                             crate::types::message::SystemApiErrorMessage {
                                 content: "stream failed after tool_use".to_string(),
                                 api_error: "stream failed after tool_use".to_string(),
@@ -8544,7 +8453,7 @@ mod tests {
 
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -8640,7 +8549,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(2);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::SystemError(
+                        crate::services::api::request::QueryModelStreamItem::SystemError(
                             crate::types::message::SystemApiErrorMessage {
                                 content:
                                     crate::services::api::errors::PROMPT_TOO_LONG_ERROR_MESSAGE
@@ -8731,7 +8640,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(2);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::SystemError(
+                        crate::services::api::request::QueryModelStreamItem::SystemError(
                             crate::types::message::SystemApiErrorMessage {
                                 content: "image exceeds 5 MB maximum".to_string(),
                                 api_error: "invalid_request".to_string(),
@@ -8788,7 +8697,7 @@ mod tests {
     #[test]
     fn query_actor_withholds_prompt_too_long_for_context_collapse_before_surface() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CONTEXT_COLLAPSE", "1");
+        crate::utils::process_env::set("NYAN_CONTEXT_COLLAPSE", "1");
 
         #[derive(Clone, Debug)]
         struct WithheldPromptTooLongDeps;
@@ -8801,7 +8710,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::SystemError(
+                        crate::services::api::request::QueryModelStreamItem::SystemError(
                             crate::types::message::SystemApiErrorMessage {
                                 content:
                                     crate::services::api::errors::PROMPT_TOO_LONG_ERROR_MESSAGE
@@ -8850,7 +8759,7 @@ mod tests {
                 command_rx,
             ));
 
-        crate::utils::process_env::remove("CLAUDE_CONTEXT_COLLAPSE");
+        crate::utils::process_env::remove("NYAN_CONTEXT_COLLAPSE");
 
         assert_eq!(terminal.reason, "prompt_too_long");
         let mut saw_prompt_too_long = false;
@@ -8891,14 +8800,16 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(8);
                     tokio::spawn(async move {
-                        tx.send(crate::services::api::claude::QueryModelStreamItem::Content(
-                            crate::services::api::claude::ClaudeStreamItem::ToolUse {
-                                id: "toolu_abort_pair".to_string(),
-                                name: "Bash".to_string(),
-                                input: serde_json::json!({"command": "echo abort"}),
-                                is_server: false,
-                            },
-                        ))
+                        tx.send(
+                            crate::services::api::request::QueryModelStreamItem::Content(
+                                crate::services::api::request::RequestStreamItem::ToolUse {
+                                    id: "toolu_abort_pair".to_string(),
+                                    name: "Bash".to_string(),
+                                    input: serde_json::json!({"command": "echo abort"}),
+                                    is_server: false,
+                                },
+                            ),
+                        )
                         .await
                         .ok();
                         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -8988,7 +8899,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(8);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -9117,7 +9028,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(8);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -9208,7 +9119,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(8);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -9224,7 +9135,7 @@ mod tests {
                     .await
                     .ok();
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::SystemError(
+                        crate::services::api::request::QueryModelStreamItem::SystemError(
                             crate::types::message::SystemApiErrorMessage {
                                 content: "refusal system error".to_string(),
                                 api_error: "refusal system error".to_string(),
@@ -9323,7 +9234,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -9438,7 +9349,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -9530,7 +9441,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(1);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -10162,7 +10073,7 @@ mod tests {
     #[test]
     fn query_actor_preempts_model_call_at_blocking_limit() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _blocking_limit = EnvVarGuard::set("CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE", "10");
+        let _blocking_limit = EnvVarGuard::set("NYAN_BLOCKING_LIMIT_OVERRIDE", "10");
         let _disable_auto_compact = EnvVarGuard::set("DISABLE_AUTO_COMPACT", "1");
 
         #[derive(Clone, Debug)]
@@ -10393,7 +10304,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(4);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -10558,7 +10469,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(4);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -10718,7 +10629,7 @@ mod tests {
                         )]
                     };
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -10806,7 +10717,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(4);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -10900,19 +10811,27 @@ mod tests {
             ) -> crate::query::deps::CallModelStreamFuture {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(8);
-                    tx.send(crate::services::api::claude::QueryModelStreamItem::Content(
-                        crate::services::api::claude::ClaudeStreamItem::Text("hel".to_string()),
-                    ))
-                    .await
-                    .ok();
-                    tx.send(crate::services::api::claude::QueryModelStreamItem::Content(
-                        crate::services::api::claude::ClaudeStreamItem::Text("lo".to_string()),
-                    ))
+                    tx.send(
+                        crate::services::api::request::QueryModelStreamItem::Content(
+                            crate::services::api::request::RequestStreamItem::Text(
+                                "hel".to_string(),
+                            ),
+                        ),
+                    )
                     .await
                     .ok();
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::CompletedContent(
-                            crate::services::api::claude::ClaudeStreamItem::Text(
+                        crate::services::api::request::QueryModelStreamItem::Content(
+                            crate::services::api::request::RequestStreamItem::Text(
+                                "lo".to_string(),
+                            ),
+                        ),
+                    )
+                    .await
+                    .ok();
+                    tx.send(
+                        crate::services::api::request::QueryModelStreamItem::CompletedContent(
+                            crate::services::api::request::RequestStreamItem::Text(
                                 "hello".to_string(),
                             ),
                         ),
@@ -10920,7 +10839,7 @@ mod tests {
                     .await
                     .ok();
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -11021,19 +10940,21 @@ mod tests {
                             input: serde_json::json!({ "command": "printf streamed-permission" }),
                         };
                         tokio::spawn(async move {
-                            tx.send(crate::services::api::claude::QueryModelStreamItem::Content(
-                                crate::services::api::claude::ClaudeStreamItem::ToolUse {
-                                    id: tool_use.id.0.clone(),
-                                    name: tool_use.name.clone(),
-                                    input: tool_use.input.clone(),
-                                    is_server: false,
-                                },
-                            ))
+                            tx.send(
+                                crate::services::api::request::QueryModelStreamItem::Content(
+                                    crate::services::api::request::RequestStreamItem::ToolUse {
+                                        id: tool_use.id.0.clone(),
+                                        name: tool_use.name.clone(),
+                                        input: tool_use.input.clone(),
+                                        is_server: false,
+                                    },
+                                ),
+                            )
                             .await
                             .ok();
                             finish_first_stream.notified().await;
                             tx.send(
-                                crate::services::api::claude::QueryModelStreamItem::Assistant(
+                                crate::services::api::request::QueryModelStreamItem::Assistant(
                                     crate::types::message::AssistantMessage {
                                         uuid: uuid::Uuid::new_v4().to_string(),
                                         timestamp: chrono::Utc::now(),
@@ -11055,7 +10976,7 @@ mod tests {
                         });
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -11184,7 +11105,7 @@ mod tests {
             seen_messages:
                 std::sync::Arc<std::sync::Mutex<Vec<Vec<crate::types::message::Message>>>>,
             seen_tracking: std::sync::Arc<
-                std::sync::Mutex<Vec<Option<crate::services::api::claude::QueryChainTracking>>>,
+                std::sync::Mutex<Vec<Option<crate::services::api::request::QueryChainTracking>>>,
             >,
         }
 
@@ -11204,7 +11125,7 @@ mod tests {
                     let (tx, rx) = tokio::sync::mpsc::channel(4);
                     let output_tokens = if call == 0 { 500 } else { 600 };
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -11328,7 +11249,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(2);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -11425,7 +11346,7 @@ mod tests {
         let pending = query_model_stream_items_to_pending_events(
             "turn-sdk-items",
             vec![
-                crate::services::api::claude::QueryModelStreamItem::Assistant(
+                crate::services::api::request::QueryModelStreamItem::Assistant(
                     crate::types::message::AssistantMessage {
                         uuid: uuid::Uuid::new_v4().to_string(),
                         timestamp: chrono::Utc::now(),
@@ -11491,10 +11412,10 @@ mod tests {
         let pending = query_model_stream_items_to_pending_events(
             "turn-sdk-completed",
             vec![
-                crate::services::api::claude::QueryModelStreamItem::CompletedContent(
-                    crate::services::api::claude::ClaudeStreamItem::Text("hello".to_string()),
+                crate::services::api::request::QueryModelStreamItem::CompletedContent(
+                    crate::services::api::request::RequestStreamItem::Text("hello".to_string()),
                 ),
-                crate::services::api::claude::QueryModelStreamItem::Assistant(
+                crate::services::api::request::QueryModelStreamItem::Assistant(
                     crate::types::message::AssistantMessage {
                         uuid: uuid::Uuid::new_v4().to_string(),
                         timestamp: chrono::Utc::now(),
@@ -11544,29 +11465,33 @@ mod tests {
             ) -> crate::query::deps::CallModelStreamFuture {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(8);
-                    tx.send(crate::services::api::claude::QueryModelStreamItem::Content(
-                        crate::services::api::claude::ClaudeStreamItem::ToolUse {
-                            id: "srvu_search".to_string(),
-                            name: "web_search".to_string(),
-                            input: serde_json::json!({"query": "nyan"}),
-                            is_server: true,
-                        },
-                    ))
+                    tx.send(
+                        crate::services::api::request::QueryModelStreamItem::Content(
+                            crate::services::api::request::RequestStreamItem::ToolUse {
+                                id: "srvu_search".to_string(),
+                                name: "web_search".to_string(),
+                                input: serde_json::json!({"query": "nyan"}),
+                                is_server: true,
+                            },
+                        ),
+                    )
                     .await
                     .ok();
-                    tx.send(crate::services::api::claude::QueryModelStreamItem::Content(
-                        crate::services::api::claude::ClaudeStreamItem::WebSearchToolResult {
-                            tool_use_id: "srvu_search".to_string(),
-                            content: serde_json::json!([
-                                {
-                                    "type": "web_search_result",
-                                    "encrypted_content": "encrypted",
-                                    "title": "Nyan",
-                                    "url": "https://example.com"
-                                }
-                            ]),
-                        },
-                    ))
+                    tx.send(
+                        crate::services::api::request::QueryModelStreamItem::Content(
+                            crate::services::api::request::RequestStreamItem::WebSearchToolResult {
+                                tool_use_id: "srvu_search".to_string(),
+                                content: serde_json::json!([
+                                    {
+                                        "type": "web_search_result",
+                                        "encrypted_content": "encrypted",
+                                        "title": "Nyan",
+                                        "url": "https://example.com"
+                                    }
+                                ]),
+                            },
+                        ),
+                    )
                     .await
                     .ok();
                     Ok(rx)
@@ -11681,7 +11606,7 @@ mod tests {
                         )
                     };
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -11800,15 +11725,17 @@ mod tests {
                     };
                     let (tx, rx) = tokio::sync::mpsc::channel(4);
                     if attempt == 0 {
-                        tx.send(crate::services::api::claude::QueryModelStreamItem::Content(
-                            crate::services::api::claude::ClaudeStreamItem::Text(
-                                "partial answer".to_string(),
+                        tx.send(
+                            crate::services::api::request::QueryModelStreamItem::Content(
+                                crate::services::api::request::RequestStreamItem::Text(
+                                    "partial answer".to_string(),
+                                ),
                             ),
-                        ))
+                        )
                         .await
                         .ok();
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::SystemError(
+                            crate::services::api::request::QueryModelStreamItem::SystemError(
                                 crate::types::message::SystemApiErrorMessage {
                                     content: "API Error: max output".to_string(),
                                     api_error: "max_output_tokens".to_string(),
@@ -11821,7 +11748,7 @@ mod tests {
                         .ok();
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -11910,7 +11837,7 @@ mod tests {
                     }
                     let (tx, rx) = tokio::sync::mpsc::channel(4);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -11925,9 +11852,9 @@ mod tests {
                     )
                     .await
                     .ok();
-                    tx.send(crate::services::api::claude::QueryModelStreamItem::SystemError(
+                    tx.send(crate::services::api::request::QueryModelStreamItem::SystemError(
                         crate::types::message::SystemApiErrorMessage {
-                            content: "API Error: Claude's response exceeded the 4096 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.".to_string(),
+                            content: "API Error: The model's response exceeded the 4096 output token maximum. To configure this behavior, set the NYAN_MAX_OUTPUT_TOKENS environment variable.".to_string(),
                             api_error: "max_output_tokens".to_string(),
                             error: "max_output_tokens".to_string(),
                             error_details: None,
@@ -11982,7 +11909,8 @@ mod tests {
             match event {
                 QueryEvent::Message(message) if model_is_api_error(&message) => {
                     surfaced_error |= model_assistant_text(&message).is_some_and(|error| {
-                        error.contains("Claude's response exceeded the 4096 output token maximum")
+                        error
+                            .contains("The model's response exceeded the 4096 output token maximum")
                     });
                 }
                 QueryEvent::Message(crate::types::message::Message::User(user))
@@ -12022,7 +11950,7 @@ mod tests {
             ) -> crate::query::deps::CallModelStreamFuture {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(8);
-                    tx.send(crate::services::api::claude::QueryModelStreamItem::Stream(
+                    tx.send(crate::services::api::request::QueryModelStreamItem::Stream(
                         crate::types::message::StreamEvent::ApiEvent {
                             event: serde_json::json!({ "type": "message_start" }),
                             ttft_ms: Some(42),
@@ -12031,7 +11959,7 @@ mod tests {
                     .await
                     .ok();
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -12106,7 +12034,7 @@ mod tests {
                 Box::pin(async move {
                     let (tx, rx) = tokio::sync::mpsc::channel(8);
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             crate::types::message::AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),
@@ -12178,7 +12106,7 @@ mod tests {
                         ("assistant-block-2", "second"),
                     ] {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     // The ENVELOPE uuid. The named value used to
                                     // sit on the identity block with a random
@@ -12211,7 +12139,7 @@ mod tests {
                         .ok();
                     }
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::AssistantDelta {
+                        crate::services::api::request::QueryModelStreamItem::AssistantDelta {
                             stop_reason: Some(crate::types::message::StopReason::EndTurn),
                             usage: Some(crate::types::message::TokenUsage {
                                 input_tokens: 10,
@@ -12325,18 +12253,20 @@ mod tests {
                             name: "Bash".to_string(),
                             input: serde_json::json!({ "command": "printf preallowed" }),
                         };
-                        tx.send(crate::services::api::claude::QueryModelStreamItem::Content(
-                            crate::services::api::claude::ClaudeStreamItem::ToolUse {
-                                id: block.id.0.clone(),
-                                name: block.name.clone(),
-                                input: block.input.clone(),
-                                is_server: false,
-                            },
-                        ))
+                        tx.send(
+                            crate::services::api::request::QueryModelStreamItem::Content(
+                                crate::services::api::request::RequestStreamItem::ToolUse {
+                                    id: block.id.0.clone(),
+                                    name: block.name.clone(),
+                                    input: block.input.clone(),
+                                    is_server: false,
+                                },
+                            ),
+                        )
                         .await
                         .ok();
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -12352,15 +12282,17 @@ mod tests {
                         .await
                         .ok();
                     } else {
-                        tx.send(crate::services::api::claude::QueryModelStreamItem::Content(
-                            crate::services::api::claude::ClaudeStreamItem::Text(
-                                "done".to_string(),
+                        tx.send(
+                            crate::services::api::request::QueryModelStreamItem::Content(
+                                crate::services::api::request::RequestStreamItem::Text(
+                                    "done".to_string(),
+                                ),
                             ),
-                        ))
+                        )
                         .await
                         .ok();
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -12494,7 +12426,7 @@ mod tests {
                             input: serde_json::json!({ "command": "printf allowed" }),
                         };
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -12511,7 +12443,7 @@ mod tests {
                         .ok();
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -12617,7 +12549,7 @@ mod tests {
         let config_dir = root.join("config");
         std::fs::create_dir_all(&config_dir).unwrap();
         let _config_dir =
-            EnvVarGuard::set("CLAUDE_CONFIG_DIR", config_dir.to_string_lossy().as_ref());
+            EnvVarGuard::set("NYAN_CONFIG_DIR", config_dir.to_string_lossy().as_ref());
         let file = root.join("target.txt");
         std::fs::write(&file, "old").unwrap();
 
@@ -12669,9 +12601,11 @@ mod tests {
                             usage: None,
                         }
                     };
-                    tx.send(crate::services::api::claude::QueryModelStreamItem::Assistant(message))
-                        .await
-                        .ok();
+                    tx.send(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(message),
+                    )
+                    .await
+                    .ok();
                     Ok(rx)
                 })
             }
@@ -12805,7 +12739,7 @@ mod tests {
                 std::sync::Mutex<
                     Option<
                         tokio::sync::mpsc::Sender<
-                            crate::services::api::claude::QueryModelStreamItem,
+                            crate::services::api::request::QueryModelStreamItem,
                         >,
                     >,
                 >,
@@ -12855,7 +12789,7 @@ mod tests {
                     // actor legitimately emits attachment rows first — a
                     // `SkillListing` for whatever skills the cwd has — so
                     // "first event is StreamRequestStart" was an assertion
-                    // about the developer's `.claude/skills/` directory, and it
+                    // about the developer's `.nyan/skills/` directory, and it
                     // started failing when that directory grew.
                     let mut saw_stream_start = false;
                     for _ in 0..32 {
@@ -12911,7 +12845,7 @@ mod tests {
                 std::sync::Mutex<
                     Option<
                         tokio::sync::mpsc::Sender<
-                            crate::services::api::claude::QueryModelStreamItem,
+                            crate::services::api::request::QueryModelStreamItem,
                         >,
                     >,
                 >,
@@ -13015,7 +12949,7 @@ mod tests {
         // bootstrap mapping uses this flag for a non-interactive legacy-todo
         // context; force-disable the explicit Task-tool override as well.
         let _non_interactive = EnvVarGuard::set("NYAN_NON_INTERACTIVE_SESSION", "1");
-        let _tasks_override = EnvVarGuard::unset("CLAUDE_CODE_ENABLE_TASKS");
+        let _tasks_override = EnvVarGuard::unset("NYAN_ENABLE_TASKS");
 
         #[derive(Clone, Debug)]
         struct TodoDeps {
@@ -13045,7 +12979,7 @@ mod tests {
                             }),
                         };
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13062,7 +12996,7 @@ mod tests {
                         .ok();
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13170,7 +13104,7 @@ mod tests {
                             input: serde_json::json!({ "command": "echo blocked" }),
                         };
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13187,7 +13121,7 @@ mod tests {
                         .ok();
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13298,7 +13232,7 @@ mod tests {
                             input: serde_json::json!({}),
                         };
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13315,7 +13249,7 @@ mod tests {
                         .ok();
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13428,7 +13362,7 @@ mod tests {
                             input: serde_json::json!({ "command": "printf denied" }),
                         };
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13445,7 +13379,7 @@ mod tests {
                         .ok();
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13603,7 +13537,7 @@ mod tests {
                             input: serde_json::json!({ "command": "git push" }),
                         };
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13621,7 +13555,7 @@ mod tests {
                         .ok();
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13761,7 +13695,7 @@ mod tests {
                             input: serde_json::json!({ "command": "git push" }),
                         };
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13778,7 +13712,7 @@ mod tests {
                         .ok();
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13918,7 +13852,7 @@ mod tests {
                             input: serde_json::json!({ "command": "printf continuation" }),
                         };
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -13935,7 +13869,7 @@ mod tests {
                         .ok();
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -14023,7 +13957,7 @@ mod tests {
     #[test]
     fn query_actor_brief_tool_continuation_uses_official_model_ack_without_permission_prompt() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        // `USER_MSG_OPT_IN` seeds itself from `CLAUDE_CODE_BRIEF` on its first
+        // `USER_MSG_OPT_IN` seeds itself from `NYAN_BRIEF` on its first
         // read and never re-reads it (`bootstrap/state.rs:86-90`), so setting
         // the variable here only activated the tool while this test happened to
         // be the process's first reader. Drive the opt-in the way CC's
@@ -14036,7 +13970,7 @@ mod tests {
         }
 
         let _opt_in = BriefOptInGuard(crate::bootstrap::state::get_user_msg_opt_in());
-        crate::utils::process_env::set("CLAUDE_CODE_BRIEF", "1");
+        crate::utils::process_env::set("NYAN_BRIEF", "1");
         crate::bootstrap::state::set_user_msg_opt_in(true);
 
         #[derive(Clone, Debug)]
@@ -14065,7 +13999,7 @@ mod tests {
                     let (tx, rx) = tokio::sync::mpsc::channel(8);
                     if call == 0 {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -14093,7 +14027,7 @@ mod tests {
                         .ok();
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -14155,7 +14089,7 @@ mod tests {
                 .await
                 .expect("brief continuation actor should finish")
             });
-        crate::utils::process_env::remove("CLAUDE_CODE_BRIEF");
+        crate::utils::process_env::remove("NYAN_BRIEF");
 
         assert_eq!(terminal.reason, "completed");
         assert!(
@@ -14208,18 +14142,20 @@ mod tests {
                                 .to_string(),
                             input: serde_json::json!({"answer": "ok"}),
                         };
-                        tx.send(crate::services::api::claude::QueryModelStreamItem::Content(
-                            crate::services::api::claude::ClaudeStreamItem::ToolUse {
-                                id: block.id.0.clone(),
-                                name: block.name.clone(),
-                                input: block.input.clone(),
-                                is_server: false,
-                            },
-                        ))
+                        tx.send(
+                            crate::services::api::request::QueryModelStreamItem::Content(
+                                crate::services::api::request::RequestStreamItem::ToolUse {
+                                    id: block.id.0.clone(),
+                                    name: block.name.clone(),
+                                    input: block.input.clone(),
+                                    is_server: false,
+                                },
+                            ),
+                        )
                         .await
                         .ok();
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -14236,7 +14172,7 @@ mod tests {
                         .ok();
                     } else {
                         tx.send(
-                            crate::services::api::claude::QueryModelStreamItem::Assistant(
+                            crate::services::api::request::QueryModelStreamItem::Assistant(
                                 crate::types::message::AssistantMessage {
                                     uuid: uuid::Uuid::new_v4().to_string(),
                                     timestamp: chrono::Utc::now(),
@@ -14439,7 +14375,7 @@ mod prompt_context_contract_tests {
 
     use super::*;
     use crate::query::deps::{CallModelRequest, CallModelStreamFuture, QueryDeps};
-    use crate::services::api::claude::QueryModelStreamItem;
+    use crate::services::api::request::QueryModelStreamItem;
     use crate::types::message::{AssistantContent, AssistantMessage, StopReason};
     use crate::utils::test_env::{IsolatedProjectSettings, TEST_ENV_LOCK};
     use std::collections::BTreeMap;
@@ -14547,7 +14483,6 @@ mod prompt_context_contract_tests {
                         "session_id:",
                         "streaming_tool_execution:",
                         "emit_tool_use_summaries:",
-                        "is_ant:",
                     ] {
                         assert!(
                             !prompt.contains(gate),
@@ -14593,7 +14528,7 @@ mod permission_request_resolution_tests {
                 let (sender, receiver) = tokio::sync::mpsc::channel(8);
                 sender
                     .send(
-                        crate::services::api::claude::QueryModelStreamItem::Assistant(
+                        crate::services::api::request::QueryModelStreamItem::Assistant(
                             AssistantMessage {
                                 uuid: uuid::Uuid::new_v4().to_string(),
                                 timestamp: chrono::Utc::now(),

@@ -209,13 +209,6 @@ pub enum InstallCoreResult {
     ResolutionFailed {
         resolution: super::dependency_resolver::ResolutionResult,
     },
-    BlockedByPolicy {
-        plugin_name: String,
-    },
-    DependencyBlockedByPolicy {
-        plugin_name: String,
-        blocked_dependency: String,
-    },
 }
 /// Maps to: CC pluginInstallationHelpers.ts:304-327#formatResolutionError.
 pub fn format_resolution_error(result: &super::dependency_resolver::ResolutionResult) -> String {
@@ -272,9 +265,6 @@ pub async fn install_resolved_plugin(
         super::plugin_identifier::scope_to_setting_source(scope).map_err(anyhow::Error::msg)?,
     );
     let name = entry["name"].as_str().unwrap_or_default().to_owned();
-    if super::plugin_policy::is_plugin_blocked_by_policy(plugin_id) {
-        return Ok(BlockedByPolicy { plugin_name: name });
-    }
     let has_location = |location: Option<&Value>| match location {
         None | Some(Value::Null | Value::Bool(false)) => false,
         Some(Value::String(value)) => !value.is_empty(),
@@ -340,14 +330,6 @@ pub async fn install_resolved_plugin(
     let super::dependency_resolver::ResolutionResult::Success { closure } = resolution else {
         return Ok(ResolutionFailed { resolution });
     };
-    for id in &closure {
-        if id != plugin_id && super::plugin_policy::is_plugin_blocked_by_policy(id) {
-            return Ok(DependencyBlockedByPolicy {
-                plugin_name: name,
-                blocked_dependency: id.clone(),
-            });
-        }
-    }
     let mut enabled = crate::utils::settings::get_settings_for_source(setting_source)
         .and_then(|s| s.enabled_plugins)
         .and_then(|v| v.as_object().cloned())
@@ -417,7 +399,6 @@ pub struct InstallPluginParams {
     pub entry: Value,
     pub marketplace_name: String,
     pub scope: Option<super::schemas::PluginScope>,
-    pub trigger: Option<String>,
 }
 /// Maps to: CC pluginInstallationHelpers.ts:506-595#installPluginFromMarketplace.
 pub async fn install_plugin_from_marketplace(params: InstallPluginParams) -> InstallPluginResult {
@@ -433,29 +414,11 @@ pub async fn install_plugin_from_marketplace(params: InstallPluginParams) -> Ins
                     InstallCoreResult::LocalSourceNoLocation { plugin_name } => format!("Cannot install local plugin \"{plugin_name}\" without marketplace install location"),
                     InstallCoreResult::SettingsWriteFailed { message } => format!("Failed to update settings: {message}"),
                     InstallCoreResult::ResolutionFailed { resolution } => format_resolution_error(&resolution),
-                    InstallCoreResult::BlockedByPolicy { plugin_name } => format!("Plugin \"{plugin_name}\" is blocked by your organization's policy and cannot be installed"),
-                    InstallCoreResult::DependencyBlockedByPolicy { plugin_name, blocked_dependency } => format!("Cannot install \"{plugin_name}\": dependency \"{blocked_dependency}\" is blocked by your organization's policy"),
                     InstallCoreResult::Success { .. } => unreachable!(),
                 };
                 return Ok(InstallPluginResult::Failure { error });
             }
         };
-        let trigger = params.trigger.as_deref().unwrap_or("user");
-        let mut metadata = serde_json::json!({
-            "_PROTO_plugin_name":params.entry["name"],
-            "_PROTO_marketplace_name":params.marketplace_name,
-            "plugin_id":if super::plugin_identifier::is_official_marketplace_name(Some(&params.marketplace_name)) {params.plugin_id.as_str()} else {"third-party"},
-            "trigger":trigger,
-            "install_source":if trigger=="hint" {"ui-suggestion"} else {"ui-discover"}
-        });
-        if let Some(fields) = crate::utils::telemetry::plugin_telemetry::build_plugin_telemetry_fields(
-            params.entry["name"].as_str().unwrap_or_default(), Some(&params.marketplace_name),
-            super::managed_plugins::get_managed_plugin_names().as_ref(),
-        ).as_object() { metadata.as_object_mut().unwrap().extend(fields.clone()); }
-        if let Some(version) = params.entry.get("version").filter(|v| v.as_str().is_some_and(|s| !s.is_empty())) {
-            metadata["version"] = version.clone();
-        }
-        crate::services::analytics::log_event("tengu_plugin_installed", metadata);
         Ok(InstallPluginResult::Success { message: format!("✓ Installed {}{dep_note}. Run /reload-plugins to activate.", params.entry["name"].as_str().unwrap_or_default()) })
     }.await;
     match result {
@@ -490,7 +453,6 @@ mod tests {
             entry: info.entry,
             marketplace_name: marketplace,
             scope: Some(super::super::schemas::PluginScope::User),
-            trigger: Some("hint".into()),
         })
         .await
         {
@@ -548,7 +510,7 @@ mod tests {
         std::fs::create_dir_all(root.join("plugins")).unwrap();
         std::fs::write(root.join("plugins/known_marketplaces.json"), "{}").unwrap();
         let _config = set_config_dir(&root);
-        let _cache = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_CACHE_DIR", root.join("plugins"));
+        let _cache = EnvVarGuard::set("NYAN_PLUGIN_CACHE_DIR", root.join("plugins"));
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::utils::settings::settings_cache::reset_settings_cache();
         let entry = serde_json::json!({"name":"p","source":"./p"});
@@ -593,10 +555,10 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
-    /// Points `CLAUDE_CONFIG_DIR` at an isolated root and drops the caches
+    /// Points `NYAN_CONFIG_DIR` at an isolated root and drops the caches
     /// derived from the previous one.
     fn set_config_dir(value: impl AsRef<std::ffi::OsStr>) -> EnvVarGuard {
-        let env = EnvVarGuard::set("CLAUDE_CONFIG_DIR", value);
+        let env = EnvVarGuard::set("NYAN_CONFIG_DIR", value);
         // Every isolated fixture starts a new process-scope registry;
         // do not reset it inside install_fixture, after the session
         // snapshot assertion has deliberately captured the old memo.
@@ -606,7 +568,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canonical_install_matches_official_copies_and_registers_local_official_plugin() {
+    async fn canonical_install_matches_official_copies_and_registers_local_plugin() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-plugin-hint-install-{}",
@@ -630,7 +592,7 @@ mod tests {
         std::fs::write(
             marketplace.join(".claude-plugin/marketplace.json"),
             serde_json::json!({
-                "name": "claude-plugins-official", "owner": {"name": "Owner"},
+                "name": "acme-plugins", "owner": {"name": "Owner"},
                 "plugins": [{"name": "mail", "source": "./plugins/mail", "version": "9.9.9"}]
             })
             .to_string(),
@@ -639,7 +601,7 @@ mod tests {
         std::fs::write(
             root.join("plugins/known_marketplaces.json"),
             serde_json::json!({
-                "claude-plugins-official": {"installLocation": marketplace}
+                "acme-plugins": {"installLocation": marketplace}
             })
             .to_string(),
         )
@@ -654,14 +616,12 @@ mod tests {
             session_before.lock().unwrap()["plugins"],
             serde_json::json!({})
         );
-        let result = install_fixture("mail@claude-plugins-official")
-            .await
-            .unwrap();
+        let result = install_fixture("mail@acme-plugins").await.unwrap();
         assert!(result.install_path.join("README.md").is_file());
         assert_eq!(result.version.as_deref(), Some("1.2.3"));
         let current = crate::utils::plugins::installed_plugins_manager::load_installed_plugins_v2();
         assert_eq!(
-            current.lock().unwrap()["plugins"]["mail@claude-plugins-official"][0]["scope"],
+            current.lock().unwrap()["plugins"]["mail@acme-plugins"][0]["scope"],
             "user"
         );
         let session_after =
@@ -676,16 +636,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            installed["plugins"]["mail@claude-plugins-official"][0]["scope"],
+            installed["plugins"]["mail@acme-plugins"][0]["scope"],
             "user"
         );
         let settings: Value =
             serde_json::from_str(&std::fs::read_to_string(root.join("settings.json")).unwrap())
                 .unwrap();
-        assert_eq!(
-            settings["enabledPlugins"]["mail@claude-plugins-official"],
-            true
-        );
+        assert_eq!(settings["enabledPlugins"]["mail@acme-plugins"], true);
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -700,7 +657,6 @@ mod tests {
         let _config = set_config_dir(&root);
         let _home = EnvVarGuard::set(HOME_VAR, &root);
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", root.join("managed"));
         let marketplace = root.join("market");
         for (name, version) in [("root", "2.0.0"), ("dependency", "1.0.0")] {
             let source = marketplace.join(format!("plugins/{name}/.claude-plugin"));
@@ -717,7 +673,7 @@ mod tests {
         std::fs::write(
             marketplace.join(".claude-plugin/marketplace.json"),
             serde_json::json!({
-                "name": "claude-plugins-official", "owner": {"name": "Owner"},
+                "name": "acme-plugins", "owner": {"name": "Owner"},
                 "plugins": [
                     {"name": "root", "source": "./plugins/root", "dependencies": ["dependency"]},
                     {"name": "dependency", "source": "./plugins/dependency"}
@@ -729,15 +685,13 @@ mod tests {
         std::fs::write(
             root.join("plugins/known_marketplaces.json"),
             serde_json::json!({
-                "claude-plugins-official": {"installLocation": marketplace}
+                "acme-plugins": {"installLocation": marketplace}
             })
             .to_string(),
         )
         .unwrap();
 
-        install_fixture("root@claude-plugins-official")
-            .await
-            .unwrap();
+        install_fixture("root@acme-plugins").await.unwrap();
         let installed: Value = serde_json::from_str(
             &std::fs::read_to_string(root.join("plugins/installed_plugins.json")).unwrap(),
         )
@@ -745,15 +699,12 @@ mod tests {
         let settings: Value =
             serde_json::from_str(&std::fs::read_to_string(root.join("settings.json")).unwrap())
                 .unwrap();
-        for id in [
-            "root@claude-plugins-official",
-            "dependency@claude-plugins-official",
-        ] {
+        for id in ["root@acme-plugins", "dependency@acme-plugins"] {
             assert!(installed["plugins"][id].is_array(), "{id}");
             assert_eq!(settings["enabledPlugins"][id], true, "{id}");
         }
         assert!(
-            root.join("plugins/cache/claude-plugins-official/dependency/1.0.0/README.md")
+            root.join("plugins/cache/acme-plugins/dependency/1.0.0/README.md")
                 .is_file()
         );
         let _ = std::fs::remove_dir_all(root);
@@ -780,13 +731,13 @@ mod tests {
         .unwrap();
         std::fs::write(
             marketplace.join(".claude-plugin/marketplace.json"),
-            r#"{"name":"claude-plugins-official","owner":{"name":"Owner"},"plugins":[{"name":"root","source":"./plugins/root"}]}"#,
+            r#"{"name":"acme-plugins","owner":{"name":"Owner"},"plugins":[{"name":"root","source":"./plugins/root"}]}"#,
         )
         .unwrap();
         std::fs::write(
             root.join("plugins/known_marketplaces.json"),
             serde_json::json!({
-                "claude-plugins-official": {"installLocation": marketplace}
+                "acme-plugins": {"installLocation": marketplace}
             })
             .to_string(),
         )
@@ -796,17 +747,13 @@ mod tests {
         std::fs::create_dir(root.join("settings.json")).unwrap();
 
         assert!(
-            install_fixture("root@claude-plugins-official")
+            install_fixture("root@acme-plugins")
                 .await
                 .unwrap_err()
                 .to_string()
                 .contains("Failed to update settings:")
         );
-        assert!(
-            !root
-                .join("plugins/cache/claude-plugins-official/root/1.0.0")
-                .exists()
-        );
+        assert!(!root.join("plugins/cache/acme-plugins/root/1.0.0").exists());
         assert!(!root.join("plugins/installed_plugins.json").exists());
         let _ = std::fs::remove_dir_all(root);
     }
@@ -832,20 +779,20 @@ mod tests {
         .unwrap();
         std::fs::write(
             marketplace.join(".claude-plugin/marketplace.json"),
-            r#"{"name":"claude-plugins-official","owner":{"name":"Owner"},"plugins":[{"name":"root","source":"./plugins/root"}]}"#,
+            r#"{"name":"acme-plugins","owner":{"name":"Owner"},"plugins":[{"name":"root","source":"./plugins/root"}]}"#,
         )
         .unwrap();
         std::fs::write(
             root.join("plugins/known_marketplaces.json"),
             serde_json::json!({
-                "claude-plugins-official": {"installLocation": marketplace}
+                "acme-plugins": {"installLocation": marketplace}
             })
             .to_string(),
         )
         .unwrap();
 
         assert!(
-            install_fixture("root@claude-plugins-official")
+            install_fixture("root@acme-plugins")
                 .await
                 .unwrap_err()
                 .to_string()
@@ -855,10 +802,7 @@ mod tests {
         let settings: Value =
             serde_json::from_str(&std::fs::read_to_string(root.join("settings.json")).unwrap())
                 .unwrap();
-        assert_eq!(
-            settings["enabledPlugins"]["root@claude-plugins-official"],
-            true
-        );
+        assert_eq!(settings["enabledPlugins"]["root@acme-plugins"], true);
         assert!(!root.join("plugins/installed_plugins.json").exists());
         let _ = std::fs::remove_dir_all(root);
     }
@@ -882,7 +826,7 @@ mod tests {
         }
         std::fs::write(
             market.join(".claude-plugin/marketplace.json"),
-            serde_json::json!({"name":"claude-plugins-official","owner":{"name":"Owner"},"plugins":[
+            serde_json::json!({"name":"acme-plugins","owner":{"name":"Owner"},"plugins":[
                 {"name":"root","source":"./root","dependencies":["dep"]},
                 {"name":"dep","source":"./dep"}
             ]})
@@ -891,7 +835,7 @@ mod tests {
         .unwrap();
         std::fs::write(
             root.join("plugins/known_marketplaces.json"),
-            serde_json::json!({"claude-plugins-official":{"installLocation":market}}).to_string(),
+            serde_json::json!({"acme-plugins":{"installLocation":market}}).to_string(),
         )
         .unwrap();
         std::fs::write(
@@ -911,9 +855,7 @@ mod tests {
         let _home = EnvVarGuard::set(HOME_VAR, &root);
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         order_fixture(&root, true);
-        let error = install_fixture("root@claude-plugins-official")
-            .await
-            .unwrap_err();
+        let error = install_fixture("root@acme-plugins").await.unwrap_err();
         assert!(!error.to_string().is_empty()); // Native filesystem ENOENT after dependency commit.
         // CC pluginInstallationHelpers.ts:427-477, actual AST-extracted Bun oracle
         // proof/plugin-installed-write-0914/bun-order-oracle.json: second cache failure
@@ -923,7 +865,7 @@ mod tests {
         assert_eq!(
             settings["enabledPlugins"],
             serde_json::json!({
-                "existing":false,"dep@claude-plugins-official":true,"root@claude-plugins-official":true
+                "existing":false,"dep@acme-plugins":true,"root@acme-plugins":true
             })
         );
         assert_eq!(settings["customSetting"], 7);
@@ -931,17 +873,10 @@ mod tests {
             &std::fs::read(root.join("plugins/installed_plugins.json")).unwrap(),
         )
         .unwrap();
+        assert!(registry["plugins"].get("root@acme-plugins").is_none());
+        assert_eq!(registry["plugins"]["dep@acme-plugins"][0]["scope"], "user");
         assert!(
-            registry["plugins"]
-                .get("root@claude-plugins-official")
-                .is_none()
-        );
-        assert_eq!(
-            registry["plugins"]["dep@claude-plugins-official"][0]["scope"],
-            "user"
-        );
-        assert!(
-            root.join("plugins/cache/claude-plugins-official/dep/1.0/README.md")
+            root.join("plugins/cache/acme-plugins/dep/1.0/README.md")
                 .is_file()
         );
         let _ = std::fs::remove_dir_all(root);
@@ -957,32 +892,18 @@ mod tests {
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         order_fixture(&root, false);
         std::fs::create_dir(root.join("plugins/installed_plugins.json")).unwrap();
-        assert!(
-            install_fixture("root@claude-plugins-official")
-                .await
-                .is_err()
-        );
+        assert!(install_fixture("root@acme-plugins").await.is_err());
         // CC cacheAndRegisterPlugin:212-223 throws after caching if registry save fails;
         // installResolvedPlugin:446-477 has no rollback and no final cache clear on throw.
         assert!(
-            root.join("plugins/cache/claude-plugins-official/dep/1.0/README.md")
+            root.join("plugins/cache/acme-plugins/dep/1.0/README.md")
                 .is_file()
         );
-        assert!(
-            !root
-                .join("plugins/cache/claude-plugins-official/root/1.0")
-                .exists()
-        );
+        assert!(!root.join("plugins/cache/acme-plugins/root/1.0").exists());
         let settings: Value =
             serde_json::from_slice(&std::fs::read(root.join("settings.json")).unwrap()).unwrap();
-        assert_eq!(
-            settings["enabledPlugins"]["dep@claude-plugins-official"],
-            true
-        );
-        assert_eq!(
-            settings["enabledPlugins"]["root@claude-plugins-official"],
-            true
-        );
+        assert_eq!(settings["enabledPlugins"]["dep@acme-plugins"], true);
+        assert_eq!(settings["enabledPlugins"]["root@acme-plugins"], true);
         assert!(root.join("plugins/installed_plugins.json").is_dir());
         let _ = std::fs::remove_dir_all(root);
     }
@@ -993,11 +914,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("plugin-root-catalog-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let _cache = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_CACHE_DIR", &root);
-        crate::utils::settings::settings_cache::set_cached_settings_for_source(
-            SettingSource::Policy,
-            None,
-        );
+        let _cache = EnvVarGuard::set("NYAN_PLUGIN_CACHE_DIR", &root);
         let catalog = |name: &str, dependencies: Value, allowed: Value| {
             serde_json::json!({
                 "name":name, "owner":{"name":"Owner"},

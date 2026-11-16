@@ -48,14 +48,14 @@ pub async fn get_mcp_headers_from_helper(
         command.args(["-c", helper]);
         command
     };
-    // CC headersHelper.ts:66-70: `{ ...process.env, CLAUDE_CODE_MCP_SERVER_NAME,
-    // CLAUDE_CODE_MCP_SERVER_URL: config.url }` — process.env, not
+    // CC headersHelper.ts:66-70: `{ ...process.env, NYAN_MCP_SERVER_NAME,
+    // NYAN_MCP_SERVER_URL: config.url }` — process.env, not
     // subprocessEnv(); an undefined url drops the inherited key.
     crate::utils::subprocess_env::apply_process_env(&mut command);
-    command.env("CLAUDE_CODE_MCP_SERVER_NAME", server_name);
+    command.env("NYAN_MCP_SERVER_NAME", server_name);
     match config.url.as_deref() {
-        Some(url) => command.env("CLAUDE_CODE_MCP_SERVER_URL", url),
-        None => command.env_remove("CLAUDE_CODE_MCP_SERVER_URL"),
+        Some(url) => command.env("NYAN_MCP_SERVER_URL", url),
+        None => command.env_remove("NYAN_MCP_SERVER_URL"),
     };
 
     let output = match tokio::time::timeout(Duration::from_secs(10), command.output()).await {
@@ -161,7 +161,6 @@ mod tests {
             ide_running_in_windows: None,
             ide_name: None,
             auth_token: None,
-            id: None,
             plugin_source: None,
         }
     }
@@ -210,7 +209,7 @@ mod tests {
         let temp_dir =
             std::env::temp_dir().join(format!("nyan-mcp-headers-helper-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", temp_dir.join("config"));
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", temp_dir.join("config"));
         let previous_original_cwd = crate::bootstrap::state::get_original_cwd();
         let _non_interactive = EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION");
         crate::bootstrap::state::set_original_cwd(temp_dir.join("workspace"));

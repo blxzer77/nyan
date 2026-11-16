@@ -74,7 +74,7 @@ pub async fn execute_instructions_loaded_hooks_with_config(
 /// only exports the plain async fn (`utils/hooks.ts:4335`). This port
 /// converges those caller-side voids into this one shared dispatcher (chosen:
 /// one detach point instead of two call sites), so the process-lifetime spawn
-/// rule lands HERE rather than in attachments.rs/claudemd.rs.
+/// rule lands HERE rather than in attachments.rs/agents_md.rs.
 pub fn dispatch_instructions_loaded_hooks(input: InstructionsLoadedInput) {
     let loaded = super::load_hooks_config();
     if loaded.disable_all_hooks
@@ -90,9 +90,8 @@ pub fn dispatch_instructions_loaded_hooks(input: InstructionsLoadedInput) {
         .display()
         .to_string();
     let context = HookContext {
-        session_id: crate::utils::process_env::var("CLAUDE_SESSION_ID").unwrap_or_default(),
-        transcript_path: crate::utils::process_env::var("CLAUDE_TRANSCRIPT_PATH")
-            .unwrap_or_default(),
+        session_id: crate::utils::process_env::var("NYAN_SESSION_ID").unwrap_or_default(),
+        transcript_path: crate::utils::process_env::var("NYAN_TRANSCRIPT_PATH").unwrap_or_default(),
         cwd,
         ..HookContext::default()
     };
@@ -149,7 +148,7 @@ mod tests {
         execute_instructions_loaded_hooks_with_config(
             &config,
             InstructionsLoadedInput {
-                file_path: "/repo/.claude/rules/rust.md".to_string(),
+                file_path: "/repo/.nyan/rules/rust.md".to_string(),
                 memory_type: "Project",
                 load_reason: "path_glob_match",
                 globs: Some(vec!["src/**/*.rs".to_string()]),

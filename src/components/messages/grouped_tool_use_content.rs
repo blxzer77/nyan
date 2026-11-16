@@ -471,7 +471,7 @@ pub fn GroupedToolUseContent(
         ) {
             #(lines.into_iter().map(|line| {
                 let color = match line.tone {
-                    ToolRenderTone::Normal => theme.claude,
+                    ToolRenderTone::Normal => theme.nyan,
                     ToolRenderTone::Success => theme.success,
                     ToolRenderTone::Warning => theme.warning,
                     ToolRenderTone::Error => theme.error,
@@ -491,7 +491,7 @@ pub fn GroupedToolUseContent(
                     Some(ToolResultStatus::Canceled) => theme.inactive,
                     _ if item.is_error => theme.error,
                     _ if item.is_resolved => theme.success,
-                    _ if item.is_in_progress => theme.claude,
+                    _ if item.is_in_progress => theme.nyan,
                     _ => theme.inactive,
                 };
                 let result_suffix = item.result_content
@@ -1342,8 +1342,8 @@ mod tests {
                 ),
                 result_row_with_output(
                     "toolu_agent_2",
-                    "Remote agent launched in CCR.",
-                    serde_json::json!({"status": "remote_launched"}),
+                    "Async agent launched successfully.",
+                    serde_json::json!({"status": "async_launched"}),
                 ),
             ],
         };
@@ -1378,7 +1378,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _fork_vetoed = crate::tools::agent_tool::fork_subagent::fork_veto_environment();
-        let _background = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+        let _background = EnvVarGuard::unset("NYAN_DISABLE_BACKGROUND_TASKS");
         let mut first = agent_input("Run lint");
         first["run_in_background"] = serde_json::json!(true);
         let mut second = agent_input("Run tests");

@@ -29,7 +29,6 @@ pub fn is_cache_sharing_fork(source: &QuerySource) -> bool {
         QuerySource::Compact
             | QuerySource::SideQuestion
             | QuerySource::PromptSuggestion
-            | QuerySource::Speculation
             | QuerySource::ExtractMemories
             | QuerySource::AutoDream
             | QuerySource::CacheWarm
@@ -45,7 +44,6 @@ pub fn is_cache_sharing_api_source(source: &str) -> bool {
         "compact"
             | "side_question"
             | "prompt_suggestion"
-            | "speculation"
             | "extract_memories"
             | "auto_dream"
             | "cache_warm"
@@ -423,7 +421,7 @@ pub fn extract_result_text(
 /// Maps to: CC `CacheSafeParams` (`utils/forkedAgent.ts`).
 #[derive(Clone)]
 pub struct CacheSafeParams {
-    pub system_prompt: crate::services::api::claude::SystemPrompt,
+    pub system_prompt: crate::services::api::request::SystemPrompt,
     pub user_context: std::collections::BTreeMap<String, String>,
     pub system_context: std::collections::BTreeMap<String, String>,
     pub tool_use_context: ToolUseContext,
@@ -464,7 +462,7 @@ pub fn get_last_cache_safe_params() -> Option<std::sync::Arc<CacheSafeParams>> {
 /// fields consumed by `createCacheSafeParams`.
 pub struct CacheSafeParamsContext {
     pub messages: Vec<crate::types::message::Message>,
-    pub system_prompt: crate::services::api::claude::SystemPrompt,
+    pub system_prompt: crate::services::api::request::SystemPrompt,
     pub user_context: std::collections::BTreeMap<String, String>,
     pub system_context: std::collections::BTreeMap<String, String>,
     pub tool_use_context: ToolUseContext,
@@ -513,7 +511,7 @@ pub struct ForkedAgentParams {
 /// Maps to: CC `ForkedAgentResult`.
 pub struct ForkedAgentResult {
     pub messages: Vec<crate::types::message::Message>,
-    pub total_usage: crate::services::api::claude::NonNullableUsage,
+    pub total_usage: crate::services::api::request::NonNullableUsage,
     /// Typed metadata for API errors yielded by query. Display-compatible
     /// System messages remain in `messages` for official output semantics.
     pub api_errors: Vec<crate::types::message::SystemApiErrorMessage>,
@@ -524,8 +522,8 @@ pub struct ForkedAgentResult {
 
 fn usage_from_stream_event(
     event: &crate::types::message::StreamEvent,
-) -> Option<crate::services::api::claude::NonNullableUsage> {
-    use crate::services::api::claude::{EMPTY_USAGE, update_usage};
+) -> Option<crate::services::api::request::NonNullableUsage> {
+    use crate::services::api::request::{EMPTY_USAGE, update_usage};
 
     let crate::types::message::StreamEvent::ApiEvent { event, .. } = event;
     if event.get("type").and_then(serde_json::Value::as_str) != Some("message_delta") {
@@ -579,7 +577,7 @@ where
     D: crate::query::deps::QueryDeps,
 {
     use crate::query::{QueryCommand, QueryEvent, QueryParams};
-    use crate::services::api::claude::{EMPTY_USAGE, accumulate_usage};
+    use crate::services::api::request::{EMPTY_USAGE, accumulate_usage};
     use crate::types::permissions::{PermissionPromptChoice, PermissionPromptResponse};
 
     let ForkedAgentParams {
@@ -771,7 +769,6 @@ mod tests {
             QuerySource::Compact,
             QuerySource::SideQuestion,
             QuerySource::PromptSuggestion,
-            QuerySource::Speculation,
             QuerySource::ExtractMemories,
             QuerySource::AutoDream,
             QuerySource::CacheWarm,
@@ -780,6 +777,7 @@ mod tests {
                 is_cache_sharing_fork(&source),
                 "{source:?} shares the cache"
             );
+            assert!(is_cache_sharing_api_source(source.as_api_source()));
         }
         for source in [
             QuerySource::Prompt,
@@ -798,6 +796,7 @@ mod tests {
                 !is_cache_sharing_fork(&source),
                 "{source:?} must not inherit the cache-sharing rules"
             );
+            assert!(!is_cache_sharing_api_source(source.as_api_source()));
         }
     }
 
@@ -1316,7 +1315,7 @@ mod tests {
             *self.request.lock().unwrap() = Some(request);
             Box::pin(async move {
                 let (tx, rx) = tokio::sync::mpsc::channel(8);
-                tx.send(crate::services::api::claude::QueryModelStreamItem::Stream(
+                tx.send(crate::services::api::request::QueryModelStreamItem::Stream(
                     crate::types::message::StreamEvent::ApiEvent {
                         event: serde_json::json!({
                             "type": "message_delta",
@@ -1333,7 +1332,7 @@ mod tests {
                 .await
                 .unwrap();
                 tx.send(
-                    crate::services::api::claude::QueryModelStreamItem::Assistant(
+                    crate::services::api::request::QueryModelStreamItem::Assistant(
                         crate::types::message::AssistantMessage {
                             uuid: uuid::Uuid::new_v4().to_string(),
                             timestamp: chrono::Utc::now(),

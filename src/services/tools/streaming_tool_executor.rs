@@ -1538,7 +1538,7 @@ mod tests {
         let mut blocks = Vec::new();
         for (index, branch) in ["a", "b"].into_iter().enumerate() {
             let branch_root = root.join(branch);
-            let skill_dir = branch_root.join(".claude/skills");
+            let skill_dir = branch_root.join(".nyan/skills");
             let source = branch_root.join("src/value.txt");
             std::fs::create_dir_all(skill_dir.join(format!("skill-{branch}"))).unwrap();
             std::fs::create_dir_all(source.parent().unwrap()).unwrap();
@@ -1704,7 +1704,7 @@ mod tests {
             uuid::Uuid::new_v4()
         ));
         let skill_file = root
-            .join(".claude")
+            .join(".nyan")
             .join("skills")
             .join("ship")
             .join("SKILL.md");
@@ -1907,7 +1907,7 @@ pub(crate) mod streaming_hook_decision_tests {
         _config: EnvVarGuard,
         _writes: EnvVarGuard,
         _simple: EnvVarGuard,
-        _managed: crate::services::hooks::test_support::ManagedSettingsGuard,
+        _hooks_off: crate::services::hooks::test_support::HooksDisabledGuard,
         _registered: RegisteredHooksGuard,
     }
 
@@ -1928,12 +1928,10 @@ pub(crate) mod streaming_hook_decision_tests {
             )
             .unwrap();
             Self {
-                _config: EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.join("config")),
+                _config: EnvVarGuard::set("NYAN_CONFIG_DIR", root.join("config")),
                 _writes: EnvVarGuard::set("NYAN_WRITE_ENABLED", writes),
-                _simple: EnvVarGuard::unset("CLAUDE_CODE_SIMPLE"),
-                _managed: crate::services::hooks::test_support::ManagedSettingsGuard::install(
-                    Some(r#"{"allowManagedHooksOnly":true}"#),
-                ),
+                _simple: EnvVarGuard::unset("NYAN_SIMPLE"),
+                _hooks_off: crate::services::hooks::test_support::HooksDisabledGuard::install(),
                 _registered: RegisteredHooksGuard(crate::bootstrap::state::get_registered_hooks()),
                 root,
                 target,
@@ -1962,7 +1960,7 @@ pub(crate) mod streaming_hook_decision_tests {
         }
 
         pub(crate) fn local_settings(&self) -> std::path::PathBuf {
-            self.root.join("workspace/.claude/settings.local.json")
+            self.root.join("workspace/.nyan/settings.local.json")
         }
 
         pub(crate) fn install_hooks(&self, decide: bool) {
@@ -2185,10 +2183,8 @@ pub(crate) mod streaming_hook_decision_tests {
     async fn streaming_permission_request_hook_deny_model_result_matches_official() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
-        let _managed = crate::services::hooks::test_support::ManagedSettingsGuard::install(Some(
-            r#"{"allowManagedHooksOnly":true}"#,
-        ));
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
+        let _hooks_off = crate::services::hooks::test_support::HooksDisabledGuard::install();
         let _registered = RegisteredHooksGuard(crate::bootstrap::state::get_registered_hooks());
         for reason in [Some("streaming policy denied"), Some(""), None] {
             let mut decision = json!({"behavior": "deny"});
@@ -2271,10 +2267,8 @@ pub(crate) mod streaming_hook_decision_tests {
     async fn streaming_pre_tool_hook_aggregated_deny_model_result_matches_official() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
-        let _managed = crate::services::hooks::test_support::ManagedSettingsGuard::install(Some(
-            r#"{"allowManagedHooksOnly":true}"#,
-        ));
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
+        let _hooks_off = crate::services::hooks::test_support::HooksDisabledGuard::install();
         let _registered = RegisteredHooksGuard(crate::bootstrap::state::get_registered_hooks());
         for later_reason in [None, Some("late allow explanation")] {
             let (sender, receiver) = async_channel::bounded::<()>(1);
@@ -2404,10 +2398,8 @@ pub(crate) mod streaming_hook_decision_tests {
     async fn streaming_hook_ask_final_callback_deny_matches_official_no_second_prompt() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
-        let _managed = crate::services::hooks::test_support::ManagedSettingsGuard::install(Some(
-            r#"{"allowManagedHooksOnly":true}"#,
-        ));
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
+        let _hooks_off = crate::services::hooks::test_support::HooksDisabledGuard::install();
         let _registered = RegisteredHooksGuard(crate::bootstrap::state::get_registered_hooks());
         let prompt_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let prompt_counter = prompt_calls.clone();

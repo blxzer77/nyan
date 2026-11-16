@@ -76,7 +76,7 @@ fn env_validation_warnings() -> Vec<EnvValidationWarning> {
             TASK_MAX_OUTPUT_UPPER_LIMIT,
         ),
         (
-            "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+            "NYAN_MAX_OUTPUT_TOKENS",
             max_output_tokens.default as usize,
             max_output_tokens.upper_limit as usize,
         ),
@@ -84,15 +84,6 @@ fn env_validation_warnings() -> Vec<EnvValidationWarning> {
     .into_iter()
     .filter_map(|(name, default, upper)| doctor_validate_env_var(name, default, upper))
     .collect()
-}
-
-fn doctor_auto_update_channel() -> String {
-    crate::utils::settings::load_settings_from_disk()
-        .settings
-        .auto_updates_channel
-        .or_else(|| crate::utils::process_env::var("NYAN_AUTO_UPDATE_CHANNEL"))
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "latest".to_string())
 }
 
 /// Maps to CC `screens/Doctor.tsx` `VersionLockInfo`.
@@ -214,7 +205,6 @@ pub fn Doctor<'a>(props: &mut DoctorProps<'a>, mut hooks: Hooks) -> impl Into<An
     // CC `Doctor.tsx:157-168` `useMemo(..., [])`: validated once per mount, so
     // its debug logging does not repeat on every frame.
     let env_warnings = hooks.use_memo(env_validation_warnings, ());
-    let auto_update_channel = doctor_auto_update_channel();
     let search_status = doctor_search_status(&diagnostic);
     let profile_diagnoses = hooks.use_memo(
         || {
@@ -242,11 +232,11 @@ pub fn Doctor<'a>(props: &mut DoctorProps<'a>, mut hooks: Hooks) -> impl Into<An
         .clone()
         .unwrap_or_else(|| check_context_warnings(&DoctorContextWarningsInput::default()));
     let unreachable_rules_warning = context_warnings.unreachable_rules_warning.clone();
-    let claude_md_warning = context_warnings.claude_md_warning.clone();
+    let agents_md_warning = context_warnings.agents_md_warning.clone();
     let agent_warning = context_warnings.agent_warning.clone();
     let mcp_warning = context_warnings.mcp_warning.clone();
     let has_context_usage_warnings =
-        claude_md_warning.is_some() || agent_warning.is_some() || mcp_warning.is_some();
+        agents_md_warning.is_some() || agent_warning.is_some() || mcp_warning.is_some();
     let warning_symbol = figures::get().warning.to_string();
 
     element! {
@@ -313,11 +303,10 @@ pub fn Doctor<'a>(props: &mut DoctorProps<'a>, mut hooks: Hooks) -> impl Into<An
 
             View(margin_top: 1u32, flex_direction: FlexDirection::Column) {
                 Text(content: "Updates".to_string(), weight: Weight::Bold)
-                Text(content: format!("└ Auto-updates: {}", if diagnostic.package_manager.is_some() { "Managed by package manager" } else { diagnostic.auto_updates.as_str() }))
+                Text(content: format!("└ Auto-updates: {}", diagnostic.auto_updates))
                 #(diagnostic.has_update_permissions.map(|has_permissions| element! {
                     Text(content: format!("└ Update permissions: {}", if has_permissions { "Yes" } else { "No (requires sudo)" }))
                 }))
-                Text(content: format!("└ Auto-update channel: {auto_update_channel}"))
                 Text(content: "└ Failed to fetch versions".to_string(), dim: true)
             }
 
@@ -468,7 +457,7 @@ pub fn Doctor<'a>(props: &mut DoctorProps<'a>, mut hooks: Hooks) -> impl Into<An
                 Some(element! {
                     View(margin_top: 1u32, flex_direction: FlexDirection::Column) {
                         Text(content: "Context Usage Warnings".to_string(), weight: Weight::Bold)
-                        #(claude_md_warning.clone().map(|warning| {
+                        #(agents_md_warning.clone().map(|warning| {
                             let symbol = warning_symbol.clone();
                             element! {
                                 View(flex_direction: FlexDirection::Column) {
@@ -620,7 +609,6 @@ mod tests {
         assert!(text.contains("└ Search:"), "canvas=\n{text}");
         assert!(text.contains("Updates"), "canvas=\n{text}");
         assert!(text.contains("└ Auto-updates:"), "canvas=\n{text}");
-        assert!(text.contains("└ Auto-update channel:"), "canvas=\n{text}");
         assert!(text.contains("Model Profiles"), "canvas=\n{text}");
         assert!(text.contains("Press Enter to continue…"), "canvas=\n{text}");
     }
@@ -641,7 +629,7 @@ mod tests {
             ContextProvider(value: Context::owned(current_theme)) {
                 Doctor(
                     keybinding_customization_enabled: true,
-                    keybindings_path: "/repo/.claude/keybindings.json".to_string(),
+                    keybindings_path: "/repo/.nyan/keybindings.json".to_string(),
                     keybinding_warnings: vec![KeybindingWarningItem::error(
                         "Unknown action custom:missing",
                         Some("Remove or rename the binding"),
@@ -657,7 +645,7 @@ mod tests {
             "canvas=\n{text}"
         );
         assert!(
-            text.contains("/repo/.claude/keybindings.json"),
+            text.contains("/repo/.nyan/keybindings.json"),
             "canvas=\n{text}"
         );
         assert!(
@@ -678,7 +666,6 @@ mod tests {
                         message: "Invalid model".to_string(),
                         expected: None,
                         invalid_value: None,
-                        doc_link: None,
                         suggestion: Some("Use a supported model".to_string()),
                     }],
                 )
@@ -730,7 +717,7 @@ mod tests {
             ContextProvider(value: Context::owned(current_theme)) {
                 Doctor(
                     agent_parse_errors: vec![FailedAgentFile {
-                        path: std::path::PathBuf::from("/repo/.claude/agents/bad.md"),
+                        path: std::path::PathBuf::from("/repo/.nyan/agents/bad.md"),
                         error: "missing required description".to_string(),
                         source: None,
                     }, FailedAgentFile {
@@ -755,7 +742,7 @@ mod tests {
             "canvas=\n{text}"
         );
         assert!(
-            text.contains("/repo/.claude/agents/bad.md: missing required description"),
+            text.contains("/repo/.nyan/agents/bad.md: missing required description"),
             "canvas=\n{text}"
         );
         assert!(
@@ -788,8 +775,8 @@ mod tests {
                 current_value: 1,
                 threshold: 0,
             }),
-            claude_md_warning: Some(ContextWarning {
-                warning_type: ContextWarningType::ClaudeMdFiles,
+            agents_md_warning: Some(ContextWarning {
+                warning_type: ContextWarningType::AgentsMdFiles,
                 severity: ContextWarningSeverity::Warning,
                 message: "Large AGENTS.md file detected".to_string(),
                 details: vec!["AGENTS.md: 40,001 chars".to_string()],

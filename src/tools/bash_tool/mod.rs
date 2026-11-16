@@ -305,45 +305,6 @@ fn is_auto_backgrounding_allowed(command: &str) -> bool {
     !(first.len() == 1 && first[0] == "sleep")
 }
 
-/// Prepare Bash hook `if` matching once per invocation. Maps to CC
-/// `BashTool.preparePermissionMatcher` (`BashTool.tsx:663-681`). External CC
-/// builds have no tree-sitter Bash parser, so `parse-unavailable` deliberately
-/// fails safe by running every Bash-content hook. The internal projection uses
-/// the statically recoverable argv subset and likewise fails safe for any shell
-/// construct it cannot prove simple.
-fn prepare_bash_permission_matcher(command: &str) -> crate::tool::PermissionPatternMatcher {
-    if crate::utils::build_profile::build_audience().is_external() {
-        return Box::new(|_| true);
-    }
-
-    let commands = match crate::utils::bash::ast::parse_for_security(command) {
-        crate::utils::bash::ast::ParseForSecurityResult::Simple { commands }
-            if !commands.is_empty() =>
-        {
-            commands
-                .into_iter()
-                .map(|command| command.argv.join(" "))
-                .collect::<Vec<_>>()
-        }
-        crate::utils::bash::ast::ParseForSecurityResult::Simple { .. }
-        | crate::utils::bash::ast::ParseForSecurityResult::ParseUnavailable
-        | crate::utils::bash::ast::ParseForSecurityResult::TooComplex { .. } => {
-            return Box::new(|_| true);
-        }
-    };
-
-    Box::new(move |pattern| {
-        let prefix = bash_permissions::permission_rule_extract_prefix(pattern);
-        commands.iter().any(|command| {
-            if let Some(prefix) = prefix {
-                command == prefix || command.starts_with(&format!("{prefix} "))
-            } else {
-                bash_permissions::match_wildcard_pattern(pattern, command)
-            }
-        })
-    })
-}
-
 /// Maps to CC `BashTool.inputSchema` internal `_simulatedSedEdit` payload.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SimulatedSedEdit {
@@ -408,7 +369,7 @@ fn full_input_fields() -> Vec<crate::utils::zod::ObjectField> {
 pub(crate) static IS_BACKGROUND_TASKS_DISABLED: std::sync::LazyLock<bool> =
     std::sync::LazyLock::new(|| {
         crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS").as_deref(),
+            crate::utils::process_env::var("NYAN_DISABLE_BACKGROUND_TASKS").as_deref(),
         )
     });
 
@@ -514,8 +475,8 @@ async fn apply_simulated_sed_edit(
     )?;
     let fs = crate::utils::fs_operations::get_fs_implementation();
     let encoding = crate::utils::file::detect_file_encoding(&path);
-    let original = match fs.read_file(&path, encoding.into()).await {
-        Ok(content) => content.to_string_lossy(),
+    match fs.read_file(&path, encoding.into()).await {
+        Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(BashOutput {
                 stderr: format!(
@@ -529,7 +490,7 @@ async fn apply_simulated_sed_edit(
             });
         }
         Err(error) => return Err(format!("Error running command: {error}")),
-    };
+    }
 
     if let (Some(parent), Some(store)) = (parent_message, context.app_store.store.as_ref())
         && crate::utils::file_history::file_history_enabled()
@@ -550,12 +511,6 @@ async fn apply_simulated_sed_edit(
     crate::utils::file::write_text_content(&path, &simulated.new_content, encoding, endings)
         .map_err(|error| format!("Error running command: {error}"))?;
 
-    let _ = crate::services::mcp::vscode_sdk_mcp::notify_vscode_file_updated(
-        &path.display().to_string(),
-        Some(&original),
-        Some(&simulated.new_content),
-    )
-    .await;
     // Maps to: CC `BashTool.tsx:617-623` `applySedEdit`
     // `readFileState.set(absoluteFilePath, ...)`.
     context
@@ -1000,14 +955,8 @@ pub(crate) fn bash_output(
         stderr = utils::stderr_append_shell_reset_message(&stderr);
     }
 
-    let mut stripped = utils::strip_empty_lines(&full_stdout);
-    let extracted = crate::utils::claude_code_hints::extract_claude_code_hints(&stripped, command);
-    stripped = extracted.stripped;
-    if context.agent_id.is_none() {
-        for hint in extracted.hints {
-            crate::utils::plugins::hint_recommendation::maybe_record_plugin_hint(hint);
-        }
-    }
+    let mut stripped =
+        crate::utils::plugin_hint::strip_plugin_hints(&utils::strip_empty_lines(&full_stdout));
 
     let persisted_output_size = result.output_file_size;
     let persisted_output_path = if interpretation.is_error && !is_interrupt {
@@ -1167,15 +1116,14 @@ impl crate::tool::ToolCall for BashTool {
             .to_string()
     }
 
+    /// Maps to CC `BashTool.preparePermissionMatcher` (`BashTool.tsx:663-681`).
+    /// Run every Bash-content hook conservatively, even when syntax analysis
+    /// cannot recover all commands.
     fn prepare_permission_matcher(
         &self,
-        args: &serde_json::Value,
+        _args: &serde_json::Value,
     ) -> Option<crate::tool::PermissionPatternMatcher> {
-        Some(prepare_bash_permission_matcher(
-            args.get("command")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default(),
-        ))
+        Some(Box::new(|_| true))
     }
 
     fn check_permissions(
@@ -1187,71 +1135,22 @@ impl crate::tool::ToolCall for BashTool {
             .get("command")
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default();
-        let mut ast_commands = None;
-        if crate::utils::build_profile::build_audience().is_internal()
-            && !crate::utils::env_utils::is_env_truthy(
-                crate::utils::process_env::var("CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK")
-                    .as_deref(),
-            )
-        {
-            match crate::utils::bash::ast::parse_for_security(command) {
-                crate::utils::bash::ast::ParseForSecurityResult::TooComplex { reason, .. } => {
-                    return bash_permissions::ast_security_result(
-                        command,
-                        &context.tool_permission_context,
-                        &reason,
-                        &[],
-                    );
-                }
-                crate::utils::bash::ast::ParseForSecurityResult::Simple { commands } => {
-                    if let crate::utils::bash::ast::SemanticCheckResult::Unsafe { reason } =
-                        crate::utils::bash::ast::check_semantics(&commands)
-                    {
-                        return bash_permissions::ast_security_result(
-                            command,
-                            &context.tool_permission_context,
-                            &reason,
-                            &commands,
-                        );
-                    }
-                    ast_commands = Some(commands);
-                }
-                crate::utils::bash::ast::ParseForSecurityResult::ParseUnavailable => {}
-            }
-        }
         let settings = crate::utils::settings::get_initial_settings();
         if crate::utils::sandbox::sandbox_adapter::is_auto_allow_bash_if_sandboxed_enabled(
             &settings,
-        ) && !bash_permissions::has_obscured_command_names(command)
-            && should_use_sandbox::should_use_sandbox(&should_use_sandbox::SandboxInput {
-                command: Some(command.to_string()),
-                dangerously_disable_sandbox: args
-                    .get("dangerouslyDisableSandbox")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false),
-            })
-        {
-            return match ast_commands.as_deref() {
-                Some(commands) => bash_permissions::check_sandbox_auto_allow_from_ast(
-                    command,
-                    commands,
-                    &context.tool_permission_context,
-                ),
-                None => bash_permissions::check_sandbox_auto_allow(
-                    command,
-                    &context.tool_permission_context,
-                ),
-            };
-        }
-        let cwd = context.effective_cwd();
-        if let Some(commands) = ast_commands.as_deref() {
-            return bash_permissions::bash_tool_has_permission_from_ast(
+        ) && should_use_sandbox::should_use_sandbox(&should_use_sandbox::SandboxInput {
+            command: Some(command.to_string()),
+            dangerously_disable_sandbox: args
+                .get("dangerouslyDisableSandbox")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+        }) {
+            return bash_permissions::check_sandbox_auto_allow(
                 command,
-                commands,
                 &context.tool_permission_context,
-                &cwd,
             );
         }
+        let cwd = context.effective_cwd();
         bash_permissions::bash_tool_has_permission(command, &context.tool_permission_context, &cwd)
     }
 
@@ -1514,71 +1413,24 @@ mod tests {
     use super::*;
     use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
 
-    #[cfg(feature = "anthropic_internal")]
     #[test]
-    fn internal_permission_path_uses_ast_and_preserves_deny_precedence() {
+    fn bash_permission_entry_enforces_ast_with_and_without_sandbox() {
         use crate::types::permissions::{PermissionRuleSource, PermissionRuleValue};
-
-        let tool = BashTool;
-        let context = crate::tool::ToolUseContext::default();
-        assert!(matches!(
-            crate::tool::ToolCall::check_permissions(
-                &tool,
-                &serde_json::json!({"command": "cat $(printf /etc/passwd)"}),
-                &context,
-            ),
-            crate::utils::permissions::permission_result::PermissionResult::Ask { .. }
-        ));
-
-        let mut denied = crate::tool::ToolUseContext::default();
-        denied.tool_permission_context.always_deny_rules.insert(
-            PermissionRuleSource::Session,
-            vec![PermissionRuleValue::new("Bash", Some("eval:*".to_string()))],
-        );
-        assert!(matches!(
-            crate::tool::ToolCall::check_permissions(
-                &tool,
-                &serde_json::json!({"command": "printf x | eval 'echo bad'"}),
-                &denied,
-            ),
-            crate::utils::permissions::permission_result::PermissionResult::Deny { .. }
-        ));
-
-        let outside = std::env::temp_dir().join(format!(
-            "nyan-internal-ast-redirection-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
-        assert!(matches!(
-            crate::tool::ToolCall::check_permissions(
-                &tool,
-                &serde_json::json!({"command": format!("echo x > {}", outside.display()), "dangerouslyDisableSandbox": true}),
-                &context,
-            ),
-            crate::utils::permissions::permission_result::PermissionResult::Ask { .. }
-        ));
-    }
-
-    #[cfg(feature = "anthropic_internal")]
-    #[test]
-    fn sandbox_permission_precedence_resists_control_flow_dynamic_names_and_override_bypass() {
-        use crate::types::permissions::{PermissionRuleSource, PermissionRuleValue};
-        use crate::utils::permissions::permission_result::{
-            PermissionDecisionReason, PermissionResult,
-        };
+        use crate::utils::permissions::permission_result::PermissionResult;
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
-            "nyan-bash-sandbox-permission-{}",
+            "nyan-ast-sandbox-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
         std::fs::write(
             root.join("settings.json"),
             r#"{"sandbox":{"enabled":true,"autoAllowBashIfSandboxed":true,"allowUnsandboxedCommands":true}}"#,
         )
         .unwrap();
-
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
+        let _legacy_override = EnvVarGuard::set("NYAN_DISABLE_COMMAND_INJECTION_CHECK", "1");
         let mut context = crate::tool::ToolUseContext::default();
         context.tool_permission_context.always_deny_rules.insert(
             PermissionRuleSource::Session,
@@ -1591,74 +1443,90 @@ mod tests {
             PermissionRuleSource::Session,
             vec![PermissionRuleValue::new("Bash", Some("rm:*".to_string()))],
         );
-        let tool = BashTool;
-        assert!(matches!(
-            crate::tool::ToolCall::check_permissions(
-                &tool,
-                &serde_json::json!({"command": "if true; then rm -f file; fi"}),
-                &context,
-            ),
-            PermissionResult::Ask { .. }
-        ));
-        assert!(matches!(
-            crate::tool::ToolCall::check_permissions(
-                &tool,
-                &serde_json::json!({"command": "printf x | git push origin main"}),
-                &context,
-            ),
-            PermissionResult::Deny { .. }
-        ));
-        assert!(matches!(
-            crate::tool::ToolCall::check_permissions(
-                &tool,
-                &serde_json::json!({"command": "\"$CMD\" status"}),
-                &crate::tool::ToolUseContext::default(),
-            ),
-            PermissionResult::Ask { .. }
-        ));
+        for unsandboxed in [false, true] {
+            for (command, expected) in [
+                ("if true; then echo hello; fi", "allow"),
+                ("(git push origin main)", "deny"),
+                ("if true; then rm file; fi", "ask"),
+                ("echo 'unterminated", "ask"),
+                ("echo $(id)", "ask"),
+                ("eval 'echo hello'", "ask"),
+            ] {
+                let result = crate::tool::ToolCall::check_permissions(
+                    &BashTool,
+                    &serde_json::json!({
+                        "command": command,
+                        "dangerouslyDisableSandbox": unsandboxed,
+                    }),
+                    &context,
+                );
+                assert!(
+                    matches!(
+                        (expected, &result),
+                        ("allow", PermissionResult::Allow { .. })
+                            | ("ask", PermissionResult::Ask { .. })
+                            | ("deny", PermissionResult::Deny { .. })
+                    ),
+                    "{command:?}, unsandboxed={unsandboxed}: {result:?}"
+                );
+            }
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
-        let unsandboxed = crate::tool::ToolCall::check_permissions(
-            &tool,
-            &serde_json::json!({
-                "command": "cargo build",
-                "dangerouslyDisableSandbox": true
-            }),
-            &crate::tool::ToolUseContext::default(),
+    #[test]
+    fn ast_security_prompts_survive_tool_wide_allow_in_permission_engine() {
+        use crate::types::permissions::{PermissionRuleSource, PermissionRuleValue};
+        use crate::utils::permissions::permissions::{
+            HasPermissionsToUseToolParams, HasPermissionsToUseToolResult,
+            has_permissions_to_use_tool_with_context,
+        };
+
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let config =
+            std::env::temp_dir().join(format!("nyan-ast-engine-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&config).unwrap();
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config);
+        let mut context = crate::tool::ToolUseContext::default();
+        context.tool_permission_context.always_allow_rules.insert(
+            PermissionRuleSource::Session,
+            vec![PermissionRuleValue::new("Bash", None)],
         );
-        assert!(!matches!(
-            unsandboxed,
-            PermissionResult::Allow {
-                decision_reason: Some(PermissionDecisionReason::Other { ref reason }),
-                ..
-            } if reason.contains("Auto-allowed with sandbox")
-        ));
-
-        std::fs::write(
-            root.join("settings.json"),
-            r#"{"sandbox":{"enabled":true,"autoAllowBashIfSandboxed":true,"allowUnsandboxedCommands":false}}"#,
-        )
-        .unwrap();
-        // `settings_cache` is process-global like CC's module scope, and its own
-        // doc states the contract: "Tests that mutate settings on disk must call
-        // reset_settings_cache". Without it the second read still sees
-        // `allowUnsandboxedCommands: true` from the first write, so the override
-        // this test exists to prove is resisted looks like it is honoured.
-        crate::utils::settings::settings_cache::reset_settings_cache();
-        assert!(matches!(
-            crate::tool::ToolCall::check_permissions(
-                &tool,
-                &serde_json::json!({
-                    "command": "cargo build",
-                    "dangerouslyDisableSandbox": true
-                }),
-                &crate::tool::ToolUseContext::default(),
-            ),
-            PermissionResult::Allow {
-                decision_reason: Some(PermissionDecisionReason::Other { ref reason }),
-                ..
-            } if reason.contains("Auto-allowed with sandbox")
-        ));
-        let _ = std::fs::remove_dir_all(root);
+        context.tool_permission_context.always_ask_rules.insert(
+            PermissionRuleSource::Session,
+            vec![PermissionRuleValue::new(
+                "Bash",
+                Some("cargo test:*".to_string()),
+            )],
+        );
+        for source in [
+            "echo 'unterminated".to_string(),
+            "echo $(id)".to_string(),
+            "cargo test && unrecognized-command".to_string(),
+            format!("echo x > {}", config.join("outside").display()),
+        ] {
+            let input = serde_json::json!({"command": source, "dangerouslyDisableSandbox": true});
+            let result = has_permissions_to_use_tool_with_context(
+                HasPermissionsToUseToolParams {
+                    tool_use_id: "ast-permission-test",
+                    tool_name: "Bash",
+                    mcp_info: None,
+                    input_summary: &source,
+                    input: &input,
+                    context: &context.tool_permission_context,
+                    messages: &[],
+                    app_store: None,
+                    local_denial_tracking: None,
+                    abort_signal: None,
+                },
+                Some(&context),
+            );
+            assert!(
+                matches!(result, HasPermissionsToUseToolResult::Ask(_)),
+                "{source:?}: {result:?}"
+            );
+        }
+        std::fs::remove_dir_all(config).unwrap();
     }
 
     #[test]
@@ -1715,7 +1583,7 @@ mod tests {
     #[test]
     fn bash_tool_schema_matches_official_background_task_gate() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _disabled = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+        let _disabled = EnvVarGuard::unset("NYAN_DISABLE_BACKGROUND_TASKS");
         let schema = bash_tool_schema();
         assert!(
             schema
@@ -1745,7 +1613,7 @@ mod tests {
     #[test]
     fn bash_tool_schema_omits_background_when_gate_is_off() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _enabled = EnvVarGuard::set("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "true");
+        let _enabled = EnvVarGuard::set("NYAN_DISABLE_BACKGROUND_TASKS", "true");
         let schema = bash_tool_schema();
         assert!(
             schema
@@ -1899,7 +1767,7 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let source = root.join("source.output");
         std::fs::write(&source, b"0123456789").unwrap();
@@ -1925,7 +1793,7 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let source = root.join("source.output");
         std::fs::write(&source, b"retained-output").unwrap();
@@ -1963,7 +1831,7 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let victim = root.join("victim");
         let source = root.join("swapped.output");
@@ -2006,7 +1874,7 @@ mod tests {
     #[test]
     fn foreground_timeout_maps_to_exit_143_without_abort_or_display_stderr() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _background = EnvVarGuard::set("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1");
+        let _background = EnvVarGuard::set("NYAN_DISABLE_BACKGROUND_TASKS", "1");
         let output = bash_output(
             &serde_json::json!({"command": "sleep 1", "timeout": 40}),
             &crate::tool::ToolUseContext::default(),
@@ -2044,9 +1912,9 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _background = EnvVarGuard::set("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1");
+        let _background = EnvVarGuard::set("NYAN_DISABLE_BACKGROUND_TASKS", "1");
         let output = bash_output(
             &serde_json::json!({
                 "command": "printf a; printf b >&2; printf '\\377tail'"
@@ -2063,6 +1931,50 @@ mod tests {
     }
 
     #[test]
+    fn plugin_hint_tags_are_stripped_from_model_and_user_output() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "nyan-bash-plugin-hint-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        let _background = EnvVarGuard::set("NYAN_DISABLE_BACKGROUND_TASKS", "1");
+        let output = bash_output(
+            &serde_json::json!({
+                "command": "echo before; \
+                    echo '<claude-code-hint v=1 type=plugin value=secret-plugin@market />'; \
+                    echo '  <claude-code-hint v=\"1\" type=\"plugin\" value=\"other@market\" />' >&2; \
+                    echo after"
+            }),
+            &crate::tool::ToolUseContext::default(),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(output.stdout, "before\n\nafter");
+        let (mapped, _) = crate::tool::ToolCall::map_tool_result_to_tool_result_block_param(
+            &BashTool,
+            &crate::tool::ToolOutput::Bash(output.clone()),
+            "toolu_plugin_hint",
+        );
+        let raw = crate::tool::ToolCall::tool_use_result(
+            &BashTool,
+            &crate::tool::ToolOutput::Bash(output),
+        )
+        .expect("bash raw rides")
+        .to_string();
+        for visible in [&mapped, &raw] {
+            assert!(visible.contains("before") && visible.contains("after"));
+            for leaked in ["claude-code-hint", "secret-plugin", "other@market"] {
+                assert!(!visible.contains(leaked), "{leaked} leaked into {visible}");
+            }
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn no_write_pipe_fallback_keeps_child_stderr_model_visible() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
@@ -2070,9 +1982,9 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "0");
-        let _background = EnvVarGuard::set("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1");
+        let _background = EnvVarGuard::set("NYAN_DISABLE_BACKGROUND_TASKS", "1");
         let output = bash_output(
             &serde_json::json!({"command": "printf visible-error >&2; exit 2"}),
             &crate::tool::ToolUseContext::default(),
@@ -2101,9 +2013,9 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&root).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _background = EnvVarGuard::set("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1");
+        let _background = EnvVarGuard::set("NYAN_DISABLE_BACKGROUND_TASKS", "1");
         // Snapshot creation is a one-time provider cost and is outside the
         // ShellCommand `exit` versus inherited-fd contract measured here.
         crate::utils::shell::get_shell_config().unwrap();
@@ -2147,7 +2059,7 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _tasks = TaskStateGuard;
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _background = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+        let _background = EnvVarGuard::unset("NYAN_DISABLE_BACKGROUND_TASKS");
         crate::tasks::local_shell_task::clear_for_test();
         let store = crate::state::store::AppStore::new(
             crate::state::app_state_store::AppState::default(),
@@ -2220,7 +2132,7 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _tasks = TaskStateGuard;
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _background = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+        let _background = EnvVarGuard::unset("NYAN_DISABLE_BACKGROUND_TASKS");
         crate::tasks::local_shell_task::clear_for_test();
         let store = crate::state::store::AppStore::new(
             crate::state::app_state_store::AppState::default(),
@@ -2348,7 +2260,7 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::write(&path, "export NYAN_SESSION_ENV_TEST=visible").unwrap();
-        let _env_file = EnvVarGuard::set("CLAUDE_ENV_FILE", &path);
+        let _env_file = EnvVarGuard::set("NYAN_ENV_FILE", &path);
         crate::utils::session_environment::invalidate_session_env_cache();
 
         let output = bash_output(

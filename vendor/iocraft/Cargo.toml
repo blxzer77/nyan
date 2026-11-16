@@ -1,0 +1,44 @@
+[package]
+name = "iocraft"
+version = "0.9.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Create beautifully crafted CLI programs and text output with a declarative React-like Rust API."
+repository = "https://github.com/ccbrown/iocraft"
+
+[features]
+default = []
+unstable-output-streams = []
+
+[dependencies]
+crossterm = { version = "0.29.0", features = ["event-stream"] }
+futures = "0.3.30"
+# 0.14 carries the layout-cache soundness line (#911 in 0.12, axis/eviction fixes
+# in #1010) that cures the CometixCode /resume "blank ocean" (Haleclipse/taffy#1).
+taffy = { version = "0.14.0", default-features = false, features = ["std", "flexbox", "grid", "parse", "taffy_tree"] }
+# nyan vendor: the upstream workspace siblings come from the same git commit
+# nyan already locks (see vendor/iocraft/NYAN.md).
+iocraft-macros = { version = "0.2.4", git = "https://github.com/Haleclipse/CometixTUI" }
+# CC Ink renders every color through chalk; the canvas SGR encoders take
+# chalk's level detection and downgrade math from the same port.
+chalk = { version = "0.1.0", git = "https://github.com/Haleclipse/CometixTUI" }
+bitflags = "2.6.0"
+unicode-width = "0.1.13"
+unicode-segmentation = "1"
+unicode-bidi = "0.3.18"
+generational-box = "0.5.6"
+regex = "1.12.3"
+# Runtime-agnostic timer used for render-loop frame throttling.
+futures-timer = "3"
+
+[target.'cfg(unix)'.dependencies]
+# Already present in crossterm's unix dependency tree; used directly for
+# SIGCONT-based self-healing redraws after Ctrl+Z suspend/resume.
+signal-hook = "0.3"
+
+[dev-dependencies]
+avt = "0.17"
+indoc = "2"
+smol = "2.0.1"
+smol-macros = "0.1.1"
+macro_rules_attribute = "0.2.0"

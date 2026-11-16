@@ -16,7 +16,6 @@ pub struct SelectEventModeProps<'a> {
     pub hook_event_metadata: HashMap<HookEvent, HookEventMetadata>,
     pub hooks_by_event: HashMap<HookEvent, usize>,
     pub total_hooks_count: usize,
-    pub restricted_by_policy: bool,
     pub on_select_event: HandlerMut<'a, HookEvent>,
     pub on_cancel: HandlerMut<'a, ()>,
 }
@@ -91,34 +90,12 @@ pub fn SelectEventMode<'a>(
             on_cancel: move |_| pending_cancel_for_dialog.set(true),
         ) {
             View(flex_direction: FlexDirection::Column, gap: 1u32) {
-                #(if props.restricted_by_policy {
-                    Some(element! {
-                        View(flex_direction: FlexDirection::Column) {
-                            Text(
-                                content: format!("{info} Hooks Restricted by Policy"),
-                                color: theme.suggestion,
-                                wrap: TextWrap::Wrap,
-                            )
-                            Text(
-                                content: "Only hooks from managed settings can run. User-defined hooks from ~/.claude/settings.json, .claude/settings.json, and .claude/settings.local.json are blocked.".to_string(),
-                                dim: true,
-                                wrap: TextWrap::Wrap,
-                            )
-                        }
-                    })
-                } else { None })
                 View(flex_direction: FlexDirection::Column) {
-                    View(flex_direction: FlexDirection::Row) {
-                        Text(
-                            content: format!("{info} This menu is read-only. To add or modify hooks, edit settings.json directly or ask Claude. "),
-                            dim: true,
-                            wrap: TextWrap::Wrap,
-                        )
-                        Link(
-                            url: "https://code.claude.com/docs/en/hooks".to_string(),
-                            label: Some("Learn more".to_string()),
-                        )
-                    }
+                    Text(
+                        content: format!("{info} This menu is read-only. To add or modify hooks, edit settings.json directly or ask nyan."),
+                        dim: true,
+                        wrap: TextWrap::Wrap,
+                    )
                 }
                 View(flex_direction: FlexDirection::Column) {
                     Select(
@@ -140,7 +117,7 @@ mod tests {
     use crate::utils::theme;
 
     #[test]
-    fn event_mode_renders_official_read_only_copy_counts_and_policy_notice() {
+    fn event_mode_renders_official_read_only_copy_and_counts() {
         let metadata = get_hook_event_metadata(&["Bash".to_string()]);
         let text = element! {
             ContextProvider(value: Context::owned(*theme::current())) {
@@ -148,7 +125,6 @@ mod tests {
                     hook_event_metadata: metadata,
                     hooks_by_event: HashMap::from([(HookEvent::PreToolUse, 2usize)]),
                     total_hooks_count: 2usize,
-                    restricted_by_policy: true,
                 )
             }
         }
@@ -157,11 +133,8 @@ mod tests {
 
         assert!(text.contains("Hooks"), "canvas=\n{text}");
         assert!(text.contains("2 hooks configured"), "canvas=\n{text}");
-        assert!(
-            text.contains("Hooks Restricted by Policy"),
-            "canvas=\n{text}"
-        );
         assert!(text.contains("This menu is read-only"), "canvas=\n{text}");
+        assert!(text.contains("or ask nyan."), "canvas=\n{text}");
         assert!(text.contains("PreToolUse (2)"), "canvas=\n{text}");
         assert!(text.contains("Before tool execution"), "canvas=\n{text}");
     }

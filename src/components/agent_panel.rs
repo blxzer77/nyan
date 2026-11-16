@@ -813,7 +813,7 @@ pub fn layout_agent_panel(data: &AgentPanelData, theme: &Theme) -> Vec<AgentPane
         lines.push(AgentPanelLine {
             prefix: prefix.to_string(),
             prefix_color: if is_selected {
-                Some(theme.claude)
+                Some(theme.nyan)
             } else {
                 inactive
             },
@@ -1879,7 +1879,7 @@ mod tests {
         assert!(selected_line.starts_with("▶ "), "canvas=\n{text}");
         assert_eq!(
             style_at(&canvas, "▶").color,
-            Some(theme.claude),
+            Some(theme.nyan),
             "canvas=\n{text}"
         );
         // The teammate's single call expands with the `⎿` leader.

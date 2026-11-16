@@ -842,7 +842,6 @@ mod tests {
 
         let _task_guard = crate::utils::tasks::TASK_TOOL_TEST_LOCK.lock().unwrap();
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _managed = crate::services::hooks::test_support::ManagedSettingsGuard::install(None);
         let _temp = crate::utils::tasks::TempTaskConfig::new("update-session-hook");
         seed_task("pending");
 
@@ -931,9 +930,13 @@ mod tests {
     #[tokio::test]
     async fn swarms_auto_owner_and_mailbox_notification_match_official() {
         let _task_guard = crate::utils::tasks::TASK_TOOL_TEST_LOCK.lock().unwrap();
+        // The dynamic team context set below is process-wide.
+        let _teammate = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
+            .lock()
+            .unwrap();
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _temp = crate::utils::tasks::TempTaskConfig::new("update-swarm");
-        crate::utils::process_env::set("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+        crate::utils::process_env::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         crate::utils::teammate::set_dynamic_team_context(Some(
             crate::utils::teammate::DynamicTeamContext {
                 agent_id: "agent-7".to_string(),
@@ -960,7 +963,7 @@ mod tests {
         assert_eq!(inbox[0].from, "scout");
 
         crate::utils::teammate::clear_dynamic_team_context();
-        crate::utils::process_env::remove("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS");
+        crate::utils::process_env::remove("NYAN_EXPERIMENTAL_AGENT_TEAMS");
     }
 
     /// Maps to: CC `TaskUpdateTool.ts:300-324` — already-linked ids are

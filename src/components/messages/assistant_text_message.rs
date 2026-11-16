@@ -4,7 +4,6 @@ use crate::components::ctrl_o_to_expand::ctrl_o_to_expand_hint;
 use crate::components::interrupted_by_user::InterruptedByUser;
 use crate::components::markdown::{Markdown, StreamingMarkdown};
 use crate::components::message_response::MessageResponse;
-use crate::components::messages::rate_limit_message::RateLimitMessage;
 use crate::utils::messages::{NO_RESPONSE_REQUESTED, is_empty_message_text};
 use crate::utils::process_env::JsTruthy;
 use crate::utils::theme::Theme;
@@ -21,9 +20,7 @@ const PROMPT_TOO_LONG_ERROR_MESSAGE: &str = "Prompt is too long";
 const CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE: &str = "Credit balance is too low";
 const INVALID_API_KEY_ERROR_MESSAGE: &str = "Invalid API key · Check profile API key configuration";
 const INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL: &str = "Invalid API key · Fix external API key";
-const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH: &str = "Your ANTHROPIC_API_KEY belongs to a disabled organization · Unset the environment variable to use your subscription instead";
 const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY: &str = "Your ANTHROPIC_API_KEY belongs to a disabled organization · Update or unset the environment variable";
-const TOKEN_REVOKED_ERROR_MESSAGE: &str = "OAuth token revoked · Please run /login";
 const CUSTOM_OFF_SWITCH_MESSAGE: &str =
     "Opus is experiencing high load, please use /model to switch to Sonnet";
 const API_TIMEOUT_ERROR_MESSAGE: &str = "Request timed out";
@@ -51,13 +48,6 @@ pub fn AssistantTextMessage(
 
     if is_empty_message_text(text) || text == NO_RESPONSE_REQUESTED {
         return element! { View }.into_any();
-    }
-
-    if is_rate_limit_error_message(text) {
-        return element! {
-            RateLimitMessage(text: text.to_string(), hint: String::new(), add_margin: props.add_margin)
-        }
-        .into_any();
     }
 
     if text == ERROR_MESSAGE_USER_ABORT {
@@ -144,18 +134,6 @@ fn starts_with_api_error_prefix(text: &str) -> bool {
         || text.starts_with("Check profile API key configuration · API Error")
 }
 
-fn is_rate_limit_error_message(text: &str) -> bool {
-    [
-        "You've hit your",
-        "You've used",
-        "You're now using extra usage",
-        "You're close to",
-        "You're out of extra usage",
-    ]
-    .into_iter()
-    .any(|prefix| text.starts_with(prefix))
-}
-
 fn truncate_api_error(text: &str) -> String {
     let char_count = text.chars().count();
     if char_count <= MAX_API_ERROR_CHARS {
@@ -183,9 +161,7 @@ fn assistant_text_special_response(
         ),
         INVALID_API_KEY_ERROR_MESSAGE
         | INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL
-        | ORG_DISABLED_ERROR_MESSAGE_ENV_KEY
-        | ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH
-        | TOKEN_REVOKED_ERROR_MESSAGE => Some(text.to_string()),
+        | ORG_DISABLED_ERROR_MESSAGE_ENV_KEY => Some(text.to_string()),
         API_TIMEOUT_ERROR_MESSAGE => Some(match crate::utils::process_env::var("API_TIMEOUT_MS").truthy() {
             Some(ms) => {
                 format!("{API_TIMEOUT_ERROR_MESSAGE} (API_TIMEOUT_MS={ms}ms, try increasing it)")
@@ -248,11 +224,11 @@ mod tests {
     }
 
     #[test]
-    fn assistant_text_routes_rate_limit_messages_to_rate_limit_renderer() {
+    fn assistant_text_renders_generic_429_as_api_error() {
         let rendered =
-            render_assistant_text("You've hit your weekly limit · resets tomorrow", false);
+            render_assistant_text("API Error: Request rejected (429) · rate limited", false);
         assert!(rendered.contains("⎿"));
-        assert!(rendered.contains("You've hit your weekly limit"));
+        assert!(rendered.contains("Request rejected (429) · rate limited"));
         assert!(!rendered.contains(BLACK_CIRCLE));
     }
 
@@ -273,6 +249,6 @@ mod tests {
     #[test]
     fn assistant_text_renders_user_abort_as_interrupted_message() {
         let rendered = render_assistant_text(ERROR_MESSAGE_USER_ABORT, false);
-        assert!(rendered.contains("Interrupted · What should Claude do instead?"));
+        assert!(rendered.contains("Interrupted · What should nyan do instead?"));
     }
 }

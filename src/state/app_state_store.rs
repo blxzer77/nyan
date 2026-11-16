@@ -38,7 +38,6 @@ pub enum FooterItem {
     Tmux,
     Bagel,
     Teams,
-    Bridge,
     Companion,
     /// @nyan: the agent panel's footer stop (docs/nyan/tui.md §6.2). Distinct
     /// from `Tasks` so the panel's row navigation and the height-degraded pill
@@ -54,7 +53,6 @@ impl FooterItem {
             Self::Tmux => "tmux",
             Self::Bagel => "bagel",
             Self::Teams => "teams",
-            Self::Bridge => "bridge",
             Self::Companion => "companion",
             Self::AgentPanel => "agent-panel",
         }
@@ -136,85 +134,6 @@ pub struct PromptSuggestionState {
     pub shown_at: u64,
     pub accepted_at: u64,
     pub generation_request_id: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum CompletionBoundary {
-    Complete {
-        completed_at: u64,
-        output_tokens: u64,
-    },
-    Bash {
-        command: String,
-        completed_at: u64,
-    },
-    Edit {
-        tool_name: String,
-        file_path: String,
-        completed_at: u64,
-    },
-    DeniedTool {
-        tool_name: String,
-        detail: String,
-        completed_at: u64,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PipelinedSuggestion {
-    pub text: String,
-    pub prompt_id: String,
-    pub generation_request_id: Option<String>,
-}
-
-#[derive(Clone)]
-pub struct ActiveSpeculationState {
-    pub id: String,
-    pub abort_controller: crate::tool::AbortController,
-    pub start_time: u64,
-    pub messages: Arc<std::sync::Mutex<Vec<crate::types::message::Message>>>,
-    pub written_paths: Arc<std::sync::Mutex<std::collections::BTreeSet<String>>>,
-    pub boundary: Option<CompletionBoundary>,
-    pub suggestion_length: usize,
-    pub tool_use_count: usize,
-    pub is_pipelined: bool,
-    pub cache_safe_params: Arc<crate::utils::forked_agent::CacheSafeParams>,
-    pub pipelined_suggestion: Option<PipelinedSuggestion>,
-}
-
-impl std::fmt::Debug for ActiveSpeculationState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ActiveSpeculationState")
-            .field("id", &self.id)
-            .field("start_time", &self.start_time)
-            .field("boundary", &self.boundary)
-            .field("suggestion_length", &self.suggestion_length)
-            .field("tool_use_count", &self.tool_use_count)
-            .field("is_pipelined", &self.is_pipelined)
-            .field("pipelined_suggestion", &self.pipelined_suggestion)
-            .finish_non_exhaustive()
-    }
-}
-
-impl PartialEq for ActiveSpeculationState {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-            && self.start_time == other.start_time
-            && self.boundary == other.boundary
-            && self.suggestion_length == other.suggestion_length
-            && self.tool_use_count == other.tool_use_count
-            && self.is_pipelined == other.is_pipelined
-            && self.pipelined_suggestion == other.pipelined_suggestion
-    }
-}
-
-impl Eq for ActiveSpeculationState {}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum SpeculationState {
-    #[default]
-    Idle,
-    Active(ActiveSpeculationState),
 }
 
 // `TodoItem` / `TodoStatus` / `TodoList` are owned by `utils/todo/types.rs`,
@@ -577,8 +496,9 @@ pub struct AppState {
     /// 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
     /// Single-source expansion control for thinking blocks, REPLACING CC's
     /// verbose gate at the leaf (AssistantThinkingMessage.tsx:38). Default
-    /// true — mirrors the authoritative factory default (`expandThinking`,
-    /// config.rs `create_official_default_global_config`).
+    /// false (collapsed, ctrl+o to expand, as in CC) — mirrors the factory
+    /// default (`expandThinking`, config.rs
+    /// `create_official_default_global_config`).
     pub expand_thinking: bool,
     /// Nyan extension (no CC counterpart) — user-authorized L2 (v3 ruling,
     /// 2026-08-01); follows the CC verbose pattern (AppStateStore.ts:91).
@@ -707,15 +627,6 @@ pub struct AppState {
     /// source-branch value guard, so value projection is equivalent to CC's
     /// reference projection (same rationale as `denial_tracking`).
     pub prompt_suggestion: PromptSuggestionState,
-    /// Maps to: CC `AppState.speculation` (AppStateStore.ts:392).
-    /// Value retention (no Arc): the heavy enum payloads are already Arc'd
-    /// internally (messages / written_paths / cache_safe_params), so an outer
-    /// Arc has no consumer benefit.
-    pub speculation: SpeculationState,
-    /// Maps to: CC `AppState.speculationSessionTimeSavedMs`
-    /// (AppStateStore.ts:393). Value retention: plain counter (same ruling as
-    /// `speculation`).
-    pub speculation_session_time_saved_ms: u64,
     /// Maps to: CC `AppState.footerSelection` — focused footer pill, or
     /// `None` when the prompt owns focus.
     pub footer_selection: Option<FooterItem>,
@@ -736,47 +647,6 @@ pub struct AppState {
     /// Armed when a running row completes (docs/nyan/tui.md §6.1); the panel
     /// clears it on its first tick after expiry.
     pub agent_panel_finished_hint_until_ms: Option<u64>,
-    // -- Always-on bridge (CC AppStateStore.ts:134-155) --
-    // The CC `feature('BRIDGE_MODE')` build gate and `isBridgeEnabled()`
-    // entitlement are NOT AppState (CC evaluates them at the read sites:
-    // PromptInputFooter.tsx:241/:255); Nyan mirrors that with
-    // `FeatureFlag::BridgeMode` + `bridge::bridge_enabled::is_bridge_enabled`.
-    // Truthful seam: no Nyan producer ever sets `repl_bridge_enabled` true
-    // (CC's settings-screen bridge toggle and useReplBridge transport are
-    // unported); only the BridgeDialog disconnect writes `false`, so the
-    // footer pill stays unreachable in production even when both live gates
-    // pass. `repl_bridge_outbound_only` / `repl_bridge_initial_name` are
-    // additionally read-never here (CC readers live in the unported bridge
-    // runtime); the URL/id/error fields are write-never but read by
-    // BridgeDialogSnapshot.
-    /// Maps to: CC AppStateStore.ts:134 `replBridgeEnabled`.
-    pub repl_bridge_enabled: bool,
-    /// Maps to: CC AppStateStore.ts:136 `replBridgeExplicit`.
-    pub repl_bridge_explicit: bool,
-    /// Maps to: CC AppStateStore.ts:138 `replBridgeOutboundOnly`.
-    pub repl_bridge_outbound_only: bool,
-    /// Maps to: CC AppStateStore.ts:140 `replBridgeConnected`.
-    pub repl_bridge_connected: bool,
-    /// Maps to: CC AppStateStore.ts:142 `replBridgeSessionActive`.
-    pub repl_bridge_session_active: bool,
-    /// Maps to: CC AppStateStore.ts:144 `replBridgeReconnecting`.
-    pub repl_bridge_reconnecting: bool,
-    /// Maps to: CC AppStateStore.ts:146 `replBridgeConnectUrl`.
-    pub repl_bridge_connect_url: Option<String>,
-    /// Maps to: CC AppStateStore.ts:148 `replBridgeSessionUrl`.
-    pub repl_bridge_session_url: Option<String>,
-    /// Maps to: CC AppStateStore.ts:150 `replBridgeEnvironmentId`.
-    pub repl_bridge_environment_id: Option<String>,
-    /// Maps to: CC AppStateStore.ts:151 `replBridgeSessionId`.
-    pub repl_bridge_session_id: Option<String>,
-    /// Maps to: CC AppStateStore.ts:153 `replBridgeError`.
-    pub repl_bridge_error: Option<String>,
-    /// Maps to: CC AppStateStore.ts:155 `replBridgeInitialName`.
-    pub repl_bridge_initial_name: Option<String>,
-    /// Maps to: CC AppStateStore.ts:157 `showRemoteCallout` — top-level
-    /// sibling of the replBridge* fields, not nested under them. Seeded from
-    /// the startup RemoteCallout snapshot; dismissed by the callout dialog.
-    pub show_remote_callout: bool,
     /// Maps to: CC `AppState.standaloneAgentContext` — non-swarm custom
     /// name/color for the swarm banner (resume / agent metadata).
     /// Value retention (no Arc): two-field small object; all write sites
@@ -833,18 +703,10 @@ pub struct AppState {
     // PromptInput-scoped FooterLayoutWake (L1, PORTING.md;
     // components/prompt_input/footer_layout_wake.rs), replacing the deleted
     // `footer_layout_epoch` whole-tree wake. Height is recomputed live (no
-    // mirrored metrics bag); auth/overage are first-class fields; tokenUsage,
+    // mirrored metrics bag); auth is a first-class field; tokenUsage,
     // ideSelection, and the auto-updater values are component-local (CC
     // Notifications props), threaded to the height budget by their
     // REPL/PromptInput owners.
-    /// L1 retained-store projection of CC `useClaudeAiLimits()` hook state.
-    pub claude_ai_limits: Arc<crate::services::claude_ai_limits::ClaudeAiLimits>,
-    /// Maps to: CC `AppStateStore.ts:445` `isUltraplanMode?: boolean` — the
-    /// remote-harness side, set via the `set_permission_mode` control request
-    /// and pushed to CCR `external_metadata.is_ultraplan_mode` by
-    /// `onChangeAppState`. Optional in CC with no `getDefaultAppState` entry,
-    /// hence `Option<bool>` defaulting to `None` rather than `false`.
-    pub is_ultraplan_mode: Option<bool>,
     /// @nyan: TUI info-line metrics (docs/nyan/tui.md §3.1, §5). Collected
     /// here; rendered by later slices. Not a CC field.
     pub footer_metrics: super::footer_metrics::FooterMetrics,
@@ -867,7 +729,7 @@ impl Default for AppState {
         Self {
             auth_version: 0,
             verbose: false,
-            expand_thinking: true,
+            expand_thinking: false,
             expand_collapsed_read_search: true,
             main_loop_profile: None,
             advisor_model: None,
@@ -903,28 +765,11 @@ impl Default for AppState {
             is_brief_only: false,
             prompt_suggestion_enabled: false,
             prompt_suggestion: PromptSuggestionState::default(),
-            speculation: SpeculationState::Idle,
-            speculation_session_time_saved_ms: 0,
             footer_selection: None,
             agent_panel_selected: 0,
             agent_panel_items: Arc::new(Vec::new()),
             agent_panel_row_count: 0,
             agent_panel_finished_hint_until_ms: None,
-            // Maps to: CC AppStateStore.ts:487-499 replBridge* /
-            // showRemoteCallout defaults (all false / undefined).
-            repl_bridge_enabled: false,
-            repl_bridge_explicit: false,
-            repl_bridge_outbound_only: false,
-            repl_bridge_connected: false,
-            repl_bridge_session_active: false,
-            repl_bridge_reconnecting: false,
-            repl_bridge_connect_url: None,
-            repl_bridge_session_url: None,
-            repl_bridge_environment_id: None,
-            repl_bridge_session_id: None,
-            repl_bridge_error: None,
-            repl_bridge_initial_name: None,
-            show_remote_callout: false,
             standalone_agent_context: None,
             foregrounded_task_id: None,
             inbox: Arc::new(crate::hooks::use_inbox_poller::InboxState::default()),
@@ -936,9 +781,6 @@ impl Default for AppState {
             spinner_tip: None,
             todos: Arc::new(std::collections::BTreeMap::new()),
             tasks: Arc::new(std::collections::BTreeMap::new()),
-            claude_ai_limits: Arc::new(crate::services::claude_ai_limits::ClaudeAiLimits::default()),
-            // CC `AppStateStore.ts:445` is optional with no default entry.
-            is_ultraplan_mode: None,
             footer_metrics: super::footer_metrics::FooterMetrics::default(),
         }
     }
@@ -975,7 +817,6 @@ mod tests {
             ide_running_in_windows: None,
             ide_name: None,
             auth_token: None,
-            id: None,
             plugin_source: None,
         }
     }
@@ -1164,11 +1005,11 @@ mod tests {
     }
 
     #[test]
-    fn display_pref_defaults_mirror_factory_true() {
-        // Ruled default (v3, 2026-08-01): both Nyan display prefs default
-        // true, mirroring the authoritative factory defaults
+    fn display_pref_defaults_mirror_factory_defaults() {
+        // Thinking blocks default collapsed (as in CC; ctrl+o expands) and
+        // read/search groups default expanded, mirroring the factory defaults
         // (`create_official_default_global_config`).
-        assert!(AppState::default().expand_thinking);
+        assert!(!AppState::default().expand_thinking);
         assert!(AppState::default().expand_collapsed_read_search);
     }
 }

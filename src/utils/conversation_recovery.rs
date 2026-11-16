@@ -122,7 +122,7 @@ pub fn renderable_messages_from_entries(entries: &[serde_json::Value]) -> Vec<Re
 /// [`renderable_messages_from_entries`]).
 ///
 /// The deserialize-stage filters (`filterUnresolvedToolUses`, orphan
-/// thinking, whitespace assistants, sentinel insertion —
+/// thinking, whitespace assistants, interruption detection —
 /// conversationRecovery.ts:187-245) are NOT applied here: they run once in
 /// `conversation::deserialize_messages_with_interrupt_detection`, which
 /// produces `ResumeTarget.entries` (`commands/resume`), exactly like CC's
@@ -132,7 +132,7 @@ pub fn renderable_messages_from_entries(entries: &[serde_json::Value]) -> Vec<Re
 /// the raw `toolUseResult` via its own `parse_output`
 /// (CC `Tool.renderToolResultMessage` + `outputSchema.safeParse`).
 /// `content` stays the raw wire text and the API projection builds tool_result
-/// params from tool_use_id/content/is_error only (services/api/claude.rs).
+/// params from tool_use_id/content/is_error only (services/api/request.rs).
 pub fn messages_from_entries(entries: &[serde_json::Value]) -> Vec<crate::types::message::Message> {
     crate::utils::conversation::into_typed_messages(entries.to_vec())
 }
@@ -224,12 +224,6 @@ pub(crate) fn system_message_from_entry(
             base,
             content: text,
             commands: string_array_field(entry, &["commands"]),
-        },
-        "bridge_status" => SystemMessage::BridgeStatus {
-            base,
-            content: text,
-            url: first_string(entry, &["url"]).unwrap_or_default(),
-            upgrade_nudge: first_string(entry, &["upgradeNudge", "upgrade_nudge"]),
         },
         "scheduled_task_fire" => SystemMessage::ScheduledTaskFire {
             base,
@@ -482,6 +476,34 @@ mod tests {
                 Some((name, description))
             })
             .collect()
+    }
+
+    #[test]
+    fn retired_bridge_status_uses_the_unknown_system_message_fallback() {
+        let timestamp = chrono::Utc::now();
+        let entry = json!({
+            "type": "system", "subtype": "bridge_status", "content": "Disconnected",
+            "url": "https://example.invalid/retired", "upgradeNudge": "retired"
+        });
+        let message = system_message_from_entry(&entry, "legacy".to_string(), timestamp);
+        let saved = crate::utils::session_storage::system_entry_json(&message, "legacy");
+        assert_eq!(saved["subtype"], "informational");
+        assert_eq!(saved["content"], "Disconnected");
+        assert!(saved.get("url").is_none());
+        assert!(saved.get("upgradeNudge").is_none());
+        let crate::types::message::SystemMessage::Informational {
+            base,
+            content,
+            level,
+            ..
+        } = message
+        else {
+            panic!("retired subtypes must use the existing informational fallback");
+        };
+        assert_eq!(base.uuid, "legacy");
+        assert_eq!(base.timestamp, timestamp);
+        assert_eq!(content, "Disconnected");
+        assert_eq!(level, crate::types::message::SystemMessageLevel::Info);
     }
 
     fn owned_pairs(expected: &[(&str, &str)]) -> Vec<(String, String)> {
@@ -752,7 +774,7 @@ mod tests {
     #[test]
     fn load_conversation_for_resume_runs_only_session_start_resume_hooks() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         let marker_path = std::env::temp_dir().join(format!(
             "nyan-startup-resume-hooks-{}",
             uuid::Uuid::new_v4()
@@ -779,9 +801,7 @@ mod tests {
             ..crate::utils::settings::SettingsJson::default()
         };
         crate::utils::hooks::hooks_config_snapshot::reset_hooks_config_snapshot();
-        crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(
-            &settings, None, false,
-        );
+        crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(&settings);
         let target = crate::commands::resume::ResumeTarget {
             session_id: "startup-resume-session".to_string(),
             project_path: None,
@@ -1112,65 +1132,6 @@ mod tests {
     }
 
     #[test]
-    fn config_tool_use_and_result_match_official_ui_shape() {
-        let entries = vec![
-            json!({
-                "type": "assistant",
-                "message": {"content": [{"type": "tool_use", "id": "toolu_1", "name": "Config", "input": {"setting": "theme"}}]}
-            }),
-            json!({
-                "type": "user",
-                "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "theme = \"dark\"", "is_error": false}]},
-                "toolUseResult": {"success": true, "operation": "get", "setting": "theme", "value": "dark"}
-            }),
-            json!({
-                "type": "assistant",
-                "message": {"content": [{"type": "tool_use", "id": "toolu_2", "name": "Config", "input": {"setting": "theme", "value": "light"}}]}
-            }),
-            json!({
-                "type": "user",
-                "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_2", "content": "Set theme to \"light\"", "is_error": false}]},
-                "toolUseResult": {"success": true, "operation": "set", "setting": "theme", "previousValue": "dark", "newValue": "light"}
-            }),
-            json!({
-                "type": "assistant",
-                "message": {"content": [{"type": "tool_use", "id": "toolu_3", "name": "Config", "input": {}}]}
-            }),
-        ];
-
-        // The unresolved toolu_3 use is dropped by the deserialize-stage
-        // filter (CC conversationRecovery.ts:187-189), which runs before the
-        // parser in the real resume pipeline.
-        let messages = renderable_messages_from_entries(
-            &crate::utils::conversation::deserialize_messages(entries),
-        );
-        let tool_uses = messages.to_vec();
-        let tool_uses = recovered_tool_rows(&tool_uses);
-        assert_eq!(
-            tool_uses,
-            owned_pairs(&[
-                ("Config", "Getting theme"),
-                ("Config", "Setting theme to \"light\""),
-            ])
-        );
-
-        // No display shape — the raw `toolUseResult` rides each row and
-        // the by-tool-name renderer consumes it.
-        let results = messages
-            .iter()
-            .filter_map(tool_result_of)
-            .collect::<Vec<_>>();
-        assert_eq!(
-            rendered_tool_result_text(&messages, results[0]),
-            "theme = \"dark\""
-        );
-        assert_eq!(
-            rendered_tool_result_text(&messages, results[1]),
-            "Set theme to \"light\""
-        );
-    }
-
-    #[test]
     fn lsp_tool_use_and_result_match_official_ui_shape() {
         let entries = vec![
             json!({
@@ -1212,7 +1173,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_trigger_tool_use_and_result_match_official_ui_shape() {
+    fn retired_remote_trigger_recovers_as_an_unregistered_tool() {
         let entries = vec![
             json!({
                 "type": "assistant",
@@ -1234,24 +1195,17 @@ mod tests {
                     .next()
             })
             .expect("expected RemoteTrigger tool use");
-        assert_eq!(
-            tool_use,
-            ("RemoteTrigger".to_string(), "run nightly".to_string())
-        );
+        assert_eq!(tool_use, ("RemoteTrigger".to_string(), String::new()));
 
         let result = messages
             .iter()
             .find_map(tool_result_of)
             .expect("expected RemoteTrigger tool result");
-        // Raw wire content stays (D3 item 6); the pretty JSON derives at
-        // render from the raw `toolUseResult`.
+        // Raw wire content survives without a tool-specific renderer.
         assert_eq!(result.content, "HTTP 202\n{\"ok\":true}");
-        // CC RemoteTriggerTool/UI.tsx:11-19 renders the line count, never the
-        // JSON body — `HTTP {status} ({lines} lines)`.
-        assert_eq!(
-            rendered_tool_result_text(&messages, result),
-            "HTTP 202 (3 lines)"
-        );
+        let rendered = rendered_tool_result_text(&messages, result);
+        assert!(rendered.contains("HTTP 202"));
+        assert!(!rendered.contains("(3 lines)"));
         // No display shape — the raw `toolUseResult` rides the row.
         assert_eq!(
             result.tool_use_result,
@@ -1483,44 +1437,6 @@ mod tests {
     }
 
     #[test]
-    fn config_tool_reject_and_error_paths_use_official_visible_copy() {
-        let entries = vec![
-            json!({
-                "type": "assistant",
-                "message": {"content": [{"type": "tool_use", "id": "toolu_1", "name": "Config", "input": {"setting": "theme", "value": "dark"}}]}
-            }),
-            json!({
-                "type": "user",
-                "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": REJECT_MESSAGE}]}
-            }),
-            json!({
-                "type": "assistant",
-                "message": {"content": [{"type": "tool_use", "id": "toolu_2", "name": "Config", "input": {"setting": "theme", "value": "invalid"}}]}
-            }),
-            json!({
-                "type": "user",
-                "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_2", "content": "Error: Invalid value", "is_error": true}]},
-                "toolUseResult": {"success": false, "operation": "set", "setting": "theme", "error": "Invalid value"}
-            }),
-        ];
-
-        let results = renderable_messages_from_entries(&entries)
-            .into_iter()
-            .filter_map(into_tool_result)
-            .map(|result| (result.derived_status(), result.content))
-            .collect::<Vec<_>>();
-
-        assert_eq!(results[0].0, ToolResultStatus::Rejected);
-        // Reject rows keep the sentinel verbatim; the renderer derives
-        // the "Config change rejected" copy at render time.
-        assert_eq!(results[0].1, REJECT_MESSAGE);
-        // An error row carries no display shape; the error leaf renders
-        // from the wire content (`Error: {error}`, is_error: true).
-        assert_eq!(results[1].0, ToolResultStatus::Error);
-        assert_eq!(results[1].1, "Error: Invalid value");
-    }
-
-    #[test]
     fn synthetic_empty_assistant_messages_are_suppressed_like_official_renderer() {
         let entries = vec![
             json!({
@@ -1748,14 +1664,12 @@ mod tests {
         // (CC conversationRecovery.ts:187-189), before the parser. That leaves
         // a trailing tool_result whose tool is not one of the three terminal
         // ones (conversationRecovery.ts:364-368), so the stage reads it as
-        // `interrupted_turn` and appends the continuation user message
-        // (:213-225) plus the NO_RESPONSE_REQUESTED sentinel after it
-        // (:231-245) — four rows. The sentinel null-renders at the component
-        // (AssistantTextMessage.tsx:91-92).
+        // `interrupted_turn`. @nyan: no continuation/sentinel rows are
+        // appended (see `conversation::detect_and_append_sentinel`).
         let messages = renderable_messages_from_entries(
             &crate::utils::conversation::deserialize_messages(entries),
         );
-        assert_eq!(messages.len(), 4);
+        assert_eq!(messages.len(), 2);
         let (_, description) = recovered_tool_rows(std::slice::from_ref(&messages[0]))
             .into_iter()
             .next()
@@ -1918,7 +1832,7 @@ mod tests {
         assert_eq!(result.content, "Your questions have been answered");
         assert_eq!(
             rendered_tool_result_text(&all_rows, result),
-            format!("{BLACK_CIRCLE} User answered Claude's questions:\n· Proceed? → Yes")
+            format!("{BLACK_CIRCLE} User answered nyan's questions:\n· Proceed? → Yes")
         );
     }
 
@@ -1969,7 +1883,7 @@ mod tests {
             json!({
                 "type": "user",
                 "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_2", "content": "User has approved your plan", "is_error": false}]},
-                "toolUseResult": {"plan": "## Plan\nShip it", "filePath": "/tmp/project/.claude/plans/plan.md", "isAgent": false}
+                "toolUseResult": {"plan": "## Plan\nShip it", "filePath": "/tmp/project/.nyan/plans/plan.md", "isAgent": false}
             }),
         ];
 
@@ -1993,7 +1907,7 @@ mod tests {
         assert_eq!(
             rendered_tool_result_text(&all_rows, results[0]),
             format!(
-                "{BLACK_CIRCLE} Entered plan mode\nClaude is now exploring and designing an implementation approach."
+                "{BLACK_CIRCLE} Entered plan mode\nnyan is now exploring and designing an implementation approach."
             )
         );
         assert_eq!(results[1].content, "User has approved your plan");
@@ -2001,7 +1915,7 @@ mod tests {
         // BLACK_CIRCLE, exactly like the EnterPlanMode line above.
         assert!(
             rendered_tool_result_text(&all_rows, results[1])
-                .starts_with(&format!("{BLACK_CIRCLE} User approved Claude's plan"))
+                .starts_with(&format!("{BLACK_CIRCLE} User approved nyan's plan"))
         );
         assert!(rendered_tool_result_text(&all_rows, results[1]).contains("Plan saved to:"));
     }
@@ -2058,7 +1972,7 @@ mod tests {
                 &[],
                 Default::default(),
             );
-        assert_eq!(rejected_lines[0].text, "User rejected Claude's plan:");
+        assert_eq!(rejected_lines[0].text, "User rejected nyan's plan:");
         assert_eq!(rejected_lines[1].text, "## Plan");
         assert_eq!(rejected_lines[2].text, "Revise it");
     }
@@ -2177,9 +2091,9 @@ mod tests {
             "type": "attachment",
             "attachment": {
                 "type": "dynamic_skill",
-                "skillDir": "/tmp/project/.claude/skills",
+                "skillDir": "/tmp/project/.nyan/skills",
                 "skillNames": ["alpha", "beta"],
-                "displayPath": ".claude/skills"
+                "displayPath": ".nyan/skills"
             }
         })];
 
@@ -2191,9 +2105,9 @@ mod tests {
                 skill_dir,
                 skill_names,
                 display_path,
-            }) if skill_dir == "/tmp/project/.claude/skills"
+            }) if skill_dir == "/tmp/project/.nyan/skills"
                 && skill_names == &["alpha".to_string(), "beta".to_string()]
-                && display_path == ".claude/skills"
+                && display_path == ".nyan/skills"
         ));
     }
 
@@ -3010,6 +2924,7 @@ mod tests {
 
     #[test]
     fn write_create_success_uses_created_summary() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         // CC FileWriteTool/UI.tsx:59 resolves the relative wire filePath using
         // process cwd, then displays it relative to session cwd. Pin both for
         // this fixture's intentionally bare filename expectation.

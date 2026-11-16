@@ -270,14 +270,6 @@ fn make_error_after_discovery(
     }
 }
 
-fn remote_git_diff_enabled() -> bool {
-    // Maps to `getFeatureValue_CACHED_MAY_BE_STALE('tengu_quartz_lantern', false)`,
-    // resolved from the source-controlled switch table instead of GrowthBook.
-    crate::utils::feature_flags::feature_enabled(
-        crate::utils::feature_flags::FeatureFlag::RemoteGitDiff,
-    )
-}
-
 impl ToolCall for FileWriteTool {
     fn name(&self) -> &'static str {
         prompt::FILE_WRITE_TOOL_NAME
@@ -678,19 +670,6 @@ impl ToolCall for FileWriteTool {
                 });
             }
 
-            // Maps to: CC `FileWriteTool.ts:329` notifyVscodeFileUpdated.
-            let vscode_path = full_path.display().to_string();
-            let vscode_old_content = old_content.clone();
-            let vscode_new_content = input.content.clone();
-            tokio::spawn(async move {
-                let _ = crate::services::mcp::vscode_sdk_mcp::notify_vscode_file_updated(
-                    &vscode_path,
-                    vscode_old_content.as_deref(),
-                    Some(&vscode_new_content),
-                )
-                .await;
-            });
-
             let read_timestamp_ms =
                 match crate::utils::file::get_file_modification_time_result(&write_target) {
                     Ok(timestamp) => timestamp,
@@ -717,17 +696,6 @@ impl ToolCall for FileWriteTool {
 
             // CC: FileWriteTool.ts:339-342 `logEvent('tengu_write_claudemd',
             // {})` on `${sep}CLAUDE.md` paths — joins with analytics.
-
-            let git_diff = if crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref())
-                && remote_git_diff_enabled()
-            {
-                // CC: logEvent('tengu_tool_use_diff_computed', {isWriteTool,
-                // durationMs, hasDiff}) after the fetch (FileWriteTool.ts:
-                // 349-356) — joins with analytics.
-                crate::utils::git_diff::fetch_single_file_git_diff(&full_path).await
-            } else {
-                None
-            };
 
             let (kind, structured_patch, original_file) =
                 if old_content.as_ref().is_some_and(|content| !content.is_empty()) {
@@ -767,7 +735,7 @@ impl ToolCall for FileWriteTool {
                     structured_patch,
                     original_file,
                     read_timestamp_ms,
-                    git_diff,
+                    git_diff: None,
                     dynamic_skill_dirs,
                 }),
                 new_messages: Vec::new(),
@@ -948,7 +916,7 @@ mod tests {
 
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let root = std::env::temp_dir().join(format!(
             "nyan-write-exclusive-{}",
             uuid::Uuid::new_v4().simple()
@@ -1250,7 +1218,7 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         let config_dir = root.join("config");
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_dir);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_dir);
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("existing.txt");
         std::fs::write(&path, "old\n").unwrap();
@@ -1303,13 +1271,13 @@ mod tests {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let _bootstrap = BootstrapRestore::capture();
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _checkpointing = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING");
+        let _checkpointing = EnvVarGuard::unset("NYAN_DISABLE_FILE_CHECKPOINTING");
         let root = std::env::temp_dir().join(format!(
             "nyan-write-history-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let config_dir = root.join("config");
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_dir);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_dir);
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("existing.txt");
         std::fs::write(&path, "old history\n").unwrap();
@@ -1409,20 +1377,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn remote_git_diff_gate_reads_switch_table_not_growthbook_cache() {
+    async fn retired_remote_env_does_not_attach_diff_but_generic_diff_still_works() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _remote = EnvVarGuard::set("CLAUDE_CODE_REMOTE", "1");
+        let _remote = EnvVarGuard::set("NYAN_REMOTE", "1");
         let _config_restore = TestGlobalConfigRestore;
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.cached_growth_book_features = Some(std::collections::HashMap::from([(
-            "tengu_quartz_lantern".to_string(),
-            serde_json::Value::Bool(true),
-        )]));
-        config.growth_book_overrides = Some(std::collections::HashMap::from([(
-            "tengu_quartz_lantern".to_string(),
-            serde_json::Value::Bool(true),
-        )]));
+        let config = crate::utils::config::GlobalConfig::default();
         crate::utils::config::set_test_global_config(Some(config));
         let root = std::env::temp_dir().join(format!(
             "nyan-write-remote-diff-{}",
@@ -1461,14 +1421,9 @@ mod tests {
         let ToolOutput::Write(output) = result.data else {
             panic!("expected successful Write")
         };
-        assert!(!remote_git_diff_enabled());
-        assert!(
-            output.git_diff.is_none(),
-            "cached/override GrowthBook delivery must not open the remote diff gate"
-        );
+        assert!(output.git_diff.is_none());
 
-        // The attachment payload itself stays covered: the same file still
-        // produces the official single-file diff once the gate is on.
+        // Generic single-file diffs remain available independently of cloud sessions.
         let diff = crate::utils::git_diff::fetch_single_file_git_diff(&path)
             .await
             .expect("remote diff payload");

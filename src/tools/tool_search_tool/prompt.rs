@@ -9,9 +9,7 @@ const PROMPT_TAIL: &str = " Until fetched, only the name is known — there is n
 /// Maps to CC `getToolLocationHint()`.
 /// Nyan uses the hardcoded feature-switch collection rather than GrowthBook.
 fn tool_location_hint() -> &'static str {
-    if crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Prompts,
-    ) || crate::utils::feature_flags::feature_enabled(
+    if crate::utils::feature_flags::feature_enabled(
         crate::utils::feature_flags::FeatureFlag::DeferredToolsDelta,
     ) {
         "Deferred tools appear by name in <system-reminder> messages."
@@ -61,7 +59,6 @@ pub fn is_deferred_tool(tool: &crate::types::tools::Tool) -> bool {
             | "LSP"
             | "ListMcpResourcesTool"
             | "ReadMcpResourceTool"
-            | "Config"
             | "WebFetch"
             | "WebSearch"
             | "SendMessage"
@@ -70,7 +67,6 @@ pub fn is_deferred_tool(tool: &crate::types::tools::Tool) -> bool {
             | "CronCreate"
             | "CronDelete"
             | "CronList"
-            | "RemoteTrigger"
     )
 }
 
@@ -104,7 +100,7 @@ pub fn is_tool_search_enabled_for_request(
 /// Maps to CC `utils/toolSearch.ts` `isToolSearchEnabledOptimistic()`.
 pub fn is_tool_search_enabled_optimistic() -> bool {
     if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS").as_deref(),
+        crate::utils::process_env::var("NYAN_DISABLE_EXPERIMENTAL_BETAS").as_deref(),
     ) {
         return false;
     }

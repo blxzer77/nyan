@@ -306,12 +306,12 @@ pub struct McpOAuthTokens {
 /// This reviewed partial retains the source identity for read/status callers;
 /// interactive discovery and refresh remain in the separately gated MCP
 /// runtime paths until the full async provider object is ported.
-pub struct ClaudeAuthProvider {
+pub struct McpAuthProvider {
     server_name: String,
     server_config: super::types::ScopedMcpServerConfig,
 }
 
-impl ClaudeAuthProvider {
+impl McpAuthProvider {
     /// Maps to: CC `services/mcp/auth.ts:1393-1405`
     /// `ClaudeAuthProvider.constructor` with default redirect options.
     pub fn new(server_name: &str, server_config: &super::types::ScopedMcpServerConfig) -> Self {
@@ -460,7 +460,7 @@ mod runtime {
     pub(crate) fn oauth_http_client()
     -> anyhow::Result<Arc<dyn rmcp::transport::auth::OAuthHttpClient>> {
         let build = |redirect: reqwest::redirect::Policy| -> anyhow::Result<reqwest::Client> {
-            Ok(crate::utils::proxy::get_proxy_fetch_options(false)?
+            Ok(crate::utils::proxy::get_proxy_fetch_options()?
                 .timeout(Duration::from_millis(AUTH_REQUEST_TIMEOUT_MS))
                 .redirect(redirect)
                 .build()?)
@@ -559,7 +559,7 @@ mod runtime {
             }
             // CC `createAuthFetch` (`auth.ts:198-237`) wraps the global
             // `fetch`, whose dispatcher carries the proxy and TLS options.
-            let client = crate::utils::proxy::get_proxy_fetch_options(false)?
+            let client = crate::utils::proxy::get_proxy_fetch_options()?
                 .timeout(Duration::from_millis(AUTH_REQUEST_TIMEOUT_MS))
                 .build()?;
             let request = client
@@ -2094,6 +2094,26 @@ mod runtime {
             .map_err(|_| anyhow::anyhow!("Authentication timeout"))?
     }
 
+    /// Maps to: CC `performMCPOAuthFlow` Client ID Metadata Document branch.
+    ///
+    /// @nyan: CC falls back to its own vendor-hosted metadata document when
+    /// `MCP_OAUTH_CLIENT_METADATA_URL` is unset. nyan has no default document,
+    /// so only an explicitly provided URL is presented; otherwise the flow
+    /// continues to dynamic client registration.
+    pub(super) fn client_id_metadata_document_url(
+        metadata: &AuthorizationMetadata,
+    ) -> Option<String> {
+        let supported = metadata
+            .additional_fields
+            .get("client_id_metadata_document_supported")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if !supported {
+            return None;
+        }
+        crate::utils::process_env::var("MCP_OAUTH_CLIENT_METADATA_URL").truthy()
+    }
+
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
     pub(super) struct CachedReauthState {
         pub(super) step_up_scope: Option<String>,
@@ -2175,7 +2195,7 @@ mod runtime {
             return Ok(None);
         };
         // The SDK's default `fetch`: the global dispatcher.
-        let client = crate::utils::proxy::get_proxy_fetch_options(false)?
+        let client = crate::utils::proxy::get_proxy_fetch_options()?
             .timeout(Duration::from_millis(AUTH_REQUEST_TIMEOUT_MS))
             .build()?;
         let request = client
@@ -2251,7 +2271,7 @@ mod runtime {
         {
             if !crate::services::mcp::xaa_idp_login::is_xaa_enabled() {
                 anyhow::bail!(
-                    "XAA is not enabled (set CLAUDE_CODE_ENABLE_XAA=1). Remove 'oauth.xaa' from server '{server_name}' to use the standard consent flow."
+                    "XAA is not enabled (set NYAN_ENABLE_XAA=1). Remove 'oauth.xaa' from server '{server_name}' to use the standard consent flow."
                 );
             }
             if crate::services::mcp::xaa_idp_login::get_xaa_idp_settings().is_none() {
@@ -2338,18 +2358,7 @@ mod runtime {
                 preconfigured_oauth_client_config(client_id, &redirect_uri, &scopes, &server_key);
             manager.configure_client(client_config)?;
             (client_id.to_string(), None)
-        } else if metadata
-            .additional_fields
-            .get("client_id_metadata_document_supported")
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
-        {
-            let client_metadata_url =
-                crate::utils::process_env::var("MCP_OAUTH_CLIENT_METADATA_URL")
-                    .truthy()
-                    .unwrap_or_else(|| {
-                        crate::constants::oauth::MCP_CLIENT_METADATA_URL.to_string()
-                    });
+        } else if let Some(client_metadata_url) = client_id_metadata_document_url(&metadata) {
             let client_config =
                 OAuthClientConfig::new(client_metadata_url.clone(), redirect_uri.clone())
                     .with_scopes(scopes.clone());
@@ -2490,7 +2499,6 @@ mod tests {
         set_session_settings_cache(SettingsWithErrors {
             settings: SettingsJson::default(),
             errors: Vec::new(),
-            policy_settings: None,
         });
         assert_eq!(mcp_oauth_client_name(), "nyan");
         set_session_settings_cache(SettingsWithErrors {
@@ -2499,7 +2507,6 @@ mod tests {
                 ..SettingsJson::default()
             },
             errors: Vec::new(),
-            policy_settings: None,
         });
         assert_eq!(mcp_oauth_client_name(), "custom-client");
         reset_settings_cache();
@@ -2595,7 +2602,6 @@ mod tests {
                 ide_running_in_windows: None,
                 ide_name: None,
                 auth_token: None,
-                id: None,
                 plugin_source: None,
             };
             let key = get_server_key("docs", "http", "https://example.test/mcp", &BTreeMap::new());
@@ -2616,7 +2622,7 @@ mod tests {
                 "expiresAt": now_ms() + 60_000,
             }));
             assert!(
-                ClaudeAuthProvider::new("docs", &config)
+                McpAuthProvider::new("docs", &config)
                     .tokens()
                     .unwrap()
                     .is_some()
@@ -2628,7 +2634,7 @@ mod tests {
                 "expiresAt": now_ms().saturating_sub(1_000),
             }));
             assert!(
-                ClaudeAuthProvider::new("docs", &config)
+                McpAuthProvider::new("docs", &config)
                     .tokens()
                     .unwrap()
                     .is_none()
@@ -2639,7 +2645,7 @@ mod tests {
                 "refreshToken": "refresh",
                 "expiresAt": 0,
             }));
-            let error = ClaudeAuthProvider::new("docs", &config)
+            let error = McpAuthProvider::new("docs", &config)
                 .tokens()
                 .expect_err("proactive refresh must hit the closed credential outlet");
             assert!(
@@ -2826,7 +2832,6 @@ mod tests {
             ide_running_in_windows: None,
             ide_name: None,
             auth_token: None,
-            id: None,
             plugin_source: None,
         }
     }
@@ -2842,7 +2847,7 @@ mod tests {
         let temp_dir =
             std::env::temp_dir().join(format!("nyan-mcp-oauth-auth-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &temp_dir);
         let result = body(temp_dir.clone());
         let _ = std::fs::remove_dir_all(temp_dir);
         result
@@ -2906,7 +2911,7 @@ mod tests {
     #[test]
     fn perform_mcp_oauth_flow_xaa_disabled_fails_without_standard_oauth_fallback() {
         with_temp_config_home(|_| {
-            let _xaa = EnvVarGuard::unset("CLAUDE_CODE_ENABLE_XAA");
+            let _xaa = EnvVarGuard::unset("NYAN_ENABLE_XAA");
             let error = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
@@ -2925,7 +2930,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_auth_provider_tokens_uses_active_cached_token_without_refresh_probe() {
+    fn mcp_auth_provider_tokens_uses_active_cached_token_without_refresh_probe() {
         let token = with_temp_config_home(|home| {
             let server_key =
                 get_server_key("docs", "http", "https://example.com/mcp", &BTreeMap::new());
@@ -2945,7 +2950,7 @@ mod tests {
                 .to_string(),
             )
             .unwrap();
-            ClaudeAuthProvider::new("docs", &test_http_config())
+            McpAuthProvider::new("docs", &test_http_config())
                 .tokens()
                 .map(|tokens| tokens.and_then(|tokens| tokens.access_token))
         })
@@ -2955,7 +2960,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_auth_provider_tokens_returns_none_for_expired_token_without_refresh() {
+    fn mcp_auth_provider_tokens_returns_none_for_expired_token_without_refresh() {
         let token = with_temp_config_home(|home| {
             let server_key =
                 get_server_key("docs", "http", "https://example.com/mcp", &BTreeMap::new());
@@ -2975,7 +2980,7 @@ mod tests {
                 .to_string(),
             )
             .unwrap();
-            ClaudeAuthProvider::new("docs", &test_http_config())
+            McpAuthProvider::new("docs", &test_http_config())
                 .tokens()
                 .map(|tokens| tokens.and_then(|tokens| tokens.access_token))
         })
@@ -3078,6 +3083,35 @@ mod tests {
             runtime::allowed_authorization_server_metadata_url("https://metadata.google.internal"),
             None
         );
+    }
+
+    #[test]
+    fn client_id_metadata_document_url_requires_explicit_env_url() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut supported = rmcp::transport::auth::AuthorizationMetadata::default();
+        supported.additional_fields.insert(
+            "client_id_metadata_document_supported".to_string(),
+            Value::Bool(true),
+        );
+        let unsupported = rmcp::transport::auth::AuthorizationMetadata::default();
+
+        let _env = EnvVarGuard::unset("MCP_OAUTH_CLIENT_METADATA_URL");
+        assert_eq!(runtime::client_id_metadata_document_url(&supported), None);
+
+        let _env = EnvVarGuard::set("MCP_OAUTH_CLIENT_METADATA_URL", "");
+        assert_eq!(runtime::client_id_metadata_document_url(&supported), None);
+
+        let _env = EnvVarGuard::set(
+            "MCP_OAUTH_CLIENT_METADATA_URL",
+            "https://client.example/oauth/metadata.json",
+        );
+        assert_eq!(
+            runtime::client_id_metadata_document_url(&supported).as_deref(),
+            Some("https://client.example/oauth/metadata.json")
+        );
+        assert_eq!(runtime::client_id_metadata_document_url(&unsupported), None);
     }
 
     #[test]

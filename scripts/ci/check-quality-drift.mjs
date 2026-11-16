@@ -4,6 +4,9 @@
 // Prevents AI agents and contributors from weakening tests or test gates:
 // 1. Prohibits introducing new `#[ignore]` attributes in code or tests.
 //    (Bypassing failing tests by ignoring them is forbidden; fix the defect instead.)
+// 2. Prohibits reading or writing new `CLAUDE_*` / `ANTHROPIC_*` environment
+//    variables. nyan's switches live in the `NYAN_*` namespace; the only
+//    exceptions are the provider variables listed below.
 //
 // Usage (CI):   node scripts/ci/check-quality-drift.mjs
 // Usage (local): node scripts/ci/check-quality-drift.mjs --base master --head HEAD
@@ -45,6 +48,24 @@ function endpoints() {
 
 const zero = /^0+$/;
 
+const LEGACY_ENV_ALLOW = new Set([
+  // Provider variables tests still set to prove nyan ignores the ambient
+  // Anthropic environment.
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "ANTHROPIC_BETAS",
+  "ANTHROPIC_CUSTOM_HEADERS",
+  "ANTHROPIC_CUSTOM_MODEL_OPTION",
+  "ANTHROPIC_FOUNDRY_API_KEY",
+  "ANTHROPIC_MODEL",
+  "ANTHROPIC_SMALL_FAST_MODEL",
+  "ANTHROPIC_UNIX_SOCKET",
+]);
+
+const envAccess =
+  /(?:process_env::(?:var|var_os|set|remove)|EnvVarGuard::(?:set|unset|preserve))\(\s*"((?:CLAUDE|ANTHROPIC)_[A-Z0-9_]+)"/;
+
 function diffLines() {
   const { base, head } = endpoints();
   if (!base || !head || zero.test(base) || zero.test(head)) return null;
@@ -81,6 +102,14 @@ function main() {
     if (/^#\s*\[\s*ignore\b/.test(content)) {
       violations.push(`Adding '#[ignore]' attribute is forbidden: "${content}"`);
     }
+
+    // Detect new CC/Anthropic environment names in code.
+    const env = envAccess.exec(content);
+    if (env && !LEGACY_ENV_ALLOW.has(env[1])) {
+      violations.push(
+        `Use the NYAN_* namespace instead of "${env[1]}": "${content}"`,
+      );
+    }
   }
 
   if (violations.length > 0) {
@@ -88,7 +117,9 @@ function main() {
     for (const v of violations) {
       console.error(`  - ${v}`);
     }
-    console.error("\nResolution: fix the failing test or underlying defect instead of ignoring it.");
+    console.error(
+      "\nResolution: fix the failing test or underlying defect instead of ignoring it; use NYAN_* for nyan switches.",
+    );
     process.exit(1);
   }
 

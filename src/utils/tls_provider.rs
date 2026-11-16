@@ -31,7 +31,7 @@ static WARNED_ON_ALLOW_UNAUTHORIZED: AtomicBool = AtomicBool::new(false);
 ///
 /// Node emits a process warning the first time. CC's `warningHandler.ts`
 /// (`:62-111`) removes Node's printer, so users see nothing, and the warning
-/// reaches the debug log only when `CLAUDE_DEBUG` is truthy. That handler is
+/// reaches the debug log only when `NYAN_DEBUG` is truthy. That handler is
 /// not ported (MODULE_MAP: missing); its visible effect for this one warning
 /// is written here, and its `tengu_node_warning` event is not logged.
 pub fn get_allow_unauthorized() -> bool {
@@ -39,7 +39,7 @@ pub fn get_allow_unauthorized() -> bool {
     let allow_unauthorized = env.var("NODE_TLS_REJECT_UNAUTHORIZED") == Some("0");
     if allow_unauthorized
         && !WARNED_ON_ALLOW_UNAUTHORIZED.swap(true, Ordering::Relaxed)
-        && crate::utils::env_utils::is_env_truthy(env.var("CLAUDE_DEBUG"))
+        && crate::utils::env_utils::is_env_truthy(env.var("NYAN_DEBUG"))
     {
         crate::utils::debug::log_for_debugging_with_level(
             "[Warning] Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.",

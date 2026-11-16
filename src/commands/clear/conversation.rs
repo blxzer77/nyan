@@ -223,23 +223,6 @@ pub fn clear_conversation(store: &AppStore) -> ClearConversationOutcome {
     crate::cost_tracker::reset_session_stats();
 
     let new_session_id = crate::bootstrap::state::regenerate_session_id(true);
-    // Update the environment variable so subprocesses use the new session ID.
-    // Maps to: CC `commands/clear/conversation.ts:204-207` — gated on
-    // `USER_TYPE === 'ant'` (≙ internal Api capability, the established
-    // mapping) and on the variable already being present in the spawn env.
-    if crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Api,
-    ) {
-        let mut update = crate::utils::process_env::begin_update();
-        if update
-            .snapshot()
-            .var_os("CLAUDE_CODE_SESSION_ID")
-            .is_some_and(|value| !value.is_empty())
-        {
-            update.set("CLAUDE_CODE_SESSION_ID", &new_session_id);
-        }
-        update.commit();
-    }
     crate::utils::session_storage::reset_session_file_pointer();
 
     for (task_id, agent_id) in &local_agent_repoints {
@@ -598,7 +581,7 @@ mod tests {
         crate::utils::worktree::restore_worktree_session(Some(
             crate::utils::worktree::WorktreeSession {
                 original_cwd: "/repo".into(),
-                worktree_path: "/repo/.claude/worktrees/wt".into(),
+                worktree_path: "/repo/.nyan/worktrees/wt".into(),
                 worktree_name: "wt".into(),
                 session_id: "sess-old".into(),
                 ..crate::utils::worktree::WorktreeSession::default()
@@ -617,7 +600,7 @@ mod tests {
                 .as_ref()
                 .and_then(|v| v.get("worktreePath"))
                 .and_then(|v| v.as_str()),
-            Some("/repo/.claude/worktrees/wt")
+            Some("/repo/.nyan/worktrees/wt")
         );
         // Live process session still present (CC getCurrentWorktreeSession).
         assert!(crate::utils::worktree::get_current_worktree_session().is_some());
@@ -626,6 +609,8 @@ mod tests {
 
     #[test]
     fn clear_conversation_clears_metadata_and_resets_file_pointer() {
+        // clear_conversation regenerates the process-global session id.
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::session_storage::set_current_session_metadata_for_test(
             Some("My Session"),
             Some("bug"),

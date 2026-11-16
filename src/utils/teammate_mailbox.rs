@@ -3,12 +3,12 @@
 //! Maps to: CC `utils/teammateMailbox.ts`.
 //!
 //! Official Claude Code persists inbox JSON files under
-//! `~/.claude/teams/{team}/inboxes/{agent}.json` with file locking. Nyan
+//! `~/.nyan/teams/{team}/inboxes/{agent}.json` with file locking. Nyan
 //! now mirrors that file lifecycle for pane-backed teammates while retaining an
 //! in-memory cache for the current in-process runner.
 
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -820,8 +820,8 @@ pub fn mark_messages_as_read_by_predicate(
 }
 
 #[cfg(test)]
-pub static TEST_TEAMMATE_MAILBOX_LOCK: std::sync::LazyLock<TestStateLock> =
-    std::sync::LazyLock::new(TestStateLock::new);
+pub static TEST_TEAMMATE_MAILBOX_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::TeammateMailbox);
 
 #[cfg(test)]
 pub fn clear_mailboxes_for_test() {
@@ -868,7 +868,7 @@ mod tests {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         clear_mailboxes_for_test();
         let root = unique_config_dir("mailbox");
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
 
@@ -1008,7 +1008,7 @@ mod tests {
         clear_mailboxes_for_test();
         let root = unique_config_dir("mailbox-invalid-root");
         std::fs::write(&root, "not a directory").unwrap();
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
 

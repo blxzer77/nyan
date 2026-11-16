@@ -32,72 +32,30 @@ pub fn should_use_sandbox(input: &SandboxInput) -> bool {
     !contains_excluded_command(command, &settings)
 }
 
-/// Maps to CC GrowthBook `tengu_sandbox_disabled_commands` `commands` list
-/// (`shouldUseSandbox.ts:24-27`).
-///
-/// Nyan keeps GrowthBook-controlled values as source-controlled constants
-/// instead of reading cloud-delivered payloads; see `utils/feature_flags.rs`.
-/// The official default payload is empty, so no base command is excluded.
-const SANDBOX_DISABLED_COMMANDS: &[&str] = &[];
-
-/// Maps to CC GrowthBook `tengu_sandbox_disabled_commands` `substrings` list
-/// (`shouldUseSandbox.ts:24-27`), source-controlled for the same reason as
-/// `SANDBOX_DISABLED_COMMANDS`.
-const SANDBOX_DISABLED_SUBSTRINGS: &[&str] = &[];
-
-/// Maps to CC `shouldUseSandbox.ts:22-49` — the `tengu_sandbox_disabled_commands`
-/// dynamic config, gated on the internal distribution instead of `USER_TYPE`.
-fn contains_dynamically_disabled_command(command: &str) -> bool {
-    if !crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::Tools,
-    ) {
-        return false;
-    }
-
-    if SANDBOX_DISABLED_SUBSTRINGS
-        .iter()
-        .any(|substring| command.contains(substring))
-    {
-        return true;
-    }
-
-    split_subcommands(command).into_iter().any(|part| {
-        part.trim()
-            .split(' ')
-            .next()
-            .is_some_and(|base| !base.is_empty() && SANDBOX_DISABLED_COMMANDS.contains(&base))
-    })
-}
-
-/// Maps to CC `shouldUseSandbox.ts:64-69` — `splitCommand_DEPRECATED` failures
-/// fall back to the whole command so matching still runs.
-fn split_subcommands(command: &str) -> Vec<String> {
-    let subcommands = crate::utils::bash::commands::split_command_deprecated(command);
-    if subcommands.is_empty() {
-        return vec![command.to_string()];
-    }
-    subcommands
-}
-
 /// Maps to CC local `containsExcludedCommand(command)` settings branch.
 pub fn contains_excluded_command(
     command: &str,
     settings: &crate::utils::settings::types::SettingsJson,
 ) -> bool {
-    if contains_dynamically_disabled_command(command) {
-        return true;
-    }
-
     let user_excluded_commands =
         crate::utils::sandbox::sandbox_adapter::get_excluded_commands(settings);
     if user_excluded_commands.is_empty() {
         return false;
     }
 
-    for subcommand in split_subcommands(command) {
-        let trimmed = subcommand.trim();
-        let mut candidates = vec![trimmed.to_string()];
-        let mut seen = std::collections::HashSet::from([trimmed.to_string()]);
+    let commands = match crate::utils::bash::ast::parse_for_security(command) {
+        crate::utils::bash::ast::ParseForSecurityResult::Simple { commands } => commands,
+        _ => return true,
+    };
+    for subcommand in commands {
+        let trimmed = subcommand.text.trim();
+        let normalized =
+            super::path_validation::strip_wrappers_from_argv(&subcommand.argv).join(" ");
+        let mut candidates = vec![trimmed.to_string(), normalized];
+        let mut seen = candidates
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashSet<_>>();
         let mut start = 0usize;
         while start < candidates.len() {
             let end = candidates.len();
@@ -188,10 +146,18 @@ mod tests {
     }
 
     #[test]
-    fn unparsable_commands_fall_back_to_the_whole_command() {
+    fn ast_exclusions_cover_control_flow_quotes_and_fail_closed() {
         let settings = settings_with_excluded(vec!["bazel:*"]);
-        assert_eq!(split_subcommands("bazel build"), vec!["bazel build"]);
-        assert!(!split_subcommands("").is_empty());
-        assert!(contains_excluded_command("bazel build //...", &settings));
+        for command in [
+            "bazel build //...",
+            "if true; then bazel build //...; fi",
+            "(bazel build //...)",
+            "b\"\"azel build //...",
+            "echo \"prefix: $(bazel build //...)\"",
+            "echo 'unterminated",
+        ] {
+            assert!(contains_excluded_command(command, &settings), "{command}");
+        }
+        assert!(!contains_excluded_command("", &settings));
     }
 }

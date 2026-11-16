@@ -102,8 +102,6 @@ pub const GLOBAL_CONFIG_KEYS: &[&str] = &[
     "inputNeededNotifEnabled",
     "agentPushNotifEnabled",
     "respectGitignore",
-    "claudeInChromeDefaultEnabled",
-    "hasCompletedClaudeInChromeOnboarding",
     "lspRecommendationDisabled",
     "lspRecommendationNeverPlugins",
     "lspRecommendationIgnoredCount",
@@ -111,8 +109,6 @@ pub const GLOBAL_CONFIG_KEYS: &[&str] = &[
     "copyOnSelect",
     "permissionExplainerEnabled",
     "prStatusFooterEnabled",
-    "remoteControlAtStartup",
-    "remoteDialogSeen",
 ];
 
 pub const PROJECT_CONFIG_KEYS: &[&str] = &[
@@ -133,7 +129,7 @@ pub fn is_project_config_key(key: &str) -> bool {
 // ════════════════════════════════════════════════════════════
 
 pub fn get_config_backup_dir() -> PathBuf {
-    crate::utils::env_utils::get_claude_config_home_dir().join("backups")
+    crate::utils::env_utils::get_config_home_dir().join("backups")
 }
 
 pub fn normalize_project_path(path: &str) -> String {
@@ -150,13 +146,8 @@ fn get_project_path_for_config() -> PathBuf {
 /// Maps to CC `utils/config.ts#getMemoryPath`.
 pub fn get_memory_path(memory_type: &str) -> PathBuf {
     match memory_type {
-        "User" | "user" => crate::utils::env_utils::get_claude_config_home_dir().join("AGENTS.md"),
-        "Local" | "local" => {
-            crate::utils::env_utils::get_claude_config_home_dir().join("AGENTS.md")
-        }
-        "Managed" | "managed" => {
-            crate::utils::settings::managed_path::get_managed_file_path().join("AGENTS.md")
-        }
+        "User" | "user" => crate::utils::env_utils::get_config_home_dir().join("AGENTS.md"),
+        "Local" | "local" => crate::utils::env_utils::get_config_home_dir().join("AGENTS.md"),
         "AutoMem" | "autoMem" | "automem" => crate::memdir::paths::get_auto_mem_entrypoint(),
         "Project" | "project" => crate::bootstrap::state::get_original_cwd().join("AGENTS.md"),
         // `TeamMem` only joins `MemoryType` under CC's `feature('TEAMMEM')`
@@ -166,27 +157,6 @@ pub fn get_memory_path(memory_type: &str) -> PathBuf {
         }
         _ => crate::bootstrap::state::get_original_cwd().join("AGENTS.md"),
     }
-}
-
-// ════════════════════════════════════════════════════════════
-// ════════════════════════════════════════════════════════════
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
-#[derive(Default)]
-pub struct AccountInfo {
-    pub account_uuid: Option<String>,
-    pub email_address: Option<String>,
-    pub organization_uuid: Option<String>,
-    pub organization_name: Option<String>,
-    pub organization_role: Option<String>,
-    pub workspace_role: Option<String>,
-    pub display_name: Option<String>,
-    pub has_extra_usage_enabled: Option<bool>,
-    pub billing_type: Option<String>,
-    pub account_created_at: Option<String>,
-    pub subscription_created_at: Option<String>,
 }
 
 // ════════════════════════════════════════════════════════════
@@ -231,9 +201,6 @@ pub struct McpServerConfig {
     /// Maps to: CC internal IDE MCP `authToken`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_token: Option<String>,
-    /// Maps to: CC claude.ai proxy MCP connector `id`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
 }
 
 // ════════════════════════════════════════════════════════════
@@ -288,12 +255,13 @@ pub struct ProjectConfig {
     pub has_trust_dialog_accepted: Option<bool>,
     pub has_completed_project_onboarding: Option<bool>,
     pub project_onboarding_seen_count: u32,
-    pub has_claude_md_external_includes_approved: Option<bool>,
-    pub has_claude_md_external_includes_warning_shown: Option<bool>,
+    #[serde(rename = "hasClaudeMdExternalIncludesApproved")]
+    pub has_agents_md_external_includes_approved: Option<bool>,
+    #[serde(rename = "hasClaudeMdExternalIncludesWarningShown")]
+    pub has_agents_md_external_includes_warning_shown: Option<bool>,
 
     // ── Worktree ──
     pub active_worktree_session: Option<crate::utils::worktree::WorktreeSession>,
-    pub remote_control_spawn_mode: Option<String>,
 
     /// Preserve Claude Code project config fields that this Rust port has not
     /// modeled yet. The TypeScript implementation keeps arbitrary object keys
@@ -357,85 +325,6 @@ pub fn get_custom_api_key_status(
     CustomApiKeyStatus::New
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClaudeCodeHintsConfig {
-    #[serde(default)]
-    pub plugin: Vec<String>,
-    pub disabled: Option<bool>,
-}
-
-/// Maps to: CC `utils/config.ts:549-551`
-/// `cachedExtraUsageDisabledReason?: string | null`.
-///
-/// All three JavaScript states are load-bearing at
-/// `utils/model/check1mAccess.ts:14-20`: an absent key is "no API response has
-/// been observed yet" (conservative — treated as not enabled), an explicit
-/// `null` is "a response arrived carrying no disabled-reason header", and a
-/// string is the header value. `Option<String>` collapses the first two.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum CachedExtraUsageDisabledReason {
-    /// JavaScript `undefined` — the key is absent from `~/.claude.json`.
-    #[default]
-    Uncached,
-    /// JavaScript `null` — extra usage carries no disabled reason.
-    Enabled,
-    /// The `anthropic-ratelimit-unified-overage-disabled-reason` header value.
-    Disabled(String),
-}
-
-impl CachedExtraUsageDisabledReason {
-    /// The header value, or `None` for either of the two non-string states.
-    pub fn reason(&self) -> Option<&str> {
-        match self {
-            Self::Disabled(reason) => Some(reason),
-            Self::Uncached | Self::Enabled => None,
-        }
-    }
-
-    /// Maps to: CC `services/claudeAiLimits.ts:443-444` — a processed response
-    /// records `header ?? null`, so a missing header is `Enabled`, never
-    /// `Uncached`.
-    pub fn from_header(reason: Option<&str>) -> Self {
-        match reason {
-            Some(reason) => Self::Disabled(reason.to_string()),
-            None => Self::Enabled,
-        }
-    }
-}
-
-impl Serialize for CachedExtraUsageDisabledReason {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        // `Uncached` and `Enabled` both render as JSON null here; the disk
-        // pipeline separates them by presence, not by value — see
-        // [`global_config_disk_value`].
-        match self {
-            Self::Disabled(reason) => serializer.serialize_str(reason),
-            Self::Uncached | Self::Enabled => serializer.serialize_none(),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for CachedExtraUsageDisabledReason {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // Only reached when the key is present: the container's
-        // `#[serde(default)]` resolves an absent key to `Uncached`.
-        match serde_json::Value::deserialize(deserializer)? {
-            serde_json::Value::Null => Ok(Self::Enabled),
-            serde_json::Value::String(reason) => Ok(Self::Disabled(reason)),
-            other => Err(serde::de::Error::custom(format!(
-                "expected string or null for cachedExtraUsageDisabledReason, got {other}"
-            ))),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -452,23 +341,13 @@ pub struct GlobalConfig {
     pub first_start_time: Option<String>,
 
     pub api_key_helper: Option<String>,
-    pub oauth_account: Option<AccountInfo>,
-    /// Maps to CC `utils/config.ts:549-551`
-    /// `GlobalConfig.cachedExtraUsageDisabledReason`.
-    pub cached_extra_usage_disabled_reason: CachedExtraUsageDisabledReason,
-    pub primary_api_key: Option<String>,
     pub custom_api_keys: Option<HashMap<String, serde_json::Value>>,
     /// Maps to CC `utils/config.ts` `GlobalConfig.customApiKeyResponses`.
     pub custom_api_key_responses: Option<CustomApiKeyResponses>,
     pub has_completed_onboarding: Option<bool>,
     pub has_acknowledged_cost_threshold: Option<bool>,
     pub has_seen_undercover_auto_notice: Option<bool>,
-    pub has_seen_ultraplan_terms: Option<bool>,
     pub has_reset_auto_mode_opt_in_for_default_offer: Option<bool>,
-    /// Maps to CC `utils/config.ts` `GlobalConfig.hasCompletedClaudeInChromeOnboarding`.
-    pub has_completed_claude_in_chrome_onboarding: Option<bool>,
-    /// Maps to CC `utils/config.ts` `GlobalConfig.claudeInChromeDefaultEnabled`.
-    pub claude_in_chrome_default_enabled: Option<bool>,
 
     pub theme: Option<String>,
     pub editor_mode: Option<String>,
@@ -490,8 +369,6 @@ pub struct GlobalConfig {
     pub message_idle_notif_threshold_ms: Option<u64>,
 
     pub auto_compact_enabled: Option<bool>,
-    /// Maps to CC global config `speculationEnabled` (ant-only consumer).
-    pub speculation_enabled: Option<bool>,
     pub show_turn_duration: Option<bool>,
     #[serde(
         default,
@@ -520,18 +397,11 @@ pub struct GlobalConfig {
     pub ide_hint_shown_count: Option<u32>,
     pub auto_install_ide_extension: Option<bool>,
     pub todo_feature_enabled: Option<bool>,
-    /// Maps to CC `utils/config.ts` `GlobalConfig.remoteDialogSeen`.
-    pub remote_dialog_seen: Option<bool>,
-    /// Maps to CC `utils/config.ts` `GlobalConfig.desktopUpsellSeenCount`.
-    pub desktop_upsell_seen_count: Option<u32>,
-    /// Maps to CC `utils/config.ts` `GlobalConfig.desktopUpsellDismissed`.
-    pub desktop_upsell_dismissed: Option<bool>,
 
     /// Keep the source JSON object until the MCP owner applies its schema.
     /// Unknown fields and explicit nulls must survive config caching/saving.
     #[serde(default, deserialize_with = "deserialize_present_mcp_servers")]
     pub mcp_servers: Option<serde_json::Value>,
-    pub claude_ai_mcp_ever_connected: Option<Vec<String>>,
 
     pub projects: HashMap<String, ProjectConfig>,
 
@@ -543,15 +413,11 @@ pub struct GlobalConfig {
     pub last_tip_time: Option<u64>,
     pub btw_use_count: Option<u32>,
     pub skill_usage: Option<HashMap<String, serde_json::Value>>,
-    pub feedback_survey_state: Option<serde_json::Value>,
-    pub transcript_share_dismissed: Option<bool>,
     pub companion: Option<serde_json::Value>,
     pub companion_muted: Option<bool>,
     pub has_seen_tasks_hint: Option<bool>,
     pub has_used_stash: Option<bool>,
     pub has_used_background_task: Option<bool>,
-    /// Maps to CC `GlobalConfig.claudeCodeHints` show-once state.
-    pub claude_code_hints: Option<ClaudeCodeHintsConfig>,
     pub show_expanded_todos: Option<bool>,
     /// Maps to CC `GlobalConfig.showSpinnerTree` — persisted expandedView
     /// 'teammates' leg (see state/onChangeAppState.ts:114-128).
@@ -559,32 +425,8 @@ pub struct GlobalConfig {
     pub memory_usage_count: Option<u32>,
     pub prompt_queue_use_count: Option<u32>,
 
-    pub cached_statsig_gates: Option<HashMap<String, bool>>,
-    pub cached_dynamic_configs: Option<HashMap<String, serde_json::Value>>,
     /// Maps to CC `utils/config.ts` `GlobalConfig.lastShownEmergencyTip`.
     pub last_shown_emergency_tip: Option<String>,
-    /// Maps to CC `GlobalConfig.cachedGrowthBookFeatures`, populated by
-    /// `services/analytics/growthbook.ts` remote-eval disk sync.
-    pub cached_growth_book_features: Option<HashMap<String, serde_json::Value>>,
-    /// Maps to CC `GlobalConfig.growthBookOverrides`, ant-only local overrides
-    /// read by `getFeatureValue_CACHED_MAY_BE_STALE(...)` after env overrides.
-    pub growth_book_overrides: Option<HashMap<String, serde_json::Value>>,
-    pub s1m_access_cache: Option<serde_json::Value>,
-    pub s1m_non_subscriber_access_cache: Option<serde_json::Value>,
-    pub passes_eligibility_cache: Option<serde_json::Value>,
-    /// Maps to CC `utils/config.ts` `GlobalConfig.passesUpsellSeenCount`.
-    pub passes_upsell_seen_count: Option<u32>,
-    /// Maps to CC `utils/config.ts` `GlobalConfig.hasVisitedPasses`.
-    pub has_visited_passes: Option<bool>,
-    /// Maps to CC `utils/config.ts` `GlobalConfig.passesLastSeenRemaining`.
-    pub passes_last_seen_remaining: Option<u32>,
-    pub overage_credit_grant_cache: Option<serde_json::Value>,
-    /// Maps to CC `utils/config.ts` `GlobalConfig.overageCreditUpsellSeenCount`.
-    pub overage_credit_upsell_seen_count: Option<u32>,
-    /// Maps to CC `utils/config.ts` `GlobalConfig.hasVisitedExtraUsage`.
-    pub has_visited_extra_usage: Option<bool>,
-    /// Maps to CC `utils/config.ts` `GlobalConfig.voiceNoticeSeenCount`.
-    pub voice_notice_seen_count: Option<u32>,
     /// Maps to CC `utils/config.ts` `GlobalConfig.opus1mMergeNoticeSeenCount`.
     pub opus_1m_merge_notice_seen_count: Option<u32>,
 
@@ -608,10 +450,6 @@ pub struct GlobalConfig {
     pub has_used_backslash_return: Option<bool>,
     /// Maps to CC `utils/config.ts` `GlobalConfig.optionAsMetaKeyInstalled`.
     pub option_as_meta_key_installed: Option<bool>,
-
-    // ── RC (Remote Control) ──
-    pub remote_control: Option<serde_json::Value>,
-    pub remote_control_at_startup: Option<bool>,
 
     /// Preserve Claude Code global config fields that are not yet strongly
     /// modeled by nyan. This mirrors the TS config object semantics and
@@ -688,18 +526,12 @@ impl Default for GlobalConfig {
             cached_changelog: None,
             first_start_time: None,
             api_key_helper: None,
-            oauth_account: None,
-            cached_extra_usage_disabled_reason: CachedExtraUsageDisabledReason::Uncached,
-            primary_api_key: None,
             custom_api_keys: None,
             custom_api_key_responses: None,
             has_completed_onboarding: None,
             has_acknowledged_cost_threshold: None,
             has_seen_undercover_auto_notice: None,
-            has_seen_ultraplan_terms: None,
             has_reset_auto_mode_opt_in_for_default_offer: None,
-            has_completed_claude_in_chrome_onboarding: None,
-            claude_in_chrome_default_enabled: None,
             theme: None,
             editor_mode: None,
             verbose: None,
@@ -709,7 +541,6 @@ impl Default for GlobalConfig {
             custom_notify_command: None,
             message_idle_notif_threshold_ms: None,
             auto_compact_enabled: None,
-            speculation_enabled: None,
             show_turn_duration: None,
             env: None,
             queued_command_up_hint_count: None,
@@ -730,44 +561,23 @@ impl Default for GlobalConfig {
             ide_hint_shown_count: None,
             auto_install_ide_extension: None,
             todo_feature_enabled: None,
-            remote_dialog_seen: None,
-            desktop_upsell_seen_count: None,
-            desktop_upsell_dismissed: None,
             mcp_servers: None,
-            claude_ai_mcp_ever_connected: None,
             projects: HashMap::new(),
             user_id: None,
             tips_history: None,
             last_tip_time: None,
             btw_use_count: None,
             skill_usage: None,
-            feedback_survey_state: None,
-            transcript_share_dismissed: None,
             companion: None,
             companion_muted: None,
             has_seen_tasks_hint: None,
             has_used_stash: None,
             has_used_background_task: None,
-            claude_code_hints: None,
             show_expanded_todos: None,
             show_spinner_tree: None,
             memory_usage_count: None,
             prompt_queue_use_count: None,
-            cached_statsig_gates: None,
-            cached_dynamic_configs: None,
             last_shown_emergency_tip: None,
-            cached_growth_book_features: None,
-            growth_book_overrides: None,
-            s1m_access_cache: None,
-            s1m_non_subscriber_access_cache: None,
-            passes_eligibility_cache: None,
-            passes_upsell_seen_count: None,
-            has_visited_passes: None,
-            passes_last_seen_remaining: None,
-            overage_credit_grant_cache: None,
-            overage_credit_upsell_seen_count: None,
-            has_visited_extra_usage: None,
-            voice_notice_seen_count: None,
             opus_1m_merge_notice_seen_count: None,
             iterm2_setup_in_progress: None,
             iterm2_backup_path: None,
@@ -780,8 +590,6 @@ impl Default for GlobalConfig {
             shift_enter_key_binding_installed: None,
             has_used_backslash_return: None,
             option_as_meta_key_installed: None,
-            remote_control: None,
-            remote_control_at_startup: None,
             other_global_fields: HashMap::new(),
         }
     }
@@ -796,7 +604,7 @@ fn create_official_default_global_config() -> GlobalConfig {
     config.theme = Some("dark".to_string());
     config.preferred_notif_channel = Some("auto".to_string());
     config.verbose = Some(false);
-    config.expand_thinking = Some(true);
+    config.expand_thinking = Some(false);
     config.expand_collapsed_read_search = Some(true);
     config.editor_mode = Some("normal".to_string());
     config.auto_compact_enabled = Some(true);
@@ -817,9 +625,6 @@ fn create_official_default_global_config() -> GlobalConfig {
     config.auto_install_ide_extension = Some(true);
     config.file_checkpointing_enabled = Some(true);
     config.terminal_progress_bar_enabled = Some(true);
-    config.cached_statsig_gates = Some(HashMap::new());
-    config.cached_dynamic_configs = Some(HashMap::new());
-    config.cached_growth_book_features = Some(HashMap::new());
     config.copy_full_response = Some(false);
 
     config
@@ -865,11 +670,7 @@ fn remove_null_object_fields_recursively(value: &mut serde_json::Value) {
 
 /// Keys whose JSON `null` is a distinct persisted state rather than "unset",
 /// so neither the disk merge nor the save filter may collapse it into absence.
-const NULL_BEARING_GLOBAL_CONFIG_KEYS: &[&str] = &[
-    "teammateDefaultModel",
-    "cachedExtraUsageDisabledReason",
-    "mcpServers",
-];
+const NULL_BEARING_GLOBAL_CONFIG_KEYS: &[&str] = &["teammateDefaultModel", "mcpServers"];
 
 fn merge_disk_config_with_official_defaults(
     mut disk_value: serde_json::Value,
@@ -985,15 +786,6 @@ fn global_config_disk_value(config: &GlobalConfig) -> anyhow::Result<serde_json:
         // persisted state. Missing = hardcoded default; null = follow leader.
         if config.teammate_default_model == Some(None) {
             config_object.insert("teammateDefaultModel".to_string(), serde_json::Value::Null);
-        }
-
-        // Likewise for `cachedExtraUsageDisabledReason`: missing = no cache
-        // yet; null = a response carried no disabled reason.
-        if config.cached_extra_usage_disabled_reason == CachedExtraUsageDisabledReason::Enabled {
-            config_object.insert(
-                "cachedExtraUsageDisabledReason".to_string(),
-                serde_json::Value::Null,
-            );
         }
     }
 
@@ -1180,7 +972,7 @@ fn start_global_config_freshness_watcher() {
         return;
     }
 
-    let path = crate::utils::env::get_global_claude_file();
+    let path = crate::utils::env::get_global_state_file();
     // The launchers' first config load starts this thread before
     // `process_env::publish_startup_environment` writes the real environment,
     // so it must never reach libc's getenv (no `node_os::homedir`, local time
@@ -1247,7 +1039,7 @@ fn backup_corrupted_config(path: &Path, content: &str) {
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or(".claude.json");
+        .unwrap_or(crate::utils::env::GLOBAL_STATE_FILE_NAME);
     let backup_path = backup_dir.join(format!("{file_name}.corrupted.{}", current_time_millis()));
     let _ = fs::write(backup_path, content);
 }
@@ -1287,7 +1079,7 @@ fn create_config_backup(path: &Path) {
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or(".claude.json");
+        .unwrap_or(crate::utils::env::GLOBAL_STATE_FILE_NAME);
     let backup_prefix = format!("{file_name}.backup.");
     let now = current_time_millis();
 
@@ -1390,11 +1182,8 @@ fn write_config_value(path: &Path, value: &serde_json::Value) -> anyhow::Result<
     Ok(())
 }
 
-fn would_lose_auth_state(cached: &GlobalConfig, fresh: &GlobalConfig) -> bool {
-    let lost_oauth = cached.oauth_account.is_some() && fresh.oauth_account.is_none();
-    let lost_onboarding = cached.has_completed_onboarding == Some(true)
-        && fresh.has_completed_onboarding != Some(true);
-    lost_oauth || lost_onboarding
+fn would_lose_onboarding_state(cached: &GlobalConfig, fresh: &GlobalConfig) -> bool {
+    cached.has_completed_onboarding == Some(true) && fresh.has_completed_onboarding != Some(true)
 }
 
 /// Maps to: CC `config.ts` `TEST_GLOBAL_CONFIG_FOR_TESTING` — test-only
@@ -1426,7 +1215,7 @@ pub fn load_global_config() -> GlobalConfig {
             return config;
         }
     }
-    let path = crate::utils::env::get_global_claude_file();
+    let path = crate::utils::env::get_global_state_file();
 
     // Claude Code keeps the normal read path as a pure memory hit after the
     // startup load. A background freshness watcher refreshes external writes.
@@ -1466,7 +1255,7 @@ pub fn load_global_config() -> GlobalConfig {
 }
 
 pub fn enable_configs() -> anyhow::Result<()> {
-    let path = crate::utils::env::get_global_claude_file();
+    let path = crate::utils::env::get_global_state_file();
     if path.exists() {
         let config = read_global_config_value(&path).and_then(load_global_config_from_value)?;
         write_through_global_config_cache(&path, config);
@@ -1496,7 +1285,7 @@ pub fn save_global_config(updater: impl FnOnce(&mut GlobalConfig)) -> anyhow::Re
         return Ok(());
     }
 
-    let path = crate::utils::env::get_global_claude_file();
+    let path = crate::utils::env::get_global_state_file();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -1507,9 +1296,9 @@ pub fn save_global_config(updater: impl FnOnce(&mut GlobalConfig)) -> anyhow::Re
     let mut current_config = load_global_config_from_value(original_disk_value.clone())
         .unwrap_or_else(|_| create_official_default_global_config());
 
-    if would_lose_auth_state(&cached_config, &current_config) {
+    if would_lose_onboarding_state(&cached_config, &current_config) {
         tracing::warn!(
-            "Refusing to write {} because the re-read config lost auth/onboarding state",
+            "Refusing to write {} because the re-read config lost onboarding state",
             path.display()
         );
         return Ok(());
@@ -1561,7 +1350,7 @@ fn generate_official_user_id() -> String {
 
 /// Maps to: CC `utils/config.ts:1757-1766` `getOrCreateUserID`.
 ///
-/// Returns the persisted `~/.claude.json` `userID`, minting one on first use.
+/// Returns the persisted state-file `userID`, minting one on first use.
 /// `getAPIMetadata` (`services/api/claude.ts:522`) puts this in
 /// `metadata.user_id.device_id`; a new value on every request is treated as a
 /// new user by any gateway that keys on `user_id`.
@@ -1606,7 +1395,7 @@ fn pin_created_user_id(user_id: &str) {
         return;
     }
     config.user_id = Some(user_id.to_string());
-    write_through_global_config_cache(&crate::utils::env::get_global_claude_file(), config);
+    write_through_global_config_cache(&crate::utils::env::get_global_state_file(), config);
 }
 
 pub fn record_first_start_time() {
@@ -1649,8 +1438,11 @@ pub fn get_auto_updater_disabled_reason() -> Option<&'static str> {
     if crate::utils::env_utils::is_env_truthy(
         crate::utils::process_env::var("DISABLE_AUTOUPDATER").as_deref(),
     ) || crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_AUTOUPDATER").as_deref(),
-    ) {
+        crate::utils::process_env::var("NYAN_DISABLE_AUTOUPDATER").as_deref(),
+    ) || crate::utils::privacy_level::get_essential_traffic_only_reason().is_some()
+    {
+        // CC `config.ts:1742` `getEssentialTrafficOnlyReason()`: the update
+        // check is non-essential traffic.
         return Some("environment");
     }
 
@@ -1690,18 +1482,12 @@ pub fn is_auto_updater_disabled() -> bool {
     get_auto_updater_disabled_reason().is_some()
 }
 
-pub fn get_remote_control_at_startup() -> bool {
-    load_global_config()
-        .remote_control_at_startup
-        .unwrap_or(false)
-}
-
 pub fn find_most_recent_backup() -> Option<PathBuf> {
     let backup_dir = get_config_backup_dir();
-    let global_config_file_name = crate::utils::env::get_global_claude_file()
+    let global_config_file_name = crate::utils::env::get_global_state_file()
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or(".claude.json")
+        .unwrap_or(crate::utils::env::GLOBAL_STATE_FILE_NAME)
         .to_string();
     let backup_prefix = format!("{global_config_file_name}.backup.");
 
@@ -1794,6 +1580,19 @@ mod tests {
         assert_eq!(get_memory_path("local"), get_memory_path("user"));
     }
 
+    /// CC `config.ts:1742`: essential-traffic-only mode disables the update
+    /// check like the explicit switches do.
+    #[test]
+    fn essential_traffic_only_disables_the_auto_updater() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _disable = EnvVarGuard::unset("DISABLE_AUTOUPDATER");
+        let _nyan_disable = EnvVarGuard::unset("NYAN_DISABLE_AUTOUPDATER");
+        let _traffic = EnvVarGuard::set("NYAN_DISABLE_NONESSENTIAL_TRAFFIC", "1");
+        assert_eq!(get_auto_updater_disabled_reason(), Some("environment"));
+    }
+
     /// CC `utils/managedEnv.ts#applyConfigEnvironmentVariables` feeds
     /// `getGlobalConfig().env` through `Object.assign(process.env, ...)`; the
     /// Node v24 own-key oracle is recorded in process-env-carrier.md §1.2.
@@ -1822,6 +1621,47 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["1", "2", "1\0tail", "SECOND", "FIRST"]
         );
+    }
+
+    #[test]
+    fn project_config_keeps_agents_md_approval_json_keys() {
+        let config: ProjectConfig = serde_json::from_value(serde_json::json!({
+            "hasClaudeMdExternalIncludesApproved": true,
+            "hasClaudeMdExternalIncludesWarningShown": false,
+        }))
+        .expect("project config should deserialize AgentsMd approval keys");
+
+        assert_eq!(config.has_agents_md_external_includes_approved, Some(true));
+        assert_eq!(
+            config.has_agents_md_external_includes_warning_shown,
+            Some(false)
+        );
+
+        let serialized = serde_json::to_value(&config).unwrap();
+        assert_eq!(serialized["hasClaudeMdExternalIncludesApproved"], true);
+        assert_eq!(serialized["hasClaudeMdExternalIncludesWarningShown"], false);
+    }
+
+    #[test]
+    fn global_config_reads_legacy_speculation_setting_without_changing_preferences() {
+        for enabled in [false, true] {
+            let config = load_global_config_from_value(serde_json::json!({
+                "speculationEnabled": enabled,
+                "expandThinking": false,
+                "messageIdleNotifThresholdMs": 120000,
+                "numStartups": 9,
+            }))
+            .expect("legacy speculation setting should not prevent config loading");
+
+            assert_eq!(config.expand_thinking, Some(false));
+            assert_eq!(config.expand_collapsed_read_search, Some(true));
+            assert_eq!(config.message_idle_notif_threshold_ms(), 120_000);
+            assert_eq!(config.num_startups, 9);
+            assert_eq!(
+                config.other_global_fields.get("speculationEnabled"),
+                Some(&serde_json::json!(enabled))
+            );
+        }
     }
 
     #[test]
@@ -1858,22 +1698,22 @@ mod tests {
     }
 
     #[test]
-    fn merge_fills_absent_display_pref_keys_with_ruled_factory_true() {
-        // Pins the ruled default (v3, 2026-08-01) at the live merge path:
-        // a disk config without the nyan display-pref keys must load with
-        // both effective true (factory-authoritative, CC {...DEFAULT, ...disk}
+    fn merge_fills_absent_display_pref_keys_with_factory_defaults() {
+        // Pins the factory defaults at the live merge path: a disk config
+        // without the nyan display-pref keys must load with thinking collapsed
+        // (matches CC) and read/search groups expanded (CC {...DEFAULT, ...disk}
         // spread shape). Explicit disk values must still win.
         let merged = load_global_config_from_value(serde_json::json!({}))
             .expect("empty disk config should merge with factory defaults");
-        assert_eq!(merged.expand_thinking, Some(true));
+        assert_eq!(merged.expand_thinking, Some(false));
         assert_eq!(merged.expand_collapsed_read_search, Some(true));
 
         let overridden = load_global_config_from_value(serde_json::json!({
-            "expandThinking": false,
+            "expandThinking": true,
             "expandCollapsedReadSearch": false,
         }))
         .expect("disk overrides should merge");
-        assert_eq!(overridden.expand_thinking, Some(false));
+        assert_eq!(overridden.expand_thinking, Some(true));
         assert_eq!(overridden.expand_collapsed_read_search, Some(false));
     }
 
@@ -1894,64 +1734,6 @@ mod tests {
             configured.teammate_default_model,
             Some(Some("haiku".to_string()))
         );
-    }
-
-    /// Maps to: CC `utils/config.ts:549-551` — `string | null | undefined`,
-    /// with the `null`/`undefined` split consumed at
-    /// `utils/model/check1mAccess.ts:14-20`. JSON renders `undefined` as an
-    /// absent key and `null` as a present one, so the disk round-trip has to
-    /// preserve presence, not just value.
-    #[test]
-    fn global_config_round_trips_official_extra_usage_reason_tristate() {
-        let missing: GlobalConfig =
-            serde_json::from_str(r#"{}"#).expect("global config should deserialize");
-        assert_eq!(
-            missing.cached_extra_usage_disabled_reason,
-            CachedExtraUsageDisabledReason::Uncached
-        );
-
-        let enabled: GlobalConfig =
-            serde_json::from_str(r#"{"cachedExtraUsageDisabledReason": null}"#)
-                .expect("global config should deserialize");
-        assert_eq!(
-            enabled.cached_extra_usage_disabled_reason,
-            CachedExtraUsageDisabledReason::Enabled
-        );
-
-        let disabled: GlobalConfig =
-            serde_json::from_str(r#"{"cachedExtraUsageDisabledReason": "out_of_credits"}"#)
-                .expect("global config should deserialize");
-        assert_eq!(
-            disabled.cached_extra_usage_disabled_reason,
-            CachedExtraUsageDisabledReason::Disabled("out_of_credits".to_string())
-        );
-
-        // The save filter strips nulls, so `Enabled` survives only because it
-        // is re-inserted; `Uncached` must stay absent.
-        let uncached_disk = global_config_disk_value(&GlobalConfig {
-            cached_extra_usage_disabled_reason: CachedExtraUsageDisabledReason::Uncached,
-            ..Default::default()
-        })
-        .expect("disk value");
-        assert!(
-            uncached_disk
-                .get("cachedExtraUsageDisabledReason")
-                .is_none()
-        );
-
-        for state in [
-            CachedExtraUsageDisabledReason::Enabled,
-            CachedExtraUsageDisabledReason::Disabled("out_of_credits".to_string()),
-        ] {
-            let disk = global_config_disk_value(&GlobalConfig {
-                cached_extra_usage_disabled_reason: state.clone(),
-                ..Default::default()
-            })
-            .expect("disk value");
-            let reloaded =
-                merge_disk_config_with_official_defaults(disk).expect("disk value should reload");
-            assert_eq!(reloaded.cached_extra_usage_disabled_reason, state);
-        }
     }
 
     #[test]
@@ -2004,68 +1786,31 @@ mod tests {
     }
 
     #[test]
-    fn global_config_deserializes_official_startup_dialog_tracking_fields() {
-        let config: GlobalConfig = serde_json::from_str(
-            r#"{
-                "remoteDialogSeen": true,
-                "desktopUpsellSeenCount": 2,
-                "desktopUpsellDismissed": true,
-                "hasCompletedClaudeInChromeOnboarding": true,
-                "claudeInChromeDefaultEnabled": false
-            }"#,
-        )
-        .expect("global config should deserialize startup dialog tracking fields");
-
-        assert_eq!(config.remote_dialog_seen, Some(true));
-        assert_eq!(config.desktop_upsell_seen_count, Some(2));
-        assert_eq!(config.desktop_upsell_dismissed, Some(true));
-        assert_eq!(config.has_completed_claude_in_chrome_onboarding, Some(true));
-        assert_eq!(config.claude_in_chrome_default_enabled, Some(false));
+    fn cloud_remote_config_is_not_in_the_typed_defaults_or_config_keys() {
+        let global = serde_json::to_value(GlobalConfig::default()).unwrap();
+        for key in [
+            "remoteControl",
+            "remoteControlAtStartup",
+            "remoteDialogSeen",
+        ] {
+            assert!(global.get(key).is_none(), "{key}");
+            assert!(!GLOBAL_CONFIG_KEYS.contains(&key), "{key}");
+        }
+        let project = serde_json::to_value(ProjectConfig::default()).unwrap();
+        assert!(project.get("remoteControlSpawnMode").is_none());
     }
 
     #[test]
-    fn global_config_deserializes_official_growthbook_cache_and_overrides() {
+    fn global_config_deserializes_notice_tracking_fields() {
         let config: GlobalConfig = serde_json::from_str(
             r#"{
-                "cachedGrowthBookFeatures": {
-                    "tengu_prompt_cache_1h_config": {"allowlist": ["repl_main_thread*"]}
-                },
-                "growthBookOverrides": {
-                    "tengu_prompt_cache_1h_config": {"allowlist": ["sdk"]}
-                },
                 "lastShownEmergencyTip": "old tip",
-                "voiceNoticeSeenCount": 2,
                 "opus1mMergeNoticeSeenCount": 5
             }"#,
         )
-        .expect("global config should deserialize GrowthBook cache fields");
+        .expect("global config should deserialize notice tracking fields");
 
-        assert_eq!(
-            config
-                .cached_growth_book_features
-                .as_ref()
-                .and_then(|features| {
-                    features
-                        .get("tengu_prompt_cache_1h_config")
-                        .and_then(|value| value.get("allowlist"))
-                        .and_then(|value| value.as_array())
-                        .map(|values| values.len())
-                }),
-            Some(1)
-        );
-        assert_eq!(
-            config.growth_book_overrides.as_ref().and_then(|features| {
-                features
-                    .get("tengu_prompt_cache_1h_config")
-                    .and_then(|value| value.get("allowlist"))
-                    .and_then(|value| value.as_array())
-                    .and_then(|values| values.first())
-                    .and_then(|value| value.as_str())
-            }),
-            Some("sdk")
-        );
         assert_eq!(config.last_shown_emergency_tip.as_deref(), Some("old tip"));
-        assert_eq!(config.voice_notice_seen_count, Some(2));
         assert_eq!(config.opus_1m_merge_notice_seen_count, Some(5));
     }
 
@@ -2108,7 +1853,7 @@ mod tests {
         let _env = TEST_ENV_LOCK.lock().unwrap();
         let root = unique_temp_dir("user-id-persist");
         fs::create_dir_all(&root).unwrap();
-        let _config_dir = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config_dir = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let previous = replace_test_global_config(None);
         clear_global_config_cache_for_testing();
@@ -2134,6 +1879,141 @@ mod tests {
         );
     }
 
+    /// `cachedGrowthBookFeatures` is no longer modeled; a state file written by
+    /// an older build must still load, keep the key in the catch-all, and not
+    /// lose it when an unrelated setting is saved.
+    #[test]
+    fn legacy_cached_growthbook_features_key_survives_load_and_save() {
+        let _env = TEST_ENV_LOCK.lock().unwrap();
+        let root = unique_temp_dir("legacy-growthbook-key");
+        fs::create_dir_all(&root).unwrap();
+        let _config_dir = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        clear_global_config_cache_for_testing();
+
+        let legacy = serde_json::json!({"tengu_example_gate": true, "tengu_example_cap": 3});
+        let file = crate::utils::env::get_global_state_file();
+        fs::write(
+            &file,
+            serde_json::json!({"cachedGrowthBookFeatures": legacy}).to_string(),
+        )
+        .unwrap();
+
+        let loaded = load_global_config();
+        assert_eq!(
+            loaded.other_global_fields.get("cachedGrowthBookFeatures"),
+            Some(&legacy)
+        );
+
+        save_global_config(|config| config.theme = Some("light".to_string())).unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(saved["theme"], "light");
+        assert_eq!(saved["cachedGrowthBookFeatures"], legacy);
+
+        clear_global_config_cache_for_testing();
+        let reread = load_global_config();
+        assert_eq!(
+            reread.other_global_fields.get("cachedGrowthBookFeatures"),
+            Some(&legacy)
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// `oauthAccount` (the claude.ai account) is no longer modeled; a state
+    /// file written by an older build must still load, keep the key in the
+    /// catch-all, and not lose it when an unrelated setting is saved.
+    #[test]
+    fn legacy_oauth_account_key_survives_load_and_save() {
+        let _env = TEST_ENV_LOCK.lock().unwrap();
+        let root = unique_temp_dir("legacy-oauth-account-key");
+        fs::create_dir_all(&root).unwrap();
+        let _config_dir = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        clear_global_config_cache_for_testing();
+
+        let legacy = serde_json::json!({
+            "accountUuid": "acct-1",
+            "emailAddress": "user@example.com",
+            "organizationUuid": "org-1",
+            "displayName": "Ada"
+        });
+        let file = crate::utils::env::get_global_state_file();
+        fs::write(
+            &file,
+            serde_json::json!({"oauthAccount": legacy, "hasCompletedOnboarding": true}).to_string(),
+        )
+        .unwrap();
+
+        let loaded = load_global_config();
+        assert_eq!(
+            loaded.other_global_fields.get("oauthAccount"),
+            Some(&legacy)
+        );
+        assert_eq!(loaded.has_completed_onboarding, Some(true));
+
+        save_global_config(|config| config.theme = Some("light".to_string())).unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(saved["theme"], "light");
+        assert_eq!(saved["oauthAccount"], legacy);
+
+        clear_global_config_cache_for_testing();
+        let reread = load_global_config();
+        assert_eq!(
+            reread.other_global_fields.get("oauthAccount"),
+            Some(&legacy)
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// The claude.ai account/cloud caches (guest passes, overage credit, 1M
+    /// access, extra-usage disabled reason) are no longer modeled. A state
+    /// file written by an older build still loads, and saving an unrelated
+    /// setting leaves those keys on disk untouched.
+    #[test]
+    fn legacy_account_cache_keys_survive_load_and_save() {
+        let _env = TEST_ENV_LOCK.lock().unwrap();
+        let root = unique_temp_dir("legacy-account-cache-keys");
+        fs::create_dir_all(&root).unwrap();
+        let _config_dir = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
+        let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
+        clear_global_config_cache_for_testing();
+
+        let legacy = serde_json::json!({
+            "cachedExtraUsageDisabledReason": null,
+            "s1mAccessCache": {"org-1": {"hasAccess": true, "timestamp": 1}},
+            "s1mNonSubscriberAccessCache": {"org-1": {"hasAccess": false, "timestamp": 1}},
+            "passesEligibilityCache": {"org-1": {"eligible": true, "timestamp": 1}},
+            "passesUpsellSeenCount": 2,
+            "hasVisitedPasses": true,
+            "passesLastSeenRemaining": 3,
+            "overageCreditGrantCache": {"org-1": {"info": {"available": true}, "timestamp": 1}},
+            "overageCreditUpsellSeenCount": 1,
+            "hasVisitedExtraUsage": false
+        });
+        let file = crate::utils::env::get_global_state_file();
+        let mut disk = legacy.clone();
+        disk["hasCompletedOnboarding"] = serde_json::json!(true);
+        fs::write(&file, disk.to_string()).unwrap();
+
+        let loaded = load_global_config();
+        assert_eq!(loaded.has_completed_onboarding, Some(true));
+        assert_eq!(
+            loaded.other_global_fields.get("passesEligibilityCache"),
+            Some(&legacy["passesEligibilityCache"])
+        );
+
+        save_global_config(|config| config.theme = Some("light".to_string())).unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(saved["theme"], "light");
+        for (key, value) in legacy.as_object().unwrap() {
+            assert_eq!(saved.get(key), Some(value), "{key} must survive a save");
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test]
     fn mcp_raw_snapshot_survives_disk_cache_save_and_live_replacement() {
         use crate::services::mcp::config::get_mcp_configs_by_scope_readonly;
@@ -2141,7 +2021,7 @@ mod tests {
         let _env = TEST_ENV_LOCK.lock().unwrap();
         let root = unique_temp_dir("mcp-raw-snapshot");
         fs::create_dir_all(&root).unwrap();
-        let _config_dir = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config_dir = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _writes = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         clear_global_config_cache_for_testing();
         let raw = serde_json::json!({
@@ -2149,7 +2029,7 @@ mod tests {
             "bad":{"type":"http","url":"u","oauth":null},
             "nullArgs":{"command":"g","args":null,"env":null,"type":null}
         });
-        let file = crate::utils::env::get_global_claude_file();
+        let file = crate::utils::env::get_global_state_file();
         let project_key = normalize_project_path(&get_project_path_for_config().to_string_lossy());
         let initial = serde_json::json!({"mcpServers":raw,"projects":{project_key.clone():{"mcpServers":raw}}});
         fs::write(&file, initial.to_string()).unwrap();

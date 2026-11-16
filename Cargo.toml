@@ -1,9 +1,9 @@
 [package]
 name = "nyan"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.99"
-description = "A terminal-based AI coding assistant — 1:1 TUI clone of Claude Code"
+description = "A provider-agnostic terminal AI coding agent"
 license = "AGPL-3.0-only"
 
 # `src/main.rs` is CC `main.tsx` (library module), not the process entry.
@@ -19,13 +19,6 @@ name = "nyan"
 path = "src/bin/nyan.rs"
 
 [features]
-# L1 replacement for CC runtime `process.env.USER_TYPE === 'ant'` gates.
-# The default build is the external distribution; this feature compiles the
-# Anthropic-internal capability profile and cannot be enabled at runtime.
-anthropic_internal = []
-# Maps to CC build-time `feature('VOICE_MODE')` guard. Runtime voice streaming
-# remains unimplemented; this only enables UI/gate parity for read-only seams.
-voice_mode = []
 # Maps to CC build-time `feature('ULTRATHINK')` transcript highlighting.
 ultrathink = []
 
@@ -45,15 +38,6 @@ chalk = { git = "https://github.com/Haleclipse/CometixTUI" }
 
 # Rust port of @anthropic-ai/sdk.
 anthropic-sdk = { git = "https://github.com/Haleclipse/anthropic-sdk-rs" }
-# CC's `@anthropic-ai/vertex-sdk`.
-anthropic-sdk-vertex = { git = "https://github.com/Haleclipse/anthropic-sdk-rs" }
-# CC's `@anthropic-ai/foundry-sdk`, with the crate's port of CC's
-# `@azure/identity` dependency (`DefaultAzureCredential`).
-anthropic-sdk-foundry = { git = "https://github.com/Haleclipse/anthropic-sdk-rs", features = ["azure-identity"] }
-# CC's `@anthropic-ai/bedrock-sdk`, with the crate's port of its default
-# credential chain (`@aws-sdk/credential-providers`' `fromNodeProviderChain`),
-# which nyan runs on the carrier and its own transport.
-anthropic-sdk-bedrock = { git = "https://github.com/Haleclipse/anthropic-sdk-rs" }
 
 # Async runtime: tokio for API/network/process I/O. iocraft's render loop is
 # runtime-agnostic (futures traits only); tokio drives it from main().
@@ -125,6 +109,11 @@ tree-sitter-md = "0.5.4"
 tantivy = { version = "0.27.0", default-features = false, features = ["mmap", "lz4-compression"] }
 sha2 = "0.11.0"
 md5 = "0.8.0"
+# GitHub Releases auto-update archives: tar.gz for Linux, zip for Windows.
+# Extraction is limited to regular files/directories in a temp directory and
+# paths are validated before unpacking.
+tar = "0.4.46"
+zip = { version = "9.5", default-features = false, features = ["deflate-flate2"] }
 base64 = "0.22.1"
 nucleo-matcher = "0.3.1"
 similar = "3.1.1"
@@ -172,22 +161,13 @@ tracing = "0.1"
 # Official Rust SDK for Model Context Protocol, matching CC's
 # `@modelcontextprotocol/sdk` dependency in `services/mcp/client.ts`.
 # TLS feature for rmcp's reqwest is selected per-target below.
-rmcp = { version = "3.5.1", default-features = false, features = [
+rmcp = { version = "3.9.0", default-features = false, features = [
     "auth",
     "client",
     "elicitation",
     "transport-child-process",
     "transport-streamable-http-client-reqwest",
 ] }
-
-# CC `asciicast.ts:118-125` reads `process.stdout.columns/rows`, which Node
-# services with ioctl(TIOCGWINSZ) on Unix and GetConsoleScreenBufferInfo on
-# Windows. utils/asciicast.rs calls libc directly for the first; the second
-# comes from crossterm, whose Windows backend is that same console call.
-# Declared only for the targets that compile the `cfg(not(unix))` arm — the
-# crate is already in the tree through iocraft, so this costs no extra build.
-[target.'cfg(not(unix))'.dependencies]
-crossterm = "0.29"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
@@ -208,13 +188,13 @@ windows-sys = { version = "0.61.2", features = [
 # Target tables only add the TLS feature; shared features stay in [dependencies].
 [target.'cfg(target_os = "android")'.dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }
-rmcp = { version = "3.5.1", default-features = false, features = [
+rmcp = { version = "3.9.0", default-features = false, features = [
     "reqwest-native-tls",
 ] }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
-rmcp = { version = "3.5.1", default-features = false, features = [
+rmcp = { version = "3.9.0", default-features = false, features = [
     "reqwest-tls-no-provider",
 ] }
 # ring crypto provider for rustls — tls_provider installs it before HTTPS.
@@ -223,6 +203,12 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "logg
 [dev-dependencies]
 pretty_assertions = "1"
 tokio = { version = "1", features = ["test-util"] }
+
+# iocraft is vendored from the CometixTUI commit in Cargo.lock with 32-bit draw
+# coordinates (vendor/iocraft/NYAN.md). Its siblings, chalk and iocraft-macros,
+# still come from git.
+[patch."https://github.com/Haleclipse/CometixTUI"]
+iocraft = { path = "vendor/iocraft" }
 
 [profile.release]
 lto = "thin"

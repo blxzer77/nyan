@@ -2,7 +2,7 @@
 //! Maps to CC `bootstrap/state.ts`.
 
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{LazyLock, RwLock};
@@ -54,22 +54,8 @@ static FLAG_SETTINGS_PATH: LazyLock<RwLock<Option<PathBuf>>> = LazyLock::new(|| 
 static LAST_CLASSIFIER_REQUESTS: LazyLock<RwLock<Option<Vec<serde_json::Value>>>> =
     LazyLock::new(|| RwLock::new(None));
 /// Maps to: CC `bootstrap/state.ts:123,347` `STATE.cachedClaudeMdContent`.
-static CACHED_CLAUDE_MD_CONTENT: LazyLock<RwLock<Option<String>>> =
+static CACHED_AGENTS_MD_CONTENT: LazyLock<RwLock<Option<String>>> =
     LazyLock::new(|| RwLock::new(None));
-/// Maps to: CC `bootstrap/state.ts:198,389` `STATE.isRemoteMode`.
-/// Remote startup's setter caller is not yet ported; never infer it from env.
-static IS_REMOTE_MODE: LazyLock<RwLock<bool>> = LazyLock::new(|| RwLock::new(false));
-
-/// Maps to: CC `bootstrap/state.ts:1631-1633` `getIsRemoteMode`.
-pub fn get_is_remote_mode() -> bool {
-    *IS_REMOTE_MODE.read().unwrap_or_else(|p| p.into_inner())
-}
-
-/// Maps to: CC `bootstrap/state.ts:1635-1637` `setIsRemoteMode`.
-pub fn set_is_remote_mode(value: bool) {
-    *IS_REMOTE_MODE.write().unwrap_or_else(|p| p.into_inner()) = value;
-}
-
 /// Maps to: CC `bootstrap/state.ts:1199-1201` `setLastClassifierRequests`.
 pub fn set_last_classifier_requests(requests: Option<Vec<serde_json::Value>>) {
     *LAST_CLASSIFIER_REQUESTS
@@ -86,24 +72,20 @@ pub fn get_last_classifier_requests() -> Option<Vec<serde_json::Value>> {
 }
 
 /// Maps to: CC `bootstrap/state.ts:1207-1209` `setCachedClaudeMdContent`.
-pub fn set_cached_claude_md_content(content: Option<String>) {
-    *CACHED_CLAUDE_MD_CONTENT
+pub fn set_cached_agents_md_content(content: Option<String>) {
+    *CACHED_AGENTS_MD_CONTENT
         .write()
         .unwrap_or_else(|p| p.into_inner()) = content;
 }
 
 /// Maps to: CC `bootstrap/state.ts:1211-1213` `getCachedClaudeMdContent`.
-pub fn get_cached_claude_md_content() -> Option<String> {
-    CACHED_CLAUDE_MD_CONTENT
+pub fn get_cached_agents_md_content() -> Option<String> {
+    CACHED_AGENTS_MD_CONTENT
         .read()
         .unwrap_or_else(|p| p.into_inner())
         .clone()
 }
 static FLAG_SETTINGS_INLINE: LazyLock<RwLock<Option<serde_json::Value>>> =
-    LazyLock::new(|| RwLock::new(None));
-/// Maps to: CC `bootstrap/state.ts:1158-1164` `STATE.oauthTokenFromFd`.
-/// Outer `None` is JavaScript `undefined`; inner `None` is cached `null`.
-static OAUTH_TOKEN_FROM_FD: LazyLock<RwLock<Option<Option<String>>>> =
     LazyLock::new(|| RwLock::new(None));
 /// Maps to: CC `bootstrap/state.ts:1166-1172` `STATE.apiKeyFromFd`.
 static API_KEY_FROM_FD: LazyLock<RwLock<Option<Option<String>>>> =
@@ -112,7 +94,7 @@ static CLI_AGENTS_JSON: LazyLock<RwLock<Option<serde_json::Value>>> =
     LazyLock::new(|| RwLock::new(None));
 static INLINE_PLUGINS: LazyLock<RwLock<Vec<PathBuf>>> = LazyLock::new(|| RwLock::new(Vec::new()));
 static USE_COWORK_PLUGINS: LazyLock<RwLock<bool>> = LazyLock::new(|| RwLock::new(false));
-static ADDITIONAL_DIRECTORIES_FOR_CLAUDE_MD: LazyLock<RwLock<Vec<PathBuf>>> =
+static ADDITIONAL_DIRECTORIES_FOR_AGENTS_MD: LazyLock<RwLock<Vec<PathBuf>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));
 /// Maps to CC `STATE.allowedSettingSources`; policy/flag are added by the
 /// settings owner and therefore are not stored in this user-selectable list.
@@ -132,12 +114,12 @@ static HAS_DEV_CHANNELS: LazyLock<RwLock<bool>> = LazyLock::new(|| RwLock::new(f
 /// Maps to: CC `bootstrap/state.ts:79` `STATE.userMsgOptIn`.
 ///
 /// CC's opt-in actions live in `main.tsx` (`--brief`, `defaultView: 'chat'`,
-/// `/brief`, `--tools`, `CLAUDE_CODE_BRIEF`). Only the env-var path exists in
+/// `/brief`, `--tools`, `NYAN_BRIEF`). Only the env-var path exists in
 /// Nyan, and `maybeActivateBrief` (`main.tsx:6524-6553`) sets the flag from
 /// it, so the initial value is derived here.
 static USER_MSG_OPT_IN: LazyLock<RwLock<bool>> = LazyLock::new(|| {
     RwLock::new(crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_BRIEF").as_deref(),
+        crate::utils::process_env::var("NYAN_BRIEF").as_deref(),
     ))
 });
 /// Maps to: CC `bootstrap/state.ts:82` `STATE.questionPreviewFormat`.
@@ -148,7 +130,7 @@ static USER_MSG_OPT_IN: LazyLock<RwLock<bool>> = LazyLock::new(|| {
 static QUESTION_PREVIEW_FORMAT: LazyLock<RwLock<Option<QuestionPreviewFormat>>> =
     LazyLock::new(|| {
         RwLock::new(
-            match crate::utils::process_env::var("CLAUDE_CODE_QUESTION_PREVIEW_FORMAT")
+            match crate::utils::process_env::var("NYAN_QUESTION_PREVIEW_FORMAT")
                 .unwrap_or_default()
                 .as_str()
             {
@@ -213,14 +195,14 @@ pub async fn wait_for_scroll_idle() {
 
 static ORIGINAL_CWD: LazyLock<RwLock<PathBuf>> = LazyLock::new(|| {
     // Harness pin, test builds only: `projectSettings` roots at this value
-    // (`${cwd}/.claude/settings.json`), and it is process state no recipe-
+    // (`${cwd}/.nyan/settings.json`), and it is process state no recipe-
     // scoped env can otherwise reach. `just _prep` rebuilds mutable config in
     // `target/test-home`, serializes its canonical trust JSON, and points this
     // value at the tracked `tests/fixtures/isolated-project` instead of whatever
     // repository the tests happen to run in. `IsolatedProjectSettings` remains
     // the per-test override. This is environment injection, not a behavior
     // fork: the value only changes where the cwd APPEARS to be, exactly like
-    // CLAUDE_CONFIG_DIR.
+    // NYAN_CONFIG_DIR.
 
     #[cfg(test)]
     if let Some(pinned) = crate::utils::process_env::var("NYAN_TEST_PROJECT_DIR")
@@ -273,7 +255,8 @@ static SYSTEM_PROMPT_SECTION_CACHE: LazyLock<RwLock<HashMap<String, Option<Strin
 static INVOKED_SKILLS: LazyLock<RwLock<Vec<(String, InvokedSkillInfo)>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));
 #[cfg(test)]
-pub static TEST_INVOKED_SKILLS_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStateLock::new);
+pub static TEST_INVOKED_SKILLS_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::InvokedSkills);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InvokedSkillInfo {
@@ -450,21 +433,6 @@ pub fn set_flag_settings_inline(settings: Option<serde_json::Value>) {
     crate::utils::settings::settings_cache::reset_settings_cache();
 }
 
-/// Maps to: CC `bootstrap/state.ts:1158-1160` `getOauthTokenFromFd`.
-pub fn get_oauth_token_from_fd() -> Option<Option<String>> {
-    OAUTH_TOKEN_FROM_FD
-        .read()
-        .expect("OAuth FD token lock poisoned")
-        .clone()
-}
-
-/// Maps to: CC `bootstrap/state.ts:1162-1164` `setOauthTokenFromFd`.
-pub fn set_oauth_token_from_fd(token: Option<String>) {
-    *OAUTH_TOKEN_FROM_FD
-        .write()
-        .expect("OAuth FD token lock poisoned") = Some(token);
-}
-
 /// Maps to: CC `bootstrap/state.ts:1166-1168` `getApiKeyFromFd`.
 pub fn get_api_key_from_fd() -> Option<Option<String>> {
     API_KEY_FROM_FD
@@ -482,9 +450,6 @@ pub fn set_api_key_from_fd(key: Option<String>) {
 /// auth-file-descriptor fields owned by this Rust state projection.
 #[cfg(test)]
 pub(crate) fn reset_auth_file_descriptor_caches_for_testing() {
-    *OAUTH_TOKEN_FROM_FD
-        .write()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     *API_KEY_FROM_FD
         .write()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
@@ -597,7 +562,7 @@ pub fn regenerate_session_id(set_current_as_parent: bool) -> String {
     crate::utils::plans::clear_plan_slug(Some(&previous));
     let next = uuid::Uuid::new_v4().to_string();
     set_session_id(next.clone());
-    // No environment side effect here: CC's CLAUDE_CODE_SESSION_ID env update
+    // No environment side effect here: CC's NYAN_SESSION_ID env update
     // lives only in the /clear path (`commands/clear/conversation.ts:204-207`),
     // not in `bootstrap/state.ts#regenerateSessionId`. Other callers (e.g.
     // `cli/print.ts` session forking) regenerate without touching the env.
@@ -669,8 +634,7 @@ pub fn get_is_non_interactive_session() -> bool {
     !get_is_interactive() || non_interactive_env_override()
 }
 
-/// Test-only seam: `CLAUDE_CODE_NON_INTERACTIVE` / `NYAN_NON_INTERACTIVE` /
-/// `NYAN_NON_INTERACTIVE_SESSION`.
+/// Test-only seam: `NYAN_NON_INTERACTIVE` / `NYAN_NON_INTERACTIVE_SESSION`.
 ///
 /// CC has no env equivalent — `rg -c CLAUDE_CODE_NON_INTERACTIVE ../rebuild/src`
 /// exits 1. These exist because the port had no production writer for
@@ -679,7 +643,7 @@ pub fn get_is_non_interactive_session() -> bool {
 /// var to reach it with (`agent_tool/fork_subagent.rs#fork_veto_environment`,
 /// `tools/mod.rs`, `query.rs`, `services/mcp/{config,headers_helper}.rs`).
 ///
-/// Every write to all three names — set, unset and restore — sits after its
+/// Every write to both names — set, unset and restore — sits after its
 /// file's final top-level `#[cfg(test)]`, i.e. inside `mod tests`; no
 /// production code sets them. The seam stays for those tests, and `cfg(test)`
 /// keeps it out of a real run, where the argv/TTY computation is now the only
@@ -687,15 +651,11 @@ pub fn get_is_non_interactive_session() -> bool {
 #[cfg(test)]
 fn non_interactive_env_override() -> bool {
     // The tests write these through the carrier, so the seam reads it too.
-    [
-        "CLAUDE_CODE_NON_INTERACTIVE",
-        "NYAN_NON_INTERACTIVE",
-        "NYAN_NON_INTERACTIVE_SESSION",
-    ]
-    .into_iter()
-    .any(|key| {
-        crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var(key).as_deref())
-    })
+    ["NYAN_NON_INTERACTIVE", "NYAN_NON_INTERACTIVE_SESSION"]
+        .into_iter()
+        .any(|key| {
+            crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var(key).as_deref())
+        })
 }
 
 #[cfg(not(test))]
@@ -734,8 +694,7 @@ impl Drop for IsInteractiveGuard {
 /// `preferThirdPartyAuthentication`.
 pub fn prefer_third_party_authentication() -> bool {
     get_is_non_interactive_session()
-        && crate::utils::process_env::var("CLAUDE_CODE_ENTRYPOINT").as_deref()
-            != Some("claude-vscode")
+        && crate::utils::process_env::var("NYAN_ENTRYPOINT").as_deref() != Some("claude-vscode")
 }
 
 /// Maps to CC `getKairosActive()`.
@@ -859,8 +818,8 @@ pub fn handle_auto_mode_transition(from_mode: &str, to_mode: &str) {
 /// Return additional directories from the explicit `--add-dir` flag.
 ///
 /// Maps to: CC `bootstrap/state.ts:getAdditionalDirectoriesForClaudeMd`.
-pub fn get_additional_directories_for_claude_md() -> Vec<PathBuf> {
-    ADDITIONAL_DIRECTORIES_FOR_CLAUDE_MD
+pub fn get_additional_directories_for_agents_md() -> Vec<PathBuf> {
+    ADDITIONAL_DIRECTORIES_FOR_AGENTS_MD
         .read()
         .map(|directories| directories.clone())
         .unwrap_or_default()
@@ -869,8 +828,8 @@ pub fn get_additional_directories_for_claude_md() -> Vec<PathBuf> {
 /// Set additional directories from the explicit `--add-dir` flag.
 ///
 /// Maps to: CC `bootstrap/state.ts:setAdditionalDirectoriesForClaudeMd`.
-pub fn set_additional_directories_for_claude_md(directories: Vec<PathBuf>) {
-    if let Ok(mut slot) = ADDITIONAL_DIRECTORIES_FOR_CLAUDE_MD.write() {
+pub fn set_additional_directories_for_agents_md(directories: Vec<PathBuf>) {
+    if let Ok(mut slot) = ADDITIONAL_DIRECTORIES_FOR_AGENTS_MD.write() {
         *slot = directories;
     }
 }
@@ -1108,7 +1067,6 @@ mod tests {
     #[test]
     fn non_interactive_session_mirrors_official_inverse_interactive_state_and_env_override() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_NON_INTERACTIVE");
         crate::utils::process_env::remove("NYAN_NON_INTERACTIVE");
         crate::utils::process_env::remove("NYAN_NON_INTERACTIVE_SESSION");
 
@@ -1121,10 +1079,10 @@ mod tests {
         assert!(super::get_is_non_interactive_session());
 
         super::set_is_interactive(true);
-        crate::utils::process_env::set("CLAUDE_CODE_NON_INTERACTIVE", "1");
+        crate::utils::process_env::set("NYAN_NON_INTERACTIVE", "1");
         assert!(super::get_is_non_interactive_session());
 
-        crate::utils::process_env::remove("CLAUDE_CODE_NON_INTERACTIVE");
+        crate::utils::process_env::remove("NYAN_NON_INTERACTIVE");
         super::set_is_interactive(true);
     }
 }

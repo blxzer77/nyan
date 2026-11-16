@@ -76,14 +76,14 @@ mod tests {
         let cwd = root.join("repo");
         let config_home = root.join("config");
         std::fs::create_dir_all(cwd.join(".git")).unwrap();
-        std::fs::create_dir_all(cwd.join(".claude/output-styles")).unwrap();
+        std::fs::create_dir_all(cwd.join(".nyan/output-styles")).unwrap();
         std::fs::create_dir_all(config_home.join("output-styles")).unwrap();
         std::fs::write(
-            cwd.join(".claude/output-styles/mentor.md"),
+            cwd.join(".nyan/output-styles/mentor.md"),
             "---\nname: Mentor\ndescription: 123\nkeep-coding-instructions: 'false'\nforce-for-plugin: true\n---\n# Mentor prompt\nBody",
         )
         .unwrap();
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let old_cwd = std::env::current_dir().unwrap();
         std::env::set_current_dir(&cwd).unwrap();
         let styles = get_output_style_dir_styles(&cwd);

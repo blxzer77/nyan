@@ -55,13 +55,13 @@ pub fn apply_coordinator_tool_filter(tools: Vec<Tool>) -> Vec<Tool> {
 ///   signature and never read in the body (`:59-78`); kept for parity so call
 ///   sites line up with `print.ts:1480-1484` and `useMergedTools.ts`.
 ///
-/// The sort is a partition-sort, NOT a flat sort (`:67-70`): "built-ins must
-/// stay a contiguous prefix for the server's cache policy" — the server's
-/// `claude_code_system_cache_policy` drops a global cache breakpoint after the
-/// last prefix-matched built-in tool (`tools.ts:354-359`), so an MCP tool
-/// sorting between two built-ins would invalidate every downstream cache key.
-/// Both halves use CC's `byName` (`:69`, `localeCompare`) via
-/// [`crate::tools::compare_tool_names`].
+/// The sort is a partition-sort, NOT a flat sort (`:67-70`): built-ins must
+/// stay a contiguous prefix for the Anthropic server-side policy named
+/// `claude_code_system_cache_policy` (`tools.ts:354-359`). That lets a generic
+/// prefix cache place one global breakpoint after the prefix and reuse all
+/// downstream built-in keys; an MCP tool sorting between two built-ins would
+/// invalidate those keys. Both halves use CC's `byName` (`:69`, `localeCompare`)
+/// via [`crate::tools::compare_tool_names`].
 pub fn merge_and_filter_tools(
     initial_tools: &[Tool],
     assembled: Vec<Tool>,

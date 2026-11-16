@@ -83,11 +83,11 @@ query loop
   → provider-specific SDK / stream parser
 ```
 
-client factory 构造 Direct、Bedrock、Foundry、Vertex 四种 Anthropic SDK client，并同时处理 header、API key、proxy、timeout 和 provider auth（`src/services/api/client.rs:1-9,152-163,184-246,291-515`）。目标设计中 Anthropic credential 只使用 API key。请求 body 直接使用 `BetaMessageCreateParams`，stream parser 直接处理 Anthropic content block delta（`src/services/api/claude.rs:2027-2116,2264-2403,3010-3175`）。
+client factory 构造 Direct、Bedrock、Foundry、Vertex 四种 Anthropic SDK client，并同时处理 header、API key、proxy、timeout 和 provider auth（`src/services/api/client.rs:1-9,152-163,184-246,291-515`）。目标设计中 Anthropic credential 只使用 API key。请求 body 直接使用 `BetaMessageCreateParams`，stream parser 直接处理 Anthropic content block delta（`src/services/api/request.rs:2027-2116,2264-2403,3010-3175`）。
 
 当前 header 已有可复用边界：
 
-- common：`User-Agent`、`x-app`（`src/services/api/request_headers.rs:12-21`）；
+- common：`User-Agent`（`src/services/provider/anthropic/headers.rs:12-20`）；
 - Anthropic adapter：session/container/remote header（`:23-50`）；
 - `anthropic-beta` 只由 Anthropic 请求使用（`:52-58`）；
 - `httpHeaders` 最后覆盖同名 header（`:60-82`）。
@@ -402,7 +402,7 @@ credential reference 只引用来源，不把 secret 写入 settings：
 - `refresh.rs`：`fresh_credential` 在 provider 锁内重读后才刷新，等锁的调用方直接拿到先到者写入的新 token，不会重复消耗一次性 refresh token。不同 provider 互不阻塞。
 - `oauth/openai_codex.rs`（PKCE + 授权码）、`oauth/opencode.rs`（device flow）：各自持有 endpoint、client id、token 解析与 refresh；公共部分只有表单/JSON 提交和“错误里不引用响应体”的失败分类。token 请求不跟随重定向，OpenCode 的 server 只接受 https 或回环 http。
 - `resolve.rs`：`validate_reference` 按 provider `kind` 限定 `oauth` 可用的模块（`openai` ↔ `openai-codex`，`gateway` ↔ `opencode`），`anthropic` 配 `oauth` 一律拒绝；限定 `optionalEnv` 仅允许本地 kind（`vllm`、`ollama`），商业 kind 配 `optionalEnv` 一律拒绝。
-- 新存储不读取 `OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED`；该开关仍只保护继承下来的 Anthropic / MCP OAuth 出口；provider 凭据不经过这些出口。这些旧出口的删除范围见 PR 3 描述的“待决策”。
+- 新存储不读取 `OAUTH_CREDENTIAL_SIDE_EFFECTS_ENABLED`；该开关只保护保留的 MCP OAuth 与凭据存储出口（Anthropic 账户 OAuth 出口已删除）；provider 凭据不经过这些出口。
 - PR 3 不发真实模型请求、不开浏览器、不监听端口、不提供登录命令；登录步骤以函数形式暴露，由后续 provider adapter 阶段驱动。
 
 ## 五、模型选择协议与思考深度
@@ -428,8 +428,9 @@ CLI --model <ref>[:effort]
 - **skill 不选模型**（照 Pi）：skill / plugin command 的 `model:`、`effort:` frontmatter 被忽略；需要特定模型就用带 `model:` 的 agent。理由：inline skill 中途换 profile 会让跨模型缓存前缀失效（Opus 5.5、10 万前缀约 $0.80/次）。
 - **默认规则**：
   - 子 agent 类型：`general-purpose`、`plan` = `inherit`；`explore` = `@light`；`review` = `@heavy`。
-  - Utility 角色（`title`、`summary`、`commit_message`、`webfetch` 摘要、`bash_prefix` 提取、`prompt_suggestions`、`side_query`）= `@light`。记忆提取与合并不是 utility 角色：它们是 cache 共享分叉，始终用会话当前的模型（memory.md M2）。
+  - Utility 角色（`title`、`summary`、`webfetch` 摘要、`agent_creation`、`side_query`、`permission_explainer`）= `@light`。记忆提取与合并不是 utility 角色：它们是 cache 共享分叉，始终用会话当前的模型（memory.md M2）。Prompt suggestion 生成也不是 utility 角色：它 fork 主模型复用其 prompt cache（decision-provider 定案 7）。
   - `compaction`、权限分类器（`classifier`）= `@main`。
+  - `selection.utility` 的键只能是上述角色名（精确匹配，不做大小写或连字符归一），其他键（包括已删除的 `memory`）是设置校验错误，报错信息列出全部合法角色。角色表唯一来源是 `settings/nyan.rs` 的 `UTILITY_ROLES`，新增角色必须先登记。
 - **未知 profile 校验**：引用未知的 profile 名在启动时报错（`selection.*` 校验）；`--model` 不认识时启动报错；Agent 工具调用参数不认识时返回工具错误、不发请求；agent md 的 `model:` 不认识时该 agent 运行报错（加载时校验归 /agents PR）；`@tier`（`@light` / `@heavy` / `@main`）与 `inherit` 属于保留档位/关键字，永不报未知 profile 错误。`@tier` 在没有可指的 profile 时（未配置 `selection.main`）跟随父会话，与 `inherit` 相同。
 - **子 agent 模型解析链**：
   ```text

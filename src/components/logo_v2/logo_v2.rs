@@ -13,17 +13,10 @@ use crate::components::logo_v2::condensed_logo::CondensedLogo;
 use crate::components::logo_v2::emergency_tip::{EmergencyTip, TipOfFeed};
 use crate::components::logo_v2::feed_column::FeedColumn;
 use crate::components::logo_v2::feed_configs::{
-    ProjectOnboardingStep, RecentActivityEntry, create_guest_passes_feed,
-    create_project_onboarding_feed, create_recent_activity_feed, create_whats_new_feed,
+    ProjectOnboardingStep, RecentActivityEntry, create_project_onboarding_feed,
+    create_recent_activity_feed, create_whats_new_feed,
 };
-use crate::components::logo_v2::guest_passes_upsell::should_show_guest_passes_upsell;
-use crate::components::logo_v2::opus_1m_merge_notice::{
-    Opus1mMergeNotice, should_show_opus_1m_merge_notice,
-};
-use crate::components::logo_v2::overage_credit_upsell::{
-    create_overage_credit_feed, should_show_overage_credit_upsell,
-};
-use crate::components::logo_v2::voice_mode_notice::VoiceModeNotice;
+use crate::components::logo_v2::opus_1m_merge_notice::Opus1mMergeNotice;
 use crate::components::offscreen_freeze::OffscreenFreeze;
 use crate::constants::product;
 use crate::project_onboarding_state;
@@ -38,7 +31,6 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub(crate) const LOGO_DISPLAY_NAME: &str = "nyan";
 const LEFT_PANEL_MAX_WIDTH: usize = 50;
-const MAX_USERNAME_LENGTH: usize = 20;
 const BORDER_PADDING: usize = 4;
 const DIVIDER_WIDTH: usize = 1;
 const CONTENT_PADDING: usize = 2;
@@ -82,25 +74,15 @@ pub(crate) struct LogoDisplayData {
     pub(crate) billing_type: String,
     pub(crate) model_display_name: String,
     pub(crate) agent_name: Option<String>,
-    pub(crate) username: Option<String>,
-    pub(crate) organization_name: Option<String>,
     pub(crate) show_project_onboarding: bool,
     pub(crate) project_onboarding_steps: Vec<ProjectOnboardingStep>,
     pub(crate) recent_activity: Vec<RecentActivityEntry>,
     pub(crate) has_release_notes: bool,
     pub(crate) release_notes: Vec<String>,
-    pub(crate) show_guest_passes_upsell: bool,
-    pub(crate) guest_passes_reward_text: Option<String>,
-    pub(crate) show_overage_credit_upsell: bool,
-    pub(crate) overage_credit_amount: Option<String>,
     pub(crate) emergency_tip: TipOfFeed,
     pub(crate) last_shown_emergency_tip: Option<String>,
     pub(crate) opus_1m_merge_enabled: bool,
     pub(crate) opus_1m_merge_seen_count: u32,
-    pub(crate) voice_feature_enabled: bool,
-    pub(crate) voice_mode_enabled: bool,
-    pub(crate) settings_voice_enabled: bool,
-    pub(crate) voice_notice_seen_count: u32,
     pub(crate) company_announcement: Option<String>,
     pub(crate) show_sandbox_status: bool,
     pub(crate) tmux_session: Option<String>,
@@ -137,7 +119,6 @@ impl LogoDisplayData {
             .and_then(|path| path.to_str().map(get_display_path))
             .unwrap_or_else(|| ".".to_string());
         let global_config = crate::utils::config::load_global_config();
-        let account = global_config.oauth_account.as_ref();
         let project_onboarding_steps = project_onboarding_state::get_steps();
         let project_config = crate::utils::config::get_current_project_config();
         let settings = crate::utils::settings::get_initial_settings();
@@ -187,33 +168,6 @@ impl LogoDisplayData {
             global_config.num_startups,
             stable_entropy(&session_id),
         );
-        // Maps to CC `components/LogoV2/GuestPassesUpsell.tsx`
-        // `useShowGuestPassesUpsell()`. nyan consumes existing cache/config
-        // snapshots only: no eligibility fetch, refresh-reset write,
-        // impression increment, or analytics event is emitted.
-        let now_ms = current_time_millis();
-        let (guest_passes_snapshot, guest_passes_reward_text) =
-            crate::services::api::referral::guest_passes_snapshot_from_readonly_config(
-                &global_config,
-                now_ms,
-            );
-        let show_guest_passes_upsell = should_show_guest_passes_upsell(&guest_passes_snapshot);
-        // Maps to CC `components/LogoV2/OverageCreditUpsell.tsx`
-        // `useShowOverageCreditUpsell()`. Cache refresh and impression writes
-        // remain deferred; this reads only fresh cached grant data.
-        let overage_grant_info =
-            crate::services::api::overage_credit_grant::ui_grant_info_from_cached_readonly(
-                &global_config,
-                now_ms,
-            );
-        let overage_credit_amount = overage_grant_info
-            .as_ref()
-            .and_then(|info| info.amount.clone());
-        let show_overage_credit_upsell = should_show_overage_credit_upsell(
-            overage_grant_info.as_ref(),
-            global_config.has_visited_extra_usage.unwrap_or(false),
-            global_config.overage_credit_upsell_seen_count.unwrap_or(0),
-        );
         // Maps to CC `components/LogoV2/EmergencyTip.tsx` `getTipOfFeed()`.
         // The `tengu-top-of-feed-tip` payload comes from the source-controlled
         // switch table; no GrowthBook service, exposure logging, refresh, or
@@ -223,11 +177,6 @@ impl LogoDisplayData {
         // `shouldShowOpus1mMergeNotice()`: the notice component remains pure,
         // and the official seen-count increment remains deferred.
         let opus_1m_merge_enabled = crate::utils::model::model::is_opus_1m_merge_enabled();
-        // Maps to CC `voice/voiceModeEnabled.ts` `isVoiceModeEnabled()` and
-        // `components/LogoV2/VoiceModeNotice.tsx` cached mount predicate. Voice
-        // runtime/streaming and config writes are intentionally not invoked.
-        let voice_feature_enabled = cfg!(feature = "voice_mode");
-        let voice_mode_enabled = crate::voice::voice_mode_enabled::is_voice_mode_enabled();
         // Maps to CC `components/LogoV2/LogoV2.tsx:89` `showSandboxStatus =
         // SandboxManager.isSandboxingEnabled()`.
         let show_sandbox_status = crate::utils::sandbox::sandbox_adapter::is_sandboxing_enabled();
@@ -254,10 +203,6 @@ impl LogoDisplayData {
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(str::to_string),
-            username: account.and_then(|account| account.display_name.clone()),
-            organization_name: (!is_demo)
-                .then(|| account.and_then(|account| account.organization_name.clone()))
-                .flatten(),
             show_project_onboarding,
             project_onboarding_steps: project_onboarding_state::feed_steps(
                 &project_onboarding_steps,
@@ -265,29 +210,19 @@ impl LogoDisplayData {
             recent_activity,
             has_release_notes: release_status.has_release_notes,
             release_notes,
-            show_guest_passes_upsell,
-            guest_passes_reward_text,
-            show_overage_credit_upsell,
-            overage_credit_amount,
             emergency_tip,
             last_shown_emergency_tip: global_config.last_shown_emergency_tip.clone(),
             opus_1m_merge_enabled,
             opus_1m_merge_seen_count: global_config.opus_1m_merge_notice_seen_count.unwrap_or(0),
-            voice_feature_enabled,
-            voice_mode_enabled,
-            settings_voice_enabled: settings.voice_enabled.unwrap_or(false),
-            voice_notice_seen_count: global_config.voice_notice_seen_count.unwrap_or(0),
             company_announcement,
             show_sandbox_status,
-            tmux_session: crate::utils::process_env::var("CLAUDE_CODE_TMUX_SESSION").truthy(),
+            tmux_session: crate::utils::process_env::var("NYAN_TMUX_SESSION").truthy(),
             // CC interpolates the raw value with no truthiness guard
             // (LogoV2.tsx:207-208), so an empty prefix is kept as-is.
-            tmux_prefix: crate::utils::process_env::var("CLAUDE_CODE_TMUX_PREFIX"),
-            tmux_prefix_conflicts: crate::utils::process_env::var(
-                "CLAUDE_CODE_TMUX_PREFIX_CONFLICTS",
-            )
-            .truthy()
-            .is_some(),
+            tmux_prefix: crate::utils::process_env::var("NYAN_TMUX_PREFIX"),
+            tmux_prefix_conflicts: crate::utils::process_env::var("NYAN_TMUX_PREFIX_CONFLICTS")
+                .truthy()
+                .is_some(),
         }
     }
 
@@ -299,25 +234,15 @@ impl LogoDisplayData {
             billing_type: "API Usage Billing".to_string(),
             model_display_name: "Default (recommended)".to_string(),
             agent_name: None,
-            username: None,
-            organization_name: None,
             show_project_onboarding: false,
             project_onboarding_steps: Vec::new(),
             recent_activity: Vec::new(),
             has_release_notes: false,
             release_notes: Vec::new(),
-            show_guest_passes_upsell: false,
-            guest_passes_reward_text: None,
-            show_overage_credit_upsell: false,
-            overage_credit_amount: None,
             emergency_tip: TipOfFeed::default(),
             last_shown_emergency_tip: None,
             opus_1m_merge_enabled: false,
             opus_1m_merge_seen_count: 0,
-            voice_feature_enabled: false,
-            voice_mode_enabled: false,
-            settings_voice_enabled: false,
-            voice_notice_seen_count: 0,
             company_announcement: None,
             show_sandbox_status: false,
             tmux_session: None,
@@ -345,7 +270,7 @@ pub fn Logo(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let columns = columns.max(1) as usize;
     let data = LogoDisplayData::current();
     let show_full_logo = data.should_show_full_logo(crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_FORCE_FULL_LOGO").as_deref(),
+        crate::utils::process_env::var("NYAN_FORCE_FULL_LOGO").as_deref(),
     ));
     let mode = select_logo_layout_mode(columns, show_full_logo);
 
@@ -364,14 +289,7 @@ fn official_logo_variant(
 ) -> AnyElement<'static> {
     let logo = match mode {
         LogoLayoutMode::Condensed => element! {
-            CondensedLogo(
-                columns: columns,
-                data: data.clone(),
-                show_guest_passes_upsell: data.show_guest_passes_upsell,
-                guest_passes_reward_text: data.guest_passes_reward_text.clone(),
-                show_overage_credit_upsell: data.show_overage_credit_upsell,
-                overage_credit_amount: data.overage_credit_amount.clone(),
-            )
+            CondensedLogo(columns: columns, data: data.clone())
         }
         .into_any(),
         LogoLayoutMode::Compact => element! {
@@ -404,8 +322,6 @@ fn LogoRuntimeNotices(
         props.mode,
         LogoLayoutMode::Condensed | LogoLayoutMode::Horizontal
     );
-    let opus_notice_should_show =
-        should_show_opus_1m_merge_notice(data.opus_1m_merge_enabled, data.opus_1m_merge_seen_count);
     let tmux_rows = show_extended_notices.then(|| ()).and_then(|_| {
         data.tmux_session.as_ref().map(|session| {
             let prefix = data
@@ -413,7 +329,7 @@ fn LogoRuntimeNotices(
                 .clone()
                 .unwrap_or_else(|| "C-b".to_string());
             let detach = if data.tmux_prefix_conflicts {
-                format!("Detach: {prefix} {prefix} d (press prefix twice - Claude uses {prefix})")
+                format!("Detach: {prefix} {prefix} d (press prefix twice - nyan uses {prefix})")
             } else {
                 format!("Detach: {prefix} d")
             };
@@ -432,12 +348,8 @@ fn LogoRuntimeNotices(
         .then(|| data.company_announcement.clone())
         .flatten()
         .map(|announcement| {
-            let organization = data.organization_name.clone();
             element! {
                 View(padding_left: 2u32, flex_direction: FlexDirection::Column) {
-                    #(organization.map(|organization| element! {
-                        Text(content: format!("Message from {organization}:"), color: theme.inactive, wrap: TextWrap::NoWrap)
-                    }))
                     Text(content: announcement, wrap: TextWrap::NoWrap)
                 }
             }
@@ -470,13 +382,6 @@ fn LogoRuntimeNotices(
 
     element! {
         View(flex_direction: FlexDirection::Column) {
-            VoiceModeNotice(
-                feature_enabled: data.voice_feature_enabled,
-                voice_mode_enabled: data.voice_mode_enabled,
-                settings_voice_enabled: data.settings_voice_enabled,
-                voice_notice_seen_count: data.voice_notice_seen_count,
-                opus_1m_merge_notice_should_show: opus_notice_should_show,
-            )
             Opus1mMergeNotice(
                 opus_1m_merge_enabled: data.opus_1m_merge_enabled,
                 seen_count: data.opus_1m_merge_seen_count,
@@ -500,11 +405,6 @@ fn CompactLogo(props: &LogoShapeProps, hooks: Hooks) -> impl Into<AnyElement<'st
     let theme = hooks.use_context::<crate::utils::theme::Theme>();
     let columns = props.columns.max(1);
     let layout_width = 4usize;
-    let mut welcome_message = format_welcome_message(props.data.username.as_deref());
-    if display_width(&welcome_message) > columns.saturating_sub(layout_width) {
-        welcome_message = format_welcome_message(None);
-    }
-
     let cwd_width = cwd_available_width(&props.data, columns.saturating_sub(layout_width));
     let truncated_cwd = truncate_path(&props.data.cwd, cwd_width.max(10));
     let cwd_line = if let Some(agent) = props.data.agent_name.as_deref() {
@@ -518,7 +418,7 @@ fn CompactLogo(props: &LogoShapeProps, hooks: Hooks) -> impl Into<AnyElement<'st
             View(
                 flex_direction: FlexDirection::Column,
                 border_style: BorderStyle::Round,
-                border_color: theme.claude,
+                border_color: theme.nyan,
                 border_text: Some(BorderText {
                     content: format!(" {LOGO_DISPLAY_NAME} "),
                     position: BorderTextPosition::Top,
@@ -530,7 +430,7 @@ fn CompactLogo(props: &LogoShapeProps, hooks: Hooks) -> impl Into<AnyElement<'st
                 align_items: AlignItems::CENTER,
                 width: columns as u32,
             ) {
-                Text(content: welcome_message, bold: true, wrap: TextWrap::NoWrap)
+                Text(content: WELCOME_MESSAGE, bold: true, wrap: TextWrap::NoWrap)
                 View(margin_y: 1u32) {
                     Clawd
                 }
@@ -546,20 +446,12 @@ fn CompactLogo(props: &LogoShapeProps, hooks: Hooks) -> impl Into<AnyElement<'st
 fn HorizontalLogo(props: &LogoShapeProps, hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_context::<crate::utils::theme::Theme>();
     let columns = props.columns.max(1);
-    let welcome_message = format_welcome_message(props.data.username.as_deref());
-    let model_line = if let Some(organization) = props.data.organization_name.as_deref() {
-        format!(
-            "{} · {} · {}",
-            props.data.model_display_name, props.data.billing_type, organization
-        )
-    } else {
-        format!(
-            "{} · {}",
-            props.data.model_display_name, props.data.billing_type
-        )
-    };
+    let model_line = format!(
+        "{} · {}",
+        props.data.model_display_name, props.data.billing_type
+    );
     let cwd_line = format_cwd_line(&props.data, LEFT_PANEL_MAX_WIDTH);
-    let optimal_left_width = calculate_optimal_left_width(&welcome_message, &cwd_line, &model_line);
+    let optimal_left_width = calculate_optimal_left_width(WELCOME_MESSAGE, &cwd_line, &model_line);
     let LayoutDimensions {
         left_width,
         right_width,
@@ -569,16 +461,6 @@ fn HorizontalLogo(props: &LogoShapeProps, hooks: Hooks) -> impl Into<AnyElement<
         vec![
             create_project_onboarding_feed(&props.data.project_onboarding_steps),
             create_recent_activity_feed(&props.data.recent_activity),
-        ]
-    } else if props.data.show_guest_passes_upsell {
-        vec![
-            create_recent_activity_feed(&props.data.recent_activity),
-            create_guest_passes_feed(props.data.guest_passes_reward_text.as_deref()),
-        ]
-    } else if props.data.show_overage_credit_upsell {
-        vec![
-            create_recent_activity_feed(&props.data.recent_activity),
-            create_overage_credit_feed(props.data.overage_credit_amount.as_deref()),
         ]
     } else {
         vec![
@@ -592,7 +474,7 @@ fn HorizontalLogo(props: &LogoShapeProps, hooks: Hooks) -> impl Into<AnyElement<
             View(
                 flex_direction: FlexDirection::Column,
                 border_style: BorderStyle::Round,
-                border_color: theme.claude,
+                border_color: theme.nyan,
                 border_text: Some(BorderText {
                     content: format!(" {LOGO_DISPLAY_NAME} v{} ", props.data.version),
                     position: BorderTextPosition::Top,
@@ -609,7 +491,7 @@ fn HorizontalLogo(props: &LogoShapeProps, hooks: Hooks) -> impl Into<AnyElement<
                         min_height: 9u32,
                     ) {
                         View(margin_top: 1u32) {
-                            Text(content: welcome_message, bold: true, wrap: TextWrap::NoWrap)
+                            Text(content: WELCOME_MESSAGE, bold: true, wrap: TextWrap::NoWrap)
                         }
                         Clawd
                         View(flex_direction: FlexDirection::Column, align_items: AlignItems::CENTER) {
@@ -620,7 +502,7 @@ fn HorizontalLogo(props: &LogoShapeProps, hooks: Hooks) -> impl Into<AnyElement<
                     View(
                         height: 9u32,
                         border_style: BorderStyle::Single,
-                        border_color: theme.claude,
+                        border_color: theme.nyan,
                         border_dim_color: true,
                         border_top: false,
                         border_bottom: false,
@@ -686,13 +568,6 @@ fn stable_entropy(value: &str) -> u64 {
     hasher.finish()
 }
 
-fn current_time_millis() -> i64 {
-    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-        Ok(duration) => duration.as_millis().min(i64::MAX as u128) as i64,
-        Err(error) => -(error.duration().as_millis().min(i64::MAX as u128) as i64),
-    }
-}
-
 fn calculate_layout_dimensions(
     columns: usize,
     layout_mode: LogoLayoutMode,
@@ -735,12 +610,8 @@ fn calculate_optimal_left_width(welcome_message: &str, cwd_line: &str, model_lin
     (content_width + 4).min(LEFT_PANEL_MAX_WIDTH)
 }
 
-fn format_welcome_message(username: Option<&str>) -> String {
-    match username.filter(|name| !name.is_empty() && name.chars().count() <= MAX_USERNAME_LENGTH) {
-        Some(username) => format!("Welcome back {username}!"),
-        None => "Welcome back!".to_string(),
-    }
-}
+/// Maps to: CC `LogoV2` welcome line without a claude.ai display name.
+const WELCOME_MESSAGE: &str = "Welcome back!";
 
 /// Maps to: CC `getLogoDisplayData().billingType` for a non-subscriber.
 pub(crate) const API_USAGE_BILLING_LABEL: &str = "API Usage Billing";
@@ -1045,27 +916,6 @@ mod tests {
     }
 
     #[test]
-    fn horizontal_logo_prefers_upsell_feeds_between_onboarding_and_whats_new() {
-        let mut guest = LogoDisplayData::fixture();
-        guest.show_guest_passes_upsell = true;
-        guest.guest_passes_reward_text = Some("$5".to_string());
-        let text = render_variant_with_data(LogoLayoutMode::Horizontal, 100, guest);
-        assert!(text.contains("3 guest passes"), "canvas=\n{text}");
-        assert!(text.contains("Share nyan and earn $5"), "canvas=\n{text}");
-        assert!(!text.contains("What's new"), "canvas=\n{text}");
-
-        let mut overage = LogoDisplayData::fixture();
-        overage.show_overage_credit_upsell = true;
-        overage.overage_credit_amount = Some("$10".to_string());
-        let text = render_variant_with_data(LogoLayoutMode::Horizontal, 100, overage);
-        assert!(text.contains("$10 in extra usage"), "canvas=\n{text}");
-        assert!(
-            text.contains("On us. Works on third-party apps"),
-            "canvas=\n{text}"
-        );
-    }
-
-    #[test]
     fn logo_runtime_notices_render_from_snapshot_without_side_effects() {
         let mut data = LogoDisplayData::fixture();
         data.opus_1m_merge_enabled = true;
@@ -1077,7 +927,6 @@ mod tests {
         data.tmux_prefix = Some("C-a".to_string());
         data.tmux_prefix_conflicts = true;
         data.company_announcement = Some("Deploy freeze tonight".to_string());
-        data.organization_name = Some("Acme".to_string());
 
         let text = render_variant_with_data(LogoLayoutMode::Condensed, 120, data);
         assert!(
@@ -1087,10 +936,10 @@ mod tests {
         assert!(text.contains("Important service notice"), "canvas=\n{text}");
         assert!(text.contains("tmux session: cc-work"), "canvas=\n{text}");
         assert!(
-            text.contains("Detach: C-a C-a d (press prefix twice - Claude uses C-a)"),
+            text.contains("Detach: C-a C-a d (press prefix twice - nyan uses C-a)"),
             "canvas=\n{text}"
         );
-        assert!(text.contains("Message from Acme:"), "canvas=\n{text}");
+        assert!(!text.contains("Message from"), "canvas=\n{text}");
         assert!(text.contains("Deploy freeze tonight"), "canvas=\n{text}");
     }
 
@@ -1161,11 +1010,6 @@ mod tests {
         assert_eq!(
             calculate_optimal_left_width("Welcome back!", "/code/claude", "Default · API"),
             24
-        );
-        assert_eq!(format_welcome_message(Some("Ada")), "Welcome back Ada!");
-        assert_eq!(
-            format_welcome_message(Some("averyveryveryverylongusername")),
-            "Welcome back!"
         );
     }
 

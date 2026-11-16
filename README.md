@@ -67,6 +67,36 @@ The binary is `nyan`.
 
 ## Installation
 
+Supported release platforms:
+
+- Linux x86_64 (musl)
+- Linux aarch64 (musl)
+- Windows x86_64 (MSVC)
+
+macOS is not supported: no macOS artifacts are built or published.
+
+### Linux
+
+Install the latest release with `install.sh`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/blxzer77/nyan/master/install.sh | bash
+```
+
+Pass a version or tag as the first argument:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/blxzer77/nyan/master/install.sh | bash -s -- nyan-v0.2.0
+```
+
+The script installs to `~/.local/bin` by default (override with `NYAN_INSTALL_DIR`) and verifies the archive against the release's `SHA256SUMS` before installing.
+
+To install from source instead:
+
+```sh
+cargo install --git https://github.com/blxzer77/nyan.git --locked --bin nyan
+```
+
 ### Windows
 
 Windows releases require [Git for Windows](https://git-scm.com/downloads/win), because nyan's general shell execution uses Git Bash rather than native PowerShell. Install with `install.ps1`; it does not install Git for Windows and only prints a warning if Git Bash is not detected.
@@ -75,10 +105,10 @@ Windows releases require [Git for Windows](https://git-scm.com/downloads/win), b
 .\install.ps1
 ```
 
-If Git Bash is installed outside the usual locations, set `CLAUDE_CODE_GIT_BASH_PATH` to the full path of `bash.exe` before starting nyan, for example:
+If Git Bash is installed outside the usual locations, set `NYAN_GIT_BASH_PATH` to the full path of `bash.exe` before starting nyan, for example:
 
 ```powershell
-$env:CLAUDE_CODE_GIT_BASH_PATH = 'C:\Program Files\Git\bin\bash.exe'
+$env:NYAN_GIT_BASH_PATH = 'C:\Program Files\Git\bin\bash.exe'
 ```
 
 #### Verifying the download
@@ -107,6 +137,38 @@ Unblock-File -Path .\nyan.exe, .\vendor\ripgrep\x64-win32\rg.exe
 
 Button labels depend on the Windows display language.
 
+### Updating
+
+Release builds installed from a GitHub Release (Linux x86_64/aarch64 and
+Windows x86_64) check `blxzer77/nyan` releases in the background and show a
+footer notice when a newer version exists. They never download or replace the
+binary on their own. To update:
+
+```sh
+nyan update
+```
+
+The command downloads the matching asset from the release, verifies it against
+that release's `SHA256SUMS`, and atomically replaces the running binary.
+Restart nyan afterwards.
+
+- `NYAN_REPO=owner/name` overrides the release repository.
+- `DISABLE_AUTOUPDATER=1`, `NYAN_DISABLE_AUTOUPDATER=1` or
+  `NYAN_DISABLE_NONESSENTIAL_TRAFFIC=1` disables the background check;
+  `nyan update` still runs when invoked explicitly.
+- Both use the configured proxy and CA settings (`HTTPS_PROXY`, `NO_PROXY`,
+  `NODE_EXTRA_CA_CERTS`, including the `env` block of user settings).
+
+Only stable releases are offered: drafts and prereleases are ignored, and
+there is no channel setting.
+
+If the install directory is not writable (for example a root-owned
+`/usr/local/bin`), `nyan update` changes nothing and asks you to re-run the
+install script: `install.sh` on Linux, `install.ps1` on Windows.
+
+Source builds (`cargo build`, `cargo install`) are not replaced by
+`nyan update`; it prints the rebuild instruction instead.
+
 ### Cross-compiling for Windows
 
 ```sh
@@ -117,6 +179,13 @@ cargo build --release --target x86_64-pc-windows-gnu
 A mingw-w64 toolchain has to be on `PATH`: four dependencies compile C or
 assembly (`onig_sys`, `ring`, `tree-sitter`, `tree-sitter-bash`). They link
 statically, so the resulting `.exe` needs no DLLs alongside it.
+
+## Configuration
+
+nyan reads provider and model profiles from `~/.nyan/settings.json`. Start from
+[docs/nyan/settings.example.json](docs/nyan/settings.example.json): it defines
+one Anthropic provider and model profile, selects it as `nyan.selection.main`,
+and reads the API key from `ANTHROPIC_API_KEY`.
 
 ## ripgrep
 

@@ -69,11 +69,10 @@ fn detector() -> MutexGuard<'static, DetectorState> {
 /// Sources watched for changes. Maps to: CC `getWatchTargets` (:180-250),
 /// which skips `flagSettings` (:194-196: CLI-provided, never changes in a
 /// session, and may live in `$TMPDIR` alongside special files).
-const WATCHED_SOURCES: [SettingSource; 4] = [
+const WATCHED_SOURCES: [SettingSource; 3] = [
     SettingSource::User,
     SettingSource::Project,
     SettingSource::Local,
-    SettingSource::Policy,
 ];
 
 /// Maps to: CC `initialize()` (:84-146) — start the change source once.
@@ -207,6 +206,7 @@ mod tests {
     /// miss and the rest hit the repopulated cache.
     #[test]
     fn fan_out_resets_cache_before_notifying_listeners() {
+        let _lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         reset_for_testing();
         super::super::settings_cache::set_session_settings_cache(Default::default());
 
@@ -237,6 +237,7 @@ mod tests {
     /// the first half — which is what made the RAII cleanup incomplete.
     #[test]
     fn fan_out_is_a_live_pass_like_the_signal_set() {
+        let _lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         reset_for_testing();
         let order = Arc::new(Mutex::new(Vec::<&'static str>::new()));
         let second_calls = Arc::new(AtomicUsize::new(0));
@@ -299,6 +300,7 @@ mod tests {
     /// duplicate identity into the single existing entry.
     #[test]
     fn duplicate_identity_subscribe_coalesces_like_the_signal_set() {
+        let _lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         reset_for_testing();
         let calls = Arc::new(AtomicUsize::new(0));
         let calls_in_listener = calls.clone();
@@ -321,6 +323,7 @@ mod tests {
     /// calls are idempotent.
     #[test]
     fn unsubscribe_is_idempotent() {
+        let _lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         reset_for_testing();
         let calls = Arc::new(AtomicUsize::new(0));
         let calls_in_listener = calls.clone();

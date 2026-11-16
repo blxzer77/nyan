@@ -7,7 +7,6 @@
 //! callers are not yet implemented; headless history and system output are live.
 
 use crate::constants::xml::{LOCAL_COMMAND_STDERR_TAG, LOCAL_COMMAND_STDOUT_TAG};
-use crate::services::claude_ai_limits::{ClaudeAiLimits, RateLimitType};
 use serde_json::{Map, Value, json};
 
 /// Maps to: CC `utils/messages/mappers.ts:26-74#toInternalMessages`.
@@ -184,6 +183,20 @@ pub(crate) fn local_command_output_to_sdk_assistant_message(
     raw_content: &str,
     uuid: &str,
 ) -> Value {
+    let synthetic = super::create_assistant_message_value(local_command_output_text(raw_content));
+    json!({
+        "type": "assistant",
+        "message": synthetic["message"],
+        "parent_tool_use_id": null,
+        "session_id": crate::bootstrap::state::get_session_id(),
+        "uuid": uuid,
+    })
+}
+
+/// The text `localCommandOutputToSDKAssistantMessage` gives the synthetic
+/// assistant message: ANSI stripped, the first `<local-command-stdout>` and
+/// `<local-command-stderr>` unwrapped, and trimmed.
+pub(crate) fn local_command_output_text(raw_content: &str) -> String {
     // Carrier for strip-ansi: CSI, OSC (BEL/ST terminated), and two-byte ESC
     // control sequences. Unlike a color-only regex this also removes OSC links.
     static ANSI: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
@@ -198,62 +211,11 @@ pub(crate) fn local_command_output_to_sdk_assistant_message(
     let clean_content = ANSI.replace_all(raw_content, "");
     let clean_content = STDOUT.replace(&clean_content, "$1");
     let clean_content = STDERR.replace(&clean_content, "$1");
-    let synthetic = super::create_assistant_message_value(
-        clean_content
-            .trim_matches(|character: char| {
-                (character.is_whitespace() && character != '\u{85}') || character == '\u{feff}'
-            })
-            .to_string(),
-    );
-    json!({
-        "type": "assistant",
-        "message": synthetic["message"],
-        "parent_tool_use_id": null,
-        "session_id": crate::bootstrap::state::get_session_id(),
-        "uuid": uuid,
-    })
-}
-
-/// Maps to: CC `utils/messages/mappers.ts:221-252#toSDKRateLimitInfo`.
-/// The existing typed quota carrier always supplies `is_using_overage`, while
-/// the TS type also permits its absence. Other optional values remain omitted.
-pub(crate) fn to_sdk_rate_limit_info(limits: Option<&ClaudeAiLimits>) -> Option<Value> {
-    let limits = limits?;
-    let mut info = Map::from_iter([
-        ("status".to_string(), json!(limits.status.as_str())),
-        ("isUsingOverage".to_string(), json!(limits.is_using_overage)),
-    ]);
-    if let Some(value) = limits.resets_at {
-        info.insert("resetsAt".to_string(), json!(value));
-    }
-    if let Some(value) = limits.rate_limit_type {
-        info.insert(
-            "rateLimitType".to_string(),
-            json!(match value {
-                RateLimitType::FiveHour => "five_hour",
-                RateLimitType::SevenDay => "seven_day",
-                RateLimitType::SevenDayOpus => "seven_day_opus",
-                RateLimitType::SevenDaySonnet => "seven_day_sonnet",
-                RateLimitType::Overage => "overage",
-            }),
-        );
-    }
-    if let Some(value) = limits.utilization {
-        info.insert("utilization".to_string(), json!(value));
-    }
-    if let Some(value) = limits.overage_status {
-        info.insert("overageStatus".to_string(), json!(value.as_str()));
-    }
-    if let Some(value) = limits.overage_resets_at {
-        info.insert("overageResetsAt".to_string(), json!(value));
-    }
-    if let Some(value) = &limits.overage_disabled_reason {
-        info.insert("overageDisabledReason".to_string(), json!(value));
-    }
-    if let Some(value) = limits.surpassed_threshold {
-        info.insert("surpassedThreshold".to_string(), json!(value));
-    }
-    Some(info.into())
+    clean_content
+        .trim_matches(|character: char| {
+            (character.is_whitespace() && character != '\u{85}') || character == '\u{feff}'
+        })
+        .to_string()
 }
 
 /// Maps to: CC `utils/messages/mappers.ts:260-290#normalizeAssistantMessageForSDK`.
@@ -470,31 +432,6 @@ mod tests {
                 "link"
             );
         }
-    }
-
-    #[test]
-    fn sdk_rate_limits_match_official_falsey_values_and_private_field_filter() {
-        assert_eq!(to_sdk_rate_limit_info(None), None);
-        let limits = ClaudeAiLimits {
-            unified_rate_limit_fallback_available: true,
-            resets_at: Some(0.0),
-            utilization: Some(0.0),
-            rate_limit_type: Some(RateLimitType::SevenDayOpus),
-            overage_status: Some(crate::services::claude_ai_limits::QuotaStatus::AllowedWarning),
-            overage_resets_at: Some(0.0),
-            overage_disabled_reason: Some(String::new()),
-            surpassed_threshold: Some(0.0),
-            ..Default::default()
-        };
-        let value = to_sdk_rate_limit_info(Some(&limits)).unwrap();
-        assert_eq!(
-            value,
-            json!({
-                "status":"allowed","isUsingOverage":false,"resetsAt":0.0,
-                "utilization":0.0,"rateLimitType":"seven_day_opus","overageStatus":"allowed_warning",
-                "overageResetsAt":0.0,"overageDisabledReason":"","surpassedThreshold":0.0,
-            })
-        );
     }
 
     #[test]

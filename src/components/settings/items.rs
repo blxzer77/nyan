@@ -1,5 +1,4 @@
 use crate::utils::config::GlobalConfig;
-use crate::utils::env_utils;
 use crate::utils::settings::types::SettingsJson;
 use crate::utils::theme;
 
@@ -71,31 +70,6 @@ impl SettingItem {
             }
             SettingValue::Display(_) => {}
         }
-    }
-}
-
-fn auto_updates_are_disabled(config: &GlobalConfig) -> bool {
-    config.auto_updates == Some(false)
-        || crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("DISABLE_AUTOUPDATER").as_deref(),
-        )
-        || crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_AUTOUPDATER")
-                .as_deref(),
-        )
-        // CC `config.ts:1742` `getEssentialTrafficOnlyReason()`.
-        || crate::utils::privacy_level::get_essential_traffic_only_reason().is_some()
-}
-
-fn auto_updates_channel_display(config: &GlobalConfig, settings: &SettingsJson) -> String {
-    if auto_updates_are_disabled(config) {
-        "disabled".to_string()
-    } else {
-        settings
-            .auto_updates_channel
-            .as_deref()
-            .unwrap_or("latest")
-            .to_string()
     }
 }
 
@@ -174,14 +148,6 @@ pub fn build_items(config: &GlobalConfig, settings: &SettingsJson) -> Vec<Settin
             search_text: "prompt suggestion inflection",
             visible: false,
         },
-        // condition: ant-only (never in external builds)
-        SettingItem {
-            id: "speculationEnabled",
-            label: "Speculative execution",
-            value: SettingValue::Bool(false),
-            search_text: "speculation speculative execution",
-            visible: false, // ant-only
-        },
         SettingItem {
             id: "fileCheckpointingEnabled",
             label: "Rewind code (checkpoints)",
@@ -199,7 +165,7 @@ pub fn build_items(config: &GlobalConfig, settings: &SettingsJson) -> Vec<Settin
         SettingItem {
             id: "expandThinking",
             label: "Expand thinking blocks",
-            value: SettingValue::Bool(config.expand_thinking.unwrap_or(true)),
+            value: SettingValue::Bool(config.expand_thinking.unwrap_or(false)),
             search_text: "thinking expand collapse ctrl+o reasoning",
             visible: true,
         },
@@ -284,13 +250,6 @@ pub fn build_items(config: &GlobalConfig, settings: &SettingsJson) -> Vec<Settin
             search_text: "copy select clipboard",
             visible: false,
         },
-        SettingItem {
-            id: "autoUpdatesChannel",
-            label: "Auto-update channel",
-            value: SettingValue::Display(auto_updates_channel_display(config, settings)),
-            search_text: "auto update channel version",
-            visible: true,
-        },
         // ════════════════════════════════════════════════════
         // ════════════════════════════════════════════════════
         SettingItem {
@@ -344,7 +303,7 @@ pub fn build_items(config: &GlobalConfig, settings: &SettingsJson) -> Vec<Settin
         // condition: KAIROS || KAIROS_PUSH_NOTIFICATION
         SettingItem {
             id: "agentPushNotifEnabled",
-            label: "Push when Claude decides",
+            label: "Push when nyan decides",
             value: SettingValue::Bool(false),
             search_text: "push notification agent decides",
             visible: false, // feature-gated
@@ -459,13 +418,6 @@ pub fn build_items(config: &GlobalConfig, settings: &SettingsJson) -> Vec<Settin
             search_text: "auto install ide extension",
             visible: false,
         },
-        SettingItem {
-            id: "claudeInChromeDefaultEnabled",
-            label: "Claude in Chrome enabled by default",
-            value: SettingValue::Bool(true),
-            search_text: "chrome browser extension default",
-            visible: true,
-        },
         // condition: isAgentSwarmsEnabled()
         SettingItem {
             id: "teammateMode",
@@ -491,24 +443,6 @@ pub fn build_items(config: &GlobalConfig, settings: &SettingsJson) -> Vec<Settin
             value: SettingValue::Display("Default".to_string()),
             search_text: "teammate default model",
             visible: false, // condition: isAgentSwarmsEnabled()
-        },
-        // condition: BRIDGE_MODE && isBridgeEnabled()
-        SettingItem {
-            id: "remoteControlAtStartup",
-            label: "Enable Remote Control for all sessions",
-            value: {
-                let options = vec![
-                    "default".to_string(),
-                    "true".to_string(),
-                    "false".to_string(),
-                ];
-                SettingValue::Enum {
-                    options,
-                    current: 0,
-                }
-            },
-            search_text: "remote control bridge session",
-            visible: false, // feature-gated (BRIDGE_MODE)
         },
         // condition: hasExternalClaudeMdIncludes()
         SettingItem {
@@ -536,7 +470,15 @@ pub fn default_items() -> Vec<SettingItem> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+
+    #[test]
+    fn remote_control_setting_is_not_declared() {
+        assert!(
+            default_items()
+                .iter()
+                .all(|item| item.id != "remoteControlAtStartup")
+        );
+    }
 
     #[test]
     fn notification_channel_display_matches_official_config_values() {
@@ -573,31 +515,6 @@ mod tests {
         };
         assert_eq!(options, vec!["default", "plan", "acceptEdits", "dontAsk"]);
         assert_eq!(current, 0);
-    }
-
-    #[test]
-    fn auto_updates_channel_display_tracks_official_disabled_value() {
-        // `auto_updates_are_disabled` consults machine-level env
-        // kill-switches; neutralize them so the config/settings inputs
-        // under test decide the outcome on every host.
-        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _disable_guard = EnvVarGuard::unset("DISABLE_AUTOUPDATER");
-        let _claude_disable_guard = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_AUTOUPDATER");
-        let _traffic_guard = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC");
-        let mut config = GlobalConfig::default();
-        let mut settings = SettingsJson::default();
-        settings.auto_updates_channel = Some("stable".to_string());
-
-        assert_eq!(auto_updates_channel_display(&config, &settings), "stable");
-
-        config.auto_updates = Some(false);
-        assert_eq!(auto_updates_channel_display(&config, &settings), "disabled");
-
-        let row = build_items(&config, &settings)
-            .into_iter()
-            .find(|item| item.id == "autoUpdatesChannel")
-            .expect("auto-update channel row should exist");
-        assert_eq!(row.display_value(), "disabled");
     }
 
     #[test]

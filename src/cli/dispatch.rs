@@ -6,7 +6,7 @@ use crate::constants::product::{NAME, VERSION};
 /// Apply Live side effects that must run before interactive launch (bare env).
 pub fn apply_live_env_side_effects(config: &CliConfig) {
     if config.bare {
-        crate::utils::process_env::set("CLAUDE_CODE_SIMPLE", "1");
+        crate::utils::process_env::set("NYAN_SIMPLE", "1");
     }
 }
 
@@ -35,7 +35,13 @@ pub fn dispatch(config: &CliConfig) -> Option<i32> {
     }
 
     if config.show_help {
-        CliConfig::print_help();
+        if config.subcommand.as_deref() == Some("update") {
+            CliConfig::print_update_help();
+        } else if config.subcommand.as_deref() == Some("web") {
+            print!("{}", crate::cli::web::HELP);
+        } else {
+            CliConfig::print_help();
+        }
         return Some(0);
     }
 
@@ -56,6 +62,14 @@ pub fn dispatch(config: &CliConfig) -> Option<i32> {
         return Some(run_doctor_cli());
     }
 
+    if config.subcommand.as_deref() == Some("update") {
+        return Some(run_update_cli());
+    }
+
+    if config.subcommand.as_deref() == Some("web") {
+        return Some(crate::cli::web::run(&config.subcommand_args));
+    }
+
     // Maps to CC `cli/print.ts`: print/SDK mode owns the query lifetime and
     // structured stdout protocol instead of entering the retained TUI.
     if config.print {
@@ -64,6 +78,38 @@ pub fn dispatch(config: &CliConfig) -> Option<i32> {
 
     // Interactive prompt-only without -p is Partial: allowed (typed later in REPL).
     None
+}
+
+/// `nyan update`: download and install the newest GitHub Release asset.
+fn run_update_cli() -> i32 {
+    // The trusted settings env carries the proxy and CA variables the
+    // download must honour, applied as `main::run` does before any request.
+    crate::utils::managed_env::apply_safe_config_environment_variables();
+    crate::utils::ca_certs_config::apply_extra_ca_certs_from_config();
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!("Update failed: {error}");
+            return 1;
+        }
+    };
+    match runtime.block_on(crate::utils::auto_updater::run_update()) {
+        Ok(outcome) if outcome.is_success() => {
+            println!("{}", outcome.message());
+            0
+        }
+        Ok(outcome) => {
+            eprintln!("{}", outcome.message());
+            1
+        }
+        Err(error) => {
+            eprintln!("Update failed: {error}");
+            1
+        }
+    }
 }
 
 fn run_doctor_cli() -> i32 {
@@ -132,6 +178,42 @@ mod tests {
     }
 
     #[test]
+    fn update_subcommand_is_live_not_unimplemented() {
+        let c = parse_cli_config(&argv(&["update"]));
+        assert!(c.unimplemented_reasons().is_empty());
+        assert_eq!(c.subcommand.as_deref(), Some("update"));
+    }
+
+    #[tokio::test]
+    async fn dispatch_update_help_exits_without_running_updater() {
+        // Entering run_update_cli would try to block_on a nested runtime and
+        // panic here, before any release request or installation can run.
+        for args in [
+            vec!["update", "--help"],
+            vec!["update", "-h"],
+            vec!["--help", "update"],
+            vec!["-h", "update"],
+            vec!["update", "--unknown", "--help"],
+        ] {
+            let config = parse_cli_config(&argv(&args));
+            assert_eq!(dispatch(&config), Some(0), "{args:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_update_unsupported_arguments_do_not_run_updater() {
+        for args in [
+            vec!["update", "--check"],
+            vec!["update", "--unknown"],
+            vec!["update", "unexpected"],
+            vec!["update", "--", "--help"],
+        ] {
+            let config = parse_cli_config(&argv(&args));
+            assert_eq!(dispatch(&config), Some(1), "{args:?}");
+        }
+    }
+
+    #[test]
     fn dispatch_rejects_no_session_persistence_outside_print_mode() {
         let config = parse_cli_config(&argv(&["--no-session-persistence"]));
         assert_eq!(dispatch(&config), Some(1));
@@ -146,11 +228,11 @@ mod tests {
     #[test]
     fn dispatch_bare_sets_env_and_continues() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         let c = parse_cli_config(&argv(&["--bare"]));
         assert_eq!(dispatch(&c), None);
         assert!(crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_SIMPLE").as_deref()
+            crate::utils::process_env::var("NYAN_SIMPLE").as_deref()
         ));
     }
 

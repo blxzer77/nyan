@@ -21,7 +21,6 @@ use std::sync::Arc;
 fn source(value: &str) -> AgentFileSource {
     match value {
         "userSettings" => AgentFileSource::UserSettings,
-        "policySettings" => AgentFileSource::PolicySettings,
         "localSettings" => AgentFileSource::LocalSettings,
         _ => AgentFileSource::ProjectSettings,
     }
@@ -48,7 +47,7 @@ fn save(agent: &AgentWizardFinal) -> Result<(), String> {
         agent.model.as_deref(),
         memory(agent.memory.as_deref()),
         &crate::bootstrap::state::get_original_cwd(),
-        &crate::utils::env_utils::get_claude_config_home_dir(),
+        &crate::utils::env_utils::get_config_home_dir(),
     )
     .map(|_| ())
 }
@@ -104,7 +103,7 @@ pub fn ConfirmStepWrapper<'a>(
                             source(&agent.source),
                             &agent.agent_type,
                             &crate::bootstrap::state::get_original_cwd(),
-                            &crate::utils::env_utils::get_claude_config_home_dir(),
+                            &crate::utils::env_utils::get_config_home_dir(),
                         ) {
                             Ok(path) => {
                                 let _ = editor_channel.0.try_send((agent.agent_type.clone(), path));

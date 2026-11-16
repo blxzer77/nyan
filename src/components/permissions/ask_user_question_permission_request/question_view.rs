@@ -72,7 +72,7 @@ pub struct QuestionViewProps {
     pub on_submit: Handler<()>,
     pub on_tab_prev: Handler<()>,
     pub on_tab_next: Handler<()>,
-    pub on_respond_to_claude: Handler<()>,
+    pub on_respond_to_agent: Handler<()>,
     pub on_finish_plan_interview: Handler<()>,
     pub on_image_paste: Handler<ClipboardImage>,
     pub on_remove_image: Handler<usize>,
@@ -196,7 +196,7 @@ pub fn QuestionView(props: &QuestionViewProps, mut hooks: Hooks) -> impl Into<An
             TerminalEventInterest::NONE
         },
         {
-            let on_respond_to_claude = props.on_respond_to_claude.clone();
+            let on_respond_to_agent = props.on_respond_to_agent.clone();
             let on_finish_plan_interview = props.on_finish_plan_interview.clone();
             let on_cancel = props.on_cancel.clone();
             move |event| {
@@ -241,7 +241,7 @@ pub fn QuestionView(props: &QuestionViewProps, mut hooks: Hooks) -> impl Into<An
                     }
                     KeyCode::Enter => {
                         if footer_index.get() == 0 {
-                            on_respond_to_claude(());
+                            on_respond_to_agent(());
                         } else {
                             on_finish_plan_interview(());
                         }
@@ -275,7 +275,7 @@ pub fn QuestionView(props: &QuestionViewProps, mut hooks: Hooks) -> impl Into<An
                 on_cancel: props.on_cancel.clone(),
                 on_tab_prev: props.on_tab_prev.clone(),
                 on_tab_next: props.on_tab_next.clone(),
-                on_respond_to_claude: props.on_respond_to_claude.clone(),
+                on_respond_to_agent: props.on_respond_to_agent.clone(),
                 on_finish_plan_interview: props.on_finish_plan_interview.clone(),
             )
         }

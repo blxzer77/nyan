@@ -13,7 +13,7 @@
 //! the official `--agent-id`, `--agent-name`, and `--team-name` CLI args.
 
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use std::sync::{LazyLock, RwLock};
 
 /// Maps to: CC `utils/teammate.ts` `dynamicTeamContext` object.
@@ -31,8 +31,8 @@ static DYNAMIC_TEAM_CONTEXT: LazyLock<RwLock<Option<DynamicTeamContext>>> =
     LazyLock::new(|| RwLock::new(None));
 
 #[cfg(test)]
-pub(crate) static TEST_TEAMMATE_CONTEXT_LOCK: LazyLock<TestStateLock> =
-    LazyLock::new(TestStateLock::new);
+pub(crate) static TEST_TEAMMATE_CONTEXT_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::TeammateContext);
 
 /// Maps to: CC `utils/teammate.ts#setDynamicTeamContext`.
 pub fn set_dynamic_team_context(context: Option<DynamicTeamContext>) {

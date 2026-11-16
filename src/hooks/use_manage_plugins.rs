@@ -10,44 +10,35 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 /// Maps to: CC `useManagePlugins.ts#useManagePlugins`.
-pub fn use_manage_plugins(hooks: &mut Hooks<'_, '_>, enabled: bool) {
+pub fn use_manage_plugins(hooks: &mut Hooks<'_, '_>) {
     let store = crate::state::app_state::use_app_state_store(hooks);
     let needs_refresh = crate::state::app_state::use_app_state(hooks, |s| s.plugins.needs_refresh);
     let notifications = crate::context::notifications::use_notifications(hooks);
     let mount_notifications = notifications.clone();
     hooks.use_effect(
         move || {
-            if !enabled {
-                return;
-            }
             let store = store.clone();
             let notifications = mount_notifications.clone();
             crate::utils::process_runtime::runtime_handle_for_detached_work()
                 .expect("plugin mount requires process runtime")
                 .spawn(async move {
                     let mut metrics = initial_plugin_load(store, notifications).await;
-                    let names = metrics.as_object_mut().unwrap().remove("ant_enabled_names");
                     metrics["has_custom_plugin_cache_dir"] = json!(
-                        crate::utils::process_env::var("CLAUDE_CODE_PLUGIN_CACHE_DIR")
+                        crate::utils::process_env::var("NYAN_PLUGIN_CACHE_DIR")
                             .truthy()
                             .is_some()
                     );
-                    let mut event = metrics.clone();
-                    if let Some(names) = names.filter(|v| !v.is_null()) {
-                        event["enabled_names"] = names;
-                    }
-                    crate::services::analytics::log_event("tengu_plugins_loaded", event);
                     // diagLogs has no Rust output sink; preserve base fields in the existing debug sink.
                     crate::utils::debug::log_for_debugging(&format!(
                         "tengu_plugins_loaded: {metrics}"
                     ));
                 });
         },
-        enabled,
+        (),
     );
     hooks.use_effect(
         move || {
-            if !enabled || !needs_refresh {
+            if !needs_refresh {
                 return;
             }
             let mut notifications = notifications.clone();
@@ -60,7 +51,7 @@ pub fn use_manage_plugins(hooks: &mut Hooks<'_, '_>, enabled: bool) {
                 .with_color(NotificationColor::Suggestion),
             );
         },
-        (enabled, needs_refresh),
+        needs_refresh,
     );
 }
 
@@ -196,19 +187,7 @@ async fn initial_plugin_load(store: AppStore, mut notifications: NotificationsWr
                 .flatten()
                 .map(|m| m["hooks"].as_array().map_or(0, |h| h.len()))
                 .sum();
-            let mut metrics = json!({"enabled_count":loaded.enabled.len(),"disabled_count":loaded.disabled.len(),"inline_count":loaded.enabled.iter().filter(|p|p.source.ends_with("@inline")).count(),"marketplace_count":loaded.enabled.iter().filter(|p|!p.source.ends_with("@inline")).count(),"error_count":error_count,"skill_count":commands.len(),"agent_count":agents.len(),"hook_count":hook_count,"mcp_count":mcp_count,"lsp_count":lsp_count});
-            if crate::utils::process_env::var("USER_TYPE").as_deref() == Some("ant")
-                && !loaded.enabled.is_empty()
-            {
-                let mut names = loaded
-                    .enabled
-                    .iter()
-                    .map(|p| p.name.clone())
-                    .collect::<Vec<_>>();
-                names.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
-                metrics["ant_enabled_names"] = json!(names.join(","));
-            }
-            Ok(metrics)
+            Ok(json!({"enabled_count":loaded.enabled.len(),"disabled_count":loaded.disabled.len(),"inline_count":loaded.enabled.iter().filter(|p|p.source.ends_with("@inline")).count(),"marketplace_count":loaded.enabled.iter().filter(|p|!p.source.ends_with("@inline")).count(),"error_count":error_count,"skill_count":commands.len(),"agent_count":agents.len(),"hook_count":hook_count,"mcp_count":mcp_count,"lsp_count":lsp_count}))
     }.await;
     match result {
         Ok(metrics) => metrics,

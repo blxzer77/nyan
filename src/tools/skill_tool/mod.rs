@@ -226,8 +226,7 @@ fn skill_rule_matches(rule_content: &str, command_name: &str) -> bool {
 /// block would not gate anyway, while `shell: powershell` — the ordinary Windows
 /// configuration — paid a confirmation on every invocation.
 fn skill_has_only_safe_properties(command: &crate::commands::Command) -> bool {
-    command.availability.is_empty()
-        && command.call.is_none()
+    command.call.is_none()
         && !command.supports_non_interactive
         && command.allowed_tools.is_empty()
         && command
@@ -855,14 +854,14 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("nyan-skill-tool-call-{}", uuid::Uuid::new_v4()));
         let skill_file = root
-            .join(".claude")
+            .join(".nyan")
             .join("skills")
             .join("commit")
             .join("SKILL.md");
         std::fs::create_dir_all(skill_file.parent().unwrap()).unwrap();
         let mut file = std::fs::File::create(&skill_file).unwrap();
         file.write_all(
-            b"---\ndescription: Commit changes\nallowed-tools: Bash, Read\narguments: message\nmodel: opus\n---\nCreate commit: $message\nDir: ${CLAUDE_SKILL_DIR}\nSession: ${CLAUDE_SESSION_ID}",
+            b"---\ndescription: Commit changes\nallowed-tools: Bash, Read\narguments: message\nmodel: opus\n---\nCreate commit: $message\nDir: ${NYAN_SKILL_DIR}\nSession: ${NYAN_SESSION_ID}",
         )
         .unwrap();
 
@@ -934,7 +933,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("nyan-skill-tool-shell-{}", uuid::Uuid::new_v4()));
         let skill_file = root
-            .join(".claude")
+            .join(".nyan")
             .join("skills")
             .join("shell")
             .join("SKILL.md");
@@ -1197,7 +1196,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("nyan-skill-tool-modifier-{}", uuid::Uuid::new_v4()));
         let skill_file = root
-            .join(".claude")
+            .join(".nyan")
             .join("skills")
             .join("review")
             .join("SKILL.md");
@@ -1319,7 +1318,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("nyan-skill-tool-fork-{}", uuid::Uuid::new_v4()));
         let skill_file = root
-            .join(".claude")
+            .join(".nyan")
             .join("skills")
             .join("deep")
             .join("SKILL.md");
@@ -1373,7 +1372,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("nyan-skill-tool-fork-{}", uuid::Uuid::new_v4()));
         let skill_file = root
-            .join(".claude")
+            .join(".nyan")
             .join("skills")
             .join("deep")
             .join("SKILL.md");

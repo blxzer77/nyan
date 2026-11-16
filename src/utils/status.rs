@@ -2,10 +2,7 @@
 
 use crate::utils::process_env::JsTruthy;
 use crate::utils::settings::constants::get_setting_source_display_name_capitalized;
-use crate::utils::settings::{
-    SettingSource, SettingsJson, get_enabled_setting_sources, get_managed_file_settings_presence,
-    get_settings_for_source,
-};
+use crate::utils::settings::{SettingsJson, get_enabled_setting_sources, get_settings_for_source};
 
 /// Startup-only diagnostics snapshot for Settings/Status surfaces. Read-only,
 /// built once at App mount and injected directly (no wrapper context class).
@@ -45,19 +42,6 @@ pub fn build_setting_sources_properties() -> Vec<String> {
             if settings == SettingsJson::default() {
                 return None;
             }
-            if source == SettingSource::Policy {
-                let presence = get_managed_file_settings_presence();
-                return Some(
-                    if presence.has_base && presence.has_drop_ins {
-                        "Enterprise managed settings (file + drop-ins)"
-                    } else if presence.has_drop_ins {
-                        "Enterprise managed settings (drop-ins)"
-                    } else {
-                        "Enterprise managed settings (file)"
-                    }
-                    .to_string(),
-                );
-            }
             Some(get_setting_source_display_name_capitalized(source).to_string())
         })
         .collect()
@@ -77,13 +61,6 @@ fn property(label: &'static str, value: impl Into<String>) -> Property {
     }
 }
 
-fn unlabeled_property(value: impl Into<String>) -> Property {
-    Property {
-        label: None,
-        value: value.into(),
-    }
-}
-
 /// Maps to: CC `utils/status.tsx:286-330` `buildAccountProperties`.
 ///
 /// The rows (login method, auth token source, organization, email) all described
@@ -94,72 +71,11 @@ pub fn build_account_properties() -> Vec<Property> {
     Vec::new()
 }
 
-fn push_env_property(properties: &mut Vec<Property>, label: &'static str, key: &str) {
-    if let Some(value) = crate::utils::process_env::var(key).truthy() {
-        properties.push(property(label, value));
-    }
-}
-
 /// Maps to: CC `utils/status.tsx:332-460` `buildAPIProviderProperties`.
 pub fn build_api_provider_properties() -> Vec<Property> {
-    use crate::utils::model::providers::ApiProvider;
-
-    let provider = crate::utils::model::providers::get_api_provider();
+    // Provider credentials and endpoints come only from the selected nyan
+    // profile, so there is no provider environment row to report.
     let mut properties = Vec::new();
-    match provider {
-        ApiProvider::FirstParty => {
-            push_env_property(&mut properties, "Anthropic base URL", "ANTHROPIC_BASE_URL");
-        }
-        ApiProvider::Bedrock => {
-            properties.push(property("API provider", "AWS Bedrock"));
-            push_env_property(&mut properties, "Bedrock base URL", "BEDROCK_BASE_URL");
-            properties.push(property(
-                "AWS region",
-                crate::utils::env_utils::get_aws_region(),
-            ));
-            if crate::utils::env_utils::is_env_truthy(
-                crate::utils::process_env::var("CLAUDE_CODE_SKIP_BEDROCK_AUTH").as_deref(),
-            ) {
-                properties.push(unlabeled_property("AWS auth skipped"));
-            }
-        }
-        ApiProvider::Vertex => {
-            properties.push(property("API provider", "Google Vertex AI"));
-            push_env_property(&mut properties, "Vertex base URL", "VERTEX_BASE_URL");
-            push_env_property(
-                &mut properties,
-                "GCP project",
-                "ANTHROPIC_VERTEX_PROJECT_ID",
-            );
-            properties.push(property(
-                "Default region",
-                crate::utils::env_utils::get_default_vertex_region(),
-            ));
-            if crate::utils::env_utils::is_env_truthy(
-                crate::utils::process_env::var("CLAUDE_CODE_SKIP_VERTEX_AUTH").as_deref(),
-            ) {
-                properties.push(unlabeled_property("GCP auth skipped"));
-            }
-        }
-        ApiProvider::Foundry => {
-            properties.push(property("API provider", "Microsoft Foundry"));
-            push_env_property(
-                &mut properties,
-                "Microsoft Foundry base URL",
-                "ANTHROPIC_FOUNDRY_BASE_URL",
-            );
-            push_env_property(
-                &mut properties,
-                "Microsoft Foundry resource",
-                "ANTHROPIC_FOUNDRY_RESOURCE",
-            );
-            if crate::utils::env_utils::is_env_truthy(
-                crate::utils::process_env::var("CLAUDE_CODE_SKIP_FOUNDRY_AUTH").as_deref(),
-            ) {
-                properties.push(unlabeled_property("Microsoft Foundry auth skipped"));
-            }
-        }
-    }
 
     // Maps to CC `status.tsx:428-457`.
     let env = crate::utils::process_env::snapshot();
@@ -175,14 +91,10 @@ pub fn build_api_provider_properties() -> Vec<Property> {
     if let Some(mtls_config) = mtls_config {
         // `mtlsConfig.cert && ...`: an empty file's contents are falsy.
         let loaded = |contents: &Option<String>| contents.as_deref().is_some_and(|c| !c.is_empty());
-        if let Some(cert_path) =
-            truthy("CLAUDE_CODE_CLIENT_CERT").filter(|_| loaded(&mtls_config.cert))
-        {
+        if let Some(cert_path) = truthy("NYAN_CLIENT_CERT").filter(|_| loaded(&mtls_config.cert)) {
             properties.push(property("mTLS client cert", cert_path));
         }
-        if let Some(key_path) =
-            truthy("CLAUDE_CODE_CLIENT_KEY").filter(|_| loaded(&mtls_config.key))
-        {
+        if let Some(key_path) = truthy("NYAN_CLIENT_KEY").filter(|_| loaded(&mtls_config.key)) {
             properties.push(property("mTLS client key", key_path));
         }
     }
@@ -205,19 +117,13 @@ mod tests {
         ));
         std::fs::write(&cert, "certificate").unwrap();
         let guards = vec![
-            EnvVarGuard::set("CLAUDE_CODE_USE_BEDROCK", "1"),
-            EnvVarGuard::unset("CLAUDE_CODE_USE_VERTEX"),
-            EnvVarGuard::unset("CLAUDE_CODE_USE_FOUNDRY"),
-            EnvVarGuard::set("BEDROCK_BASE_URL", "https://bedrock.example"),
-            EnvVarGuard::set("AWS_DEFAULT_REGION", "us-west-2"),
-            EnvVarGuard::set("CLAUDE_CODE_SKIP_BEDROCK_AUTH", "true"),
             EnvVarGuard::set("https_proxy", "http://lowercase-proxy"),
             EnvVarGuard::unset("HTTPS_PROXY"),
             EnvVarGuard::unset("http_proxy"),
             EnvVarGuard::unset("HTTP_PROXY"),
             EnvVarGuard::set("NODE_EXTRA_CA_CERTS", "/tmp/ca.pem"),
-            EnvVarGuard::set("CLAUDE_CODE_CLIENT_CERT", &cert),
-            EnvVarGuard::unset("CLAUDE_CODE_CLIENT_KEY"),
+            EnvVarGuard::set("NYAN_CLIENT_CERT", &cert),
+            EnvVarGuard::unset("NYAN_CLIENT_KEY"),
         ];
         // `getMTLSConfig` is memoized.
         crate::utils::mtls::clear_mtls_cache();
@@ -225,10 +131,6 @@ mod tests {
         assert_eq!(
             build_api_provider_properties(),
             vec![
-                property("API provider", "AWS Bedrock"),
-                property("Bedrock base URL", "https://bedrock.example"),
-                property("AWS region", "us-west-2"),
-                unlabeled_property("AWS auth skipped"),
                 property("Proxy", "http://lowercase-proxy"),
                 property("Additional CA cert(s)", "/tmp/ca.pem"),
                 property("mTLS client cert", cert.to_string_lossy()),
@@ -245,20 +147,8 @@ mod tests {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let _oauth = EnvVarGuard::set("CLAUDE_CODE_OAUTH_TOKEN", "ambient-oauth-token");
         let _api_key = EnvVarGuard::set("ANTHROPIC_API_KEY", "sk-ant-secret");
 
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.primary_api_key = Some("sk-ant-secret".to_string());
-        config.oauth_account = Some(crate::utils::config::AccountInfo {
-            email_address: Some("user@example.com".to_string()),
-            organization_name: Some("Example Org".to_string()),
-            ..crate::utils::config::AccountInfo::default()
-        });
-        let previous = crate::utils::config::replace_test_global_config(Some(config));
-
         assert_eq!(build_account_properties(), Vec::<Property>::new());
-
-        crate::utils::config::replace_test_global_config(previous);
     }
 }

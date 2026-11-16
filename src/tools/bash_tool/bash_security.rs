@@ -1,10 +1,8 @@
 //! Maps to: CC `tools/BashTool/bashSecurity.ts`.
 //!
-//! Legacy regex security checks for Bash commands. The internal primary gate
-//! lives in `utils/bash/ast.rs`; external/parser-unavailable paths use this
-//! source-compatible fallback. The deprecated async wrapper still delegates to
-//! this function because tree-sitter quote-context divergence telemetry is
-//! intentionally omitted by project policy.
+//! Supplemental regex checks used by the read-only command classifier. The
+//! primary permission gate is the fail-closed projection in `utils/bash/ast.rs`;
+//! syntax-analysis failures never fall back to these heuristics for approval.
 
 use crate::utils::bash::tree_sitter_analysis::TreeSitterAnalysis;
 use crate::utils::permissions::permission_result::{PermissionDecisionReason, PermissionResult};
@@ -1155,7 +1153,7 @@ mod tests {
     }
 
     #[test]
-    fn async_path_lets_tree_sitter_clear_regex_only_false_positives() {
+    fn async_path_without_tree_sitter_analysis_falls_back_to_regex_validation() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
             .expect("runtime");
@@ -1166,21 +1164,9 @@ mod tests {
             PermissionResult::Ask { .. }
         ));
 
-        let with_ast = runtime.block_on(bash_command_is_safe_async_deprecated(
+        let result = runtime.block_on(bash_command_is_safe_async_deprecated(
             "find . -name '*.rs' -exec cat {} \\;",
         ));
-        if crate::utils::bash::parsed_command::ParsedCommand::parse(
-            "find . -name '*.rs' -exec cat {} \\;",
-        )
-        .and_then(|parsed| parsed.get_tree_sitter_analysis().cloned())
-        .is_some()
-        {
-            assert!(
-                matches!(with_ast, PermissionResult::Passthrough { .. }),
-                "tree-sitter should clear the escaped-operator false positive, got {with_ast:?}"
-            );
-        } else {
-            assert!(matches!(with_ast, PermissionResult::Ask { .. }));
-        }
+        assert!(matches!(result, PermissionResult::Ask { .. }));
     }
 }

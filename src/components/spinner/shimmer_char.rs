@@ -16,8 +16,8 @@ pub struct ShimmerCharProps {
 pub fn ShimmerChar(props: &ShimmerCharProps, hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_context::<Theme>();
     let use_shimmer = props.index.abs_diff(props.glimmer_index) <= 1;
-    let message_color = props.message_color.unwrap_or(ThemeColorKey::Claude);
-    let shimmer_color = props.shimmer_color.unwrap_or(ThemeColorKey::ClaudeShimmer);
+    let message_color = props.message_color.unwrap_or(ThemeColorKey::Nyan);
+    let shimmer_color = props.shimmer_color.unwrap_or(ThemeColorKey::NyanShimmer);
     element!(Text(
         content: props.character.clone(),
         color: theme.color(if use_shimmer { shimmer_color } else { message_color }),

@@ -28,7 +28,7 @@ pub const MCP_TOOLS_THRESHOLD: u64 = 25_000;
 /// Maps to CC `ContextWarning.type`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContextWarningType {
-    ClaudeMdFiles,
+    AgentsMdFiles,
     AgentDescriptions,
     McpTools,
     UnreachableRules,
@@ -55,7 +55,7 @@ pub struct ContextWarning {
 /// Maps to CC `doctorContextWarnings.ts` `ContextWarnings`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ContextWarnings {
-    pub claude_md_warning: Option<ContextWarning>,
+    pub agents_md_warning: Option<ContextWarning>,
     pub agent_warning: Option<ContextWarning>,
     pub mcp_warning: Option<ContextWarning>,
     pub unreachable_rules_warning: Option<ContextWarning>,
@@ -91,7 +91,7 @@ fn format_locale_number(value: u64) -> String {
 }
 
 /// Maps to CC `checkClaudeMdFiles()`.
-pub fn check_claude_md_files(memory_files: &[MemoryFileInfo]) -> Option<ContextWarning> {
+pub fn check_agents_md_files(memory_files: &[MemoryFileInfo]) -> Option<ContextWarning> {
     let mut large_files = get_large_memory_files(memory_files);
     if large_files.is_empty() {
         return None;
@@ -124,7 +124,7 @@ pub fn check_claude_md_files(memory_files: &[MemoryFileInfo]) -> Option<ContextW
     };
 
     Some(ContextWarning {
-        warning_type: ContextWarningType::ClaudeMdFiles,
+        warning_type: ContextWarningType::AgentsMdFiles,
         severity: ContextWarningSeverity::Warning,
         message,
         details,
@@ -297,7 +297,7 @@ pub fn check_unreachable_rules(
 /// Maps to CC `checkContextWarnings(...)`.
 pub fn check_context_warnings(input: &DoctorContextWarningsInput) -> ContextWarnings {
     ContextWarnings {
-        claude_md_warning: check_claude_md_files(&input.memory_files),
+        agents_md_warning: check_agents_md_files(&input.memory_files),
         agent_warning: check_agent_descriptions(input.agent_definitions.as_ref()),
         mcp_warning: check_mcp_tools(&input.tools),
         unreachable_rules_warning: check_unreachable_rules(
@@ -325,8 +325,8 @@ mod tests {
     }
 
     #[test]
-    fn claude_md_warning_matches_official_message_and_sorted_details() {
-        let warning = check_claude_md_files(&[
+    fn agents_md_warning_matches_official_message_and_sorted_details() {
+        let warning = check_agents_md_files(&[
             MemoryFileInfo {
                 path: "small/AGENTS.md".to_string(),
                 content: "x".repeat(MAX_MEMORY_CHARACTER_COUNT),
@@ -342,7 +342,7 @@ mod tests {
         ])
         .expect("large memory files warning");
 
-        assert_eq!(warning.warning_type, ContextWarningType::ClaudeMdFiles);
+        assert_eq!(warning.warning_type, ContextWarningType::AgentsMdFiles);
         assert_eq!(
             warning.message,
             "2 large AGENTS.md files detected (each > 40,000 chars)"
@@ -445,7 +445,7 @@ mod tests {
             sandbox_auto_allow_enabled: false,
         };
         let warnings = check_context_warnings(&input);
-        assert!(warnings.claude_md_warning.is_some());
+        assert!(warnings.agents_md_warning.is_some());
         assert!(warnings.agent_warning.is_none());
         assert!(warnings.mcp_warning.is_none());
         assert!(warnings.unreachable_rules_warning.is_none());

@@ -16,7 +16,7 @@ use iocraft::prelude::*;
 
 pub(crate) const DEFAULT_OUTPUT_STYLE_LABEL: &str = "Default";
 pub(crate) const DEFAULT_OUTPUT_STYLE_DESCRIPTION: &str =
-    "Claude completes coding tasks efficiently and provides concise responses";
+    "nyan completes coding tasks efficiently and provides concise responses";
 
 /// Maps to: CC `components/OutputStylePicker.tsx`:13-27 `mapConfigsToOptions(...)`.
 pub(crate) fn map_configs_to_options(
@@ -338,7 +338,7 @@ mod tests {
         );
         assert!(text.contains("Explanatory"), "canvas=\n{text}");
         assert!(
-            text.contains("Claude explains its implementation choices"),
+            text.contains("nyan explains its implementation choices"),
             "canvas=\n{text}"
         );
         assert!(text.contains("Learning"), "canvas=\n{text}");
@@ -352,14 +352,14 @@ mod tests {
         let cwd = root.join("repo");
         let config_home = root.join("config");
         std::fs::create_dir_all(cwd.join(".git")).unwrap();
-        std::fs::create_dir_all(cwd.join(".claude/output-styles")).unwrap();
+        std::fs::create_dir_all(cwd.join(".nyan/output-styles")).unwrap();
         std::fs::create_dir_all(&config_home).unwrap();
         std::fs::write(
-            cwd.join(".claude/output-styles/mentor.md"),
+            cwd.join(".nyan/output-styles/mentor.md"),
             "---\nname: Mentor\ndescription: Project mentor\n---\nPrompt",
         )
         .unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let options = output_style_options_for_cwd(&cwd);
         let _ = std::fs::remove_dir_all(root);
 

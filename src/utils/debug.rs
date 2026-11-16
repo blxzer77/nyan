@@ -4,7 +4,7 @@
 //! [`crate::utils::debug_filter`] (CC `utils/debugFilter.ts`).
 //!
 //! Developer defaults (aligned with CC):
-//! - `--debug` / `-d` → write to `~/.claude/debug/{session}.log` (TUI-safe;
+//! - `--debug` / `-d` → write to `~/.nyan/debug/{session}.log` (TUI-safe;
 //!   Nyan uses `.log`; CC uses `.txt`)
 //! - `--debug-to-stderr` / `-d2e` → stderr instead of file
 //! - `--debug-file <path>` → explicit file (implies debug mode)
@@ -15,7 +15,7 @@
 //! `--debug=perf`, the argv flags `--debug-*-profile`, or the environment
 //! variable `NYAN_DEBUG_PROFILES` with the same list syntax.
 //! `NYAN_FRAME_TIMING_LOG` / `NYAN_FRAME_TIMING_SAMPLE_EVERY` are the
-//! twins of CC's `CLAUDE_CODE_FRAME_TIMING_LOG` / `_SAMPLE_EVERY` bench JSONL.
+//! twins of CC's `NYAN_FRAME_TIMING_LOG` / `_SAMPLE_EVERY` bench JSONL.
 
 use crate::utils::debug_filter::{DebugFilter, parse_debug_filter, should_show_debug_message};
 use std::io::Write;
@@ -57,7 +57,7 @@ impl DebugLogLevel {
 
 /// Maps to: CC `utils/debug.ts#getMinDebugLogLevel`.
 pub fn get_min_debug_log_level() -> DebugLogLevel {
-    crate::utils::process_env::var("CLAUDE_CODE_DEBUG_LOG_LEVEL")
+    crate::utils::process_env::var("NYAN_DEBUG_LOG_LEVEL")
         .as_deref()
         .map(str::trim)
         .and_then(DebugLogLevel::from_env_name)
@@ -69,11 +69,11 @@ pub fn get_debug_log_path() -> PathBuf {
     if let Some(path) = config().debug_file.clone() {
         return path;
     }
-    if let Some(dir) = crate::utils::process_env::var("CLAUDE_CODE_DEBUG_LOGS_DIR") {
+    if let Some(dir) = crate::utils::process_env::var("NYAN_DEBUG_LOGS_DIR") {
         return PathBuf::from(dir)
             .join(format!("{}.log", crate::bootstrap::state::get_session_id()));
     }
-    crate::utils::env_utils::get_claude_config_home_dir()
+    crate::utils::env_utils::get_config_home_dir()
         .join("debug")
         .join(format!("{}.log", crate::bootstrap::state::get_session_id()))
 }
@@ -81,24 +81,6 @@ pub fn get_debug_log_path() -> PathBuf {
 /// Maps to: CC `utils/debug.ts#logForDebugging`.
 pub fn log_for_debugging(message: &str) {
     log_for_debugging_with_level(message, DebugLogLevel::Debug);
-}
-
-/// Maps to: CC `utils/debug.ts:258-268` `logAntError`.
-/// `error_stack` projects `error instanceof Error && error.stack`: callers pass
-/// `None` for non-Error values or absent stacks. A Rust error/backtrace is the
-/// native stack carrier; it must not be presented as a JavaScript stack.
-pub fn log_ant_error(context: &str, error_stack: Option<&str>) {
-    if !crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::TelemetryPayloads,
-    ) {
-        return;
-    }
-    if let Some(stack) = error_stack.filter(|stack| !stack.is_empty()) {
-        log_for_debugging_with_level(
-            &format!("[ANT-ONLY] {context} stack trace:\n{stack}"),
-            DebugLogLevel::Error,
-        );
-    }
 }
 
 pub fn log_for_debugging_with_level(message: &str, level: DebugLogLevel) {
@@ -135,10 +117,7 @@ fn should_log_debug_message(message: &str) -> bool {
     if cfg!(test) && !is_debug_to_stderr() {
         return false;
     }
-    if !crate::utils::build_profile::has_internal_capability(
-        crate::utils::build_profile::InternalCapability::TelemetryPayloads,
-    ) && !is_debug_mode()
-    {
+    if !is_debug_mode() {
         return false;
     }
     should_show_debug_message(message, config().filter.as_ref())
@@ -332,7 +311,7 @@ pub fn frame_profile_enabled() -> bool {
     config().profiles.frame
 }
 
-/// Maps to: CC `interactiveHelpers.tsx:427` `CLAUDE_CODE_FRAME_TIMING_LOG` —
+/// Maps to: CC `interactiveHelpers.tsx:427` `NYAN_FRAME_TIMING_LOG` —
 /// bench-only per-frame JSONL for offline analysis. The Rust twin uses the
 /// same record shape so one analysis script can consume both sides.
 pub fn frame_timing_log_path() -> Option<std::path::PathBuf> {
@@ -341,7 +320,7 @@ pub fn frame_timing_log_path() -> Option<std::path::PathBuf> {
         .map(std::path::PathBuf::from)
 }
 
-/// Maps to: CC `main.tsx` `CLAUDE_CODE_FRAME_TIMING_SAMPLE_EVERY` — record the
+/// Maps to: CC `main.tsx` `NYAN_FRAME_TIMING_SAMPLE_EVERY` — record the
 /// heavyweight rss/cpu samples only every Nth frame (default 1: every frame).
 /// Returns true when this frame should carry the samples.
 pub fn frame_timing_sample_tick() -> bool {
@@ -416,7 +395,7 @@ impl DebugConfig {
                 crate::utils::process_env::var("DEBUG_SDK").as_deref(),
             )
             || crate::utils::env_utils::is_env_truthy(
-                crate::utils::process_env::var("CLAUDE_CODE_DEBUG").as_deref(),
+                crate::utils::process_env::var("NYAN_DEBUG").as_deref(),
             );
 
         let profiles = ProfileSelection::parse(debug_filter).or(ProfileSelection::from_env());
@@ -499,44 +478,6 @@ fn parse_flag_value<'a>(argv: &'a [String], flag: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn log_ant_error_matches_official_audience_stack_and_error_level() {
-        const CHILD: &str = "NYAN_TEST_LOG_ANT_ERROR_CHILD";
-        if crate::utils::process_env::var_os(CHILD).is_some() {
-            init_from_parts(false, true, None, None);
-            log_ant_error("absent-stack", None);
-            log_ant_error("empty-stack", Some(""));
-            log_ant_error(
-                "attachment",
-                Some("Error: unknown attachment\n  native frame"),
-            );
-            return;
-        }
-
-        // Separate process keeps the production OnceLock and stderr sink real
-        // without changing other tests' debug configuration.
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--exact",
-                "utils::debug::tests::log_ant_error_matches_official_audience_stack_and_error_level",
-                "--nocapture",
-            ])
-            .env(CHILD, "1")
-            .env_remove("CLAUDE_CODE_DEBUG_LOG_LEVEL")
-            .output()
-            .unwrap();
-        assert!(output.status.success());
-        let stderr = String::from_utf8(output.stderr).unwrap();
-        if cfg!(feature = "anthropic_internal") {
-            assert!(stderr.contains("[ERROR]"), "{stderr}");
-            assert!(stderr.contains("[ANT-ONLY] attachment stack trace:\\nError: unknown attachment\\n  native frame"), "{stderr}");
-        } else {
-            assert!(stderr.is_empty(), "{stderr}");
-        }
-        assert!(!stderr.contains("absent-stack"));
-        assert!(!stderr.contains("empty-stack"));
-    }
 
     fn argv(args: &[&str]) -> Vec<String> {
         std::iter::once("nyan".to_string())

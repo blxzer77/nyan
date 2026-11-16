@@ -1,6 +1,6 @@
 //! API utility helpers.
 //!
-//! Maps to CC `utils/api.ts`. The API service (`services/api/claude.rs`) owns
+//! Maps to CC `utils/api.ts`. The API service (`services/api/request.rs`) owns
 //! request orchestration, while this module owns schema conversion helpers such
 //! as `toolToAPISchema(...)`.
 
@@ -204,14 +204,12 @@ pub fn tool_to_api_schema(
                         .model
                         .is_some_and(crate::services::provider::anthropic::betas::model_supports_structured_outputs))
                 .then_some(true),
-                eager_input_streaming: (crate::utils::model::providers::get_api_provider()
-                    == crate::utils::model::providers::ApiProvider::FirstParty
-                    && crate::utils::model::providers::is_first_party_anthropic_base_url()
+                eager_input_streaming: (crate::utils::model::providers::is_first_party_anthropic_base_url()
                     && (crate::utils::feature_flags::feature_enabled(
                         crate::utils::feature_flags::FeatureFlag::FineGrainedToolStreaming,
                     ) || crate::utils::env_utils::is_env_truthy(
                         crate::utils::process_env::var(
-                            "CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING",
+                            "NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING",
                         )
                         .as_deref(),
                     )))
@@ -223,7 +221,7 @@ pub fn tool_to_api_schema(
     };
 
     let disable_experimental_betas = crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS").as_deref(),
+        crate::utils::process_env::var("NYAN_DISABLE_EXPERIMENTAL_BETAS").as_deref(),
     );
     let strict = (!disable_experimental_betas)
         .then_some(base.strict)
@@ -443,14 +441,6 @@ pub fn normalize_tool_input(
     }
     let plan = crate::utils::plans::get_plan(agent_id);
     let path = crate::utils::plans::get_plan_file_path(agent_id);
-    let snapshot = crate::utils::plans::persist_file_snapshot_if_remote();
-    if let Some(runtime) = crate::utils::process_runtime::runtime_handle_for_detached_work() {
-        runtime.spawn(snapshot);
-    } else {
-        std::thread::spawn(move || {
-            let _ = crate::utils::process_runtime::block_on_from_sync(snapshot);
-        });
-    }
     if let Some(plan) = plan {
         let mut input = match input {
             serde_json::Value::Object(input) => input.clone(),
@@ -588,7 +578,7 @@ mod tests {
     #[test]
     fn tool_to_api_schema_projects_tool_metadata_like_official_helper() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
+        crate::utils::process_env::remove("NYAN_DISABLE_EXPERIMENTAL_BETAS");
         let tool = Tool {
             name: "Example".to_string(),
             description: "Example prompt".to_string(),
@@ -605,11 +595,7 @@ mod tests {
         };
 
         crate::utils::tool_schema_cache::clear_tool_schema_cache();
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.cached_growth_book_features = Some(std::collections::HashMap::from([(
-            "tengu_tool_pear".to_string(),
-            serde_json::json!(true),
-        )]));
+        let config = crate::utils::config::GlobalConfig::default();
         crate::utils::config::set_test_global_config(Some(config));
         let schema = tool_to_api_schema(&tool, schema_options(Some("claude-sonnet-4-6"), false))
             .expect("schema projection should succeed");
@@ -674,7 +660,7 @@ mod tests {
     #[test]
     fn tool_to_api_schema_strips_swarm_fields_when_agent_swarms_are_off() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _teams = EnvVarGuard::unset("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS");
+        let _teams = EnvVarGuard::unset("NYAN_EXPERIMENTAL_AGENT_TEAMS");
         crate::utils::tool_schema_cache::clear_tool_schema_cache();
         let tool = crate::tools::agent_tool::agent_tool_schema();
         let raw_props = tool
@@ -707,7 +693,7 @@ mod tests {
     #[test]
     fn tool_to_api_schema_marks_deferred_tools_like_official() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
+        crate::utils::process_env::remove("NYAN_DISABLE_EXPERIMENTAL_BETAS");
         let tool = crate::tools::web_fetch_tool::web_fetch_tool_schema();
         crate::utils::tool_schema_cache::clear_tool_schema_cache();
 
@@ -728,7 +714,7 @@ mod tests {
     #[test]
     fn tool_to_api_schema_strips_experimental_fields_when_betas_disabled() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "1");
+        crate::utils::process_env::set("NYAN_DISABLE_EXPERIMENTAL_BETAS", "1");
         let mut tool = crate::tools::web_fetch_tool::web_fetch_tool_schema();
         tool.strict = Some(true);
         crate::utils::tool_schema_cache::clear_tool_schema_cache();
@@ -744,7 +730,7 @@ mod tests {
             Some("WebFetch")
         );
         assert!(value.get("input_schema").is_some());
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
+        crate::utils::process_env::remove("NYAN_DISABLE_EXPERIMENTAL_BETAS");
     }
 
     #[test]
@@ -754,28 +740,19 @@ mod tests {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         for key in [
             "NODE_ENV",
-            "CLAUDE_CODE_USE_BEDROCK",
-            "CLAUDE_CODE_USE_VERTEX",
-            "CLAUDE_CODE_USE_FOUNDRY",
-            "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
-            "CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING",
-            "ANTHROPIC_BASE_URL",
-            "DISABLE_TELEMETRY",
-            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+            "NYAN_DISABLE_EXPERIMENTAL_BETAS",
+            "NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING",
+            "NYAN_DISABLE_NONESSENTIAL_TRAFFIC",
         ] {
             crate::utils::process_env::remove(key);
         }
         crate::utils::tool_schema_cache::clear_tool_schema_cache();
-        // The cached gate stays on for the whole chronology to prove it never
+        // The strict-tools switch is off for the whole chronology, so it never
         // reaches `strict`; the session-stable base is exercised through the
         // fine-grained-streaming env lever instead.
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.cached_growth_book_features = Some(std::collections::HashMap::from([(
-            "tengu_tool_pear".to_string(),
-            serde_json::json!(true),
-        )]));
+        let config = crate::utils::config::GlobalConfig::default();
         crate::utils::config::set_test_global_config(Some(config));
-        crate::utils::process_env::set("CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING", "1");
+        crate::utils::process_env::set("NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING", "1");
 
         let tool = Tool {
             name: "Read".to_string(),
@@ -793,8 +770,7 @@ mod tests {
         assert_eq!(value["eager_input_streaming"], serde_json::json!(true));
         assert!(value.get("output_schema").is_none());
 
-        crate::utils::process_env::remove("CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING");
-        crate::utils::process_env::set("CLAUDE_CODE_USE_VERTEX", "1");
+        crate::utils::process_env::remove("NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING");
         let cached = serde_json::to_value(
             tool_to_api_schema(&tool, schema_options(Some("unsupported-model"), false)).unwrap(),
         )
@@ -802,14 +778,14 @@ mod tests {
         assert_eq!(cached["eager_input_streaming"], serde_json::json!(true));
         assert!(cached.get("defer_loading").is_none());
 
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "1");
+        crate::utils::process_env::set("NYAN_DISABLE_EXPERIMENTAL_BETAS", "1");
         let killed =
             serde_json::to_value(tool_to_api_schema(&tool, schema_options(None, true)).unwrap())
                 .unwrap();
         assert!(killed.get("strict").is_none());
         assert!(killed.get("defer_loading").is_none());
         assert!(killed.get("eager_input_streaming").is_none());
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
+        crate::utils::process_env::remove("NYAN_DISABLE_EXPERIMENTAL_BETAS");
         let revealed =
             serde_json::to_value(tool_to_api_schema(&tool, schema_options(None, false)).unwrap())
                 .unwrap();
@@ -824,8 +800,7 @@ mod tests {
         assert!(recomputed.get("strict").is_none());
         assert!(recomputed.get("eager_input_streaming").is_none());
 
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
-        crate::utils::process_env::set("CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING", "1");
+        crate::utils::process_env::set("NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING", "1");
         let still_cached_off = serde_json::to_value(
             tool_to_api_schema(&tool, schema_options(Some("claude-sonnet-4-6"), false)).unwrap(),
         )
@@ -833,7 +808,7 @@ mod tests {
         assert!(still_cached_off.get("strict").is_none());
         assert!(still_cached_off.get("eager_input_streaming").is_none());
 
-        crate::utils::process_env::remove("CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING");
+        crate::utils::process_env::remove("NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING");
         crate::utils::config::set_test_global_config(None);
         crate::utils::tool_schema_cache::clear_tool_schema_cache();
     }
@@ -845,15 +820,9 @@ mod tests {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         for key in [
             "NODE_ENV",
-            "CLAUDE_CODE_USE_BEDROCK",
-            "CLAUDE_CODE_USE_VERTEX",
-            "CLAUDE_CODE_USE_FOUNDRY",
-            "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
-            "CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING",
-            "ANTHROPIC_BASE_URL",
-            "DISABLE_TELEMETRY",
-            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
-            "ANTHROPIC_BETAS",
+            "NYAN_DISABLE_EXPERIMENTAL_BETAS",
+            "NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING",
+            "NYAN_DISABLE_NONESSENTIAL_TRAFFIC",
         ] {
             crate::utils::process_env::remove(key);
         }
@@ -864,15 +833,11 @@ mod tests {
             strict: Some(true),
             ..Default::default()
         };
-        // The provider env is the shared stimulus for both caches now that the
-        // strict-tools gate is a source-controlled constant.
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.cached_growth_book_features = Some(std::collections::HashMap::from([(
-            "tengu_tool_pear".to_string(),
-            serde_json::json!(true),
-        )]));
+        // The experimental-betas switch is the shared stimulus for both caches
+        // now that the strict-tools gate is a source-controlled constant.
+        let config = crate::utils::config::GlobalConfig::default();
         crate::utils::config::set_test_global_config(Some(config));
-        crate::utils::process_env::set("CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING", "1");
+        crate::utils::process_env::set("NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING", "1");
 
         let mut missing_model = tool.clone();
         missing_model.name = "MissingModel".to_string();
@@ -904,14 +869,23 @@ mod tests {
 
         crate::utils::tool_schema_cache::clear_tool_schema_cache();
         crate::services::provider::anthropic::betas::clear_betas_caches();
-        crate::utils::process_env::set("CLAUDE_CODE_USE_VERTEX", "1");
+        crate::utils::process_env::set("NYAN_DISABLE_EXPERIMENTAL_BETAS", "1");
         assert!(
             !crate::services::provider::anthropic::betas::get_all_model_betas("claude-sonnet-4-6")
                 .iter()
                 .any(|beta| beta
                     == crate::services::provider::anthropic::betas::CONTEXT_MANAGEMENT_BETA_HEADER)
         );
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
+        let hidden_body = serde_json::to_value(
+            tool_to_api_schema(&tool, schema_options(Some("claude-sonnet-4-6"), false)).unwrap(),
+        )
+        .unwrap();
+        assert!(hidden_body.get("eager_input_streaming").is_none());
+        assert!(hidden_body.get("strict").is_none());
+
+        crate::utils::tool_schema_cache::clear_tool_schema_cache();
+        crate::services::provider::anthropic::betas::clear_betas_caches();
+        crate::utils::process_env::remove("NYAN_DISABLE_EXPERIMENTAL_BETAS");
         let eager_body = serde_json::to_value(
             tool_to_api_schema(&tool, schema_options(Some("claude-sonnet-4-6"), false)).unwrap(),
         )
@@ -919,40 +893,13 @@ mod tests {
         assert_eq!(eager_body["eager_input_streaming"], serde_json::json!(true));
         assert!(eager_body.get("strict").is_none());
         assert!(
-            !crate::services::provider::anthropic::betas::get_all_model_betas("claude-sonnet-4-6")
-                .iter()
-                .any(|beta| beta
-                    == crate::services::provider::anthropic::betas::CONTEXT_MANAGEMENT_BETA_HEADER)
-        );
-
-        crate::utils::tool_schema_cache::clear_tool_schema_cache();
-        crate::services::provider::anthropic::betas::clear_betas_caches();
-        crate::utils::process_env::set("CLAUDE_CODE_USE_VERTEX", "1");
-        let non_eager_body = serde_json::to_value(
-            tool_to_api_schema(&tool, schema_options(Some("claude-sonnet-4-6"), false)).unwrap(),
-        )
-        .unwrap();
-        assert!(non_eager_body.get("eager_input_streaming").is_none());
-        crate::utils::process_env::remove("CLAUDE_CODE_USE_VERTEX");
-        assert!(
             crate::services::provider::anthropic::betas::get_all_model_betas("claude-sonnet-4-6")
                 .iter()
                 .any(|beta| beta
                     == crate::services::provider::anthropic::betas::CONTEXT_MANAGEMENT_BETA_HEADER)
         );
-        assert!(
-            !crate::services::provider::anthropic::betas::get_all_model_betas("claude-sonnet-4-6")
-                .iter()
-                .any(|beta| beta
-                    == crate::services::provider::anthropic::betas::STRUCTURED_OUTPUTS_BETA_HEADER)
-        );
-        let same_non_eager_body = serde_json::to_value(
-            tool_to_api_schema(&tool, schema_options(Some("claude-sonnet-4-6"), false)).unwrap(),
-        )
-        .unwrap();
-        assert!(same_non_eager_body.get("eager_input_streaming").is_none());
 
-        crate::utils::process_env::remove("CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING");
+        crate::utils::process_env::remove("NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING");
         crate::utils::config::set_test_global_config(None);
         crate::services::provider::anthropic::betas::clear_betas_caches();
         crate::utils::tool_schema_cache::clear_tool_schema_cache();
@@ -965,25 +912,15 @@ mod tests {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         for key in [
             "NODE_ENV",
-            "CLAUDE_CODE_USE_BEDROCK",
-            "CLAUDE_CODE_USE_VERTEX",
-            "CLAUDE_CODE_USE_FOUNDRY",
-            "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
-            "CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING",
-            "ANTHROPIC_BASE_URL",
-            "DISABLE_TELEMETRY",
-            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
-            "ANTHROPIC_BETAS",
+            "NYAN_DISABLE_EXPERIMENTAL_BETAS",
+            "NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING",
+            "NYAN_DISABLE_NONESSENTIAL_TRAFFIC",
         ] {
             crate::utils::process_env::remove(key);
         }
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.cached_growth_book_features = Some(std::collections::HashMap::from([(
-            "tengu_tool_pear".to_string(),
-            serde_json::json!(true),
-        )]));
+        let config = crate::utils::config::GlobalConfig::default();
         crate::utils::config::set_test_global_config(Some(config));
-        crate::utils::process_env::set("CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING", "1");
+        crate::utils::process_env::set("NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING", "1");
         let tool = Tool {
             name: "ReadKillLifecycle".to_string(),
             description: "Read a file".to_string(),
@@ -994,7 +931,7 @@ mod tests {
 
         crate::utils::tool_schema_cache::clear_tool_schema_cache();
         crate::services::provider::anthropic::betas::clear_betas_caches();
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "1");
+        crate::utils::process_env::set("NYAN_DISABLE_EXPERIMENTAL_BETAS", "1");
         let killed_header =
             crate::services::provider::anthropic::betas::get_all_model_betas("claude-sonnet-4-6");
         let killed_body = serde_json::to_value(
@@ -1006,7 +943,7 @@ mod tests {
         assert!(killed_body.get("eager_input_streaming").is_none());
         assert!(killed_body.get("strict").is_none());
 
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
+        crate::utils::process_env::remove("NYAN_DISABLE_EXPERIMENTAL_BETAS");
         let unhidden_body = serde_json::to_value(
             tool_to_api_schema(&tool, schema_options(Some("claude-sonnet-4-6"), false)).unwrap(),
         )
@@ -1037,7 +974,7 @@ mod tests {
         .unwrap();
         assert_eq!(warm_body["eager_input_streaming"], serde_json::json!(true));
         assert!(warm_body.get("strict").is_none());
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "1");
+        crate::utils::process_env::set("NYAN_DISABLE_EXPERIMENTAL_BETAS", "1");
         let hidden_warm_body = serde_json::to_value(
             tool_to_api_schema(&tool, schema_options(Some("claude-sonnet-4-6"), false)).unwrap(),
         )
@@ -1050,8 +987,8 @@ mod tests {
                     == crate::services::provider::anthropic::betas::CONTEXT_MANAGEMENT_BETA_HEADER)
         );
 
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
-        crate::utils::process_env::remove("CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING");
+        crate::utils::process_env::remove("NYAN_DISABLE_EXPERIMENTAL_BETAS");
+        crate::utils::process_env::remove("NYAN_ENABLE_FINE_GRAINED_TOOL_STREAMING");
         crate::utils::config::set_test_global_config(None);
         crate::services::provider::anthropic::betas::clear_betas_caches();
         crate::utils::tool_schema_cache::clear_tool_schema_cache();
@@ -1062,7 +999,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS");
+        crate::utils::process_env::remove("NYAN_DISABLE_EXPERIMENTAL_BETAS");
         crate::utils::tool_schema_cache::clear_tool_schema_cache();
         crate::utils::config::set_test_global_config(Some(
             crate::utils::config::GlobalConfig::default(),

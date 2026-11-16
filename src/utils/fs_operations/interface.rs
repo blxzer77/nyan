@@ -294,7 +294,40 @@ pub fn set_fs_implementation(implementation: Arc<dyn FsOperations>) {
 }
 /// Maps to CC `getFsImplementation`; cloned Arc retains source object identity.
 pub fn get_fs_implementation() -> Arc<dyn FsOperations> {
+    #[cfg(test)]
+    if let Some(fs) = THREAD_FS.with_borrow(Clone::clone) {
+        return fs;
+    }
     ACTIVE_FS.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+#[cfg(test)]
+thread_local! {
+    static THREAD_FS: std::cell::RefCell<Option<Arc<dyn FsOperations>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Rust-only test seam: `setFsImplementation` scoped to the calling thread,
+/// restored on drop. `ACTIVE_FS` is process-global, so a test that installed a
+/// fake backend there handed it to every concurrent test doing real I/O.
+/// libtest runs each test on its own thread and `#[tokio::test]` defaults to a
+/// current-thread runtime, so the override covers exactly the installing test.
+#[cfg(test)]
+#[must_use]
+pub(crate) struct ThreadFsOverride(Option<Arc<dyn FsOperations>>);
+
+#[cfg(test)]
+impl ThreadFsOverride {
+    pub(crate) fn install(fs: Arc<dyn FsOperations>) -> Self {
+        Self(THREAD_FS.replace(Some(fs)))
+    }
+}
+
+#[cfg(test)]
+impl Drop for ThreadFsOverride {
+    fn drop(&mut self) {
+        THREAD_FS.set(self.0.take());
+    }
 }
 /// Maps to CC `setOriginalFsImplementation`; does not change process cwd.
 pub fn set_original_fs_implementation() {

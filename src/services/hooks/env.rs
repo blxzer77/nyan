@@ -187,7 +187,7 @@ pub async fn execute_hooks_outside_repl_with_config(
                     .map(|seconds| seconds * 1_000)
                     .unwrap_or(timeout_ms);
                 let mut env = base_env.clone();
-                // Maps to CC `execCommandHook` `CLAUDE_ENV_FILE` injection. PowerShell
+                // Maps to CC `execCommandHook` `NYAN_ENV_FILE` injection. PowerShell
                 // hooks are routed through their separate shell owner; this path is the
                 // Bash `.sh` environment contract.
                 if matches!(
@@ -200,7 +200,7 @@ pub async fn execute_hooks_outside_repl_with_config(
                     event.as_str(),
                     hook_index,
                 ) {
-                    env.push(("CLAUDE_ENV_FILE".to_string(), path.display().to_string()));
+                    env.push(("NYAN_ENV_FILE".to_string(), path.display().to_string()));
                 }
                 let exec_result = exec_command_hook(
                     &command.command,
@@ -303,17 +303,18 @@ pub async fn execute_file_changed_hooks_with_config(
 /// `CONFIG_CHANGE_SOURCES`, the runtime const `ConfigChangeHookInputSchema`
 /// (`:670-678`) validates `source` against with `z.enum(...)`.
 ///
-/// CC has FOUR `SettingSource`s feeding this and five sources here:
-/// `settingSourceToConfigChangeSource` (`utils/settings/changeDetector.ts:252-266`)
-/// folds `flagSettings` and `policySettings` both onto `policy_settings`, and
 /// `skills` arrives from a different watcher entirely
 /// (`utils/skills/skillChangeDetector.ts:267`).
+///
+/// @nyan: no `policy_settings` member. CC's
+/// `settingSourceToConfigChangeSource` (`utils/settings/changeDetector.ts:252-266`)
+/// folds `flagSettings` and `policySettings` onto it; nyan has no policy tier
+/// and never watches flag settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConfigChangeSource {
     UserSettings,
     ProjectSettings,
     LocalSettings,
-    PolicySettings,
     Skills,
 }
 
@@ -323,7 +324,6 @@ impl ConfigChangeSource {
             Self::UserSettings => "user_settings",
             Self::ProjectSettings => "project_settings",
             Self::LocalSettings => "local_settings",
-            Self::PolicySettings => "policy_settings",
             Self::Skills => "skills",
         }
     }
@@ -333,13 +333,8 @@ impl ConfigChangeSource {
 ///
 /// "Fired by file watchers when settings, skills, or commands change on disk.
 /// Enables enterprise admins to audit/log configuration changes for security"
-/// (`:4202-4204`).
-///
-/// The `policy_settings` arm (`:4232-4236`) is the whole reason this cannot be
-/// a plain `execute_hooks_outside_repl_with_config` call at the trigger site:
-/// policy settings are enterprise-managed, so their hooks still FIRE for audit
-/// logging but can never come back `blocked`. Dropping that clamp would let a
-/// user-authored `ConfigChange` hook veto an admin policy update.
+/// (`:4202-4204`). @nyan: without the `policy_settings` source, CC's
+/// never-block clamp (`:4232-4236`) has nothing to apply to.
 pub async fn execute_config_change_hooks_with_config(
     config: &RegisteredHooks,
     source: ConfigChangeSource,
@@ -363,22 +358,14 @@ pub async fn execute_config_change_hooks_with_config(
     }
     let hook_input = merge_event_fields(base_input, &event_fields);
 
-    let mut results = execute_hooks_outside_repl_with_config(
+    execute_hooks_outside_repl_with_config(
         config,
         hook_input,
         Some(source.as_str()),
         timeout_ms,
         base_env,
     )
-    .await;
-
-    // CC `:4232-4236`: `results.map(r => ({ ...r, blocked: false }))`.
-    if source == ConfigChangeSource::PolicySettings {
-        for result in &mut results {
-            result.blocked = false;
-        }
-    }
-    results
+    .await
 }
 
 fn default_env_hook_context() -> HookContext {
@@ -619,7 +606,7 @@ mod tests {
         let results = execute_config_change_hooks_with_config(
             &config_change_config(r#"cat > "$NYAN_TEST_CONFIG_CHANGE_CAPTURE""#),
             ConfigChangeSource::ProjectSettings,
-            Some("/repo/.claude/settings.json"),
+            Some("/repo/.nyan/settings.json"),
             create_base_hook_input(&HookContext::default()),
             vec![(
                 "NYAN_TEST_CONFIG_CHANGE_CAPTURE".to_string(),
@@ -636,7 +623,7 @@ mod tests {
         let _ = std::fs::remove_file(&capture);
         assert_eq!(input["hook_event_name"], "ConfigChange");
         assert_eq!(input["source"], "project_settings");
-        assert_eq!(input["file_path"], "/repo/.claude/settings.json");
+        assert_eq!(input["file_path"], "/repo/.nyan/settings.json");
     }
 
     /// `file_path` is `z.string().optional()` (`coreSchemas.ts:675`), and CC
@@ -673,41 +660,16 @@ mod tests {
         );
     }
 
-    /// Maps to: CC `utils/hooks.ts:4232-4236` — "Policy settings are
-    /// enterprise-managed — hooks fire for audit logging but must never block
-    /// policy changes from being applied", i.e.
-    /// `results.map(r => ({ ...r, blocked: false }))`.
-    ///
-    /// Without the clamp a user-authored `ConfigChange` hook exiting 2 would
-    /// veto an admin policy update, because the settings watcher skips
-    /// `fanOut(source)` on `hasBlockingResult(results)`
-    /// (`utils/settings/changeDetector.ts:296-301`).
+    /// A settings `ConfigChange` hook exiting 2 blocks the change
+    /// (`utils/settings/changeDetector.ts:296-301` skips `fanOut(source)` on
+    /// `hasBlockingResult(results)`).
     #[tokio::test]
-    async fn policy_settings_config_change_fires_for_audit_but_can_never_block() {
+    async fn settings_config_change_hook_blocks_on_exit_2() {
         let _trust_guard = SessionTrustGuard::accepted();
-        let blocking = config_change_config("printf 'no you do not' >&2; exit 2");
-
-        let policy = execute_config_change_hooks_with_config(
-            &blocking,
-            ConfigChangeSource::PolicySettings,
-            Some("/etc/claude-code/managed-settings.json"),
-            create_base_hook_input(&HookContext::default()),
-            vec![],
-            5_000,
-        )
-        .await;
-        assert_eq!(policy.len(), 1, "the hook still FIRES, for audit logging");
-        assert!(!policy[0].succeeded, "…and it still reports its failure");
-        assert!(
-            !has_blocking_result(&policy),
-            "…but it can never block a policy change"
-        );
-
-        // Every other source keeps the ordinary exit-2 blocking convention.
         let user = execute_config_change_hooks_with_config(
-            &blocking,
+            &config_change_config("printf 'no you do not' >&2; exit 2"),
             ConfigChangeSource::UserSettings,
-            Some("/home/dev/.claude/settings.json"),
+            Some("/home/dev/.nyan/settings.json"),
             create_base_hook_input(&HookContext::default()),
             vec![],
             5_000,
@@ -715,7 +677,7 @@ mod tests {
         .await;
         assert!(
             has_blocking_result(&user),
-            "a non-policy source still blocks on exit 2"
+            "a settings source blocks on exit 2"
         );
     }
 }

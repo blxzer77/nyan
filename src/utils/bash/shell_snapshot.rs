@@ -143,7 +143,7 @@ fn get_user_snapshot_content(config_file: &Path) -> String {
 }
 
 /// Maps to CC `utils/bash/ShellSnapshot.ts:269-340` `getClaudeCodeSnapshotContent`.
-fn get_claude_code_snapshot_content(env: &crate::utils::process_env::EnvSnapshot) -> String {
+fn get_nyan_snapshot_content(env: &crate::utils::process_env::EnvSnapshot) -> String {
     let (integration_type, rg_integration) = create_ripgrep_shell_integration();
     let mut content = String::from(
         r##"
@@ -206,14 +206,14 @@ fn get_snapshot_script(
       echo "# Unset all aliases to avoid conflicts with functions" >> "$SNAPSHOT_FILE"
       echo "unalias -a 2>/dev/null || true" >> "$SNAPSHOT_FILE"
       {user}
-      {claude}
+      {nyan}
       if [ ! -f "$SNAPSHOT_FILE" ]; then
         echo "Error: Snapshot file was not created at $SNAPSHOT_FILE" >&2
         exit 1
       fi
 "##,
         snapshot = crate::utils::bash::shell_quote::quote(&[&snapshot_path.display().to_string()]),
-        claude = get_claude_code_snapshot_content(env),
+        nyan = get_nyan_snapshot_content(env),
     )
 }
 
@@ -250,8 +250,7 @@ pub fn create_and_save_snapshot(bin_shell: &str) -> Option<PathBuf> {
         "sh"
     };
     let config = get_config_file(bin_shell);
-    let snapshots_dir =
-        crate::utils::env_utils::get_claude_config_home_dir().join("shell-snapshots");
+    let snapshots_dir = crate::utils::env_utils::get_config_home_dir().join("shell-snapshots");
     if std::fs::create_dir_all(&snapshots_dir).is_err() {
         return None;
     }
@@ -267,10 +266,10 @@ pub fn create_and_save_snapshot(bin_shell: &str) -> Option<PathBuf> {
 
     let mut command = std::process::Command::new(bin_shell);
     // CC `ShellSnapshot.ts:460-467`: the base env is `subprocessEnv()` unless
-    // CLAUDE_CODE_DONT_INHERIT_ENV is set (then an empty env); SHELL /
-    // GIT_EDITOR / CLAUDECODE are spread over that base afterwards.
+    // NYAN_DONT_INHERIT_ENV is set (then an empty env); SHELL /
+    // GIT_EDITOR / NYAN are spread over that base afterwards.
     if process_env
-        .var_os("CLAUDE_CODE_DONT_INHERIT_ENV")
+        .var_os("NYAN_DONT_INHERIT_ENV")
         .is_some_and(|value| !value.is_empty())
     {
         command.env_clear();
@@ -281,7 +280,7 @@ pub fn create_and_save_snapshot(bin_shell: &str) -> Option<PathBuf> {
         .args(["-c", "-l", &script])
         .env("SHELL", bin_shell)
         .env("GIT_EDITOR", "true")
-        .env("CLAUDECODE", "1")
+        .env("NYAN", "1")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -319,5 +318,26 @@ mod tests {
         assert!(script.contains("shopt -s expand_aliases"));
         assert!(script.contains("unalias -a"));
         assert!(script.contains("/nyan/carrier-only-snapshot-path"));
+    }
+
+    #[test]
+    fn nyan_snapshot_content_has_stable_bytes() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _path = EnvVarGuard::set("PATH", "/nyan/carrier-only-snapshot-path");
+        let _embedded = EnvVarGuard::set("EMBEDDED_SEARCH_TOOLS", "0");
+        let _builtin = EnvVarGuard::set("USE_BUILTIN_RIPGREP", "1");
+        let env = crate::utils::process_env::snapshot();
+        let expected = concat!(
+            "\n",
+            "      echo \"# Check for rg availability\" >> \"$SNAPSHOT_FILE\"\n",
+            "      echo \"if ! (unalias rg 2>/dev/null; command -v rg) >/dev/null 2>&1; then\" >> \"$SNAPSHOT_FILE\"\n",
+            "      echo '  alias rg='\"'rg'\" >> \"$SNAPSHOT_FILE\"\n",
+            "      echo \"fi\" >> \"$SNAPSHOT_FILE\"\n",
+            "      echo \"export PATH=/nyan/carrier-only-snapshot-path\" >> \"$SNAPSHOT_FILE\"\n",
+        );
+        assert_eq!(
+            get_nyan_snapshot_content(&env).as_bytes(),
+            expected.as_bytes()
+        );
     }
 }

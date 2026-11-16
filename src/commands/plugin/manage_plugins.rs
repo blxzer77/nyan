@@ -17,7 +17,7 @@ use crate::services::plugins::plugin_operations::*;
 use crate::types::plugin::{LoadedPlugin, PluginError};
 use crate::utils::plugins::{
     installed_plugins_manager::*, marketplace_manager::*, plugin_flagging::*, plugin_loader::*,
-    plugin_options_storage as options, plugin_policy::*, schemas::PluginScope,
+    plugin_options_storage as options, schemas::PluginScope,
 };
 use iocraft::prelude::*;
 use serde_json::{Map, Value};
@@ -174,21 +174,6 @@ async fn get_skill_dir_names(path: &Path) -> Vec<String> {
 async fn check_if_local_plugin(name: &str, marketplace: &str) -> anyhow::Result<Option<String>> {
     let catalog = get_marketplace(marketplace).await?;
     Ok(catalog["plugins"].as_array().and_then(|entries|entries.iter().find(|e|e["name"].as_str()==Some(name))).and_then(|entry|entry["source"].as_str()).map(|source|format!("Local plugins cannot be updated remotely. To update, modify the source at: {source}")))
-}
-/// Maps to: CC ManagePlugins.tsx:503-511#filterManagedDisabledPlugins.
-pub fn filter_managed_disabled_plugins(plugins: Vec<LoadedPlugin>) -> Vec<LoadedPlugin> {
-    plugins
-        .into_iter()
-        .filter(|plugin| {
-            let marketplace = plugin
-                .source
-                .split('@')
-                .nth(1)
-                .filter(|s| !s.is_empty())
-                .unwrap_or("local");
-            !is_plugin_blocked_by_policy(&format!("{}@{marketplace}", plugin.name))
-        })
-        .collect()
 }
 // Native projection of the source scope union. Non-installation scope labels
 // must not silently become an editable user-scope installation.
@@ -757,9 +742,7 @@ pub fn ManagePlugins(
                             Ok(loaded) => {
                                 let mut groups =
                                     indexmap::IndexMap::<String, Vec<LoadedPlugin>>::new();
-                                for plugin in filter_managed_disabled_plugins(
-                                    loaded.enabled.into_iter().chain(loaded.disabled).collect(),
-                                ) {
+                                for plugin in loaded.enabled.into_iter().chain(loaded.disabled) {
                                     let marketplace = plugin
                                         .source
                                         .split('@')
@@ -770,18 +753,10 @@ pub fn ManagePlugins(
                                     groups.entry(marketplace).or_default().push(plugin);
                                 }
                                 let mut groups = groups.into_iter().collect::<Vec<_>>();
-                                // First-match pinning verbatim per source; not
-                                // antisymmetric, so it sorts through the
-                                // non-validating JS-sort primitive
-                                // (utils/js_sort.rs; mirror PR #7).
-                                crate::utils::js_sort::sort_by(&mut groups, |(a, _), (b, _)| {
-                                    if a == "claude-plugin-directory" {
-                                        std::cmp::Ordering::Less
-                                    } else if b == "claude-plugin-directory" {
-                                        std::cmp::Ordering::Greater
-                                    } else {
-                                        crate::tools::grep_tool::javascript_locale_compare(a, b)
-                                    }
+                                // @nyan: CC pins Anthropic's official directory
+                                // first; nyan sorts every marketplace by name.
+                                groups.sort_by(|(a, _), (b, _)| {
+                                    crate::tools::grep_tool::javascript_locale_compare(a, b)
                                 });
                                 let marketplaces = groups.iter().map(|(m, _)| m.clone()).collect();
                                 let mut plugins = Vec::new();
@@ -1438,7 +1413,7 @@ pub fn ManagePlugins(
                                 }
                                 crate::utils::plugins::cache_utils::clear_all_caches();
                                 result(Some(format!(
-                                    "✓ Disabled {} in .claude/settings.local.json. Run /reload-plugins to apply.",
+                                    "✓ Disabled {} in .nyan/settings.local.json. Run /reload-plugins to apply.",
                                     selected.plugin.name
                                 )));
                                 complete(());
@@ -1592,7 +1567,7 @@ pub fn ManagePlugins(
         ViewState::PluginOptions=>{let result=props.set_result.clone();let complete=props.on_manage_complete.clone();let parent=props.set_view_state.clone();let name=selected.plugin.name.clone();return element!{PluginOptionsFlow(plugin:selected.plugin.clone(),plugin_id:plugin_id(&selected),on_done:move|(outcome,detail):(String,Option<String>)|{let message=match outcome.as_str(){"configured"=>format!("✓ Enabled and configured {name}. Run /reload-plugins to apply."),"skipped"=>format!("✓ Enabled {name}. Run /reload-plugins to apply."),"error"=>format!("Failed to save configuration: {}",detail.as_deref().unwrap_or("undefined")),_=>return};result(Some(message));complete(());parent(ParentViewState::Menu);})}.into_any();},
         ViewState::ConfiguringOptions(schema)=>{let id=plugin_id(&selected);let initial=options::load_plugin_options(&id);let result=props.set_result.clone();return element!{PluginOptionsDialog(title:format!("Configure {}",selected.plugin.name),subtitle:"Plugin options".to_owned(),config_schema:schema.clone(),initial_values:Some(initial),on_save:{let state=state.clone();move|values|{let state=state.clone();let(id,schema,result)=(id.clone(),schema.clone(),result.clone());launch(async move{match options::save_plugin_options(&id,&values,&schema){Ok(())=>{crate::utils::plugins::cache_utils::clear_all_caches();result(Some("Configuration saved. Run /reload-plugins for changes to take effect.".into()));},Err(error)=>change(&state,|s|s.error=Some(format!("Failed to save configuration: {error}")))}change(&state,|s|s.view=ViewState::PluginDetails);});}},on_cancel:{let state=state.clone();move|_|change(&state,|s|s.view=ViewState::PluginDetails)})}.into_any();},
         ViewState::Configuring(config)=>{let result=props.set_result.clone();return element!{PluginOptionsDialog(title:format!("Configure {}",config.manifest["name"].as_str().unwrap_or("undefined")),subtitle:format!("Plugin: {}",selected.plugin.name),config_schema:config.config_schema,initial_values:Some(config.existing_config),on_save:{let state=state.clone();move|values|{let state=state.clone();let(selected,result)=(selected.clone(),result.clone());launch(async move{let Some(path)=mcpb_path(&selected.plugin)else{change(&state,|s|{s.error=Some("No MCPB file found".into());s.view=ViewState::PluginDetails;});return;};match crate::utils::plugins::mcpb_handler::load_mcpb_file(&path,&selected.plugin.path,&plugin_id(&selected),None,Some(&values),false).await{Ok(_)=>{change(&state,|s|{s.error=None;s.view=ViewState::PluginDetails;});result(Some("Configuration saved. Run /reload-plugins for changes to take effect.".into()));},Err(error)=>change(&state,|s|{s.error=Some(format!("Failed to save configuration: {error}"));s.view=ViewState::PluginDetails;})}});}},on_cancel:{let state=state.clone();move|_|change(&state,|s|s.view=ViewState::PluginDetails)})}.into_any();},
-        ViewState::ConfirmProjectUninstall=>return element!{View(flex_direction:FlexDirection::Column){Text(content:format!("{} is enabled in .claude/settings.json (shared with your team)",selected.plugin.name),weight:Weight::Bold,color:theme.warning)View(margin_top:1u32,flex_direction:FlexDirection::Column){Text(content:"Disable it just for you in .claude/settings.local.json?")Text(content:"This has the same effect as uninstalling, without affecting other contributors.",dim:true)}#(snapshot.error.clone().map(|error|element!{View(margin_top:1u32){Text(content:error,color:theme.error)}}))View(margin_top:1u32){#(if snapshot.processing{element!{Text(content:"Disabling…",dim:true)}.into_any()}else{element!{ManageShortcuts(kind:"project")}.into_any()})}}}.into_any(),
+        ViewState::ConfirmProjectUninstall=>return element!{View(flex_direction:FlexDirection::Column){Text(content:format!("{} is enabled in .nyan/settings.json (shared with your team)",selected.plugin.name),weight:Weight::Bold,color:theme.warning)View(margin_top:1u32,flex_direction:FlexDirection::Column){Text(content:"Disable it just for you in .nyan/settings.local.json?")Text(content:"This has the same effect as uninstalling, without affecting other contributors.",dim:true)}#(snapshot.error.clone().map(|error|element!{View(margin_top:1u32){Text(content:error,color:theme.error)}}))View(margin_top:1u32){#(if snapshot.processing{element!{Text(content:"Disabling…",dim:true)}.into_any()}else{element!{ManageShortcuts(kind:"project")}.into_any()})}}}.into_any(),
         ViewState::ConfirmDataCleanup(size)=>return element!{View(flex_direction:FlexDirection::Column){Text(content:format!("{} has {size} of persistent data",selected.plugin.name),weight:Weight::Bold)View(margin_top:1u32,flex_direction:FlexDirection::Column){Text(content:"Delete it along with the plugin?")Text(content:crate::utils::plugins::plugin_directories::plugin_data_dir_path(&plugin_id(&selected)).to_string_lossy().into_owned(),dim:true)}#(snapshot.error.clone().map(|error|element!{View(margin_top:1u32){Text(content:error,color:theme.error)}}))View(margin_top:1u32){#(if snapshot.processing{element!{Text(content:"Uninstalling…",dim:true)}.into_any()}else{element!{View{Text(content:"y",weight:Weight::Bold)Text(content:" to delete · ")Text(content:"n",weight:Weight::Bold)Text(content:" to keep · ")Text(content:"esc",weight:Weight::Bold)Text(content:" to cancel")}}.into_any()})}}}.into_any(),
         ViewState::PluginDetails=>{let enabled=is_enabled(&plugin_id(&selected));let selected_errors=errors.iter().filter(|e|error_plugin(e).as_deref()==Some(&selected.plugin.name)||e.source()==plugin_id(&selected)||e.source().starts_with(&format!("{}@",selected.plugin.name))).collect::<Vec<_>>();return element!{View(flex_direction:FlexDirection::Column){Text(content:format!("{} @ {}",selected.plugin.name,selected.marketplace),weight:Weight::Bold)View{Text(content:"Scope: ",dim:true)Text(content:if selected.scope.is_empty(){"user".into()}else{selected.scope.clone()})}#(selected.plugin.manifest.version.clone().filter(|v|!v.is_empty()).map(|version|element!{View{Text(content:"Version: ",dim:true)Text(content:version)}}))#(selected.plugin.manifest.description.clone().filter(|v|!v.is_empty()).map(|description|element!{View(margin_bottom:1u32){Text(content:description)}}))#(selected.plugin.manifest.author.as_ref().map(|author|element!{View{Text(content:"Author: ",dim:true)Text(content:author["name"].as_str().unwrap_or_default().to_owned())}}))View(margin_bottom:1u32){Text(content:"Status: ",dim:true)Text(content:if enabled{"Enabled"}else{"Disabled"},color:if enabled{theme.success}else{theme.warning})#(selected.pending_update.then(||element!{Text(content:" · Marked for update",color:theme.suggestion)}))}PluginComponentsDisplay(plugin:Some(selected.plugin.clone()),marketplace:selected.marketplace.clone())#((!selected_errors.is_empty()).then(||element!{View(flex_direction:FlexDirection::Column,margin_bottom:1u32){Text(content:format!("{} {}:",selected_errors.len(),if selected_errors.len()==1{"error"}else{"errors"}),weight:Weight::Bold,color:theme.error)#(selected_errors.iter().map(|error|element!{View(flex_direction:FlexDirection::Column,margin_left:2u32){Text(content:format_error_message(error),color:theme.error)#(get_error_guidance(error).map(|guidance|element!{Text(content:format!("{} {guidance}",figures.arrow_right),dim:true,italic:true)}))}}))}}))View(margin_top:1u32,flex_direction:FlexDirection::Column){#(menu.iter().enumerate().map(|(index,(label,_))|element!{View{Text(content:if index==snapshot.details_index{format!("{} ",figures.pointer)}else{"  ".into()})Text(content:label.clone(),weight:if index==snapshot.details_index{Weight::Bold}else{Weight::Normal},color:if label.contains("Uninstall"){Some(theme.error)}else if label.contains("Update"){Some(theme.suggestion)}else{None})}}))}#(snapshot.processing.then(||element!{View(margin_top:1u32){Text(content:"Processing…")}}))#(snapshot.error.clone().map(|error|element!{View(margin_top:1u32){Text(content:error,color:theme.error)}}))View(margin_top:1u32){ManageShortcuts(kind:"details")}}}.into_any();},_=>{}
     }
@@ -1632,7 +1607,7 @@ pub fn ManagePlugins(
                     change(&state, |s| s.view = ViewState::PluginList);
                 }
             });
-            return match client.transport{crate::services::mcp::types::Transport::Stdio=>element!{crate::components::mcp::mcp_stdio_server_menu::MCPStdioServerMenu(server:Some(client),on_view_tools:{let state=state.clone();move|_|change(&state,|s|s.view=ViewState::McpTools(selected.clone()))},on_cancel:{let state=state.clone();move|_|change(&state,|s|s.view=ViewState::PluginList)},on_complete:on_complete,borderless:true)}.into_any(),crate::services::mcp::types::Transport::Sse|crate::services::mcp::types::Transport::Http|crate::services::mcp::types::Transport::ClaudeAiProxy=>element!{crate::components::mcp::mcp_remote_server_menu::MCPRemoteServerMenu(server:Some(client),on_view_tools:{let state=state.clone();move|_|change(&state,|s|s.view=ViewState::McpTools(selected.clone()))},on_cancel:{let state=state.clone();move|_|change(&state,|s|s.view=ViewState::PluginList)},on_complete:on_complete,borderless:true)}.into_any(),_=>{change(&state,|s|s.view=ViewState::PluginList);element!{View}.into_any()}};
+            return match client.transport{crate::services::mcp::types::Transport::Stdio=>element!{crate::components::mcp::mcp_stdio_server_menu::MCPStdioServerMenu(server:Some(client),on_view_tools:{let state=state.clone();move|_|change(&state,|s|s.view=ViewState::McpTools(selected.clone()))},on_cancel:{let state=state.clone();move|_|change(&state,|s|s.view=ViewState::PluginList)},on_complete:on_complete,borderless:true)}.into_any(),crate::services::mcp::types::Transport::Sse|crate::services::mcp::types::Transport::Http=>element!{crate::components::mcp::mcp_remote_server_menu::MCPRemoteServerMenu(server:Some(client),on_view_tools:{let state=state.clone();move|_|change(&state,|s|s.view=ViewState::McpTools(selected.clone()))},on_cancel:{let state=state.clone();move|_|change(&state,|s|s.view=ViewState::PluginList)},on_complete:on_complete,borderless:true)}.into_any(),_=>{change(&state,|s|s.view=ViewState::PluginList);element!{View}.into_any()}};
         }
         ViewState::McpTools(client) => {
             let (selected, back) = (client.clone(), client.clone());

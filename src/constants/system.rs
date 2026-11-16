@@ -3,14 +3,15 @@
 //! Critical system constants extracted to break circular dependencies
 //! (CC file header). Used by side queries and main API attribution.
 
-const DEFAULT_PREFIX: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
-const AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX: &str = "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.";
-const AGENT_SDK_PREFIX: &str = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+const DEFAULT_PREFIX: &str = "You are nyan, an AI assistant.";
+const AGENT_SDK_NON_INTERACTIVE_PRESET_PREFIX: &str =
+    "You are nyan, an AI assistant running in a non-interactive session.";
+const AGENT_SDK_PREFIX: &str = "You are a nyan agent.";
 
 /// Maps to: CC `constants/system.ts:14-18` `CLI_SYSPROMPT_PREFIX_VALUES`.
 const CLI_SYSPROMPT_PREFIX_VALUES: [&str; 3] = [
     DEFAULT_PREFIX,
-    AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX,
+    AGENT_SDK_NON_INTERACTIVE_PRESET_PREFIX,
     AGENT_SDK_PREFIX,
 ];
 
@@ -26,24 +27,17 @@ pub static CLI_SYSPROMPT_PREFIXES: std::sync::LazyLock<std::collections::HashSet
 
 /// Maps to: CC `getCLISyspromptPrefix(options?)`.
 ///
-/// - Vertex: always DEFAULT_PREFIX
-/// - Non-interactive + append system prompt: Agent SDK Claude Code preset
-/// - Non-interactive: Agent SDK prefix
+/// @nyan: all session modes identify as nyan, without vendor or SDK claims.
+/// - Non-interactive + append system prompt: non-interactive assistant prefix
+/// - Non-interactive: agent prefix
 /// - Interactive: DEFAULT_PREFIX
 pub fn get_cli_sysprompt_prefix(
     is_non_interactive: bool,
     has_append_system_prompt: bool,
 ) -> CliSyspromptPrefix {
-    // Maps to: CC `if (apiProvider === 'vertex') return DEFAULT_PREFIX`.
-    if matches!(
-        crate::utils::model::providers::get_api_provider(),
-        crate::utils::model::providers::ApiProvider::Vertex
-    ) {
-        return DEFAULT_PREFIX;
-    }
     if is_non_interactive {
         if has_append_system_prompt {
-            return AGENT_SDK_CLAUDE_CODE_PRESET_PREFIX;
+            return AGENT_SDK_NON_INTERACTIVE_PRESET_PREFIX;
         }
         return AGENT_SDK_PREFIX;
     }
@@ -56,10 +50,10 @@ pub fn get_cli_sysprompt_prefix(
 /// The GrowthBook read is the source-controlled
 /// `FeatureFlag::AttributionHeader` switch, not a live GrowthBook client.
 ///
-/// @nyan offset: default `CLAUDE_CODE_ATTRIBUTION_HEADER` to `0` when unset
+/// @nyan offset: default `NYAN_ATTRIBUTION_HEADER` to `0` when unset
 /// so the official gate skips assembling the header on production requests.
 fn is_attribution_header_enabled() -> bool {
-    let value = crate::utils::process_env::var("CLAUDE_CODE_ATTRIBUTION_HEADER")
+    let value = crate::utils::process_env::var("NYAN_ATTRIBUTION_HEADER")
         .unwrap_or_else(|| "0".to_string());
     if crate::utils::env_utils::is_env_defined_falsy(Some(&value)) {
         return false;
@@ -86,9 +80,9 @@ pub fn get_attribution_header(fingerprint: &str) -> String {
     }
     // Maps to: CC `const version = \`${MACRO.VERSION}.${fingerprint}\``
     let version = format!("{}.{}", crate::constants::product::VERSION, fingerprint);
-    // Maps to: CC `process.env.CLAUDE_CODE_ENTRYPOINT ?? 'unknown'`
-    let entrypoint = crate::utils::process_env::var("CLAUDE_CODE_ENTRYPOINT")
-        .unwrap_or_else(|| "unknown".to_string());
+    // Maps to: CC `process.env.NYAN_ENTRYPOINT ?? 'unknown'`
+    let entrypoint =
+        crate::utils::process_env::var("NYAN_ENTRYPOINT").unwrap_or_else(|| "unknown".to_string());
     // cch=00000 placeholder is Bun-native attestation — omitted in Nyan.
     format!("x-anthropic-billing-header: cc_version={version}; cc_entrypoint={entrypoint};")
 }
@@ -102,39 +96,45 @@ mod tests {
     fn cli_sysprompt_prefix_interactive_is_default() {
         assert_eq!(
             get_cli_sysprompt_prefix(false, false),
-            "You are Claude Code, Anthropic's official CLI for Claude."
+            "You are nyan, an AI assistant."
         );
     }
 
     #[test]
-    fn cli_sysprompt_prefix_print_mode_matches_official_agent_sdk_variants() {
+    fn cli_sysprompt_prefix_print_mode_uses_nyan_identity() {
         let _env = TEST_ENV_LOCK.lock().unwrap();
-        let _vertex = EnvVarGuard::unset("CLAUDE_CODE_USE_VERTEX");
         // CC `getCLISyspromptPrefix({ isNonInteractive: true })` — `-p` / SDK.
         assert_eq!(
             get_cli_sysprompt_prefix(true, false),
-            "You are a Claude agent, built on Anthropic's Claude Agent SDK."
+            "You are a nyan agent."
         );
         // CC `hasAppendSystemPrompt: true` — `-p --append-system-prompt`.
         assert_eq!(
             get_cli_sysprompt_prefix(true, true),
-            "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK."
+            "You are nyan, an AI assistant running in a non-interactive session."
         );
     }
 
     #[test]
-    fn cli_sysprompt_prefixes_contains_every_official_variant() {
+    fn cli_sysprompt_prefixes_contains_every_nyan_variant() {
         assert!(CLI_SYSPROMPT_PREFIXES.contains(get_cli_sysprompt_prefix(false, false)));
+        assert!(CLI_SYSPROMPT_PREFIXES.contains(get_cli_sysprompt_prefix(false, true)));
         assert!(CLI_SYSPROMPT_PREFIXES.contains(get_cli_sysprompt_prefix(true, false)));
         assert!(CLI_SYSPROMPT_PREFIXES.contains(get_cli_sysprompt_prefix(true, true)));
         assert_eq!(CLI_SYSPROMPT_PREFIXES.len(), 3);
         assert!(!CLI_SYSPROMPT_PREFIXES.contains("You are Claude Code."));
+        for prefix in CLI_SYSPROMPT_PREFIXES.iter() {
+            assert!(prefix.contains("nyan"));
+            assert!(!prefix.contains("Claude"));
+            assert!(!prefix.contains("Anthropic"));
+            assert!(!prefix.contains("SDK"));
+        }
     }
 
     #[test]
     fn attribution_header_includes_fingerprint_when_enabled() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_ATTRIBUTION_HEADER", "1");
+        crate::utils::process_env::set("NYAN_ATTRIBUTION_HEADER", "1");
         let header = get_attribution_header("abc");
         assert!(header.contains("cc_version="), "header={header:?}");
         assert!(header.contains(".abc"));
@@ -144,7 +144,7 @@ mod tests {
     #[test]
     fn attribution_header_defaults_to_disabled_when_env_unset() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_ATTRIBUTION_HEADER");
+        crate::utils::process_env::remove("NYAN_ATTRIBUTION_HEADER");
         assert!(get_attribution_header("abc").is_empty());
     }
 }

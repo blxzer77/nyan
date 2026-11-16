@@ -214,7 +214,7 @@ async fn chat_request_reaches_the_wire_with_the_key_path_and_body() {
         None,
         "no Anthropic header reaches OpenAI"
     );
-    assert_eq!(sent.header("x-app"), Some("cli"));
+    assert_eq!(sent.header("x-app"), None);
     let body = &sent.body;
     assert_eq!(body["model"], "gpt-5");
     assert_eq!(body["stream"], true);

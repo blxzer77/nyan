@@ -10,7 +10,6 @@
 use std::path::{Path, PathBuf};
 
 use crate::memdir::paths::get_memory_base_dir;
-use crate::utils::process_env::JsTruthy;
 
 /// Maps to CC `agentMemory.ts#AgentMemoryScope`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -39,7 +38,7 @@ pub fn sanitize_agent_type_for_path(agent_type: &str) -> String {
 pub fn get_agent_memory_dir(agent_type: &str, scope: AgentMemoryScope, cwd: &Path) -> PathBuf {
     let dir_name = sanitize_agent_type_for_path(agent_type);
     match scope {
-        AgentMemoryScope::Project => cwd.join(".claude").join("agent-memory").join(dir_name),
+        AgentMemoryScope::Project => cwd.join(".nyan").join("agent-memory").join(dir_name),
         AgentMemoryScope::Local => get_local_agent_memory_dir(&dir_name, cwd),
         AgentMemoryScope::User => get_memory_base_dir().join("agent-memory").join(dir_name),
     }
@@ -68,21 +67,11 @@ pub fn is_agent_memory_path(absolute_path: &Path, cwd: &Path) -> bool {
     let normalized = normalize_lexically(absolute_path);
     let memory_base = get_memory_base_dir();
     if is_strictly_inside(&normalized, &memory_base.join("agent-memory"))
-        || is_strictly_inside(&normalized, &cwd.join(".claude").join("agent-memory"))
+        || is_strictly_inside(&normalized, &cwd.join(".nyan").join("agent-memory"))
     {
         return true;
     }
-    if let Some(remote_memory_dir) =
-        crate::utils::process_env::var("CLAUDE_CODE_REMOTE_MEMORY_DIR").truthy()
-    {
-        let remote_projects = PathBuf::from(remote_memory_dir).join("projects");
-        normalized.starts_with(&remote_projects)
-            && normalized.components().any(|component| {
-                component.as_os_str() == std::ffi::OsStr::new("agent-memory-local")
-            })
-    } else {
-        is_strictly_inside(&normalized, &cwd.join(".claude").join("agent-memory-local"))
-    }
+    is_strictly_inside(&normalized, &cwd.join(".nyan").join("agent-memory-local"))
 }
 
 /// Maps to CC `agentMemory.ts#getAgentMemoryEntrypoint`.
@@ -100,7 +89,7 @@ pub fn get_memory_scope_display(memory: Option<AgentMemoryScope>, cwd: &Path) ->
         Some(AgentMemoryScope::User) => {
             format!("User ({}/agent-memory/)", get_memory_base_dir().display())
         }
-        Some(AgentMemoryScope::Project) => "Project (.claude/agent-memory/)".to_string(),
+        Some(AgentMemoryScope::Project) => "Project (.nyan/agent-memory/)".to_string(),
         Some(AgentMemoryScope::Local) => {
             format!(
                 "Local ({}/)",
@@ -129,7 +118,7 @@ pub fn load_agent_memory_prompt(agent_type: &str, scope: AgentMemoryScope, cwd: 
     let mut extra_guidelines = vec![scope_note.to_string()];
     // CC `agentMemory.ts:167-175`: `x && x.trim().length > 0 ? [x]` — tested
     // trimmed, passed as is (as `memdir.rs` does).
-    if let Some(extra) = crate::utils::process_env::var("CLAUDE_COWORK_MEMORY_EXTRA_GUIDELINES")
+    if let Some(extra) = crate::utils::process_env::var("NYAN_MEMORY_EXTRA_GUIDELINES")
         .filter(|value| !value.trim().is_empty())
     {
         extra_guidelines.push(extra);
@@ -143,32 +132,7 @@ pub fn load_agent_memory_prompt(agent_type: &str, scope: AgentMemoryScope, cwd: 
 }
 
 fn get_local_agent_memory_dir(dir_name: &str, cwd: &Path) -> PathBuf {
-    if let Some(remote_memory_dir) =
-        crate::utils::process_env::var("CLAUDE_CODE_REMOTE_MEMORY_DIR").truthy()
-    {
-        // CC agentMemory.ts:35-36:
-        // `sanitizePath(findCanonicalGitRoot(getProjectRoot()) ?? getProjectRoot())`
-        // — the canonical-worktree git root (#24382) run through the shared
-        // sanitizePath (200-char cap + hash suffix), not a bespoke sanitizer.
-        // Deviation: CC anchors on `getProjectRoot()` (STATE.projectRoot, never
-        // updated mid-session); this port has no projectRoot slot yet, so
-        // `get_original_cwd()` is the nearest anchor — unlike CC's, it IS
-        // updated by the worktree tools (exit_worktree_tool), so the remote
-        // namespace can drift across worktree enter/exit.
-        let project_root = crate::bootstrap::state::get_original_cwd();
-        let canonical =
-            crate::utils::git::find_canonical_git_root(&project_root).unwrap_or(project_root);
-        return PathBuf::from(remote_memory_dir)
-            .join("projects")
-            .join(crate::utils::session_storage::sanitize_path(
-                &canonical.display().to_string(),
-            ))
-            .join("agent-memory-local")
-            .join(dir_name);
-    }
-    cwd.join(".claude")
-        .join("agent-memory-local")
-        .join(dir_name)
+    cwd.join(".nyan").join("agent-memory-local").join(dir_name)
 }
 
 #[cfg(test)]
@@ -179,7 +143,6 @@ mod tests {
     #[test]
     fn agent_memory_paths_match_official_scopes_and_colon_sanitizing() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _remote_memory = EnvVarGuard::unset("CLAUDE_CODE_REMOTE_MEMORY_DIR");
         let root = std::env::temp_dir().join(format!(
             "nyan-agent-memory-{}",
             uuid::Uuid::new_v4().simple()
@@ -193,30 +156,30 @@ mod tests {
         );
         assert!(
             get_agent_memory_dir("plugin:reviewer", AgentMemoryScope::Project, cwd)
-                .ends_with(".claude/agent-memory/plugin-reviewer")
+                .ends_with(".nyan/agent-memory/plugin-reviewer")
         );
         assert!(
             get_agent_memory_dir("plugin:reviewer", AgentMemoryScope::Local, cwd)
-                .ends_with(".claude/agent-memory-local/plugin-reviewer")
+                .ends_with(".nyan/agent-memory-local/plugin-reviewer")
         );
         assert!(is_agent_memory_path(
-            &cwd.join(".claude/agent-memory/reviewer/MEMORY.md"),
+            &cwd.join(".nyan/agent-memory/reviewer/MEMORY.md"),
             cwd,
         ));
         assert!(is_agent_memory_path(
-            &cwd.join(".claude/agent-memory-local/reviewer/MEMORY.md"),
+            &cwd.join(".nyan/agent-memory-local/reviewer/MEMORY.md"),
             cwd,
         ));
 
-        crate::utils::process_env::set("CLAUDE_CODE_REMOTE_MEMORY_DIR", root.join("remote"));
+        // The retired remote memory directory no longer relocates local memory.
+        let _remote_memory = EnvVarGuard::set("NYAN_REMOTE_MEMORY_DIR", root.join("remote"));
         let local = get_agent_memory_dir("plugin:reviewer", AgentMemoryScope::Local, cwd);
         assert!(
             local
                 .to_string_lossy()
                 .contains("agent-memory-local/plugin-reviewer")
         );
-        assert!(local.to_string_lossy().contains("projects"));
-        crate::utils::process_env::remove("CLAUDE_CODE_REMOTE_MEMORY_DIR");
+        assert_eq!(local, cwd.join(".nyan/agent-memory-local/plugin-reviewer"));
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -226,7 +189,7 @@ mod tests {
             "nyan-agent-memory-prompt-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let memory_dir = root.join(".claude/agent-memory/reviewer");
+        let memory_dir = root.join(".nyan/agent-memory/reviewer");
         std::fs::create_dir_all(&memory_dir).unwrap();
         std::fs::write(memory_dir.join("MEMORY.md"), "- Prefer focused reviews\n").unwrap();
 

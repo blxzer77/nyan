@@ -14,11 +14,6 @@ use crate::commands::resume::resume::ResumeCommand;
 use crate::commands::skills::skills::SkillsCommand;
 use crate::commands::{doctor, mcp, memory, model, permissions, resume, theme};
 use crate::components::bash_mode_progress::BashModeProgress;
-use crate::components::desktop_handoff::DesktopHandoffState;
-use crate::components::desktop_upsell::{
-    DesktopUpsellDone, DesktopUpsellStartup, DesktopUpsellStartupSnapshot,
-    get_desktop_upsell_config, should_show_desktop_upsell_startup,
-};
 use crate::components::diff::DiffDialogDone;
 use crate::components::exit_flow::{ExitFlow, ExitFlowDone};
 use crate::components::export_dialog::{ExportDialog, ExportDialogResult};
@@ -30,9 +25,6 @@ use crate::components::permissions::{
     PermissionRequest, SandboxPermissionRequest, WorkerPendingPermission,
 };
 use crate::components::prompt_input::{PromptInput, PromptSubmission};
-use crate::components::remote_callout::{
-    RemoteCallout, RemoteCalloutDone, RemoteCalloutSnapshot, should_show_remote_callout,
-};
 use crate::components::sandbox::SandboxSettings;
 use crate::components::settings::{Settings, SettingsTab};
 use crate::components::skills::skills_menu::SkillsMenuDone;
@@ -63,7 +55,6 @@ use crate::types::message::{
 };
 use crate::types::permissions::{PermissionPromptChoice, PermissionPromptResponse, ToolUseConfirm};
 use crate::utils::classifier_approvals::{ClassifierApprovalsState, ClassifierChecking};
-use crate::utils::config::GlobalConfig;
 use crate::utils::handle_prompt_submit::{HandlePromptSubmit, HandlePromptSubmitResult};
 use crate::utils::messages::{history_model_messages, project_history_rows};
 use crate::utils::permissions::permissions::{apply_prompt_choice, apply_prompt_response};
@@ -207,40 +198,6 @@ impl ReplProps {
         }
         .into_any()
     }
-}
-
-/// Maps to CC `screens/REPL.tsx` startup dialog state seeds:
-/// `showRemoteCallout` and `showDesktopUpsellStartup`.
-///
-/// Safety boundary: official REPL computes these by reading app state, global
-/// config, GrowthBook, OAuth tokens, and bridge entitlement. Nyan consumes an
-/// explicit snapshot context; the read-only producer below never writes config,
-/// initializes GrowthBook, opens network/bridge transports, or launches Desktop.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ReplStartupDialogSnapshot {
-    pub remote_callout: Option<RemoteCalloutSnapshot>,
-    pub desktop_upsell: Option<DesktopUpsellStartupSnapshot>,
-    pub desktop_handoff_state: DesktopHandoffState,
-    pub desktop_handoff_error: Option<String>,
-    pub desktop_handoff_download_message: Option<String>,
-}
-
-fn node_platform_from_rust() -> String {
-    match std::env::consts::OS {
-        "macos" => "darwin",
-        "windows" => "win32",
-        other => other,
-    }
-    .to_string()
-}
-
-fn node_arch_from_rust() -> String {
-    match std::env::consts::ARCH {
-        "x86_64" => "x64",
-        "aarch64" => "arm64",
-        other => other,
-    }
-    .to_string()
 }
 
 /// Maps to: CC `screens/REPL.tsx` `const mainLoopModel = useMainLoopModel()`:
@@ -868,31 +825,6 @@ fn apply_repl_query_turn_context(
     query_content_replacement_state
 }
 
-impl ReplStartupDialogSnapshot {
-    /// Maps to CC `screens/REPL.tsx` startup dialog seed construction for
-    /// `shouldShowDesktopUpsellStartup()` using already-loaded config.
-    ///
-    /// Remote Callout remains an explicit seam until bridge/auth runtime state
-    /// is ported: guessing the official `feature('BRIDGE_MODE')`, OAuth-token,
-    /// and bridge-entitlement chain would surface an action Nyan cannot yet
-    /// safely execute.
-    pub fn from_readonly_global_config(global_config: &GlobalConfig) -> Self {
-        Self {
-            remote_callout: None,
-            desktop_upsell: Some(DesktopUpsellStartupSnapshot {
-                platform: node_platform_from_rust(),
-                arch: node_arch_from_rust(),
-                config: get_desktop_upsell_config(),
-                desktop_upsell_dismissed: global_config.desktop_upsell_dismissed.unwrap_or(false),
-                desktop_upsell_seen_count: global_config.desktop_upsell_seen_count.unwrap_or(0),
-            }),
-            desktop_handoff_state: DesktopHandoffState::Checking,
-            desktop_handoff_error: None,
-            desktop_handoff_download_message: None,
-        }
-    }
-}
-
 /// Maps to: CC `screens/REPL.tsx`:2664-2683, the return type of
 /// `getFocusedInputDialog()`: the one dialog that owns input focus, if any.
 ///
@@ -910,9 +842,6 @@ enum FocusedInputDialog {
     ToolPermission,
     WorkerSandboxPermission,
     Elicitation,
-    RemoteCallout,
-    PluginHint,
-    DesktopUpsell,
 }
 
 impl FocusedInputDialog {
@@ -925,9 +854,6 @@ impl FocusedInputDialog {
             Self::ToolPermission => "tool-permission",
             Self::WorkerSandboxPermission => "worker-sandbox-permission",
             Self::Elicitation => "elicitation",
-            Self::RemoteCallout => "remote-callout",
-            Self::PluginHint => "plugin-hint",
-            Self::DesktopUpsell => "desktop-upsell",
         }
     }
 }
@@ -954,10 +880,6 @@ struct FocusedInputDialogInput {
     has_worker_sandbox_permission: bool,
     /// `elicitation.queue[0]`
     has_elicitation: bool,
-    show_remote_callout: bool,
-    /// `hintRecommendation`
-    has_hint_recommendation: bool,
-    show_desktop_upsell_startup: bool,
 }
 
 /// Maps to: CC `screens/REPL.tsx`:2684-2760 `getFocusedInputDialog()`.
@@ -992,15 +914,6 @@ fn get_focused_input_dialog(input: &FocusedInputDialogInput) -> Option<FocusedIn
     }
     if allow && input.has_elicitation {
         return Some(Elicitation);
-    }
-    if allow && input.show_remote_callout {
-        return Some(RemoteCallout);
-    }
-    if allow && input.has_hint_recommendation {
-        return Some(PluginHint);
-    }
-    if allow && input.show_desktop_upsell_startup {
-        return Some(DesktopUpsell);
     }
     None
 }
@@ -1549,23 +1462,6 @@ impl QueryPumpBurstProfile {
     }
 }
 
-fn current_time_millis() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .try_into()
-        .unwrap_or(u64::MAX)
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct SpeculationAcceptanceOutcome {
-    input: String,
-    clean_messages: Vec<Message>,
-    result: Option<crate::services::prompt_suggestion::speculation::SpeculationResult>,
-    active: crate::state::app_state_store::ActiveSpeculationState,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 struct McpPromptSlashCommandSubmit {
     input: String,
@@ -1584,7 +1480,7 @@ struct McpPromptSlashCommandSubmit {
 /// (`HandlerMut<PromptSubmission>`), and `handlePromptSubmit` must await
 /// `processUserInput` — which runs the `UserPromptSubmit` hooks, and those can
 /// erase the submission or stop the turn. So the callback resolves its own
-/// early-return branches (bash mode, speculation accept, MCP prompt commands)
+/// early-return branches (bash mode, MCP prompt commands)
 /// and passes the rest here, the same shape the MCP prompt path already uses.
 #[derive(Clone)]
 struct PromptQuerySubmit {
@@ -1735,6 +1631,40 @@ fn append_prompt_submit_result(
 ) {
     append_history_rows(history_state, result.messages);
     schedule_pending_query_messages(pending_responses, result.pending);
+}
+
+fn has_turn_interruption(stores: &ResumeRestoreStores) -> bool {
+    stores.turn_interruption_state
+        == Some(crate::utils::conversation::TurnInterruptionState::InterruptedPrompt)
+}
+
+/// Whether a query on `messages` as-is continues a turn: the last message the
+/// API would receive must be a user prompt/tool_result, never an assistant
+/// reply (which would go out as a prefill). System, progress and hook rows are
+/// dropped by `normalize_messages_for_api` and attachments fold into the
+/// neighbouring user message, so none of them decide it.
+fn history_awaits_assistant(messages: &[Message]) -> bool {
+    messages
+        .iter()
+        .rev()
+        .find(|message| {
+            !matches!(
+                message,
+                Message::System(_)
+                    | Message::Progress(_)
+                    | Message::HookResult(_)
+                    | Message::Attachment(_)
+            )
+        })
+        .is_some_and(|message| matches!(message, Message::User(_)))
+}
+
+fn clear_turn_interruption(stores: &mut State<ResumeRestoreStores>) {
+    if has_turn_interruption(&stores.read()) {
+        let mut next = stores.read().clone();
+        next.turn_interruption_state = None;
+        stores.set(next);
+    }
 }
 
 /// Maps to: CC `REPL.tsx:3496` `setMessages(oldMessages => [...oldMessages,
@@ -2327,6 +2257,24 @@ fn TranscriptModeFooter(
     }
 }
 
+pub(crate) const INTERRUPTED_TURN_HINT: &str = "Previous turn was interrupted · Enter to continue";
+
+/// @nyan: shown above the prompt after resuming a transcript that ends
+/// mid-turn; Enter on an empty prompt continues it (see
+/// `continue_interrupted_turn_action`).
+#[component]
+fn InterruptedTurnHint(hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    let theme = hooks
+        .try_use_context::<crate::utils::theme::Theme>()
+        .map(|theme| *theme)
+        .unwrap_or_else(|| *crate::utils::theme::current());
+    element! {
+        View(padding_left: 2u32) {
+            Text(content: INTERRUPTED_TURN_HINT, color: theme.warning)
+        }
+    }
+}
+
 /// Prompt-screen shorthand for [`memoized_messages_for_screen`], kept for the
 /// test harnesses: the REPL itself mounts its one Messages site through the
 /// screen-aware form in its single tree.
@@ -2468,7 +2416,6 @@ fn settings_tab_from_command(tab: LocalSettingsTab) -> SettingsTab {
     match tab {
         LocalSettingsTab::Status => SettingsTab::Status,
         LocalSettingsTab::Config => SettingsTab::Config,
-        LocalSettingsTab::Usage => SettingsTab::Usage,
     }
 }
 
@@ -2532,7 +2479,7 @@ fn local_command_ui_dismiss_result(panel: &LocalCommandPanel) -> Option<String> 
     match panel {
         // ValidatePlugin has no source Escape/dismiss callback.
         LocalCommandPanel::PluginSettings { .. } => None,
-        // Settings.tsx owns Status/Usage Esc, while Config.tsx owns Config
+        // Settings.tsx owns Status Esc, while Config.tsx owns Config
         // list-mode Esc after search cedes focus.
         LocalCommandPanel::Settings(SettingsTab::Config) => {
             Some("Config dialog dismissed".to_string())
@@ -2809,9 +2756,7 @@ struct LocalSandboxPermissionAsk {
 /// is used only by the worker branch (CC :2967-2973 sets
 /// `pendingSandboxRequest` via `setAppState`); local asks travel to the REPL
 /// over `local_ask_tx` (CC: the callback closes over
-/// `setSandboxPermissionRequestQueue`). Bridge fan-out (CC :2999-3052,
-/// `BRIDGE_MODE`) is not ported; the entry keeps the multi-resolver shape so
-/// it can land without reshaping the queue.
+/// `setSandboxPermissionRequestQueue`).
 fn create_repl_sandbox_ask_callback(
     app_store: crate::state::store::AppStore,
     local_ask_tx: async_channel::Sender<LocalSandboxPermissionAsk>,
@@ -2866,8 +2811,7 @@ async fn repl_sandbox_ask_flow(
 /// (CC :6302-6330) runs before resolution, then ALL pending asks for the same
 /// host resolve with the user's answer and are removed while other hosts stay
 /// queued (CC :6332-6343 — parallel same-domain requests). No current request
-/// is a no-op (CC `if (!currentRequest) return`). Bridge sibling cleanups (CC
-/// :6345-6354) are not ported (`BRIDGE_MODE` absent).
+/// is a no-op (CC `if (!currentRequest) return`).
 fn handle_local_sandbox_permission_response(
     queue: &mut Vec<LocalSandboxPermissionAsk>,
     response: crate::components::permissions::sandbox_permission_request::SandboxPermissionResponse,
@@ -3418,7 +3362,6 @@ fn resume(
         .and_then(|path| std::path::Path::new(path).parent())
         .map(std::path::Path::to_path_buf);
     crate::bootstrap::state::switch_session(session_id.clone(), project_dir);
-    crate::utils::asciicast::rename_recording_for_session();
     crate::utils::session_storage::reset_session_file_pointer();
     crate::utils::session_storage::clear_session_metadata();
     crate::utils::session_storage::restore_session_metadata(
@@ -3572,13 +3515,13 @@ fn apply_resume_restore_result(
 /// merging `getCoordinatorUserContext` into `userContext`.
 fn build_repl_query_prompt_contexts(
     overrides: &crate::utils::system_prompt::CliSystemPromptOverrides,
-    default_system_prompt: crate::services::api::claude::SystemPrompt,
+    default_system_prompt: crate::services::api::request::SystemPrompt,
     main_thread_agent_definition: Option<
         &crate::tools::agent_tool::load_agents_dir::AgentDefinition,
     >,
     mcp_state: &crate::state::app_state_store::McpState,
 ) -> (
-    crate::services::api::claude::SystemPrompt,
+    crate::services::api::request::SystemPrompt,
     std::collections::BTreeMap<String, String>,
     std::collections::BTreeMap<String, String>,
 ) {
@@ -3836,7 +3779,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     // Maps to: CC `REPL.tsx:939-942` mount-time env gate.
     let terminal_title_disabled = hooks.use_const(|| {
         crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_TERMINAL_TITLE").as_deref(),
+            crate::utils::process_env::var("NYAN_DISABLE_TERMINAL_TITLE").as_deref(),
         )
     });
     // CC fires generateSessionTitle as a void promise from onQueryImpl. The
@@ -3933,94 +3876,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             Option::<QueryHandle>::None
         }
     });
-    // Partial useClaudeCodeHintRecommendation/usePluginRecommendationBase:
-    // retain the existing 250ms pending-slot poll, but resolve on the published
-    // process runtime. Source void promises outlive the initiating component;
-    // only their State delivery is mount-scoped (existing REPL channel carrier).
-    let mut hint_recommendation = hooks.use_state(|| {
-        Option::<crate::utils::plugins::hint_recommendation::PluginHintRecommendation>::None
-    });
-    let hint_resolution_tasks = hooks.use_const(|| {
-        Arc::new(async_channel::unbounded::<
-            tokio::task::JoinHandle<
-                Option<crate::utils::plugins::hint_recommendation::PluginHintRecommendation>,
-            >,
-        >())
-    });
-    let hint_is_checking = hooks.use_ref(|| false);
-    hooks.use_future({
-        let tasks = hint_resolution_tasks.1.clone();
-        let mut hint_recommendation = hint_recommendation;
-        let mut hint_is_checking = hint_is_checking;
-        async move {
-            while let Ok(task) = tasks.recv().await {
-                // usePluginRecommendationBase: then(setRecommendation),
-                // catch(logError), finally(isCheckingRef = false), in order.
-                match task.await {
-                    Ok(Some(resolved)) => hint_recommendation.set(Some(resolved)),
-                    Ok(None) => {}
-                    Err(error) => crate::utils::log::log_error(crate::utils::log::LogError::new(
-                        error.to_string(),
-                    )),
-                }
-                hint_is_checking.set(false);
-            }
-        }
-    });
-    hooks.use_interval(
-        {
-            let hint_recommendation = hint_recommendation;
-            let mut hint_is_checking = hint_is_checking;
-            let tasks = hint_resolution_tasks.0.clone();
-            move || {
-                if crate::bootstrap::state::get_is_remote_mode()
-                    || hint_recommendation.read().is_some()
-                    || hint_is_checking.get()
-                {
-                    return;
-                }
-                let Some(hint) = crate::utils::claude_code_hints::get_pending_hint_snapshot()
-                else {
-                    return;
-                };
-                let Some(runtime) =
-                    crate::utils::process_runtime::runtime_handle_for_detached_work()
-                else {
-                    crate::utils::log::log_error(crate::utils::log::LogError::new(
-                        "Process runtime unavailable for plugin hint resolution".to_string(),
-                    ));
-                    return;
-                };
-                hint_is_checking.set(true);
-                let task = runtime.spawn(async move {
-                    let resolved =
-                        crate::utils::plugins::hint_recommendation::resolve_plugin_hint(&hint)
-                            .await;
-                    if let Some(resolved) = &resolved {
-                        crate::utils::debug::log_for_debugging(&format!(
-                            "[useClaudeCodeHintRecommendation] surfacing {} from {}",
-                            resolved.plugin_id, resolved.source_command,
-                        ));
-                        crate::utils::claude_code_hints::mark_shown_this_session();
-                    }
-                    // Existing native store uses value snapshots; JS reference
-                    // identity for two equal replacement hints remains partial.
-                    if crate::utils::claude_code_hints::get_pending_hint_snapshot().as_ref()
-                        == Some(&hint)
-                    {
-                        crate::utils::claude_code_hints::clear_pending_hint();
-                    }
-                    resolved
-                });
-                if tasks.try_send(task).is_err() {
-                    // Dropping a JoinHandle detaches the source promise. Its
-                    // store effects still finish if this component unmounted.
-                    hint_is_checking.set(false);
-                }
-            }
-        },
-        Some(Duration::from_millis(250)),
-    );
     // Maps to CC `/compact` sharing its abortController with the forked
     // summary request so the ordinary cancel owner can stop compaction.
     let mut active_compact_abort = hooks.use_state(|| Option::<crate::tool::AbortController>::None);
@@ -4052,10 +3907,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             crate::state::footer_metrics::refresh_git(&app_store, None);
         }
     });
-    crate::hooks::use_manage_plugins::use_manage_plugins(
-        &mut hooks,
-        !crate::bootstrap::state::get_is_remote_mode(),
-    );
+    crate::hooks::use_manage_plugins::use_manage_plugins(&mut hooks);
     // Maps to: CC REPL.tsx `useKickOffCheckAndDisable*PermissionsIfNeeded`.
     crate::utils::permissions::bypass_permissions_killswitch::use_kick_off_check_and_disable_bypass_permissions_if_needed(&mut hooks);
     crate::utils::permissions::bypass_permissions_killswitch::use_kick_off_check_and_disable_auto_mode_if_needed(&mut hooks);
@@ -4253,10 +4105,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             scheduler
         }))
     });
-    let startup_dialog_snapshot = hooks
-        .try_use_context::<ReplStartupDialogSnapshot>()
-        .map(|context| (*context).clone())
-        .unwrap_or_default();
     let status_notice_context = hooks
         .try_use_context::<StatusNoticeContext>()
         .map(|context| (*context).clone())
@@ -4268,14 +4116,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         crate::state::app_state::use_app_state(&mut hooks, |state| {
             state.channel_permission_callbacks.clone()
         });
-    let initial_show_remote_callout = startup_dialog_snapshot
-        .remote_callout
-        .as_ref()
-        .is_some_and(should_show_remote_callout);
-    let initial_show_desktop_upsell = startup_dialog_snapshot
-        .desktop_upsell
-        .as_ref()
-        .is_some_and(should_show_desktop_upsell_startup);
 
     let mut active_local_command_ui = hooks.use_state(|| Option::<ActiveLocalCommandUi>::None);
     let resume_processing_channel = hooks.use_const(|| {
@@ -4314,202 +4154,13 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             user_input_on_processing.set(None);
         }
     });
-    let speculation_acceptance_channel = hooks.use_const(|| {
-        std::sync::Arc::new(async_channel::unbounded::<SpeculationAcceptanceOutcome>())
-    });
-    let speculation_acceptance_tx = speculation_acceptance_channel.0.clone();
-    let speculation_acceptance_rx = speculation_acceptance_channel.1.clone();
-    hooks.use_future({
-        let app_store = app_store.clone();
-        let set_in_progress_tool_use_ids = set_in_progress_tool_use_ids.clone();
-        async move {
-            while let Ok(outcome) = speculation_acceptance_rx.recv().await {
-                let is_complete = matches!(
-                    outcome
-                        .result
-                        .as_ref()
-                        .and_then(|result| result.boundary.as_ref()),
-                    Some(crate::state::app_state_store::CompletionBoundary::Complete { .. })
-                );
-                let mut clean_messages = outcome.clean_messages;
-                if !is_complete {
-                    while matches!(clean_messages.last(), Some(Message::Assistant(_))) {
-                        clean_messages.pop();
-                    }
-                }
-                let feedback_message = outcome.result.as_ref().and_then(|result| {
-                    crate::services::prompt_suggestion::speculation::create_speculation_feedback_message(
-                        &clean_messages,
-                        result.boundary.as_ref(),
-                        result.time_saved_ms,
-                        app_store.get().speculation_session_time_saved_ms,
-                    )
-                });
-                let user_message = Message::User(crate::types::message::UserMessage {
-                    uuid: uuid::Uuid::new_v4().to_string(),
-                    timestamp: chrono::Utc::now(),
-                    content: vec![crate::types::message::UserContent::Text(
-                        outcome.input.clone(),
-                    )],
-                    is_compact_summary: false,
-                    plan_content: None,
-                    image_paste_ids: None,
-                    is_visible_in_transcript_only: false,
-                    mcp_meta: None,
-                    source_tool_assistant_uuid: None,
-                    permission_mode: None,
-                    origin: None,
-                    summarize_metadata: None,
-                });
-                let mut injected_messages = clean_messages.clone();
-                injected_messages.extend(feedback_message);
-                let transcript_values =
-                    crate::utils::session_storage::typed_messages_as_transcript_values(
-                        &clean_messages,
-                    );
-                let cwd = outcome
-                    .active
-                    .cache_safe_params
-                    .tool_use_context
-                    .effective_cwd();
-                let extracted = crate::utils::query_helpers::extract_read_files_from_messages(
-                    &transcript_values,
-                    &cwd.to_string_lossy(),
-                    crate::utils::file_state_cache::READ_FILE_STATE_CACHE_SIZE,
-                );
-                if !extracted.is_empty() {
-                    let mut stores = resume_restore_stores.read().clone();
-                    let mut cache = crate::utils::file_state_cache::FileStateCache::from_entries(
-                        stores.read_file_state,
-                    );
-                    for entry in extracted {
-                        let path = std::path::PathBuf::from(&entry.path);
-                        cache.set(&path, entry);
-                    }
-                    stores.read_file_state = cache.entries_lru_to_mru();
-                    resume_restore_stores.set(stores);
-                }
-
-                // Speculation-injected completed turns append as plain
-                // `Message` entries — CC appends the accepted messages whole
-                // and decides visibility at render (its
-                // `prepareMessagesForInjection`, speculation.ts:203-272, is
-                // model-side API hygiene, not a render projection). The old
-                // dual-carrier ModelOnly+Row split existed only for the
-                // hydrating projection's row drops, which the render-list
-                // filter and the per-block components now own.
-                let mut entries = history_state.read().as_ref().clone();
-                entries.extend(
-                    injected_messages
-                        .iter()
-                        .cloned()
-                        .map(HistoryEntry::Message),
-                );
-                let entries = Arc::new(entries);
-                history_state.set(Arc::clone(&entries));
-                let history = history_model_messages(&entries);
-                let rendered = project_history_rows(&entries);
-                // B3 flip-audit: CC's single accept-time clear
-                // (speculation.ts:851-857) guards on text==null &&
-                // promptId==null → return prev. This outcome-side clear is
-                // the second half of Nyan's async split (the submit-side
-                // clear already ran), so with the guard it is silent at
-                // runtime and the notification count matches CC.
-                app_store.set_state(|prev| {
-                    if prev.prompt_suggestion.text.is_none()
-                        && prev.prompt_suggestion.prompt_id.is_none()
-                    {
-                        return crate::state::store::UpdateDecision::Same(());
-                    }
-                    let mut next = (**prev).clone();
-                    next.prompt_suggestion = crate::state::app_state_store::PromptSuggestionState::default();
-                    crate::state::store::UpdateDecision::Replace {
-                        next: Arc::new(next),
-                        result: (),
-                    }
-                });
-
-                if is_complete {
-                    if let Some(pipelined) = outcome.active.pipelined_suggestion.clone() {
-                        app_store.replace_with(|state| {
-                            state.prompt_suggestion =
-                                crate::state::app_state_store::PromptSuggestionState {
-                                    text: Some(pipelined.text.clone()),
-                                    prompt_id: Some(pipelined.prompt_id.clone()),
-                                    shown_at: current_time_millis(),
-                                    accepted_at: 0,
-                                    generation_request_id: pipelined.generation_request_id.clone(),
-                                };
-                        });
-                        let mut cache =
-                            Arc::unwrap_or_clone(outcome.active.cache_safe_params.clone());
-                        let mut augmented = cache.fork_context_messages.as_ref().clone();
-                        augmented.push(user_message);
-                        augmented.extend(clean_messages);
-                        cache.fork_context_messages = Arc::new(augmented);
-                        tokio::spawn(async move {
-                            let _ =
-                                crate::services::prompt_suggestion::speculation::start_speculation(
-                                    pipelined.text,
-                                    cache,
-                                    true,
-                                )
-                                .await;
-                        });
-                    }
-                } else {
-                    let cache = outcome.active.cache_safe_params;
-                    let mut tool_use_context = cache.tool_use_context.clone();
-                    tool_use_context.messages = history.clone();
-                    tool_use_context.app_store = crate::tool::AppStoreRef::new(app_store.clone());
-                    tool_use_context.read_file_state.replace(
-                        resume_restore_stores.read().read_file_state.clone(),
-                    );
-                    tool_use_context.loaded_nested_memory_paths =
-                        loaded_nested_memory_paths.read().clone();
-                    tool_use_context.resume_restore_stores = resume_restore_stores.read().clone();
-                    // The cached context may carry an earlier query's setter;
-                    // this turn writes the REPL's set like every other turn.
-                    tool_use_context.set_in_progress_tool_use_ids =
-                        set_in_progress_tool_use_ids.clone();
-                    let params = crate::query::QueryParams {
-                        turn_id: Uuid::new_v4().to_string(),
-                        // The accepted user turn is already in typed history;
-                        // CC calls `onQuery([])` for this continuation.
-                        input: String::new(),
-                        messages: rendered,
-                        model_messages: history,
-                        system_prompt: cache.system_prompt.clone(),
-                        user_context: cache.user_context.clone(),
-                        system_context: cache.system_context.clone(),
-                        query_source: crate::constants::query_source::QuerySource::Prompt,
-                        token_budget: None,
-                        task_budget: None,
-                        max_turns: None,
-                        tool_use_context,
-                    };
-                    // `onQuery([])` prepares the IDE integration too, from
-                    // the store's clients (`REPL.tsx:3566-3569`).
-                    prepare_ide_integration_for_query(&app_store.get().mcp.clients);
-                    // @nyan: speculation accept continues as a new user turn.
-                    crate::state::footer_metrics::start_user_turn(&app_store);
-                    crate::components::task_list_v2::dismiss_finished_tasks(&app_store);
-                    stream_mode.set(SpinnerMode::Responding);
-                    response_length_ref.set(0);
-                    active_query.set(Some(spawn_query(params, production_deps())));
-                }
-                user_input_on_processing.set(None);
-            }
-        }
-    });
     // Maps to: CC REPL.tsx:1110-1113 `const [ideSelection, setIDESelection] =
     // useState<IDESelection | undefined>(undefined)` — REPL-local ownership.
     let mut ide_selection = hooks.use_state(|| Option::<IdeSelection>::None);
     // Maps to: CC REPL.tsx:1239-1242 `useIdeSelection(mcp.clients,
     // setIDESelection)`. CC upstream quirk preserved (do NOT "fix"): REPL
     // passes `mcp.clients` — NOT the merged `mcpClients` — so only the
-    // live-managed MCP connections ever carry a selection handler. CC passes
-    // an empty list for a remote session, which this port has not built. The
+    // live-managed MCP connections ever carry a selection handler. The
     // hook's `onSelect` is this channel, drained into the state below.
     //
     // SEAM (recorded, not implemented in this slice):
@@ -4693,34 +4344,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             user_input_on_processing.set(None);
         }
     });
-    // Seed AppState.showRemoteCallout once from the startup snapshot (CC
-    // main/bridge sets the field; REPL only reads/dismisses via AppState).
-    hooks.use_const({
-        let app_store = app_store.clone();
-        move || {
-            if initial_show_remote_callout {
-                // B3 flip-audit: CC's only set-true point guards
-                // `if (prev.showRemoteCallout) return prev` (bridge.tsx:88).
-                // The seed's initial value is always false, so this is a
-                // zero-cost semantic alignment (guard never fires today).
-                app_store.set_state(|prev| {
-                    if prev.show_remote_callout {
-                        return crate::state::store::UpdateDecision::Same(());
-                    }
-                    let mut next = (**prev).clone();
-                    next.show_remote_callout = true;
-                    crate::state::store::UpdateDecision::Replace {
-                        next: Arc::new(next),
-                        result: (),
-                    }
-                });
-            }
-        }
-    });
-    let show_remote_callout =
-        crate::state::app_state::use_app_state(&mut hooks, |state| state.show_remote_callout);
-    // Maps to CC `REPL.tsx` `showDesktopUpsellStartup` local state.
-    let mut show_desktop_upsell_startup = hooks.use_state(move || initial_show_desktop_upsell);
     // Maps to CC `REPL.tsx` `exitFlow` state. The safe Rust path renders
     // `ExitFlow` and lets the app loop exit, but never calls
     // `gracefulShutdown` or `process.exit` directly.
@@ -5035,12 +4658,34 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         }
     });
     let mut prompt_modal_overlay_active = hooks.use_state(|| false);
-    // Maps to: CC REPL.tsx:1408-1409 `const [autoUpdaterResult,
-    // setAutoUpdaterResult] = useState<AutoUpdaterResult | null>(null)`.
-    // The REPL.tsx:1411-1421 addNotification fan-out runs inline in the
-    // `on_auto_updater_result` setter handler below.
-    let auto_updater_result =
-        hooks.use_state(|| Option::<crate::utils::auto_updater::AutoUpdaterResult>::None);
+    // REPL-owned newer release discovered by the notify-only background check.
+    let update_available =
+        hooks.use_state(|| Option::<crate::utils::auto_updater::UpdateAvailable>::None);
+    // Session-level check so the notice does not depend on the footer subtree
+    // being mounted. The checker caches its result for CHECK_INTERVAL, and the
+    // loop stops once an update is known. Nothing is downloaded here.
+    hooks.use_future({
+        let mut update_available = update_available;
+        async move {
+            if cfg!(test) {
+                return;
+            }
+            loop {
+                if update_available.read().is_none()
+                    && !crate::utils::config::is_auto_updater_disabled()
+                    && let Some(version) = crate::utils::auto_updater::check_for_update().await
+                {
+                    update_available.set(Some(crate::utils::auto_updater::UpdateAvailable {
+                        version,
+                    }));
+                }
+                if update_available.read().is_some() {
+                    return;
+                }
+                futures_timer::Delay::new(crate::utils::auto_updater::CHECK_INTERVAL).await;
+            }
+        }
+    });
     // Maps to: CC `useAppState(s => s.verbose)` — AppState is the sole authority
     // (Config preview and /verbose write the store; footer indicators overlay
     // the same value when rendering).
@@ -5618,9 +5263,9 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                         }
                         Ok(QueryEvent::Terminal(_)) | Err(_) => {
 
-                            // Maps to CC `QueryEngine.query()` eager/cowork
+                            // Maps to CC `QueryEngine.query()` eager-flush
                             // result boundary.
-                            if (crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_EAGER_FLUSH").as_deref()) || crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("CLAUDE_CODE_IS_COWORK").as_deref()))
+                            if crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("NYAN_EAGER_FLUSH").as_deref())
                                 && let Err(error) =
                                     crate::utils::session_storage::flush_session_storage().await
                                 {
@@ -5911,6 +5556,110 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             active_query.set(Some(spawn_query(params, production_deps())));
             user_input_on_processing.set(None);
             let _ = mock_pump_tx_for_mcp.try_send(());
+            }
+        }
+    });
+
+    // @nyan: Enter on an empty prompt after resuming an interrupted turn. The
+    // query runs on the restored history as-is (it ends with the interrupted
+    // tool_result or prompt), so no user message is added, shown or recorded,
+    // and no UserPromptSubmit hook fires since nothing was submitted.
+    let continue_interrupted_turn_action = hooks.use_async_handler({
+        #[cfg(test)]
+        let query_probe = active_query_probe.clone();
+        let runtime_mcp_context = runtime_mcp_context.clone();
+        let prompt_submit = prompt_submit.clone();
+        let system_prompt_overrides = system_prompt_overrides.clone();
+        let history_state = history_state;
+        let mut content_replacement_state = content_replacement_state;
+        let resume_restore_stores = resume_restore_stores;
+        let loaded_nested_memory_paths = loaded_nested_memory_paths;
+        let main_thread_agent_definition = main_thread_agent_definition;
+        let mut active_query = active_query;
+        let mut stream_mode = stream_mode;
+        let mut response_length_ref = response_length_ref;
+        let mock_pump_tx = mock_pump_tx.clone();
+        let channel_permission_callbacks = channel_permission_callbacks.clone();
+        let permission_sink = interactive_permission_sink.clone();
+        let app_store = app_store.clone();
+        let thinking_config = thinking_config.clone();
+        let initial_tools = initial_tools.clone();
+        let has_interruptible_tool_in_progress = Arc::clone(&has_interruptible_tool_in_progress);
+        let set_in_progress_tool_use_ids = set_in_progress_tool_use_ids.clone();
+        move |tool_permission_context: ToolPermissionContext| {
+            #[cfg(test)]
+            let query_probe = query_probe.clone();
+            let runtime_mcp_context = runtime_mcp_context.clone();
+            let prompt_submit = prompt_submit.clone();
+            let system_prompt_overrides = system_prompt_overrides.clone();
+            let mock_pump_tx = mock_pump_tx.clone();
+            let channel_permission_callbacks = channel_permission_callbacks.clone();
+            let permission_sink = permission_sink.clone();
+            let app_store = app_store.clone();
+            let thinking_config = thinking_config.clone();
+            let initial_tools = initial_tools.clone();
+            let has_interruptible_tool_in_progress = Arc::clone(&has_interruptible_tool_in_progress);
+            let set_in_progress_tool_use_ids = set_in_progress_tool_use_ids.clone();
+            async move {
+                let result = prompt_submit.submit_processed_prompt_deferred_query(
+                    String::new(),
+                    Uuid::new_v4().to_string(),
+                    crate::utils::process_user_input::ProcessUserInputBaseResult {
+                        messages: Vec::new(),
+                        should_query: true,
+                        allowed_tools: None,
+                        local_action: None,
+                        query_source: crate::constants::query_source::QuerySource::Prompt,
+                    },
+                    tool_permission_context,
+                );
+                let Some(mut params) = result.query_params else {
+                    return;
+                };
+                let command_permission_context = apply_repl_command_allowed_tools(&app_store, &[]);
+                let entries_snapshot = Arc::clone(&*history_state.read());
+                let main_thread_agent_definition = main_thread_agent_definition.read().clone();
+                tokio::join!(
+                    crate::utils::permissions::bypass_permissions_killswitch::check_and_disable_bypass_permissions_if_needed(
+                        &command_permission_context, &app_store),
+                    crate::utils::permissions::bypass_permissions_killswitch::check_and_disable_auto_mode_if_needed(
+                        &command_permission_context, &app_store),
+                );
+                let next_content_replacement_state = apply_repl_query_turn_context(
+                    &mut params,
+                    &app_store,
+                    command_permission_context,
+                    &entries_snapshot,
+                    content_replacement_state.read().clone(),
+                    &resume_restore_stores.read(),
+                    runtime_mcp_context.as_ref().map(|context| context.current()),
+                    main_thread_agent_definition.as_deref(),
+                    initial_tools.as_slice(),
+                    &system_prompt_overrides,
+                    channel_permission_callbacks.as_ref(),
+                    &permission_sink,
+                    &has_interruptible_tool_in_progress,
+                    &set_in_progress_tool_use_ids,
+                    thinking_config.as_ref(),
+                    // Like the MCP-prompt path, this context never met the builder.
+                    Some(loaded_nested_memory_paths.read().clone()),
+                );
+                if let Some(state) = next_content_replacement_state {
+                    content_replacement_state.set(state);
+                }
+                stream_mode.set(SpinnerMode::Responding);
+                response_length_ref.set(0);
+                #[cfg(test)]
+                let query_handle = if let Some(probe) = query_probe.as_ref() {
+                    probe.started_queries.lock().unwrap().push(params);
+                    probe.handle.clone()
+                } else {
+                    spawn_query(params, production_deps())
+                };
+                #[cfg(not(test))]
+                let query_handle = spawn_query(params, production_deps());
+                active_query.set(Some(query_handle));
+                let _ = mock_pump_tx.try_send(());
             }
         }
     });
@@ -6885,7 +6634,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     let mut loaded_nested_memory_paths_for_submit = loaded_nested_memory_paths;
     let resume_processing_tx_for_submit = resume_processing_tx.clone();
     let context_processing_tx_for_submit = context_processing_tx.clone();
-    let speculation_acceptance_tx_for_submit = speculation_acceptance_tx.clone();
     let compact_processing_tx_for_submit = compact_processing_tx.clone();
     let mut active_compact_abort_for_submit = active_compact_abort;
     let plan_processing_tx_for_submit = plan_processing_tx.clone();
@@ -6904,7 +6652,11 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     let active_query_for_submit = active_query;
     let permission_queue_for_submit = permission_queue;
     let prompt_query_action_for_submit = prompt_query_action.clone();
+    let mut resume_restore_stores_for_submit = resume_restore_stores;
     let mut on_submit = move |submission: PromptSubmission| {
+        // Any submission moves past the interrupted turn: a new prompt simply
+        // follows the restored tool_result/prompt into the next query.
+        clear_turn_interruption(&mut resume_restore_stores_for_submit);
         let system_prompt_overrides = system_prompt_overrides_for_submit.clone();
         let from_keybinding = submission.from_keybinding;
         let submitted_image_ids = submission
@@ -7018,88 +6770,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             });
             return;
         }
-        let accepted_speculation = {
-            let snapshot = app_store_for_submit.get();
-            match &snapshot.speculation {
-                crate::state::app_state_store::SpeculationState::Active(active)
-                    if snapshot.prompt_suggestion.text.as_deref() == Some(text.as_str()) =>
-                {
-                    Some(active.clone())
-                }
-                _ => None,
-            }
-        };
-        if let Some(active) = accepted_speculation {
-            // Speculation accept forces `submitsNow` (REPL.tsx:4506-4508 → :4525).
-            clear_ide_selection_for_submit();
-            classifier_approvals.set(ClassifierApprovalsState::default());
-            streaming_text_preview.set(None);
-            user_input_on_processing_for_submit.set(None);
-            // B3 flip-audit: CC speculation.ts:852-857 — `if (text === null
-            // && promptId === null) return prev` before the clearing spread.
-            app_store_for_submit.set_state(|prev| {
-                if prev.prompt_suggestion.text.is_none()
-                    && prev.prompt_suggestion.prompt_id.is_none()
-                {
-                    return crate::state::store::UpdateDecision::Same(());
-                }
-                let mut next = (**prev).clone();
-                next.prompt_suggestion =
-                    crate::state::app_state_store::PromptSuggestionState::default();
-                crate::state::store::UpdateDecision::Replace {
-                    next: Arc::new(next),
-                    result: (),
-                }
-            });
-            // C3c-4: one `Message` entry carries both the accepted user row
-            // and its model history (the dual write with two different uuids
-            // collapsed into CC's single-array push).
-            let user_message = Message::User(crate::types::message::UserMessage {
-                uuid: uuid::Uuid::new_v4().to_string(),
-                timestamp: chrono::Utc::now(),
-                content: vec![crate::types::message::UserContent::Text(text.clone())],
-                is_compact_summary: false,
-                plan_content: None,
-                image_paste_ids: None,
-                is_visible_in_transcript_only: false,
-                mcp_meta: None,
-                source_tool_assistant_uuid: None,
-                permission_mode: None,
-                origin: None,
-                summarize_metadata: None,
-            });
-            let mut entries = history_state.read().as_ref().clone();
-            entries.push(HistoryEntry::Message(user_message));
-            history_state.set(Arc::new(entries));
-            let clean_messages =
-                crate::services::prompt_suggestion::speculation::prepare_messages_for_injection(
-                    &active
-                        .messages
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner()),
-                );
-            let context = active.cache_safe_params.tool_use_context.clone();
-            let sender = speculation_acceptance_tx_for_submit.clone();
-            tokio::spawn(async move {
-                let result = Some(
-                    crate::services::prompt_suggestion::speculation::accept_active_speculation(
-                        &context,
-                        &active,
-                        clean_messages.len(),
-                    )
-                    .await,
-                );
-                let _ = sender
-                    .send(SpeculationAcceptanceOutcome {
-                        input: text,
-                        clean_messages,
-                        result,
-                        active,
-                    })
-                    .await;
-            });
-            return;
-        }
         let tool_permission_context_for_submit =
             permission_context_for_submit_handler.tool_permission_context();
         let is_query_active_for_immediate =
@@ -7143,6 +6813,27 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         });
     };
 
+    // @nyan: empty Enter continues a turn interrupted before resume; otherwise
+    // it is a no-op, as before.
+    let on_empty_submit = {
+        let mut resume_restore_stores = resume_restore_stores;
+        let permission_store = permission_store.clone();
+        let continue_interrupted_turn_action = continue_interrupted_turn_action.clone();
+        move |_: ()| {
+            let query_active = !pending_responses.read().is_empty()
+                || active_query.read().is_some()
+                || !permission_queue.read().is_empty();
+            if query_active
+                || !has_turn_interruption(&resume_restore_stores.read())
+                || !history_awaits_assistant(&history_model_messages(&history_state.read()))
+            {
+                return;
+            }
+            clear_turn_interruption(&mut resume_restore_stores);
+            continue_interrupted_turn_action(permission_store.tool_permission_context());
+        }
+    };
+
     // Maps to: CC `<CommandKeybindingHandlers onSubmit isActive/>` in both
     // REPL render branches (REPL.tsx:5867-5870, :6099-6102), mounted in the
     // tree below. It records `/<name>` in this State; invoking the normal
@@ -7159,9 +6850,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         && classifier_approvals.read().checking().is_none()
         && !message_selector_visible.get()
         && !exit_flow_active.get()
-        && !show_remote_callout
-        && !show_desktop_upsell_startup.get()
-        && hint_recommendation.read().is_none()
         && !prompt_modal_overlay_active.get();
     let pending_command = pending_keybinding_command.read().clone();
     if let Some(command) = pending_command {
@@ -8710,7 +8398,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     // Maps to: CC `isMessageSelectorVisible`, the input behind
     // `getFocusedInputDialog()`'s 'message-selector' (REPL.tsx:2689).
     let message_selector_visible_snapshot = message_selector_visible.get();
-    let hint_recommendation_snapshot = hint_recommendation.read().clone();
     let current_permission = permission_queue.read().first().cloned();
     let query_is_loading = !pending_responses.read().is_empty() || active_query.read().is_some();
     let user_input_on_processing_active = user_input_on_processing
@@ -8768,7 +8455,18 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         stop_hook_spinner_suffix(&stop_hook_spinner_state.read(), is_loading);
     let is_empty_session = messages.is_empty() && !is_loading;
     let main_screen_width = terminal_cols.max(1) as u32;
-    let resume_store_snapshot = resume_restore_stores.read().clone();
+    let mut resume_store_snapshot = resume_restore_stores.read().clone();
+    // The resumed interruption is continuable only until history moves on.
+    // Paths other than prompt submit (queued/cron/inbox turns, rewind,
+    // summarize) never touch the flag, so retire it here: once any query
+    // runs, or the API-bound history stops ending in a user message.
+    if has_turn_interruption(&resume_store_snapshot)
+        && (is_loading || !history_awaits_assistant(&model_messages))
+    {
+        clear_turn_interruption(&mut resume_restore_stores);
+        resume_store_snapshot.turn_interruption_state = None;
+    }
+    let show_interrupted_turn_hint = has_turn_interruption(&resume_store_snapshot);
     // AppState.teamContext / agent are the single source (CC).
     let inbox_team_context =
         crate::state::app_state::use_app_state(&mut hooks, |state| state.team_context.clone());
@@ -8903,9 +8601,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
         has_tool_use_confirm: current_permission.is_some(),
         has_worker_sandbox_permission: current_sandbox_permission.is_some(),
         has_elicitation: elicitation_queued,
-        show_remote_callout,
-        has_hint_recommendation: hint_recommendation_snapshot.is_some(),
-        show_desktop_upsell_startup: show_desktop_upsell_startup.get(),
     });
     focused_input_dialog_ref.set(focused_input_dialog);
     // The dialog slots exist only in CC's prompt-screen return; the transcript
@@ -9284,114 +8979,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
     };
     let on_exit_flow_cancel = move |_: ()| {
         exit_flow_active.set(false);
-    };
-    let app_store_for_remote_done = app_store.clone();
-    let on_remote_callout_done = move |done: RemoteCalloutDone| {
-        // Official REPL enables bridge app-state when selection is `enable`.
-        // Safe Nyan only dismisses this startup dialog; bridge runtime work
-        // belongs to the dedicated Remote Control/bridge slice.
-        let _selection = done.selection;
-        let _would_mark_seen = done.would_mark_seen;
-        // B3 flip-audit: CC REPL.tsx:6610-6614 — `if (!prev.showRemoteCallout)
-        // return prev` before the dismissing spread.
-        app_store_for_remote_done.set_state(|prev| {
-            if !prev.show_remote_callout {
-                return crate::state::store::UpdateDecision::Same(());
-            }
-            let mut next = (**prev).clone();
-            next.show_remote_callout = false;
-            crate::state::store::UpdateDecision::Replace {
-                next: Arc::new(next),
-                result: (),
-            }
-        });
-    };
-    let mut plugin_hint_notifications =
-        crate::context::notifications::NotificationsWriter::new(app_store.clone());
-    let app_store_for_plugin_install = app_store.clone();
-    let mut hint_recommendation_for_response = hint_recommendation;
-    let on_plugin_hint_response =
-        move |response: crate::components::claude_code_hint::PluginHintResponse| {
-            let Some(recommendation) = hint_recommendation_for_response.read().clone() else {
-                return;
-            };
-            let record_error = crate::utils::plugins::hint_recommendation::mark_hint_plugin_shown(
-                &recommendation.plugin_id,
-            )
-            .err()
-            .map(|error| error.to_string());
-            let disable_error = (response
-                == crate::components::claude_code_hint::PluginHintResponse::Disable)
-                .then(crate::utils::plugins::hint_recommendation::disable_hint_recommendations)
-                .and_then(Result::err)
-                .map(|error| error.to_string());
-            if response == crate::components::claude_code_hint::PluginHintResponse::Yes {
-                let spawn_result =
-                    crate::hooks::use_plugin_recommendation_base::install_plugin_and_notify(
-                        recommendation.plugin_id.clone(),
-                        recommendation.plugin_name.clone(),
-                        "hint-plugin",
-                        app_store_for_plugin_install.clone(),
-                        {
-                            // CC useClaudeCodeHintRecommendation.tsx:96-108:
-                            // the common notification helper receives its install callback.
-                            let plugin_id = recommendation.plugin_id.clone();
-                            let marketplace_name = recommendation.marketplace_name.clone();
-                            move |plugin_data| async move {
-                                use crate::utils::plugins::plugin_installation_helpers::{
-                                    InstallPluginParams, InstallPluginResult,
-                                    install_plugin_from_marketplace,
-                                };
-                                match install_plugin_from_marketplace(InstallPluginParams {
-                                    plugin_id,
-                                    entry: plugin_data.entry,
-                                    marketplace_name,
-                                    scope: Some(crate::utils::plugins::schemas::PluginScope::User),
-                                    trigger: Some("hint".into()),
-                                })
-                                .await
-                                {
-                                    InstallPluginResult::Success { .. } => Ok(()),
-                                    InstallPluginResult::Failure { error } => {
-                                        Err(anyhow::anyhow!(error))
-                                    }
-                                }
-                            }
-                        },
-                    );
-                if let Err(error) = spawn_result {
-                    crate::utils::debug::log_for_debugging(&format!(
-                        "Plugin hint installer thread could not start: {error}"
-                    ));
-                    plugin_hint_notifications.add_notification(
-                        crate::context::notifications::Notification::text(
-                            "hint-plugin-install-failed",
-                            format!("Failed to install {}", recommendation.plugin_name),
-                            crate::context::notifications::NotificationPriority::Immediate,
-                        )
-                        .with_color(crate::context::notifications::NotificationColor::Error)
-                        .with_timeout_ms(5_000),
-                    );
-                }
-            }
-            if let Some(error) = record_error.as_ref().or(disable_error.as_ref()) {
-                plugin_hint_notifications.add_notification(
-                    crate::context::notifications::Notification::text(
-                        format!("plugin-hint-state: {}", recommendation.plugin_id),
-                        format!("Could not persist plugin hint preference: {error}"),
-                        crate::context::notifications::NotificationPriority::High,
-                    )
-                    .with_color(crate::context::notifications::NotificationColor::Error),
-                );
-            }
-            hint_recommendation_for_response.set(None);
-        };
-    let on_desktop_upsell_done = move |done: DesktopUpsellDone| {
-        // Official startup upsell ignores DesktopHandoff result payloads and
-        // just dismisses. Safe Nyan also avoids config writes and handoff
-        // side effects; the callback keeps would-* metadata internal.
-        let _done = done;
-        show_desktop_upsell_startup.set(false);
     };
 
     // This is the REPL's only return: every screen state, every dialog and
@@ -9884,32 +9471,6 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             #(worker_sandbox_permission_dialog)
             #(elicitation_dialog)
 
-            // Maps to: CC REPL.tsx:6607-6653 `{focusedInputDialog ===
-            // 'remote-callout' / 'plugin-hint' / 'desktop-upsell' && ...}`.
-            #(match mounted_input_dialog {
-                Some(FocusedInputDialog::RemoteCallout) => Some(element! {
-                    RemoteCallout(on_done: on_remote_callout_done)
-                }.into_any()),
-                Some(FocusedInputDialog::PluginHint) => hint_recommendation_snapshot.clone().map(|recommendation| element! {
-                    crate::components::claude_code_hint::PluginHintMenu(
-                        plugin_name: recommendation.plugin_name,
-                        plugin_description: recommendation.plugin_description,
-                        marketplace_name: recommendation.marketplace_name,
-                        source_command: recommendation.source_command,
-                        on_response: on_plugin_hint_response,
-                    )
-                }.into_any()),
-                Some(FocusedInputDialog::DesktopUpsell) => Some(element! {
-                    DesktopUpsellStartup(
-                        handoff_state: startup_dialog_snapshot.desktop_handoff_state,
-                        handoff_error: startup_dialog_snapshot.desktop_handoff_error.clone(),
-                        handoff_download_message: startup_dialog_snapshot.desktop_handoff_download_message.clone(),
-                        on_done: on_desktop_upsell_done,
-                    )
-                }.into_any()),
-                _ => None,
-            })
-
             #(if exit_flow_active_snapshot {
                 Some(element! {
                     ExitFlow(
@@ -9984,51 +9545,19 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             #(if should_render_prompt_input {
                 Some(element! {
                     Fragment {
+                    #((show_interrupted_turn_hint).then(|| element! { InterruptedTurnHint }))
                     PromptInput(
-                        // SEAM (slice 3b review A3): this per-submit key remounts
-                        // PromptInput and the entire auto-updater subtree —
-                        // child check loops re-fire and child-local display
-                        // state resets on every submit, unlike CC's
-                        // session-persistent PromptInput. Invisible today only
-                        // because updater IO is short-circuited; lifting the
-                        // updater subtree out of this keyed region is a hard
-                        // prerequisite for real update-install IO.
+                        // SEAM (slice 3b review A3): this per-submit key
+                        // remounts PromptInput and its child-local display
+                        // state, unlike CC's session-persistent PromptInput.
+                        // Update discovery is REPL-owned (above), so the
+                        // remount no longer restarts an update check.
                         key: format!("prompt-{}", prompt_input_generation.get()),
                         debug: debug,
                         // Maps to: CC REPL.tsx:6816 `ideSelection={ideSelection}`.
                         ide_selection: ide_selection.read().clone(),
                         credential_status: credential_status.clone(),
-                        // Maps to: CC REPL.tsx:6830 `autoUpdaterResult={autoUpdaterResult}`.
-                        auto_updater_result: auto_updater_result.read().clone(),
-                        // Maps to: CC REPL.tsx:6829 `onAutoUpdaterResult={setAutoUpdaterResult}`
-                        // + REPL.tsx:1411-1421 `useEffect([autoUpdaterResult])` notifications
-                        // fan-out. CC's effect fires exactly once per committed result identity
-                        // (this setter is the only writer, always with a fresh value), so
-                        // running the fan-out after the commit here is the same observable
-                        // sequence without a retained-mode effect carrier.
-                        on_auto_updater_result: Handler::from({
-                            let app_store = app_store.clone();
-                            move |result: crate::utils::auto_updater::AutoUpdaterResult| {
-                                let mut auto_updater_result = auto_updater_result;
-                                auto_updater_result.set(Some(result.clone()));
-                                // CC REPL.tsx:1413-1420: one addNotification
-                                // ({key: 'auto-updater-notification', priority:
-                                // 'low'}) per entry. Dormant on both sides —
-                                // no CC 2.1.88 producer populates
-                                // `AutoUpdaterResult.notifications`.
-                                let mut notifications =
-                                    crate::context::notifications::NotificationsWriter::new(app_store.clone());
-                                for text in &result.notifications {
-                                    notifications.add_notification(
-                                        crate::context::notifications::Notification::text(
-                                            "auto-updater-notification",
-                                            text.clone(),
-                                            crate::context::notifications::NotificationPriority::Low,
-                                        ),
-                                    );
-                                }
-                            }
-                        }),
+                        update_available: update_available.read().clone(),
                         // Maps to: CC REPL → PromptInput.tsx:237 `messages`
                         // (model-visible history; memoized projection Arc).
                         messages: Arc::clone(&model_messages),
@@ -10061,6 +9590,7 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
                             }
                         },
                         on_submit: on_submit,
+                        on_empty_submit: on_empty_submit,
                         on_exit: on_exit,
                         // Maps to: CC REPL.tsx:4895 handleShowMessageSelector
                         // — setIsMessageSelectorVisible(prev => !prev).
@@ -10193,13 +9723,9 @@ mod tests {
         let _runtime = runtime.enter();
         let directory = BranchFixtureDirectory::new();
         let config = directory.path().join("config");
-        let managed = directory.path().join("managed");
         std::fs::create_dir_all(&config).unwrap();
-        std::fs::create_dir_all(&managed).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config);
-        let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &managed);
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
-        let _remote = EnvVarGuard::set("ENABLE_CLAUDEAI_MCP_SERVERS", "0");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config);
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let _cwd = OriginalCwdGuard::set(directory.path());
         crate::utils::settings::settings_cache::reset_settings_cache();
         crate::utils::plugins::plugin_loader::clear_plugin_cache(None);
@@ -10434,7 +9960,7 @@ mod tests {
         // macOS exposes the temp root through `/var` -> `/private/var`.
         let root = std::fs::canonicalize(&root).unwrap();
         let _cwd = OriginalCwdGuard::set(&root);
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root.join("config"));
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root.join("config"));
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", &PathBuf::from("1"));
 
         let store = crate::state::store::AppStore::new(
@@ -10474,7 +10000,7 @@ mod tests {
 
     fn persisted_local_rules(fixture: &RacingPermissionFixture) -> Option<serde_json::Value> {
         let settings =
-            std::fs::read_to_string(fixture.root.join(".claude/settings.local.json")).ok()?;
+            std::fs::read_to_string(fixture.root.join(".nyan/settings.local.json")).ok()?;
         serde_json::from_str::<serde_json::Value>(&settings)
             .ok()
             .map(|settings| settings["permissions"]["allow"].clone())
@@ -11491,12 +11017,12 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _env = TEST_ENV_LOCK.lock().unwrap();
         let temp = BranchFixtureDirectory::new();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", temp.path());
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", temp.path());
         let _project = PinnedProjectDir::at(temp.path());
         let _projects = crate::utils::session_storage::set_test_projects_dir_override(
             temp.path().join("projects"),
         );
-        let _no_hooks = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _no_hooks = EnvVarGuard::set("NYAN_SIMPLE", "1");
         struct RestoreSession(String, Option<PathBuf>);
         impl Drop for RestoreSession {
             fn drop(&mut self) {
@@ -11800,9 +11326,9 @@ mod tests {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _env = TEST_ENV_LOCK.lock().unwrap();
         let temp = BranchFixtureDirectory::new();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", temp.path());
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", temp.path());
         let _project = PinnedProjectDir::at(temp.path());
-        let _no_hooks = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _no_hooks = EnvVarGuard::set("NYAN_SIMPLE", "1");
         struct RestoreSession {
             id: String,
             project: Option<PathBuf>,
@@ -11897,9 +11423,9 @@ mod tests {
     fn fork_resume_matches_official_session_end_then_explicit_target_start_identity() {
         let _env = TEST_ENV_LOCK.lock().unwrap();
         let temp = BranchFixtureDirectory::new();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", temp.path());
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", temp.path());
         let _project = PinnedProjectDir::at(temp.path());
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         // Moving config/cwd away from just's trusted fixture removes its
         // persisted trust grant. Use the existing accepted-workspace fixture
         // so this test reaches hook execution rather than the trust skip.
@@ -11917,9 +11443,7 @@ mod tests {
             })),
             ..Default::default()
         };
-        crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(
-            &settings, None, false,
-        );
+        crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(&settings);
         let target = resume::ResumeTarget {
             session_id: target_id.clone(),
             project_path: None,
@@ -11954,7 +11478,7 @@ mod tests {
     #[test]
     fn resume_runs_session_end_before_session_start_like_official_repl_callback() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         let marker_path =
             std::env::temp_dir().join(format!("nyan-repl-resume-hooks-{}", uuid::Uuid::new_v4()));
         let settings = crate::utils::settings::SettingsJson {
@@ -11979,9 +11503,7 @@ mod tests {
             ..crate::utils::settings::SettingsJson::default()
         };
         crate::utils::hooks::hooks_config_snapshot::reset_hooks_config_snapshot();
-        crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(
-            &settings, None, false,
-        );
+        crate::utils::hooks::hooks_config_snapshot::capture_hooks_config_snapshot(&settings);
         let target = resume::ResumeTarget {
             session_id: "repl-resume-session".to_string(),
             project_path: None,
@@ -12614,7 +12136,7 @@ mod tests {
         let _doctor = EnvVarGuard::unset("DISABLE_DOCTOR_COMMAND");
         // Simple mode: built-ins plus `--agents` only, so no host agent file
         // or plugin reaches the test.
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         struct Reset;
         impl Drop for Reset {
             fn drop(&mut self) {
@@ -13077,14 +12599,8 @@ mod tests {
         assert_eq!(rows[0].uuid, "init-command-permissions");
         let wire = crate::utils::session_storage::typed_messages_as_transcript_values(&messages);
         // CC sessionStorage.ts:4351-4367 intentionally withholds ordinary
-        // attachments from external JSONL; internal retains them.
-        if crate::utils::build_profile::build_audience().is_internal() {
-            assert_eq!(wire.len(), 1);
-            assert_eq!(wire[0]["uuid"], "init-command-permissions");
-            assert_eq!(wire[0]["attachment"]["type"], "command_permissions");
-        } else {
-            assert!(wire.is_empty());
-        }
+        // attachments from external JSONL.
+        assert!(wire.is_empty());
     }
 
     /// Maps to: CC `REPL.tsx:4904-4920` `rewindConversationTo` — slicing to
@@ -13291,6 +12807,7 @@ mod tests {
         /// seeded with the on-disk permission context) without any production
         /// fallback in `Repl`.
         app_store: Option<crate::state::store::AppStore>,
+        initial_resume_restore_stores: Option<Arc<ResumeRestoreStores>>,
     }
 
     struct ScopedReplAuthConfig {
@@ -13343,6 +12860,10 @@ mod tests {
         let app_store = props.app_store.clone().unwrap_or(default_store);
         let initial_messages = props.initial_messages.clone();
         let initial_renderable_messages = props.initial_renderable_messages.clone();
+        let initial_resume_restore_stores = props
+            .initial_resume_restore_stores
+            .clone()
+            .unwrap_or_default();
         element! {
             crate::state::app_state::AppStateProvider(
                 prebuilt_store: Some(app_store),
@@ -13351,6 +12872,7 @@ mod tests {
                         Repl(
                             initial_messages: initial_messages.clone(),
                             initial_renderable_messages: initial_renderable_messages.clone(),
+                            initial_resume_restore_stores: initial_resume_restore_stores.clone(),
                         )
                     }
                     .into_any()
@@ -13368,80 +12890,6 @@ mod tests {
                 )) {
                 ContextProvider(value: Context::owned(current_theme)) {
                     IsolatedAuthRepl
-                }
-            }
-        }
-    }
-
-    #[component]
-    fn ReplCompletedSpeculationHarness(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-        let current_theme = *theme::current();
-        let app_store = hooks.use_const(|| {
-            let mut initial = crate::state::app_state_store::AppState::default();
-            initial.prompt_suggestion_enabled = true;
-            initial.prompt_suggestion = crate::state::app_state_store::PromptSuggestionState {
-                text: Some("continue the work".to_string()),
-                prompt_id: Some("prompt-spec".to_string()),
-                shown_at: 1,
-                accepted_at: 0,
-                generation_request_id: None,
-            };
-            let store = crate::state::store::AppStore::new(initial, None);
-            let context = crate::tool::ToolUseContext::default().with_app_store(store.clone());
-            let cache = Arc::new(crate::utils::forked_agent::CacheSafeParams {
-                system_prompt: vec!["system".to_string()],
-                user_context: Default::default(),
-                system_context: Default::default(),
-                tool_use_context: context,
-                fork_context_messages: Arc::new(Vec::new()),
-            });
-            store.replace_with(|state| {
-                state.speculation = crate::state::app_state_store::SpeculationState::Active(
-                    crate::state::app_state_store::ActiveSpeculationState {
-                        id: uuid::Uuid::new_v4().simple().to_string(),
-                        abort_controller: crate::tool::AbortController::default(),
-                        start_time: current_time_millis().saturating_sub(100),
-                        messages: Arc::new(std::sync::Mutex::new(vec![Message::Assistant(
-                            crate::types::message::AssistantMessage {
-                                uuid: uuid::Uuid::new_v4().to_string(),
-                                timestamp: chrono::Utc::now(),
-                                content: vec![crate::types::message::AssistantContent::Text(
-                                    "already speculated reply".to_string(),
-                                )],
-                                model: None,
-                                stop_reason: Some(crate::types::message::StopReason::EndTurn),
-                                usage: None,
-                            },
-                        )])),
-                        written_paths: Arc::new(std::sync::Mutex::new(Default::default())),
-                        boundary: Some(
-                            crate::state::app_state_store::CompletionBoundary::Complete {
-                                completed_at: current_time_millis(),
-                                output_tokens: 5,
-                            },
-                        ),
-                        suggestion_length: 17,
-                        tool_use_count: 0,
-                        is_pipelined: false,
-                        cache_safe_params: cache,
-                        pipelined_suggestion: Some(
-                            crate::state::app_state_store::PipelinedSuggestion {
-                                text: "run the final checks".to_string(),
-                                prompt_id: "user_intent".to_string(),
-                                generation_request_id: Some("req_pipeline".to_string()),
-                            },
-                        ),
-                    },
-                );
-            });
-            store
-        });
-        element! {
-            ContextProvider(value: Context::owned(
-                    crate::keybindings::keybinding_context::KeybindingRuntime::with_default_bindings()
-                )) {
-                ContextProvider(value: Context::owned(current_theme)) {
-                    IsolatedAuthRepl(app_store: Some(app_store.clone()))
                 }
             }
         }
@@ -13593,12 +13041,411 @@ mod tests {
         );
     }
 
+    /// Synthetic transcript interrupted right after a tool_result, run through
+    /// the real resume deserialize + restore pipeline.
+    fn interrupted_tool_result_resume() -> crate::utils::session_restore::ProcessedResume {
+        let entries = vec![
+            json!({"type":"user","uuid":"int-user","timestamp":"2026-11-12T00:00:00.000Z",
+                "message":{"role":"user","content":"read the file"}}),
+            json!({"type":"assistant","uuid":"int-assistant","timestamp":"2026-11-12T00:00:01.000Z",
+            "message":{"id":"msg-int","role":"assistant","content":[
+                {"type":"tool_use","id":"toolu_int","name":"Read","input":{"file_path":"/tmp/x"}}
+            ]}}),
+            json!({"type":"user","uuid":"int-result","timestamp":"2026-11-12T00:00:02.000Z",
+                "message":{"role":"user","content":[
+                    {"type":"tool_result","tool_use_id":"toolu_int","content":"file body"}
+                ]},
+                "toolUseResult":{"type":"text"}}),
+        ];
+        processed_resume_from_entries(entries)
+    }
+
+    fn processed_resume_from_entries(
+        entries: Vec<serde_json::Value>,
+    ) -> crate::utils::session_restore::ProcessedResume {
+        let deserialized = conversation::deserialize_messages_with_interrupt_detection(entries);
+        let target = resume::ResumeTarget {
+            session_id: "interrupt-session".to_string(),
+            project_path: None,
+            entries: deserialized.messages,
+            turn_interruption_state: deserialized.turn_interruption_state,
+            metadata: resume::ResumeMetadata::default(),
+            entrypoint: None,
+        };
+        crate::utils::session_restore::ProcessedResume::from_load_result(
+            crate::utils::session_restore::ResumeLoadResult::try_from(&target).unwrap(),
+            None,
+            Arc::new(crate::tools::agent_tool::load_agents_dir::AgentDefinitionsResult::default()),
+        )
+    }
+
+    fn idle_probe(id: &str) -> ReplActiveQueryProbe {
+        let (_events, event_rx) = async_channel::unbounded();
+        let (commands, _command_rx) = async_channel::unbounded();
+        ReplActiveQueryProbe {
+            start_active: false,
+            started_queries: Arc::new(Mutex::new(Vec::new())),
+            handle: QueryHandle {
+                id: id.to_string(),
+                events: Arc::new(event_rx),
+                commands: Arc::new(commands),
+                abort_controller: crate::tool::AbortController::default(),
+                resume: None,
+            },
+            snapshot: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Drives a resumed REPL: waits for `ready`, sends `keys`, then waits until
+    /// `done(probe, canvas)` holds or times out. Returns the last canvas text.
+    async fn drive_resumed_repl(
+        processed: &crate::utils::session_restore::ProcessedResume,
+        probe: &ReplActiveQueryProbe,
+        ready: impl Fn(&str) -> bool,
+        keys: Vec<TerminalEvent>,
+        done: impl Fn(&ReplActiveQueryProbe, &str) -> bool,
+        timeout: Duration,
+    ) -> (bool, String) {
+        drive_resumed_repl_steps(
+            processed,
+            probe,
+            vec![(Box::new(ready), keys)],
+            done,
+            timeout,
+        )
+        .await
+    }
+
+    type ReplStep<'a> = (Box<dyn Fn(&str) -> bool + 'a>, Vec<TerminalEvent>);
+
+    /// Each step waits for a frame satisfying its predicate (rendered after
+    /// the previous step's input), then sends its keys.
+    async fn drive_resumed_repl_steps(
+        processed: &crate::utils::session_restore::ProcessedResume,
+        probe: &ReplActiveQueryProbe,
+        steps: Vec<ReplStep<'_>>,
+        done: impl Fn(&ReplActiveQueryProbe, &str) -> bool,
+        timeout: Duration,
+    ) -> (bool, String) {
+        let mut app = element! {
+            ContextProvider(value: Context::owned(probe.clone())) {
+                ContextProvider(value: Context::owned(
+                    crate::keybindings::keybinding_context::KeybindingRuntime::with_default_bindings()
+                )) {
+                    ContextProvider(value: Context::owned(*theme::current())) {
+                        IsolatedAuthRepl(
+                            initial_messages: Some(processed.messages.clone()),
+                            initial_renderable_messages: Some(processed.renderable_messages.clone()),
+                            initial_resume_restore_stores: Some(processed.resume_restore_stores.clone()),
+                        )
+                    }
+                }
+            }
+        };
+        let (key_tx, events) = async_channel::unbounded();
+        let mut frames =
+            Box::pin(app.mock_terminal_render_loop(
+                MockTerminalConfig::with_events(events).with_size(120, 40),
+            ));
+        let deadline = futures_timer::Delay::new(timeout);
+        tokio::pin!(deadline);
+        let mut steps = steps.into_iter();
+        let mut step = steps.next();
+        let mut text = String::new();
+        loop {
+            tokio::select! {
+                _ = &mut deadline => return (false, text),
+                canvas = frames.next() => {
+                    let Some(canvas) = canvas else { return (false, text) };
+                    text = canvas_lines(&canvas).join("\n");
+                    match &step {
+                        Some((ready, keys)) => {
+                            if ready(&text) {
+                                for key in keys {
+                                    key_tx.try_send(key.clone()).unwrap();
+                                }
+                                step = steps.next();
+                            }
+                        }
+                        None if done(probe, &text) => return (true, text),
+                        None => {}
+                    }
+                }
+            }
+        }
+    }
+
+    fn has_synthetic_resume_text(messages: &[Message]) -> bool {
+        messages.iter().any(|message| {
+            let texts: Vec<&str> = match message {
+                Message::User(user) => user
+                    .content
+                    .iter()
+                    .filter_map(|content| match content {
+                        UserContent::Text(text) | UserContent::MetaText(text) => {
+                            Some(text.as_str())
+                        }
+                        _ => None,
+                    })
+                    .collect(),
+                Message::Assistant(assistant) => assistant
+                    .content
+                    .iter()
+                    .filter_map(|content| match content {
+                        crate::types::message::AssistantContent::Text(text) => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            texts.iter().any(|text| {
+                *text == "Continue from where you left off."
+                    || *text == crate::utils::messages::NO_RESPONSE_REQUESTED
+            })
+        })
+    }
+
+    #[tokio::test]
+    async fn interrupted_resume_shows_hint_and_empty_enter_continues_turn() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
+        let _guard = env_lock().lock().unwrap();
+        let _settings = IsolatedProjectSettings::pin();
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
+        let _title = EnvVarGuard::set("NYAN_DISABLE_TERMINAL_TITLE", "1");
+        let processed = interrupted_tool_result_resume();
+        assert_eq!(
+            processed.resume_restore_stores.turn_interruption_state,
+            Some(conversation::TurnInterruptionState::InterruptedPrompt)
+        );
+        assert!(!has_synthetic_resume_text(&processed.messages));
+        let probe = idle_probe("continue-interrupted");
+
+        let (finished, text) = drive_resumed_repl(
+            &processed,
+            &probe,
+            |text| {
+                // The hint sits directly above the prompt input row.
+                let lines = text.lines().collect::<Vec<_>>();
+                lines
+                    .iter()
+                    .position(|line| line.contains(INTERRUPTED_TURN_HINT))
+                    .is_some_and(|hint| lines[hint + 1..].iter().any(|line| line.contains('❯')))
+            },
+            vec![key(KeyCode::Enter)],
+            |probe, text| {
+                !probe.started_queries.lock().unwrap().is_empty()
+                    && !text.contains(INTERRUPTED_TURN_HINT)
+            },
+            Duration::from_secs(15),
+        )
+        .await;
+        assert!(
+            finished,
+            "continue did not start/clear the hint; canvas=\n{text}"
+        );
+
+        let started = probe.started_queries.lock().unwrap();
+        assert_eq!(started.len(), 1);
+        let params = &started[0];
+        assert!(params.input.is_empty());
+        // Exactly the restored history goes to the API, ending at the
+        // interrupted tool_result; nothing synthetic is added.
+        assert_eq!(params.model_messages, *processed.messages);
+        assert!(matches!(
+            params.model_messages.last(),
+            Some(Message::User(user))
+                if matches!(user.content.as_slice(), [UserContent::ToolResult(_)])
+        ));
+        let snapshot = probe.snapshot.lock().unwrap();
+        let snapshot = snapshot.as_ref().unwrap();
+        assert_eq!(snapshot.model_messages, *processed.messages);
+        assert!(!has_synthetic_resume_text(&snapshot.model_messages));
+    }
+
+    #[test]
+    fn history_awaits_assistant_only_when_api_tail_is_user() {
+        let user =
+            |text: &str| Message::User(crate::utils::messages::create_user_message(text.into()));
+        let assistant = conversation::into_typed_messages(vec![json!({
+            "type":"assistant","uuid":"tail-assistant","timestamp":"2026-11-12T00:00:00.000Z",
+            "message":{"id":"msg-tail","role":"assistant","content":[{"type":"text","text":"done"}]}
+        })])
+        .remove(0);
+        let system = Message::System(SystemMessage::informational(
+            "bookkeeping".to_string(),
+            SystemMessageLevel::Info,
+        ));
+        assert!(history_awaits_assistant(&[user("go")]));
+        assert!(history_awaits_assistant(&[
+            assistant.clone(),
+            user("go"),
+            system.clone()
+        ]));
+        assert!(!history_awaits_assistant(&[user("go"), assistant.clone()]));
+        assert!(!history_awaits_assistant(&[user("go"), assistant, system]));
+        assert!(!history_awaits_assistant(&[]));
+    }
+
+    /// Review fix: history changed by a path other than prompt submit (here
+    /// MessageSelector restore) must retire the interruption.
+    #[tokio::test]
+    async fn interrupted_resume_hint_retires_after_rewind_and_empty_enter_stays_idle() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
+        let _guard = env_lock().lock().unwrap();
+        let _settings = IsolatedProjectSettings::pin();
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
+        let _title = EnvVarGuard::set("NYAN_DISABLE_TERMINAL_TITLE", "1");
+        let _checkpointing = EnvVarGuard::set("NYAN_DISABLE_FILE_CHECKPOINTING", "0");
+        let processed = processed_resume_from_entries(vec![
+            json!({"type":"user","uuid":"rw-user-1","timestamp":"2026-11-12T00:00:00.000Z",
+                "message":{"role":"user","content":"first question"}}),
+            json!({"type":"assistant","uuid":"rw-assistant-1","timestamp":"2026-11-12T00:00:01.000Z",
+                "message":{"id":"msg-rw-1","role":"assistant","content":[{"type":"text","text":"first answer"}]}}),
+            json!({"type":"user","uuid":"rw-user-2","timestamp":"2026-11-12T00:00:02.000Z",
+                "message":{"role":"user","content":"second question"}}),
+            json!({"type":"assistant","uuid":"rw-assistant-2","timestamp":"2026-11-12T00:00:03.000Z",
+            "message":{"id":"msg-rw-2","role":"assistant","content":[
+                {"type":"tool_use","id":"toolu_rw","name":"Read","input":{"file_path":"/tmp/x"}}
+            ]}}),
+            json!({"type":"user","uuid":"rw-result","timestamp":"2026-11-12T00:00:04.000Z",
+                "message":{"role":"user","content":[
+                    {"type":"tool_result","tool_use_id":"toolu_rw","content":"file body"}
+                ]},
+                "toolUseResult":{"type":"text"}}),
+        ]);
+        assert_eq!(
+            processed.resume_restore_stores.turn_interruption_state,
+            Some(conversation::TurnInterruptionState::InterruptedPrompt)
+        );
+        let probe = idle_probe("rewind-after-interrupt");
+        let snapshot_probe = probe.clone();
+        let rewound = move || {
+            snapshot_probe
+                .snapshot
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|snapshot| {
+                    matches!(snapshot.model_messages.last(), Some(Message::Assistant(_)))
+                })
+        };
+        let (finished, text) = drive_resumed_repl_steps(
+            &processed,
+            &probe,
+            vec![
+                (
+                    Box::new(|text: &str| text.contains(INTERRUPTED_TURN_HINT)),
+                    vec![key(KeyCode::Esc), key(KeyCode::Esc)],
+                ),
+                (
+                    Box::new(|text: &str| text.contains("Rewind")),
+                    vec![key(KeyCode::Up), key(KeyCode::Enter)],
+                ),
+                (
+                    Box::new(|text: &str| text.contains("Confirm you want to restore")),
+                    vec![key(KeyCode::Enter)],
+                ),
+                // Rewind puts the restored prompt back in the composer; clear
+                // it so the following Enter is an empty submit.
+                (
+                    Box::new(move |text: &str| {
+                        rewound() && !text.contains("Confirm you want to restore")
+                    }),
+                    vec![ctrl_key('u'), key(KeyCode::Enter)],
+                ),
+            ],
+            // Nothing may start, so this runs to the deadline.
+            |probe, _| !probe.started_queries.lock().unwrap().is_empty(),
+            Duration::from_secs(8),
+        )
+        .await;
+        assert!(
+            !finished,
+            "empty Enter after rewind started a query; canvas=\n{text}"
+        );
+        assert!(probe.started_queries.lock().unwrap().is_empty());
+        let snapshot = probe.snapshot.lock().unwrap();
+        let history = &snapshot.as_ref().unwrap().model_messages;
+        assert!(
+            matches!(
+                history.as_slice(),
+                [Message::User(_), Message::Assistant(_)]
+            ),
+            "rewind did not truncate to the first turn: {history:?}"
+        );
+        assert!(
+            !text.contains(INTERRUPTED_TURN_HINT),
+            "hint reappeared; canvas=\n{text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn interrupted_resume_hint_clears_on_typed_prompt_and_never_shows_for_completed_turn() {
+        crate::utils::process_runtime::initialize_test_process_runtime();
+        let _guard = env_lock().lock().unwrap();
+        let _settings = IsolatedProjectSettings::pin();
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
+        let _title = EnvVarGuard::set("NYAN_DISABLE_TERMINAL_TITLE", "1");
+
+        // Typing something else submits it normally and dismisses the hint.
+        let processed = interrupted_tool_result_resume();
+        let probe = idle_probe("typed-after-interrupt");
+        let (finished, text) = drive_resumed_repl(
+            &processed,
+            &probe,
+            |text| text.contains(INTERRUPTED_TURN_HINT),
+            text_input_events("go on"),
+            |probe, text| {
+                !probe.started_queries.lock().unwrap().is_empty()
+                    && !text.contains(INTERRUPTED_TURN_HINT)
+            },
+            Duration::from_secs(15),
+        )
+        .await;
+        assert!(
+            finished,
+            "typed submit did not clear the hint; canvas=\n{text}"
+        );
+        {
+            let started = probe.started_queries.lock().unwrap();
+            assert_eq!(started.len(), 1);
+            assert_eq!(started[0].input, "go on");
+            assert!(!has_synthetic_resume_text(&started[0].model_messages));
+        }
+
+        // A completed turn resumes without the hint, and empty Enter stays a no-op.
+        let processed = processed_resume_from_entries(vec![
+            json!({"type":"user","uuid":"done-user","timestamp":"2026-11-12T00:00:00.000Z",
+                "message":{"role":"user","content":"hello"}}),
+            json!({"type":"assistant","uuid":"done-assistant","timestamp":"2026-11-12T00:00:01.000Z",
+                "message":{"id":"msg-done","role":"assistant","content":[{"type":"text","text":"completed answer"}]}}),
+        ]);
+        assert_eq!(
+            processed.resume_restore_stores.turn_interruption_state,
+            Some(conversation::TurnInterruptionState::None)
+        );
+        let probe = idle_probe("completed-resume");
+        let (_, text) = drive_resumed_repl(
+            &processed,
+            &probe,
+            |text| text.contains("completed answer"),
+            vec![key(KeyCode::Enter)],
+            // Nothing should happen; watch the frames for a short while.
+            |probe, _| !probe.started_queries.lock().unwrap().is_empty(),
+            Duration::from_secs(2),
+        )
+        .await;
+        assert!(text.contains("completed answer"), "canvas=\n{text}");
+        assert!(!text.contains(INTERRUPTED_TURN_HINT), "canvas=\n{text}");
+        assert!(probe.started_queries.lock().unwrap().is_empty());
+    }
+
     #[test]
     fn rewind_composer_matches_official_restore_and_edited_remount() {
         // Mirror the process runtime published by the production entrypoint.
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _checkpointing = EnvVarGuard::set("CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING", "0");
+        let _checkpointing = EnvVarGuard::set("NYAN_DISABLE_FILE_CHECKPOINTING", "0");
         let entries = vec![
             json!({"type":"user","uuid":"rewind-first","timestamp":"2026-07-12T00:00:00.000Z","message":{"role":"user","content":"first prompt"}}),
             json!({"type":"user","uuid":"rewind-second","timestamp":"2026-07-12T00:00:01.000Z","message":{"role":"user","content":"<ide_selection>noise</ide_selection>\n<code>second</code>"}}),
@@ -13695,7 +13542,7 @@ mod tests {
         // Mirror the process runtime published by the production entrypoint.
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let prompt_path = "identity-fixture/verbose-only.rs";
         let absolute_path = crate::bootstrap::state::get_original_cwd()
             .join(prompt_path)
@@ -13932,25 +13779,6 @@ mod tests {
             1,
             "MCPConnectionManager must stay mounted while a dialog comes and goes"
         );
-    }
-
-    #[derive(Default, Props)]
-    struct ReplStartupDialogHarnessProps {
-        snapshot: ReplStartupDialogSnapshot,
-    }
-
-    #[component]
-    fn ReplStartupDialogHarness(
-        props: &ReplStartupDialogHarnessProps,
-    ) -> impl Into<AnyElement<'static>> {
-        let current_theme = *theme::current();
-        element! {
-            ContextProvider(value: Context::owned(current_theme)) {
-                ContextProvider(value: Context::owned(props.snapshot.clone())) {
-                    IsolatedAuthRepl
-                }
-            }
-        }
     }
 
     #[derive(Default, Props)]
@@ -14388,38 +14216,6 @@ mod tests {
         })
     }
 
-    fn collect_repl_startup_dialog_canvases<S>(
-        snapshot: ReplStartupDialogSnapshot,
-        events: S,
-        timeout_ms: u64,
-        max_frames: usize,
-    ) -> Vec<Canvas>
-    where
-        S: Stream<Item = TerminalEvent> + Send + 'static,
-    {
-        futures::executor::block_on(async {
-            let mut app = element!(ReplStartupDialogHarness(snapshot: snapshot));
-            let mut render_loop =
-                Box::pin(app.mock_terminal_render_loop(MockTerminalConfig::with_events(events)));
-            let mut canvases = Vec::new();
-            loop {
-                let next = crate::utils::race(render_loop.next(), async {
-                    futures_timer::Delay::new(Duration::from_millis(timeout_ms)).await;
-                    None
-                })
-                .await;
-                let Some(canvas) = next else {
-                    break;
-                };
-                canvases.push(canvas);
-                if canvases.len() >= max_frames {
-                    break;
-                }
-            }
-            canvases
-        })
-    }
-
     fn collect_repl_status_notice_canvases<S>(
         context: StatusNoticeContext,
         events: S,
@@ -14516,23 +14312,6 @@ mod tests {
         })
     }
 
-    fn last_repl_startup_dialog_text<S>(
-        snapshot: ReplStartupDialogSnapshot,
-        events: S,
-        timeout_ms: u64,
-        max_frames: usize,
-    ) -> String
-    where
-        S: Stream<Item = TerminalEvent> + Send + 'static,
-    {
-        let canvases =
-            collect_repl_startup_dialog_canvases(snapshot, events, timeout_ms, max_frames);
-        let last = canvases
-            .last()
-            .expect("mock render should produce a canvas");
-        canvas_lines(last).join("\n")
-    }
-
     fn last_repl_status_notice_text<S>(
         context: StatusNoticeContext,
         events: S,
@@ -14547,29 +14326,6 @@ mod tests {
             .last()
             .expect("mock render should produce a canvas");
         canvas_lines(last).join("\n")
-    }
-
-    fn startup_dialog_snapshot(remote: bool, desktop: bool) -> ReplStartupDialogSnapshot {
-        ReplStartupDialogSnapshot {
-            remote_callout: remote.then_some(RemoteCalloutSnapshot {
-                remote_dialog_seen: false,
-                bridge_enabled: true,
-                has_claude_ai_access_token: true,
-            }),
-            desktop_upsell: desktop.then_some(DesktopUpsellStartupSnapshot {
-                platform: "darwin".to_string(),
-                arch: "arm64".to_string(),
-                config: crate::components::desktop_upsell::DesktopUpsellConfig {
-                    enable_shortcut_tip: false,
-                    enable_startup_dialog: true,
-                },
-                desktop_upsell_dismissed: false,
-                desktop_upsell_seen_count: 0,
-            }),
-            desktop_handoff_state: DesktopHandoffState::Checking,
-            desktop_handoff_error: None,
-            desktop_handoff_download_message: None,
-        }
     }
 
     #[test]
@@ -14629,28 +14385,6 @@ mod tests {
             "canvas=\n{text}"
         );
         assert!(text.contains("/memory to edit"), "canvas=\n{text}");
-    }
-
-    #[test]
-    fn repl_startup_dialog_snapshot_reads_desktop_config_without_remote_autoguess() {
-        let mut config = GlobalConfig::default();
-        config.desktop_upsell_seen_count = Some(1);
-        config.desktop_upsell_dismissed = Some(false);
-        config.cached_growth_book_features = Some(std::collections::HashMap::from([(
-            "tengu_desktop_upsell".to_string(),
-            serde_json::json!({"enable_startup_dialog": true}),
-        )]));
-
-        let snapshot = ReplStartupDialogSnapshot::from_readonly_global_config(&config);
-        let desktop = snapshot.desktop_upsell.expect("desktop snapshot");
-
-        assert!(snapshot.remote_callout.is_none());
-        // The seen-count/dismissed fields are ordinary user config and still
-        // come from the snapshot; the upsell gate itself is inert because the
-        // cached GrowthBook payload no longer feeds it.
-        assert!(!desktop.config.enable_startup_dialog);
-        assert_eq!(desktop.desktop_upsell_seen_count, 1);
-        assert!(!desktop.desktop_upsell_dismissed);
     }
 
     #[test]
@@ -14731,7 +14465,7 @@ mod tests {
         // Immediate completion schedules a notification on the same process
         // runtime that main publishes before mounting the actual REPL.
         crate::utils::process_runtime::initialize_test_process_runtime();
-        let _no_flicker = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _no_flicker = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let observer = PluginCompletionObserver::default();
         futures::executor::block_on(async {
             let mut app = element! { ContextProvider(value: Context::owned(observer.clone())) { ReplHarness } };
@@ -14881,7 +14615,7 @@ mod tests {
                 .find(|text| text.contains("Usage: /plugin validate"))
                 .expect("actual raw default User completion");
             assert!(raw.contains("Usage: /plugin validate <path>\n\n"), "{raw}");
-            assert!(raw.contains("  claude plugin validate <path>"), "{raw}");
+            assert!(raw.contains("  nyan plugin validate <path>"), "{raw}");
             output
         });
         // Bun production and Rust focused output both omit the HTML token;
@@ -15164,7 +14898,7 @@ mod tests {
 
     fn install_keybindings_test_env(root: std::path::PathBuf) -> KeybindingsTestEnv {
         let restore = KeybindingsTestEnv {
-            config_dir: Some(EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root)),
+            config_dir: Some(EnvVarGuard::set("NYAN_CONFIG_DIR", &root)),
             write_enabled: Some(EnvVarGuard::set("NYAN_WRITE_ENABLED", "1")),
             root: root.clone(),
         };
@@ -15333,43 +15067,16 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Remote Control/bridge startup is explicitly out of the current local-only scope"]
-    fn repl_startup_dialogs_follow_official_remote_before_desktop_priority() {
-        let text = last_repl_startup_dialog_text(
-            startup_dialog_snapshot(true, true),
-            stream::iter(Vec::<TerminalEvent>::new()),
-            250,
-            6,
-        );
-
-        assert!(text.contains("Remote Control"), "canvas=\n{text}");
-        assert!(text.contains("claude.ai/"), "canvas=\n{text}");
-        assert!(
-            !text.contains("Try nyan Desktop"),
-            "desktop upsell should wait behind remote callout:\n{text}"
-        );
-    }
-
-    #[test]
-    fn repl_startup_dialog_desktop_upsell_renders_without_remote_side_effects() {
-        // Mirror the process runtime published by the production entrypoint.
+    fn repl_startup_keeps_prompt_focus_without_cloud_dialogs() {
         crate::utils::process_runtime::initialize_test_process_runtime();
-        // Remote Control/bridge is intentionally absent. Keep local Desktop
-        // startup coverage independent instead of simulating a remote-dismiss
-        // transition that the production snapshot cannot currently create.
-        let text = last_repl_startup_dialog_text(
-            startup_dialog_snapshot(false, true),
-            stream::iter(Vec::<TerminalEvent>::new()),
-            250,
-            6,
-        );
+        let text = last_repl_text(stream::iter(Vec::<TerminalEvent>::new()), 250, 6);
 
-        assert!(text.contains("Try nyan Desktop"), "canvas=\n{text}");
-        assert!(text.contains("visual diffs"), "canvas=\n{text}");
         assert!(
-            !text.contains("would_mark_seen"),
-            "safe callback metadata should not leak into UI:\n{text}"
+            text.contains("❯"),
+            "PromptInput should own focus; canvas=\n{text}"
         );
+        assert!(!text.contains("Desktop"), "canvas=\n{text}");
+        assert!(!text.contains("Remote Control"), "canvas=\n{text}");
     }
 
     fn write_resume_fixture(
@@ -15793,9 +15500,6 @@ mod tests {
             has_tool_use_confirm: true,
             has_worker_sandbox_permission: true,
             has_elicitation: true,
-            show_remote_callout: true,
-            has_hint_recommendation: true,
-            show_desktop_upsell_startup: true,
         };
 
         // CC REPL.tsx:2684-2760 order: peel the winner off one at a time.
@@ -15809,9 +15513,6 @@ mod tests {
                 ToolPermission => input.has_tool_use_confirm = false,
                 WorkerSandboxPermission => input.has_worker_sandbox_permission = false,
                 Elicitation => input.has_elicitation = false,
-                RemoteCallout => input.show_remote_callout = false,
-                PluginHint => input.has_hint_recommendation = false,
-                DesktopUpsell => input.show_desktop_upsell_startup = false,
             }
         }
         assert_eq!(
@@ -15822,9 +15523,6 @@ mod tests {
                 ToolPermission,
                 WorkerSandboxPermission,
                 Elicitation,
-                RemoteCallout,
-                PluginHint,
-                DesktopUpsell,
             ]
         );
 
@@ -16093,7 +15791,7 @@ mod tests {
         let config_home = root.join("config");
         std::fs::create_dir_all(&config_home).unwrap();
         let _cwd_guard = OriginalCwdGuard::set(&root);
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", &PathBuf::from("0"));
 
         let empty_text = last_repl_text(stream::empty::<TerminalEvent>(), 100, 3);
@@ -16298,25 +15996,6 @@ mod tests {
             error,
             "Session empty-session has no renderable transcript messages."
         );
-    }
-
-    #[test]
-    fn model_immediate_gate_matches_internal_or_hardcoded_feature_switch() {
-        use crate::utils::build_profile::BuildAudience;
-        use crate::utils::immediate_command::should_inference_config_command_be_immediate_from;
-
-        assert!(should_inference_config_command_be_immediate_from(
-            BuildAudience::AnthropicInternal,
-            false
-        ));
-        assert!(should_inference_config_command_be_immediate_from(
-            BuildAudience::External,
-            true
-        ));
-        assert!(!should_inference_config_command_be_immediate_from(
-            BuildAudience::External,
-            false
-        ));
     }
 
     #[test]
@@ -16547,69 +16226,6 @@ mod tests {
         }
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn repl_accepts_completed_speculation_without_starting_duplicate_query() {
-        // Mirror the process runtime published by the production entrypoint.
-        crate::utils::process_runtime::initialize_test_process_runtime();
-        let _lock = env_lock().lock().unwrap();
-        let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", &PathBuf::from("0"));
-        let events = timed_stream(vec![
-            (key(KeyCode::Enter), 30),
-            (TerminalEvent::Resize(100, 30), 100),
-        ]);
-        let mut app = element!(ReplCompletedSpeculationHarness);
-        let mut render_loop =
-            Box::pin(app.mock_terminal_render_loop(
-                MockTerminalConfig::with_events(events).with_size(100, 30),
-            ));
-        let mut frames = Vec::new();
-        loop {
-            let next = crate::utils::race(render_loop.next(), async {
-                tokio::time::sleep(Duration::from_millis(150)).await;
-                None
-            })
-            .await;
-            let Some(canvas) = next else {
-                break;
-            };
-            frames.push(canvas);
-            if frames.len() >= 24 {
-                break;
-            }
-        }
-        let rendered = frames
-            .iter()
-            .map(canvas_lines)
-            .map(|lines| lines.join("\n"))
-            .collect::<Vec<_>>();
-        assert!(
-            rendered
-                .iter()
-                .any(|text| text.contains("continue the work")),
-            "accepted user prompt should render immediately"
-        );
-        assert!(
-            rendered
-                .iter()
-                .any(|text| text.contains("already speculated reply")),
-            "completed speculative response should be injected"
-        );
-        assert!(
-            rendered
-                .iter()
-                .any(|text| text.contains("run the final checks")),
-            "completed speculation should promote the pipelined suggestion"
-        );
-        assert!(
-            rendered.iter().all(|text| !text.contains("Working…")),
-            "completed speculation must not start a duplicate ordinary query"
-        );
-        assert!(
-            frames.len() < 24,
-            "mock render loop must settle within its bound"
-        );
-    }
-
     #[test]
     fn local_command_ui_escape_restores_prompt_and_appends_native_scrollback_output() {
         // Mirror the process runtime published by the production entrypoint.
@@ -16624,7 +16240,7 @@ mod tests {
         let config_home = root.join("config");
         std::fs::create_dir_all(&config_home).unwrap();
         let _cwd_guard = OriginalCwdGuard::set(&root);
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", &PathBuf::from("0"));
 
         // Esc goes out only once the Settings tab header is on screen: an Esc
@@ -16634,10 +16250,7 @@ mod tests {
             element!(ReplHarness).into_any(),
             vec![
                 script_step(&[], text_input_events("/status")),
-                script_step(
-                    &["Settings", "Status", "Config", "Usage"],
-                    vec![key(KeyCode::Esc)],
-                ),
+                script_step(&["Settings", "Status", "Config"], vec![key(KeyCode::Esc)]),
                 script_step(&["Status dialog dismissed"], Vec::new()),
             ],
         );
@@ -16846,7 +16459,7 @@ mod tests {
         // This regression checks inline scrollback. The separate fullscreen
         // completion regression checks the source dismissal suppression branch.
         let _guard = env_lock().lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let mut timed_events = text_input_events("/permissions")
             .into_iter()
             .map(|event| (event, 0))
@@ -16874,7 +16487,7 @@ mod tests {
         // This regression checks inline scrollback. The separate fullscreen
         // completion regression checks the source dismissal suppression branch.
         let _guard = env_lock().lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let mut timed_events = text_input_events("/permissions")
             .into_iter()
             .map(|event| (event, 0))
@@ -17008,7 +16621,7 @@ mod tests {
         let _settings = IsolatedProjectSettings::pin();
         for fullscreen in [false, true] {
             let _fullscreen =
-                EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", if fullscreen { "1" } else { "0" });
+                EnvVarGuard::set("NYAN_NO_FLICKER", if fullscreen { "1" } else { "0" });
             let directory = std::env::temp_dir()
                 .join(format!("permissions-immediate-<held>&-{}", Uuid::new_v4(),));
             std::fs::create_dir_all(&directory).unwrap();
@@ -17194,7 +16807,7 @@ mod tests {
         // mount; an isolated input lacks the other live keybinding contexts.
         let _guard = env_lock().lock().unwrap();
         let _settings = IsolatedProjectSettings::pin();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let mut app = element! {
             ContextProvider(value: Context::owned(
                 crate::keybindings::keybinding_context::KeybindingRuntime::with_default_bindings()
@@ -17255,8 +16868,8 @@ mod tests {
         // REPL.tsx's command shortcut ignores shouldQuery during an active query.
         let _guard = env_lock().lock().unwrap();
         let _settings = IsolatedProjectSettings::pin();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
-        let _title = EnvVarGuard::set("CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "1");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
+        let _title = EnvVarGuard::set("NYAN_DISABLE_TERMINAL_TITLE", "1");
         let command = "echo permissions-retry-scout";
         crate::utils::auto_mode_denials::record_auto_mode_denial(
             crate::utils::auto_mode_denials::AutoModeDenial {
@@ -17429,7 +17042,7 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         let config_home =
             std::env::temp_dir().join(format!("nyan-repl-resume-empty-{}", Uuid::new_v4()));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
@@ -17485,7 +17098,7 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         let config_home =
             std::env::temp_dir().join(format!("nyan-repl-resume-select-{}", Uuid::new_v4()));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
@@ -17563,7 +17176,7 @@ mod tests {
         let _single_worktree = EnvVarGuard::set("NYAN_TEST_SINGLE_WORKTREE", "1");
         let config_home =
             std::env::temp_dir().join(format!("nyan-repl-resume-select-error-{}", Uuid::new_v4()));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
@@ -17642,7 +17255,7 @@ mod tests {
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let config_home =
             std::env::temp_dir().join(format!("nyan-repl-resume-id-{}", Uuid::new_v4()));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
@@ -17697,7 +17310,7 @@ mod tests {
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let config_home =
             std::env::temp_dir().join(format!("nyan-repl-resume-title-{}", Uuid::new_v4()));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
@@ -17761,7 +17374,7 @@ mod tests {
             "nyan-repl-resume-title-ambiguous-{}",
             Uuid::new_v4()
         ));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
@@ -17849,7 +17462,7 @@ mod tests {
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let config_home =
             std::env::temp_dir().join(format!("nyan-repl-resume-missing-{}", Uuid::new_v4()));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
@@ -17911,7 +17524,7 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         let config_home =
             std::env::temp_dir().join(format!("nyan-repl-resume-filter-{}", Uuid::new_v4()));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
@@ -18023,7 +17636,7 @@ mod tests {
         let _single_worktree = EnvVarGuard::set("NYAN_TEST_SINGLE_WORKTREE", "1");
         let config_home =
             std::env::temp_dir().join(format!("nyan-repl-resume-cross-{}", Uuid::new_v4()));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(
             config_home.join("projects"),
         );
@@ -18124,7 +17737,7 @@ mod tests {
         );
         let compact_text = text.split_whitespace().collect::<String>();
         assert!(
-            compact_text.contains(&format!("claude--resume{other_session_id}")),
+            compact_text.contains(&format!("nyan--resume{other_session_id}")),
             "cross-project guidance should include the resume command; canvas=\n{text}"
         );
         assert!(
@@ -18257,7 +17870,7 @@ mod tests {
             let directory =
                 std::env::temp_dir().join(format!("nyan-resume-copy-race-{}", Uuid::new_v4()));
             std::fs::create_dir_all(&directory).unwrap();
-            let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", directory.join("config"));
+            let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", directory.join("config"));
             let _projects = crate::utils::session_storage::set_test_projects_dir_override(
                 directory.join("projects"),
             );
@@ -18499,18 +18112,8 @@ mod tests {
     fn plugin_refresh_commands_reach_live_repl_suggestions_without_remount() {
         crate::utils::process_runtime::initialize_test_process_runtime();
         let _lock = env_lock().lock().unwrap();
-        struct RemoteModeRestore(bool);
-        impl Drop for RemoteModeRestore {
-            fn drop(&mut self) {
-                crate::bootstrap::state::set_is_remote_mode(self.0);
-            }
-        }
-        // This fixture tests the refresh writer -> subscribed REPL reader.
-        // Skip unrelated initial discovery so it cannot overwrite the staged
-        // refresh result; no query is submitted and no provider is contacted.
-        let _remote = RemoteModeRestore(crate::bootstrap::state::get_is_remote_mode());
-        crate::bootstrap::state::set_is_remote_mode(true);
         let store = crate::state::store::AppStore::new(Default::default(), None);
+        let initial_commands = store.get().plugins.commands.clone();
         let mut app = element! {
             ContextProvider(value: Context::owned(
                 crate::keybindings::keybinding_context::KeybindingRuntime::with_default_bindings()
@@ -18542,7 +18145,11 @@ mod tests {
                     break;
                 };
                 text = canvas_lines(&canvas).join("\n");
-                if stage == 0 && text.contains('❯') {
+                // Wait for ordinary plugin discovery before staging refresh results.
+                if stage == 0
+                    && text.contains('❯')
+                    && !Arc::ptr_eq(&initial_commands, &store.get().plugins.commands)
+                {
                     store.replace_with(|state| {
                         let mut command = crate::commands::declared_commands_for_tests()
                             .into_iter()
@@ -18991,11 +18598,10 @@ mod tests {
         // consumes messages+hooks with log.projectPath, and no separate hook write.
         let _env = TEST_ENV_LOCK.lock().unwrap();
         let temp = BranchFixtureDirectory::new();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", temp.path().join("config"));
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", temp.path().join("config"));
         let _project = PinnedProjectDir::at(temp.path());
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
-        let _remote = EnvVarGuard::set("CLAUDE_CODE_ENVIRONMENT_KIND", "byoc");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
         struct Restore(String, Option<PathBuf>);
         impl Drop for Restore {
@@ -19035,8 +18641,6 @@ mod tests {
                 })),
                 ..Default::default()
             },
-            None,
-            false,
         );
         let entries = vec![
             json!({"type":"user","uuid":"root","sessionId":target_id,"parentUuid":null,
@@ -19064,7 +18668,7 @@ mod tests {
             crate::utils::file_state_cache::READ_FILE_STATE_CACHE_SIZE,
         );
         assert_eq!(wrong_cache.len(), 2);
-        // REPL.tsx:2359/2420 retains raw log.messages for plan recovery even
+        // REPL.tsx:2359/2420 retains raw log.messages for slug restoration even
         // when deserializeMessages removes an interrupted ExitPlanMode call.
         crate::utils::plans::clear_plans_directory_cache();
         let mut original_messages = entries.clone();
@@ -19072,7 +18676,7 @@ mod tests {
         original_messages.push(json!({"type":"assistant","uuid":"pending-plan",
             "message":{"role":"assistant","content":[{"type":"tool_use","id":"pending",
                 "name":"ExitPlanMode","input":{"plan":"hot plan survives cleanup"}}]}}));
-        let recovered_plan_path =
+        let missing_plan_path =
             crate::utils::plans::get_plans_directory().join("hot-interrupted-plan.md");
         let target = resume::ResumeTarget {
             session_id: target_id.clone(),
@@ -19089,14 +18693,13 @@ mod tests {
             entrypoint: Some(ResumeEntrypoint::SlashCommandPicker),
         };
         let processed = resume(target, None, Arc::new(Default::default()), None, None).unwrap();
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while !recovered_plan_path.exists() && std::time::Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(10));
-        }
+        // Resume restores the slug from the raw log but never rebuilds a missing
+        // plan file from transcript content.
         assert_eq!(
-            std::fs::read_to_string(recovered_plan_path).unwrap(),
-            "hot plan survives cleanup"
+            crate::utils::plans::get_plan_slug(Some(&target_id)),
+            "hot-interrupted-plan"
         );
+        assert!(!missing_plan_path.exists());
         crate::utils::plans::clear_plan_slug(Some(&target_id));
         let inputs = serde_json::Deserializer::from_str(&std::fs::read_to_string(&marker).unwrap())
             .into_iter::<serde_json::Value>()

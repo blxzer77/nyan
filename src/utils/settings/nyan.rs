@@ -45,7 +45,7 @@ pub struct CompactionSettings {
     pub mask_headroom: Option<f64>,
     /// Shadow mode for compaction.keep (compaction C14, decision-provider 4.4).
     /// When true, records keep-ordering vs actual-ordering comparisons to
-    /// `$CLAUDE_CONFIG_DIR/decision/compaction.keep.jsonl` without altering
+    /// `$NYAN_CONFIG_DIR/decision/decisions.jsonl` without altering
     /// the actual compression outcome.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keep_shadow: Option<bool>,
@@ -152,51 +152,6 @@ pub struct MemorySettings {
     pub consolidate_min_new_files: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub secret_scan: Option<bool>,
-    /// @nyan: per-point Decision Provider shadow switches (SMOKE-EVAL C4).
-    /// Every switch is off by default; off means no request, no log, and the
-    /// exact deterministic behaviour of the module.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub decision_shadow: Option<MemoryDecisionShadowSettings>,
-}
-
-/// @nyan: independent shadow switch per memory decision point. A point is only
-/// queried when its own switch here is on **and** the Decision Provider is
-/// enabled **and** the point's resolved mode in `settings.nyan.decision` is not
-/// `off`. A `shadow`/`active` mode in `decision.points` alone does not turn a
-/// memory point on, and even `active` is only recorded, never applied; the
-/// deterministic path is never altered.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
-pub struct MemoryDecisionShadowSettings {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extract_now: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extract_skip: Option<bool>,
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    pub memory_type: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duplicate: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub consolidate: Option<bool>,
-}
-
-impl MemoryDecisionShadowSettings {
-    pub fn extract_now(&self) -> bool {
-        self.extract_now.unwrap_or(false)
-    }
-    pub fn extract_skip(&self) -> bool {
-        self.extract_skip.unwrap_or(false)
-    }
-    pub fn memory_type(&self) -> bool {
-        self.memory_type.unwrap_or(false)
-    }
-    pub fn duplicate(&self) -> bool {
-        self.duplicate.unwrap_or(false)
-    }
-    pub fn consolidate(&self) -> bool {
-        self.consolidate.unwrap_or(false)
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -237,9 +192,6 @@ impl MemorySettings {
     }
     pub fn secret_scan(&self) -> bool {
         self.secret_scan.unwrap_or(true)
-    }
-    pub fn decision_shadow(&self) -> MemoryDecisionShadowSettings {
-        self.decision_shadow.clone().unwrap_or_default()
     }
 }
 
@@ -820,8 +772,6 @@ pub struct DecisionSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emrank: Option<EmrankSettings>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub chat: Option<ChatBackendSettings>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub deadline_ms: Option<DecisionDeadlineSettings>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_batch: Option<u32>,
@@ -850,14 +800,6 @@ pub struct EmrankSettings {
     pub pool_idle_timeout_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prewarm: Option<bool>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
-pub struct ChatBackendSettings {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -988,7 +930,7 @@ pub const BUILTIN_DECISION_POINTS: &[BuiltinDecisionPoint] = &[
     },
     BuiltinDecisionPoint {
         name: "memory.extract_now",
-        mode: DecisionMode::Active,
+        mode: DecisionMode::Shadow,
         model: DecisionModel::Accurate,
         min_confidence: 0.8,
         max_prob: None,
@@ -1004,7 +946,7 @@ pub const BUILTIN_DECISION_POINTS: &[BuiltinDecisionPoint] = &[
     },
     BuiltinDecisionPoint {
         name: "memory.type",
-        mode: DecisionMode::Active,
+        mode: DecisionMode::Shadow,
         model: DecisionModel::Accurate,
         min_confidence: 0.7,
         max_prob: None,
@@ -1012,7 +954,7 @@ pub const BUILTIN_DECISION_POINTS: &[BuiltinDecisionPoint] = &[
     },
     BuiltinDecisionPoint {
         name: "memory.duplicate",
-        mode: DecisionMode::Active,
+        mode: DecisionMode::Shadow,
         model: DecisionModel::Accurate,
         min_confidence: 0.7,
         max_prob: None,
@@ -1043,14 +985,6 @@ pub const BUILTIN_DECISION_POINTS: &[BuiltinDecisionPoint] = &[
         keep_at_least: None,
     },
     BuiltinDecisionPoint {
-        name: "permissions.explain_risk",
-        mode: DecisionMode::Shadow,
-        model: DecisionModel::Accurate,
-        min_confidence: 0.8,
-        max_prob: None,
-        keep_at_least: None,
-    },
-    BuiltinDecisionPoint {
         name: "prompt_suggestion.generate_gate",
         mode: DecisionMode::Shadow,
         model: DecisionModel::Fast,
@@ -1058,58 +992,63 @@ pub const BUILTIN_DECISION_POINTS: &[BuiltinDecisionPoint] = &[
         max_prob: None,
         keep_at_least: None,
     },
-    BuiltinDecisionPoint {
-        name: "speculation.start",
-        mode: DecisionMode::Shadow,
-        model: DecisionModel::Fast,
-        min_confidence: 0.8,
-        max_prob: None,
-        keep_at_least: None,
-    },
-    BuiltinDecisionPoint {
-        name: "context_suggestions.rank",
-        mode: DecisionMode::Shadow,
-        model: DecisionModel::Fast,
-        min_confidence: 0.7,
-        max_prob: None,
-        keep_at_least: None,
-    },
-    BuiltinDecisionPoint {
-        name: "agent.route",
-        mode: DecisionMode::Off,
-        model: DecisionModel::Accurate,
-        min_confidence: 0.85,
-        max_prob: None,
-        keep_at_least: None,
-    },
-    BuiltinDecisionPoint {
-        name: "plan.verify_need",
-        mode: DecisionMode::Shadow,
-        model: DecisionModel::Accurate,
-        min_confidence: 0.8,
-        max_prob: None,
-        keep_at_least: None,
-    },
-    BuiltinDecisionPoint {
-        name: "skill.rank",
-        mode: DecisionMode::Off,
-        model: DecisionModel::Fast,
-        min_confidence: 0.8,
-        max_prob: None,
-        keep_at_least: None,
-    },
-    BuiltinDecisionPoint {
-        name: "todo.rank",
-        mode: DecisionMode::Off,
-        model: DecisionModel::Fast,
-        min_confidence: 0.7,
-        max_prob: None,
-        keep_at_least: None,
-    },
 ];
 
 pub fn decision_point_names() -> Vec<&'static str> {
     BUILTIN_DECISION_POINTS.iter().map(|p| p.name).collect()
+}
+
+/// A background model task routed by `selection.utility.<role>`.
+pub struct UtilityRole {
+    pub name: &'static str,
+    /// The `ref[:effort]` spec used when `selection.utility` has no entry.
+    pub default_spec: &'static str,
+}
+
+/// Every utility role, with its default. The table is the source of truth for
+/// both the settings schema's key set and `default_utility_spec`, so a role
+/// with a caller must be listed here and a listed role must have a caller.
+///
+/// Not roles: memory extraction and consolidation (cache-sharing forks on the
+/// session model, memory.md M2) and prompt suggestion generation (forks the
+/// main model to reuse its prompt cache, decision-provider decision 7).
+pub const UTILITY_ROLES: &[UtilityRole] = &[
+    UtilityRole {
+        name: "compaction",
+        default_spec: "@main",
+    },
+    UtilityRole {
+        name: "classifier",
+        default_spec: "@main",
+    },
+    UtilityRole {
+        name: "permission_explainer",
+        default_spec: "@light",
+    },
+    UtilityRole {
+        name: "title",
+        default_spec: "@light",
+    },
+    UtilityRole {
+        name: "summary",
+        default_spec: "@light",
+    },
+    UtilityRole {
+        name: "webfetch",
+        default_spec: "@light",
+    },
+    UtilityRole {
+        name: "agent_creation",
+        default_spec: "@light",
+    },
+    UtilityRole {
+        name: "side_query",
+        default_spec: "@light",
+    },
+];
+
+pub fn utility_role_names() -> Vec<&'static str> {
+    UTILITY_ROLES.iter().map(|role| role.name).collect()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1173,6 +1112,7 @@ impl DecisionSettings {
         name.starts_with("retrieval.")
             || name.starts_with("web.")
             || name.starts_with("compaction.")
+            || name.starts_with("permissions.")
     }
 }
 
@@ -1496,10 +1436,10 @@ impl ModelProfileSettings {
     }
 }
 
-/// Retry limits (provider redesign §7.2). At `nyan.retry` only the managed
-/// (policy) source is read, and `max_retries` there is the global cap
-/// (default 2, hard limit 5); at `nyan.models.<profile>.retry` it is the
-/// profile's own request, clamped to that cap.
+/// Retry limits (provider redesign §7.2) at `nyan.models.<profile>.retry`:
+/// the profile's own request, clamped to the global cap (default 2).
+/// @nyan: no top-level `nyan.retry`; CC-era decision 19 read it only from
+/// managed settings.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -1570,8 +1510,6 @@ pub struct NyanSettings {
     pub models: Option<BTreeMap<String, ModelProfileSettings>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selection: Option<SelectionSettings>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub retry: Option<RetrySettings>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compaction: Option<CompactionSettings>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1775,7 +1713,7 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
             zod::array(zod::enumeration(vec!["text", "image"])).optional(),
         ),
         ("cost", cost.optional()),
-        ("retry", retry.clone().optional()),
+        ("retry", retry.optional()),
         (
             "cacheRetention",
             zod::enumeration(vec!["short", "long", "none", "5m", "1h"]).optional(),
@@ -1797,7 +1735,10 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
         ("mainFallbacks", zod::array(zod::string().min(1)).optional()),
         ("subagent", zod::string().min(1).optional()),
         ("subagents", zod::record(zod::string().min(1)).optional()),
-        ("utility", zod::record(zod::string().min(1)).optional()),
+        (
+            "utility",
+            zod::partial_record(utility_role_names(), zod::string().min(1)).optional(),
+        ),
         ("decision", decision_selection.optional()),
     ]);
 
@@ -2044,7 +1985,6 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
         ),
         ("prewarm", zod::boolean().optional()),
     ]);
-    let chat = zod::object(vec![("model", zod::string().optional())]);
     let deadlines = zod::object(vec![
         ("critical", zod::number().int().positive().optional()),
         ("background", zod::number().int().positive().optional()),
@@ -2065,7 +2005,6 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
     let decision = zod::object(vec![
         ("enabled", zod::boolean().optional()),
         ("emrank", emrank.optional()),
-        ("chat", chat.optional()),
         ("deadlineMs", deadlines.optional()),
         ("maxBatch", zod::number().int().positive().optional()),
         (
@@ -2113,10 +2052,9 @@ pub fn nyan_settings_schema() -> crate::utils::zod::Schema {
         ("web", web.optional()),
         ("decision", decision.optional()),
         ("toolIo", tool_io.optional()),
-        ("retry", retry.optional()),
     ])
     .describe(
-        "nyan settings: provider/model profiles and module settings. Provider profiles are user/managed-only; project/local settings may only select existing profile names.",
+        "nyan settings: provider/model profiles and module settings. Provider profiles are user-only; project/local settings may only select existing profile names.",
     )
 }
 
@@ -2161,13 +2099,6 @@ mod tests {
         assert_eq!(settings.memory().consolidate_min_hours(), 24);
         assert_eq!(settings.memory().consolidate_min_new_files(), 5);
         assert!(settings.memory().secret_scan());
-        // @nyan: every memory decision-shadow switch defaults to off.
-        let shadow = settings.memory().decision_shadow();
-        assert!(!shadow.extract_now());
-        assert!(!shadow.extract_skip());
-        assert!(!shadow.memory_type());
-        assert!(!shadow.duplicate());
-        assert!(!shadow.consolidate());
 
         let retrieval = settings.retrieval();
         assert!(retrieval.enabled());
@@ -2303,12 +2234,15 @@ mod tests {
             DecisionModel::Accurate
         );
         assert_eq!(
-            decision.resolved_point("agent.route").unwrap().mode,
-            DecisionMode::Off
+            decision.resolved_point("memory.extract_now").unwrap().mode,
+            DecisionMode::Shadow
         );
         assert!(DecisionSettings::is_critical_point("retrieval.answers"));
         assert!(DecisionSettings::is_critical_point("web.answers"));
         assert!(DecisionSettings::is_critical_point("compaction.keep"));
+        assert!(DecisionSettings::is_critical_point(
+            "permissions.yolo_stage1"
+        ));
         assert!(!DecisionSettings::is_critical_point("memory.type"));
     }
 
@@ -2672,6 +2606,25 @@ mod tests {
         );
         assert_eq!(parsed["selection"]["light"], "main");
         assert_eq!(parsed["selection"]["utility"]["title"], "main:high");
+    }
+
+    #[test]
+    fn schema_accepts_every_utility_role_and_rejects_other_names() {
+        for role in utility_role_names() {
+            let value = json!({"selection": {"utility": {role: "@light"}}});
+            assert!(
+                crate::utils::zod::safe_parse(&nyan_settings_schema(), &value).is_ok(),
+                "should accept utility role {role}"
+            );
+        }
+        // `memory` was a role once; extraction now forks the session model.
+        for bad in ["memory", "commit_message", "Title", "permission-explainer"] {
+            let value = json!({"selection": {"utility": {bad: "@light"}}});
+            assert!(
+                crate::utils::zod::safe_parse(&nyan_settings_schema(), &value).is_err(),
+                "should reject utility role {bad}"
+            );
+        }
     }
 
     #[test]

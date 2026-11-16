@@ -6,14 +6,12 @@
 use crate::constants::figures::figures;
 use crate::constants::product;
 use crate::services::mcp::types::{McpServerConnection, McpServerConnectionType};
-use crate::utils::claudemd::{ClaudeMdFile, discover_claude_md_files};
+use crate::utils::agents_md::{AgentsMdFile, discover_agents_md_files};
 use crate::utils::file::get_display_path;
 use crate::utils::format::format_number;
 use crate::utils::ide::IDEExtensionInstallationStatus;
 use crate::utils::model::model::render_model_name;
-use crate::utils::settings::get_managed_settings_file_path;
-use crate::utils::settings::types::CUSTOMIZATION_SURFACES;
-use crate::utils::settings::{SettingsJson, ValidationError};
+use crate::utils::settings::ValidationError;
 use crate::utils::status::StartupDiagnosticsSnapshot;
 use crate::utils::status::{
     Property as StatusPropertyData, build_account_properties, build_api_provider_properties,
@@ -33,9 +31,9 @@ pub fn Status(props: &StatusProps, mut hooks: Hooks) -> impl Into<AnyElement<'st
     // Maps to: CC `useAppState(s => s.settings)` + `getGlobalConfig()` cached
     // direct reads; the remaining context carries startup diagnostics only.
     let runtime_config = hooks.try_use_context::<StartupDiagnosticsSnapshot>();
-    let settings_snapshot =
+    // Subscribed for re-render only: the model row reads the resolved model.
+    let _settings =
         crate::state::app_state::use_app_state(&mut hooks, |state| state.settings.clone());
-    let settings = settings_snapshot.as_ref();
     let resolved_model = crate::utils::model::model::get_main_loop_model();
     let model_display_name = render_model_name(&resolved_model);
     let cwd = std::env::current_dir()
@@ -84,7 +82,6 @@ pub fn Status(props: &StatusProps, mut hooks: Hooks) -> impl Into<AnyElement<'st
             .and_then(|context| context.ide_installation_status.as_ref()),
     );
     let mcp_properties = mcp_status_properties(&mcp_clients);
-    let sandbox_properties = sandbox_status_properties(settings);
     let setting_sources = crate::utils::status::build_setting_sources_properties();
     let setting_sources_text = (!setting_sources.is_empty()).then(|| setting_sources.join(", "));
 
@@ -105,9 +102,6 @@ pub fn Status(props: &StatusProps, mut hooks: Hooks) -> impl Into<AnyElement<'st
                 StatusProperty(label: property.label, value: property.value)
             }).collect::<Vec<_>>())
             #(mcp_properties.into_iter().map(|property| element! {
-                StatusProperty(label: property.label, value: property.value)
-            }).collect::<Vec<_>>())
-            #(sandbox_properties.into_iter().map(|property| element! {
                 StatusProperty(label: property.label, value: property.value)
             }).collect::<Vec<_>>())
             #(setting_sources_text.map(|sources| element! {
@@ -218,34 +212,6 @@ fn ide_status_properties(
     Vec::new()
 }
 
-fn sandbox_status_properties(settings: &SettingsJson) -> Vec<StatusPropertyData> {
-    sandbox_status_properties_for_audience(settings, crate::utils::build_profile::build_audience())
-}
-
-fn sandbox_status_properties_for_audience(
-    settings: &SettingsJson,
-    audience: crate::utils::build_profile::BuildAudience,
-) -> Vec<StatusPropertyData> {
-    if !crate::utils::build_profile::audience_has_internal_capability(
-        audience,
-        crate::utils::build_profile::InternalCapability::Ui,
-    ) {
-        return Vec::new();
-    }
-
-    let enabled = settings
-        .sandbox
-        .as_ref()
-        .and_then(|sandbox| sandbox.get("enabled"))
-        .and_then(|enabled| enabled.as_bool())
-        .unwrap_or(false);
-
-    vec![status_property(
-        "Bash Sandbox",
-        if enabled { "Enabled" } else { "Disabled" },
-    )]
-}
-
 /// Maps to: CC `utils/status.tsx:148-182` `buildMcpProperties`.
 fn mcp_status_properties(mcp_clients: &[McpServerConnection]) -> Vec<StatusPropertyData> {
     let mut connected = 0usize;
@@ -352,8 +318,7 @@ fn status_diagnostics(
     let mut diagnostics = non_empty_diagnostics(installation_diagnostics);
     diagnostics.extend(settings_error_diagnostics(settings_errors));
     diagnostics.extend(non_empty_diagnostics(doctor_diagnostics));
-    diagnostics.extend(managed_settings_customization_diagnostics());
-    diagnostics.extend(memory_diagnostics_from_files(&discover_claude_md_files()));
+    diagnostics.extend(memory_diagnostics_from_files(&discover_agents_md_files()));
     diagnostics
 }
 
@@ -366,63 +331,7 @@ fn non_empty_diagnostics(values: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn managed_settings_customization_diagnostics() -> Vec<String> {
-    managed_settings_customization_diagnostics_from_path(&get_managed_settings_file_path())
-}
-
-fn managed_settings_customization_diagnostics_from_path(path: &std::path::Path) -> Vec<String> {
-    let Ok(raw) = std::fs::read_to_string(path) else {
-        return Vec::new();
-    };
-    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return Vec::new();
-    };
-    let Some(field) = parsed
-        .as_object()
-        .and_then(|object| object.get("strictPluginOnlyCustomization"))
-    else {
-        return Vec::new();
-    };
-
-    if field.is_boolean() {
-        return Vec::new();
-    }
-
-    if let Some(values) = field.as_array() {
-        let unknown = values
-            .iter()
-            .filter_map(|value| value.as_str())
-            .filter(|surface| !CUSTOMIZATION_SURFACES.contains(surface))
-            .map(ToOwned::to_owned)
-            .collect::<Vec<_>>();
-        if unknown.is_empty() {
-            return Vec::new();
-        }
-        return vec![format!(
-            "managed-settings.json: strictPluginOnlyCustomization has {} value(s) this client doesn't recognize: {}",
-            unknown.len(),
-            unknown.join(", ")
-        )];
-    }
-
-    vec![format!(
-        "managed-settings.json: strictPluginOnlyCustomization has an invalid value (expected true or an array, got {})",
-        official_json_typeof(field)
-    )]
-}
-
-fn official_json_typeof(value: &serde_json::Value) -> &'static str {
-    match value {
-        serde_json::Value::Null | serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
-            "object"
-        }
-        serde_json::Value::Bool(_) => "boolean",
-        serde_json::Value::Number(_) => "number",
-        serde_json::Value::String(_) => "string",
-    }
-}
-
-fn memory_diagnostics_from_files(files: &[ClaudeMdFile]) -> Vec<String> {
+fn memory_diagnostics_from_files(files: &[AgentsMdFile]) -> Vec<String> {
     files
         .iter()
         .filter_map(|file| {
@@ -622,42 +531,20 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_status_properties_match_official_internal_gate_readonly() {
-        use crate::utils::build_profile::BuildAudience;
-
-        let mut settings = SettingsJson::default();
-        settings.sandbox = Some(serde_json::json!({ "enabled": true }));
-
-        assert_eq!(
-            sandbox_status_properties_for_audience(&settings, BuildAudience::AnthropicInternal,),
-            vec![status_property("Bash Sandbox", "Enabled")]
-        );
-
-        settings.sandbox = Some(serde_json::json!({ "enabled": false }));
-        assert_eq!(
-            sandbox_status_properties_for_audience(&settings, BuildAudience::AnthropicInternal,),
-            vec![status_property("Bash Sandbox", "Disabled")]
-        );
-        assert!(
-            sandbox_status_properties_for_audience(&settings, BuildAudience::External,).is_empty()
-        );
-    }
-
-    #[test]
     fn memory_diagnostics_match_official_large_file_message_readonly() {
         let diagnostics = memory_diagnostics_from_files(&[
-            ClaudeMdFile {
+            AgentsMdFile {
                 path: std::path::PathBuf::from("/tmp/AGENTS.md"),
-                source: crate::utils::claudemd::ClaudeMdSource::Project,
-                kind: crate::utils::claudemd::ClaudeMdKind::Project,
+                source: crate::utils::agents_md::AgentsMdSource::Project,
+                kind: crate::utils::agents_md::AgentsMdKind::Project,
                 content: "x".repeat(MAX_MEMORY_CHARACTER_COUNT),
                 parent: None,
                 is_nested: false,
             },
-            ClaudeMdFile {
+            AgentsMdFile {
                 path: std::path::PathBuf::from("/tmp/large-AGENTS.md"),
-                source: crate::utils::claudemd::ClaudeMdSource::Project,
-                kind: crate::utils::claudemd::ClaudeMdKind::Project,
+                source: crate::utils::agents_md::AgentsMdSource::Project,
+                kind: crate::utils::agents_md::AgentsMdKind::Project,
                 content: "x".repeat(MAX_MEMORY_CHARACTER_COUNT + 1),
                 parent: None,
                 is_nested: false,
@@ -677,21 +564,19 @@ mod tests {
     fn settings_error_diagnostics_match_official_invalid_files_message() {
         let diagnostics = settings_error_diagnostics(&[
             ValidationError {
-                file: Some("/tmp/project/.claude/settings.json".to_string()),
+                file: Some("/tmp/project/.nyan/settings.json".to_string()),
                 path: "model".to_string(),
                 message: "Invalid model".to_string(),
                 expected: None,
                 invalid_value: None,
-                doc_link: None,
                 suggestion: None,
             },
             ValidationError {
-                file: Some("/tmp/project/.claude/settings.json".to_string()),
+                file: Some("/tmp/project/.nyan/settings.json".to_string()),
                 path: "permissions".to_string(),
                 message: "Invalid permission".to_string(),
                 expected: None,
                 invalid_value: None,
-                doc_link: None,
                 suggestion: None,
             },
         ]);
@@ -699,7 +584,7 @@ mod tests {
         assert_eq!(
             diagnostics,
             vec![
-                "Found invalid settings files: /tmp/project/.claude/settings.json. They will be ignored."
+                "Found invalid settings files: /tmp/project/.nyan/settings.json. They will be ignored."
                     .to_string(),
             ]
         );
@@ -708,12 +593,11 @@ mod tests {
     #[test]
     fn status_diagnostics_orders_install_health_and_settings_like_official_readonly() {
         let settings_errors = vec![ValidationError {
-            file: Some("/tmp/project/.claude/settings.json".to_string()),
+            file: Some("/tmp/project/.nyan/settings.json".to_string()),
             path: "model".to_string(),
             message: "Invalid model".to_string(),
             expected: None,
             invalid_value: None,
-            doc_link: None,
             suggestion: None,
         }];
         let installation = vec!["Add ~/.local/bin to PATH".to_string(), " ".to_string()];
@@ -725,7 +609,7 @@ mod tests {
         assert_eq!(diagnostics[0], "Add ~/.local/bin to PATH");
         assert_eq!(
             diagnostics[1],
-            "Found invalid settings files: /tmp/project/.claude/settings.json. They will be ignored."
+            "Found invalid settings files: /tmp/project/.nyan/settings.json. They will be ignored."
         );
         assert_eq!(
             diagnostics[2],
@@ -734,54 +618,12 @@ mod tests {
     }
 
     #[test]
-    fn doctor_diagnostics_match_official_managed_settings_customization_warnings() {
-        let root = std::env::temp_dir().join(format!(
-            "nyan-status-managed-diagnostics-{}",
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::create_dir_all(&root).expect("create temp root");
-        let path = root.join("managed-settings.json");
-
-        std::fs::write(
-            &path,
-            r#"{"strictPluginOnlyCustomization":{"skills":true}}"#,
-        )
-        .expect("write invalid managed settings");
-        assert_eq!(
-            managed_settings_customization_diagnostics_from_path(&path),
-            vec![
-                "managed-settings.json: strictPluginOnlyCustomization has an invalid value (expected true or an array, got object)"
-                    .to_string()
-            ]
-        );
-
-        std::fs::write(
-            &path,
-            r#"{"strictPluginOnlyCustomization":["skills","widgets",7,"agents","portals"]}"#,
-        )
-        .expect("write unknown managed settings surfaces");
-        assert_eq!(
-            managed_settings_customization_diagnostics_from_path(&path),
-            vec![
-                "managed-settings.json: strictPluginOnlyCustomization has 2 value(s) this client doesn't recognize: widgets, portals"
-                    .to_string()
-            ]
-        );
-
-        std::fs::write(&path, r#"{"strictPluginOnlyCustomization":true}"#)
-            .expect("write boolean managed settings");
-        assert!(managed_settings_customization_diagnostics_from_path(&path).is_empty());
-
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
     fn status_reads_readonly_runtime_model_and_session_metadata() {
         let _env_guard = crate::utils::test_env::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         crate::utils::config::set_test_global_config(Some(GlobalConfig::default()));
-        let settings = SettingsJson::default();
+        let settings = crate::utils::settings::SettingsJson::default();
         crate::utils::settings::settings_cache::install_test_settings(
             serde_json::from_value(serde_json::json!({"nyan": {
                 "providers": {"p": {"kind": "anthropic", "protocol": "anthropicMessages"}},

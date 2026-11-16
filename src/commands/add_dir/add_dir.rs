@@ -6,7 +6,7 @@ use super::validation::{
     AddDirectoryResult, add_dir_help_message, validate_directory_for_workspace,
 };
 use crate::bootstrap::state::{
-    get_additional_directories_for_claude_md, set_additional_directories_for_claude_md,
+    get_additional_directories_for_agents_md, set_additional_directories_for_agents_md,
 };
 use crate::components::message_response::MessageResponse;
 use crate::components::permissions::rules::add_workspace_directory::{
@@ -76,11 +76,11 @@ pub fn handle_add_directory(path: &str, remember: bool, app_store: &AppStore) ->
             &permission_update,
         ));
     });
-    let mut current_dirs = get_additional_directories_for_claude_md();
+    let mut current_dirs = get_additional_directories_for_agents_md();
     let directory = PathBuf::from(path);
     if !current_dirs.contains(&directory) {
         current_dirs.push(directory);
-        set_additional_directories_for_claude_md(current_dirs);
+        set_additional_directories_for_agents_md(current_dirs);
     }
     crate::utils::sandbox::sandbox_adapter::refresh_config();
     // Same no-color Chalk projection as validation.rs. The shared Chalk
@@ -273,8 +273,8 @@ mod tests {
     #[test]
     fn handle_add_directory_matches_official_latest_context_and_bootstrap_order() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let prior_dirs = get_additional_directories_for_claude_md();
-        set_additional_directories_for_claude_md(vec![PathBuf::from("/first")]);
+        let prior_dirs = get_additional_directories_for_agents_md();
+        set_additional_directories_for_agents_md(vec![PathBuf::from("/first")]);
         let store = AppStore::new(AppState::default(), None);
         let message = handle_add_directory("/second", false, &store);
         assert_eq!(
@@ -283,7 +283,7 @@ mod tests {
         );
         handle_add_directory("/second", false, &store);
         assert_eq!(
-            get_additional_directories_for_claude_md(),
+            get_additional_directories_for_agents_md(),
             vec![PathBuf::from("/first"), PathBuf::from("/second")]
         );
         assert!(
@@ -293,12 +293,12 @@ mod tests {
                 .additional_working_directories
                 .contains_key("/second")
         );
-        set_additional_directories_for_claude_md(prior_dirs);
+        set_additional_directories_for_agents_md(prior_dirs);
     }
     #[test]
     fn handle_add_directory_matches_official_failed_remember_keeps_session_update() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let prior_dirs = get_additional_directories_for_claude_md();
+        let prior_dirs = get_additional_directories_for_agents_md();
         let previous = crate::bootstrap::state::is_session_persistence_disabled();
         crate::bootstrap::state::set_session_persistence_disabled(true);
         let store = AppStore::new(AppState::default(), None);
@@ -319,11 +319,11 @@ mod tests {
             crate::types::permissions::PermissionRuleSource::LocalSettings
         );
         assert!(
-            get_additional_directories_for_claude_md()
+            get_additional_directories_for_agents_md()
                 .contains(&PathBuf::from("/remember-failure"))
         );
         crate::bootstrap::state::set_session_persistence_disabled(previous);
-        set_additional_directories_for_claude_md(prior_dirs);
+        set_additional_directories_for_agents_md(prior_dirs);
     }
     #[test]
     fn handle_add_directory_matches_official_remember_writes_local_only() {
@@ -332,11 +332,10 @@ mod tests {
         let workdir = root.join("workspace");
         std::fs::create_dir_all(&workdir).unwrap();
         let old_cwd = crate::bootstrap::state::get_original_cwd();
-        let old_dirs = get_additional_directories_for_claude_md();
+        let old_dirs = get_additional_directories_for_agents_md();
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.join("config"));
-        let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &root);
-        let _skip = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", root.join("config"));
+        let _skip = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_original_cwd(&workdir);
         crate::utils::settings::settings_cache::reset_settings_cache();
         let store = AppStore::new(AppState::default(), None);
@@ -345,17 +344,17 @@ mod tests {
             "Added /saved-extra as a working directory and saved to local settings · /permissions to manage"
         );
         let settings: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(workdir.join(".claude/settings.local.json")).unwrap(),
+            &std::fs::read(workdir.join(".nyan/settings.local.json")).unwrap(),
         )
         .unwrap();
         assert_eq!(
             settings["permissions"]["additionalDirectories"],
             serde_json::json!(["/saved-extra"])
         );
-        assert!(!workdir.join(".claude/settings.json").exists());
+        assert!(!workdir.join(".nyan/settings.json").exists());
         assert!(!root.join("config/settings.json").exists());
         crate::bootstrap::state::set_original_cwd(old_cwd);
-        set_additional_directories_for_claude_md(old_dirs);
+        set_additional_directories_for_agents_md(old_dirs);
         crate::utils::settings::settings_cache::reset_settings_cache();
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -1514,7 +1514,7 @@ mod tests {
             "nyan-in-process-runner-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         let write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::utils::swarm::team_helpers::clear_team_tool_state_for_test();
@@ -1667,12 +1667,12 @@ mod tests {
 
     #[tokio::test]
     async fn teammate_history_compaction_does_not_fake_success_when_summary_aborts() {
-        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _task_lock = crate::tasks::in_process_teammate_task::TEST_IN_PROCESS_TEAMMATE_TASK_LOCK
             .lock()
             .unwrap();
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         crate::tasks::in_process_teammate_task::clear_in_process_teammate_tasks_for_test();
-        crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "1");
+        crate::utils::process_env::set("NYAN_AUTO_COMPACT_WINDOW", "1");
 
         let task_id = register_task("compact");
         let identity = identity("compact");
@@ -1717,7 +1717,7 @@ mod tests {
                 .contains("toolu_old")
         );
 
-        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+        crate::utils::process_env::remove("NYAN_AUTO_COMPACT_WINDOW");
     }
 
     /// One aborted teammate turn, set up the way
@@ -2596,10 +2596,10 @@ mod tests {
     #[tokio::test]
     async fn wait_for_next_prompt_claims_available_task_list_work() {
         let _task_store_lock = crate::utils::tasks::TASK_TOOL_TEST_LOCK.lock().unwrap();
-        let _mailbox_lock = crate::utils::teammate_mailbox::TEST_TEAMMATE_MAILBOX_LOCK
+        let _task_lock = crate::tasks::in_process_teammate_task::TEST_IN_PROCESS_TEAMMATE_TASK_LOCK
             .lock()
             .unwrap();
-        let _task_lock = crate::tasks::in_process_teammate_task::TEST_IN_PROCESS_TEAMMATE_TASK_LOCK
+        let _mailbox_lock = crate::utils::teammate_mailbox::TEST_TEAMMATE_MAILBOX_LOCK
             .lock()
             .unwrap();
         crate::tasks::in_process_teammate_task::clear_in_process_teammate_tasks_for_test();
@@ -2647,10 +2647,10 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_next_prompt_prioritizes_pending_user_message() {
-        let _mailbox_lock = crate::utils::teammate_mailbox::TEST_TEAMMATE_MAILBOX_LOCK
+        let _lock = crate::tasks::in_process_teammate_task::TEST_IN_PROCESS_TEAMMATE_TASK_LOCK
             .lock()
             .unwrap();
-        let _lock = crate::tasks::in_process_teammate_task::TEST_IN_PROCESS_TEAMMATE_TASK_LOCK
+        let _mailbox_lock = crate::utils::teammate_mailbox::TEST_TEAMMATE_MAILBOX_LOCK
             .lock()
             .unwrap();
         crate::tasks::in_process_teammate_task::clear_in_process_teammate_tasks_for_test();
@@ -2695,10 +2695,10 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_next_prompt_prioritizes_shutdown_then_leader_messages() {
-        let _mailbox_lock = crate::utils::teammate_mailbox::TEST_TEAMMATE_MAILBOX_LOCK
+        let _lock = crate::tasks::in_process_teammate_task::TEST_IN_PROCESS_TEAMMATE_TASK_LOCK
             .lock()
             .unwrap();
-        let _lock = crate::tasks::in_process_teammate_task::TEST_IN_PROCESS_TEAMMATE_TASK_LOCK
+        let _mailbox_lock = crate::utils::teammate_mailbox::TEST_TEAMMATE_MAILBOX_LOCK
             .lock()
             .unwrap();
         crate::tasks::in_process_teammate_task::clear_in_process_teammate_tasks_for_test();

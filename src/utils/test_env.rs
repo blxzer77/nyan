@@ -23,12 +23,82 @@ pub struct TestEnvLock(std::sync::Mutex<()>);
 
 impl TestEnvLock {
     pub fn lock(&self) -> std::sync::LockResult<TestEnvGuard<'_>> {
+        let rank = RankHold::acquire(TestLockRank::Env);
         let guard = self
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         reset_settings_derived_caches();
-        Ok(TestEnvGuard(guard))
+        Ok(TestEnvGuard(guard, rank))
+    }
+}
+
+/// The one acquisition order for the process-wide test locks, outermost
+/// first: a test that needs several takes them top to bottom. Every
+/// [`TestStateLock`] and [`TEST_ENV_LOCK`] carries its rank and panics, before
+/// blocking, when the calling thread already holds a lock ranked at or below
+/// it. Two tests taking the same pair in opposite orders could otherwise
+/// deadlock the whole run, but only when they happen to interleave; the check
+/// turns that into a deterministic failure at the reversed call site.
+///
+/// The order follows how the tests already nested before it was enforced:
+/// the swarm coordinators wrap the team/task state they drive, every module
+/// lock that seeds environment-dependent state wraps [`TEST_ENV_LOCK`], and
+/// the leaf caches read under the environment come after it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TestLockRank {
+    SendMessageMailbox,
+    PermissionSync,
+    BackendRegistry,
+    TeamHelpers,
+    TaskTool,
+    InProcessTeammateTask,
+    TeammateMailbox,
+    TeammateContext,
+    CachedMicrocompact,
+    Env,
+    LocalAgentTask,
+    Queue,
+    PendingCallbacks,
+    InvokedSkills,
+    LeaderPermissionBridge,
+    PlanState,
+    /// A module-private lock that nests inside any of the above but never
+    /// around one, nor around another module-private lock.
+    ModuleLocal,
+}
+
+thread_local! {
+    static HELD_RANKS: std::cell::RefCell<Vec<TestLockRank>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// This thread's claim on one rank, released with the guard that owns it.
+struct RankHold(TestLockRank);
+
+impl RankHold {
+    fn acquire(rank: TestLockRank) -> Self {
+        HELD_RANKS.with_borrow_mut(|held| {
+            if let Some(&inner) = held.iter().max() {
+                assert!(
+                    inner < rank,
+                    "test lock order: {rank:?} taken while holding {inner:?}; \
+                     take locks in `TestLockRank` order (utils/test_env.rs)"
+                );
+            }
+            held.push(rank);
+        });
+        Self(rank)
+    }
+}
+
+impl Drop for RankHold {
+    fn drop(&mut self) {
+        HELD_RANKS.with_borrow_mut(|held| {
+            if let Some(index) = held.iter().rposition(|&rank| rank == self.0) {
+                held.remove(index);
+            }
+        });
     }
 }
 
@@ -36,14 +106,17 @@ impl TestEnvLock {
 /// from settings are cleared on both edges of the critical section.
 ///
 /// Neither cache is keyed — the merged-settings caches and the hooks-config
-/// snapshot memoise a read of `CLAUDE_CONFIG_DIR` plus `get_original_cwd()`,
+/// snapshot memoise a read of `NYAN_CONFIG_DIR` plus `get_original_cwd()`,
 /// the exact state this lock exists to let a test move, and both populate
 /// lazily on first read. A test that moved either and restored it left the
 /// snapshot taken from its scratch directory behind for everyone after it, and
 /// a test that moved neither pinned THIS repository's hooks for the rest of the
 /// run. Clearing can never produce a wrong answer, only drop a stale one: the
 /// next read re-derives from disk and the environment as they are then.
-pub struct TestEnvGuard<'a>(#[allow(dead_code)] std::sync::MutexGuard<'a, ()>);
+pub struct TestEnvGuard<'a>(
+    #[allow(dead_code)] std::sync::MutexGuard<'a, ()>,
+    #[allow(dead_code)] RankHold,
+);
 
 fn reset_settings_derived_caches() {
     crate::utils::settings::settings_cache::reset_settings_cache();
@@ -159,29 +232,36 @@ pub fn in_child_process(module: &str, test: &str, vars: &[(&str, Option<&str>)])
 /// for `PoisonError` to protect. All it protects is the next test's ability to
 /// report its own result: one timing-sensitive failure used to turn into a
 /// `PoisonError` for every later test sharing the lock.
-pub struct TestStateLock(std::sync::Mutex<()>);
+pub struct TestStateLock(std::sync::Mutex<()>, TestLockRank);
 
 impl TestStateLock {
-    pub const fn new() -> Self {
-        Self(std::sync::Mutex::new(()))
+    pub const fn new(rank: TestLockRank) -> Self {
+        Self(std::sync::Mutex::new(()), rank)
     }
 
-    pub fn lock(&self) -> std::sync::LockResult<std::sync::MutexGuard<'_, ()>> {
-        Ok(self
+    pub fn lock(&self) -> std::sync::LockResult<TestStateGuard<'_>> {
+        let rank = RankHold::acquire(self.1);
+        let guard = self
             .0
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner))
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Ok(TestStateGuard(guard, rank))
     }
 }
 
+pub struct TestStateGuard<'a>(
+    #[allow(dead_code)] std::sync::MutexGuard<'a, ()>,
+    #[allow(dead_code)] RankHold,
+);
+
 /// Pins `projectSettings` to the isolated test workdir for the duration of a test.
 ///
-/// `just test` pins `CLAUDE_CONFIG_DIR`, which covers `userSettings` and
-/// `~/.claude.json`. But settings merge from five sources and `projectSettings`
-/// is `${cwd}/.claude/settings.json` (`utils/settings/mod.rs:1-8`), rooted at
+/// `just test` pins `NYAN_CONFIG_DIR`, which covers `userSettings` and
+/// the state file. But settings merge from five sources and `projectSettings`
+/// is `${cwd}/.nyan/settings.json` (`utils/settings/mod.rs:1-8`), rooted at
 /// `bootstrap::state::get_original_cwd()` — process state, not an env var, so no
 /// recipe can pin it. Without this, a test that reads settings reads THIS
-/// repository's `.claude/settings.json`, which configures hooks; anything that
+/// repository's `.nyan/settings.json`, which configures hooks; anything that
 /// then runs those hooks tries to spawn a process.
 ///
 /// `tests/fixtures/isolated-project` is the tracked hook-free workdir used by

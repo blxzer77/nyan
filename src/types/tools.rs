@@ -98,7 +98,7 @@ pub enum ToolProgress {
 ///
 /// Server and tool names as received from the MCP server (unnormalized).
 /// Present on every MCP tool regardless of whether `Tool.name` carries the
-/// `mcp__server__` prefix or the unprefixed `CLAUDE_AGENT_SDK_MCP_NO_PREFIX`
+/// `mcp__server__` prefix or the unprefixed `NYAN_SDK_MCP_NO_PREFIX`
 /// display name.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpToolInfo {
@@ -177,7 +177,7 @@ pub struct McpToolAnnotations {
 /// Maps to: CC `Tool.ts` `Tool` metadata consumed by `utils/api.ts#toolToAPISchema`.
 ///
 /// This type is the model/API-visible metadata half of CC's `Tool` interface,
-/// carried from the tool registry into `services/api/claude.rs`. The
+/// carried from the tool registry into `services/api/request.rs`. The
 /// behavioral half (`Tool.call`) is the `ToolCall` trait in `crate::tool`,
 /// implemented by each `tools/<tool>` module.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -271,9 +271,8 @@ impl Tool {
     /// `` `${client.name} - ${annotations.title || tool.name} (MCP)` ``.
     /// `None` for a tool that is not from an MCP server.
     ///
-    /// PARTIAL: CC replaces this for a stdio Claude in Chrome server's tools
-    /// (`client.ts:1977-1982`, `claudeInChrome/toolRendering.tsx:292`); that
-    /// override is not ported.
+    /// @nyan: CC's Claude in Chrome override (`client.ts:1977-1982`) is not
+    /// shipped; every MCP server's tools use this generic name.
     pub fn mcp_user_facing_name(&self) -> Option<String> {
         let info = self.mcp_info.as_ref()?;
         Some(crate::services::mcp::client::mcp_tool_user_facing_name(
@@ -357,8 +356,8 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        crate::utils::process_env::remove("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES");
-        crate::utils::process_env::remove("CLAUDE_CODE_COORDINATOR_MODE");
+        crate::utils::process_env::remove("NYAN_AGENT_LIST_IN_MESSAGES");
+        crate::utils::process_env::remove("NYAN_COORDINATOR_MODE");
         let agents =
             vec![crate::tools::agent_tool::load_agents_dir::AgentDefinition::new(
                 "reviewer",

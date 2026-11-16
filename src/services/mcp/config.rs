@@ -11,8 +11,6 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-const CCR_PROXY_PATH_MARKERS: &[&str] = &["/v2/session_ingress/shttp/mcp/", "/v2/ccr-sessions/"];
-
 /// Maps to: CC `ValidationError.mcpErrorMetadata.severity` for MCP configs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum McpConfigErrorSeverity {
@@ -91,67 +89,6 @@ fn mcp_config_error(
     }
 }
 
-fn percent_decode_query_value(value: &str) -> Option<String> {
-    let bytes = value.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'%' if index + 2 < bytes.len() => {
-                let hex = std::str::from_utf8(&bytes[index + 1..index + 3]).ok()?;
-                let byte = u8::from_str_radix(hex, 16).ok()?;
-                out.push(byte);
-                index += 3;
-            }
-            b'+' => {
-                out.push(b' ');
-                index += 1;
-            }
-            byte => {
-                out.push(byte);
-                index += 1;
-            }
-        }
-    }
-    String::from_utf8(out).ok()
-}
-
-/// Maps to: CC `services/mcp/config.ts#unwrapCcrProxyUrl`.
-pub fn unwrap_ccr_proxy_url(url: &str) -> String {
-    if !CCR_PROXY_PATH_MARKERS
-        .iter()
-        .any(|marker| url.contains(marker))
-    {
-        return url.to_string();
-    }
-
-    // Maps to CC `new URL(url)` guard: malformed proxy strings keep their
-    // original value instead of trusting an arbitrary `mcp_url` substring.
-    let Some(scheme_separator) = url.find("://") else {
-        return url.to_string();
-    };
-    let after_scheme = &url[scheme_separator + 3..];
-    let authority_end = after_scheme
-        .find(['/', '?', '#'])
-        .unwrap_or(after_scheme.len());
-    if scheme_separator == 0 || authority_end == 0 || url.chars().any(char::is_whitespace) {
-        return url.to_string();
-    }
-
-    let Some(query) = url.split_once('?').map(|(_, query)| query) else {
-        return url.to_string();
-    };
-    for part in query.split('&') {
-        let Some((key, value)) = part.split_once('=') else {
-            continue;
-        };
-        if key == "mcp_url" {
-            return percent_decode_query_value(value).unwrap_or_else(|| value.to_string());
-        }
-    }
-    url.to_string()
-}
-
 fn scoped_server_command_array(config: &ScopedMcpServerConfig) -> Option<Vec<String>> {
     if config.transport != Transport::Stdio {
         return None;
@@ -170,10 +107,7 @@ pub fn get_mcp_server_signature(config: &ScopedMcpServerConfig) -> Option<String
         let encoded = serde_json::to_string(&command).unwrap_or_else(|_| "[]".to_string());
         return Some(format!("stdio:{encoded}"));
     }
-    config
-        .url
-        .as_deref()
-        .map(|url| format!("url:{}", unwrap_ccr_proxy_url(url)))
+    config.url.as_deref().map(|url| format!("url:{url}"))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -240,50 +174,6 @@ pub fn dedup_plugin_mcp_servers_readonly(
     }
 }
 
-/// Maps to: CC `services/mcp/config.ts#dedupClaudeAiMcpServers`.
-pub fn dedup_claude_ai_mcp_servers_readonly(
-    claude_ai_servers: &indexmap::IndexMap<String, ScopedMcpServerConfig>,
-    manual_servers: &indexmap::IndexMap<String, ScopedMcpServerConfig>,
-    project_config: &ProjectConfig,
-) -> McpServerDedupResult {
-    let mut manual_signatures = BTreeMap::<String, String>::new();
-    for (name, config) in crate::utils::process_env::ecmascript_object_entries(manual_servers) {
-        if is_mcp_server_disabled_in_project_config(name, project_config) {
-            continue;
-        }
-        if let Some(signature) = get_mcp_server_signature(config) {
-            manual_signatures
-                .entry(signature)
-                .or_insert_with(|| name.to_owned());
-        }
-    }
-
-    let mut servers = indexmap::IndexMap::new();
-    let mut suppressed = Vec::new();
-    for (name, config) in crate::utils::process_env::ecmascript_object_entries(claude_ai_servers) {
-        let Some(signature) = get_mcp_server_signature(config) else {
-            servers.insert(name.to_owned(), config.clone());
-            continue;
-        };
-        if let Some(duplicate_of) = manual_signatures.get(&signature) {
-            crate::utils::debug::log_for_debugging(&format!(
-                "Suppressing claude.ai connector \"{name}\": duplicates \"{duplicate_of}\""
-            ));
-            suppressed.push(McpServerDedupSuppression {
-                name: name.to_owned(),
-                duplicate_of: duplicate_of.clone(),
-            });
-            continue;
-        }
-        servers.insert(name.to_owned(), config.clone());
-    }
-
-    McpServerDedupResult {
-        servers,
-        suppressed,
-    }
-}
-
 fn scoped_server_url(config: &ScopedMcpServerConfig) -> Option<&str> {
     config.url.as_deref()
 }
@@ -309,20 +199,6 @@ pub fn url_matches_pattern(url: &str, pattern: &str) -> bool {
 
 fn command_arrays_match(a: &[String], b: &[String]) -> bool {
     a == b
-}
-
-/// Maps to: CC `services/mcp/config.ts#shouldAllowManagedMcpServersOnly`.
-pub fn should_allow_managed_mcp_servers_only_from_policy(
-    policy_settings: Option<&SettingsJson>,
-) -> bool {
-    policy_settings.and_then(|settings| settings.allow_managed_mcp_servers_only) == Some(true)
-}
-
-/// Maps to: CC `services/mcp/config.ts#shouldAllowManagedMcpServersOnly`.
-pub fn should_allow_managed_mcp_servers_only() -> bool {
-    should_allow_managed_mcp_servers_only_from_policy(
-        crate::utils::settings::get_settings_for_source(SettingSource::Policy).as_ref(),
-    )
 }
 
 fn is_mcp_server_denied_with_settings(
@@ -371,14 +247,13 @@ fn is_mcp_server_denied_with_settings(
 fn is_mcp_server_allowed_by_policy_with_settings(
     server_name: &str,
     config: Option<&ScopedMcpServerConfig>,
-    allowlist_settings: &SettingsJson,
-    denylist_settings: &SettingsJson,
+    settings: &SettingsJson,
 ) -> bool {
-    if is_mcp_server_denied_with_settings(server_name, config, denylist_settings) {
+    if is_mcp_server_denied_with_settings(server_name, config, settings) {
         return false;
     }
 
-    let Some(allowed) = allowlist_settings.allowed_mcp_servers.as_ref() else {
+    let Some(allowed) = settings.allowed_mcp_servers.as_ref() else {
         return true;
     };
     if allowed.is_empty() {
@@ -426,23 +301,16 @@ fn is_mcp_server_allowed_by_policy_with_settings(
 }
 
 /// Maps to: CC `services/mcp/config.ts#isMcpServerAllowedByPolicy`.
+/// @nyan: no `allowManagedMcpServersOnly`; the allowlist and denylist both
+/// come from the merged settings.
 pub fn is_mcp_server_allowed_by_policy_readonly(
     server_name: &str,
     config: Option<&ScopedMcpServerConfig>,
 ) -> bool {
-    let policy_settings = crate::utils::settings::get_settings_for_source(SettingSource::Policy);
-    let allowlist_settings =
-        if should_allow_managed_mcp_servers_only_from_policy(policy_settings.as_ref()) {
-            policy_settings.unwrap_or_default()
-        } else {
-            crate::utils::settings::get_initial_settings()
-        };
-    let denylist_settings = crate::utils::settings::get_initial_settings();
     is_mcp_server_allowed_by_policy_with_settings(
         server_name,
         config,
-        &allowlist_settings,
-        &denylist_settings,
+        &crate::utils::settings::get_initial_settings(),
     )
 }
 
@@ -455,8 +323,7 @@ pub struct McpPolicyFilterResult {
 /// Maps to: CC `services/mcp/config.ts#filterMcpServersByPolicy`.
 pub fn filter_mcp_servers_by_policy_with_settings(
     configs: indexmap::IndexMap<String, ScopedMcpServerConfig>,
-    allowlist_settings: &SettingsJson,
-    denylist_settings: &SettingsJson,
+    settings: &SettingsJson,
 ) -> McpPolicyFilterResult {
     let mut allowed = indexmap::IndexMap::new();
     let mut blocked = Vec::new();
@@ -465,12 +332,7 @@ pub fn filter_mcp_servers_by_policy_with_settings(
         .map(|(name, config)| (name.to_owned(), config.clone()))
     {
         if config.transport == Transport::Sdk
-            || is_mcp_server_allowed_by_policy_with_settings(
-                &name,
-                Some(&config),
-                allowlist_settings,
-                denylist_settings,
-            )
+            || is_mcp_server_allowed_by_policy_with_settings(&name, Some(&config), settings)
         {
             allowed.insert(name, config);
         } else {
@@ -484,15 +346,10 @@ pub fn filter_mcp_servers_by_policy_with_settings(
 pub fn filter_mcp_servers_by_policy_readonly(
     configs: indexmap::IndexMap<String, ScopedMcpServerConfig>,
 ) -> McpPolicyFilterResult {
-    let policy_settings = crate::utils::settings::get_settings_for_source(SettingSource::Policy);
-    let allowlist_settings =
-        if should_allow_managed_mcp_servers_only_from_policy(policy_settings.as_ref()) {
-            policy_settings.unwrap_or_default()
-        } else {
-            crate::utils::settings::get_initial_settings()
-        };
-    let denylist_settings = crate::utils::settings::get_initial_settings();
-    filter_mcp_servers_by_policy_with_settings(configs, &allowlist_settings, &denylist_settings)
+    filter_mcp_servers_by_policy_with_settings(
+        configs,
+        &crate::utils::settings::get_initial_settings(),
+    )
 }
 
 fn config_uses_windows_npx_without_cmd(
@@ -541,7 +398,7 @@ fn expand_config_env_vars(mut config: McpServerConfig) -> (McpServerConfig, Vec<
                     .collect()
             });
         }
-        Transport::SseIde | Transport::WsIde | Transport::Sdk | Transport::ClaudeAiProxy => {}
+        Transport::SseIde | Transport::WsIde | Transport::Sdk => {}
     }
 
     let mut seen = BTreeSet::new();
@@ -629,7 +486,7 @@ pub fn parse_mcp_config_value_readonly(
                 "Windows requires 'cmd /c' wrapper to execute npx",
                 McpConfigErrorSeverity::Warning,
                 Some(&name),
-                Some("Change command to \"cmd\" with args [\"/c\", \"npx\", ...]. See: https://code.claude.com/docs/en/mcp#configure-mcp-servers".to_string()),
+                Some("Change command to \"cmd\" with args [\"/c\", \"npx\", ...].".to_string()),
             ));
         }
         servers.insert(name, ScopedMcpServerConfig::from_config(scope, &config));
@@ -829,7 +686,7 @@ fn current_project_mcp_dirs() -> Vec<PathBuf> {
 }
 
 /// Maps to: CC `getMcpConfigsByScope(...)` for the config sources Nyan
-/// already has in memory plus read-only `.mcp.json`/enterprise file parsing.
+/// already has in memory plus read-only `.mcp.json` file parsing.
 pub fn get_mcp_configs_by_scope_readonly(
     scope: ConfigScope,
     global_config: &GlobalConfig,
@@ -853,25 +710,7 @@ pub fn get_mcp_configs_by_scope_readonly(
             }
             result
         }
-        ConfigScope::Enterprise => {
-            let parsed = parse_mcp_config_from_file_path_readonly(
-                &super::utils::get_enterprise_mcp_file_path_readonly(),
-                true,
-                scope,
-            );
-            let errors = parsed
-                .errors
-                .into_iter()
-                .filter(|error| !error.is_missing_file())
-                .collect::<Vec<_>>();
-            McpConfigsByScope {
-                servers: parsed.servers,
-                errors,
-            }
-        }
-        ConfigScope::Dynamic | ConfigScope::ClaudeAi | ConfigScope::Managed => {
-            McpConfigsByScope::default()
-        }
+        ConfigScope::Dynamic => McpConfigsByScope::default(),
     }
 }
 
@@ -933,7 +772,7 @@ async fn plugin_mcp_servers() -> anyhow::Result<McpConfigs> {
 /// `dedupPluginMcpServers(...)`. Disabled/policy-blocked plugin servers still
 /// appear in `/mcp`, but they must not win the first-plugin-wins race against
 /// enabled duplicates.
-fn dedup_plugin_mcp_servers_for_get_claude_code_configs_readonly(
+fn dedup_plugin_mcp_servers_for_mcp_configs_readonly(
     plugin_servers: &indexmap::IndexMap<String, ScopedMcpServerConfig>,
     enabled_manual_servers: &indexmap::IndexMap<String, ScopedMcpServerConfig>,
     project_config: &ProjectConfig,
@@ -956,50 +795,20 @@ fn dedup_plugin_mcp_servers_for_get_claude_code_configs_readonly(
     result
 }
 
-/// Maps to: CC `services/mcp/config.ts#doesEnterpriseMcpConfigExist`.
-pub fn does_enterprise_mcp_config_exist_readonly() -> bool {
-    super::utils::get_enterprise_mcp_file_path_readonly().is_file()
-}
-
-/// Shared/eager JS Promise carrier at the source's fetch call sites. This
-/// carries the already-existing claude.ai fetch, without another fetch/cache.
-pub(super) type McpConfigPromise = futures::future::Shared<
-    futures::future::BoxFuture<'static, indexmap::IndexMap<String, ScopedMcpServerConfig>>,
->;
-
-pub(super) fn start_mcp_config_promise(
-    future: impl std::future::Future<Output = indexmap::IndexMap<String, ScopedMcpServerConfig>>
-    + Send
-    + 'static,
-) -> McpConfigPromise {
-    use futures::FutureExt;
-    let promise = future.boxed().shared();
-    let worker = promise.clone();
-    crate::utils::process_runtime::runtime_handle_for_detached_work()
-        .expect("MCP discovery requires the published process runtime")
-        .spawn(async move {
-            let _ = worker.await;
-        });
-    promise
-}
-
 /// Existing synchronous caller bridge; the aggregation algorithm remains in
 /// the source-owned asynchronous getClaudeCodeMcpConfigs below.
-pub fn get_claude_code_mcp_configs_readonly(
+pub fn get_mcp_configs_readonly(
     global_config: &GlobalConfig,
     project_config: &ProjectConfig,
     dynamic_servers: &indexmap::IndexMap<String, ScopedMcpServerConfig>,
-    extra_dedup_targets: &indexmap::IndexMap<String, ScopedMcpServerConfig>,
 ) -> McpConfigs {
-    let (global, project, dynamic, extra) = (
+    let (global, project, dynamic) = (
         global_config.clone(),
         project_config.clone(),
         dynamic_servers.clone(),
-        extra_dedup_targets.clone(),
     );
     match crate::utils::process_runtime::block_on_from_sync(async move {
-        get_claude_code_mcp_configs(&global, &project, &dynamic, futures::future::ready(extra))
-            .await
+        get_mcp_configs(&global, &project, &dynamic).await
     }) {
         Some(Ok(result)) => result,
         result => McpConfigs {
@@ -1017,47 +826,22 @@ pub fn get_claude_code_mcp_configs_readonly(
 }
 
 /// Maps to: CC `services/mcp/config.ts:1070#getClaudeCodeMcpConfigs`.
-pub async fn get_claude_code_mcp_configs(
+/// @nyan: no `extraDedupTargets` (it only carried claude.ai connectors).
+pub async fn get_mcp_configs(
     global_config: &GlobalConfig,
     project_config: &ProjectConfig,
     dynamic_servers: &indexmap::IndexMap<String, ScopedMcpServerConfig>,
-    extra_dedup_targets: impl std::future::Future<
-        Output = indexmap::IndexMap<String, ScopedMcpServerConfig>,
-    >,
 ) -> anyhow::Result<McpConfigs> {
-    let enterprise_servers =
-        get_mcp_configs_by_scope_readonly(ConfigScope::Enterprise, global_config, project_config)
-            .servers;
-    if does_enterprise_mcp_config_exist_readonly() {
-        return Ok(McpConfigs {
-            servers: enterprise_servers
-                .into_iter()
-                .filter(|(name, config)| {
-                    is_mcp_server_allowed_by_policy_readonly(name, Some(config))
-                })
-                .collect(),
-            errors: Vec::new(),
-        });
-    }
-
-    let mcp_locked =
-        crate::utils::settings::plugin_only_policy::is_restricted_to_plugin_only("mcp");
-    let user_servers = if mcp_locked {
-        indexmap::IndexMap::new()
-    } else {
-        get_mcp_configs_by_scope_readonly(ConfigScope::User, global_config, project_config).servers
-    };
-    let project_servers = if mcp_locked {
-        indexmap::IndexMap::new()
-    } else {
+    // @nyan: no managed policy layer, so no exclusive `managed-mcp.json`
+    // branch and no strict plugin-only MCP lock.
+    let user_servers =
+        get_mcp_configs_by_scope_readonly(ConfigScope::User, global_config, project_config).servers;
+    let project_servers =
         get_mcp_configs_by_scope_readonly(ConfigScope::Project, global_config, project_config)
-            .servers
-    };
-    let local_servers = if mcp_locked {
-        indexmap::IndexMap::new()
-    } else {
-        get_mcp_configs_by_scope_readonly(ConfigScope::Local, global_config, project_config).servers
-    };
+            .servers;
+    let local_servers =
+        get_mcp_configs_by_scope_readonly(ConfigScope::Local, global_config, project_config)
+            .servers;
 
     let plugin_result = plugin_mcp_servers().await?;
     let mut mcp_errors = plugin_result.errors;
@@ -1070,7 +854,6 @@ pub async fn get_claude_code_mcp_configs(
         })
         .collect::<indexmap::IndexMap<_, _>>();
 
-    let extra_dedup_targets = extra_dedup_targets.await;
     // config.ts:1180-1195: merge precedence applies before filtering. A
     // blocked overriding value must not expose the older value as a dedup target.
     let manual_servers: indexmap::IndexMap<_, _> = user_servers
@@ -1078,7 +861,6 @@ pub async fn get_claude_code_mcp_configs(
         .chain(approved_project_servers.iter())
         .chain(local_servers.iter())
         .chain(dynamic_servers.iter())
-        .chain(extra_dedup_targets.iter())
         .map(|(name, config)| (name.clone(), config.clone()))
         .collect();
     let enabled_manual_servers =
@@ -1090,7 +872,7 @@ pub async fn get_claude_code_mcp_configs(
             })
             .map(|(name, config)| (name.to_owned(), config.clone()))
             .collect();
-    let deduped = dedup_plugin_mcp_servers_for_get_claude_code_configs_readonly(
+    let deduped = dedup_plugin_mcp_servers_for_mcp_configs_readonly(
         &plugin_servers,
         &enabled_manual_servers,
         project_config,
@@ -1127,46 +909,13 @@ pub async fn get_claude_code_mcp_configs(
     })
 }
 
-/// Maps to: CC `services/mcp/config.ts#getAllMcpConfigs`.
+/// Maps to: CC `services/mcp/config.ts#getAllMcpConfigs`. @nyan: no
+/// claude.ai connectors, so this is the Claude Code config set alone.
 pub async fn get_all_mcp_configs(
     global_config: &GlobalConfig,
     project_config: &ProjectConfig,
 ) -> anyhow::Result<McpConfigs> {
-    if does_enterprise_mcp_config_exist_readonly() {
-        return get_claude_code_mcp_configs(
-            global_config,
-            project_config,
-            &Default::default(),
-            futures::future::ready(Default::default()),
-        )
-        .await;
-    }
-    // User-authorized L2 (2026-09-15): keep claudeai.rs ported but disconnected
-    // from application discovery. Do not read OAuth/login state or fetch org MCPs.
-    // Original wiring retained for future re-enablement:
-    // let claudeai_promise =
-    //     start_mcp_config_promise(super::claudeai::fetch_claude_ai_mcp_configs_if_eligible());
-    let claudeai_promise = start_mcp_config_promise(futures::future::ready(Default::default()));
-    let claude_code = get_claude_code_mcp_configs(
-        global_config,
-        project_config,
-        &Default::default(),
-        claudeai_promise.clone(),
-    )
-    .await?;
-    let claude_ai_allowed = filter_mcp_servers_by_policy_readonly(claudeai_promise.await).allowed;
-    let deduped_claude_ai = dedup_claude_ai_mcp_servers_readonly(
-        &claude_ai_allowed,
-        &claude_code.servers,
-        project_config,
-    )
-    .servers;
-    let mut servers = deduped_claude_ai;
-    servers.extend(claude_code.servers);
-    Ok(McpConfigs {
-        servers,
-        errors: claude_code.errors,
-    })
+    get_mcp_configs(global_config, project_config, &Default::default()).await
 }
 
 /// Maps to: CC `getClaudeCodeMcpConfigs(...)` callers that need all configured
@@ -1175,33 +924,18 @@ pub fn all_configured_mcp_servers_readonly(
     global_config: &GlobalConfig,
     project_config: &ProjectConfig,
 ) -> indexmap::IndexMap<String, ScopedMcpServerConfig> {
-    get_claude_code_mcp_configs_readonly(
-        global_config,
-        project_config,
-        &indexmap::IndexMap::new(),
-        &indexmap::IndexMap::new(),
-    )
-    .servers
+    get_mcp_configs_readonly(global_config, project_config, &indexmap::IndexMap::new()).servers
 }
 
 /// Maps to: CC `services/mcp/config.ts#getMcpConfigByName`.
 ///
 /// This lookup intentionally follows the official direct source precedence
-/// rather than `getClaudeCodeMcpConfigs(...)` aggregation: enterprise wins by
-/// name, strict plugin-only exposes enterprise only, then local overrides
-/// project overrides user. It does not consult plugin/dynamic/claude.ai
+/// rather than `getClaudeCodeMcpConfigs(...)` aggregation: local overrides
+/// project overrides user (@nyan: no enterprise tier). It does not consult plugin/dynamic
 /// sources, approval state, disabled state, policy filters, or signature dedup.
 pub fn get_mcp_config_by_name_readonly(name: &str) -> Option<ScopedMcpServerConfig> {
     let global_config = crate::utils::config::load_global_config();
     let project_config = crate::utils::config::get_current_project_config();
-
-    let enterprise_servers =
-        get_mcp_configs_by_scope_readonly(ConfigScope::Enterprise, &global_config, &project_config)
-            .servers;
-
-    if crate::utils::settings::plugin_only_policy::is_restricted_to_plugin_only("mcp") {
-        return enterprise_servers.get(name).cloned();
-    }
 
     let user_servers =
         get_mcp_configs_by_scope_readonly(ConfigScope::User, &global_config, &project_config)
@@ -1213,9 +947,8 @@ pub fn get_mcp_config_by_name_readonly(name: &str) -> Option<ScopedMcpServerConf
         get_mcp_configs_by_scope_readonly(ConfigScope::Local, &global_config, &project_config)
             .servers;
 
-    enterprise_servers
+    local_servers
         .get(name)
-        .or_else(|| local_servers.get(name))
         .or_else(|| project_servers.get(name))
         .or_else(|| user_servers.get(name))
         .cloned()
@@ -1357,14 +1090,13 @@ mod tests {
                 ide_running_in_windows: None,
                 ide_name: None,
                 auth_token: None,
-                id: None,
                 plugin_source: None,
             },
         )
     }
 
     #[test]
-    fn async_local_discovery_waits_at_source_extra_targets_and_has_no_sdk_policy_exemption() {
+    fn async_local_discovery_has_no_sdk_policy_exemption() {
         let _env = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_runtime::initialize_test_process_runtime();
         // Production effects are polled on the published Tokio runtime. This
@@ -1373,16 +1105,13 @@ mod tests {
         let _runtime_context = runtime.enter();
         let root =
             std::env::temp_dir().join(format!("mcp-discovery-config-{}", uuid::Uuid::new_v4()));
-        let managed = root.join("managed");
         let config = root.join("config");
-        std::fs::create_dir_all(&managed).unwrap();
         std::fs::create_dir_all(&config).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config);
-        let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &managed);
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config);
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let _project = ProjectRootGuard::pin(&root);
         std::fs::write(
-            managed.join("managed-settings.json"),
+            config.join("settings.json"),
             r#"{"deniedMcpServers":[{"serverName":"sdk"}]}"#,
         )
         .unwrap();
@@ -1402,66 +1131,13 @@ mod tests {
                 .contains_key("sdk"),
             "fixture must reach policy rather than fail schema"
         );
-        let (resolve, extra) = futures::channel::oneshot::channel();
-        let (reached_sender, reached) = std::sync::mpsc::channel();
-        let load = get_claude_code_mcp_configs(&global, &project, &dynamic, async move {
-            reached_sender.send(()).unwrap();
-            extra.await.unwrap()
-        });
-        let mut load = Box::pin(load);
-        futures::executor::block_on(async {
-            // Drive real plugin/scopes loading until the actual late extra-target
-            // await is reached, then ensure discovery cannot finish prematurely.
-            let complete = crate::utils::race(
-                async {
-                    let result = load.as_mut().await;
-                    Some(result)
-                },
-                async {
-                    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
-                    loop {
-                        assert!(
-                            std::time::Instant::now() < deadline,
-                            "actual extra-target await was not reached"
-                        );
-                        if reached.try_recv().is_ok() {
-                            return None;
-                        }
-                        futures_timer::Delay::new(std::time::Duration::from_millis(1)).await;
-                    }
-                },
-            )
-            .await;
-            assert!(
-                complete.is_none(),
-                "local discovery must await provided extra targets"
-            );
-            resolve.send(indexmap::IndexMap::new()).unwrap();
-            let result = load.await.unwrap();
-            assert!(result.servers.contains_key("manual"));
-            assert!(
-                !result.servers.contains_key("sdk"),
-                "getClaudeCode's final loop has no SDK exception"
-            );
-            // Enterprise returns before ever awaiting extra/plugin discovery.
-            std::fs::write(
-                managed.join("managed-mcp.json"),
-                r#"{"mcpServers":{"sdk":{"type":"sdk","name":"fixture"}}}"#,
-            )
-            .unwrap();
-            let result = get_claude_code_mcp_configs(
-                &global,
-                &project,
-                &dynamic,
-                futures::future::pending(),
-            )
-            .await
-            .unwrap();
-            assert!(
-                result.servers.is_empty(),
-                "enterprise policy loop also has no SDK exception"
-            );
-        });
+        let result =
+            futures::executor::block_on(get_mcp_configs(&global, &project, &dynamic)).unwrap();
+        assert!(result.servers.contains_key("manual"));
+        assert!(
+            !result.servers.contains_key("sdk"),
+            "getClaudeCode's final loop has no SDK exception"
+        );
         crate::utils::settings::settings_cache::reset_settings_cache();
         crate::utils::plugins::plugin_loader::clear_plugin_cache(None);
         std::fs::remove_dir_all(root).unwrap();
@@ -1478,6 +1154,7 @@ mod tests {
             serde_json::json!({"type":"http","url":"","oauth":{"callbackPort":-1}}),
             serde_json::json!({"type":"http","url":"","oauth":null}),
             serde_json::json!({"type":null,"command":"node"}),
+            serde_json::json!({"type":"claudeai-proxy","url":"https://example.com/mcp","id":"c"}),
         ] {
             let parsed = parse_mcp_config_value_readonly(
                 &serde_json::json!({"mcpServers":{"good":{"command":"node"},"bad":bad}}),
@@ -1541,11 +1218,6 @@ mod tests {
                         "authToken": "secret"
                     },
                     "sdk": { "type": "sdk", "name": "sdk-server" },
-                    "claude": {
-                        "type": "claudeai-proxy",
-                        "url": "https://mcp.example.com/proxy",
-                        "id": "connector-id"
-                    },
                     "remote": {
                         "type": "http",
                         "url": "https://example.com/mcp"
@@ -1571,11 +1243,8 @@ mod tests {
         );
         assert_eq!(parsed.servers["sdk"].transport, Transport::Sdk);
         assert_eq!(parsed.servers["sdk"].name.as_deref(), Some("sdk-server"));
-        assert!(parsed.servers["sdk"].id.is_none());
         assert_eq!(parsed.servers["sseIde"].ide_running_in_windows, Some(true));
         assert_eq!(parsed.servers["wsIde"].ide_running_in_windows, None);
-        assert_eq!(parsed.servers["claude"].transport, Transport::ClaudeAiProxy);
-        assert_eq!(parsed.servers["claude"].id.as_deref(), Some("connector-id"));
         assert_eq!(parsed.servers["remote"].transport, Transport::Http);
         assert!(parsed.servers["remote"].headers.is_empty());
         assert!(parsed.servers["remote"].headers_helper.is_none());
@@ -1645,7 +1314,17 @@ mod tests {
     }
 
     #[test]
-    fn mcp_server_signature_unwraps_ccr_proxy_urls_and_dedups_plugins() {
+    fn server_signatures_do_not_unwrap_retired_cloud_proxy_urls() {
+        let url = "https://example.invalid/v2/ccr-sessions/abc?mcp_url=https%3A%2F%2Fvendor.example%2Fmcp";
+        let (_, config) = test_scoped_config("proxy", Transport::Http, None, &[], Some(url));
+        assert_eq!(
+            get_mcp_server_signature(&config),
+            Some(format!("url:{url}"))
+        );
+    }
+
+    #[test]
+    fn mcp_server_signature_dedups_exact_urls_and_stdio_commands() {
         let manual = indexmap::IndexMap::from([test_scoped_config(
             "docs",
             Transport::Http,
@@ -1659,9 +1338,7 @@ mod tests {
                 Transport::Http,
                 None,
                 &[],
-                Some(
-                    "https://ccr.example/v2/session_ingress/shttp/mcp/x?mcp_url=https%3A%2F%2Fvendor.example%2Fmcp",
-                ),
+                Some("https://vendor.example/mcp"),
             ),
             test_scoped_config(
                 "plugin:toolbox:b",
@@ -1680,18 +1357,6 @@ mod tests {
             test_scoped_config("plugin:toolbox:sdk", Transport::Sdk, None, &[], None),
         ]);
 
-        assert_eq!(
-            unwrap_ccr_proxy_url(
-                "https://ccr.example/v2/ccr-sessions/abc?mcp_url=https%3A%2F%2Fvendor.example%2Fmcp"
-            ),
-            "https://vendor.example/mcp"
-        );
-        assert_eq!(
-            unwrap_ccr_proxy_url(
-                "not a url /v2/ccr-sessions/abc?mcp_url=https%3A%2F%2Fvendor.example%2Fmcp"
-            ),
-            "not a url /v2/ccr-sessions/abc?mcp_url=https%3A%2F%2Fvendor.example%2Fmcp"
-        );
         assert_eq!(
             get_mcp_server_signature(&manual["docs"]).as_deref(),
             Some("url:https://vendor.example/mcp")
@@ -1718,73 +1383,16 @@ mod tests {
     }
 
     #[test]
-    fn dedup_claude_ai_mcp_servers_suppresses_only_enabled_manual_duplicates_like_official() {
-        let manual = indexmap::IndexMap::from([
-            test_scoped_config(
-                "slack",
-                Transport::Http,
-                None,
-                &[],
-                Some("https://mcp.slack.com/mcp"),
-            ),
-            test_scoped_config(
-                "disabled-docs",
-                Transport::Http,
-                None,
-                &[],
-                Some("https://docs.example.com/mcp"),
-            ),
-        ]);
-        let claude_ai = indexmap::IndexMap::from([
-            test_scoped_config(
-                "claude.ai Slack",
-                Transport::ClaudeAiProxy,
-                None,
-                &[],
-                Some("https://mcp.slack.com/mcp"),
-            ),
-            test_scoped_config(
-                "claude.ai Docs",
-                Transport::ClaudeAiProxy,
-                None,
-                &[],
-                Some("https://docs.example.com/mcp"),
-            ),
-        ]);
-        let project = ProjectConfig {
-            disabled_mcp_servers: Some(vec!["disabled-docs".to_string()]),
-            ..ProjectConfig::default()
-        };
-
-        let result = dedup_claude_ai_mcp_servers_readonly(&claude_ai, &manual, &project);
-
-        assert!(!result.servers.contains_key("claude.ai Slack"));
-        assert!(result.servers.contains_key("claude.ai Docs"));
-        assert_eq!(
-            result.suppressed,
-            vec![McpServerDedupSuppression {
-                name: "claude.ai Slack".to_string(),
-                duplicate_of: "slack".to_string(),
-            }]
-        );
-    }
-
-    #[test]
-    fn get_all_mcp_configs_preserves_manual_servers_without_claude_ai_business_wiring() {
+    fn get_all_mcp_configs_returns_manual_servers() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let temp_dir = std::env::temp_dir().join(format!(
-            "nyan-mcp-get-all-no-claudeai-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let temp_dir =
+            std::env::temp_dir().join(format!("nyan-mcp-get-all-{}", uuid::Uuid::new_v4()));
         let config_dir = temp_dir.join("config");
-        let managed_dir = temp_dir.join("managed");
         let project_dir = temp_dir.join("project");
         std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&managed_dir).unwrap();
         std::fs::create_dir_all(&project_dir).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_dir);
-        let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &managed_dir);
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_dir);
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let _project_root = ProjectRootGuard::pin(&project_dir);
         crate::utils::config::clear_global_config_cache_for_testing();
 
@@ -1803,15 +1411,8 @@ mod tests {
             result.servers["manual"].url.as_deref(),
             Some("https://manual.example/mcp")
         );
-        assert!(
-            result
-                .servers
-                .keys()
-                .all(|name| !name.starts_with("claude.ai ")),
-            "Claude.ai discovery is intentionally disconnected from business entry points"
-        );
 
-        drop((_config, _managed, _simple));
+        drop((_config, _simple));
         crate::utils::config::clear_global_config_cache_for_testing();
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
@@ -1825,11 +1426,8 @@ mod tests {
         ));
         std::fs::create_dir_all(&temp_dir).unwrap();
         let config_dir = temp_dir.join("config");
-        let managed_dir = temp_dir.join("managed");
         std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&managed_dir).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_dir);
-        let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &managed_dir);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_dir);
         crate::utils::config::clear_global_config_cache_for_testing();
 
         let plugin_servers = indexmap::IndexMap::from([
@@ -1853,7 +1451,7 @@ mod tests {
             ..ProjectConfig::default()
         };
 
-        let result = dedup_plugin_mcp_servers_for_get_claude_code_configs_readonly(
+        let result = dedup_plugin_mcp_servers_for_mcp_configs_readonly(
             &plugin_servers,
             &indexmap::IndexMap::new(),
             &project,
@@ -1867,7 +1465,7 @@ mod tests {
             result.suppressed
         );
 
-        drop((_config, _managed));
+        drop(_config);
         crate::utils::config::clear_global_config_cache_for_testing();
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
@@ -1899,7 +1497,7 @@ mod tests {
             ),
             test_scoped_config("sdkDeniedByNameButExempt", Transport::Sdk, None, &[], None),
         ]);
-        let allow_settings = SettingsJson {
+        let settings = SettingsJson {
             allowed_mcp_servers: Some(vec![
                 crate::utils::settings::types::AllowedMcpServerEntry {
                     server_name: None,
@@ -1912,9 +1510,6 @@ mod tests {
                     server_url: Some("https://*.example.com/*".to_string()),
                 },
             ]),
-            ..SettingsJson::default()
-        };
-        let deny_settings = SettingsJson {
             denied_mcp_servers: Some(vec![
                 crate::utils::settings::types::DeniedMcpServerEntry {
                     server_name: None,
@@ -1939,8 +1534,7 @@ mod tests {
             "https://api.example.com/mcp",
             "https://*.example.com/*"
         ));
-        let result =
-            filter_mcp_servers_by_policy_with_settings(configs, &allow_settings, &deny_settings);
+        let result = filter_mcp_servers_by_policy_with_settings(configs, &settings);
         // Actual Bun filterMcpServersByPolicy keeps Object.entries order for
         // both outputs; the old alphabetical expectation came from BTreeMap.
         let oracle: Value = serde_json::from_str(include_str!(
@@ -1958,17 +1552,6 @@ mod tests {
             oracle["allowed"]
         );
         assert_eq!(serde_json::json!(result.blocked), oracle["blocked"]);
-    }
-
-    #[test]
-    fn managed_mcp_allowlist_flag_reads_policy_settings_only() {
-        assert!(!should_allow_managed_mcp_servers_only_from_policy(None));
-        assert!(should_allow_managed_mcp_servers_only_from_policy(Some(
-            &SettingsJson {
-                allow_managed_mcp_servers_only: Some(true),
-                ..SettingsJson::default()
-            }
-        )));
     }
 
     #[test]
@@ -2143,7 +1726,7 @@ mod tests {
         let config_dir = temp_dir.join("config");
         let project_dir = temp_dir.join("project");
         std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(project_dir.join(".claude")).unwrap();
+        std::fs::create_dir_all(project_dir.join(".nyan")).unwrap();
         std::fs::write(
             project_dir.join(".mcp.json"),
             serde_json::json!({
@@ -2155,7 +1738,7 @@ mod tests {
         )
         .unwrap();
 
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_dir);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_dir);
         let _non_interactive = EnvVarGuard::unset("NYAN_NON_INTERACTIVE_SESSION");
         let previous_interactive = crate::bootstrap::state::get_is_interactive();
         crate::bootstrap::state::set_is_interactive(true);
@@ -2167,7 +1750,7 @@ mod tests {
         assert!(!unapproved.contains_key("docs"));
 
         std::fs::write(
-            project_dir.join(".claude/settings.local.json"),
+            project_dir.join(".nyan/settings.local.json"),
             serde_json::json!({ "enabledMcpjsonServers": ["docs"] }).to_string(),
         )
         .unwrap();
@@ -2245,9 +1828,9 @@ mod tests {
         let temp_dir =
             std::env::temp_dir().join(format!("nyan-mcp-config-by-name-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &temp_dir);
         std::fs::write(
-            temp_dir.join(".claude.json"),
+            temp_dir.join("state.json"),
             serde_json::json!({
                 "mcpServers": {
                     "docs": {
@@ -2277,13 +1860,10 @@ mod tests {
             uuid::Uuid::new_v4()
         ));
         let config_dir = temp_dir.join("config");
-        let managed_dir = temp_dir.join("managed");
         let project_dir = temp_dir.join("project");
         std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&managed_dir).unwrap();
         std::fs::create_dir_all(&project_dir).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_dir);
-        let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &managed_dir);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_dir);
         let _project_root = ProjectRootGuard::pin(&project_dir);
 
         let project_path_for_key = project_dir
@@ -2292,7 +1872,7 @@ mod tests {
         let project_key =
             crate::utils::config::normalize_project_path(&project_path_for_key.to_string_lossy());
         std::fs::write(
-            config_dir.join(".claude.json"),
+            config_dir.join("state.json"),
             serde_json::json!({
                 "mcpServers": {
                     "docs": { "type": "http", "url": "https://user.example/mcp" },
@@ -2339,28 +1919,7 @@ mod tests {
             ConfigScope::User
         );
 
-        std::fs::write(
-            managed_dir.join("managed-mcp.json"),
-            serde_json::json!({
-                "mcpServers": {
-                    "docs": { "command": "enterprise-docs" }
-                }
-            })
-            .to_string(),
-        )
-        .unwrap();
-        crate::utils::config::clear_global_config_cache_for_testing();
-        let docs = get_mcp_config_by_name_readonly("docs").expect("enterprise docs");
-        assert_eq!(docs.scope, ConfigScope::Enterprise);
-        assert_eq!(docs.command.as_deref(), Some("enterprise-docs"));
-        assert_eq!(
-            get_mcp_config_by_name_readonly("user-only")
-                .expect("user-only still reachable like official lookup")
-                .scope,
-            ConfigScope::User
-        );
-
-        drop((_config, _managed));
+        drop(_config);
         crate::utils::config::clear_global_config_cache_for_testing();
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
@@ -2385,7 +1944,7 @@ mod tests {
             std::env::temp_dir().join(format!("nyan-mcp-set-enabled-{}", uuid::Uuid::new_v4()));
         let project_dir = temp_dir.join("project");
         std::fs::create_dir_all(&project_dir).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &temp_dir);
         let _session_write = EnvVarGuard::set("SESSION_WRITE_ENABLED", "1");
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         let _project_root = ProjectRootGuard::pin(&project_dir);
@@ -2396,7 +1955,7 @@ mod tests {
         assert!(!is_mcp_server_disabled("docs"));
 
         let value: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(temp_dir.join(".claude.json")).unwrap())
+            serde_json::from_str(&std::fs::read_to_string(temp_dir.join("state.json")).unwrap())
                 .unwrap();
         let current_project_dir = std::env::current_dir().unwrap();
         let project_key =
@@ -2533,11 +2092,7 @@ mod tests {
             &[],
             None,
         )]);
-        let result = filter_mcp_servers_by_policy_with_settings(
-            configs,
-            &SettingsJson::default(),
-            &SettingsJson::default(),
-        );
+        let result = filter_mcp_servers_by_policy_with_settings(configs, &SettingsJson::default());
         assert!(result.blocked.is_empty());
         assert_eq!(
             result
@@ -2563,10 +2118,8 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("nyan-mcp-startup-errors-{}", uuid::Uuid::new_v4()));
         let config = root.join("config");
-        let managed = root.join("managed");
         let plugin = root.join("plugin");
         std::fs::create_dir_all(&config).unwrap();
-        std::fs::create_dir_all(&managed).unwrap();
         std::fs::create_dir_all(plugin.join(".claude-plugin")).unwrap();
         std::fs::write(
             plugin.join(".claude-plugin/plugin.json"),
@@ -2578,8 +2131,7 @@ mod tests {
             r#"{"duplicate":{"command":"echo","args":["same"]}}"#,
         )
         .unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config);
-        let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &managed);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config);
         let _project = ProjectRootGuard::pin(&root);
         let _inline = InlinePluginsGuard(crate::bootstrap::state::get_inline_plugins());
         crate::bootstrap::state::set_inline_plugins(vec![plugin]);
@@ -2600,10 +2152,9 @@ mod tests {
             "{:?}",
             loaded.errors
         );
-        let result = get_claude_code_mcp_configs_readonly(
+        let result = get_mcp_configs_readonly(
             &global,
             &ProjectConfig::default(),
-            &indexmap::IndexMap::new(),
             &indexmap::IndexMap::new(),
         );
         assert!(result.servers.contains_key("manual"));

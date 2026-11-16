@@ -19,8 +19,8 @@
 //!
 //! PLACEMENT, recorded not fixed: the consumers reach well outside `tools/` —
 //! `tasks/local_shell_task`, `utils/{cron_tasks,teammate_mailbox}`,
-//! `utils/permissions/permission_update`, `utils/plugins/hint_recommendation`,
-//! `utils/sandbox/sandbox_adapter`, `hooks/tool_permission/permission_context`
+//! `utils/permissions/permission_update`, `utils/sandbox/sandbox_adapter`,
+//! `hooks/tool_permission/permission_context`
 //! and `services/tools/tool_execution` all import from here. A repo-wide gate
 //! under `tools/shared/` is a Rust-only choice with no CC precedent either way
 //! (CC has no gate at all), so there is no source to align to and no parity
@@ -42,8 +42,6 @@ pub const CRON_PERSISTENCE_DISABLED_ERROR: &str =
     "File writes are disabled in this session; scheduled task was not saved";
 pub const PERMISSION_PERSISTENCE_DISABLED_ERROR: &str =
     "File writes are disabled in this session; permission update was not saved";
-pub const PLUGIN_HINT_PERSISTENCE_DISABLED_ERROR: &str =
-    "File writes are disabled in this session; plugin hint preference was not saved";
 pub const SANDBOX_SETTINGS_DISABLED_ERROR: &str =
     "File writes are disabled in this session; sandbox settings were not saved";
 pub const KEYBINDINGS_EDIT_DISABLED_ERROR: &str =

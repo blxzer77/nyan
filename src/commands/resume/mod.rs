@@ -819,31 +819,23 @@ mod tests {
             .filter_map(|entry| entry.get("uuid").and_then(|value| value.as_str()))
             .collect::<Vec<_>>();
 
-        assert_eq!(&uuids[..4], &["a1", "a2", "r1", "r2"]);
-        assert!(loaded.entries.iter().any(|entry| {
-            entry.get("isMeta").and_then(|value| value.as_bool()) == Some(true)
-                && entry
-                    .get("message")
-                    .and_then(|message| message.get("content"))
-                    .and_then(|content| content.as_array())
-                    .and_then(|blocks| blocks.first())
-                    .and_then(|block| block.get("text"))
-                    .and_then(|text| text.as_str())
-                    == Some(conversation::CONTINUATION_MESSAGE)
-        }));
-        assert!(loaded.entries.iter().any(|entry| {
-            entry
-                .get("message")
-                .and_then(|message| message.get("content"))
-                .and_then(|content| content.as_array())
-                .is_some_and(|blocks| {
-                    blocks.iter().any(|block| {
-                        block.get("type").and_then(|value| value.as_str()) == Some("text")
-                            && block.get("text").and_then(|value| value.as_str())
-                                == Some(conversation::NO_RESPONSE_REQUESTED)
-                    })
-                })
-        }));
+        // Interrupted after the tool_results: no synthetic continuation or
+        // "No response requested." sentinel is added to the resumed transcript.
+        assert_eq!(uuids, ["a1", "a2", "r1", "r2"]);
+        let texts = loaded
+            .entries
+            .iter()
+            .filter_map(|entry| entry.pointer("/message/content")?.as_array())
+            .flatten()
+            .filter_map(|block| block.get("text")?.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            !texts.iter().any(|text| matches!(
+                *text,
+                "Continue from where you left off." | crate::utils::messages::NO_RESPONSE_REQUESTED
+            )),
+            "{texts:?}"
+        );
     }
 
     #[test]
@@ -1196,7 +1188,7 @@ mod tests {
         let active = root.join("active-session-dir");
         std::fs::create_dir_all(&original).unwrap();
         std::fs::create_dir_all(&active).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", root.join("config"));
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", root.join("config"));
         let _project = PinnedProjectDir::at(&original);
         struct Restore(String, Option<PathBuf>, PathBuf);
         impl Drop for Restore {
@@ -1265,12 +1257,14 @@ mod tests {
         // conversationRecovery.ts:540–556 recovers from log.messages before
         // deserializeMessages filters unresolved ExitPlanMode tool_use blocks.
         let _env = TEST_ENV_LOCK.lock().unwrap();
+        // The plans-directory cache and the injected FS backend read below are
+        // serialised by the plan-state lock, not by TEST_ENV_LOCK.
+        let _plan = crate::utils::plans::test_plan_state_lock();
         let root = std::env::temp_dir().join(format!("resume-plan-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _project = PinnedProjectDir::at(&root);
-        let _remote = EnvVarGuard::set("CLAUDE_CODE_ENVIRONMENT_KIND", "byoc");
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         struct Restore(String, Option<PathBuf>, PathBuf);
         impl Drop for Restore {
             fn drop(&mut self) {
@@ -1320,10 +1314,9 @@ mod tests {
         let plan_path = root.join("plans/interrupted-plan.md");
         assert!(!plan_path.exists());
         crate::utils::conversation_recovery::load_conversation_for_resume(&target).unwrap();
-        assert_eq!(
-            fs::read_to_string(plan_path).unwrap(),
-            "must survive interrupted permission"
-        );
+        // Only the slug is restored; a missing local plan file is not rebuilt
+        // from the transcript.
+        assert!(!plan_path.exists());
         assert_eq!(
             crate::utils::plans::get_plan_slug(Some(&id)),
             "interrupted-plan"

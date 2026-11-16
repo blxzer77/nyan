@@ -69,36 +69,17 @@ pub fn is_tmux_control_mode() -> bool {
     value
 }
 
-/// Pure audience-injected form of CC `utils/fullscreen.ts#isFullscreenEnvEnabled`.
-pub fn is_fullscreen_env_enabled_for_audience(
-    get_env: &impl Fn(&str) -> Option<String>,
-    is_tmux_control_mode: bool,
-    audience: crate::utils::build_profile::BuildAudience,
-) -> bool {
-    let no_flicker = get_env("CLAUDE_CODE_NO_FLICKER");
-    if crate::utils::env_utils::is_env_defined_falsy(no_flicker.as_deref()) {
-        return false;
-    }
-    if crate::utils::env_utils::is_env_truthy(no_flicker.as_deref()) {
-        return true;
-    }
-    if is_tmux_control_mode {
-        return false;
-    }
-    crate::utils::build_profile::audience_has_internal_capability(
-        audience,
-        crate::utils::build_profile::InternalCapability::Ui,
-    )
+/// Pure environment-injected form of CC `utils/fullscreen.ts#isFullscreenEnvEnabled`.
+/// Fullscreen is opt-in, so tmux control mode only matters for the
+/// "disabled" notice.
+pub fn is_fullscreen_env_enabled_from_env(get_env: &impl Fn(&str) -> Option<String>) -> bool {
+    crate::utils::env_utils::is_env_truthy(get_env("NYAN_NO_FLICKER").as_deref())
 }
 
 /// Maps to: CC `utils/fullscreen.ts:106-135` `isFullscreenEnvEnabled`.
 pub fn is_fullscreen_env_enabled() -> bool {
     let tmux_control_mode = is_tmux_control_mode();
-    let enabled = is_fullscreen_env_enabled_for_audience(
-        &|key| crate::utils::process_env::var(key),
-        tmux_control_mode,
-        crate::utils::build_profile::build_audience(),
-    );
+    let enabled = is_fullscreen_env_enabled_from_env(&|key| crate::utils::process_env::var(key));
     if tmux_control_mode && !enabled {
         let mut logged = LOGGED_TMUX_CC_DISABLE
             .lock()
@@ -106,7 +87,7 @@ pub fn is_fullscreen_env_enabled() -> bool {
         if !*logged {
             *logged = true;
             eprintln!(
-                "fullscreen disabled: tmux -CC (iTerm2 integration mode) detected · set CLAUDE_CODE_NO_FLICKER=1 to override"
+                "fullscreen disabled: tmux -CC (iTerm2 integration mode) detected · set NYAN_NO_FLICKER=1 to override"
             );
         }
     }
@@ -116,14 +97,14 @@ pub fn is_fullscreen_env_enabled() -> bool {
 /// Maps to: CC `utils/fullscreen.ts:137-149` `isMouseTrackingEnabled`.
 pub fn is_mouse_tracking_enabled() -> bool {
     !crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_MOUSE").as_deref(),
+        crate::utils::process_env::var("NYAN_DISABLE_MOUSE").as_deref(),
     )
 }
 
 /// Maps to: CC `utils/fullscreen.ts:151-160` `isMouseClicksDisabled`.
 pub fn is_mouse_clicks_disabled() -> bool {
     crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_DISABLE_MOUSE_CLICKS").as_deref(),
+        crate::utils::process_env::var("NYAN_DISABLE_MOUSE_CLICKS").as_deref(),
     )
 }
 
@@ -187,34 +168,16 @@ mod tests {
     }
 
     #[test]
-    fn fullscreen_env_enabled_matches_official_internal_default_and_overrides() {
-        use crate::utils::build_profile::BuildAudience;
-
-        assert!(is_fullscreen_env_enabled_for_audience(
-            &env(&[]),
-            false,
-            BuildAudience::AnthropicInternal,
-        ));
-        assert!(!is_fullscreen_env_enabled_for_audience(
-            &env(&[]),
-            false,
-            BuildAudience::External,
-        ));
-        assert!(is_fullscreen_env_enabled_for_audience(
-            &env(&[("CLAUDE_CODE_NO_FLICKER", "1")]),
-            true,
-            BuildAudience::External,
-        ));
-        assert!(!is_fullscreen_env_enabled_for_audience(
-            &env(&[("CLAUDE_CODE_NO_FLICKER", "0")]),
-            false,
-            BuildAudience::AnthropicInternal,
-        ));
-        assert!(!is_fullscreen_env_enabled_for_audience(
-            &env(&[]),
-            true,
-            BuildAudience::AnthropicInternal,
-        ));
+    fn fullscreen_env_enabled_matches_official_external_default_and_overrides() {
+        assert!(!is_fullscreen_env_enabled_from_env(&env(&[])));
+        assert!(is_fullscreen_env_enabled_from_env(&env(&[(
+            "NYAN_NO_FLICKER",
+            "1"
+        )])));
+        assert!(!is_fullscreen_env_enabled_from_env(&env(&[(
+            "NYAN_NO_FLICKER",
+            "0"
+        )])));
     }
 
     #[test]
@@ -240,29 +203,29 @@ mod tests {
     fn canonical_fullscreen_gates_match_official_process_state() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _state = FullscreenStateGuard::reset();
-        let _no_flicker = EnvVarGuard::unset("CLAUDE_CODE_NO_FLICKER");
-        let _disable_mouse = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_MOUSE");
-        let _disable_clicks = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_MOUSE_CLICKS");
+        let _no_flicker = EnvVarGuard::unset("NYAN_NO_FLICKER");
+        let _disable_mouse = EnvVarGuard::unset("NYAN_DISABLE_MOUSE");
+        let _disable_clicks = EnvVarGuard::unset("NYAN_DISABLE_MOUSE_CLICKS");
         let _tmux = EnvVarGuard::unset("TMUX");
         let _term_program = EnvVarGuard::unset("TERM_PROGRAM");
         let _interactive = InteractiveGuard::set(true);
 
-        crate::utils::process_env::set("CLAUDE_CODE_NO_FLICKER", "1");
+        crate::utils::process_env::set("NYAN_NO_FLICKER", "1");
         assert!(is_fullscreen_env_enabled());
         assert!(is_fullscreen_active());
-        crate::utils::process_env::set("CLAUDE_CODE_NO_FLICKER", "0");
+        crate::utils::process_env::set("NYAN_NO_FLICKER", "0");
         assert!(!is_fullscreen_env_enabled());
         assert!(!is_fullscreen_active());
 
         assert!(is_mouse_tracking_enabled());
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_MOUSE", "yes");
+        crate::utils::process_env::set("NYAN_DISABLE_MOUSE", "yes");
         assert!(!is_mouse_tracking_enabled());
         assert!(!is_mouse_clicks_disabled());
-        crate::utils::process_env::set("CLAUDE_CODE_DISABLE_MOUSE_CLICKS", "on");
+        crate::utils::process_env::set("NYAN_DISABLE_MOUSE_CLICKS", "on");
         assert!(is_mouse_clicks_disabled());
 
         crate::bootstrap::state::set_is_interactive(false);
-        crate::utils::process_env::set("CLAUDE_CODE_NO_FLICKER", "1");
+        crate::utils::process_env::set("NYAN_NO_FLICKER", "1");
         assert!(!is_fullscreen_active());
     }
 }

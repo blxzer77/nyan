@@ -53,8 +53,8 @@ fn split_for_glimmer(message: &str, glimmer_index: isize) -> (String, String, St
 #[component]
 pub fn GlimmerMessage(props: &GlimmerMessageProps, hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_context::<Theme>();
-    let message_color = props.message_color.unwrap_or(theme.claude);
-    let shimmer_color = props.shimmer_color.unwrap_or(theme.claude_shimmer);
+    let message_color = props.message_color.unwrap_or(theme.nyan);
+    let shimmer_color = props.shimmer_color.unwrap_or(theme.nyan_shimmer);
     let stalled_intensity = props.stalled_intensity.clamp(0.0, 1.0);
 
     if props.message.is_empty() {

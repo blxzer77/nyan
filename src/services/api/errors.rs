@@ -88,9 +88,6 @@ pub enum ApiStopReason {
     Refusal,
 }
 
-/// Compatibility re-export; canonical ownership is `services/claude_ai_limits.rs`.
-pub use crate::services::claude_ai_limits::ClaudeAiLimits;
-
 /// Stub for CC `ConnectionErrorDetails` from `services/api/errorUtils.ts:31-35`.
 /// TODO(port): Replace once services/api/errorUtils.rs is ported.
 ///
@@ -123,18 +120,8 @@ pub const INVALID_API_KEY_ERROR_MESSAGE: &str =
 pub const INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL: &str =
     "Invalid API key \u{00b7} Fix external API key";
 
-/// Maps to: CC services/api/errors.ts:158-159
-pub const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH: &str = "Your ANTHROPIC_API_KEY belongs to a disabled organization \u{00b7} Unset the environment variable to use your subscription instead";
-
 /// Maps to: CC services/api/errors.ts:160-161
 pub const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY: &str = "Your ANTHROPIC_API_KEY belongs to a disabled organization \u{00b7} Update or unset the environment variable";
-
-/// Maps to: CC services/api/errors.ts:162-163
-pub const TOKEN_REVOKED_ERROR_MESSAGE: &str = "OAuth token revoked \u{00b7} Please run /login";
-
-/// Maps to: CC services/api/errors.ts:164-165
-pub const CCR_AUTH_ERROR_MESSAGE: &str =
-    "Authentication error \u{00b7} This may be a temporary network issue, please try again";
 
 /// Maps to: CC services/api/errors.ts:166
 pub const REPEATED_529_ERROR_MESSAGE: &str = "Repeated 529 Overloaded errors";
@@ -145,10 +132,6 @@ pub const CUSTOM_OFF_SWITCH_MESSAGE: &str =
 
 /// Maps to: CC services/api/errors.ts:169
 pub const API_TIMEOUT_ERROR_MESSAGE: &str = "Request timed out";
-
-/// Maps to: CC services/api/errors.ts:197-198
-pub const OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE: &str =
-    "Your account does not have access to nyan. Please run /login.";
 
 /// Maps to: CC bootstrap/state.ts:getIsNonInteractiveSession.
 fn get_is_non_interactive_session() -> bool {
@@ -333,33 +316,6 @@ pub fn get_request_too_large_error_message() -> String {
     }
 }
 
-/// Maps to: CC services/api/errors.ts:200-204
-pub fn get_token_revoked_error_message() -> &'static str {
-    if get_is_non_interactive_session() {
-        "Your account does not have access to Claude. Please login again or contact your administrator."
-    } else {
-        TOKEN_REVOKED_ERROR_MESSAGE
-    }
-}
-
-/// Maps to: CC services/api/errors.ts:206-210
-pub fn get_oauth_org_not_allowed_error_message() -> &'static str {
-    if get_is_non_interactive_session() {
-        "Your organization does not have access to Claude. Please login again or contact your administrator."
-    } else {
-        OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE
-    }
-}
-
-/// Check if we're in CCR (Claude Code Remote) mode.
-///
-/// Maps to: CC services/api/errors.ts:217-219
-fn is_ccr_mode() -> bool {
-    crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_REMOTE").as_deref(),
-    )
-}
-
 // ---------------------------------------------------------------------------
 // Type guard / validation
 // ---------------------------------------------------------------------------
@@ -417,10 +373,7 @@ pub enum ApiErrorClass {
     InvalidModel,
     CreditBalanceLow,
     InvalidApiKey,
-    TokenRevoked,
-    OauthOrgNotAllowed,
     AuthError,
-    BedrockModelAccess,
     ServerError,
     ClientError,
     SslCertError,
@@ -448,10 +401,7 @@ impl ApiErrorClass {
             Self::InvalidModel => "invalid_model",
             Self::CreditBalanceLow => "credit_balance_low",
             Self::InvalidApiKey => "invalid_api_key",
-            Self::TokenRevoked => "token_revoked",
-            Self::OauthOrgNotAllowed => "oauth_org_not_allowed",
             Self::AuthError => "auth_error",
-            Self::BedrockModelAccess => "bedrock_model_access",
             Self::ServerError => "server_error",
             Self::ClientError => "client_error",
             Self::SslCertError => "ssl_cert_error",
@@ -620,18 +570,6 @@ pub fn classify_api_error(error: &ApiErrorInfo) -> ApiErrorClass {
             return ApiErrorClass::InvalidModel;
         }
 
-        // OAuth token revoked (403)
-        if status == 403 && msg.contains("OAuth token has been revoked") {
-            return ApiErrorClass::TokenRevoked;
-        }
-
-        // OAuth org not allowed (401/403)
-        if (status == 401 || status == 403)
-            && msg.contains("OAuth authentication is currently not allowed for this organization")
-        {
-            return ApiErrorClass::OauthOrgNotAllowed;
-        }
-
         // Generic auth (401/403)
         if status == 401 || status == 403 {
             return ApiErrorClass::AuthError;
@@ -672,14 +610,6 @@ pub fn classify_api_error(error: &ApiErrorInfo) -> ApiErrorClass {
     // Authentication (x-api-key mention)
     if msg_lower.contains("x-api-key") {
         return ApiErrorClass::InvalidApiKey;
-    }
-
-    // Bedrock model access
-    if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_USE_BEDROCK").as_deref(),
-    ) && msg_lower.contains("model id")
-    {
-        return ApiErrorClass::BedrockModelAccess;
     }
 
     // Connection errors
@@ -776,53 +706,6 @@ pub fn get_assistant_message_from_error(error: &ApiErrorInfo, model: &str) -> Ap
     if let Some(status) = error.status()
         && status == 429
     {
-        // Maps to CC `errors.ts:463-537`: unified quota headers use the
-        // centralized limits message formatter (including active internal
-        // mocks) before the generic 429/entitlement path.
-        let config = crate::utils::config::load_global_config();
-        if crate::services::rate_limit_mocking::should_process_rate_limits(false) {
-            let has_unified_headers = error
-                .header("anthropic-ratelimit-unified-representative-claim")
-                .is_some()
-                || error
-                    .header("anthropic-ratelimit-unified-overage-status")
-                    .is_some();
-            if has_unified_headers {
-                let limits = crate::services::claude_ai_limits::limits_from_error_headers(
-                    error.headers().expect("HTTP 429 carries a header map"),
-                );
-                let context =
-                    crate::services::rate_limit_messages::RateLimitUiContext::from_global_config(
-                        &config,
-                    );
-                let content = crate::services::rate_limit_messages::get_rate_limit_error_message(
-                    &limits, &context,
-                )
-                .unwrap_or_else(|| crate::utils::messages::NO_RESPONSE_REQUESTED.to_string());
-                return create_assistant_api_error_message(
-                    &content,
-                    Some(SdkAssistantMessageError::RateLimit),
-                    None,
-                );
-            }
-        }
-
-        // Check for "Extra usage is required for long context"
-        if msg.contains("Extra usage is required for long context") {
-            let hint = if get_is_non_interactive_session() {
-                "enable extra usage at claude.ai/settings/usage, or use --model to switch to standard context"
-            } else {
-                "run /extra-usage to enable, or /model to switch to standard context"
-            };
-            return create_assistant_api_error_message(
-                &format!(
-                    "{API_ERROR_MESSAGE_PREFIX}: Extra usage is required for 1M context \u{00b7} {hint}"
-                ),
-                Some(SdkAssistantMessageError::RateLimit),
-                None,
-            );
-        }
-
         // Strip SDK prefix "429 " and try to extract inner message
         let stripped = msg.strip_prefix("429 ").unwrap_or(msg);
         let inner_re = Regex::new(r#""message"\s*:\s*"([^"]*)""#).unwrap();
@@ -998,13 +881,6 @@ pub fn get_assistant_message_from_error(error: &ApiErrorInfo, model: &str) -> Ap
 
     // --- x-api-key authentication errors ---
     if msg_lower.contains("x-api-key") {
-        if is_ccr_mode() {
-            return create_assistant_api_error_message(
-                CCR_AUTH_ERROR_MESSAGE,
-                Some(SdkAssistantMessageError::AuthenticationFailed),
-                None,
-            );
-        }
         // TODO(port): Wire getAnthropicApiKeyWithSource() to distinguish
         // external vs internal key sources.
         return create_assistant_api_error_message(
@@ -1014,35 +890,8 @@ pub fn get_assistant_message_from_error(error: &ApiErrorInfo, model: &str) -> Ap
         );
     }
 
-    // --- OAuth token revoked (403) ---
-    if error.status() == Some(403) && msg.contains("OAuth token has been revoked") {
-        return create_assistant_api_error_message(
-            get_token_revoked_error_message(),
-            Some(SdkAssistantMessageError::AuthenticationFailed),
-            None,
-        );
-    }
-
-    // --- OAuth org not allowed (401/403) ---
-    if matches!(error.status(), Some(401) | Some(403))
-        && msg.contains("OAuth authentication is currently not allowed for this organization")
-    {
-        return create_assistant_api_error_message(
-            get_oauth_org_not_allowed_error_message(),
-            Some(SdkAssistantMessageError::AuthenticationFailed),
-            None,
-        );
-    }
-
     // --- Generic 401/403 ---
     if matches!(error.status(), Some(401) | Some(403)) {
-        if is_ccr_mode() {
-            return create_assistant_api_error_message(
-                CCR_AUTH_ERROR_MESSAGE,
-                Some(SdkAssistantMessageError::AuthenticationFailed),
-                None,
-            );
-        }
         let content = if get_is_non_interactive_session() {
             format!("Failed to authenticate. {API_ERROR_MESSAGE_PREFIX}: {msg}")
         } else {
@@ -1053,26 +902,6 @@ pub fn get_assistant_message_from_error(error: &ApiErrorInfo, model: &str) -> Ap
         return create_assistant_api_error_message(
             &content,
             Some(SdkAssistantMessageError::AuthenticationFailed),
-            None,
-        );
-    }
-
-    // --- Bedrock model ID errors ---
-    if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_USE_BEDROCK").as_deref(),
-    ) && msg_lower.contains("model id")
-    {
-        let switch_cmd = if get_is_non_interactive_session() {
-            "--model"
-        } else {
-            "/model"
-        };
-        // TODO(port): Wire get3PModelFallbackSuggestion from CC errors.ts:940-959
-        return create_assistant_api_error_message(
-            &format!(
-                "{API_ERROR_MESSAGE_PREFIX} ({model}): {msg}. Run {switch_cmd} to pick a different model."
-            ),
-            Some(SdkAssistantMessageError::InvalidRequest),
             None,
         );
     }
@@ -1159,8 +988,6 @@ pub fn get_error_message_if_refusal(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "anthropic_internal")]
-    use crate::utils::test_env::TEST_ENV_LOCK;
     use std::collections::HashMap;
 
     #[test]
@@ -1487,29 +1314,62 @@ mod tests {
         assert!(msg.content[0].text.contains("429"));
     }
 
-    #[cfg(feature = "anthropic_internal")]
     #[test]
-    fn unified_mock_429_uses_centralized_rate_limit_message() {
-        let _lock = TEST_ENV_LOCK.lock().unwrap();
-        crate::services::mock_rate_limits::reset_for_test();
-        crate::services::mock_rate_limits::set_mock_rate_limit_scenario(
-            crate::services::mock_rate_limits::MockScenario::WeeklyLimitReached,
-        );
-        let headers = crate::services::mock_rate_limits::get_mock_headers().unwrap();
+    fn get_assistant_message_from_error_429_ignores_subscription_quota_headers() {
         let err = ApiErrorInfo::Http {
             status: 429,
-            message: "Rate limit exceeded".to_string(),
-            headers,
+            message: r#"429 {"type":"error","error":{"type":"rate_limit_error","message":"Number of request tokens has exceeded your per-minute rate limit"}}"#.to_string(),
+            headers: HashMap::from([
+                (
+                    "anthropic-ratelimit-unified-representative-claim".to_string(),
+                    "seven_day".to_string(),
+                ),
+                ("retry-after".to_string(), "30".to_string()),
+            ]),
+            body: None,
+        };
+        let msg = get_assistant_message_from_error(&err, "claude-sonnet-4-6");
+        assert_eq!(
+            msg.content[0].text,
+            "API Error: Request rejected (429) · Number of request tokens has exceeded your per-minute rate limit"
+        );
+        assert_eq!(msg.error, Some(SdkAssistantMessageError::RateLimit));
+    }
+
+    #[test]
+    fn get_assistant_message_from_error_429_without_detail_points_at_capacity() {
+        let err = ApiErrorInfo::Http {
+            status: 429,
+            message: "429 ".to_string(),
+            headers: HashMap::new(),
             body: None,
         };
         let msg = get_assistant_message_from_error(&err, "claude-sonnet-4-6");
         assert!(
-            msg.content[0]
-                .text
-                .starts_with("You've hit your weekly limit · resets ")
+            msg.content[0].text.starts_with(
+                "API Error: Request rejected (429) · this may be a temporary capacity issue"
+            ),
+            "{}",
+            msg.content[0].text
         );
-        assert_eq!(msg.error, Some(SdkAssistantMessageError::RateLimit));
-        crate::services::mock_rate_limits::reset_for_test();
+    }
+
+    #[test]
+    fn retired_remote_env_does_not_mask_invalid_api_key_errors() {
+        let _lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
+        let _remote = crate::utils::test_env::EnvVarGuard::set("NYAN_REMOTE", "1");
+        let err = ApiErrorInfo::Http {
+            status: 401,
+            message: "invalid x-api-key".to_string(),
+            headers: HashMap::new(),
+            body: None,
+        };
+        let msg = get_assistant_message_from_error(&err, "test-model");
+        assert_eq!(msg.content[0].text, INVALID_API_KEY_ERROR_MESSAGE);
+        assert_eq!(
+            msg.error,
+            Some(SdkAssistantMessageError::AuthenticationFailed)
+        );
     }
 
     #[test]

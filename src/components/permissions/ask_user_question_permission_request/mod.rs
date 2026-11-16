@@ -145,7 +145,7 @@ fn question_feedback_summary(
         .join("\n")
 }
 
-fn respond_to_claude_feedback(
+fn respond_to_agent_feedback(
     questions: &[Question],
     answers: &BTreeMap<String, AnswerValue>,
 ) -> String {
@@ -315,7 +315,7 @@ pub fn AskUserQuestionPermissionRequest(
         })
     };
     // CC :280-324 `handleRespondToClaude`.
-    let handle_respond_to_claude = {
+    let handle_respond_to_agent = {
         let on_select = props.on_select.clone();
         let questions = questions.clone();
         let answers = answers.clone();
@@ -323,7 +323,7 @@ pub fn AskUserQuestionPermissionRequest(
         Handler::from(move |()| match convert_images_to_blocks(&pasted) {
             Ok(blocks) => on_select(
                 PermissionPromptResponse::new(PermissionPromptChoice::Deny)
-                    .with_feedback(respond_to_claude_feedback(&questions, &answers))
+                    .with_feedback(respond_to_agent_feedback(&questions, &answers))
                     .with_content_blocks(blocks),
             ),
             Err(error) => log_image_error(error),
@@ -512,7 +512,7 @@ pub fn AskUserQuestionPermissionRequest(
                 }),
                 on_tab_prev: handle_tab_prev,
                 on_tab_next: handle_tab_next,
-                on_respond_to_claude: handle_respond_to_claude,
+                on_respond_to_agent: handle_respond_to_agent,
                 on_finish_plan_interview: handle_finish_plan_interview,
                 on_image_paste,
                 pasted_contents,
@@ -1257,7 +1257,7 @@ mod tests {
             ..Default::default()
         }];
         let answers = BTreeMap::from([("Proceed?".to_string(), "Yes".to_string())]);
-        let clarify = respond_to_claude_feedback(&questions, &answers);
+        let clarify = respond_to_agent_feedback(&questions, &answers);
         assert!(clarify.starts_with("The user wants to clarify these questions."));
         assert!(clarify.contains("- \"Proceed?\"\n  Answer: Yes"));
         let finish = finish_plan_interview_feedback(&questions, &answers);

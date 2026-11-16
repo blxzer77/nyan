@@ -30,7 +30,7 @@ use crate::utils::swarm::spawn_utils::{
     BuildInheritedCliFlagsOptions, build_inherited_env_vars, get_teammate_command, shell_quote,
 };
 use crate::utils::swarm::team_helpers::{
-    TeamMemberRecord, generate_unique_teammate_name, sanitize_agent_name, write_team_record,
+    TeamMemberRecord, generate_unique_teammate_name, write_team_record,
 };
 use crate::utils::swarm::teammate_layout_manager::{
     assign_teammate_color, create_teammate_pane_in_swarm_view, enable_pane_border_status,
@@ -198,10 +198,8 @@ fn build_inherited_cli_flags_with_options(options: BuildInheritedCliFlagsOptions
         ));
     }
 
-    // CC `:252-257`.
-    if let Some(chrome) = options.chrome_flag_override {
-        flags.push(if chrome { "--chrome" } else { "--no-chrome" }.to_string());
-    }
+    // @nyan: CC `:252-257` forwards the Claude in Chrome `--chrome` override;
+    // nyan does not ship Claude in Chrome.
 
     flags.join(" ")
 }
@@ -209,7 +207,7 @@ fn build_inherited_cli_flags_with_options(options: BuildInheritedCliFlagsOptions
 /// Maps to: CC `spawnMultiAgent.ts:208-260#buildInheritedCliFlags`.
 ///
 /// Rust does not yet carry every official CLI override in `bootstrap/state.ts`
-/// (`getSessionBypassPermissionsMode`, `getChromeFlagOverride`); this keeps the
+/// (`getSessionBypassPermissionsMode`); this keeps the
 /// official boundary and threads the state nyan currently stores.
 fn build_inherited_cli_flags(
     plan_mode_required: bool,
@@ -492,8 +490,7 @@ pub async fn handle_spawn_in_process(
         ));
     };
 
-    let unique_name = generate_unique_teammate_name(&input.name, Some(&team_name));
-    let sanitized_name = sanitize_agent_name(&unique_name);
+    let sanitized_name = generate_unique_teammate_name(&input.name, Some(&team_name));
     let teammate_id = format_agent_id(&sanitized_name, &team_name);
     let teammate_color = assign_teammate_color(&teammate_id)
         .official_name()
@@ -933,8 +930,7 @@ pub async fn handle_spawn_pane(
         ));
     };
 
-    let unique_name = generate_unique_teammate_name(&input.name, Some(&team_name));
-    let sanitized_name = sanitize_agent_name(&unique_name);
+    let sanitized_name = generate_unique_teammate_name(&input.name, Some(&team_name));
     let teammate_id = format_agent_id(&sanitized_name, &team_name);
     let teammate_color = assign_teammate_color(&teammate_id);
     let teammate_color_name = teammate_color.official_name().to_string();
@@ -1114,8 +1110,7 @@ pub async fn handle_spawn_separate_window(
         ));
     };
 
-    let unique_name = generate_unique_teammate_name(&input.name, Some(&team_name));
-    let sanitized_name = sanitize_agent_name(&unique_name);
+    let sanitized_name = generate_unique_teammate_name(&input.name, Some(&team_name));
     let teammate_id = format_agent_id(&sanitized_name, &team_name);
     let window_name = separate_window_name(&sanitized_name);
     // Maps to CC `spawnMultiAgent.ts:578`, same `cwd || getCwd()` truthiness as
@@ -1355,7 +1350,7 @@ mod tests {
             "nyan-spawn-multi-agent-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         let write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::utils::swarm::team_helpers::clear_team_tool_state_for_test();
@@ -1523,7 +1518,7 @@ mod tests {
             "opus",
             Some(crate::types::permissions::PermissionMode::Auto),
         );
-        assert!(command.starts_with("cd '/tmp/project dir' && env CLAUDECODE=1"));
+        assert!(command.starts_with("cd '/tmp/project dir' && env NYAN=1"));
         assert!(command.contains("'/bin/claude code' --agent-id 'reviewer@alpha team'"));
         assert!(command.contains("--agent-name reviewer"));
         assert!(command.contains("--team-name 'alpha team'"));
@@ -1554,8 +1549,8 @@ mod tests {
             "--model opus"
         );
         assert_eq!(
-            apply_teammate_model_flag("--chrome".to_string(), ""),
-            "--chrome"
+            apply_teammate_model_flag("--permission-mode auto".to_string(), ""),
+            "--permission-mode auto"
         );
     }
 
@@ -1720,10 +1715,10 @@ mod tests {
         crate::utils::swarm::backends::teammate_mode_snapshot::set_cli_teammate_mode_override(
             crate::utils::swarm::backends::teammate_mode_snapshot::TeammateMode::InProcess,
         );
-        let _task_lock = crate::tasks::in_process_teammate_task::TEST_IN_PROCESS_TEAMMATE_TASK_LOCK
+        let _team_state_lock = crate::utils::swarm::team_helpers::TEST_TEAM_HELPERS_LOCK
             .lock()
             .unwrap();
-        let _team_state_lock = crate::utils::swarm::team_helpers::TEST_TEAM_HELPERS_LOCK
+        let _task_lock = crate::tasks::in_process_teammate_task::TEST_IN_PROCESS_TEAMMATE_TASK_LOCK
             .lock()
             .unwrap();
         crate::tasks::in_process_teammate_task::clear_in_process_teammate_tasks_for_test();

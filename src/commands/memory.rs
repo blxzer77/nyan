@@ -55,7 +55,7 @@ pub fn MemoryCommandPanel<'a>(
     hooks.use_future(async move {
         while let Ok(memory_path) = editor_receiver.recv().await {
             let result = async {
-                let config_home = crate::utils::env_utils::get_claude_config_home_dir();
+                let config_home = crate::utils::env_utils::get_config_home_dir();
                 if memory_path.starts_with(&config_home) {
                     std::fs::create_dir_all(&config_home).map_err(|error| error.to_string())?;
                 }
@@ -194,7 +194,7 @@ pub fn MemoryCommandPanel<'a>(
                 )
                 View(margin_top: 1u32, flex_direction: FlexDirection::Row) {
                     Text(content: "Learn more: ".to_string(), dim: true, wrap: TextWrap::NoWrap)
-                    Link(url: "https://code.claude.com/docs/en/memory".to_string())
+                    Link(url: format!("{}/agents-md.md", crate::constants::product::DOCS_URL))
                 }
             }
         }
@@ -230,7 +230,9 @@ mod tests {
         assert!(text.contains("Auto-memory: off"), "canvas=\n{text}");
         assert!(text.contains("User memory"), "canvas=\n{text}");
         assert!(
-            text.contains("Learn more: https://code.claude.com/docs/en/memory"),
+            text.contains(
+                "Learn more: https://github.com/blxzer77/nyan/blob/master/docs/nyan/agents-md.md"
+            ),
             "canvas=\n{text}"
         );
     }

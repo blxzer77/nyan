@@ -75,11 +75,11 @@ pub struct AutocompactResult {
 /// Maps to CC `services/compact/autoCompact.ts` `getEffectiveContextWindowSize(...)`.
 pub fn get_effective_context_window_size(model: &str) -> i64 {
     let reserved_tokens_for_summary =
-        (crate::services::api::claude::get_max_output_tokens_for_model(model) as i64)
+        (crate::services::api::request::get_max_output_tokens_for_model(model) as i64)
             .min(MAX_OUTPUT_TOKENS_FOR_SUMMARY);
     let mut context_window = crate::utils::context::get_context_window_for_model(model, &[]);
 
-    if let Some(value) = crate::utils::process_env::var("CLAUDE_CODE_AUTO_COMPACT_WINDOW").truthy()
+    if let Some(value) = crate::utils::process_env::var("NYAN_AUTO_COMPACT_WINDOW").truthy()
         && let Ok(parsed) = value.parse::<i64>()
         && parsed > 0
     {
@@ -94,7 +94,7 @@ pub fn get_auto_compact_threshold(model: &str) -> i64 {
     let effective_context_window = get_effective_context_window_size(model);
     let autocompact_threshold = effective_context_window - AUTOCOMPACT_BUFFER_TOKENS;
 
-    if let Some(value) = crate::utils::process_env::var("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE").truthy()
+    if let Some(value) = crate::utils::process_env::var("NYAN_AUTOCOMPACT_PCT_OVERRIDE").truthy()
         && let Ok(parsed) = value.parse::<f64>()
         && parsed > 0.0
         && parsed <= 100.0
@@ -151,7 +151,7 @@ pub fn calculate_token_warning_state_with_config(
     let error_threshold = threshold - ERROR_THRESHOLD_BUFFER_TOKENS;
     let actual_context_window = get_effective_context_window_size(model);
     let default_blocking_limit = actual_context_window - MANUAL_COMPACT_BUFFER_TOKENS;
-    let blocking_limit = crate::utils::process_env::var("CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE")
+    let blocking_limit = crate::utils::process_env::var("NYAN_BLOCKING_LIMIT_OVERRIDE")
         .and_then(|value| value.parse::<i64>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(default_blocking_limit);
@@ -369,19 +369,19 @@ mod tests {
 
     fn clear_context_collapse_env() {
         crate::utils::process_env::remove("NYAN_CONTEXT_COLLAPSE");
-        crate::utils::process_env::remove("CLAUDE_CODE_CONTEXT_COLLAPSE");
-        crate::utils::process_env::remove("CLAUDE_CONTEXT_COLLAPSE");
+        crate::utils::process_env::remove("NYAN_CONTEXT_COLLAPSE");
+        crate::utils::process_env::remove("NYAN_CONTEXT_COLLAPSE");
     }
 
     #[test]
     fn auto_compact_threshold_helpers_match_official_buffers_and_env_overrides() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
-        crate::utils::process_env::remove("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+        crate::utils::process_env::remove("NYAN_AUTO_COMPACT_WINDOW");
+        crate::utils::process_env::remove("NYAN_AUTOCOMPACT_PCT_OVERRIDE");
+        crate::utils::process_env::remove("NYAN_MAX_OUTPUT_TOKENS");
         crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
+        crate::utils::process_env::remove("NYAN_MAX_CONTEXT_TOKENS");
+        crate::utils::process_env::remove("NYAN_DISABLE_1M_CONTEXT");
 
         assert_eq!(
             get_effective_context_window_size("claude-sonnet-4-20250514"),
@@ -392,12 +392,12 @@ mod tests {
             167_000
         );
 
-        crate::utils::process_env::set("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "50");
+        crate::utils::process_env::set("NYAN_AUTOCOMPACT_PCT_OVERRIDE", "50");
         assert_eq!(
             get_auto_compact_threshold("claude-sonnet-4-20250514"),
             90_000
         );
-        crate::utils::process_env::remove("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
+        crate::utils::process_env::remove("NYAN_AUTOCOMPACT_PCT_OVERRIDE");
     }
 
     #[test]
@@ -405,12 +405,12 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         crate::utils::process_env::remove("DISABLE_COMPACT");
         crate::utils::process_env::remove("DISABLE_AUTO_COMPACT");
-        crate::utils::process_env::remove("CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE");
-        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+        crate::utils::process_env::remove("NYAN_BLOCKING_LIMIT_OVERRIDE");
+        crate::utils::process_env::remove("NYAN_AUTO_COMPACT_WINDOW");
+        crate::utils::process_env::remove("NYAN_MAX_OUTPUT_TOKENS");
         crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
+        crate::utils::process_env::remove("NYAN_MAX_CONTEXT_TOKENS");
+        crate::utils::process_env::remove("NYAN_DISABLE_1M_CONTEXT");
         let mut config = crate::utils::config::GlobalConfig::default();
         config.auto_compact_enabled = Some(false);
 
@@ -420,7 +420,7 @@ mod tests {
         assert!(state.is_above_warning_threshold);
         assert!(!state.is_at_blocking_limit);
 
-        crate::utils::process_env::set("CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE", "169000");
+        crate::utils::process_env::set("NYAN_BLOCKING_LIMIT_OVERRIDE", "169000");
         let state =
             calculate_token_warning_state_with_config(170_000, "claude-sonnet-4-20250514", &config);
         assert!(state.is_at_blocking_limit);
@@ -431,7 +431,7 @@ mod tests {
             &crate::utils::config::GlobalConfig::default(),
         );
         assert!(state.percent_left > 100);
-        crate::utils::process_env::remove("CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE");
+        crate::utils::process_env::remove("NYAN_BLOCKING_LIMIT_OVERRIDE");
     }
 
     /// @nyan: the footer's two-level context color needs two distinct bands
@@ -472,12 +472,12 @@ mod tests {
         crate::utils::process_env::remove("DISABLE_COMPACT");
         crate::utils::process_env::remove("DISABLE_AUTO_COMPACT");
         clear_context_collapse_env();
-        crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
-        crate::utils::process_env::remove("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+        crate::utils::process_env::set("NYAN_AUTO_COMPACT_WINDOW", "50000");
+        crate::utils::process_env::remove("NYAN_AUTOCOMPACT_PCT_OVERRIDE");
+        crate::utils::process_env::remove("NYAN_MAX_OUTPUT_TOKENS");
         crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
+        crate::utils::process_env::remove("NYAN_MAX_CONTEXT_TOKENS");
+        crate::utils::process_env::remove("NYAN_DISABLE_1M_CONTEXT");
         let config = crate::utils::config::GlobalConfig::default();
         let messages = vec![Message::User(crate::types::message::UserMessage {
             uuid: uuid::Uuid::new_v4().to_string(),
@@ -511,7 +511,7 @@ mod tests {
             ));
         }
 
-        crate::utils::process_env::set("CLAUDE_CONTEXT_COLLAPSE", "1");
+        crate::utils::process_env::set("NYAN_CONTEXT_COLLAPSE", "1");
         assert!(!should_auto_compact_with_config(
             &messages,
             "claude-sonnet-4-20250514",
@@ -520,7 +520,7 @@ mod tests {
             &config,
         ));
         clear_context_collapse_env();
-        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+        crate::utils::process_env::remove("NYAN_AUTO_COMPACT_WINDOW");
     }
 
     #[tokio::test]
@@ -529,12 +529,12 @@ mod tests {
         crate::utils::process_env::remove("DISABLE_COMPACT");
         crate::utils::process_env::remove("DISABLE_AUTO_COMPACT");
         clear_context_collapse_env();
-        crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
-        crate::utils::process_env::remove("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+        crate::utils::process_env::set("NYAN_AUTO_COMPACT_WINDOW", "50000");
+        crate::utils::process_env::remove("NYAN_AUTOCOMPACT_PCT_OVERRIDE");
+        crate::utils::process_env::remove("NYAN_MAX_OUTPUT_TOKENS");
         crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
+        crate::utils::process_env::remove("NYAN_MAX_CONTEXT_TOKENS");
+        crate::utils::process_env::remove("NYAN_DISABLE_1M_CONTEXT");
         let messages = vec![Message::User(crate::types::message::UserMessage {
             uuid: uuid::Uuid::new_v4().to_string(),
             timestamp: chrono::Utc::now(),
@@ -574,7 +574,7 @@ mod tests {
         assert_eq!(result.messages, messages);
         assert!(!result.compacted);
         assert_eq!(result.consecutive_failures, Some(3));
-        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+        crate::utils::process_env::remove("NYAN_AUTO_COMPACT_WINDOW");
     }
 
     #[tokio::test]
@@ -583,12 +583,12 @@ mod tests {
         crate::utils::process_env::remove("DISABLE_COMPACT");
         crate::utils::process_env::remove("DISABLE_AUTO_COMPACT");
         clear_context_collapse_env();
-        crate::utils::process_env::set("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "50000");
-        crate::utils::process_env::remove("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_OUTPUT_TOKENS");
+        crate::utils::process_env::set("NYAN_AUTO_COMPACT_WINDOW", "50000");
+        crate::utils::process_env::remove("NYAN_AUTOCOMPACT_PCT_OVERRIDE");
+        crate::utils::process_env::remove("NYAN_MAX_OUTPUT_TOKENS");
         crate::utils::process_env::remove("NYAN_MAX_TOKENS_CAP");
-        crate::utils::process_env::remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
-        crate::utils::process_env::remove("CLAUDE_CODE_DISABLE_1M_CONTEXT");
+        crate::utils::process_env::remove("NYAN_MAX_CONTEXT_TOKENS");
+        crate::utils::process_env::remove("NYAN_DISABLE_1M_CONTEXT");
         let messages = (0..6)
             .map(|i| {
                 Message::User(crate::types::message::UserMessage {
@@ -635,7 +635,7 @@ mod tests {
         assert!(!result.compacted);
         assert_eq!(result.messages, messages);
         assert_eq!(result.consecutive_failures, Some(3));
-        crate::utils::process_env::remove("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+        crate::utils::process_env::remove("NYAN_AUTO_COMPACT_WINDOW");
     }
 
     #[tokio::test]

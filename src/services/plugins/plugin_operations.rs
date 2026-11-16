@@ -8,7 +8,6 @@ use crate::utils::plugins::{
     plugin_identifier::*,
     plugin_installation_helpers::*,
     plugin_loader::*,
-    plugin_policy::*,
     plugin_startup_check::*,
     plugin_versioning::*,
     schemas::{PluginManifest, PluginScope},
@@ -257,15 +256,6 @@ pub async fn install_plugin_op(
             format!("Failed to update settings: {message}")
         }
         InstallCoreResult::ResolutionFailed { resolution } => format_resolution_error(&resolution),
-        InstallCoreResult::BlockedByPolicy { plugin_name } => format!(
-            "Plugin \"{plugin_name}\" is blocked by your organization's policy and cannot be installed"
-        ),
-        InstallCoreResult::DependencyBlockedByPolicy {
-            plugin_name,
-            blocked_dependency,
-        } => format!(
-            "Plugin \"{plugin_name}\" depends on \"{blocked_dependency}\", which is blocked by your organization's policy"
-        ),
     };
     Ok(PluginOperationResult {
         message: failure,
@@ -336,7 +326,7 @@ pub async fn uninstall_plugin_op(
         let message = if actual != scope && !installs.is_empty() {
             if actual == PluginScope::Project {
                 format!(
-                    "Plugin \"{plugin}\" is enabled at project scope (.claude/settings.json, shared with your team). To disable just for you: claude plugin disable {plugin} --scope local"
+                    "Plugin \"{plugin}\" is enabled at project scope (.nyan/settings.json, shared with your team). To disable just for you: nyan plugin disable {plugin} --scope local"
                 )
             } else {
                 format!(
@@ -454,14 +444,6 @@ pub async fn set_plugin_enabled_op(
             ..Default::default()
         });
     };
-    if enabled && is_plugin_blocked_by_policy(&id) {
-        return Ok(PluginOperationResult {
-            message: format!(
-                "Plugin \"{id}\" is blocked by your organization's policy and cannot be enabled"
-            ),
-            ..Default::default()
-        });
-    }
     let source = SettingSource::from(scope_to_setting_source(resolved).unwrap());
     let mut entries = get_settings_for_source(source)
         .and_then(|s| s.enabled_plugins)
@@ -786,8 +768,8 @@ mod tests {
         let root = std::env::temp_dir().join(format!("plugin-op-missing-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("plugins")).unwrap();
         std::fs::write(root.join("plugins/known_marketplaces.json"), "{}").unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
-        let _cache = EnvVarGuard::set("CLAUDE_CODE_PLUGIN_CACHE_DIR", root.join("plugins"));
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
+        let _cache = EnvVarGuard::set("NYAN_PLUGIN_CACHE_DIR", root.join("plugins"));
         for (id, expected) in [
             (
                 "missing",

@@ -12,7 +12,7 @@ use crate::components::spinner::Spinner as InlineSpinner;
 use crate::constants::figures;
 use crate::utils::format::{format_duration, format_number};
 pub use crate::utils::stats::{
-    ClaudeCodeStats, DailyActivity, DailyModelTokens, LongestSessionStats, ModelUsageStats,
+    DailyActivity, DailyModelTokens, LongestSessionStats, ModelUsageStats, NyanStats,
     StatsDateRange, StreakStats,
 };
 use crate::utils::theme::Theme;
@@ -45,7 +45,7 @@ pub fn get_next_date_range(current: StatsDateRange) -> StatsDateRange {
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum StatsResult {
-    Success(ClaudeCodeStats),
+    Success(NyanStats),
     Error(String),
     Empty,
     #[default]
@@ -85,7 +85,7 @@ pub fn format_peak_day(date_str: &str) -> String {
 }
 
 /// Maps to: CC `Stats.tsx` model usage sort comparator.
-pub fn sorted_model_entries(stats: &ClaudeCodeStats) -> Vec<(String, ModelUsageStats)> {
+pub fn sorted_model_entries(stats: &NyanStats) -> Vec<(String, ModelUsageStats)> {
     let mut entries = stats
         .model_usage
         .iter()
@@ -190,7 +190,7 @@ pub struct OverviewData {
 
 /// Maps to: CC `Stats.tsx#OverviewTab` derived values.
 pub fn overview_data(
-    stats: &ClaudeCodeStats,
+    stats: &NyanStats,
     date_range: StatsDateRange,
     shot_stats_feature_enabled: bool,
     factoid_index: usize,
@@ -258,7 +258,7 @@ pub const TIME_COMPARISONS: [(&str, u64); 10] = [
 ];
 
 /// Maps to: CC `Stats.tsx#generateFunFactoid` candidate construction.
-pub fn generate_fun_factoid_candidates(stats: &ClaudeCodeStats, total_tokens: u64) -> Vec<String> {
+pub fn generate_fun_factoid_candidates(stats: &NyanStats, total_tokens: u64) -> Vec<String> {
     let mut factoids = Vec::new();
     if total_tokens > 0 {
         for (name, tokens) in BOOK_COMPARISONS {
@@ -294,7 +294,7 @@ pub fn generate_fun_factoid_candidates(stats: &ClaudeCodeStats, total_tokens: u6
 /// Maps to: CC `Stats.tsx#generateFunFactoid`; caller supplies the random index
 /// for deterministic tests/render snapshots.
 pub fn generate_fun_factoid_at(
-    stats: &ClaudeCodeStats,
+    stats: &NyanStats,
     total_tokens: u64,
     random_index: usize,
 ) -> String {
@@ -602,7 +602,7 @@ fn two_column_row(l1: &str, v1: &str, l2: &str, v2: &str) -> String {
 }
 
 /// Maps to: CC `Stats.tsx#renderOverviewToAnsi` (without chalk SGR colors).
-pub fn render_overview_to_ansi(stats: &ClaudeCodeStats) -> Vec<String> {
+pub fn render_overview_to_ansi(stats: &NyanStats) -> Vec<String> {
     let mut lines = Vec::new();
     let model_entries = sorted_model_entries(stats);
     let favorite_model = model_entries.first();
@@ -669,7 +669,7 @@ pub fn render_overview_to_ansi(stats: &ClaudeCodeStats) -> Vec<String> {
 }
 
 /// Maps to: CC `Stats.tsx#renderModelsToAnsi` (without chalk SGR colors).
-pub fn render_models_to_ansi(stats: &ClaudeCodeStats) -> Vec<String> {
+pub fn render_models_to_ansi(stats: &NyanStats) -> Vec<String> {
     let mut lines = Vec::new();
     let model_entries = sorted_model_entries(stats);
     if model_entries.is_empty() {
@@ -727,7 +727,7 @@ pub fn render_models_to_ansi(stats: &ClaudeCodeStats) -> Vec<String> {
 }
 
 /// Maps to: CC `Stats.tsx#renderStatsToAnsi`.
-pub fn render_stats_to_ansi(stats: &ClaudeCodeStats, active_tab: StatsTab) -> String {
+pub fn render_stats_to_ansi(stats: &NyanStats, active_tab: StatsTab) -> String {
     let mut lines = match active_tab {
         StatsTab::Overview => render_overview_to_ansi(stats),
         StatsTab::Models => render_models_to_ansi(stats),
@@ -751,7 +751,7 @@ pub fn render_stats_to_ansi(stats: &ClaudeCodeStats, active_tab: StatsTab) -> St
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StatsViewData {
     pub result: StatsResult,
-    pub all_time_stats: Option<ClaudeCodeStats>,
+    pub all_time_stats: Option<NyanStats>,
     pub date_range: StatsDateRange,
     pub active_tab: StatsTab,
     pub header_focused: bool,
@@ -779,7 +779,7 @@ impl Default for StatsViewData {
 
 #[derive(Clone, Debug)]
 enum StatsAsyncEvent {
-    Loaded(StatsDateRange, Result<ClaudeCodeStats, String>),
+    Loaded(StatsDateRange, Result<NyanStats, String>),
     ClearCopyStatus,
 }
 
@@ -787,7 +787,7 @@ fn spawn_stats_load(sender: async_channel::Sender<StatsAsyncEvent>, range: Stats
     std::thread::Builder::new()
         .name(format!("nyan-stats-{}", range.official_value()))
         .spawn(move || {
-            let result = crate::utils::stats::aggregate_claude_code_stats_for_range(range)
+            let result = crate::utils::stats::aggregate_nyan_stats_for_range(range)
                 .map_err(|error| error.to_string());
             let _ = sender.send_blocking(StatsAsyncEvent::Loaded(range, result));
         })
@@ -805,8 +805,8 @@ pub struct StatsProps<'a> {
 #[component]
 pub fn Stats<'a>(props: &mut StatsProps<'a>, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut result = hooks.use_state(StatsResult::default);
-    let mut all_time_stats = hooks.use_state(|| Option::<ClaudeCodeStats>::None);
-    let mut stats_cache = hooks.use_state(BTreeMap::<StatsDateRange, ClaudeCodeStats>::new);
+    let mut all_time_stats = hooks.use_state(|| Option::<NyanStats>::None);
+    let mut stats_cache = hooks.use_state(BTreeMap::<StatsDateRange, NyanStats>::new);
     let mut date_range = hooks.use_state(StatsDateRange::default);
     let mut active_tab = hooks.use_state(StatsTab::default);
     let mut header_focused = hooks.use_state(|| true);
@@ -1008,7 +1008,7 @@ pub struct StatsContentProps {
 enum StatsGlyphTone {
     Default,
     Inactive,
-    Claude,
+    Nyan,
     Suggestion,
     Success,
     Warning,
@@ -1024,7 +1024,7 @@ fn stats_glyph_tone(character: char, chart: bool) -> StatsGlyphTone {
         }
     } else {
         match character {
-            '░' | '▒' | '▓' | '█' => StatsGlyphTone::Claude,
+            '░' | '▒' | '▓' | '█' => StatsGlyphTone::Nyan,
             '·' => StatsGlyphTone::Inactive,
             _ => StatsGlyphTone::Default,
         }
@@ -1062,7 +1062,7 @@ fn stats_styled_line(line: &str, chart: bool, theme: Theme) -> AnyElement<'stati
                 let color = match tone {
                     StatsGlyphTone::Default => None,
                     StatsGlyphTone::Inactive => Some(theme.inactive),
-                    StatsGlyphTone::Claude => Some(theme.claude),
+                    StatsGlyphTone::Nyan => Some(theme.nyan),
                     StatsGlyphTone::Suggestion => Some(theme.suggestion),
                     StatsGlyphTone::Success => Some(theme.success),
                     StatsGlyphTone::Warning => Some(theme.warning),
@@ -1129,8 +1129,8 @@ fn stats_value_cell(
 
 #[derive(Default, Props)]
 struct StatsOverviewContentProps {
-    stats: ClaudeCodeStats,
-    all_time_stats: ClaudeCodeStats,
+    stats: NyanStats,
+    all_time_stats: NyanStats,
     date_range: StatsDateRange,
     is_loading: bool,
     terminal_width: usize,
@@ -1187,14 +1187,14 @@ fn StatsOverviewContent(
                     "Favorite model",
                     overview.favorite_model.clone(),
                     None,
-                    theme.claude,
+                    theme.nyan,
                     true,
                 ))
                 #(stats_value_cell(
                     "Total tokens",
                     Some(format_number(overview.total_tokens)),
                     None,
-                    theme.claude,
+                    theme.nyan,
                     false,
                 ))
             }
@@ -1203,14 +1203,14 @@ fn StatsOverviewContent(
                     "Sessions",
                     Some(format_number(props.stats.total_sessions)),
                     None,
-                    theme.claude,
+                    theme.nyan,
                     false,
                 ))
                 #(stats_value_cell(
                     "Longest session",
                     longest_session,
                     None,
-                    theme.claude,
+                    theme.nyan,
                     false,
                 ))
             }
@@ -1219,14 +1219,14 @@ fn StatsOverviewContent(
                     "Active days",
                     Some(props.stats.active_days.to_string()),
                     Some((format!("/{}", overview.range_days), Some(theme.subtle))),
-                    theme.claude,
+                    theme.nyan,
                     false,
                 ))
                 #(stats_value_cell(
                     "Longest streak",
                     Some(props.stats.streaks.longest_streak.to_string()),
                     Some((longest_unit.to_string(), None)),
-                    theme.claude,
+                    theme.nyan,
                     true,
                 ))
             }
@@ -1235,14 +1235,14 @@ fn StatsOverviewContent(
                     "Most active day",
                     most_active_day,
                     None,
-                    theme.claude,
+                    theme.nyan,
                     false,
                 ))
                 #(stats_value_cell(
                     "Current streak",
                     Some(props.all_time_stats.streaks.current_streak.to_string()),
                     Some((current_unit.to_string(), None)),
-                    theme.claude,
+                    theme.nyan,
                     true,
                 ))
             }
@@ -1290,7 +1290,7 @@ fn stats_model_entry(
 
 #[derive(Default, Props)]
 struct StatsModelsContentProps {
-    stats: ClaudeCodeStats,
+    stats: NyanStats,
     date_range: StatsDateRange,
     is_loading: bool,
     scroll_offset: usize,
@@ -1388,7 +1388,7 @@ fn StatsModelsContent(
 #[derive(Default, Props)]
 struct StatsSuccessContentProps {
     data: StatsViewData,
-    stats: ClaudeCodeStats,
+    stats: NyanStats,
 }
 
 #[component]
@@ -1410,12 +1410,12 @@ fn StatsSuccessContent(
     let copy_status = props.data.copy_status.clone().unwrap_or_default();
 
     element! {
-        Pane(color: Some(theme.claude)) {
+        Pane(color: Some(theme.nyan)) {
             View(flex_direction: FlexDirection::Row, column_gap: 1u32, margin_bottom: 1u32) {
                 View(flex_direction: FlexDirection::Column) {
                     TabsHeader(
                         title: Some(String::new()),
-                        color: Some(theme.claude),
+                        color: Some(theme.nyan),
                         tabs: vec![
                             TabItem::new("Overview", "Overview"),
                             TabItem::new("Models", "Models"),
@@ -1525,7 +1525,7 @@ pub fn DateRangeSelector(
                         }))
                         Text(
                             content: label,
-                            color: if selected { theme.claude } else { theme.inactive },
+                            color: if selected { theme.nyan } else { theme.inactive },
                             weight: if selected { Weight::Bold } else { Weight::Normal },
                             wrap: TextWrap::NoWrap,
                         )
@@ -1563,7 +1563,7 @@ mod tests {
         stats_canvas(data, width).to_string()
     }
 
-    fn sample_stats() -> ClaudeCodeStats {
+    fn sample_stats() -> NyanStats {
         let mut model_usage = BTreeMap::new();
         model_usage.insert(
             "claude-sonnet-4-6".to_string(),
@@ -1585,7 +1585,7 @@ mod tests {
         day1.insert("claude-sonnet-4-6".to_string(), 100);
         let mut day2 = BTreeMap::new();
         day2.insert("claude-sonnet-4-6".to_string(), 300);
-        ClaudeCodeStats {
+        NyanStats {
             total_sessions: 12,
             total_days: 30,
             active_days: 8,
@@ -1617,10 +1617,15 @@ mod tests {
                 },
             ],
             model_usage,
-            total_speculation_time_saved_ms: 0,
             shot_distribution: None,
-            ..ClaudeCodeStats::default()
+            ..NyanStats::default()
         }
+    }
+
+    #[test]
+    fn stats_block_glyphs_use_the_nyan_tone() {
+        assert_eq!(stats_glyph_tone('█', false), StatsGlyphTone::Nyan);
+        assert_eq!(stats_glyph_tone('●', true), StatsGlyphTone::Suggestion);
     }
 
     #[test]
@@ -1836,7 +1841,7 @@ mod tests {
                 .cell(overview_column, header_row)
                 .unwrap()
                 .background_color,
-            Some(theme.claude)
+            Some(theme.nyan)
         );
     }
 

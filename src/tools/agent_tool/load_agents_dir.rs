@@ -13,7 +13,7 @@
 //! project snapshot when the `AGENT_MEMORY_SNAPSHOT` build feature and auto
 //! memory are both on. Everything it writes lives under the agent memory dir
 //! (`agent_memory_snapshot.rs`), and it is a no-op unless
-//! `<cwd>/.claude/agent-memory-snapshots/<agentType>/snapshot.json` exists.
+//! `<cwd>/.nyan/agent-memory-snapshots/<agentType>/snapshot.json` exists.
 
 use super::agent_memory::AgentMemoryScope;
 use super::built_in_agents::get_built_in_agents;
@@ -28,7 +28,6 @@ pub enum AgentDefinitionSource {
     UserSettings,
     ProjectSettings,
     FlagSettings,
-    PolicySettings,
 }
 
 /// Maps to CC `loadAgentsDir.ts:127` `pendingSnapshotUpdate?: { snapshotTimestamp: string }`.
@@ -60,7 +59,6 @@ impl AgentDefinitionSource {
             Self::UserSettings => "userSettings",
             Self::ProjectSettings => "projectSettings",
             Self::FlagSettings => "flagSettings",
-            Self::PolicySettings => "policySettings",
         }
     }
 }
@@ -85,7 +83,7 @@ pub struct AgentDefinition {
     /// Maps to CC `BaseAgentDefinition.color`.
     pub color: Option<String>,
     /// Maps to CC `BaseAgentDefinition.omitClaudeMd`.
-    pub omit_claude_md: bool,
+    pub omit_agents_md: bool,
     /// Maps to CC `BaseAgentDefinition.criticalSystemReminder_EXPERIMENTAL`.
     pub critical_system_reminder_experimental: Option<String>,
     /// Maps to CC `BaseAgentDefinition.hooks`.
@@ -167,7 +165,7 @@ impl AgentDefinition {
             disallowed_tools: None,
             skills: None,
             color: None,
-            omit_claude_md: false,
+            omit_agents_md: false,
             critical_system_reminder_experimental: None,
             hooks: None,
             max_turns: None,
@@ -237,13 +235,12 @@ impl From<AgentDefinitionsResult> for AgentDefinitionsSnapshot {
     }
 }
 
-const SOURCE_PRIORITY: [AgentDefinitionSource; 6] = [
+const SOURCE_PRIORITY: [AgentDefinitionSource; 5] = [
     AgentDefinitionSource::BuiltIn,
     AgentDefinitionSource::Plugin,
     AgentDefinitionSource::UserSettings,
     AgentDefinitionSource::ProjectSettings,
     AgentDefinitionSource::FlagSettings,
-    AgentDefinitionSource::PolicySettings,
 ];
 
 fn normalize_path_for_comparison(path: &Path) -> String {
@@ -283,16 +280,13 @@ fn get_project_nyan_agent_dirs(cwd: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-/// Loads agent markdown files only from `<managed>/.nyan/agents` (policy),
-/// `~/.nyan/agents` (user) and `.nyan/agents` (project).
+/// Loads agent markdown files only from `~/.nyan/agents` (user) and
+/// `.nyan/agents` (project).
 /// Project agents require workspace trust (untrusted => do not load, print mode untrusted => skip).
 fn load_agent_markdown_files(
     cwd: &Path,
 ) -> Vec<crate::utils::markdown_config_loader::MarkdownFile> {
-    let user_dir = crate::utils::env_utils::get_claude_config_home_dir().join("agents");
-    let managed_dir = crate::utils::settings::managed_path::get_managed_file_path()
-        .join(".nyan")
-        .join("agents");
+    let user_dir = crate::utils::env_utils::get_config_home_dir().join("agents");
 
     // Project agents are gated by workspace trust: untrusted => do not load.
     let is_trusted = crate::utils::config::check_has_trust_dialog_accepted()
@@ -328,19 +322,10 @@ fn load_agent_markdown_files(
         }
     }
 
-    let customization_locked =
-        crate::utils::settings::plugin_only_policy::is_restricted_to_plugin_only("agents");
     let mut files = Vec::new();
-    files.extend(
-        crate::utils::markdown_config_loader::load_markdown_files_from_dir(
-            &managed_dir,
-            crate::utils::markdown_config_loader::MarkdownConfigSource::PolicySettings,
-        ),
-    );
     if crate::utils::settings::constants::is_setting_source_enabled(
         crate::utils::settings::constants::SettingSource::User,
-    ) && !customization_locked
-    {
+    ) {
         files.extend(
             crate::utils::markdown_config_loader::load_markdown_files_from_dir(
                 &user_dir,
@@ -350,8 +335,7 @@ fn load_agent_markdown_files(
     }
     if crate::utils::settings::constants::is_setting_source_enabled(
         crate::utils::settings::constants::SettingSource::Project,
-    ) && !customization_locked
-    {
+    ) {
         for project_dir in project_dirs {
             files.extend(
                 crate::utils::markdown_config_loader::load_markdown_files_from_dir(
@@ -382,7 +366,7 @@ pub fn get_agent_definitions_with_overrides(cwd: &Path) -> AgentDefinitionsResul
     // Maps to the official simple-mode branch: skip custom agents and return
     // only built-ins.
     if crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_SIMPLE").as_deref(),
+        crate::utils::process_env::var("NYAN_SIMPLE").as_deref(),
     ) {
         let nyan = crate::utils::settings::get_initial_settings().nyan;
         let mut failed_files = Vec::new();
@@ -401,13 +385,12 @@ pub fn get_agent_definitions_with_overrides(cwd: &Path) -> AgentDefinitionsResul
     }
 
     let markdown_files = load_agent_markdown_files(cwd);
-    let audience = crate::utils::build_profile::build_audience();
     let settings = crate::utils::settings::get_initial_settings();
     let nyan = settings.nyan.as_deref();
     let mut custom_agents = Vec::new();
     let mut failed_files = Vec::new();
     for markdown_file in markdown_files {
-        match parse_agent_from_markdown(&markdown_file, audience) {
+        match parse_agent_from_markdown(&markdown_file) {
             Some(agent) => match validate_agent_model(&agent, nyan) {
                 Ok(()) => custom_agents.push(agent),
                 Err(error) => failed_files.push(FailedAgentFile {
@@ -701,16 +684,9 @@ pub fn parse_agent_from_json(
         None => None,
         Some(value) => {
             // Zod enum, exact match: external builds accept only 'worktree';
-            // 'remote' is ant-only — anything else rejects the agent.
+            // anything else rejects the agent.
             let value = value.as_str()?;
-            let audience = crate::utils::build_profile::build_audience();
-            let valid = value == "worktree"
-                || (value == "remote"
-                    && crate::utils::build_profile::audience_has_internal_capability(
-                        audience,
-                        crate::utils::build_profile::InternalCapability::Tools,
-                    ));
-            if !valid {
+            if value != "worktree" {
                 return None;
             }
             Some(value.to_string())
@@ -775,7 +751,6 @@ fn cli_flag_agents_from_bootstrap() -> Vec<AgentDefinition> {
 /// Maps to: CC `tools/AgentTool/loadAgentsDir.ts#parseAgentFromMarkdown`.
 fn parse_agent_from_markdown(
     markdown_file: &crate::utils::markdown_config_loader::MarkdownFile,
-    audience: crate::utils::build_profile::BuildAudience,
 ) -> Option<AgentDefinition> {
     let frontmatter = &markdown_file.frontmatter;
     // CC :549-562: `!agentType || typeof agentType !== 'string'` — JS
@@ -790,9 +765,6 @@ fn parse_agent_from_markdown(
         return None;
     }
     let source = match markdown_file.source {
-        crate::utils::markdown_config_loader::MarkdownConfigSource::PolicySettings => {
-            AgentDefinitionSource::PolicySettings
-        }
         crate::utils::markdown_config_loader::MarkdownConfigSource::UserSettings => {
             AgentDefinitionSource::UserSettings
         }
@@ -876,15 +848,8 @@ fn parse_agent_from_markdown(
         .get("isolation")
         .and_then(serde_json::Value::as_str)
         // CC :609-615 compares EXACT values (no trim).
-        .and_then(|value| {
-            (value == "worktree"
-                || (value == "remote"
-                    && crate::utils::build_profile::audience_has_internal_capability(
-                        audience,
-                        crate::utils::build_profile::InternalCapability::Tools,
-                    )))
-            .then(|| value.to_string())
-        });
+        .filter(|value| *value == "worktree")
+        .map(ToOwned::to_owned);
     Some(agent)
 }
 
@@ -1009,22 +974,14 @@ mod tests {
     }
 
     /// Pins the loader's environment inputs: user agents come from
-    /// `config_home`, the project walk stops at `home`, a host's
-    /// `CLAUDE_CODE_SIMPLE` (CC `--bare` exports it) is cleared, and the
-    /// managed root points at a directory that does not exist. Unsetting the
-    /// managed override would fall back to the machine's real managed root
-    /// (`/Library/Application Support/ClaudeCode` on macOS), whose agents and
-    /// `managed-settings.json` would then reach the test. The caller holds
-    /// `TEST_ENV_LOCK`.
-    fn pin_loader_env(home: &Path, config_home: &Path) -> [EnvVarGuard; 4] {
+    /// `config_home`, the project walk stops at `home`, and a host's
+    /// `NYAN_SIMPLE` (CC `--bare` exports it) is cleared. The caller
+    /// holds `TEST_ENV_LOCK`.
+    fn pin_loader_env(home: &Path, config_home: &Path) -> [EnvVarGuard; 3] {
         [
-            EnvVarGuard::set("CLAUDE_CONFIG_DIR", config_home),
+            EnvVarGuard::set("NYAN_CONFIG_DIR", config_home),
             EnvVarGuard::set(HOME_VAR, home),
-            EnvVarGuard::unset("CLAUDE_CODE_SIMPLE"),
-            EnvVarGuard::set(
-                "CLAUDE_CODE_MANAGED_SETTINGS_PATH",
-                config_home.join("missing-managed-root"),
-            ),
+            EnvVarGuard::unset("NYAN_SIMPLE"),
         ]
     }
 
@@ -1210,7 +1167,7 @@ mod tests {
 
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _env = pin_loader_env(&root, &config_home);
-        let _auto_memory = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
+        let _auto_memory = EnvVarGuard::set("NYAN_DISABLE_AUTO_MEMORY", "false");
         let result = get_agent_definitions_with_overrides(&root);
 
         let reviewer = result
@@ -1339,7 +1296,7 @@ mod tests {
     #[test]
     fn parse_agent_from_json_matches_official_schema_and_memory_tool_injection() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _auto_memory = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
+        let _auto_memory = EnvVarGuard::set("NYAN_DISABLE_AUTO_MEMORY", "false");
 
         let value = serde_json::json!({
             "description": "Review code",
@@ -1410,29 +1367,12 @@ mod tests {
                 "invalid {key} must reject the whole agent"
             );
         }
-        // The isolation enum is audience-shaped at BUILD time
-        // (AgentTool.tsx:215-218 — the `"external" === 'ant'` residue is the
-        // bundler's USER_TYPE --define): ant builds accept
-        // ['worktree','remote'], external builds only ['worktree']. This row
-        // used to sit in the all-or-nothing loop above, which pinned the
-        // external arm as if it were audience-free.
+        // The isolation enum (AgentTool.tsx:215-218) accepts only 'worktree'.
         let mut remote = value.clone();
         remote["isolation"] = serde_json::json!("remote");
         let parsed =
             parse_agent_from_json("reviewer", &remote, AgentDefinitionSource::FlagSettings);
-        if crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Tools,
-        ) {
-            assert_eq!(
-                parsed
-                    .expect("ant builds accept isolation: remote")
-                    .isolation
-                    .as_deref(),
-                Some("remote")
-            );
-        } else {
-            assert!(parsed.is_none(), "external builds reject isolation: remote");
-        }
+        assert!(parsed.is_none(), "isolation: remote is rejected");
         // zod `min(1)` has no trim — a lone-space description passes; the
         // empty string does not. initialPrompt is a plain string: "" passes
         // the schema (the construction spread drops it below).
@@ -1670,12 +1610,11 @@ mod tests {
     }
 
     #[test]
-    fn isolation_frontmatter_honors_official_external_and_internal_remote_gate() {
-        use crate::utils::build_profile::BuildAudience;
+    fn isolation_frontmatter_honors_official_external_remote_gate() {
         use crate::utils::frontmatter_parser::FrontmatterData;
         use crate::utils::markdown_config_loader::{MarkdownConfigSource, MarkdownFile};
 
-        let parse = |isolation: &str, audience| {
+        let parse = |isolation: &str| {
             let mut frontmatter = FrontmatterData::new();
             frontmatter.insert("name".to_string(), serde_json::json!("reviewer"));
             frontmatter.insert(
@@ -1683,29 +1622,19 @@ mod tests {
                 serde_json::json!("Review changes"),
             );
             frontmatter.insert("isolation".to_string(), serde_json::json!(isolation));
-            parse_agent_from_markdown(
-                &MarkdownFile {
-                    file_path: PathBuf::from("reviewer.md"),
-                    base_dir: PathBuf::from("."),
-                    frontmatter,
-                    content: "Review carefully".to_string(),
-                    source: MarkdownConfigSource::ProjectSettings,
-                },
-                audience,
-            )
+            parse_agent_from_markdown(&MarkdownFile {
+                file_path: PathBuf::from("reviewer.md"),
+                base_dir: PathBuf::from("."),
+                frontmatter,
+                content: "Review carefully".to_string(),
+                source: MarkdownConfigSource::ProjectSettings,
+            })
             .and_then(|agent| agent.isolation)
         };
 
-        assert_eq!(
-            parse("worktree", BuildAudience::External).as_deref(),
-            Some("worktree")
-        );
-        assert_eq!(parse("remote", BuildAudience::External), None);
-        assert_eq!(
-            parse("remote", BuildAudience::AnthropicInternal).as_deref(),
-            Some("remote")
-        );
-        assert_eq!(parse("invalid", BuildAudience::AnthropicInternal), None);
+        assert_eq!(parse("worktree").as_deref(), Some("worktree"));
+        assert_eq!(parse("remote"), None);
+        assert_eq!(parse("invalid"), None);
     }
 
     #[test]
@@ -1718,7 +1647,7 @@ mod tests {
                 "project",
                 AgentDefinitionSource::ProjectSettings,
             ),
-            AgentDefinition::new("reviewer", "managed", AgentDefinitionSource::PolicySettings),
+            AgentDefinition::new("reviewer", "flag", AgentDefinitionSource::FlagSettings),
             AgentDefinition::new("helper", "user", AgentDefinitionSource::UserSettings),
         ];
 
@@ -1728,7 +1657,7 @@ mod tests {
             .iter()
             .find(|agent| agent.agent_type == "reviewer")
             .expect("reviewer active agent");
-        assert_eq!(reviewer.when_to_use, "managed");
+        assert_eq!(reviewer.when_to_use, "flag");
         assert_eq!(
             active
                 .iter()
@@ -1739,21 +1668,16 @@ mod tests {
     }
 
     #[test]
-    fn filesystem_loader_uses_managed_user_project_order_and_simple_mode() {
+    fn filesystem_loader_uses_user_project_order_and_simple_mode() {
         let root = temp_dir("dirs");
         let config_home = root.join("config");
-        let managed_root = root.join("managed");
         let cwd = root.join("repo/nested");
         fs::create_dir_all(&cwd).expect("cwd");
         fs::create_dir_all(root.join("repo/.git")).expect("git root");
+        // `.claude/agents` is not a project agents directory.
         write_file(
-            &managed_root.join(".nyan/agents/reviewer.md"),
-            "---\nname: reviewer\ndescription: Managed description\n---\nManaged",
-        );
-        // The managed tier no longer reads `.claude/agents` either.
-        write_file(
-            &managed_root.join(".claude/agents/legacy.md"),
-            "---\nname: legacy\ndescription: Legacy managed\n---\nLegacy",
+            &cwd.join(".claude/agents/legacy.md"),
+            "---\nname: legacy\ndescription: Legacy\n---\nLegacy",
         );
         write_file(
             &config_home.join("agents/reviewer.md"),
@@ -1771,23 +1695,21 @@ mod tests {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _trust = crate::services::hooks::test_support::SessionTrustGuard::accepted();
         let _env = pin_loader_env(&root, &config_home);
-        // `get_managed_file_path` honours the override in every test build.
-        let _managed = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &managed_root);
         let result = get_agent_definitions_with_overrides(&cwd);
         let reviewer = result
             .active_agents
             .iter()
             .find(|agent| agent.agent_type == "reviewer")
             .expect("reviewer active agent");
-        assert_eq!(reviewer.when_to_use, "Managed description");
-        assert_eq!(reviewer.source, AgentDefinitionSource::PolicySettings);
+        assert_eq!(reviewer.when_to_use, "Root project description");
+        assert_eq!(reviewer.source, AgentDefinitionSource::ProjectSettings);
         assert!(
             result
                 .all_agents
                 .iter()
                 .all(|agent| agent.agent_type != "legacy")
         );
-        // Every tier is loaded, in managed < user < nested < root order.
+        // Every tier is loaded, in user < nested < root order.
         let descriptions = result
             .all_agents
             .iter()
@@ -1797,7 +1719,6 @@ mod tests {
         assert_eq!(
             descriptions,
             vec![
-                (AgentDefinitionSource::PolicySettings, "Managed description"),
                 (AgentDefinitionSource::UserSettings, "User description"),
                 (
                     AgentDefinitionSource::ProjectSettings,
@@ -1810,7 +1731,7 @@ mod tests {
             ]
         );
 
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "true");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "true");
         let simple = get_agent_definitions_with_overrides(&cwd);
         assert!(
             simple
@@ -1844,8 +1765,7 @@ mod tests {
     /// Without the last two the snapshot copy would land in whatever config
     /// home the run inherited.
     struct SnapshotEnv {
-        _loader: [EnvVarGuard; 4],
-        _remote_memory: EnvVarGuard,
+        _loader: [EnvVarGuard; 3],
         _auto_memory: EnvVarGuard,
         _lock: TestEnvGuard<'static>,
     }
@@ -1854,15 +1774,14 @@ mod tests {
         let lock = TEST_ENV_LOCK.lock().unwrap();
         SnapshotEnv {
             _loader: pin_loader_env(home, config_home),
-            _remote_memory: EnvVarGuard::unset("CLAUDE_CODE_REMOTE_MEMORY_DIR"),
-            _auto_memory: EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false"),
+            _auto_memory: EnvVarGuard::set("NYAN_DISABLE_AUTO_MEMORY", "false"),
             _lock: lock,
         }
     }
 
     fn write_snapshot(cwd: &Path, agent_type: &str, updated_at: &str, payload: &str) {
         let snapshot_dir = cwd
-            .join(".claude")
+            .join(".nyan")
             .join("agent-memory-snapshots")
             .join(agent_type);
         write_file(
@@ -1904,7 +1823,7 @@ mod tests {
         let result = get_agent_definitions_with_overrides(&root);
 
         // CC :277-281 `initializeFromSnapshot` → copySnapshotToLocal +
-        // saveSyncedMeta, into the USER memory dir (`$CLAUDE_CONFIG_DIR/agent-memory`).
+        // saveSyncedMeta, into the USER memory dir (`$NYAN_CONFIG_DIR/agent-memory`).
         let user_memory = config_home.join("agent-memory/usermem");
         assert_eq!(
             fs::read_to_string(user_memory.join("MEMORY.md")).ok(),
@@ -1928,7 +1847,7 @@ mod tests {
 
         // CC :267 — project scope is filtered out before the check runs.
         assert!(!config_home.join("agent-memory/projectmem").exists());
-        assert!(!root.join(".claude/agent-memory/projectmem").exists());
+        assert!(!root.join(".nyan/agent-memory/projectmem").exists());
         let projectmem = result
             .active_agents
             .iter()
@@ -2083,11 +2002,7 @@ mod prompt_contract_tests {
                 content: body.to_string(),
                 source: crate::utils::markdown_config_loader::MarkdownConfigSource::ProjectSettings,
             };
-            let agent = parse_agent_from_markdown(
-                &markdown,
-                crate::utils::build_profile::BuildAudience::External,
-            )
-            .unwrap();
+            let agent = parse_agent_from_markdown(&markdown).unwrap();
             assert_eq!(agent.system_prompt.as_deref(), Some(expected));
             assert_eq!(
                 agent

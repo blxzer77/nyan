@@ -161,14 +161,12 @@ pub use crate::schemas::hooks::{
 /// sources. Session-derived hooks remain scoped and merged by their callers.
 pub fn load_hooks_config() -> hooks_config_snapshot::LoadedHooksConfig {
     let mut loaded = hooks_config_snapshot::load_hooks_config_from_settings_sources();
-    if !loaded.disable_all_hooks
-        && let Some(registered) = crate::bootstrap::state::get_registered_hooks()
-    {
+    if let Some(registered) = crate::bootstrap::state::get_registered_hooks() {
         for (event, entries) in registered {
             loaded.config.entry(event).or_default().extend(
-                entries.into_iter().filter(|entry| {
-                    !loaded.allow_managed_hooks_only || entry.plugin_root.is_none()
-                }),
+                entries
+                    .into_iter()
+                    .filter(|entry| !loaded.disable_all_hooks || entry.plugin_root.is_none()),
             );
         }
     }
@@ -182,8 +180,8 @@ pub fn load_hooks_config() -> hooks_config_snapshot::LoadedHooksConfig {
 /// owns only the first two sources ("Session-derived hooks remain scoped and
 /// merged by their callers", its own doc); this adds CC's third arm
 /// (`:1541-1563`) under the same `shouldAllowManagedHooksOnly()` gate
-/// (`:1516`, `:1534-1541` — "Skip session hooks entirely when
-/// allowManagedHooksOnly is set").
+/// (`:1516`, `:1534-1541`), which without managed settings is the merged
+/// `disableAllHooks`.
 ///
 /// The caller picks `session_id`, because CC does: `executeHooks` uses
 /// `toolUseContext?.agentId ?? getSessionId()` (`:2003`) while
@@ -194,25 +192,10 @@ pub fn load_hooks_config() -> hooks_config_snapshot::LoadedHooksConfig {
 pub fn load_hooks_config_with_session_hooks(session_id: &str) -> RegisteredHooks {
     let loaded = load_hooks_config();
     let mut config = loaded.config;
-    if !loaded.allow_managed_hooks_only {
+    if !loaded.disable_all_hooks {
         session_hooks::merge_session_hooks_into_config(&mut config, session_id);
     }
     config
-}
-
-/// Maps to: CC `utils/hooks/hooksConfigSnapshot.ts:83-88`
-/// `shouldDisableAllHooksIncludingManaged()` as read from its ZERO-argument
-/// call sites — `utils/hooks.ts:1978` (`executeHooks`), `:3022`
-/// (`executeHooksOutsideREPL`), `:4591` and `:4681`. CC reaches
-/// `getSettingsForSource('policySettings')` inside the helper, so an executor
-/// with no settings snapshot in hand still gets the managed gate; this wrapper
-/// keeps that property for the Rust executors, which take a pre-resolved
-/// `RegisteredHooks` table instead of loading settings themselves.
-pub fn should_disable_all_hooks_including_managed_from_settings() -> bool {
-    let policy_settings = crate::utils::settings::get_settings_for_source(
-        crate::utils::settings::SettingSource::Policy,
-    );
-    hooks_config_snapshot::should_disable_all_hooks_including_managed(policy_settings.as_ref())
 }
 
 /// Maps to: CC `utils/hooks.ts:1987` / `:3021` —
@@ -229,27 +212,21 @@ fn hook_name(event: HookEvent, match_query: &str) -> String {
 }
 
 /// Maps to: CC `utils/hooks.ts:1982-1984` (`executeHooks`) and `:3016-3018`
-/// (`executeHooksOutsideREPL`) — `if (isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE))
+/// (`executeHooksOutsideREPL`) — `if (isEnvTruthy(process.env.NYAN_SIMPLE))
 /// return`, the `--bare` arm. `main.tsx:1359` describes the flag as "Minimal
 /// mode: skip hooks, LSP, plugin sync, …", and `cli/dispatch.rs:9` is this
 /// port's `--bare` writer.
 ///
 pub fn bare_mode_disables_hooks() -> bool {
-    crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_SIMPLE").as_deref(),
-    )
+    crate::utils::env_utils::is_env_truthy(crate::utils::process_env::var("NYAN_SIMPLE").as_deref())
 }
 
 /// The gate block CC opens BOTH of its hook executors with, before either one
 /// resolves a session id or matches a single hook.
 ///
 /// Maps to: CC `utils/hooks.ts:1978-1999` (`executeHooks`) and `:3016-3036`
-/// (`executeHooksOutsideREPL`). All three entry gates apply here:
-/// - `CLAUDE_CODE_SIMPLE` disables hook execution in bare mode;
-///
-/// - `shouldDisableAllHooksIncludingManaged()` (`:1978`, `:3022`) — the MANAGED
-///   `disableAllHooks` policy, i.e. an admin control that user settings cannot
-///   re-enable;
+/// (`executeHooksOutsideREPL`). Two entry gates apply here:
+/// - `NYAN_SIMPLE` disables hook execution in bare mode;
 /// - `shouldSkipHookDueToTrust()` (`:1994`, `:3031`) — "SECURITY: ALL hooks
 ///   require workspace trust in interactive mode. This centralized check
 ///   prevents RCE vulnerabilities for all current and future hooks".
@@ -275,24 +252,11 @@ pub fn bare_mode_disables_hooks() -> bool {
 /// funnels through one of them, so CC gets the whole system from one gate. The
 /// user-authorized `services/hooks/` decomposition split those two into a dozen
 /// event executors; gating them one at a time is precisely what left four
-/// covered and the other ten running user commands under an enterprise
-/// `disableAllHooks`.
+/// covered and the other ten running user commands in an untrusted workspace.
 ///
-/// Deviation (diagnostics only): CC's `executeHooks` cannot log its
-/// `disableAllHooks` skip, because it builds `hookName` only AFTER the early
-/// returns (`:1986-1987`), while `executeHooksOutsideREPL` builds it first
-/// (`:3021`) and does log. This entry builds the name up front and logs in both
-/// families — a strict superset of CC's `--debug` output, with identical
-/// control flow.
+/// @nyan: CC's first gate, `shouldDisableAllHooksIncludingManaged()`
+/// (`:1978`, `:3022`), reads only managed settings, which nyan does not have.
 pub fn should_skip_hook_execution(event: HookEvent, match_query: &str) -> bool {
-    // CC executeHooks checks managed policy, simple mode, then trust.
-    if should_disable_all_hooks_including_managed_from_settings() {
-        crate::utils::debug::log_for_debugging(&format!(
-            "Skipping hooks for {} due to 'disableAllHooks' managed setting",
-            hook_name(event, match_query)
-        ));
-        return true;
-    }
     if bare_mode_disables_hooks() {
         return true;
     }
@@ -545,7 +509,7 @@ pub struct HookContext {
 /// removed: neither is a hook input field. `claude_code_version` belongs to
 /// the SDK `system.init` message (`utils/messages/systemInit.ts:74`,
 /// `coreSchemas.ts:1464`). CC puts the project dir on the env rail instead, as
-/// `CLAUDE_PROJECT_DIR`, which `exec::exec_command_hook` sets for every hook
+/// `NYAN_PROJECT_DIR`, which `exec::exec_command_hook` sets for every hook
 /// (`utils/hooks.ts:816,882-885`).
 ///
 /// Deviation (carrier): CC's `sessionId ?? getSessionId()` (`:315`),
@@ -758,46 +722,32 @@ pub(crate) mod test_support {
         }
     }
 
-    /// Installs a managed (policy) settings file for the lifetime of the guard.
-    ///
-    /// `CLAUDE_CONFIG_DIR` (pinned by `just test`) does NOT cover the managed
-    /// settings root, so a hook test that means to assert on policy behaviour —
-    /// or to assert that policy is ABSENT — has to redirect
-    /// `CLAUDE_CODE_MANAGED_SETTINGS_PATH` itself. Requires `TEST_ENV_LOCK`.
-    pub(crate) struct ManagedSettingsGuard {
-        root: std::path::PathBuf,
-        env: Option<EnvVarGuard>,
-    }
+    /// Turns settings, plugin and session hooks off (`disableAllHooks`) for
+    /// the lifetime of the guard, leaving only registered SDK callbacks. Seeds
+    /// the merged settings cache and drops the hooks snapshot both ways.
+    /// Requires `TEST_ENV_LOCK`.
+    pub(crate) struct HooksDisabledGuard;
 
-    impl ManagedSettingsGuard {
-        /// `contents = None` installs an EMPTY managed root, which is how a test
-        /// states "no policy" without depending on the developer's machine.
-        pub(crate) fn install(contents: Option<&str>) -> Self {
-            let root = std::env::temp_dir().join(format!(
-                "nyan-hooks-managed-{}",
-                uuid::Uuid::new_v4().simple()
-            ));
-            std::fs::create_dir_all(&root).expect("create managed settings root");
-            if let Some(contents) = contents {
-                std::fs::write(root.join("managed-settings.json"), contents)
-                    .expect("write managed settings");
-            }
-            let env = EnvVarGuard::set("CLAUDE_CODE_MANAGED_SETTINGS_PATH", &root);
-            // A direct disk write bypasses production invalidation, so the test
-            // states the invariant itself (same note as `settings/mod.rs` tests).
-            crate::utils::settings::settings_cache::reset_settings_cache();
-            Self {
-                root,
-                env: Some(env),
-            }
+    impl HooksDisabledGuard {
+        pub(crate) fn install() -> Self {
+            crate::utils::settings::settings_cache::set_session_settings_cache(
+                crate::utils::settings::SettingsWithErrors {
+                    settings: crate::utils::settings::SettingsJson {
+                        disable_all_hooks: Some(true),
+                        ..Default::default()
+                    },
+                    errors: Vec::new(),
+                },
+            );
+            crate::utils::hooks::hooks_config_snapshot::reset_hooks_config_snapshot();
+            Self
         }
     }
 
-    impl Drop for ManagedSettingsGuard {
+    impl Drop for HooksDisabledGuard {
         fn drop(&mut self) {
-            drop(self.env.take());
             crate::utils::settings::settings_cache::reset_settings_cache();
-            let _ = std::fs::remove_dir_all(&self.root);
+            crate::utils::hooks::hooks_config_snapshot::reset_hooks_config_snapshot();
         }
     }
 
@@ -811,7 +761,7 @@ pub(crate) mod test_support {
     /// as a product bug instead of a missing fixture.
     ///
     /// Under `just test` the answer today is TRUSTED, not untrusted: `just
-    /// _prep` rebuilds mutable `target/test-home`, serializes `.claude.json`
+    /// _prep` rebuilds mutable `target/test-home`, serializes `state.json`
     /// with exactly the canonical tracked `tests/fixtures/isolated-project`
     /// trust key, and pins that project as the original cwd. So this guard is
     /// belt-and-braces against a test that relocates the config home — it is
@@ -843,14 +793,14 @@ pub(crate) mod test_support {
     ///
     /// Reaching it takes all four of these, because the port's trust answer is
     /// an OR over four inputs:
-    /// - `set_is_interactive(true)` + the three `CLAUDE_CODE_NON_INTERACTIVE` /
-    ///   `NYAN_NON_INTERACTIVE*` overrides cleared, because CC returns
+    /// - `set_is_interactive(true)` + the two `NYAN_NON_INTERACTIVE*`
+    ///   overrides cleared, because CC returns
     ///   "do not skip" outright in non-interactive (SDK) mode (`:288-291`);
     /// - `set_session_trust_accepted(false)`, the memory-only home-dir accept;
     /// - the latched `TRUST_DIALOG_ACCEPTED_CACHE` reset;
     /// - `set_original_cwd(<scratch>)`, because the tracked
     ///   `tests/fixtures/isolated-project` IS trusted by the canonical JSON in
-    ///   `target/test-home/.claude.json` — an untrusted test that skipped this
+    ///   `target/test-home/state.json` — an untrusted test that skipped this
     ///   step would silently assert nothing.
     ///
     /// Requires `TEST_ENV_LOCK`.
@@ -874,14 +824,10 @@ pub(crate) mod test_support {
                 previous_cwd: crate::bootstrap::state::get_original_cwd(),
                 previous_interactive: crate::bootstrap::state::get_is_interactive(),
                 scratch: scratch.clone(),
-                _non_interactive_env: [
-                    "CLAUDE_CODE_NON_INTERACTIVE",
-                    "NYAN_NON_INTERACTIVE",
-                    "NYAN_NON_INTERACTIVE_SESSION",
-                ]
-                .into_iter()
-                .map(EnvVarGuard::unset)
-                .collect(),
+                _non_interactive_env: ["NYAN_NON_INTERACTIVE", "NYAN_NON_INTERACTIVE_SESSION"]
+                    .into_iter()
+                    .map(EnvVarGuard::unset)
+                    .collect(),
             };
             crate::bootstrap::state::set_is_interactive(true);
             crate::bootstrap::state::set_session_trust_accepted(false);
@@ -1203,61 +1149,6 @@ mod tests {
             .collect()
     }
 
-    /// Maps to: CC `utils/hooks.ts:1978-1980` (`executeHooks`) and `:3022-3027`
-    /// (`executeHooksOutsideREPL`) — `shouldDisableAllHooksIncludingManaged()`
-    /// is the FIRST thing both executors do, so every hook event in CC is
-    /// stopped by one gate.
-    ///
-    /// The claim under test is structural, not per-event: with the guard behind
-    /// [`should_skip_hook_execution`], every family listed in
-    /// [`EXECUTOR_FAMILIES`] stops, and so would a seventeenth added tomorrow.
-    ///
-    /// Non-vacuity is asserted in-test rather than by deleting the guard: the
-    /// SAME sixteen calls run first against an EMPTY managed root (all sixteen
-    /// must run) and then with the policy installed (none may). Neutering the
-    /// guard turns the second half into a sixteen-name diff, and breaking the
-    /// fixture turns the first half into one.
-    ///
-    /// Old shape (3933d3e, before 8bb2e62): only `tool::execute_hooks`,
-    /// `env::execute_hooks_outside_repl_with_config` and the two compaction
-    /// entries were gated. The second half FAILED with the other eleven
-    /// families listed as still running — a hard assertion failure, not a hang.
-    ///
-    /// Old shape (8bb2e62, before this batch): the sixteenth family,
-    /// `query::stop_hooks::execute_stop_hooks_with_progress_events`, was absent
-    /// from the list AND ungated, so an enterprise `disableAllHooks` still ran
-    /// Stop hooks down the REPL's progress path. Adding the entry first, before
-    /// the gate, produced exactly the one-name diff described above.
-    #[cfg(not(windows))]
-    #[tokio::test]
-    async fn managed_disable_all_hooks_policy_stops_every_executor_family() {
-        let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _trust = test_support::SessionTrustGuard::accepted();
-
-        // Baseline: an EMPTY managed root, so the developer's real policy file
-        // cannot make this half pass for the wrong reason.
-        let allowed = {
-            let _managed = test_support::ManagedSettingsGuard::install(None);
-            run_every_executor_family().await
-        };
-        assert_eq!(
-            families_that_ran(&allowed),
-            EXECUTOR_FAMILIES.to_vec(),
-            "without the policy every family has to run, or the fixture is wrong"
-        );
-
-        let blocked = {
-            let _managed =
-                test_support::ManagedSettingsGuard::install(Some(r#"{"disableAllHooks": true}"#));
-            run_every_executor_family().await
-        };
-        assert_eq!(
-            families_that_ran(&blocked),
-            Vec::<&str>::new(),
-            "a managed disableAllHooks policy must stop EVERY executor family"
-        );
-    }
-
     /// Maps to: CC `utils/hooks.ts:1994-1999` and `:3031-3036` —
     /// `shouldSkipHookDueToTrust()`, whose comment is "SECURITY: ALL hooks
     /// require workspace trust in interactive mode. This centralized check
@@ -1282,7 +1173,6 @@ mod tests {
     #[tokio::test]
     async fn untrusted_workspace_stops_every_executor_family_without_filtering() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _managed = test_support::ManagedSettingsGuard::install(None);
 
         let trusted = {
             let _trust = test_support::SessionTrustGuard::accepted();
@@ -1315,7 +1205,6 @@ mod tests {
     #[tokio::test]
     async fn trust_gate_is_evaluated_once_per_call_not_once_per_hook() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _managed = test_support::ManagedSettingsGuard::install(None);
 
         let config: HooksConfig = serde_json::from_value(serde_json::json!({
             "UserPromptSubmit": [
@@ -1350,12 +1239,12 @@ mod tests {
     /// `should_skip_hook_execution`'s trust arm makes "is this workspace
     /// trusted?" an input to every hook test. Under `just test` the answer is
     /// yes because `just _prep` rebuilds mutable `target/test-home` from tracked
-    /// fixtures and serializes `.claude.json` with exactly the canonical
+    /// fixtures and serializes `state.json` with exactly the canonical
     /// `tests/fixtures/isolated-project` trust key that
     /// `NYAN_TEST_PROJECT_DIR` pins as the original cwd.
     ///
     /// If this test fails, rerun `just _prep`; it recreates the canonical trust
-    /// JSON and tracked mock credentials. Do NOT respond by adding
+    /// JSON. Do NOT respond by adding
     /// `SessionTrustGuard` to whatever else went red: a per-test opt-in that
     /// silently makes hooks run is the same trap in the other direction. The
     /// guard belongs only in tests that deliberately relocate the config root
@@ -1387,7 +1276,6 @@ mod tests {
     #[test]
     fn session_hooks_join_the_settings_and_registered_channels_for_the_given_id() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _managed = test_support::ManagedSettingsGuard::install(None);
         session_hooks::clear_all_session_hooks();
         session_hooks::add_session_hook(
             "agent-merge",
@@ -1423,18 +1311,16 @@ mod tests {
         );
     }
 
-    /// The managed-only gate CC applies before the session arm (`:1516`,
-    /// `:1534-1541`: "Skip session hooks entirely when allowManagedHooksOnly is
-    /// set — this prevents frontmatter hooks from agents/skills from bypassing
-    /// the policy").
+    /// The gate CC applies before the session arm (`:1516`, `:1534-1541`:
+    /// "Skip session hooks entirely when allowManagedHooksOnly is set"). With
+    /// no managed settings that is the merged `disableAllHooks`.
     #[test]
-    fn allow_managed_hooks_only_policy_drops_the_session_arm() {
+    fn disable_all_hooks_drops_the_session_arm() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _managed =
-            test_support::ManagedSettingsGuard::install(Some(r#"{"allowManagedHooksOnly": true}"#));
+        let _hooks_off = test_support::HooksDisabledGuard::install();
         session_hooks::clear_all_session_hooks();
         session_hooks::add_session_hook(
-            "agent-managed-only",
+            "agent-hooks-off",
             HookEvent::Stop,
             "",
             HookCommand {
@@ -1449,12 +1335,12 @@ mod tests {
             },
         );
 
-        let merged = load_hooks_config_with_session_hooks("agent-managed-only");
+        let merged = load_hooks_config_with_session_hooks("agent-hooks-off");
         session_hooks::clear_all_session_hooks();
 
         assert!(
             merged.get("Stop").is_none_or(Vec::is_empty),
-            "a managed-only policy has to stop the session arm"
+            "disableAllHooks has to stop the session arm"
         );
     }
 
@@ -1528,9 +1414,8 @@ mod tests {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         // No policy: the tool-event executor now consults the managed gate, and
         // the developer's real managed root must not decide this test.
-        let _managed = test_support::ManagedSettingsGuard::install(None);
         // …and every executor now consults the trust gate too, so the fixture
-        // states trust rather than inheriting it from the scratch `.claude.json`
+        // states trust rather than inheriting it from the scratch `state.json`
         // (which is gitignored, i.e. not a contract).
         let _trust = test_support::SessionTrustGuard::accepted();
 
@@ -1797,7 +1682,7 @@ mod tests {
         env::execute_config_change_hooks_with_config(
             &capture.config("ConfigChange", Some("user_settings")),
             env::ConfigChangeSource::UserSettings,
-            Some("/repo/.claude/settings.json"),
+            Some("/repo/.nyan/settings.json"),
             create_base_hook_input(&HookContext::default()),
             capture.base_env(),
             5_000,
@@ -1931,7 +1816,6 @@ mod tests {
     #[tokio::test]
     async fn absent_optionals_send_no_key_rather_than_null() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
-        let _managed = test_support::ManagedSettingsGuard::install(None);
         let _trust = test_support::SessionTrustGuard::accepted();
 
         let capture = test_support::HookInputCapture::new();
@@ -2121,7 +2005,7 @@ mod foundation_tests {
     async fn hooks_match_official_parallel_completion_and_sticky_permission_precedence() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let _trust = test_support::SessionTrustGuard::accepted();
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         let (sender, receiver) = async_channel::bounded::<()>(1);
         let waiting = RegisteredHook::Callback(HookCallback {
             callback: Arc::new(move |_, _| {
@@ -2186,7 +2070,7 @@ mod foundation_tests {
     async fn permission_request_matches_official_first_nested_decision_and_winner_payload() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let _trust = test_support::SessionTrustGuard::accepted();
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         let config = config(
             HookEvent::PermissionRequest,
             vec![
@@ -2233,7 +2117,7 @@ mod foundation_tests {
     async fn pre_tool_input_only_completion_matches_official_independent_yield() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let _trust = test_support::SessionTrustGuard::accepted();
-        let _simple = EnvVarGuard::unset("CLAUDE_CODE_SIMPLE");
+        let _simple = EnvVarGuard::unset("NYAN_SIMPLE");
         let config = config(
             HookEvent::PreToolUse,
             vec![
@@ -2286,7 +2170,7 @@ mod foundation_tests {
     async fn bare_mode_matches_official_gate_before_any_tool_hook_executes() {
         let _guard = TEST_ENV_LOCK.lock().unwrap();
         let _trust = test_support::SessionTrustGuard::accepted();
-        let _simple = EnvVarGuard::set("CLAUDE_CODE_SIMPLE", "1");
+        let _simple = EnvVarGuard::set("NYAN_SIMPLE", "1");
         let config = config(
             HookEvent::PreToolUse,
             vec![RegisteredHook::Callback(HookCallback {

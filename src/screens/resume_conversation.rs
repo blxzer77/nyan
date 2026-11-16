@@ -218,8 +218,8 @@ fn ResumeFailedMessage(
         .as_deref()
         .filter(|id| is_command_safe_session_id(id))
     {
-        Some(id) => format!("Run claude --resume {id} to retry, or claude to start a new session."),
-        None => "Run claude to start a new session.".to_string(),
+        Some(id) => format!("Run nyan --resume {id} to retry, or nyan to start a new session."),
+        None => "Run nyan to start a new session.".to_string(),
     };
     element! {
         View(flex_direction: FlexDirection::Column, row_gap: 1u32) {
@@ -496,7 +496,6 @@ pub fn ResumeConversation(
     }
 
     let initial_agent_for_select = props.repl_props.main_thread_agent_definition.clone();
-    let worktree_paths_for_select = props.worktree_paths.clone();
     let app_store_for_select = app_store.clone();
     let load_tx_more = load_channel.0.clone();
     let load_tx_reload = load_channel.0.clone();
@@ -519,18 +518,13 @@ pub fn ResumeConversation(
                 });
             },
             on_select: move |selection: SessionSelection| {
-                match check_cross_project_resume(
-                    &selection,
-                    show_all_projects.get(),
-                    &worktree_paths_for_select,
-                ) {
+                match check_cross_project_resume(&selection, show_all_projects.get()) {
                     CrossProjectResumeResult::DifferentProject { command, .. } => {
                         // CC onSelect sets resuming before the clipboard await (:218).
                         resuming.set(true);
                         on_select_cross_project(command);
                     }
-                    CrossProjectResumeResult::SameProject
-                    | CrossProjectResumeResult::SameRepoWorktree { .. } => {
+                    CrossProjectResumeResult::SameProject => {
                         resuming.set(true);
                         resuming_session_id.set(Some(selection.session_id.clone()));
                         let restore_tx = restore_tx.clone();
@@ -749,14 +743,14 @@ mod tests {
         );
         assert!(
             text.contains(&format!(
-                "Run claude --resume {id} to retry, or claude to start a new session."
+                "Run nyan --resume {id} to retry, or nyan to start a new session."
             )),
             "canvas=\n{text}"
         );
         for unsafe_id in [None, Some(""), Some("a b"), Some("-x"), Some("CON")] {
             let text = render(unsafe_id);
             assert!(
-                text.contains("Run claude to start a new session."),
+                text.contains("Run nyan to start a new session."),
                 "{unsafe_id:?} canvas=\n{text}"
             );
             assert!(!text.contains("--resume"), "{unsafe_id:?} canvas=\n{text}");
@@ -801,7 +795,7 @@ mod tests {
     #[test]
     fn cross_project_message_preserves_official_visible_copy() {
         let text = element! {
-            CrossProjectMessage(command: "cd /tmp/repo && claude --resume abc".to_string())
+            CrossProjectMessage(command: "cd /tmp/repo && nyan --resume abc".to_string())
         }
         .render(Some(100))
         .to_string();
@@ -812,7 +806,7 @@ mod tests {
         );
         assert!(text.contains("To resume, run:"), "canvas=\n{text}");
         assert!(
-            text.contains(" cd /tmp/repo && claude --resume abc"),
+            text.contains(" cd /tmp/repo && nyan --resume abc"),
             "canvas=\n{text}"
         );
         assert!(

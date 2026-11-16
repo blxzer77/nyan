@@ -1,6 +1,6 @@
 //! API request lifecycle tracing.
 //!
-//! Writes stage events to `~/.claude/trace/{session}.jsonl` (or
+//! Writes stage events to `~/.nyan/trace/{session}.jsonl` (or
 //! `NYAN_TRACE_DIR`) and mirrors summaries into `--debug` logs as
 //! `api: [API:trace] ...` so `--debug=api` filters match.
 //!
@@ -130,7 +130,7 @@ pub fn get_trace_dir() -> PathBuf {
             return PathBuf::from(trimmed);
         }
     }
-    crate::utils::env_utils::get_claude_config_home_dir().join("trace")
+    crate::utils::env_utils::get_config_home_dir().join("trace")
 }
 
 /// Path for the current session's trace file.
@@ -371,10 +371,10 @@ pub fn truncate_json_snippet(value: &Value, max_bytes: usize) -> String {
 }
 
 /// Inspect content blocks on a local MessageParam for diagnostics.
-pub fn content_block_types(param: &super::claude::MessageParam) -> Vec<String> {
+pub fn content_block_types(param: &super::request::MessageParam) -> Vec<String> {
     match &param.content {
-        super::claude::MessageContent::Text(_) => vec!["text(string)".to_string()],
-        super::claude::MessageContent::Blocks(blocks) => blocks
+        super::request::MessageContent::Text(_) => vec!["text(string)".to_string()],
+        super::request::MessageContent::Blocks(blocks) => blocks
             .iter()
             .map(|block| {
                 block

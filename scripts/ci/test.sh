@@ -4,8 +4,8 @@
 # It owns the three layers of host-state pinning the justfile used to inline,
 # so `just test` and the shard jobs cannot drift apart:
 #
-#   settings root   CLAUDE_CONFIG_DIR -> target/test-home (also moves
-#                   ~/.claude.json; see justfile:17-19)
+#   settings root   NYAN_CONFIG_DIR -> target/test-home (also moves
+#                   state.json, which lives inside it)
 #   project settings NYAN_TEST_PROJECT_DIR -> tracked hook-free fixture
 #                   (projectSettings is process state, not reachable by env)
 #   host session    empty privacy vars, and the model/gateway variables a
@@ -49,23 +49,16 @@ ci_profile="${CI:-}"
 
 python3 "$root/scripts/ci/prepare-test-home.py" --root "$root" >/dev/null
 
-export CLAUDE_CONFIG_DIR="$root/target/test-home"
-export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=
-export DISABLE_TELEMETRY=
+export NYAN_CONFIG_DIR="$root/target/test-home"
+export NYAN_DISABLE_NONESSENTIAL_TRAFFIC=
 export NODE_ENV=
-export CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=
+export NYAN_BASH_MAINTAIN_PROJECT_WORKING_DIR=
 export NYAN_TEST_PROJECT_DIR="$root/tests/fixtures/isolated-project"
 
 # Not `VAR=`: the model resolvers read these without an is-empty filter, so an
-# empty value becomes a model name. They must be absent.
-unset ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL \
-    ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL \
-    CLAUDE_CODE_MODEL CLAUDE_CODE_SMALL_FAST_MODEL CLAUDE_CODE_SUBAGENT_MODEL \
-    CLAUDE_CODE_DEFAULT_OPUS_MODEL CLAUDE_CODE_DEFAULT_SONNET_MODEL CLAUDE_CODE_DEFAULT_HAIKU_MODEL \
-    CLAUDE_CLASSIFIER_MODEL NYAN_MODEL \
-    ANTHROPIC_CUSTOM_MODEL_OPTION ANTHROPIC_CUSTOM_MODEL_OPTION_NAME ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION \
-    ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY \
-    BAT_THEME
+# empty value becomes a model name. They must be absent. Provider model
+# selection comes only from settings, so ambient provider variables are gone.
+unset NYAN_MODEL BAT_THEME
 
 # A hosted runner has no TTY and usually no TERM, so crossterm's size probe
 # falls back to tput, which fails without a terminal database lookup; the

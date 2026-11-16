@@ -28,6 +28,8 @@
 
 pub mod backends;
 pub mod egress;
+pub mod log;
+pub mod probe;
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -66,14 +68,7 @@ pub enum DecisionPoint {
     MemoryConsolidate,
     CompactionKeep,
     PermissionsYoloStage1,
-    PermissionsExplainRisk,
     PromptSuggestionGenerateGate,
-    SpeculationStart,
-    ContextSuggestionsRank,
-    AgentRoute,
-    PlanVerifyNeed,
-    SkillRank,
-    TodoRank,
 }
 
 impl DecisionPoint {
@@ -94,14 +89,7 @@ impl DecisionPoint {
         DecisionPoint::MemoryConsolidate,
         DecisionPoint::CompactionKeep,
         DecisionPoint::PermissionsYoloStage1,
-        DecisionPoint::PermissionsExplainRisk,
         DecisionPoint::PromptSuggestionGenerateGate,
-        DecisionPoint::SpeculationStart,
-        DecisionPoint::ContextSuggestionsRank,
-        DecisionPoint::AgentRoute,
-        DecisionPoint::PlanVerifyNeed,
-        DecisionPoint::SkillRank,
-        DecisionPoint::TodoRank,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -122,14 +110,7 @@ impl DecisionPoint {
             DecisionPoint::MemoryConsolidate => "memory.consolidate",
             DecisionPoint::CompactionKeep => "compaction.keep",
             DecisionPoint::PermissionsYoloStage1 => "permissions.yolo_stage1",
-            DecisionPoint::PermissionsExplainRisk => "permissions.explain_risk",
             DecisionPoint::PromptSuggestionGenerateGate => "prompt_suggestion.generate_gate",
-            DecisionPoint::SpeculationStart => "speculation.start",
-            DecisionPoint::ContextSuggestionsRank => "context_suggestions.rank",
-            DecisionPoint::AgentRoute => "agent.route",
-            DecisionPoint::PlanVerifyNeed => "plan.verify_need",
-            DecisionPoint::SkillRank => "skill.rank",
-            DecisionPoint::TodoRank => "todo.rank",
         }
     }
 
@@ -316,6 +297,9 @@ pub enum FallbackReason {
     Shadow,
     /// Connection failure / 401 / 403 / the backend could not be built.
     BackendDown,
+    /// The service rejected the configured model id. The endpoint is up; the
+    /// model alias or the account's entitlement is wrong.
+    ModelNotFound,
     Timeout,
     RateLimited,
     BudgetExhausted,
@@ -333,6 +317,7 @@ impl FallbackReason {
             FallbackReason::Disabled => "disabled",
             FallbackReason::Shadow => "shadow",
             FallbackReason::BackendDown => "backend_down",
+            FallbackReason::ModelNotFound => "model_not_found",
             FallbackReason::Timeout => "timeout",
             FallbackReason::RateLimited => "rate_limited",
             FallbackReason::BudgetExhausted => "budget_exhausted",
@@ -564,7 +549,7 @@ pub trait DecisionBackend: Send + Sync {
         abort: &'a AbortController,
     ) -> BackendFuture<'a>;
 
-    /// Wire name for receipts (`"emrank"`, `"chat"`, `"mock"`).
+    /// Wire name for receipts (`"emrank"`, `"mock"`).
     fn name(&self) -> &'static str;
 }
 
@@ -627,7 +612,7 @@ impl DecisionProvider {
         Self::new(nyan.decision())
     }
 
-    /// For tests and future backends (`chat`): bypass the global emrank cell.
+    /// For tests: bypass the global emrank cell.
     pub fn with_backend(settings: DecisionSettings, backend: Arc<dyn DecisionBackend>) -> Self {
         Self::with_backend_and_budget(settings, backend, global_session_budget())
     }
@@ -1234,6 +1219,8 @@ mod tests {
         for point in DecisionPoint::ALL {
             assert_eq!(DecisionPoint::from_str(point.as_str()), Some(*point));
         }
+        // Design decision 8: speculation is not wired and has no point.
+        assert_eq!(DecisionPoint::from_str("speculation.start"), None);
         assert_eq!(DecisionPoint::from_str("retrieval.nope"), None);
     }
 

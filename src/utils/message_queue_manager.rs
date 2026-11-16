@@ -9,7 +9,7 @@
 //! ownership in the consuming components.
 
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use std::collections::BTreeMap;
 use std::sync::{LazyLock, Mutex};
 
@@ -75,7 +75,7 @@ static QUEUE_SUBSCRIBERS: LazyLock<Mutex<Vec<async_channel::Sender<()>>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
 
 #[cfg(test)]
-pub static TEST_QUEUE_LOCK: LazyLock<TestStateLock> = LazyLock::new(TestStateLock::new);
+pub static TEST_QUEUE_LOCK: TestStateLock = TestStateLock::new(TestLockRank::Queue);
 
 fn notify_subscribers() {
     QUEUE_SUBSCRIBERS.lock().unwrap().retain(|sender| {

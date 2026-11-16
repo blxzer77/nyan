@@ -33,7 +33,7 @@ Usage notes:
 ```
 # AGENTS.md
 
-This file provides guidance to nyan (claude.ai/code) when working with code in this repository.
+This file provides guidance to nyan when working with code in this repository.
 ```"##;
 
 const NEW_INIT_PROMPT: &str = r##"Set up a minimal AGENTS.md (and optionally skills and hooks) for this repo. AGENTS.md is loaded into every nyan session, so it must be concise — only include what the agent would get wrong without it.
@@ -126,7 +126,7 @@ Prefix the file with:
 ```
 # AGENTS.md
 
-This file provides guidance to nyan (claude.ai/code) when working with code in this repository.
+This file provides guidance to nyan when working with code in this repository.
 ```
 
 If AGENTS.md already exists: read it, propose specific changes as diffs, and explain why each change improves it. Do not silently overwrite.
@@ -148,9 +148,9 @@ Skills add capabilities the agent can use on demand without bloating every sessi
 
 For each suggested skill, provide: name, one-line purpose, and why it fits this repo.
 
-If `.claude/skills/` already exists with skills, review them first. Do not overwrite existing skills — only propose new ones that complement what is already there.
+If `.nyan/skills/` already exists with skills, review them first. Do not overwrite existing skills — only propose new ones that complement what is already there.
 
-Create each skill at `.claude/skills/<skill-name>/SKILL.md`:
+Create each skill at `.nyan/skills/<skill-name>/SKILL.md`:
 
 ```yaml
 ---
@@ -177,7 +177,7 @@ Check the environment and ask about each gap you find (use AskUserQuestion):
 
   For each hook preference (from the queue or the formatter fallback):
 
-  1. Target file: default to `.claude/settings.json` (team-shared, committed) or personal settings.
+  1. Target file: default to `.nyan/settings.json` (team-shared, committed) or personal settings.
 
   2. Pick the event and matcher from the preference:
      - "after every edit" → `PostToolUse` with matcher `Write|Edit`
@@ -186,7 +186,7 @@ Check the environment and ask about each gap you find (use AskUserQuestion):
      - "before committing" (literal git-commit gate) → **not a hooks.json hook.** Matchers can't filter Bash by command content, so there's no way to target only `git commit`. Route this to a git pre-commit hook (`.git/hooks/pre-commit`, husky, pre-commit framework) instead — offer to write one. If the user actually means "before I review and commit output", that's `Stop` — probe to disambiguate.
      Probe if the preference is ambiguous.
 
-  3. **Load the hook reference** (once per `/init` run, before the first hook): invoke the Skill tool with `skill: 'update-config'` and args starting with `[hooks-only]` followed by a one-line summary of what you're building — e.g., `[hooks-only] Constructing a PostToolUse/Write|Edit format hook for .claude/settings.json using ruff`. This loads the hooks schema and verification flow into context. Subsequent hooks reuse it — don't re-invoke.
+  3. **Load the hook reference** (once per `/init` run, before the first hook): invoke the Skill tool with `skill: 'update-config'` and args starting with `[hooks-only]` followed by a one-line summary of what you're building — e.g., `[hooks-only] Constructing a PostToolUse/Write|Edit format hook for .nyan/settings.json using ruff`. This loads the hooks schema and verification flow into context. Subsequent hooks reuse it — don't re-invoke.
 
   4. Follow the skill's **"Constructing a Hook"** flow: dedup check → construct for THIS project → pipe-test raw → wrap → write JSON → `jq -e` validate → live-proof (for `Pre|PostToolUse` on triggerable matchers) → cleanup → handoff. Target file and event/matcher come from steps 1–2 above.
 
@@ -199,33 +199,18 @@ Recap what was set up — which files were written and the key points included i
 Then tell the user that you'll be introducing a few more suggestions for optimizing their codebase and nyan setup based on what you found. Present these as a single, well-formatted to-do list where every item is relevant to this repo. Put the most impactful items first.
 
 When building the list, work through these checks and include only what applies:
-- If frontend code was detected (React, Vue, Svelte, etc.): `/plugin install frontend-design@claude-plugins-official` gives the agent design principles and component patterns so it produces polished UI; `/plugin install playwright@claude-plugins-official` lets the agent launch a real browser, screenshot what it built, and fix visual bugs itself.
 - If you found gaps in Phase 6 (missing GitHub CLI, missing linting) and the user said no: list them here with a one-line reason why each helps.
 - If tests are missing or sparse: suggest setting up a test framework so the agent can verify its own changes.
-- To help you create skills and optimize existing skills using evals, nyan has an official skill-creator plugin you can install. Install it with `/plugin install skill-creator@claude-plugins-official`, then run `/skill-creator <skill-name>` to create new skills or refine any existing skill. (Always include this one.)
-- Browse official plugins with `/plugin` — these bundle skills, agents, hooks, and MCP servers that you may find helpful. You can also create your own custom plugins to share them with others. (Always include this one.)"##;
+- Browse plugins from the marketplaces you add with `/plugin` — these bundle skills, agents, hooks, and MCP servers that you may find helpful. You can also create your own custom plugins to share them with others. (Always include this one.)"##;
 
 /// Maps to the repeated `feature('NEW_INIT') && (...)` gate in CC
 /// `commands/init.ts:229-250`. The build feature is source-controlled; the
-/// runtime cohort is the internal build or `CLAUDE_CODE_NEW_INIT` truthy.
-pub fn is_new_init_enabled_for_audience(
-    audience: crate::utils::build_profile::BuildAudience,
-    env_enabled: bool,
-) -> bool {
-    feature_enabled(FeatureFlag::NewInit)
-        && (crate::utils::build_profile::audience_has_internal_capability(
-            audience,
-            crate::utils::build_profile::InternalCapability::Commands,
-        ) || env_enabled)
-}
-
+/// runtime cohort is `NYAN_NEW_INIT` truthy.
 pub fn is_new_init_enabled() -> bool {
-    is_new_init_enabled_for_audience(
-        crate::utils::build_profile::build_audience(),
-        crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_NEW_INIT").as_deref(),
-        ),
-    )
+    feature_enabled(FeatureFlag::NewInit)
+        && crate::utils::env_utils::is_env_truthy(
+            crate::utils::process_env::var("NYAN_NEW_INIT").as_deref(),
+        )
 }
 
 /// Maps to: CC `commands/init.ts:229-235` dynamic `description` getter.
@@ -266,7 +251,7 @@ mod tests {
         fn clear() -> Self {
             Self {
                 _env: [
-                    EnvVarGuard::unset("CLAUDE_CODE_NEW_INIT"),
+                    EnvVarGuard::unset("NYAN_NEW_INIT"),
                     EnvVarGuard::set("NYAN_WRITE_ENABLED", "0"),
                 ],
             }
@@ -282,15 +267,15 @@ mod tests {
 
     #[test]
     fn init_prompts_match_official_source_bytes() {
-        assert_eq!(OLD_INIT_PROMPT.len(), 1580);
+        assert_eq!(OLD_INIT_PROMPT.len(), 1563);
         assert_eq!(
             sha256(OLD_INIT_PROMPT),
-            "16b988f277f3110ed27b4a8f45a69628de6382870a0029d4148380a9ca059a7e"
+            "274ea0b4ec4c1a3c9f74e4d7f1ffae3727733fb28b8e45b2827d43ed2657ad2b"
         );
-        assert_eq!(NEW_INIT_PROMPT.len(), 14097);
+        assert_eq!(NEW_INIT_PROMPT.len(), 13426);
         assert_eq!(
             sha256(NEW_INIT_PROMPT),
-            "e1566c6f314591d69b31ccb8a358e6502f544061bd8228ac2cdd1d7c9865e989"
+            "98e5a04f79876dbbfe5406c60f454b8c6b0eba8b562f6427f95a2a31f7abadb4"
         );
     }
 
@@ -301,19 +286,9 @@ mod tests {
         let registry = crate::commands::declared_commands_for_tests();
         let command = crate::commands::find_command("init", &registry).unwrap();
 
-        assert_eq!(
-            is_new_init_enabled(),
-            crate::utils::build_profile::build_audience().is_internal()
-        );
-        assert_eq!(
-            description(),
-            if crate::utils::build_profile::build_audience().is_internal() {
-                NEW_DESCRIPTION
-            } else {
-                OLD_DESCRIPTION
-            }
-        );
-        crate::utils::process_env::set("CLAUDE_CODE_NEW_INIT", "1");
+        assert!(!is_new_init_enabled());
+        assert_eq!(description(), OLD_DESCRIPTION);
+        crate::utils::process_env::set("NYAN_NEW_INIT", "1");
         assert!(is_new_init_enabled());
         assert_eq!(description(), NEW_DESCRIPTION);
         // CC init.ts:229-235 is a getter even on an already loaded catalog.
@@ -321,11 +296,8 @@ mod tests {
             crate::commands::command_description(command),
             NEW_DESCRIPTION
         );
-        crate::utils::process_env::remove("CLAUDE_CODE_NEW_INIT");
-        assert!(is_new_init_enabled_for_audience(
-            crate::utils::build_profile::BuildAudience::AnthropicInternal,
-            false,
-        ));
+        crate::utils::process_env::remove("NYAN_NEW_INIT");
+        assert!(!is_new_init_enabled());
     }
 
     #[test]
@@ -352,18 +324,11 @@ mod tests {
                     if text == "<command-message>init</command-message>\n<command-name>/init</command-name>\n<command-args>ignored args</command-args>"
             )
         ));
-        let expected_prompt = if crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Commands,
-        ) {
-            NEW_INIT_PROMPT
-        } else {
-            OLD_INIT_PROMPT
-        };
         assert!(matches!(
             &result.messages[1].kind,
             crate::types::message::RenderableMessageKind::User { message } if matches!(
                 message.first_content_block(),
-                Some(crate::types::message::UserContent::MetaText(text)) if text == expected_prompt
+                Some(crate::types::message::UserContent::MetaText(text)) if text == OLD_INIT_PROMPT
             )
         ));
     }
@@ -427,7 +392,7 @@ mod tests {
             &result.messages[1],
             false
         ));
-        let api = crate::services::api::claude::user_message_to_message_param(
+        let api = crate::services::api::request::user_message_to_message_param(
             prompt,
             false,
             false,

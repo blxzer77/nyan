@@ -552,7 +552,7 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &dir);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &dir);
         test(&dir);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -784,7 +784,7 @@ mod tests {
         std::fs::create_dir_all(&temp_dir).unwrap();
 
         // MCPSettings reads agent definitions from the cwd; a scratch cwd keeps
-        // the repository's own `.claude/agents` out of the server list.
+        // the repository's own `.nyan/agents` out of the server list.
         struct CwdGuard(std::path::PathBuf);
         impl Drop for CwdGuard {
             fn drop(&mut self) {

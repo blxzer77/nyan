@@ -60,19 +60,12 @@
 //! bridge callbacks (`:316-331`), the `resolvedToolUseIds` duplicate-response
 //! guard (`:155`/`:176-187`), `sendMcpMessage` (`:758-773`),
 //! `createSandboxAskCallback` + `SANDBOX_NETWORK_ACCESS_TOOL_NAME`
-//! (`:62`/`:731-753`), and the race's `onPermissionPrompt` /
-//! `buildRequiresActionDetails` / `notifySessionStateChanged('running')`
-//! session-state leg (`:534`, `:587-589`, `:650-656`) — the
-//! `RequiresActionDetails` type it would feed already exists in
-//! `crate::utils::session_state`, unwired.
+//! (`:62`/`:731-753`).
 
 use crate::cli::print::{ControlResponseInput, json_line};
 
 /// Applies one `update_environment_variables` stdin message to the process
-/// env carrier. Used by the bridge session runner for auth-token refresh
-/// (`CLAUDE_CODE_SESSION_ACCESS_TOKEN`), which must be readable by the REPL
-/// process itself — `getSessionIngressAuthToken()` re-reads it per
-/// `refreshHeaders` — not just by child Bash commands.
+/// env carrier, visible to both the current process and future children.
 ///
 /// Maps to: CC `cli/structuredIO.ts:348-360` (`processLine`'s
 /// `update_environment_variables` arm). The stdin loop lives in
@@ -704,7 +697,7 @@ pub(super) async fn request_sdk_tool_permission(
 /// `run_agent.rs#subagent_hook_config_and_env` and
 /// `process_user_input/mod.rs` already close with the shared
 /// `session_hooks::merge_session_hooks_into_config`, including its
-/// `allow_managed_hooks_only` gate (CC `:1515` + `:1541`). Function hooks stay
+/// `disable_all_hooks` gate (CC `:1515` + `:1541`). Function hooks stay
 /// out: `merge_session_hooks_into_config` flattens command hooks only, and this
 /// port has no `FunctionHookMatcher` executor yet.
 async fn execute_permission_request_hooks_for_sdk(
@@ -719,7 +712,7 @@ async fn execute_permission_request_hooks_for_sdk(
 
     let loaded = crate::services::hooks::load_hooks_config();
     let mut config = loaded.config;
-    if !loaded.allow_managed_hooks_only {
+    if !loaded.disable_all_hooks {
         let session_id = agent_id
             .map(str::to_string)
             .unwrap_or_else(crate::bootstrap::state::get_session_id);
@@ -1077,7 +1070,7 @@ mod tests {
         // The dialog-only strings CC never sends. Both are populated so a
         // re-added key would show up rather than serialize as empty.
         request.description = "Run rm -rf /outside".to_string();
-        request.message = "Claude requested permissions to use Bash".to_string();
+        request.message = "nyan requested permissions to use Bash".to_string();
         request.suggestions = vec![PermissionUpdate::AddRules {
             destination: PermissionUpdateDestination::LocalSettings,
             behavior: PermissionBehavior::Allow,

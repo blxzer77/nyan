@@ -25,36 +25,6 @@ use crate::types::message::AssistantContent;
 use crate::types::message::Message;
 use std::io::Read;
 
-/// Callback lifetime carrier for CC `cli/print.ts:1129-1142` and
-/// `:2677/:4137`: register once for headless streaming, unregister on exit.
-/// The quota service retains its own equality deduplication.
-struct SdkRateLimitListener(u64);
-
-impl SdkRateLimitListener {
-    fn new(emit: crate::query_engine::QueryEngineOutputSink) -> Self {
-        Self(crate::services::claude_ai_limits::subscribe(
-            move |limits| {
-                if let Some(info) =
-                    crate::utils::messages::mappers::to_sdk_rate_limit_info(Some(&limits))
-                {
-                    emit(serde_json::json!({
-                        "type": "rate_limit_event",
-                        "rate_limit_info": info,
-                        "uuid": uuid::Uuid::new_v4().to_string(),
-                        "session_id": crate::bootstrap::state::get_session_id(),
-                    }));
-                }
-            },
-        ))
-    }
-}
-
-impl Drop for SdkRateLimitListener {
-    fn drop(&mut self) {
-        crate::services::claude_ai_limits::unsubscribe(self.0);
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 struct ControlInput {
     request_id: String,
@@ -205,10 +175,6 @@ pub fn run(config: &CliConfig) -> i32 {
     // (Secondary native-Rust precedent: grok-build registers its
     // process-lifetime handle from every agent entrypoint, idempotently.)
     crate::utils::process_runtime::set_process_runtime_handle(runtime.handle().clone());
-    // Both argv/stdin-text and SDK stdin sessions can emit stream-json.
-    // Other output formats have no event stream in this transport.
-    let _rate_limit_listener = (format == "stream-json")
-        .then(|| SdkRateLimitListener::new(std::sync::Arc::new(json_line)));
     if input_format == "stream-json" {
         if config.prompt.is_some() {
             return fail("--input-format=stream-json reads user messages from stdin");
@@ -1138,9 +1104,11 @@ fn read_state_seed_from_control(
 /// The headless pool is NOT `getTools()` plus appended MCP tools — CC runs the
 /// same `assembleToolPool` → `mergeAndFilterTools` partition-sort the REPL
 /// uses (`hooks/useMergedTools.ts:30`), so built-ins are a name-sorted
-/// contiguous prefix and MCP tools a name-sorted suffix. That order is what
-/// the server's `claude_code_system_cache_policy` prefix-matches against
-/// (`tools.ts:354-359`); an insertion-ordered pool defeats it in `-p` mode.
+/// contiguous prefix and MCP tools a name-sorted suffix. The server-side
+/// Anthropic policy named `claude_code_system_cache_policy` prefix-matches the
+/// built-in prefix (`tools.ts:354-359`); keeping it contiguous gives the
+/// generic prefix cache one stable breakpoint before MCP tools, while an
+/// insertion-ordered pool defeats that cache in `-p` mode.
 ///
 /// * `launch_tools` — CC `[...tools, ...sdkTools, ...dynamicMcpState.tools]`
 ///   (`:1481`): the `main.tsx:2755-2785` `tools` argument, produced by
@@ -1416,7 +1384,7 @@ fn build_mcp_server_statuses(
     // CC reaches them only inside `if (exp['claude/channel'] && ...)`
     // (`:1677-1680`), so a server that never declared the channel capability
     // must not cause them to be read at all. Both have process-level side
-    // effects here (config file load + cache, growthbook gate), so hoisting
+    // effects here (config file load + cache, channels gate), so hoisting
     // them would run work the source never runs.
     let kairos = crate::utils::feature_flags::feature_enabled(
         crate::utils::feature_flags::FeatureFlag::Kairos,
@@ -1428,8 +1396,8 @@ fn build_mcp_server_statuses(
         .map(|server| {
             let connected = server.as_connected();
 
-            // CC `:1628-1651` — three shapes, and anything else (ws/sdk) leaves
-            // `config` undefined.
+            // CC `:1628-1651` — sse/http and stdio shapes (@nyan: no
+            // claudeai-proxy), and anything else (ws/sdk) leaves `config` undefined.
             let config = server.config();
             let config_status = match config.transport {
                 Transport::Sse | Transport::Http => Some(serde_json::json!({
@@ -1437,11 +1405,6 @@ fn build_mcp_server_statuses(
                     "url": config.url,
                     "headers": config.headers,
                     "oauth": config.oauth,
-                })),
-                Transport::ClaudeAiProxy => Some(serde_json::json!({
-                    "type": Transport::ClaudeAiProxy.as_str(),
-                    "url": config.url,
-                    "id": config.id,
                 })),
                 Transport::Stdio => Some(serde_json::json!({
                     "type": Transport::Stdio.as_str(),
@@ -1657,7 +1620,7 @@ async fn initialize_control_response() -> Result<serde_json::Value, tokio::task:
             "available_output_styles": available_output_styles,
             "models": sdk_model_infos(),
             "account": {
-                "apiProvider": crate::utils::model::providers::get_api_provider_for_statsig()
+                "apiProvider": crate::utils::model::providers::get_api_provider_name()
             },
             "pid": std::process::id(),
         })
@@ -2323,7 +2286,7 @@ fn emit_result(
                 "webSearchRequests": 0,
                 "costUSD": usage.cost_usd,
                 "contextWindow": crate::utils::context::get_context_window_for_model(&model, &[]),
-                "maxOutputTokens": crate::services::api::claude::get_max_output_tokens_for_model(&model),
+                "maxOutputTokens": crate::services::api::request::get_max_output_tokens_for_model(&model),
             });
             (model, value)
         })
@@ -2425,7 +2388,6 @@ mod mcp_server_status_tests {
             ide_running_in_windows: None,
             ide_name: None,
             auth_token: None,
-            id: Some("proxy-1".to_string()),
             plugin_source: None,
         }
     }
@@ -2662,10 +2624,10 @@ mod mcp_server_status_tests {
         );
     }
 
-    /// Maps to: CC `:1628-1651` — three config shapes, and anything else
-    /// leaves `config` undefined.
+    /// Maps to: CC `:1628-1651` — the sse/http and stdio config shapes, and
+    /// anything else leaves `config` undefined.
     #[test]
-    fn config_projection_matches_the_official_three_shapes() {
+    fn config_projection_matches_the_official_shapes() {
         let http = statuses(vec![server(
             "a",
             McpServerConnectionType::Connected,
@@ -2674,14 +2636,6 @@ mod mcp_server_status_tests {
         assert_eq!(http[0]["config"]["type"], "http");
         assert_eq!(http[0]["config"]["url"], "https://example.test/mcp");
         assert!(http[0]["config"].get("command").is_none());
-
-        let proxy = statuses(vec![server(
-            "b",
-            McpServerConnectionType::Connected,
-            Transport::ClaudeAiProxy,
-        )]);
-        assert_eq!(proxy[0]["config"]["type"], "claudeai-proxy");
-        assert_eq!(proxy[0]["config"]["id"], "proxy-1");
 
         let stdio = statuses(vec![server(
             "c",
@@ -2968,7 +2922,7 @@ mod tests {
             .to_string(),
         )
         .unwrap();
-        let guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         crate::utils::settings::settings_cache::reset_settings_cache();
         (guard, root)
     }
@@ -3335,7 +3289,6 @@ mod tests {
 #[cfg(test)]
 mod sdk_mapper_tests {
     use super::*;
-    use crate::utils::test_env::TEST_ENV_LOCK;
 
     #[test]
     fn stream_compact_history_matches_official_sdk_mapper_injection() {
@@ -3377,39 +3330,6 @@ mod sdk_mapper_tests {
     }
 
     #[test]
-    fn sdk_rate_limit_listener_matches_official_status_recovery_dedup_and_cleanup() {
-        use crate::services::claude_ai_limits as limits;
-        let _lock = TEST_ENV_LOCK.lock().unwrap();
-        limits::reset_for_test();
-        let values = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let captured = values.clone();
-        let listener = SdkRateLimitListener::new(std::sync::Arc::new(move |value| {
-            captured.lock().unwrap().push(value);
-        }));
-        limits::extract_quota_status_from_error_with(Some(429), None, true, 1.0);
-        limits::extract_quota_status_from_error_with(Some(429), None, true, 1.0);
-        limits::extract_quota_status_from_headers_with(
-            &std::collections::HashMap::new(),
-            false,
-            1.0,
-        );
-        let snapshot = values.lock().unwrap().clone();
-        assert_eq!(snapshot.len(), 2);
-        assert_eq!(snapshot[0]["type"], "rate_limit_event");
-        assert_eq!(snapshot[0]["rate_limit_info"]["status"], "rejected");
-        assert_eq!(snapshot[1]["rate_limit_info"]["status"], "allowed");
-        assert!(
-            snapshot[0]["rate_limit_info"]
-                .get("unifiedRateLimitFallbackAvailable")
-                .is_none()
-        );
-        assert_ne!(snapshot[0]["uuid"], snapshot[1]["uuid"]);
-        drop(listener);
-        limits::extract_quota_status_from_error_with(Some(429), None, true, 1.0);
-        assert_eq!(values.lock().unwrap().len(), 2);
-        limits::reset_for_test();
-    }
-    #[test]
     fn sdk_initialize_cold_plugins_keeps_published_current_thread_executor_live() {
         const CHILD: &str = "NYAN_SDK_CURRENT_THREAD_PLUGIN_CHILD";
         if let Some(root) = crate::utils::process_env::var_os(CHILD) {
@@ -3417,8 +3337,8 @@ mod sdk_mapper_tests {
             // whose multithread executor would conceal the production deadlock.
             assert!(crate::utils::process_runtime::process_runtime_handle().is_none());
             let root = std::path::PathBuf::from(root);
-            crate::utils::process_env::set("CLAUDE_CONFIG_DIR", root.join("config"));
-            crate::utils::process_env::set("CLAUDE_CODE_SIMPLE", "0");
+            crate::utils::process_env::set("NYAN_CONFIG_DIR", root.join("config"));
+            crate::utils::process_env::set("NYAN_SIMPLE", "0");
             crate::bootstrap::state::set_original_cwd(&root);
             crate::bootstrap::state::set_inline_plugins(vec![root.join("plugin")]);
             crate::commands::clear_commands_cache();

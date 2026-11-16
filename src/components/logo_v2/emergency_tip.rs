@@ -1,9 +1,9 @@
 //! Maps to: CC `components/LogoV2/EmergencyTip.tsx`.
 //!
 //! The official component reads a cached GrowthBook config value and records
-//! the shown tip in global config. nyan keeps this component pure for now:
-//! callers provide the cached tip and last-shown value, and no config writes or
-//! GrowthBook calls occur inside the render boundary.
+//! the shown tip in global config. nyan has no GrowthBook client and keeps this
+//! component pure: callers provide the tip and last-shown value, and no config
+//! writes occur inside the render boundary.
 
 use iocraft::prelude::*;
 
@@ -65,10 +65,10 @@ pub fn tip_of_feed_to_show(tip: &TipOfFeed, last_shown_tip: Option<&str>) -> Opt
 /// Maps to: CC `getDynamicConfig_CACHED_MAY_BE_STALE<TipOfFeed>(CONFIG_NAME, DEFAULT_TIP)`
 /// for the specific `tengu-top-of-feed-tip` dynamic config.
 ///
-/// This is intentionally a typed LogoV2 helper, not a generic GrowthBook
-/// runtime: it only parses an already-present cached value and never refreshes,
-/// logs exposure, reads arbitrary experiment keys, or writes config.
-pub fn tip_of_feed_from_cached_growthbook_value(value: Option<&serde_json::Value>) -> TipOfFeed {
+/// This is intentionally a typed LogoV2 helper: it only parses an
+/// already-present value and never refreshes, reads arbitrary keys, or writes
+/// config.
+pub fn tip_of_feed_from_value(value: Option<&serde_json::Value>) -> TipOfFeed {
     let Some(value) = value else {
         return TipOfFeed::default();
     };
@@ -103,7 +103,7 @@ pub fn get_tip_of_feed() -> TipOfFeed {
         crate::utils::feature_flags::FeatureFlag::EmergencyTip,
     )
     .then(|| serde_json::Value::Object(serde_json::Map::new()));
-    tip_of_feed_from_cached_growthbook_value(value.as_ref())
+    tip_of_feed_from_value(value.as_ref())
 }
 
 #[cfg(test)]
@@ -164,14 +164,14 @@ mod tests {
 
     #[test]
     fn emergency_tip_typed_cache_parser_matches_official_shape() {
-        let tip = tip_of_feed_from_cached_growthbook_value(Some(&serde_json::json!({
+        let tip = tip_of_feed_from_value(Some(&serde_json::json!({
             "tip": "Scheduled maintenance soon",
             "color": "warning",
         })));
         assert_eq!(tip.tip, "Scheduled maintenance soon");
         assert_eq!(tip.color, EmergencyTipColor::Warning);
 
-        let invalid = tip_of_feed_from_cached_growthbook_value(Some(&serde_json::json!({
+        let invalid = tip_of_feed_from_value(Some(&serde_json::json!({
             "tip": "",
             "color": "error",
         })));
@@ -179,25 +179,12 @@ mod tests {
     }
 
     #[test]
-    fn emergency_tip_ignores_growthbook_delivery() {
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.cached_growth_book_features = Some(std::collections::HashMap::from([(
-            EMERGENCY_TIP_CONFIG_NAME.to_string(),
-            serde_json::json!({"tip": "Important update", "color": "error"}),
-        )]));
-        config.growth_book_overrides = Some(std::collections::HashMap::from([(
-            EMERGENCY_TIP_CONFIG_NAME.to_string(),
-            serde_json::json!({"tip": "Important update", "color": "error"}),
-        )]));
-        crate::utils::config::set_test_global_config(Some(config));
-
+    fn emergency_tip_is_the_official_empty_default() {
         assert_eq!(get_tip_of_feed(), TipOfFeed::default());
-
-        crate::utils::config::set_test_global_config(None);
     }
 
     #[test]
-    fn emergency_tip_keeps_official_growthbook_config_key() {
+    fn emergency_tip_keeps_official_config_key() {
         assert_eq!(EMERGENCY_TIP_CONFIG_NAME, "tengu-top-of-feed-tip");
     }
 }

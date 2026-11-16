@@ -585,7 +585,7 @@ fn effective_spinner_tip(
     }
     if time_based_tips_enabled && elapsed_ms > 30_000 && btw_use_count == 0 {
         return Some(
-            "Use /btw to ask a quick side question without interrupting Claude's current work"
+            "Use /btw to ask a quick side question without interrupting nyan's current work"
                 .to_string(),
         );
     }
@@ -902,8 +902,8 @@ pub fn SpinnerWithVerb(
         live_tip_scheduler_enabled,
         props.btw_use_count.unwrap_or(runtime_btw_use_count),
     );
-    let message_color = props.override_color.unwrap_or(theme.claude);
-    let shimmer_color = props.override_shimmer_color.unwrap_or(theme.claude_shimmer);
+    let message_color = props.override_color.unwrap_or(theme.nyan);
+    let shimmer_color = props.override_shimmer_color.unwrap_or(theme.nyan_shimmer);
     let message_width = UnicodeWidthStr::width(message.as_str());
     let glimmer_index = if reduced_motion || stalled_intensity > 0.0 {
         -100
@@ -1863,9 +1863,7 @@ mod tests {
     fn effective_spinner_tip_matches_official_time_based_tip_order() {
         assert_eq!(
             effective_spinner_tip(30_001, Some("Custom tip"), false, true, 0).as_deref(),
-            Some(
-                "Use /btw to ask a quick side question without interrupting Claude's current work"
-            )
+            Some("Use /btw to ask a quick side question without interrupting nyan's current work")
         );
         assert_eq!(
             effective_spinner_tip(1_800_001, Some("Custom tip"), false, true, 0).as_deref(),

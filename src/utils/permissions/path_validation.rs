@@ -591,7 +591,8 @@ mod tests {
     }
 
     #[test]
-    fn accept_edits_allows_safe_working_directory_writes_but_not_claude_config() {
+    fn accept_edits_allows_safe_working_directory_writes_but_not_nyan_settings() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         // "Working directory" is judged against the project dir.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = std::env::current_dir().unwrap();
@@ -609,7 +610,7 @@ mod tests {
 
         context.mode = PermissionMode::AcceptEdits;
         let unsafe_result = validate_path(
-            ".claude/settings.json",
+            ".nyan/settings.json",
             &cwd.display().to_string(),
             &context,
             FileOperationType::Write,

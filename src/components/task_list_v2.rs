@@ -356,9 +356,9 @@ fn entry_line(
             if task.status == TaskStatusV2::InProgress {
                 (
                     fig.square_small_filled,
-                    Some(theme.claude),
+                    Some(theme.nyan),
                     task.subject.as_str(),
-                    Some(theme.claude),
+                    Some(theme.nyan),
                     true,
                     false,
                     suffix,
@@ -446,7 +446,7 @@ pub fn layout_panel(data: &PanelData, theme: &Theme) -> Vec<PanelLine> {
             let fig = figures::get();
             let in_progress = task.status == TaskStatusV2::InProgress;
             let color = if in_progress {
-                Some(theme.claude)
+                Some(theme.nyan)
             } else {
                 inactive
             };
@@ -1014,7 +1014,7 @@ mod tests {
             style_at(&canvas, &toggle_todos_shortcut()).color,
             Some(theme.inactive)
         );
-        assert_eq!(style_at(&canvas, "◼").color, Some(theme.claude));
+        assert_eq!(style_at(&canvas, "◼").color, Some(theme.nyan));
 
         let pending_only = vec![
             titled("1", TaskStatusV2::Completed, "Done"),
@@ -1071,7 +1071,7 @@ mod tests {
 
         let running = style_at(&canvas, "Writing");
         assert!(running.bold && !running.strike, "canvas=\n{text}");
-        assert_eq!(running.color, Some(theme.claude));
+        assert_eq!(running.color, Some(theme.nyan));
         assert!(text.contains("Writing @alice"), "canvas=\n{text}");
         assert_eq!(style_at(&canvas, "@alice").color, Some(theme.inactive));
 

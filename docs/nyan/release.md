@@ -62,12 +62,29 @@ nyan-vX.Y.Z-windows-x86_64.zip
 
 不维护独立的 `CHANGELOG.md`。正式 tag 创建 Release 时使用 GitHub CLI 的 `--generate-notes`，由 GitHub 根据上一个 Release、commit 和 PR 生成变更说明。预发布也使用同一来源；需要人工补充的 breaking change、迁移说明和已知限制写入 GitHub Release body。
 
+每个 Release 的 body 开头固定附带 `.github/release-notes.md`（`--notes-file`，GitHub 把它放在自动生成的说明之前）：声明 Windows 构建未签名、未在 Windows 上测试，且不支持 macOS。publish job 为此只稀疏检出该文件；`gh` 通过 `GH_REPO` 获知仓库，不依赖工作树。
+
 ## 安装脚本
 
 - Linux：`install.sh [版本或 tag]`，默认安装到 `~/.local/bin`；通过 `NYAN_INSTALL_DIR` 指定目录。未传版本时解析 GitHub latest stable Release。
 - Windows：`install.ps1 [-Version 版本或 tag] [-InstallDir 目录]`，默认安装到 `$HOME\.local\bin`。脚本不自动改 PATH，会打印把该目录加入用户 PATH 的 PowerShell 命令。
-- Windows 运行时需要预先安装 [Git for Windows](https://git-scm.com/downloads/win) 提供的 Git Bash；Git Bash 不随 nyan 发布包提供。若不在自动发现的安装位置，可将 `CLAUDE_CODE_GIT_BASH_PATH` 设置为 `bash.exe` 的完整路径，例如 `C:\Program Files\Git\bin\bash.exe`。`install.ps1` 检测不到 Git Bash 时只打印警告，不会自动安装或因此失败。
+- Windows 运行时需要预先安装 [Git for Windows](https://git-scm.com/downloads/win) 提供的 Git Bash；Git Bash 不随 nyan 发布包提供。若不在自动发现的安装位置，可将 `NYAN_GIT_BASH_PATH` 设置为 `bash.exe` 的完整路径，例如 `C:\Program Files\Git\bin\bash.exe`。`install.ps1` 检测不到 Git Bash 时只打印警告，不会自动安装或因此失败。
 - 两个脚本都只支持当前平台的 x86_64/aarch64（Windows 仅 x86_64），都会下载 `SHA256SUMS`、校验对应资产，再解包并安装。
+
+## 运行时自动更新
+
+发布版二进制通过 GitHub Releases 自更新，代码位于 `src/utils/auto_updater.rs`：
+
+- 仓库默认 `blxzer77/nyan`，可用 `NYAN_REPO=owner/name` 覆盖（与两个安装脚本一致）。
+- 只提供稳定版：更新检查查询 `GET /repos/{repo}/releases/latest`，并拒绝 `draft`/`prerelease` 为 true 或 tag 不是 `nyan-vX.Y.Z` 的 Release。没有更新通道设置。
+- 正常启动只做通知：后台检查（30 分钟进程内缓存）发现新版本时在页脚提示 `nyan update`，不会自动下载或替换。`DISABLE_AUTOUPDATER=1` / `NYAN_DISABLE_AUTOUPDATER=1` / `NYAN_DISABLE_NONESSENTIAL_TRAFFIC=1` 关闭后台检查。请求走 `utils/proxy` 的共享传输（代理、`NO_PROXY`、mTLS、额外 CA）。
+- 显式运行 `nyan update` 时：
+  1. 按 `std::env::consts` 选择 `<tag>-linux-x86_64.tar.gz`、`<tag>-linux-aarch64.tar.gz` 或 `<tag>-windows-x86_64.zip`（`<tag>` 即 Release 的 `nyan-vX.Y.Z`，与 release.yml 和安装脚本一致）；
+  2. 从同一 Release 下载 `SHA256SUMS` 与资产，按 GNU coreutils 格式校验 SHA256；
+  3. 在系统临时目录解包（仅允许相对路径的普通文件和目录），只取 `nyan`/`nyan.exe`；Windows 同时替换归档中的 `vendor/`；
+  4. 先在目标目录内同盘暂存新文件（暂存失败不动现有安装），再替换：Linux 原子 `rename`；Windows 先把旧 `vendor/`、旧 `nyan.exe` 改名为 `.<name>.old-*` 再换入新文件，二进制替换失败时回滚 `vendor/`。运行中的旧 exe 无法删除，由下一次更新清理。
+- 下载前先探测安装目录是否可写；不可写时直接报错退出，不下载、不改动，并提示重新运行安装脚本（Linux `install.sh`，Windows `install.ps1`）。没有包管理器发行渠道，也没有按包管理器关闭更新的逻辑。
+- 源码构建（路径含 `target/debug|release` 或 `~/.cargo/bin`）以及没有对应资产的平台不会被替换；`nyan update` 打印重新构建或下载 Release 的说明。
 
 ## 失败与回滚
 

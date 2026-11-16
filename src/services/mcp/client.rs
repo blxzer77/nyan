@@ -68,7 +68,6 @@ pub fn are_mcp_configs_equal(a: &ScopedMcpServerConfig, b: &ScopedMcpServerConfi
         && a.oauth == b.oauth
         && a.ide_name == b.ide_name
         && a.auth_token == b.auth_token
-        && a.id == b.id
         && a.plugin_source == b.plugin_source
 }
 
@@ -489,11 +488,11 @@ fn is_included_mcp_tool(tool: &crate::types::tools::Tool) -> bool {
 
 /// Maps to: CC `fetchToolsForClient`'s `skipPrefix` (`client.ts:1761-1763`):
 /// an SDK server's tools keep their own names under
-/// `CLAUDE_AGENT_SDK_MCP_NO_PREFIX`.
+/// `NYAN_SDK_MCP_NO_PREFIX`.
 fn skips_mcp_tool_prefix(config: &ScopedMcpServerConfig) -> bool {
     config.transport == Transport::Sdk
         && crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_AGENT_SDK_MCP_NO_PREFIX").as_deref(),
+            crate::utils::process_env::var("NYAN_SDK_MCP_NO_PREFIX").as_deref(),
         )
 }
 
@@ -1699,7 +1698,7 @@ mod runtime {
         // Maps to: CC `new SSEClientTransport(new URL(serverRef.url), ...)`.
         // Its event stream spreads `getProxyFetchOptions()` (`client.ts:657-669`)
         // and its POSTs take the global `fetch`: the same transport.
-        let client = crate::utils::proxy::get_proxy_fetch_options(false)?.build()?;
+        let client = crate::utils::proxy::get_proxy_fetch_options()?.build()?;
         let mut request = client.get(url).header("Accept", "text/event-stream");
         for (key, value) in &headers {
             request = request.header(key, value);
@@ -1798,14 +1797,11 @@ mod runtime {
 
     fn mcp_auth_cache_path() -> PathBuf {
         // Maps to: CC `getMcpAuthCachePath()`.
-        crate::utils::env_utils::get_claude_config_home_dir().join("mcp-needs-auth-cache.json")
+        crate::utils::env_utils::get_config_home_dir().join("mcp-needs-auth-cache.json")
     }
 
     fn remote_transport_uses_auth_cache(transport: Transport) -> bool {
-        matches!(
-            transport,
-            Transport::Sse | Transport::Http | Transport::ClaudeAiProxy
-        )
+        matches!(transport, Transport::Sse | Transport::Http)
     }
 
     fn read_mcp_auth_cache() -> McpAuthCacheData {
@@ -1879,40 +1875,6 @@ mod runtime {
         Ok(tokio::time::timeout(timeout, serve_client(handler, transport)).await??)
     }
 
-    fn session_ingress_auth() -> (Option<String>, BTreeMap<String, String>) {
-        // Maps to: CC `utils/sessionIngressAuth.ts#getSessionIngressAuthToken`
-        // and `getSessionIngressAuthHeaders`.
-        let Some(token) = crate::utils::session_ingress_auth::get_session_ingress_auth_token()
-        else {
-            return (None, BTreeMap::new());
-        };
-        if token.starts_with("sk-ant-sid") {
-            (
-                None,
-                crate::utils::session_ingress_auth::get_session_ingress_auth_headers(),
-            )
-        } else {
-            (Some(token), BTreeMap::new())
-        }
-    }
-
-    pub(super) fn streamable_http_auth_header(
-        oauth_token: Option<String>,
-        session_bearer: Option<String>,
-        has_static_authorization: bool,
-    ) -> Option<String> {
-        // Maps to: CC HTTP MCP request header precedence in
-        // `connectToServer`: OAuth provider wins; otherwise session ingress
-        // bearer is attached when no static Authorization header overrides it.
-        if oauth_token.is_some() {
-            oauth_token
-        } else if !has_static_authorization {
-            session_bearer
-        } else {
-            None
-        }
-    }
-
     fn header_map_from_strings(
         headers: BTreeMap<String, String>,
     ) -> anyhow::Result<HashMap<HeaderName, HeaderValue>> {
@@ -1942,19 +1904,10 @@ mod runtime {
             crate::services::mcp::headers_helper::get_mcp_server_headers(name, config).await,
         );
 
-        let oauth_token = crate::services::mcp::auth::ClaudeAuthProvider::new(name, config)
+        let oauth_token = crate::services::mcp::auth::McpAuthProvider::new(name, config)
             .tokens()?
             .and_then(|tokens| tokens.access_token)
             .filter(|token| !token.is_empty());
-        let (session_bearer, session_headers) = session_ingress_auth();
-        let has_static_authorization = headers
-            .keys()
-            .any(|key| key.eq_ignore_ascii_case("authorization"));
-        let auth_header =
-            streamable_http_auth_header(oauth_token, session_bearer, has_static_authorization);
-        if auth_header.is_none() && !has_static_authorization {
-            headers.extend(session_headers);
-        }
 
         // rmcp re-initializes an expired session in the transport by default.
         // The SDK transport CC uses throws instead, and the tool call clears
@@ -1964,7 +1917,7 @@ mod runtime {
             StreamableHttpClientTransportConfig::with_uri(url.to_string())
                 .custom_headers(header_map_from_strings(headers)?)
                 .reinit_on_expired_session(false)
-                .auth_header(auth_header.unwrap_or_default()),
+                .auth_header(oauth_token.unwrap_or_default()),
         )
     }
 
@@ -1989,21 +1942,10 @@ mod runtime {
     /// (`client.ts:815-831`, `:887`). rmcp's own default has no idle pool and
     /// follows no redirect (`default_http_client`); both are kept.
     pub(super) fn streamable_http_client() -> anyhow::Result<reqwest::Client> {
-        Ok(crate::utils::proxy::get_proxy_fetch_options(false)?
+        Ok(crate::utils::proxy::get_proxy_fetch_options()?
             .pool_max_idle_per_host(0)
             .redirect(reqwest::redirect::Policy::none())
             .build()?)
-    }
-
-    async fn serve_claude_ai_proxy_http(
-        _name: &str,
-        _proxy_url: &str,
-    ) -> anyhow::Result<RunningService<RoleClient, NyanMcpClientHandler>> {
-        // Maps to: CC `services/mcp/client.ts:369-424`
-        // `createClaudeAiProxyFetch`. The proxy authenticates with the claude.ai
-        // OAuth token, which does not exist: Anthropic is API-key only, so there
-        // is no token to attach, refresh, or retry with.
-        Err(anyhow::anyhow!("No claude.ai OAuth token found"))
     }
 
     async fn serve_legacy_sse(
@@ -2018,7 +1960,7 @@ mod runtime {
         headers.extend(
             crate::services::mcp::headers_helper::get_mcp_server_headers(name, config).await,
         );
-        if let Some(token) = crate::services::mcp::auth::ClaudeAuthProvider::new(name, config)
+        if let Some(token) = crate::services::mcp::auth::McpAuthProvider::new(name, config)
             .tokens()?
             .and_then(|tokens| tokens.access_token)
             .filter(|token| !token.is_empty())
@@ -2062,10 +2004,6 @@ mod runtime {
             "User-Agent".to_string(),
             crate::utils::http::get_mcp_user_agent(),
         )]);
-        let (session_bearer, _) = session_ingress_auth();
-        if let Some(token) = session_bearer {
-            headers.insert("Authorization".to_string(), format!("Bearer {token}"));
-        }
         headers.extend(
             crate::services::mcp::headers_helper::get_mcp_server_headers(name, config).await,
         );
@@ -2154,24 +2092,6 @@ mod runtime {
                     .as_deref()
                     .ok_or_else(|| anyhow::anyhow!("WebSocket IDE MCP server is missing URL"))?;
                 serve_websocket_ide(name, config, url).await
-            }
-            Transport::ClaudeAiProxy => {
-                // Maps to: CC `services/mcp/client.ts:879-890` claude.ai-proxy
-                // branch, consuming canonical `getOauthConfig().MCP_PROXY_*`.
-                let id = config
-                    .id
-                    .as_deref()
-                    .filter(|id| !id.trim().is_empty())
-                    .ok_or_else(|| {
-                        anyhow::anyhow!("claude.ai MCP proxy server is missing connector id")
-                    })?;
-                let oauth = crate::constants::oauth::get_oauth_config()?;
-                let proxy_url = format!(
-                    "{}{}",
-                    oauth.mcp_proxy_url,
-                    oauth.mcp_proxy_path.replace("{server_id}", id)
-                );
-                serve_claude_ai_proxy_http(name, &proxy_url).await
             }
             Transport::Sdk => Err(anyhow::anyhow!(
                 "SDK MCP servers are owned by the SDK boundary"
@@ -2465,13 +2385,13 @@ mod runtime {
     /// Maps to: CC `callMCPTool`'s session-expiry test (`client.ts:3210-3223`):
     /// [`is_mcp_session_expired_error`], or the SDK's -32000 "Connection
     /// closed" — rmcp's `ServiceError::TransportClosed` — for a call whose
-    /// `http` or `claudeai-proxy` transport closed under it.
+    /// `http` transport closed under it.
     fn is_tool_call_session_expired_error(
         error: &anyhow::Error,
         config: &ScopedMcpServerConfig,
     ) -> bool {
         is_mcp_session_expired_error(error)
-            || (matches!(config.transport, Transport::Http | Transport::ClaudeAiProxy)
+            || (config.transport == Transport::Http
                 && error.chain().any(|cause| {
                     matches!(
                         cause.downcast_ref::<ServiceError>(),
@@ -2481,16 +2401,12 @@ mod runtime {
     }
 
     /// Maps to: CC the connection's `onerror` session-expiry branch
-    /// (`client.ts:1313-1327`): an `http` or `claudeai-proxy` request that
+    /// (`client.ts:1313-1327`): an `http` request that
     /// failed on an expired session closes its transport, whose `onclose`
     /// drops the connection from the memo and the fetch caches — whatever the
     /// request was, so the next `ensureConnectedClient` reconnects.
     fn close_on_expired_session(client: &McpClient, error: &anyhow::Error) {
-        if matches!(
-            client.config().transport,
-            Transport::Http | Transport::ClaudeAiProxy
-        ) && is_mcp_session_expired_error(error)
-        {
+        if client.config().transport == Transport::Http && is_mcp_session_expired_error(error) {
             tracing::debug!(
                 server = client.name(),
                 "MCP session expired (server returned 404 with session-not-found), triggering reconnection"
@@ -3381,9 +3297,6 @@ mod runtime {
         clear_server_cache(name, Some(config)).await;
         let client = connect_to_server(name, config).await;
         let mut result = if client.connection_type() == McpServerConnectionType::Connected {
-            if config.transport == Transport::ClaudeAiProxy {
-                mark_claude_ai_mcp_connected(name);
-            }
             fetch_connected_capabilities(client).await
         } else {
             McpConnectionDiscovery::from(client)
@@ -3416,14 +3329,6 @@ mod runtime {
         }
     }
 
-    /// Maps to: CC `markClaudeAiMcpConnected(name)`; a failed config write is
-    /// logged, as CC's `saveGlobalConfig` does.
-    fn mark_claude_ai_mcp_connected(name: &str) {
-        if let Err(error) = crate::services::mcp::claudeai::mark_claude_ai_mcp_connected(name) {
-            tracing::debug!(server = name, error = %error, "failed to record claude.ai MCP connection");
-        }
-    }
-
     /// Maps to: CC `client.ts:2286-2357`, `processServer` from the needs-auth
     /// gate through the fetches.
     async fn discover_mcp_connection_entry(
@@ -3439,12 +3344,7 @@ mod runtime {
         }
         let client = connect_to_server(&name, &config).await;
         match client.connection_type() {
-            McpServerConnectionType::Connected => {
-                if config.transport == Transport::ClaudeAiProxy {
-                    mark_claude_ai_mcp_connected(&name);
-                }
-                fetch_connected_capabilities(client).await
-            }
+            McpServerConnectionType::Connected => fetch_connected_capabilities(client).await,
             McpServerConnectionType::NeedsAuth => McpConnectionDiscovery::needs_auth(name, &config),
             _ => McpConnectionDiscovery::from(client),
         }
@@ -4094,7 +3994,6 @@ pub(crate) mod session_http_fixture {
                 ide_running_in_windows: None,
                 ide_name: None,
                 auth_token: None,
-                id: None,
                 plugin_source: None,
             }
         }
@@ -4164,7 +4063,6 @@ pub(crate) mod counting_fixture {
                 ide_running_in_windows: None,
                 ide_name: None,
                 auth_token: None,
-                id: None,
                 plugin_source: None,
             }
         }
@@ -4778,7 +4676,6 @@ rl.on('line', line => {
             ide_running_in_windows: None,
             ide_name: None,
             auth_token: Some("token".to_string()),
-            id: Some("server-id".to_string()),
             plugin_source: Some("plugin".to_string()),
         };
 
@@ -5018,22 +4915,14 @@ rl.on('line', line => {
         let _projects_guard = crate::utils::session_storage::set_test_projects_dir_override(&root);
         crate::bootstrap::state::set_original_cwd("/tmp/nyan-project");
         crate::bootstrap::state::set_session_id("session-mcp-large-output-test");
-        let (endpoint, server) = spawn_count_tokens_server(r#"{"inputTokens":999}"#);
-        let _config_home = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let (endpoint, server) = spawn_count_tokens_server(r#"{"input_tokens":999}"#);
+        let _config_home = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let _max_tokens = EnvVarGuard::set("MAX_MCP_OUTPUT_TOKENS", "5");
         let _large_output = EnvVarGuard::set("ENABLE_MCP_LARGE_OUTPUT_FILES", "1");
-        let _bedrock = EnvVarGuard::set("CLAUDE_CODE_USE_BEDROCK", "1");
-        let _vertex = EnvVarGuard::unset("CLAUDE_CODE_USE_VERTEX");
-        let _foundry = EnvVarGuard::unset("CLAUDE_CODE_USE_FOUNDRY");
-        let _skip_auth = EnvVarGuard::set("CLAUDE_CODE_SKIP_BEDROCK_AUTH", "1");
-        let _endpoint = EnvVarGuard::set("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", &endpoint);
-        // Token counting needs a selected main profile to exist; the Bedrock
-        // endpoint above supplies the count, so the profile's own key and URL
-        // are unused here.
-        let _count_key = EnvVarGuard::set("NYAN_MCP_TEST_KEY", "sk-unused-by-bedrock");
+        let _count_key = EnvVarGuard::set("NYAN_MCP_TEST_KEY", "sk-count-tokens");
         crate::utils::settings::settings_cache::reset_settings_cache();
         crate::services::provider::anthropic::target::install_test_main_profile(
-            "https://unused.invalid",
+            &endpoint,
             "NYAN_MCP_TEST_KEY",
         );
         struct ResetSettings;
@@ -5436,7 +5325,6 @@ rl.on('line', line => {
                 ide_running_in_windows: None,
                 ide_name: None,
                 auth_token: None,
-                id: None,
                 plugin_source: None,
             },
         );
@@ -5497,7 +5385,6 @@ rl.on('line', line => {
                 ide_running_in_windows: None,
                 ide_name: None,
                 auth_token: None,
-                id: None,
                 plugin_source: None,
             },
         );
@@ -5630,7 +5517,6 @@ rl.on('line', line => {
             ide_running_in_windows: None,
             ide_name: None,
             auth_token: None,
-            id: None,
             plugin_source: None,
         };
         // One `tools/list` entry, mapped as `fetchToolsForClient` maps it.
@@ -5655,7 +5541,7 @@ rl.on('line', line => {
         };
 
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let key = "CLAUDE_AGENT_SDK_MCP_NO_PREFIX";
+        let key = "NYAN_SDK_MCP_NO_PREFIX";
         let _prefix = EnvVarGuard::unset(key);
 
         // Maps to: CC `client.ts:1774` — `mcpInfo` holds the unnormalized server
@@ -5708,7 +5594,6 @@ rl.on('line', line => {
             ide_running_in_windows: None,
             ide_name: Some("IDE".to_string()),
             auth_token: None,
-            id: None,
             plugin_source: None,
         };
         let tool = |name: &str| {
@@ -5765,7 +5650,6 @@ rl.on('line', line => {
             ide_running_in_windows: None,
             ide_name: None,
             auth_token: None,
-            id: None,
             plugin_source: None,
         };
         let discovery = McpConnectionDiscovery::needs_auth("docs", &config);
@@ -5858,17 +5742,13 @@ rl.on('line', line => {
         channels: Vec<crate::bootstrap::state::ChannelEntry>,
     ) -> crate::services::mcp::channel_notification::ChannelRuntimeGateContext {
         use crate::services::mcp::channel_notification::{
-            ChannelAllowlistSource, ChannelRuntimeGateContext, EffectiveChannelAllowlist,
+            ChannelRuntimeGateContext, EffectiveChannelAllowlist,
         };
         ChannelRuntimeGateContext {
             channels_enabled: true,
-            has_claude_ai_oauth: true,
-            subscription: Some("max".to_string()),
-            policy_channels_enabled: None,
             session_channels: channels,
             allowlist: EffectiveChannelAllowlist {
                 entries: Vec::new(),
-                source: ChannelAllowlistSource::Ledger,
             },
         }
     }
@@ -6312,7 +6192,6 @@ rl.on('line', line => {
                     ide_running_in_windows: None,
                     ide_name: None,
                     auth_token: None,
-                    id: None,
                     plugin_source: None,
                 };
                 let discovery = runtime::reconnect_mcp_server_impl(SERVER, &config).await;
@@ -7557,7 +7436,6 @@ rl.on('line', line => {
                     ide_running_in_windows: None,
                     ide_name: None,
                     auth_token: None,
-                    id: None,
                     plugin_source: None,
                 };
                 let store = crate::state::store::AppStore::new(
@@ -7873,7 +7751,6 @@ rl.on('line', line => {
                     ide_running_in_windows: None,
                     ide_name: None,
                     auth_token: None,
-                    id: None,
                     plugin_source: None,
                 };
                 let discovery = runtime::reconnect_mcp_server_impl(SERVER, &config).await;
@@ -8038,7 +7915,6 @@ rl.on('line', line => {
                     ide_running_in_windows: None,
                     ide_name: None,
                     auth_token: None,
-                    id: None,
                     plugin_source: None,
                 };
                 let discovery = runtime::reconnect_mcp_server_impl(SERVER, &config).await;
@@ -8131,7 +8007,6 @@ rl.on('line', line => {
                     ide_running_in_windows: None,
                     ide_name: None,
                     auth_token: None,
-                    id: None,
                     plugin_source: None,
                 };
                 let discovery = runtime::reconnect_mcp_server_impl(SERVER, &config).await;
@@ -8233,7 +8108,6 @@ rl.on('line', line => {
                 ide_running_in_windows: None,
                 ide_name: None,
                 auth_token: None,
-                id: None,
                 plugin_source: None,
             };
             let discovery = runtime::reconnect_mcp_server_impl(SERVER, &config).await;
@@ -8412,7 +8286,6 @@ rl.on('line', line => {
                     ide_running_in_windows: None,
                     ide_name: None,
                     auth_token: None,
-                    id: None,
                     plugin_source: None,
                 };
                 let discovery = runtime::reconnect_mcp_server_impl(SERVER, &config).await;
@@ -8597,7 +8470,6 @@ rl.on('line', line => {
                     ide_running_in_windows: None,
                     ide_name: None,
                     auth_token: None,
-                    id: None,
                     plugin_source: None,
                 };
                 let discovery = runtime::reconnect_mcp_server_impl(SERVER, &config).await;
@@ -8641,6 +8513,7 @@ rl.on('line', line => {
                         stream,
                         |request: &Request, mut response: Response| {
                             assert_eq!(request.uri().path(), "/mcp");
+                            assert!(!request.headers().contains_key("authorization"));
                             assert!(
                                 request
                                     .headers()
@@ -8757,7 +8630,6 @@ rl.on('line', line => {
                     ide_running_in_windows: None,
                     ide_name: None,
                     auth_token: None,
-                    id: None,
                     plugin_source: None,
                 };
                 let discovery = runtime::reconnect_mcp_server_impl(SERVER, &config).await;
@@ -8784,7 +8656,7 @@ rl.on('line', line => {
         let config_home =
             std::env::temp_dir().join(format!("nyan-mcp-http-401-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&config_home).expect("create config home");
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
 
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -8829,6 +8701,7 @@ rl.on('line', line => {
                     let raw = String::from_utf8_lossy(&buffer).to_string();
                     assert!(raw.starts_with("POST /mcp HTTP/1.1"), "{raw}");
                     assert!(raw.contains("initialize"), "{raw}");
+                    assert!(!raw.to_ascii_lowercase().contains("\r\nauthorization:"));
                     socket
                         .write_all(
                             b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Bearer error=\"insufficient_scope\", scope=\"admin write\", resource_metadata=\"/.well-known/oauth-protected-resource/mcp\"\r\nContent-Length: 12\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nunauthorized",
@@ -8853,7 +8726,6 @@ rl.on('line', line => {
                     ide_running_in_windows: None,
                     ide_name: None,
                     auth_token: None,
-                    id: None,
                     plugin_source: None,
                 };
                 let client = runtime::connect_to_server(SERVER, &config).await;
@@ -9026,7 +8898,6 @@ rl.on('line', line => {
                     ide_running_in_windows: None,
                     ide_name: None,
                     auth_token: None,
-                    id: None,
                     plugin_source: None,
                 };
                 let discovery = runtime::reconnect_mcp_server_impl(SERVER, &config).await;
@@ -9053,28 +8924,6 @@ rl.on('line', line => {
                 server.await.expect("fixture server task");
                 let _ = drain_mcp_connection_callback_observations().await;
             });
-    }
-
-    #[test]
-    fn streamable_http_auth_header_precedence_matches_official_connect_to_server() {
-        assert_eq!(
-            runtime::streamable_http_auth_header(
-                Some("oauth-token".to_string()),
-                Some("session-token".to_string()),
-                false,
-            )
-            .as_deref(),
-            Some("oauth-token")
-        );
-        assert_eq!(
-            runtime::streamable_http_auth_header(None, Some("session-token".to_string()), false,)
-                .as_deref(),
-            Some("session-token")
-        );
-        assert_eq!(
-            runtime::streamable_http_auth_header(None, Some("session-token".to_string()), true,),
-            None
-        );
     }
 
     #[test]
@@ -9110,7 +8959,7 @@ rl.on('line', line => {
         let temp_dir =
             std::env::temp_dir().join(format!("nyan-mcp-auth-cache-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &temp_dir);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &temp_dir);
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -9135,7 +8984,6 @@ rl.on('line', line => {
             ide_running_in_windows: None,
             ide_name: None,
             auth_token: None,
-            id: None,
             plugin_source: None,
         };
         let discoveries = std::sync::Mutex::new(Vec::new());
@@ -9235,7 +9083,6 @@ rl.on('line', line => {
                 ide_running_in_windows: None,
                 ide_name: None,
                 auth_token: None,
-                id: None,
                 plugin_source: None,
             },
         );

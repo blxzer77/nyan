@@ -28,7 +28,7 @@ pub(crate) fn built_in_output_styles_ordered() -> Vec<(String, Option<OutputStyl
             "Explanatory".to_string(),
             Some(OutputStyleConfig {
                 name: "Explanatory".to_string(),
-                description: "Claude explains its implementation choices and codebase patterns"
+                description: "nyan explains its implementation choices and codebase patterns"
                     .to_string(),
                 keep_coding_instructions: Some(true),
                 source: "built-in".to_string(),
@@ -41,7 +41,7 @@ pub(crate) fn built_in_output_styles_ordered() -> Vec<(String, Option<OutputStyl
             Some(OutputStyleConfig {
                 name: "Learning".to_string(),
                 description:
-                    "Claude pauses and asks you to write small pieces of code for hands-on practice"
+                    "nyan pauses and asks you to write small pieces of code for hands-on practice"
                         .to_string(),
                 keep_coding_instructions: Some(true),
                 source: "built-in".to_string(),
@@ -69,12 +69,12 @@ fn upsert_style_ordered(
 ///
 /// Plugin output style loading (`loadPluginOutputStyles`) remains an explicit
 /// no-op until plugin runtime parity lands; directory styles are now loaded via
-/// the official `.claude/output-styles/*.md` path and source priority.
+/// the official `.nyan/output-styles/*.md` path and source priority.
 pub fn get_all_output_styles_ordered(cwd: &Path) -> Vec<(String, Option<OutputStyleConfig>)> {
     let mut all_styles = built_in_output_styles_ordered();
     let custom_styles =
         crate::output_styles::load_output_styles_dir::get_output_style_dir_styles(cwd);
-    for source in ["userSettings", "projectSettings", "policySettings"] {
+    for source in ["userSettings", "projectSettings"] {
         for style in custom_styles.iter().filter(|style| style.source == source) {
             upsert_style_ordered(&mut all_styles, style.name.clone(), Some(style.clone()));
         }
@@ -260,14 +260,14 @@ mod tests {
         let config_home = root.join("config");
         let cwd = root.join("repo");
         std::fs::create_dir_all(cwd.join(".git")).unwrap();
-        std::fs::create_dir_all(cwd.join(".claude/output-styles")).unwrap();
+        std::fs::create_dir_all(cwd.join(".nyan/output-styles")).unwrap();
         std::fs::create_dir_all(&config_home).unwrap();
         std::fs::write(
-            cwd.join(".claude/output-styles/custom.md"),
+            cwd.join(".nyan/output-styles/custom.md"),
             "---\nname: custom\ndescription: Custom style\nkeep-coding-instructions: false\n---\nPrompt body",
         )
         .unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let old_cwd = std::env::current_dir().unwrap();
         std::env::set_current_dir(&cwd).unwrap();
         let settings = SettingsJson {

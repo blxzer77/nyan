@@ -3,7 +3,7 @@
 //! Maps to: CC `services/api/dumpPrompts.ts`, but enabled via
 //! `NYAN_DUMP_PROMPTS=1` instead of ant-only USER_TYPE gating.
 //!
-//! Writes to `~/.claude/dump-prompts/{session}.jsonl`.
+//! Writes to `~/.nyan/dump-prompts/{session}.jsonl`.
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -41,7 +41,7 @@ pub fn get_dump_prompts_path(agent_id_or_session_id: Option<&str>) -> PathBuf {
     let session = agent_id_or_session_id
         .map(|s| s.to_string())
         .unwrap_or_else(crate::bootstrap::state::get_session_id);
-    crate::utils::env_utils::get_claude_config_home_dir()
+    crate::utils::env_utils::get_config_home_dir()
         .join("dump-prompts")
         .join(format!("{session}.jsonl"))
 }

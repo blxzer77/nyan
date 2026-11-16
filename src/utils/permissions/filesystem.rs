@@ -36,9 +36,11 @@ const DANGEROUS_FILES: &[&str] = &[
     ".profile",
     ".ripgreprc",
     ".mcp.json",
-    ".claude.json",
 ];
-const DANGEROUS_DIRECTORIES: &[&str] = &[".git", ".vscode", ".idea", ".claude"];
+// @nyan: CC lists `.claude.json` among the files because its state file sits
+// beside the config home. nyan's `state.json` lives inside `.nyan`, which is
+// protected as a directory (CC: `.claude`).
+const DANGEROUS_DIRECTORIES: &[&str] = &[".git", ".vscode", ".idea", ".nyan"];
 
 static DOS_DEVICE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\.(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$").expect("valid dos device regex")
@@ -190,11 +192,6 @@ fn root_path_for_source(source: PermissionRuleSource) -> String {
         }
         PermissionRuleSource::FlagSettings => {
             crate::utils::settings::get_settings_root_path_for_source(SettingSource::Flag)
-                .display()
-                .to_string()
-        }
-        PermissionRuleSource::PolicySettings => {
-            crate::utils::settings::get_settings_root_path_for_source(SettingSource::Policy)
                 .display()
                 .to_string()
         }
@@ -502,12 +499,12 @@ fn has_suspicious_windows_path_pattern(path: &str) -> bool {
 }
 
 /// Maps to CC `isClaudeSettingsPath(filePath)`.
-pub fn is_claude_settings_path(file_path: &str, cwd: &Path) -> bool {
+pub fn is_nyan_settings_path(file_path: &str, cwd: &Path) -> bool {
     let expanded = crate::utils::path::expand_path(file_path, Some(cwd))
         .unwrap_or_else(|_| PathBuf::from(file_path));
     let normalized = normalize_for_permission_comparison(&expanded.display().to_string());
-    if normalized.ends_with("/.claude/settings.json")
-        || normalized.ends_with("/.claude/settings.local.json")
+    if normalized.ends_with("/.nyan/settings.json")
+        || normalized.ends_with("/.nyan/settings.local.json")
     {
         return true;
     }
@@ -518,15 +515,15 @@ pub fn is_claude_settings_path(file_path: &str, cwd: &Path) -> bool {
         .any(|path| path == normalized)
 }
 
-fn is_claude_config_file_path(file_path: &str) -> bool {
+fn is_nyan_config_file_path(file_path: &str) -> bool {
     let cwd = crate::bootstrap::state::get_original_cwd();
-    if is_claude_settings_path(file_path, &cwd) {
+    if is_nyan_settings_path(file_path, &cwd) {
         return true;
     }
     ["commands", "agents", "skills"].iter().any(|directory| {
         path_in_working_path(
             file_path,
-            &cwd.join(".claude").join(directory).display().to_string(),
+            &cwd.join(".nyan").join(directory).display().to_string(),
         )
     })
 }
@@ -541,7 +538,7 @@ fn is_dangerous_file_path_to_auto_edit(path: &str) -> bool {
     let segments: Vec<_> = expanded.split('/').collect();
     for (index, segment) in segments.iter().enumerate() {
         if DANGEROUS_DIRECTORIES.contains(segment) {
-            if *segment == ".claude" && segments.get(index + 1) == Some(&"worktrees") {
+            if *segment == ".nyan" && segments.get(index + 1) == Some(&"worktrees") {
                 continue;
             }
             return true;
@@ -570,18 +567,18 @@ pub fn check_path_safety_for_auto_edit(
     {
         return PathSafetyForAutoEdit::Unsafe {
             message: format!(
-                "Claude requested permissions to write to {path}, which contains a suspicious Windows path pattern that requires manual approval."
+                "nyan requested permissions to write to {path}, which contains a suspicious Windows path pattern that requires manual approval."
             ),
             classifier_approvable: false,
         };
     }
     if paths
         .iter()
-        .any(|candidate| is_claude_config_file_path(candidate))
+        .any(|candidate| is_nyan_config_file_path(candidate))
     {
         return PathSafetyForAutoEdit::Unsafe {
             message: format!(
-                "Claude requested permissions to write to {path}, but you haven't granted it yet."
+                "nyan requested permissions to write to {path}, but you haven't granted it yet."
             ),
             classifier_approvable: true,
         };
@@ -592,7 +589,7 @@ pub fn check_path_safety_for_auto_edit(
     {
         return PathSafetyForAutoEdit::Unsafe {
             message: format!(
-                "Claude requested permissions to edit {path} which is a sensitive file."
+                "nyan requested permissions to edit {path} which is a sensitive file."
             ),
             classifier_approvable: true,
         };
@@ -616,40 +613,6 @@ pub(crate) fn check_editable_internal_path(
             reason: "Scratchpad files for current session are allowed for writing".to_string(),
         });
     }
-    // DEVIATION(BUILD): CC gates template-job carve-outs with its TEMPLATES
-    // bundle feature. Nyan projects internal bundle features onto the
-    // compile-time `anthropic_internal` Cargo feature so the env key and
-    // policy are absent from external binaries.
-    #[cfg(feature = "anthropic_internal")]
-    if let Some(job_dir) = crate::utils::process_env::var_os("CLAUDE_JOB_DIR")
-        .as_deref()
-        .truthy()
-        .map(PathBuf::from)
-    {
-        let jobs_root = crate::utils::env_utils::get_claude_config_home_dir().join("jobs");
-        let job_forms = paths_to_check(&job_dir.display().to_string(), cwd);
-        let jobs_root_forms = paths_to_check(&jobs_root.display().to_string(), cwd);
-        let job_dir_is_trusted = job_forms.iter().all(|job_form| {
-            jobs_root_forms.iter().any(|root_form| {
-                normalize_for_permission_comparison(job_form)
-                    != normalize_for_permission_comparison(root_form)
-                    && path_in_working_path(job_form, root_form)
-            })
-        });
-        if job_dir_is_trusted {
-            let target_forms = paths_to_check(&normalized.display().to_string(), cwd);
-            if target_forms.iter().all(|target| {
-                job_forms
-                    .iter()
-                    .any(|job| path_in_working_path(target, job))
-            }) {
-                return Some(PermissionDecisionReason::Other {
-                    reason: "Job directory files for current job are allowed for writing"
-                        .to_string(),
-                });
-            }
-        }
-    }
     if crate::tools::agent_tool::agent_memory::is_agent_memory_path(&normalized, cwd) {
         return Some(PermissionDecisionReason::Other {
             reason: "Agent memory files are allowed for writing".to_string(),
@@ -665,7 +628,7 @@ pub(crate) fn check_editable_internal_path(
     if normalize_for_permission_comparison(&normalized.display().to_string())
         == normalize_for_permission_comparison(
             &crate::bootstrap::state::get_original_cwd()
-                .join(".claude")
+                .join(".nyan")
                 .join("launch.json")
                 .display()
                 .to_string(),
@@ -736,7 +699,7 @@ pub(crate) fn check_readable_internal_path(
         });
     }
 
-    let config_home = crate::utils::env_utils::get_claude_config_home_dir();
+    let config_home = crate::utils::env_utils::get_config_home_dir();
     let tasks_dir = normalize_permission_path_buf(config_home.join("tasks"));
     if normalized == tasks_dir || normalized.starts_with(&tasks_dir) {
         return Some(PermissionDecisionReason::Other {
@@ -764,7 +727,7 @@ pub fn is_scratchpad_enabled() -> bool {
 }
 
 /// Maps to CC `getClaudeTempDirName()` (`filesystem.ts:307-315`).
-pub fn get_claude_temp_dir_name() -> String {
+pub fn get_nyan_temp_dir_name() -> String {
     use crate::utils::platform::{Platform, get_platform};
     if get_platform() == Platform::Windows {
         return "claude".to_string();
@@ -777,15 +740,13 @@ pub fn get_claude_temp_dir_name() -> String {
 /// Nyan forward-port of CC 2.1.285's check of its per-uid temp root
 /// (user, 10-03), used by `/copy` and the sandbox temp directory. Opens the
 /// directory without following a symlink and requires the user's own uid,
-/// fixing a mode other than 0700. A directory owned by someone else is
-/// accepted, with a warning, when running as root in a container
-/// (`CLAUDE_CODE_CONTAINER_ID`, trimmed as 2.1.285's environment reads are).
+/// fixing a mode other than 0700. A directory owned by someone else is rejected.
 #[cfg(unix)]
 pub(crate) fn verify_owned_temp_dir(dir: &Path) -> std::io::Result<()> {
     use std::os::unix::ffi::OsStrExt as _;
     use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
     const HINT: &str =
-        "Set CLAUDE_CODE_TMPDIR to a directory you control, or ask an administrator to remove it.";
+        "Set NYAN_TMPDIR to a directory you control, or ask an administrator to remove it.";
     let uid = current_uid();
     let shown = dir.display();
     // `e.replace(/[\/]+$/, "") || e`
@@ -823,20 +784,6 @@ pub(crate) fn verify_owned_temp_dir(dir: &Path) -> std::io::Result<()> {
     };
     let metadata = directory.metadata()?;
     if metadata.uid() != uid {
-        if uid == 0
-            && crate::utils::process_env::var("CLAUDE_CODE_CONTAINER_ID")
-                .map(|value| value.trim().to_owned())
-                .truthy()
-                .is_some()
-        {
-            // `logForDiagnosticsNoPII('warn', 'tempdir_owner_mismatch', …)`;
-            // `diagLogs.ts` is not ported, so this goes to the debug log.
-            crate::utils::debug::log_for_debugging(&format!(
-                "tempdir_owner_mismatch: observed uid {}",
-                metadata.uid()
-            ));
-            return Ok(());
-        }
         return Err(std::io::Error::other(format!(
             "Temp directory {shown} is owned by uid {}, expected {uid}. Refusing to use it \u{2014} another user may have pre-created it. {HINT}",
             metadata.uid()
@@ -849,27 +796,27 @@ pub(crate) fn verify_owned_temp_dir(dir: &Path) -> std::io::Result<()> {
 }
 
 /// Maps to CC `getClaudeTempDir()` (`filesystem.ts:331-346`), memoized: the
-/// per-user temp directory under `CLAUDE_CODE_TMPDIR || (Windows ? tmpdir() :
+/// per-user temp directory under `NYAN_TMPDIR || (Windows ? tmpdir() :
 /// '/tmp')` with the base's symlinks resolved (`/tmp` is `/private/tmp` on
 /// macOS), with a trailing separator.
 ///
 /// Test builds compute it on every call: under `cargo test` a directory fixed
 /// by the first test would take every later test's writes, into the real
 /// per-user temp directory.
-pub fn get_claude_temp_dir() -> PathBuf {
+pub fn get_nyan_temp_dir() -> PathBuf {
     #[cfg(not(test))]
     {
         static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-        DIR.get_or_init(claude_temp_dir).clone()
+        DIR.get_or_init(nyan_temp_dir).clone()
     }
     #[cfg(test)]
-    claude_temp_dir()
+    nyan_temp_dir()
 }
 
-/// The body of [`get_claude_temp_dir`].
-fn claude_temp_dir() -> PathBuf {
+/// The body of [`get_nyan_temp_dir`].
+fn nyan_temp_dir() -> PathBuf {
     use crate::utils::platform::{Platform, get_platform};
-    let base_tmp_dir = crate::utils::process_env::var_os("CLAUDE_CODE_TMPDIR")
+    let base_tmp_dir = crate::utils::process_env::var_os("NYAN_TMPDIR")
         .as_deref()
         .truthy()
         .map(PathBuf::from)
@@ -887,7 +834,7 @@ fn claude_temp_dir() -> PathBuf {
         .unwrap_or(base_tmp_dir);
     let mut dir = crate::utils::fs_operations::native::join_path(
         &resolved,
-        Path::new(&get_claude_temp_dir_name()),
+        Path::new(&get_nyan_temp_dir_name()),
     )
     .into_os_string();
     dir.push(std::path::MAIN_SEPARATOR_STR);
@@ -898,7 +845,7 @@ fn claude_temp_dir() -> PathBuf {
 /// is the load-bearing defense against pre-created shared-temp symlink trees.
 pub fn get_bundled_skills_root() -> PathBuf {
     static ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
-        get_claude_temp_dir()
+        get_nyan_temp_dir()
             .join("bundled-skills")
             .join(env!("CARGO_PKG_VERSION"))
             .join(uuid::Uuid::new_v4().simple().to_string())
@@ -910,7 +857,7 @@ pub fn get_bundled_skills_root() -> PathBuf {
 /// `join(getClaudeTempDir(), sanitizePath(getOriginalCwd())) + sep`.
 pub fn get_project_temp_dir() -> PathBuf {
     let mut dir = crate::utils::fs_operations::native::join_path(
-        &get_claude_temp_dir(),
+        &get_nyan_temp_dir(),
         Path::new(&crate::utils::session_storage::sanitize_path(
             &crate::bootstrap::state::get_original_cwd().to_string_lossy(),
         )),
@@ -1051,7 +998,7 @@ pub(crate) fn paths_to_check(path: &str, cwd: &Path) -> Vec<String> {
         .collect()
 }
 
-fn claude_folder_session_allow_rule(
+fn nyan_folder_session_allow_rule(
     path: &str,
     context: &ToolPermissionContext,
     cwd: &Path,
@@ -1068,8 +1015,8 @@ fn claude_folder_session_allow_rule(
         cwd,
     )?;
     let content = rule.rule_value.rule_content.as_deref()?;
-    let project_prefix = "/.claude/**".trim_end_matches("**");
-    let global_prefix = "~/.claude/**".trim_end_matches("**");
+    let project_prefix = "/.nyan/**".trim_end_matches("**");
+    let global_prefix = "~/.nyan/**".trim_end_matches("**");
     ((content.starts_with(project_prefix) || content.starts_with(global_prefix))
         && !content.contains("..")
         && content.ends_with("/**"))
@@ -1077,21 +1024,21 @@ fn claude_folder_session_allow_rule(
 }
 
 /// Maps to CC `getClaudeSkillScope(filePath)`.
-pub fn get_claude_skill_scope(file_path: &str) -> Option<(String, String)> {
+pub fn get_nyan_skill_scope(file_path: &str) -> Option<(String, String)> {
     let absolute = crate::utils::path::expand_path(file_path, None).ok()?;
     let absolute = absolute.display().to_string().replace('\\', "/");
     let bases = [
         (
             crate::bootstrap::state::get_original_cwd()
-                .join(".claude")
+                .join(".nyan")
                 .join("skills"),
-            "/.claude/skills/",
+            "/.nyan/skills/",
         ),
         (
             crate::utils::node_os::homedir()
-                .join(".claude")
+                .join(".nyan")
                 .join("skills"),
-            "~/.claude/skills/",
+            "~/.nyan/skills/",
         ),
     ];
     for (base, prefix) in bases {
@@ -1202,7 +1149,7 @@ pub fn check_read_permission_for_tool(
         if contains_vulnerable_unc_path(candidate) {
             return PermissionResult::Ask {
                 message: format!(
-                    "Claude requested permissions to read from {expanded_path}, which appears to be a UNC path that could access network resources."
+                    "nyan requested permissions to read from {expanded_path}, which appears to be a UNC path that could access network resources."
                 ),
                 updated_input: None,
                 suggestions: Vec::new(),
@@ -1221,7 +1168,7 @@ pub fn check_read_permission_for_tool(
         if has_suspicious_windows_path_pattern(candidate) {
             return PermissionResult::Ask {
                 message: format!(
-                    "Claude requested permissions to read from {expanded_path}, which contains a suspicious Windows path pattern that requires manual approval."
+                    "nyan requested permissions to read from {expanded_path}, which contains a suspicious Windows path pattern that requires manual approval."
                 ),
                 updated_input: None,
                 suggestions: Vec::new(),
@@ -1262,7 +1209,7 @@ pub fn check_read_permission_for_tool(
         ) {
             return PermissionResult::Ask {
                 message: format!(
-                    "Claude requested permissions to read from {expanded_path}, but you haven't granted it yet."
+                    "nyan requested permissions to read from {expanded_path}, but you haven't granted it yet."
                 ),
                 updated_input: None,
                 suggestions: Vec::new(),
@@ -1324,7 +1271,7 @@ pub fn check_read_permission_for_tool(
 
     PermissionResult::Ask {
         message: format!(
-            "Claude requested permissions to read from {expanded_path}, but you haven't granted it yet."
+            "nyan requested permissions to read from {expanded_path}, but you haven't granted it yet."
         ),
         updated_input: None,
         suggestions: generate_suggestions(
@@ -1390,7 +1337,7 @@ pub fn check_write_permission_for_tool(
         };
     }
 
-    if let Some(rule) = claude_folder_session_allow_rule(path, context, cwd) {
+    if let Some(rule) = nyan_folder_session_allow_rule(path, context, cwd) {
         return PermissionResult::Allow {
             updated_input: Some(input.clone()),
             user_modified: None,
@@ -1406,7 +1353,7 @@ pub fn check_write_permission_for_tool(
             message,
             classifier_approvable,
         } => {
-            let suggestions = get_claude_skill_scope(path)
+            let suggestions = get_nyan_skill_scope(path)
                 .map(|(_, pattern)| {
                     vec![PermissionUpdate::AddRules {
                         destination: PermissionUpdateDestination::Session,
@@ -1453,7 +1400,7 @@ pub fn check_write_permission_for_tool(
         ) {
             return PermissionResult::Ask {
                 message: format!(
-                    "Claude requested permissions to write to {path}, but you haven't granted it yet."
+                    "nyan requested permissions to write to {path}, but you haven't granted it yet."
                 ),
                 updated_input: None,
                 decision_reason: Some(PermissionDecisionReason::Rule { rule }),
@@ -1498,7 +1445,7 @@ pub fn check_write_permission_for_tool(
 
     PermissionResult::Ask {
         message: format!(
-            "Claude requested permissions to write to {path}, but you haven't granted it yet."
+            "nyan requested permissions to write to {path}, but you haven't granted it yet."
         ),
         updated_input: None,
         suggestions: generate_suggestions(
@@ -1553,18 +1500,18 @@ mod tests {
     use crate::utils::test_env::{EnvVarGuard, PinnedProjectDir, TEST_ENV_LOCK};
 
     /// CC `filesystem.ts:331-346` and `:376-378`: the per-user directory
-    /// under the resolved `CLAUDE_CODE_TMPDIR`, and the project directory
+    /// under the resolved `NYAN_TMPDIR`, and the project directory
     /// under it named by `sanitizePath`, each with a trailing separator.
     #[cfg(unix)]
     #[test]
-    fn claude_temp_dirs_match_official_shape() {
+    fn nyan_temp_dirs_match_official_shape() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("nyan-temp-shape-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let resolved = root.canonicalize().unwrap();
-        let _tmp = EnvVarGuard::set("CLAUDE_CODE_TMPDIR", &root);
+        let _tmp = EnvVarGuard::set("NYAN_TMPDIR", &root);
         let expected = format!("{}/claude-{}/", resolved.display(), current_uid());
-        assert_eq!(get_claude_temp_dir().to_string_lossy(), expected);
+        assert_eq!(get_nyan_temp_dir().to_string_lossy(), expected);
         let cwd = crate::bootstrap::state::get_original_cwd();
         assert_eq!(
             get_project_temp_dir().to_string_lossy(),
@@ -1635,6 +1582,7 @@ mod tests {
 
     #[test]
     fn read_permission_matches_official_working_dir_rule_and_suggestion_order() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-read-permission-{}",
             uuid::Uuid::new_v4().simple()
@@ -1734,7 +1682,7 @@ mod tests {
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(outside.join("secret.txt"), "secret").unwrap();
         symlink(&outside, config.join("tasks/escape")).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config);
         let escaped = config.join("tasks/escape/secret.txt");
         assert!(matches!(
             check_read_permission_for_tool(
@@ -1751,6 +1699,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn read_permission_checks_resolved_working_path_then_requested_rules_like_official() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         use std::os::unix::fs::symlink;
         let root = std::env::temp_dir().join(format!(
             "nyan-read-working-symlink-{}",
@@ -1819,19 +1768,17 @@ mod tests {
     }
 
     #[test]
-    fn claude_settings_path_detection_normalizes_structure_and_case() {
+    fn nyan_settings_path_detection_normalizes_structure_and_case() {
         let cwd = std::env::temp_dir().join("nyan-settings-path-detection");
-        assert!(is_claude_settings_path(
-            &cwd.join(".claude/./settings.json").display().to_string(),
+        assert!(is_nyan_settings_path(
+            &cwd.join(".nyan/./settings.json").display().to_string(),
             &cwd,
         ));
-        assert!(is_claude_settings_path(
-            &cwd.join(".cLaUdE/settings.local.json")
-                .display()
-                .to_string(),
+        assert!(is_nyan_settings_path(
+            &cwd.join(".nYaN/settings.local.json").display().to_string(),
             &cwd,
         ));
-        assert!(!is_claude_settings_path(
+        assert!(!is_nyan_settings_path(
             &cwd.join("settings.json").display().to_string(),
             &cwd,
         ));
@@ -1975,78 +1922,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    #[cfg(all(feature = "anthropic_internal", unix))]
     #[test]
-    fn internal_template_job_carve_out_rejects_hijack_and_symlink_escape() {
-        use std::os::unix::fs::symlink;
-        let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let root = std::env::temp_dir().join(format!(
-            "nyan-template-job-permission-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
-        let config = root.join("config");
-        let job = config.join("jobs/current");
-        let outside = root.join("outside");
-        std::fs::create_dir_all(&job).unwrap();
-        std::fs::create_dir_all(&outside).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config);
-        let _job = EnvVarGuard::set("CLAUDE_JOB_DIR", &job);
-        let context = ToolPermissionContext::default();
-        let inside = job.join("result.txt");
-        assert!(matches!(
-            check_write_permission_for_tool(
-                &inside.display().to_string(),
-                &serde_json::json!({"file_path": inside}),
-                &context,
-                &root,
-            ),
-            PermissionResult::Allow {
-                decision_reason: Some(PermissionDecisionReason::Other { ref reason }),
-                ..
-            } if reason == "Job directory files for current job are allowed for writing"
-        ));
-
-        {
-            let _hijacked_job = EnvVarGuard::set("CLAUDE_JOB_DIR", &outside);
-            let hijacked = outside.join("result.txt");
-            assert!(!matches!(
-                check_write_permission_for_tool(
-                    &hijacked.display().to_string(),
-                    &serde_json::json!({"file_path": hijacked}),
-                    &context,
-                    &root,
-                ),
-                PermissionResult::Allow {
-                    decision_reason: Some(PermissionDecisionReason::Other { ref reason }),
-                    ..
-                } if reason == "Job directory files for current job are allowed for writing"
-            ));
-        }
-
-        symlink(&outside, job.join("escape")).unwrap();
-        let escaped = job.join("escape/result.txt");
-        assert!(!matches!(
-            check_write_permission_for_tool(
-                &escaped.display().to_string(),
-                &serde_json::json!({"file_path": escaped}),
-                &context,
-                &root,
-            ),
-            PermissionResult::Allow {
-                decision_reason: Some(PermissionDecisionReason::Other { ref reason }),
-                ..
-            } if reason == "Job directory files for current job are allowed for writing"
-        ));
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn agent_memory_path_is_an_internal_write_carve_out_before_claude_safety() {
+    fn agent_memory_path_is_an_internal_write_carve_out_before_path_safety() {
         let cwd = std::env::temp_dir().join(format!(
             "nyan-agent-memory-permission-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let path = cwd.join(".claude/agent-memory/reviewer/MEMORY.md");
+        let path = cwd.join(".nyan/agent-memory/reviewer/MEMORY.md");
         assert!(matches!(
             check_write_permission_for_tool(
                 &path.display().to_string(),
@@ -2063,6 +1945,7 @@ mod tests {
 
     #[test]
     fn matcher_uses_ignore_negation_double_star_and_source_precedence() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         // Matcher roots resolve against the project dir.
         let _project_dir = PinnedProjectDir::at_manifest_root();
         let cwd = crate::bootstrap::state::get_original_cwd();
@@ -2135,26 +2018,28 @@ mod tests {
     }
 
     #[test]
-    fn claude_skill_scope_is_narrow_and_rejects_glob_names() {
+    fn nyan_skill_scope_is_narrow_and_rejects_glob_names() {
+        // get_nyan_skill_scope re-reads the original cwd captured here.
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = crate::bootstrap::state::get_original_cwd();
         assert_eq!(
-            get_claude_skill_scope(
+            get_nyan_skill_scope(
                 &root
-                    .join(".claude/skills/reviewer/SKILL.md")
+                    .join(".nyan/skills/reviewer/SKILL.md")
                     .display()
                     .to_string()
             ),
             Some((
                 "reviewer".to_string(),
-                "/.claude/skills/reviewer/**".to_string()
+                "/.nyan/skills/reviewer/**".to_string()
             ))
         );
         assert!(
-            get_claude_skill_scope(&root.join(".claude/skills/*/SKILL.md").display().to_string())
+            get_nyan_skill_scope(&root.join(".nyan/skills/*/SKILL.md").display().to_string())
                 .is_none()
         );
         assert!(
-            get_claude_skill_scope(&root.join(".claude/skills/direct.md").display().to_string())
+            get_nyan_skill_scope(&root.join(".nyan/skills/direct.md").display().to_string())
                 .is_none()
         );
     }
@@ -2183,7 +2068,7 @@ mod tests {
         std::fs::create_dir_all(&config_home).unwrap();
         std::fs::create_dir_all(&original_cwd).unwrap();
         std::fs::create_dir_all(&flag_dir).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_home);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_home);
         let _restore = RootRestore {
             original_cwd: crate::bootstrap::state::get_original_cwd(),
             flag_path: crate::utils::settings::get_flag_settings_path(),
@@ -2196,7 +2081,6 @@ mod tests {
             (PermissionRuleSource::ProjectSettings, original_cwd.clone()),
             (PermissionRuleSource::LocalSettings, original_cwd.clone()),
             (PermissionRuleSource::FlagSettings, flag_dir.clone()),
-            (PermissionRuleSource::PolicySettings, original_cwd.clone()),
             (PermissionRuleSource::CliArg, original_cwd.clone()),
             (PermissionRuleSource::Command, original_cwd.clone()),
             (PermissionRuleSource::Session, original_cwd.clone()),
@@ -2245,6 +2129,7 @@ mod tests {
 
     #[test]
     fn default_write_asks_with_accept_edits_suggestion() {
+        let _env_lock = crate::utils::test_env::TEST_ENV_LOCK.lock().unwrap();
         let cwd = std::env::current_dir().unwrap();
         let path = cwd.join("new-write.txt");
         let result = check_write_permission_for_tool(
@@ -2325,9 +2210,9 @@ mod tests {
     #[test]
     fn auto_edit_safety_matches_official_worktree_and_basename_boundaries() {
         for path in [
-            "/repo/.claude/worktrees/topic/src/lib.rs",
+            "/repo/.nyan/worktrees/topic/src/lib.rs",
             "/repo/.ClAuDe/WORKTREES/topic/src/lib.rs",
-            "/repo/.claude/worktrees/topic/.claude/worktrees/nested/file.rs",
+            "/repo/.nyan/worktrees/topic/.nyan/worktrees/nested/file.rs",
             "/repo/.bashrc/ordinary.txt",
         ] {
             assert!(!is_dangerous_file_path_to_auto_edit(path), "{path}");
@@ -2338,11 +2223,12 @@ mod tests {
             );
         }
         for path in [
-            "/repo/.claude/worktrees/topic/.claude/secrets.txt",
-            "/repo/.claude/worktrees/topic/.git/config",
-            "/repo/.claude/other/file.rs",
-            "/repo/.claude/worktrees/topic/.BaShRc",
+            "/repo/.nyan/worktrees/topic/.nyan/secrets.txt",
+            "/repo/.nyan/worktrees/topic/.git/config",
+            "/repo/.nyan/other/file.rs",
+            "/repo/.nyan/worktrees/topic/.BaShRc",
             "/repo/.vscode/settings.json",
+            "/home/user/.nyan/state.json",
             "//server/share/file.txt",
         ] {
             assert!(is_dangerous_file_path_to_auto_edit(path), "{path}");
@@ -2357,13 +2243,15 @@ mod tests {
     }
     #[test]
     fn session_plan_file_matches_main_and_agent_plan_names() {
+        // set_session_id also clears the process-wide session project dir.
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _guard = crate::utils::plans::test_plan_state_lock();
         let session_id = format!("plan-match-{}", uuid::Uuid::new_v4());
         let previous_session = crate::bootstrap::state::get_session_id();
         crate::bootstrap::state::set_session_id(&session_id);
         crate::utils::plans::set_plan_slug(&session_id, "bright-maple");
         let settings = crate::utils::settings::types::SettingsJson {
-            plans_directory: Some(".claude/plans".to_string()),
+            plans_directory: Some(".nyan/plans".to_string()),
             ..crate::utils::settings::types::SettingsJson::default()
         };
         let plans_dir = crate::utils::plans::get_plans_directory_with_settings(&settings);

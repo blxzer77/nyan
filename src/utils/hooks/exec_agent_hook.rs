@@ -11,7 +11,7 @@ use crate::tool::{AbortController, GetAppStateCallback, SetInProgressToolUseIds,
 use crate::types::message::{Attachment, AttachmentMessage, Message};
 use crate::types::permissions::{PermissionMode, PermissionRuleSource};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Maps to: CC `execAgentHook` (:39-339). `_messages` deliberately does not
 /// seed the child conversation; the transcript path is supplied instead.
@@ -25,7 +25,6 @@ pub async fn exec_agent_hook(
     tool_use_context: &ToolUseContext,
     tool_use_id: Option<&str>,
     messages: &[Message],
-    agent_name: Option<&str>,
 ) -> HookResult<AgentHook> {
     exec_agent_hook_with_query(
         hook,
@@ -36,7 +35,6 @@ pub async fn exec_agent_hook(
         tool_use_context,
         tool_use_id,
         messages,
-        agent_name,
         |params| crate::query::spawn_query_generator(params, production_deps()),
     )
     .await
@@ -55,7 +53,6 @@ async fn exec_agent_hook_with_query<F>(
     parent: &ToolUseContext,
     tool_use_id: Option<&str>,
     _messages: &[Message],
-    agent_name: Option<&str>,
     query: F,
 ) -> HookResult<AgentHook>
 where
@@ -69,7 +66,6 @@ where
         Some(id) => crate::utils::session_storage::get_agent_transcript_path(id),
         None => crate::utils::session_storage::get_transcript_path(None),
     };
-    let start = Instant::now();
     let processed_prompt = add_arguments_to_prompt(&hook.prompt, json_input);
     crate::utils::debug::log_for_debugging(&format!(
         "Hooks: Processing agent hook with prompt: {processed_prompt}"
@@ -145,7 +141,7 @@ where
         Some(Arc::new(state))
     }));
     let system_prompt = vec![format!(
-        "You are verifying a stop condition in Claude Code. Your task is to verify that the agent completed the given plan. The conversation transcript is available at: {}\nYou can read this file to analyze the conversation history if needed.\n\nUse the available tools to inspect the codebase and verify the condition.\nUse as few steps as possible - be efficient and direct.\n\nWhen done, return your result using the StructuredOutput tool with:\n- ok: true if the condition is met\n- ok: false with reason if the condition is not met",
+        "You are verifying a stop condition in nyan. Your task is to verify that the agent completed the given plan. The conversation transcript is available at: {}\nYou can read this file to analyze the conversation history if needed.\n\nUse the available tools to inspect the codebase and verify the condition.\nUse as few steps as possible - be efficient and direct.\n\nWhen done, return your result using the StructuredOutput tool with:\n- ok: true if the condition is met\n- ok: false with reason if the condition is not met",
         transcript_path.display()
     )];
     super::hook_helpers::register_structured_output_enforcement(&hook_agent_id);
@@ -223,12 +219,6 @@ where
         crate::utils::debug::log_for_debugging(&format!(
             "Hooks: Agent hook error: {error_message}"
         ));
-        crate::services::analytics::log_event(
-            "tengu_agent_stop_hook_error",
-            serde_json::json!({
-                "durationMs": start.elapsed().as_millis() as u64, "errorType": 2, "agentName": agent_name,
-            }),
-        );
         return HookResult {
             hook: Some(hook.clone()),
             outcome: HookOutcome::NonBlockingError,
@@ -251,7 +241,6 @@ where
         hook: Some(hook.clone()),
         ..Default::default()
     };
-    let metadata = serde_json::json!({"durationMs": start.elapsed().as_millis() as u64, "turnCount": turn_count, "agentName": agent_name});
     match structured_output {
         None => {
             crate::utils::debug::log_for_debugging(if hit_max_turns {
@@ -259,16 +248,6 @@ where
             } else {
                 "Hooks: Agent hook did not return structured output"
             });
-            let event = if hit_max_turns {
-                "tengu_agent_stop_hook_max_turns"
-            } else {
-                "tengu_agent_stop_hook_error"
-            };
-            let mut metadata = metadata;
-            if !hit_max_turns {
-                metadata["errorType"] = 1.into();
-            }
-            crate::services::analytics::log_event(event, metadata);
             result.outcome = HookOutcome::Cancelled;
         }
         Some(response) if !response.ok => {
@@ -287,7 +266,6 @@ where
         }
         Some(_) => {
             crate::utils::debug::log_for_debugging("Hooks: Agent hook condition was met");
-            crate::services::analytics::log_event("tengu_agent_stop_hook_success", metadata);
             result.message = Some(AttachmentMessage::new(Attachment::HookSuccess {
                 content: String::new(),
                 hook_name: hook_name.into(),
@@ -314,6 +292,7 @@ mod tests {
         Mutex,
         atomic::{AtomicUsize, Ordering},
     };
+    use std::time::Instant;
 
     use crate::types::message::UserContent;
 
@@ -368,7 +347,6 @@ mod tests {
             &ToolUseContext::default(),
             Some("tool-1"),
             &[],
-            None,
             |params| scripted(params, events),
         )
         .await
@@ -448,7 +426,7 @@ mod tests {
         let seen_id = Arc::new(Mutex::new(String::new()));
         let seen = seen_id.clone();
         let result = exec_agent_hook_with_query(&definition, "Stop", HookEvent::Stop, "{\"x\":1}",
-            &AbortController::default(), &parent, Some(""), &[Message::Assistant(assistant())], None,
+            &AbortController::default(), &parent, Some(""), &[Message::Assistant(assistant())],
             |params| {
                 assert_eq!(params.model_messages.len(), 1);
                 assert!(matches!(&params.model_messages[0], Message::User(m) if m.content == vec![UserContent::Text("Verify {\"x\":1}".into())]));
@@ -468,6 +446,8 @@ mod tests {
                 let state = context.get_app_state().unwrap();
                 assert_eq!(state.tool_permission_context.mode, PermissionMode::DontAsk);
                 let path = crate::utils::session_storage::get_agent_transcript_path("parent-agent");
+                assert_eq!(params.system_prompt.len(), 1);
+                assert_eq!(params.system_prompt[0].split(". ").next(), Some("You are verifying a stop condition in nyan"));
                 assert!(params.system_prompt[0].contains(&path.display().to_string()));
                 assert_eq!(state.tool_permission_context.always_allow_rules[&PermissionRuleSource::Session],
                     vec![crate::utils::permissions::permission_rule_parser::permission_rule_value_from_string(&format!("Read(/{})", path.display()))]);
@@ -499,7 +479,6 @@ mod tests {
             &ToolUseContext::default(),
             Some("t"),
             &[],
-            None,
             |params| {
                 *seen_id.lock().unwrap() = params.tool_use_context.agent_id.clone().unwrap();
                 let mut terminal = Terminal::new("model_error");
@@ -541,7 +520,6 @@ mod tests {
             &ToolUseContext::default(),
             None,
             &[],
-            None,
             |params| {
                 let (tx, rx) = async_channel::unbounded();
                 let (commands, _) = async_channel::unbounded();
@@ -576,7 +554,6 @@ mod tests {
             &ToolUseContext::default(),
             None,
             &[],
-            None,
             |params| {
                 let (tx, rx) = async_channel::unbounded();
                 let (commands, _) = async_channel::unbounded();
@@ -629,7 +606,6 @@ mod tests {
             &parent,
             None,
             &[],
-            None,
             |params| {
                 scripted(
                     params,
@@ -679,7 +655,7 @@ mod tests {
                     name: "StructuredOutput".into(),
                     input: json!({"ok":true,"extra":"stripped by Zod"}),
                 })];
-                tx.send(crate::services::api::claude::QueryModelStreamItem::Assistant(message))
+                tx.send(crate::services::api::request::QueryModelStreamItem::Assistant(message))
                     .await
                     .unwrap();
                 Ok(rx)
@@ -700,7 +676,6 @@ mod tests {
                 &ToolUseContext::default(),
                 None,
                 &[],
-                None,
                 |params| crate::query::spawn_query_generator(params, deps),
             )
             .await;
@@ -735,12 +710,12 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let workdir = root.join(".test/kitty-workdir");
         assert_eq!(
-            crate::utils::process_env::var("CLAUDE_CONFIG_DIR").unwrap(),
+            crate::utils::process_env::var("NYAN_CONFIG_DIR").unwrap(),
             root.join(".test/kitty-config").display().to_string()
         );
         std::env::set_current_dir(&workdir).unwrap();
         crate::bootstrap::state::set_original_cwd(&workdir);
-        let settings = crate::utils::node_os::homedir().join(".claude/settings.grok.json");
+        let settings = crate::utils::node_os::homedir().join(".nyan/settings.grok.json");
         crate::main::apply_live_startup_flags(&[
             "nyan".into(),
             "--settings".into(),
@@ -766,7 +741,6 @@ mod tests {
                 &parent,
                 None,
                 &[],
-                None,
             )
             .await;
             assert_eq!(

@@ -448,7 +448,7 @@ mod tests {
                 let (tx, rx) = tokio::sync::mpsc::channel(8);
                 if api_error {
                     tx.send(
-                        crate::services::api::claude::QueryModelStreamItem::SystemError(
+                        crate::services::api::request::QueryModelStreamItem::SystemError(
                             crate::types::message::SystemApiErrorMessage {
                                 content: "boom".to_string(),
                                 api_error: "boom".to_string(),
@@ -461,7 +461,7 @@ mod tests {
                     .unwrap();
                 }
                 tx.send(
-                    crate::services::api::claude::QueryModelStreamItem::Assistant(
+                    crate::services::api::request::QueryModelStreamItem::Assistant(
                         crate::types::message::AssistantMessage {
                             uuid: uuid::Uuid::new_v4().to_string(),
                             timestamp: chrono::Utc::now(),
@@ -509,10 +509,10 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         std::fs::create_dir_all(&session_root).unwrap();
         let env = vec![
-            EnvVarGuard::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", &root),
-            EnvVarGuard::unset("CLAUDE_CODE_DISABLE_AUTO_MEMORY"),
-            EnvVarGuard::unset("CLAUDE_CODE_SIMPLE"),
-            EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY"),
+            EnvVarGuard::set("NYAN_MEMORY_PATH_OVERRIDE", &root),
+            EnvVarGuard::unset("NYAN_DISABLE_AUTO_MEMORY"),
+            EnvVarGuard::unset("NYAN_SIMPLE"),
+            EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY"),
             EnvVarGuard::set("NYAN_WRITE_ENABLED", "1"),
         ];
         crate::bootstrap::state::set_session_persistence_disabled(false);

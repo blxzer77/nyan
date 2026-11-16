@@ -32,7 +32,7 @@ pub mod ui;
 pub(crate) static IS_BACKGROUND_TASKS_DISABLED: std::sync::LazyLock<bool> =
     std::sync::LazyLock::new(|| {
         crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS").as_deref(),
+            crate::utils::process_env::var("NYAN_DISABLE_BACKGROUND_TASKS").as_deref(),
         )
     });
 
@@ -223,11 +223,6 @@ pub struct AgentOutput {
     /// fills the schema's nullable server_tool_use/service_tier/cache_creation
     /// legs with null (the run_agent aggregate does not track them yet).
     pub usage: Option<crate::types::message::TokenUsage>,
-    /// Maps to CC `RemoteLaunchedOutput.taskId` (ant-only private shape the
-    /// renderer narrows to, `AgentTool/UI.tsx:342-355`). No live producer.
-    pub task_id: Option<String>,
-    /// Maps to CC `RemoteLaunchedOutput.sessionUrl`.
-    pub session_url: Option<String>,
 }
 
 static ACTIVE_SUBAGENTS_COUNT: std::sync::atomic::AtomicUsize =
@@ -347,7 +342,7 @@ fn can_read_agent_output_file(context: &crate::tool::ToolUseContext) -> bool {
 /// Maps to CC `AgentTool.tsx#getAutoBackgroundMs` env branch.
 fn get_auto_background_ms_for_agent_tool() -> Option<u64> {
     crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_AUTO_BACKGROUND_TASKS").as_deref(),
+        crate::utils::process_env::var("NYAN_AUTO_BACKGROUND_TASKS").as_deref(),
     )
     .then_some(120_000)
 }
@@ -490,8 +485,6 @@ fn async_launched_tool_result(
             worktree_path: None,
             worktree_branch: None,
             usage: None,
-            task_id: None,
-            session_url: None,
         }),
         new_messages: Vec::new(),
     }
@@ -1740,26 +1733,13 @@ impl crate::tool::ToolCall for AgentTool {
         true
     }
 
-    /// Maps to: CC `AgentTool.tsx:1692-1709` `checkPermissions(...)`. The auto
-    /// mode passthrough is ant-only; every other mode auto-approves the spawn.
+    /// Maps to: CC `AgentTool.tsx:1692-1709` `checkPermissions(...)`: the
+    /// spawn is auto-approved.
     fn check_permissions(
         &self,
         args: &serde_json::Value,
-        context: &crate::tool::ToolUseContext,
+        _context: &crate::tool::ToolUseContext,
     ) -> crate::utils::permissions::permission_result::PermissionResult {
-        if crate::utils::build_profile::has_internal_capability(
-            crate::utils::build_profile::InternalCapability::Permissions,
-        ) && context.tool_permission_context.mode
-            == crate::types::permissions::PermissionMode::Auto
-        {
-            return crate::utils::permissions::permission_result::PermissionResult::Passthrough {
-                message: "Agent tool requires permission to spawn sub-agents.".to_string(),
-                decision_reason: None,
-                suggestions: Vec::new(),
-                blocked_path: None,
-                pending_classifier_check: None,
-            };
-        }
         crate::utils::permissions::permission_result::PermissionResult::Allow {
             updated_input: Some(args.clone()),
             user_modified: None,
@@ -1926,8 +1906,6 @@ impl crate::tool::ToolCall for AgentTool {
                             worktree_path: None,
                             worktree_branch: None,
                             usage: None,
-                            task_id: None,
-                            session_url: None,
                         }),
                         new_messages: Vec::new(),
                     },
@@ -1961,26 +1939,6 @@ impl crate::tool::ToolCall for AgentTool {
             };
             let effective_isolation =
                 effective_isolation_for_agent_tool(requested_isolation, &agent_definition);
-            // Not-implemented notice, not a validation rule. Unreachable on an
-            // external build — the schema enum is `["worktree"]` (`:105`,
-            // matching CC `AgentTool.tsx:215`'s external arm) and a frontmatter
-            // `remote` is dropped by the audience gate
-            // (`load_agents_dir.rs:686-693`) — so it only fires if either is
-            // widened for an internal audience, which is exactly when the
-            // missing implementation would matter.
-            //
-            // Two `Unsupported Agent isolation mode` early returns used to sit
-            // around this one, rejecting any non-`worktree`/`remote` value.
-            // Both were dead: CC rejects a bad `isolation` at the zod enum, and
-            // this port does the equivalent one layer up, in the execution gate
-            // at `tool_execution.rs:566-576` (`Maps to: CC
-            // toolExecution.ts:615-676`), whose fallback validator checks
-            // `enum`. A value that fails there never reaches `call`.
-            if effective_isolation.as_deref() == Some("remote") {
-                return agent_tool_error(
-                    "Failed to create remote session: remote isolation is unavailable; no remote subagent was started.",
-                );
-            }
             // Maps to CC `AgentTool.tsx`: `cwd` is documented as mutually
             // exclusive in the schema description, but the runtime does not
             // throw. If both are supplied, it still creates/cleans the
@@ -2302,8 +2260,6 @@ impl crate::tool::ToolCall for AgentTool {
                             worktree_path: worktree_result.worktree_path,
                             worktree_branch: worktree_result.worktree_branch,
                             usage: completed.usage,
-                            task_id: None,
-                            session_url: None,
                         }),
                         new_messages: Vec::new(),
                     }
@@ -2462,7 +2418,7 @@ mod tests {
     #[test]
     fn agent_tool_schema_matches_official_base_input_shape() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _background = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+        let _background = EnvVarGuard::unset("NYAN_DISABLE_BACKGROUND_TASKS");
         let _fork_gate = fork_subagent::fork_gate_environment();
         let schema = agent_tool_schema();
         assert_eq!(schema.name, "Agent");
@@ -2540,7 +2496,7 @@ mod tests {
     fn agent_tool_schema_omits_background_when_gate_is_off() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _fork_vetoed = fork_subagent::fork_veto_environment();
-        let _disabled = EnvVarGuard::set("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "true");
+        let _disabled = EnvVarGuard::set("NYAN_DISABLE_BACKGROUND_TASKS", "true");
         assert!(!fork_subagent::is_fork_subagent_enabled());
         let schema = agent_tool_schema();
         assert!(
@@ -2566,7 +2522,7 @@ mod tests {
     fn agent_tool_schema_advertises_background_when_neither_gate_omits_it() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         let _fork_vetoed = fork_subagent::fork_veto_environment();
-        let _background = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+        let _background = EnvVarGuard::unset("NYAN_DISABLE_BACKGROUND_TASKS");
         let schema = agent_tool_schema();
         assert_eq!(
             schema
@@ -2581,19 +2537,19 @@ mod tests {
 
     #[test]
     fn agent_tool_team_name_resolution_matches_teammate_context_order() {
-        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let context = crate::tool::ToolUseContext::default();
-        {
-            let _teams = EnvVarGuard::unset("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS");
-            assert!(resolve_team_name_for_agent_tool(None, &context).is_none());
-        }
-        let _teams = EnvVarGuard::set("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
-        let _teammate_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
-            .lock()
-            .unwrap();
         let _team_lock = crate::utils::swarm::team_helpers::TEST_TEAM_HELPERS_LOCK
             .lock()
             .unwrap();
+        let _teammate_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
+            .lock()
+            .unwrap();
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let context = crate::tool::ToolUseContext::default();
+        {
+            let _teams = EnvVarGuard::unset("NYAN_EXPERIMENTAL_AGENT_TEAMS");
+            assert!(resolve_team_name_for_agent_tool(None, &context).is_none());
+        }
+        let _teams = EnvVarGuard::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         crate::utils::teammate::clear_dynamic_team_context();
         crate::utils::swarm::team_helpers::clear_team_tool_state_for_test();
         crate::utils::swarm::team_helpers::write_team_record(
@@ -2658,10 +2614,10 @@ mod tests {
     fn auto_background_ms_matches_official_env_gate() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
         {
-            let _auto = EnvVarGuard::unset("CLAUDE_AUTO_BACKGROUND_TASKS");
+            let _auto = EnvVarGuard::unset("NYAN_AUTO_BACKGROUND_TASKS");
             assert_eq!(get_auto_background_ms_for_agent_tool(), None);
         }
-        let _auto = EnvVarGuard::set("CLAUDE_AUTO_BACKGROUND_TASKS", "1");
+        let _auto = EnvVarGuard::set("NYAN_AUTO_BACKGROUND_TASKS", "1");
         assert_eq!(get_auto_background_ms_for_agent_tool(), Some(120_000));
     }
 
@@ -2731,7 +2687,7 @@ mod tests {
     fn execution_gate_rejects_bad_isolation_before_the_tool_runs() {
         use crate::services::tools::tool_execution::validate_tool_input_against_schema;
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        let _background = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+        let _background = EnvVarGuard::unset("NYAN_DISABLE_BACKGROUND_TASKS");
         let tool = agent_tool_schema();
 
         for bad in ["bogus", "", "remote"] {
@@ -2810,7 +2766,7 @@ mod tests {
         let _env_guard = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        crate::utils::process_env::remove("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES");
+        crate::utils::process_env::remove("NYAN_AGENT_LIST_IN_MESSAGES");
         let agents = vec![
             listed_agent("reviewer", "review code"),
             listed_agent("test-runner", "run tests"),
@@ -3164,11 +3120,11 @@ mod tests {
     #[test]
     fn agent_tool_rejects_nested_teammate_spawn_before_backend_execution() {
         use crate::tool::ToolCall;
-        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _teams = EnvVarGuard::set("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
         let _teammate_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
             .lock()
             .unwrap();
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let _teams = EnvVarGuard::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         crate::utils::teammate::clear_dynamic_team_context();
         crate::utils::teammate::set_dynamic_team_context(Some(
             crate::utils::teammate::DynamicTeamContext {
@@ -3219,7 +3175,7 @@ mod tests {
     async fn agent_tool_rejects_in_process_teammate_background_before_runtime() {
         use crate::tool::ToolCall;
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _teams = EnvVarGuard::set("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+        let _teams = EnvVarGuard::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         let teammate_context = crate::utils::teammate_context::create_teammate_context(
             crate::utils::teammate_context::CreateTeammateContextConfig {
                 agent_id: "worker@alpha".to_string(),
@@ -3576,8 +3532,6 @@ mod tests {
             worktree_path: None,
             worktree_branch: None,
             usage: None,
-            task_id: None,
-            session_url: None,
         });
 
         let (content, status) =
@@ -3617,8 +3571,6 @@ mod tests {
             worktree_path: Some("/tmp/worktree".to_string()),
             worktree_branch: Some("agent-plan".to_string()),
             usage: None,
-            task_id: None,
-            session_url: None,
         });
 
         let (content, status) =
@@ -3659,8 +3611,6 @@ mod tests {
             worktree_path: Some("/tmp/worktree".to_string()),
             worktree_branch: Some("worktree-agent".to_string()),
             usage: None,
-            task_id: None,
-            session_url: None,
         });
         let (content, status) =
             AgentTool.map_tool_result_to_tool_result_block_param(&output, "toolu_agent");
@@ -3708,11 +3658,11 @@ mod tests {
     /// truthy and wins; only `''` falls through to the context.
     #[test]
     fn team_name_resolution_uses_js_truthiness_not_trimming() {
-        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _teams = EnvVarGuard::set("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
         let _teammate_lock = crate::utils::teammate::TEST_TEAMMATE_CONTEXT_LOCK
             .lock()
             .unwrap();
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
+        let _teams = EnvVarGuard::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         crate::utils::teammate::clear_dynamic_team_context();
         let context = crate::tool::ToolUseContext::default();
 
@@ -4417,7 +4367,7 @@ mod tests {
         let config_home =
             std::env::temp_dir().join(format!("nyan-agent-terminal-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&config_home).unwrap();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", config_home.to_string_lossy().as_ref());
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", config_home.to_string_lossy().as_ref());
         let _dump_on = EnvVarGuard::set("NYAN_DUMP_PROMPTS", "1");
         crate::bootstrap::state::clear_invoked_skills(None);
         crate::services::api::dump_prompts::clear_all_dump_state();
@@ -4925,14 +4875,14 @@ mod tests {
     fn startup_gate_environment(
         cli_args: &[&str],
     ) -> (
-        [EnvVarGuard; 4],
+        [EnvVarGuard; 3],
         EnvVarGuard,
         EnvVarGuard,
         crate::bootstrap::state::IsInteractiveGuard,
     ) {
         let fork_env = fork_subagent::fork_gate_environment();
-        let background = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
-        let list_in_messages = EnvVarGuard::unset("CLAUDE_CODE_AGENT_LIST_IN_MESSAGES");
+        let background = EnvVarGuard::unset("NYAN_DISABLE_BACKGROUND_TASKS");
+        let list_in_messages = EnvVarGuard::unset("NYAN_AGENT_LIST_IN_MESSAGES");
         let interactive = crate::bootstrap::state::IsInteractiveGuard::capture();
         let args: Vec<String> = cli_args.iter().map(|arg| (*arg).to_string()).collect();
         // `stdout_is_tty: true` on purpose — under `just test` stdout is a pipe,
@@ -5068,7 +5018,7 @@ mod tests {
 
         // The no-TTY leg, with an empty argv so nothing else can explain it.
         let _fork_env = fork_subagent::fork_gate_environment();
-        let _background = EnvVarGuard::unset("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+        let _background = EnvVarGuard::unset("NYAN_DISABLE_BACKGROUND_TASKS");
         let _interactive = crate::bootstrap::state::IsInteractiveGuard::capture();
         crate::main::apply_is_interactive(&[], false);
         assert!(!fork_subagent::is_fork_subagent_enabled());

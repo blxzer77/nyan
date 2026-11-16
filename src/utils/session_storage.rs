@@ -4,7 +4,7 @@
 //!
 //! ## File path
 //!
-//! `~/.claude/projects/${sanitizedProjectPath}/${sessionId}.jsonl`
+//! `~/.nyan/projects/${sanitizedProjectPath}/${sessionId}.jsonl`
 //!
 //! ## JSONL shape
 //!
@@ -23,7 +23,7 @@
 //! - `agent-name`, `agent-color`, `agent-setting`, `mode`, `worktree-state`
 //! - `pr-link`, `file-history-snapshot`, `attribution-snapshot`
 //! - `content-replacement`, `marble-origami-commit`, `marble-origami-snapshot`
-//! - `speculation-accept`, `queue-operation`
+//! - `queue-operation`
 //!
 //! ## Implemented parity
 //!
@@ -53,7 +53,7 @@
 //! - [x] Runtime subagent transcript and agent metadata writes.
 //! - [x] Write queue and flush parity for the async `recordTranscript` path.
 //! - [x] `shouldSkipPersistence` gates for cleanupPeriodDays=0,
-//!       `--no-session-persistence`, and `CLAUDE_CODE_SKIP_PROMPT_HISTORY`.
+//!       `--no-session-persistence`, and `NYAN_SKIP_PROMPT_HISTORY`.
 //! - [x] Tracked `removeTranscriptMessage` tombstones with 64 KB tail splice,
 //!       bounded slow rewrite, and fire-and-forget/flush ordering.
 //! - [x] Canonical path and NFC normalization parity.
@@ -131,7 +131,7 @@ impl Project {
         if !SESSION_WRITE_ENABLED
             || crate::bootstrap::state::is_session_persistence_disabled()
             || crate::utils::env_utils::is_env_truthy(
-                crate::utils::process_env::var("CLAUDE_CODE_SKIP_PROMPT_HISTORY").as_deref(),
+                crate::utils::process_env::var("NYAN_SKIP_PROMPT_HISTORY").as_deref(),
             )
         {
             return true;
@@ -727,7 +727,6 @@ pub struct LoadedSession {
     pub agent_content_replacements: HashMap<String, Vec<serde_json::Value>>,
     pub context_collapse_commits: Vec<serde_json::Value>,
     pub context_collapse_snapshot: Option<serde_json::Value>,
-    pub speculation_accepts: Vec<serde_json::Value>,
     pub leaf_uuids: HashSet<String>,
 
     pub compact_boundaries: Vec<CompactBoundaryInfo>,
@@ -785,7 +784,7 @@ pub fn get_projects_dir() -> PathBuf {
         }
     }
 
-    crate::utils::env_utils::get_claude_config_home_dir().join("projects")
+    crate::utils::env_utils::get_config_home_dir().join("projects")
 }
 
 /// Maps to: CC `sessionStoragePortable.ts` `sanitizePath(name)`.
@@ -2322,7 +2321,7 @@ fn read_transcript_entries(path: &Path) -> Vec<serde_json::Value> {
 
     if file_size > SKIP_PRECOMPACT_THRESHOLD
         && !crate::utils::env_utils::is_env_truthy(
-            crate::utils::process_env::var("CLAUDE_CODE_DISABLE_PRECOMPACT_SKIP").as_deref(),
+            crate::utils::process_env::var("NYAN_DISABLE_PRECOMPACT_SKIP").as_deref(),
         )
     {
         return read_large_transcript_entries(path, file_size);
@@ -2984,10 +2983,6 @@ pub fn load_session_structured_from_path(path: &Path) -> LoadedSession {
             // ── Metadata: marble-origami-snapshot (last-wins) ──
             "marble-origami-snapshot" => {
                 session.context_collapse_snapshot = Some(entry.clone());
-            }
-
-            "speculation-accept" => {
-                session.speculation_accepts.push(entry.clone());
             }
 
             "attribution-snapshot" => {
@@ -3751,9 +3746,9 @@ pub fn record_transcript(
 /// `messages` must ALREADY be filtered. CC's `recordSidechainTranscript` runs
 /// `cleanMessagesForLogging` (`:1457`) → `isLoggableMessage` (`:4351-4367`)
 /// before it reaches `insertMessageChain`, and that filter is the privacy
-/// boundary: progress is never persisted, and non-`ant` builds withhold every
-/// attachment except `hook_additional_context` behind
-/// `CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT`. Typed callers must go through
+/// boundary: progress is never persisted, and every attachment is withheld
+/// except `hook_additional_context` behind
+/// `NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT`. Typed callers must go through
 /// [`record_typed_sidechain_transcript`], which owns both halves; handing raw
 /// entries straight to this function skips the filter (that is exactly how the
 /// AgentTool sidechain writer came to persist SubagentStart hook output with no
@@ -3832,13 +3827,12 @@ pub fn record_typed_sidechain_transcript(
     // lands on disk. Two producers reach it:
     //
     // - forked agents record assistant|user|progress (forkedAgent.ts:582-597),
-    //   and `isLoggableMessage` (:4351-4352) drops the progress on every
-    //   audience;
+    //   and `isLoggableMessage` (:4351-4352) drops the progress;
     // - AgentTool records its `initialMessages` once (runAgent.ts:735), and
     //   those END with the SubagentStart `hook_additional_context` attachment
-    //   when a hook produced context (:546-554). Attachments survive this
-    //   filter on `ant` builds and are withheld on every other one (:4357-4366)
-    //   unless `CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT` is set.
+    //   when a hook produced context (:546-554). Attachments are withheld by
+    //   this filter (:4357-4366) unless
+    //   `NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT` is set.
     //
     // The attachments the query LOOP yields never arrive: `runAgent.ts:771-790`
     // yields them and `continue`s without recording, and `isRecordableMessage`
@@ -3859,9 +3853,7 @@ pub fn record_typed_sidechain_transcript(
         cwd: stamp_cwd.to_string_lossy().to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         git_branch: None,
-        user_type: crate::utils::build_profile::build_audience()
-            .as_str()
-            .to_string(),
+        user_type: "external".to_string(),
         entrypoint: "nyan".to_string(),
         slug: None,
         team_name: None,
@@ -3937,9 +3929,7 @@ pub fn record_typed_messages_with_team(
         cwd: project_path.clone(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         git_branch: Some(crate::utils::git::get_branch()).filter(|branch| !branch.is_empty()),
-        user_type: crate::utils::build_profile::build_audience()
-            .as_str()
-            .to_string(),
+        user_type: "external".to_string(),
         entrypoint: "cli".to_string(),
         slug: None,
         team_name: team_info.and_then(|info| info.team_name.clone()),
@@ -4060,8 +4050,8 @@ impl SidechainTranscriptRecorder {
     ///
     /// The seed is the LAST INPUT message's uuid (`initialMessages.at(-1)?.uuid
     /// ?? null`), not the last row the write produced. The two differ whenever
-    /// `cleanMessagesForLogging` drops the tail: on a non-`ant` build whose
-    /// SubagentStart hook produced context, `initialMessages` ends with the
+    /// `cleanMessagesForLogging` drops the tail: when the SubagentStart hook
+    /// produced context, `initialMessages` ends with the
     /// `hook_additional_context` attachment (`runAgent.ts:546-554`), the filter
     /// withholds it (`:4357-4366`), and CC still parents the first loop message
     /// to that never-written uuid. Reproducing that is the point: the reader is
@@ -4236,9 +4226,7 @@ fn record_typed_message(
         cwd: project_path.clone(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         git_branch: Some(crate::utils::git::get_branch()).filter(|branch| !branch.is_empty()),
-        user_type: crate::utils::build_profile::build_audience()
-            .as_str()
-            .to_string(),
+        user_type: "external".to_string(),
         entrypoint: "cli".to_string(),
         slug: None,
         team_name: team_info.and_then(|info| info.team_name.clone()),
@@ -4373,18 +4361,6 @@ pub(crate) fn system_entry_json(
             set("content", serde_json::json!(content));
             set("commands", serde_json::json!(commands));
             set("level", serde_json::json!("info"));
-        }
-        SystemMessage::BridgeStatus {
-            content,
-            url,
-            upgrade_nudge,
-            ..
-        } => {
-            set("content", serde_json::json!(content));
-            set("url", serde_json::json!(url));
-            if let Some(upgrade_nudge) = upgrade_nudge {
-                set("upgradeNudge", serde_json::json!(upgrade_nudge));
-            }
         }
         SystemMessage::ScheduledTaskFire { content, .. } => {
             set("content", serde_json::json!(content));
@@ -4869,28 +4845,20 @@ fn typed_message_entry(
 
 /// The attachment half of CC `isLoggableMessage`
 /// (`utils/sessionStorage.ts:4351-4367`). Attachments are withheld from
-/// non-ant transcripts; the source's own comment gives the reason: "they have
+/// transcripts; the source's own comment gives the reason: "they have
 /// sensitive info for training that we don't want exposed to the public". The
 /// single exception is hook output, and only behind the env flag, because it
 /// is user-configured content that is useful on resume.
-///
-/// `getUserType() !== 'ant'` maps to the build audience here — the same
-/// projection `record_transcript`'s `user_type` field already uses. Note it
-/// is a compile-time feature rather than CC's runtime lookup, so the two
-/// audiences are covered by `just test-all-audiences`, not by one run.
 ///
 /// Shared by BOTH arms of `typed_message_entry` that emit
 /// `"type":"attachment"` rows (`Message::Attachment` and
 /// `Message::HookResult`), because CC keys the filter on the wire type,
 /// not on which union member carried the payload.
 fn attachment_row_is_withheld(payload: &serde_json::Value) -> bool {
-    if crate::utils::build_profile::build_audience().is_internal() {
-        return false;
-    }
     let is_hook_context =
         payload.get("type").and_then(|value| value.as_str()) == Some("hook_additional_context");
     let keep_hook_context = crate::utils::env_utils::is_env_truthy(
-        crate::utils::process_env::var("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT").as_deref(),
+        crate::utils::process_env::var("NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT").as_deref(),
     );
     !(is_hook_context && keep_hook_context)
 }
@@ -5132,23 +5100,6 @@ pub fn save_ai_generated_title(session_id: &str, ai_title: &str) -> anyhow::Resu
         session_id,
     );
     append_entry_to_file(&path, &entry)
-}
-
-/// Maps to CC speculation acceptance JSONL bookkeeping.
-pub fn record_speculation_accept(time_saved_ms: u64) -> anyhow::Result<()> {
-    let session_id = crate::bootstrap::state::get_session_id();
-    let path = active_session_file_path(
-        &crate::bootstrap::state::get_original_cwd().to_string_lossy(),
-        &session_id,
-    );
-    append_entry_to_file(
-        &path,
-        &serde_json::json!({
-            "type": "speculation-accept",
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "timeSavedMs": time_saved_ms,
-        }),
-    )
 }
 
 pub fn save_tag(project_path: &str, session_id: &str, tag: &str) -> anyhow::Result<()> {
@@ -6022,7 +5973,7 @@ mod tests {
         }
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         let restore = Restore {
             session_id: crate::bootstrap::state::get_session_id(),
             project_dir: crate::bootstrap::state::get_session_project_dir(),
@@ -6222,15 +6173,13 @@ mod tests {
 
         for message in [user, system, attachment] {
             let expected = message.uuid().to_string();
-            // CC `isLoggableMessage` withholds attachments from non-ant
-            // transcripts (sessionStorage.ts:4357-4366), so on an external
-            // build there is no entry to check. Assert that this is the ONLY
-            // message kind that may go missing, and only on that build.
+            // CC `isLoggableMessage` withholds attachments from transcripts
+            // (sessionStorage.ts:4357-4366), so there is no entry to check.
+            // Assert that this is the ONLY message kind that may go missing.
             let Some((entry, uuid)) = typed_message_entry(&message) else {
                 assert!(
-                    matches!(message, Message::Attachment(_))
-                        && !crate::utils::build_profile::build_audience().is_internal(),
-                    "only attachments, and only on an external build, are unloggable here"
+                    matches!(message, Message::Attachment(_)),
+                    "only attachments are unloggable here"
                 );
                 continue;
             };
@@ -6674,6 +6623,7 @@ mod tests {
 
     #[test]
     fn find_project_dir_uses_prefix_fallback_only_for_long_paths() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("nyan-find-project-{}", Uuid::new_v4()));
         let projects = root.join("projects");
         let _guard = set_test_projects_dir_override(projects.clone());
@@ -6748,13 +6698,13 @@ mod tests {
     fn should_skip_persistence_honors_bootstrap_and_prompt_history_gates() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _skip_history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
-        crate::utils::process_env::set("CLAUDE_CODE_SKIP_PROMPT_HISTORY", "1");
+        crate::utils::process_env::set("NYAN_SKIP_PROMPT_HISTORY", "1");
         assert!(!is_session_write_enabled());
-        crate::utils::process_env::remove("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        crate::utils::process_env::remove("NYAN_SKIP_PROMPT_HISTORY");
 
         crate::bootstrap::state::set_session_persistence_disabled(true);
         assert!(!is_session_write_enabled());
@@ -6778,7 +6728,7 @@ mod tests {
         }
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         let restore = Restore {
             session_id: crate::bootstrap::state::get_session_id(),
@@ -6852,7 +6802,7 @@ mod tests {
         }
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         let restore = Restore {
             session_id: crate::bootstrap::state::get_session_id(),
@@ -7379,6 +7329,7 @@ mod tests {
     /// the /resume picker: `if (enriched.teamName) return null`.
     #[test]
     fn enrichment_filters_team_sessions_like_official() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("nyan-team-filter-{}", Uuid::new_v4()));
         let _guard = set_test_projects_dir_override(root.join("projects"));
         let project_path = "/tmp/team-filter-project";
@@ -7417,6 +7368,7 @@ mod tests {
 
     #[test]
     fn progressive_loading_enriches_fifty_then_continues_without_duplicates() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root =
             std::env::temp_dir().join(format!("nyan-progressive-sessions-{}", Uuid::new_v4()));
         let _guard = set_test_projects_dir_override(root.join("projects"));
@@ -7580,6 +7532,7 @@ mod tests {
 
     #[test]
     fn subagent_transcript_paths_and_metadata_match_official_sidecar_shape() {
+        let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!("nyan-subagent-session-{}", Uuid::new_v4()));
         let _guard = set_test_projects_dir_override(root.join("projects"));
         let project_path = "/tmp/project with spaces";
@@ -7676,7 +7629,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _skip_history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
@@ -7788,7 +7741,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _skip_history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
@@ -7932,7 +7885,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _skip_history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
@@ -8075,10 +8028,9 @@ mod tests {
     /// paths: a failed write, a batch the privacy filter emptied, and — the one
     /// this exercises — an `initialMessages` tail the filter withholds.
     ///
-    /// Both audiences run this: `hook_additional_context` IS written on `ant`
-    /// and withheld elsewhere (`:4357-4366`), and the cursor must be the
-    /// attachment's uuid either way. On a non-`ant` build that means the first
-    /// loop row names a parent no row carries — CC's own outcome, and one the
+    /// `hook_additional_context` is withheld (`:4357-4366`), yet the cursor
+    /// must still be the attachment's uuid. That means the first loop row
+    /// names a parent no row carries — CC's own outcome, and one the
     /// leaf-to-root reader (`getAgentTranscript` `:4210-4224`) is sensitive to,
     /// so "repairing" it would make the port reconstruct a different prefix
     /// than CC from the same run.
@@ -8088,8 +8040,8 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
-        let _hook_context = EnvVarGuard::unset("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT");
+        let _skip_history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
+        let _hook_context = EnvVarGuard::unset("NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
@@ -8136,20 +8088,14 @@ mod tests {
         futures::executor::block_on(flush_session_storage()).unwrap();
 
         let rows = read_jsonl(&get_agent_transcript_path(agent_id));
-        let internal = crate::utils::build_profile::build_audience().is_internal();
-        let expected_uuids: Vec<&str> = if internal {
-            vec!["prompt-uuid", attachment_uuid.as_str(), "assistant-uuid"]
-        } else {
-            vec!["prompt-uuid", "assistant-uuid"]
-        };
         assert_eq!(
             rows.iter()
                 .map(|row| row["uuid"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            expected_uuids,
+            vec!["prompt-uuid", "assistant-uuid"],
             "the privacy filter is the only thing that decides what is written"
         );
-        // Identical on both audiences — the cursor never consults the write.
+        // The cursor never consults the write.
         assert_eq!(
             rows.last().unwrap()["parentUuid"].as_str(),
             Some(attachment_uuid.as_str())
@@ -8184,7 +8130,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _skip_history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
@@ -8302,7 +8248,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _write_enabled = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _skip_history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _skip_history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         crate::bootstrap::state::set_session_persistence_disabled(false);
         assert!(is_session_write_enabled());
 
@@ -8871,6 +8817,49 @@ mod tests {
     }
 
     #[test]
+    fn load_session_structured_ignores_legacy_speculation_accept_entries() {
+        let path = std::env::temp_dir().join(format!(
+            "nyan-session-legacy-speculation-{}.jsonl",
+            Uuid::new_v4()
+        ));
+        let entries = [
+            json!({
+                "type": "user",
+                "uuid": "u1",
+                "parentUuid": null,
+                "timestamp": "2026-07-18T10:00:00Z",
+                "message": {"role": "user", "content": "hello"}
+            }),
+            json!({
+                "type": "speculation-accept",
+                "timestamp": "2026-07-18T10:01:00Z",
+                "timeSavedMs": 250
+            }),
+            json!({
+                "type": "assistant",
+                "uuid": "a1",
+                "parentUuid": "u1",
+                "timestamp": "2026-07-18T10:02:00Z",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}]}
+            }),
+        ];
+        let contents = entries
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&path, format!("{contents}\n")).unwrap();
+
+        let session = load_session_structured_from_path(&path);
+        let _ = fs::remove_file(&path);
+
+        assert_eq!(session.messages.len(), 2);
+        let chain = build_conversation_chain(&session, "a1");
+        assert_eq!(uuids(&chain), vec!["u1", "a1"]);
+        assert_eq!(chain, vec![entries[0].clone(), entries[2].clone()]);
+    }
+
+    #[test]
     fn load_session_structured_bridges_legacy_progress_entries_like_official() {
         let session_id = "progress-bridge-session";
         let path = std::env::temp_dir().join(format!(
@@ -9189,21 +9178,17 @@ mod tests {
 
     /// Maps to: CC `isLoggableMessage` (sessionStorage.ts:4357-4366).
     ///
-    /// Attachments are withheld from non-ant transcripts — the source's comment
+    /// Attachments are withheld from transcripts — the source's comment
     /// gives the reason: "they have sensitive info for training that we don't
     /// want exposed to the public". Hook output is the single exception, and
-    /// only behind `CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT`, because it is
+    /// only behind `NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT`, because it is
     /// user-configured content worth having on resume.
-    ///
-    /// `getUserType() !== 'ant'` is the build audience here, which is a
-    /// compile-time feature — so this asserts against the CURRENT build and
-    /// both sides are covered by `just test-all-audiences`.
     #[test]
     fn attachments_are_withheld_from_external_transcripts_like_official() {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        crate::utils::process_env::remove("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT");
+        crate::utils::process_env::remove("NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT");
 
         let plain = crate::types::message::Message::Attachment(
             crate::types::message::AttachmentMessage::new(
@@ -9215,24 +9200,22 @@ mod tests {
                 serde_json::json!({"type": "hook_additional_context", "content": "hook output"}),
             ),
         );
-        let internal = crate::utils::build_profile::build_audience().is_internal();
 
-        // Flag off: an external build logs neither.
-        assert_eq!(typed_message_entry(&plain).is_some(), internal);
-        assert_eq!(typed_message_entry(&hook).is_some(), internal);
+        // Flag off: neither is logged.
+        assert!(typed_message_entry(&plain).is_none());
+        assert!(typed_message_entry(&hook).is_none());
 
         // Flag on: it opens the hook exception ONLY — not attachments at large.
-        crate::utils::process_env::set("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT", "1");
-        assert_eq!(
-            typed_message_entry(&plain).is_some(),
-            internal,
+        crate::utils::process_env::set("NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT", "1");
+        assert!(
+            typed_message_entry(&plain).is_none(),
             "the env flag is not a blanket opt-in for attachments"
         );
         assert!(
             typed_message_entry(&hook).is_some(),
-            "hook_additional_context is loggable on every audience once the flag is set"
+            "hook_additional_context is loggable once the flag is set"
         );
-        crate::utils::process_env::remove("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT");
+        crate::utils::process_env::remove("NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT");
     }
 
     /// Maps to: CC `isLoggableMessage` (sessionStorage.ts:4351-4367).
@@ -9242,17 +9225,15 @@ mod tests {
     /// `hook_result` union member of types/message.ts:119 has no runtime
     /// producer), and the filter keys on that WIRE type. So the
     /// `Message::HookResult` arm — which writes `"type":"attachment"` —
-    /// takes the same withholding as the `Attachment` arm: an external
-    /// build writes nothing, except `hook_additional_context` behind
-    /// `CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT`; an internal build
-    /// writes everything. Asserted against the CURRENT build audience;
-    /// both sides run under `just test-all-audiences`.
+    /// takes the same withholding as the `Attachment` arm: nothing is
+    /// written, except `hook_additional_context` behind
+    /// `NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT`.
     #[test]
     fn hook_results_take_the_attachment_withholding_like_official() {
         let _lock = TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        crate::utils::process_env::remove("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT");
+        crate::utils::process_env::remove("NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT");
 
         // The SessionStart projection's two payload shapes
         // (session_start.rs#hook_result_messages ↔ sessionStart.ts:164-171).
@@ -9274,69 +9255,41 @@ mod tests {
                 "hookEvent": "SessionStart"
             })),
         );
-        let internal = crate::utils::build_profile::build_audience().is_internal();
 
-        // Flag off: an external build withholds both hook rows.
-        assert_eq!(typed_message_entry(&context).is_some(), internal);
-        assert_eq!(typed_message_entry(&system).is_some(), internal);
+        // Flag off: both hook rows are withheld.
+        assert!(typed_message_entry(&context).is_none());
+        assert!(typed_message_entry(&system).is_none());
 
         // Flag on: only hook_additional_context comes through — the same
-        // single exception the Attachment arm grants.
-        crate::utils::process_env::set("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT", "1");
-        assert!(
-            typed_message_entry(&context).is_some(),
-            "hook_additional_context is loggable on every audience once the flag is set"
-        );
+        // single exception the Attachment arm grants. The row keeps CC's wire
+        // shape: hook results have no wire type of their own — they are
+        // attachment rows.
+        crate::utils::process_env::set("NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT", "1");
+        let (entry, _) =
+            typed_message_entry(&context).expect("hook_additional_context is loggable");
         assert_eq!(
-            typed_message_entry(&system).is_some(),
-            internal,
+            entry.get("type").and_then(serde_json::Value::as_str),
+            Some("attachment")
+        );
+        assert!(
+            typed_message_entry(&system).is_none(),
             "the env flag opens the hook-context exception only"
         );
-        crate::utils::process_env::remove("CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT");
-
-        // The row that IS written keeps CC's wire shape: hook results have no
-        // wire type of their own — they are attachment rows.
-        if internal {
-            let (entry, _) = typed_message_entry(&system).expect("internal build writes hook rows");
-            assert_eq!(
-                entry.get("type").and_then(serde_json::Value::as_str),
-                Some("attachment")
-            );
-        }
+        crate::utils::process_env::remove("NYAN_SAVE_HOOK_ADDITIONAL_CONTEXT");
     }
 
     #[test]
-    fn typed_attachment_transcript_round_trip_preserves_open_payload() {
-        let payload = serde_json::json!({
-            "type": "task_status",
-            "taskId": "agent-1",
-            "status": "running",
-            "deltaSummary": {"nested": [1, 2, 3]},
-            "futureField": {"kept": true}
-        });
+    fn typed_attachment_is_not_written_to_transcript_values() {
+        // CC `isLoggableMessage` (sessionStorage.ts:4357-4366) keeps
+        // attachments out of transcripts entirely.
         let messages = vec![crate::types::message::Message::Attachment(
-            crate::types::message::AttachmentMessage::new(payload.clone()),
+            crate::types::message::AttachmentMessage::new(serde_json::json!({
+                "type": "task_status",
+                "taskId": "agent-1",
+                "status": "running",
+            })),
         )];
-
-        let entries = typed_messages_as_transcript_values(&messages);
-        if !crate::utils::build_profile::build_audience().is_internal() {
-            // CC `isLoggableMessage` (sessionStorage.ts:4357-4366) keeps
-            // attachments out of non-ant transcripts entirely, so there is
-            // nothing to round-trip on this build. The payload fidelity this
-            // test covers is exercised by the internal-audience run
-            // (`just test-all-audiences`).
-            assert!(entries.is_empty());
-            return;
-        }
-        assert_eq!(entries[0].get("attachment"), Some(&payload));
-        let restored = crate::utils::conversation::into_typed_messages(entries);
-        // The malformed-for-`task_status` payload rides `Attachment::Unknown`
-        // (batch D2), whose wire projection is the untouched open payload.
-        assert!(matches!(
-            restored.as_slice(),
-            [crate::types::message::Message::Attachment(attachment)]
-                if attachment.attachment.to_wire() == payload
-        ));
+        assert!(typed_messages_as_transcript_values(&messages).is_empty());
     }
 
     #[test]
@@ -9476,6 +9429,8 @@ mod tests {
         // PATH (utils/git.ts:212-216), so the fake git must be on PATH when the
         // process starts: the parent writes it and re-runs this test as a child.
         const PROBE: &str = "NYAN_TITLE_SEARCH_ROOT";
+        // Held across the child run: the parent bakes this cwd into the fake git.
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
         let cwd = crate::bootstrap::state::get_original_cwd()
             .to_string_lossy()
             .into_owned();
@@ -9523,7 +9478,6 @@ mod tests {
             );
             return;
         };
-        let _lock = TEST_ENV_LOCK.lock().unwrap();
         let root = PathBuf::from(root);
         let _projects = set_test_projects_dir_override(root.join("projects"));
         let sibling = root.join("sibling").to_string_lossy().into_owned();
@@ -9803,7 +9757,7 @@ mod tests {
         let crate::types::message::Message::User(user) = &restored[0] else {
             panic!("continuation must remain a meta user message");
         };
-        let api = crate::services::api::claude::user_message_to_message_param(
+        let api = crate::services::api::request::user_message_to_message_param(
             user,
             false,
             false,
@@ -9827,7 +9781,7 @@ mod tests {
     fn cold_sentinel_matches_official_identity_usage_and_api_roundtrip() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _history = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _history = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         struct Restore {
             session_id: String,
             project_dir: Option<PathBuf>,
@@ -9858,10 +9812,17 @@ mod tests {
         clear_session_metadata();
         clear_session_messages_cache();
         crate::bootstrap::state::switch_session(&id, Some(restore.root.clone()));
-        let recovered = crate::utils::conversation::deserialize_messages(vec![json!({
-            "type":"user", "uuid":"interrupted-user", "message":{"role":"user","content":"hello"},
-            "timestamp":"2026-09-12T00:00:00.000Z"
-        })]);
+        // Resume no longer synthesizes this sentinel, but transcripts written
+        // before that change still carry it; it must keep round-tripping.
+        let recovered = vec![
+            json!({
+                "type":"user", "uuid":"interrupted-user", "message":{"role":"user","content":"hello"},
+                "timestamp":"2026-09-12T00:00:00.000Z"
+            }),
+            crate::utils::messages::create_assistant_message_value(
+                crate::utils::messages::NO_RESPONSE_REQUESTED.to_string(),
+            ),
+        ];
         let raw = recovered.last().unwrap();
         let typed = crate::utils::conversation::into_typed_messages(recovered.clone());
         let sentinel = typed.last().unwrap();
@@ -9930,7 +9891,7 @@ mod tests {
             ),
             (0, 0, 0, 0)
         );
-        let param = crate::services::api::claude::assistant_message_to_message_param(
+        let param = crate::services::api::request::assistant_message_to_message_param(
             assistant,
             false,
             false,

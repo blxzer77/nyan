@@ -2047,10 +2047,8 @@ mod tests {
         assert_eq!(drop_text_in_brief_turns(legacy.clone()), legacy);
     }
 
-    #[cfg(feature = "anthropic_internal")]
     struct TestGlobalConfigGuard(Option<crate::utils::config::GlobalConfig>);
 
-    #[cfg(feature = "anthropic_internal")]
     impl Drop for TestGlobalConfigGuard {
         fn drop(&mut self) {
             crate::utils::config::replace_test_global_config(self.0.take());
@@ -2474,7 +2472,7 @@ mod tests {
         // MessagesImpl / MessageRows / MessageRow bailouts, as CC's
         // `useSyncExternalStore` subscriber re-renders past memoized parents.
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let store = crate::state::store::AppStore::new(worker_waiting_on("toolu_1"), None);
         // Frame-driven, no timers: take the mount frame, answer the worker
         // request, then take the frame that write produces. The same write
@@ -2586,7 +2584,7 @@ mod tests {
         // `message-rows` Memo did. Frame-driven: the same write flips the
         // sibling echo, so a frame always follows.
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         for is_loading in [false, true] {
             let store = crate::state::store::AppStore::new(Default::default(), None);
             let (queued, started) = futures::executor::block_on(async {
@@ -2703,7 +2701,7 @@ mod tests {
         // `message-rows` Memo (loading), its own static key and CachedSubtree;
         // the theme name in those keys is what carries the change through.
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         for is_loading in [false, true] {
             let (before, after) = futures::executor::block_on(async {
                 let (keys, events) = async_channel::unbounded();
@@ -2797,7 +2795,7 @@ mod tests {
         // in place, it does not remount it, so a task that has since finished
         // still reads "still running" in that historical row.
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let store = crate::state::store::AppStore::new(Default::default(), None);
         store.replace_with(|state| {
             Arc::make_mut(&mut state.tasks).insert(
@@ -2881,7 +2879,7 @@ mod tests {
         // The logo's dim text previews light and returns to dark on cancel,
         // as every themed descendant does under CC's ThemeProvider.
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let colors = futures::executor::block_on(async {
             let (keys, events) = async_channel::unbounded();
             let mut probe = element!(ThemeFlipProbe(show_logo: true));
@@ -2925,7 +2923,7 @@ mod tests {
         // CC AssistantToolUseMessage.tsx:58-60,122: the row reads
         // `pendingWorkerRequest` from AppState; Messages passes nothing.
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let current_theme = *theme::current();
         let messages = Arc::new(vec![tool_use_named_with_input(
             "assistant-tool",
@@ -2966,7 +2964,7 @@ mod tests {
     #[test]
     fn messages_classifier_checking_tool_use_renders_official_auxiliary_row() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let current_theme = *theme::current();
         let messages = Arc::new(vec![tool_use_named_with_input(
             "assistant-tool",
@@ -3013,12 +3011,12 @@ mod tests {
     fn messages_tool_use_dot_does_not_dim_title_in_mock_rows() {
         // Guard against sibling env pollution (Review A F3):
         // fullscreen_collapse_surfaces_git_outcomes_without_double_counting_bash
-        // sets CLAUDE_CODE_NO_FLICKER=1 under TEST_ENV_LOCK; without holding
+        // sets NYAN_NO_FLICKER=1 under TEST_ENV_LOCK; without holding
         // the lock and forcing a falsy value here, the lone Bash fixture
         // (input: None) becomes collapsible via is_fullscreen_env_enabled()
         // and the "Bash" row assertion fails in parallel runs.
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let current_theme = *theme::current();
         for status in [ToolUseStatus::Running, ToolUseStatus::Queued] {
             let messages = Arc::new(vec![tool_use_named_with_input(
@@ -3304,7 +3302,7 @@ mod tests {
     #[test]
     fn transcript_dividers_cap_raw_rows_and_use_configured_shortcut_matches_official() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let input = Arc::new(collapsible_read_transcript(20));
         let render = |show_all_in_transcript: bool| {
             let input = Arc::clone(&input);
@@ -3383,7 +3381,7 @@ mod tests {
         );
 
         let fullscreen_env_only = {
-            let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "1");
+            let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "1");
             render(false).to_string()
         };
         assert!(
@@ -3469,12 +3467,11 @@ mod tests {
     #[test]
     fn compact_boundary_slice_hides_history_only_outside_verbose() {
         // The slice is also skipped in fullscreen (`Messages.tsx:579-584`
-        // `verbose || isFullscreenEnvEnabled()`), and fullscreen defaults ON
-        // for ant builds (CLAUDE_CODE_NO_FLICKER's audience default). Pin the
-        // env so BOTH audiences exercise the main-screen slice this test is
-        // about; the fullscreen skip itself is fullscreen.rs's contract.
+        // `verbose || isFullscreenEnvEnabled()`). Pin the env off so the
+        // main-screen slice this test is about is exercised; the fullscreen
+        // skip itself is fullscreen.rs's contract.
         let _env_guard = TEST_ENV_LOCK.lock().unwrap();
-        crate::utils::process_env::set("CLAUDE_CODE_NO_FLICKER", "0");
+        crate::utils::process_env::set("NYAN_NO_FLICKER", "0");
         let boundary = RenderableMessage {
             uuid: "boundary".to_string(),
             kind: RenderableMessageKind::System(
@@ -3511,7 +3508,7 @@ mod tests {
         // Without a boundary nothing is sliced away.
         let no_boundary = vec![RenderableMessage::user("only", "prompt")];
         assert_eq!(compact_aware_messages(no_boundary.clone(), false).len(), 1);
-        crate::utils::process_env::remove("CLAUDE_CODE_NO_FLICKER");
+        crate::utils::process_env::remove("NYAN_NO_FLICKER");
     }
 
     #[test]
@@ -4262,7 +4259,7 @@ mod tests {
     #[test]
     fn fullscreen_collapse_surfaces_git_outcomes_without_double_counting_bash() {
         let _lock = TEST_ENV_LOCK.lock().unwrap();
-        let _env = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "1");
+        let _env = EnvVarGuard::set("NYAN_NO_FLICKER", "1");
         let input = vec![
             tool_use_named(
                 "bash-commit",
@@ -4582,7 +4579,7 @@ mod tests {
         ));
         let config = root.join("config");
         let config_text = config.display().to_string();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_text);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_text);
         let session_file = config.join("session-memory/nested/session.md");
         let session_search_dir = config.join("session-memory/nested");
         let session_file_text = session_file.display().to_string();
@@ -4646,7 +4643,7 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         let config_text = root.join("config").display().to_string();
-        let _config = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &config_text);
+        let _config = EnvVarGuard::set("NYAN_CONFIG_DIR", &config_text);
         let session_file = root
             .join("config/session-memory/nested/session.md")
             .display()
@@ -4680,26 +4677,17 @@ mod tests {
         assert_eq!(collapsed[1].uuid, "u1");
     }
 
-    #[cfg(feature = "anthropic_internal")]
     #[test]
-    fn collapse_read_search_team_memory_tracking_ignores_growthbook_delivery() {
+    fn collapse_read_search_team_memory_tracking_follows_switch_table() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "nyan-collapse-team-memory-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let root_text = root.display().to_string();
-        let _override = EnvVarGuard::set("CLAUDE_COWORK_MEMORY_PATH_OVERRIDE", &root_text);
-        let _enabled = EnvVarGuard::set("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "false");
-        let mut config = crate::utils::config::GlobalConfig::default();
-        config.cached_growth_book_features = Some(std::collections::HashMap::from([(
-            "tengu_herring_clock".to_string(),
-            serde_json::json!(true),
-        )]));
-        config.growth_book_overrides = Some(std::collections::HashMap::from([(
-            "tengu_herring_clock".to_string(),
-            serde_json::json!(true),
-        )]));
+        let _override = EnvVarGuard::set("NYAN_MEMORY_PATH_OVERRIDE", &root_text);
+        let _enabled = EnvVarGuard::set("NYAN_DISABLE_AUTO_MEMORY", "false");
+        let config = crate::utils::config::GlobalConfig::default();
         let _config = TestGlobalConfigGuard(crate::utils::config::replace_test_global_config(
             Some(config),
         ));
@@ -4738,9 +4726,9 @@ mod tests {
 
         let collapsed = collapse_read_search_groups(input);
 
-        // The path shape is still a team-memory path; only the cohort gate,
-        // which no longer reads the injected GrowthBook cache, keeps the
-        // team-memory counters at zero.
+        // The path shape is still a team-memory path; only the
+        // source-controlled cohort switch keeps the team-memory counters at
+        // zero.
         assert!(crate::memdir::team_mem_paths::is_team_mem_path(
             std::path::Path::new(&team_file)
         ));
@@ -4857,7 +4845,7 @@ mod tests {
     #[test]
     fn collapse_read_search_keeps_non_search_bash_visible_on_main_screen() {
         let _env_lock = TEST_ENV_LOCK.lock().unwrap();
-        let _fullscreen = EnvVarGuard::set("CLAUDE_CODE_NO_FLICKER", "0");
+        let _fullscreen = EnvVarGuard::set("NYAN_NO_FLICKER", "0");
         let input = vec![
             tool_use_named("bash-run", "toolu_bash_run", "Bash", "npm test"),
             tool_result("result-run", "toolu_bash_run", ToolResultStatus::Success),
@@ -4990,7 +4978,7 @@ mod tests {
                 uuid: "nested-memory".to_string(),
                 kind: RenderableMessageKind::Attachment(Attachment::NestedMemory {
                     path: "project-memory.md".to_string(),
-                    content: crate::utils::claudemd::MemoryFileInfo {
+                    content: crate::utils::agents_md::MemoryFileInfo {
                         path: "project-memory.md".to_string(),
                         memory_type: "Project".to_string(),
                         content: String::new(),
@@ -5181,5 +5169,100 @@ mod tests {
         assert!(is_user_continuation(&rows, 1));
         assert!(has_content_after_index(&rows, 2));
         assert!(!has_content_after_index(&rows, 0));
+    }
+
+    /// Synthetic history of `count` assistant messages, each a ~`thinking_bytes`
+    /// thinking block (long lines) followed by a short text answer; the last
+    /// answer is `final-answer-sentinel`.
+    fn thinking_heavy_history(count: usize, thinking_bytes: usize) -> Arc<Vec<RenderableMessage>> {
+        use crate::types::message::AssistantContent;
+        let line = "synthetic reasoning about nothing in particular, repeated to make a long line "
+            .repeat(4);
+        Arc::new(
+            (0..count)
+                .map(|index| {
+                    let thinking = format!("{line}\n").repeat(thinking_bytes / (line.len() + 1));
+                    let answer = if index + 1 == count {
+                        "final-answer-sentinel".to_string()
+                    } else {
+                        format!("answer {index}")
+                    };
+                    RenderableMessage::assistant_blocks(
+                        format!("a{index}"),
+                        vec![
+                            AssistantContent::Thinking {
+                                text: thinking,
+                                signature: String::new(),
+                            },
+                            AssistantContent::Text(answer),
+                        ],
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    /// Renders `Messages` at 60 columns; `None` keeps the default `AppState`.
+    fn render_messages_canvas(
+        messages: &Arc<Vec<RenderableMessage>>,
+        expand_thinking: Option<bool>,
+    ) -> iocraft::Canvas {
+        let current_theme = *theme::current();
+        let messages = Arc::clone(messages);
+        let initial_state = expand_thinking.map(|expand_thinking| {
+            let mut state = crate::state::app_state_store::AppState::default();
+            state.expand_thinking = expand_thinking;
+            state
+        });
+        element! {
+            ContextProvider(value: Context::owned(current_theme)) {
+                crate::state::app_state::AppStateProvider(
+                    initial_state: initial_state,
+                    children: crate::state::app_state::ProviderChildren::new(move || element! {
+                        Messages(messages: Arc::clone(&messages), hide_logo: true)
+                    }.into_any()),
+                )
+            }
+        }
+        .render(Some(60))
+    }
+
+    /// Regression: with default settings, a long thinking-heavy history must
+    /// stay far below iocraft's i16 canvas coordinate limit (32767 rows),
+    /// otherwise the whole screen goes blank.
+    #[test]
+    fn default_collapsed_thinking_keeps_long_history_canvas_small() {
+        let history = thinking_heavy_history(40, 60 * 1024);
+        let canvas = render_messages_canvas(&history, None);
+        let rendered = canvas.to_string();
+
+        assert!(
+            canvas.height() < 5000,
+            "collapsed thinking canvas too tall: {} rows",
+            canvas.height()
+        );
+        assert!(rendered.contains("∴ Thinking"), "collapsed hint missing");
+        assert!(!rendered.contains("synthetic reasoning"));
+        assert!(
+            rendered.contains("final-answer-sentinel"),
+            "last message not visible"
+        );
+    }
+
+    /// Opt-in `expandThinking=true` still expands (the contrast for the
+    /// default-collapsed regression above), at a small size to stay fast.
+    #[test]
+    fn expand_thinking_true_renders_full_thinking_blocks() {
+        let history = thinking_heavy_history(2, 60 * 1024);
+        let collapsed = render_messages_canvas(&history, Some(false));
+        let expanded = render_messages_canvas(&history, Some(true));
+
+        assert!(expanded.to_string().contains("synthetic reasoning"));
+        assert!(
+            expanded.height() > 1000 && expanded.height() > collapsed.height() * 20,
+            "expanded={} collapsed={}",
+            expanded.height(),
+            collapsed.height()
+        );
     }
 }

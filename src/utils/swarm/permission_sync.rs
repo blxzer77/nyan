@@ -8,7 +8,7 @@
 //! full team-file persistence is enabled.
 
 #[cfg(test)]
-use crate::utils::test_env::TestStateLock;
+use crate::utils::test_env::{TestLockRank, TestStateLock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -94,7 +94,7 @@ fn now_ms() -> u64 {
 /// Maps to: CC `permissionSync.ts#getPermissionDir`.
 pub fn get_permission_dir(team_name: &str) -> String {
     format!(
-        "~/.claude/teams/{}/permissions",
+        "~/.nyan/teams/{}/permissions",
         crate::utils::swarm::team_helpers::sanitize_name(team_name)
     )
 }
@@ -472,8 +472,8 @@ pub fn send_permission_response_via_mailbox(
 }
 
 #[cfg(test)]
-pub static TEST_PERMISSION_SYNC_LOCK: std::sync::LazyLock<TestStateLock> =
-    std::sync::LazyLock::new(TestStateLock::new);
+pub static TEST_PERMISSION_SYNC_LOCK: TestStateLock =
+    TestStateLock::new(TestLockRank::PermissionSync);
 
 #[cfg(test)]
 pub fn clear_permission_sync_for_test() {
@@ -496,7 +496,7 @@ mod tests {
             "nyan-permission-sync-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &root);
+        let config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &root);
         let io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         let write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::utils::swarm::team_helpers::clear_team_tool_state_for_test();

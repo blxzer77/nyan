@@ -502,7 +502,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         crate::hooks::use_swarm_permission_poller::clear_sandbox_permission_callbacks_for_test();
-        crate::utils::process_env::set("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+        crate::utils::process_env::set("NYAN_EXPERIMENTAL_AGENT_TEAMS", "1");
         crate::utils::teammate::set_dynamic_team_context(Some(
             crate::utils::teammate::DynamicTeamContext {
                 agent_id: "worker-1".into(),
@@ -521,7 +521,7 @@ mod tests {
             "nyan-swarm-worker-handler-{}",
             uuid::Uuid::new_v4().simple()
         ));
-        let _config_guard = EnvVarGuard::set("CLAUDE_CONFIG_DIR", &scratch_root);
+        let _config_guard = EnvVarGuard::set("NYAN_CONFIG_DIR", &scratch_root);
         let _io_guard = EnvVarGuard::set("NYAN_TEST_TEAM_FILE_IO", "1");
         let _write_guard = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
         crate::utils::swarm::team_helpers::clear_team_tool_state_for_test();
@@ -555,6 +555,6 @@ mod tests {
         assert!(store.get().pending_sandbox_request.is_none());
 
         crate::utils::teammate::set_dynamic_team_context(None);
-        crate::utils::process_env::remove("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS");
+        crate::utils::process_env::remove("NYAN_EXPERIMENTAL_AGENT_TEAMS");
     }
 }

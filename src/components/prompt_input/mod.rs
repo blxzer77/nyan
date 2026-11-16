@@ -36,11 +36,9 @@ pub mod use_maybe_truncate_input;
 pub mod use_prompt_input_placeholder;
 pub mod use_swarm_banner;
 pub mod utils;
-pub mod voice_indicator;
 
 use crate::commands::Command;
 use crate::components::base_text_input::{BaseInputState, BaseTextInput};
-use crate::components::bridge_dialog::{BridgeDialog, BridgeDialogSnapshot};
 use crate::components::global_search_dialog::GlobalSearchDialog;
 use crate::components::history_search_dialog::HistorySearchDialog;
 use crate::components::model_picker::{ModelPicker, ModelPickerResult};
@@ -54,9 +52,10 @@ use crate::components::prompt_input::prompt_input_stash_notice::PromptInputStash
 use crate::components::quick_open_dialog::QuickOpenDialog;
 #[cfg(test)]
 use crate::components::tasks::AsyncAgentDetailData;
+#[cfg(test)]
+use crate::components::tasks::background_tasks_dialog::BackgroundTaskDetailData;
 use crate::components::tasks::background_tasks_dialog::{
-    BackgroundTaskCategory, BackgroundTaskDetailData, BackgroundTasksDialog,
-    BackgroundTasksDialogItem,
+    BackgroundTaskCategory, BackgroundTasksDialog, BackgroundTasksDialogItem,
 };
 #[cfg(test)]
 use crate::components::tasks::task_status_utils::TaskStatus;
@@ -133,12 +132,7 @@ struct PromptStash {
 }
 
 /// Maps to: CC `components/tasks/BackgroundTaskStatus.tsx:49-57` — the footer
-/// pill's task set. Same source as the dialog items, minus (ant builds only)
-/// panel agents: `isPanelAgentTask` = local_agent with
-/// `agentType !== 'main-session'` (CC `LocalAgentTask.tsx:216-218`), excluded
-/// behind the build-time `USER_TYPE === 'ant'` define → the
-/// `anthropic_internal` cargo feature. The dialog does NOT apply this
-/// exclusion.
+/// pill's task set, projected from the same items as the dialog.
 fn prompt_pill_tasks(
     items: &[BackgroundTasksDialogItem],
 ) -> Vec<crate::tasks::pill_label::PillTask> {
@@ -149,15 +143,7 @@ fn prompt_pill_tasks(
             // Monitor-kind shells are not distinguished by the shell snapshot
             // yet (Bash parity batch); every shell counts as a plain shell.
             BackgroundTaskCategory::Shell => Some(PillTask::LocalBash { is_monitor: false }),
-            BackgroundTaskCategory::LocalAgent => {
-                if cfg!(feature = "anthropic_internal")
-                    && let BackgroundTaskDetailData::Agent(agent) = &item.detail
-                    && agent.agent_type.as_deref() != Some("main-session")
-                {
-                    return None;
-                }
-                Some(PillTask::LocalAgent)
-            }
+            BackgroundTaskCategory::LocalAgent => Some(PillTask::LocalAgent),
             // The items source only produces Shell + LocalAgent today.
             _ => None,
         })
@@ -441,12 +427,8 @@ pub struct PromptInputProps<'a> {
     /// Maps to: CC `PromptInputProps.apiKeyStatus`, owned by REPL's
     /// `use_credential_status` hook.
     pub credential_status: CredentialStatus,
-    /// Maps to: CC `PromptInput.tsx:239` `autoUpdaterResult` — REPL-owned
-    /// state (REPL.tsx:1408), prop-drilled to Footer → Notifications.
-    pub auto_updater_result: Option<crate::utils::auto_updater::AutoUpdaterResult>,
-    /// Maps to: CC `PromptInput.tsx:238` `onAutoUpdaterResult` — REPL
-    /// `setAutoUpdaterResult` (REPL.tsx:6829).
-    pub on_auto_updater_result: Handler<crate::utils::auto_updater::AutoUpdaterResult>,
+    /// REPL-owned newer release, prop-drilled to Footer → Notifications.
+    pub update_available: Option<crate::utils::auto_updater::UpdateAvailable>,
     /// Maps to: CC `PromptInput.tsx:229,317` `ideSelection` — REPL-owned state
     /// (REPL.tsx:1111), prop-drilled to Footer (`:3069`) → Notifications.
     pub ide_selection: Option<crate::hooks::use_ide_selection::IdeSelection>,
@@ -480,6 +462,9 @@ pub struct PromptInputProps<'a> {
     /// Test/runtime override; normal production reads the configured editor mode.
     pub vim_enabled_override: Option<bool>,
     pub on_submit: HandlerMut<'a, PromptSubmission>,
+    /// @nyan: Enter on an empty prompt with no suggestion to accept. REPL uses
+    /// it to continue a turn interrupted before resume.
+    pub on_empty_submit: HandlerMut<'a, ()>,
     pub on_exit: HandlerMut<'a, ()>,
     /// Maps to: CC `onShowMessageSelector` — empty-input double-Escape opens
     /// the rewind MessageSelector (PromptInput.tsx:1663).
@@ -504,11 +489,10 @@ pub struct PromptInputProps<'a> {
 }
 
 /// Maps to: CC PromptInput.tsx:1148-1160 `onChange` — cancel pending prompt
-/// suggestion / speculation work and reset autocomplete for the new text.
+/// suggestion work and reset autocomplete for the new text.
 /// Called from the text input's change event for typed edits, and from the
 /// render-body `prev_input` diff for programmatic ones.
 fn on_input_text_changed(
-    app_store: Option<&crate::state::store::AppStore>,
     text: &str,
     mut prev_input: iocraft::hooks::State<String>,
     mut typeahead_selection_reset: iocraft::hooks::Ref<bool>,
@@ -516,19 +500,6 @@ fn on_input_text_changed(
     mut help_open: iocraft::hooks::State<bool>,
 ) {
     crate::services::prompt_suggestion::prompt_suggestion::abort_prompt_suggestion();
-    if let Some(active) = app_store.and_then(|store| {
-        let state = store.get();
-        match &state.speculation {
-            crate::state::app_state_store::SpeculationState::Active(active) => Some(active.clone()),
-            crate::state::app_state_store::SpeculationState::Idle => None,
-        }
-    }) {
-        active.abort_controller.abort();
-        let context = active.cache_safe_params.tool_use_context.clone();
-        tokio::spawn(async move {
-            crate::services::prompt_suggestion::speculation::abort_speculation(&context).await;
-        });
-    }
     prev_input.set(text.to_string());
     typeahead_selection_reset.set(true);
     autocomplete_dismissed_input.set(None);
@@ -566,15 +537,6 @@ pub fn PromptInput<'a>(
     // the const value is only the provider-less fallback, not a frozen copy of
     // the first merged command array.
     let commands = props.commands.clone().unwrap_or(initial_commands_fallback);
-    // Maps to: CC PromptInput.tsx:367 `const [isAutoUpdating, setIsAutoUpdating]
-    // = useState(false)` — PromptInput-local; the setter travels down as
-    // `onChangeIsUpdating` (:3056) and the updater children's check loops
-    // drive it (AutoUpdater.tsx:112/:170, NativeAutoUpdater.tsx:99/:166).
-    let is_auto_updating = hooks.use_state(|| false);
-    let on_change_is_updating: Handler<bool> = Handler::from(move |value: bool| {
-        let mut is_auto_updating = is_auto_updating;
-        is_auto_updating.set(value);
-    });
     let app_store = hooks
         .try_use_context::<crate::state::store::AppStore>()
         .map(|store| store.clone());
@@ -673,7 +635,6 @@ pub fn PromptInput<'a>(
     // selected row's detail instead of the list (tui.md §6.2).
     let mut background_tasks_initial_detail = hooks.use_state(|| Option::<String>::None);
     let mut show_teams_dialog = hooks.use_state(|| false);
-    let mut show_bridge_dialog = hooks.use_state(|| false);
     // PromptInput-scoped footer layout wake (L1, PORTING.md): created before
     // any dialog early-return so the hook slot order is stable; injected via
     // a narrow ContextProvider around the Footer subtree below. Producers
@@ -684,44 +645,6 @@ pub fn PromptInput<'a>(
     // Maps to: CC `useAppState(s => s.footerSelection)` — AppState so pills
     // rendered outside PromptInput can read focus without prop-drilling.
     let raw_footer_selection = use_app_state(&mut hooks, |state| state.footer_selection);
-    // Maps to: CC PromptInput `bridgeFooterVisible` — must match pill visibility
-    // so bridge is not an invisible selection stop.
-    let bridge_footer_visible = use_app_state(&mut hooks, |state| {
-        state.repl_bridge_connected
-            && (state.repl_bridge_explicit || state.repl_bridge_reconnecting)
-    });
-    // CC `AppState.tsx:138-148`: "Do NOT return new objects from the selector
-    // -- Object.is will always see them as changed. … For multiple independent
-    // fields, call the hook multiple times." One selector per field, and the
-    // snapshot is assembled OUTSIDE the selectors so `BridgeDialog` keeps
-    // taking it as a pure input.
-    let bridge_connected = use_app_state(&mut hooks, |state| state.repl_bridge_connected);
-    let bridge_session_active = use_app_state(&mut hooks, |state| state.repl_bridge_session_active);
-    let bridge_reconnecting = use_app_state(&mut hooks, |state| state.repl_bridge_reconnecting);
-    let bridge_connect_url =
-        use_app_state(&mut hooks, |state| state.repl_bridge_connect_url.clone());
-    let bridge_session_url =
-        use_app_state(&mut hooks, |state| state.repl_bridge_session_url.clone());
-    let bridge_error = use_app_state(&mut hooks, |state| state.repl_bridge_error.clone());
-    let bridge_explicit = use_app_state(&mut hooks, |state| state.repl_bridge_explicit);
-    let bridge_environment_id =
-        use_app_state(&mut hooks, |state| state.repl_bridge_environment_id.clone());
-    let bridge_session_id = use_app_state(&mut hooks, |state| state.repl_bridge_session_id.clone());
-    let bridge_verbose = use_app_state(&mut hooks, |state| state.verbose);
-    let bridge_dialog_snapshot = BridgeDialogSnapshot {
-        connected: bridge_connected,
-        session_active: bridge_session_active,
-        reconnecting: bridge_reconnecting,
-        connect_url: bridge_connect_url,
-        session_url: bridge_session_url,
-        error: bridge_error,
-        explicit: bridge_explicit,
-        environment_id: bridge_environment_id,
-        session_id: bridge_session_id,
-        verbose: bridge_verbose,
-        repo_name: None,
-        branch_name: None,
-    };
     let external_editor_hint_signature = hooks.use_state(|| Option::<String>::None);
     let editor_runtime = hooks
         .try_use_context::<ExternalEditorRuntime>()
@@ -845,14 +768,13 @@ pub fn PromptInput<'a>(
     let background_task_items =
         crate::components::tasks::background_tasks_dialog::background_task_items(&tasks);
     // Maps to: CC BackgroundTaskStatus.tsx:49-57 `runningTasks` — the pill's
-    // set (ant builds exclude panel agents); the pill label + count read it.
+    // set; the pill label + count read it.
     let pill_tasks = prompt_pill_tasks(&background_task_items);
     let teams_dialog_data = prompt_teams_data();
     let prompt_dialog_active = search_dialog_active
         || show_model_picker.get()
         || show_background_tasks.get()
         || show_teams_dialog.get()
-        || show_bridge_dialog.get()
         || is_external_editor_active.get();
     (props.on_modal_overlay_change)(prompt_dialog_active);
 
@@ -1213,7 +1135,6 @@ pub fn PromptInput<'a>(
         agent_panel_visible.then_some(FooterItem::AgentPanel),
         (!agent_panel_visible && has_background_tasks).then_some(FooterItem::Tasks),
         (!agent_panel_visible && teams_dialog_data.is_some()).then_some(FooterItem::Teams),
-        bridge_footer_visible.then_some(FooterItem::Bridge),
     ]
     .into_iter()
     .flatten()
@@ -1246,7 +1167,6 @@ pub fn PromptInput<'a>(
     // hardcoded false, :432-434).
     let tasks_selected = footer_item_selected == Some(FooterItem::Tasks);
     let teams_selected = footer_item_selected == Some(FooterItem::Teams);
-    let bridge_selected = footer_item_selected == Some(FooterItem::Bridge);
     // @nyan: while the panel has focus, ↑/↓ walk its rows first and only step
     // into the next footer item at the edge (docs/nyan/tui.md §6.2). The
     // published item list is the displayed (post-plan) row list, so its length
@@ -1415,7 +1335,6 @@ pub fn PromptInput<'a>(
                     }
                     Some(FooterItem::Tasks) => show_background_tasks.set(true),
                     Some(FooterItem::Teams) => show_teams_dialog.set(true),
-                    Some(FooterItem::Bridge) => show_bridge_dialog.set(true),
                     Some(_) | None => return false,
                 }
                 background_tasks_initial_detail.set(initial_detail_task_id);
@@ -1696,7 +1615,6 @@ pub fn PromptInput<'a>(
     // the text input.
     if prev_input.read().as_str() != input.read().as_str() {
         on_input_text_changed(
-            app_store.as_ref(),
             &input.read(),
             prev_input,
             typeahead_selection_reset,
@@ -1942,6 +1860,11 @@ pub fn PromptInput<'a>(
                     Some(crate::hooks::use_typeahead::KeyDownEffect::AcceptPromptSuggestion) => {
                         let suggestion =
                             prompt_suggestion_for_keys.text.clone().unwrap_or_default();
+                        // @nyan: post-hoc acceptance probe for the generate gate
+                        // (decision-provider §7).
+                        crate::services::decision::probe::observe_suggestion_acceptance(
+                            &suggestion,
+                        );
                         // markAccepted()
                         if let Some(store) = app_store_for_suggestion_keys.as_ref() {
                             store.replace_with(|state| {
@@ -2135,7 +2058,6 @@ pub fn PromptInput<'a>(
             // of it). The render-body emission near the end stays as the
             // fallback for programmatic edits; the parent ignores repeats.
             on_change: Handler::from({
-                let app_store = app_store.clone();
                 let on_input_change = props.on_input_change.clone();
                 let on_input_state_change = props.on_input_state_change.clone();
                 move |text: String| {
@@ -2143,7 +2065,6 @@ pub fn PromptInput<'a>(
                         return;
                     }
                     on_input_text_changed(
-                        app_store.as_ref(),
                         &text,
                         prev_input,
                         typeahead_selection_reset,
@@ -2319,6 +2240,11 @@ pub fn PromptInput<'a>(
             && prompt_suggestion_state.shown_at > 0
             && prompt_suggestion_state.text.is_some();
         let text = if accepted_suggestion {
+            // @nyan: submitters with an empty input accept the shown
+            // suggestion, which is the generate gate's post-hoc signal.
+            if let Some(suggestion) = prompt_suggestion_state.text.as_deref() {
+                crate::services::decision::probe::observe_suggestion_acceptance(suggestion);
+            }
             prompt_suggestion_state.text.clone().unwrap_or_default()
         } else {
             raw_text
@@ -2340,16 +2266,8 @@ pub fn PromptInput<'a>(
                 && let Some(store) = app_store.as_ref()
             {
                 store.replace_with(|state| {
-                    if matches!(
-                        state.speculation,
-                        crate::state::app_state_store::SpeculationState::Active(_)
-                    ) && accepted_suggestion
-                    {
-                        state.prompt_suggestion.accepted_at = current_time_millis();
-                    } else {
-                        state.prompt_suggestion =
-                            crate::state::app_state_store::PromptSuggestionState::default();
-                    }
+                    state.prompt_suggestion =
+                        crate::state::app_state_store::PromptSuggestionState::default();
                 });
             }
             (props.on_submit)(PromptSubmission {
@@ -2357,6 +2275,8 @@ pub fn PromptInput<'a>(
                 pasted_contents: submitted_pasted_contents,
                 from_keybinding: false,
             });
+        } else if !has_images {
+            (props.on_empty_submit)(());
         }
     }
 
@@ -2515,7 +2435,6 @@ pub fn PromptInput<'a>(
         || show_history_picker.get()
         || show_background_tasks.get()
         || show_teams_dialog.get()
-        || show_bridge_dialog.get()
         || show_model_picker.get()
         || is_external_editor_active.get();
     if input_child_unmounted && text_input.escape.is_pending() {
@@ -2625,51 +2544,6 @@ pub fn PromptInput<'a>(
                                 crate::tasks::in_process_teammate_task::kill_in_process_teammate(&task.task_id);
                             }
                         }
-                },
-            )
-        }
-        .into_any();
-    }
-
-    if show_bridge_dialog.get() {
-        let mut show_for_done = show_bridge_dialog;
-        let bridge_store = app_store.clone();
-        return element! {
-            BridgeDialog(
-                snapshot: bridge_dialog_snapshot,
-                on_done: move |_| show_for_done.set(false),
-                on_disconnect: move |_forget: bool| {
-                    if let Some(store) = bridge_store.as_ref() {
-                        // Maps to: CC bridge.tsx:163-172 handleDisconnect —
-                        // writes exactly enabled/explicit/outbound_only =
-                        // false (config/analytics writes stay deferred
-                        // seams). The extra connected/session_active/
-                        // reconnecting + footer_selection clears are the
-                        // Nyan stand-in for the unported useReplBridge
-                        // transport teardown, which in CC clears those flags
-                        // when the poll loop stops.
-                        // B3 flip-audit: CC bridge.tsx:164-171 —
-                        // `if (!prev.replBridgeEnabled) return prev` before
-                        // the disconnecting spread.
-                        store.set_state(|prev| {
-                            if !prev.repl_bridge_enabled {
-                                return crate::state::store::UpdateDecision::Same(());
-                            }
-                            let mut next = (**prev).clone();
-                            next.repl_bridge_enabled = false;
-                            next.repl_bridge_explicit = false;
-                            next.repl_bridge_outbound_only = false;
-                            next.repl_bridge_connected = false;
-                            next.repl_bridge_session_active = false;
-                            next.repl_bridge_reconnecting = false;
-                            next.footer_selection = None;
-                            crate::state::store::UpdateDecision::Replace {
-                                next: std::sync::Arc::new(next),
-                                result: (),
-                            }
-                        });
-                    }
-                    show_for_done.set(false);
                 },
             )
         }
@@ -2825,20 +2699,6 @@ pub fn PromptInput<'a>(
     // Subscribed read (see the twin in prompt_input_footer.rs): the writer
     // returned by `use_notifications` has no subscription of its own.
     let has_notification = use_app_state(&mut hooks, |state| state.notifications.current.is_some());
-    // Live bridge gates for the height budget — CC PromptInputFooter.tsx:241
-    // feature('BRIDGE_MODE') + :255 isBridgeEnabled(); not AppState. The
-    // entitlement closure is only evaluated past the cheap AppState gate
-    // (auth-IO short-circuit documented at the callee).
-    let bridge_feature_enabled = crate::utils::feature_flags::feature_enabled(
-        crate::utils::feature_flags::FeatureFlag::BridgeMode,
-    );
-    let status_indicator_count = use_app_state(&mut hooks, move |state| {
-        prompt_input_footer::bridge_status_indicator_count_from_app(
-            state,
-            bridge_feature_enabled,
-            crate::bridge::bridge_enabled::is_bridge_enabled,
-        )
-    });
     // Height computers read the scoped wake epoch: memory/sandbox/apiKeyHelper
     // visibility flips bump it, waking PromptInput to recompute height from
     // the live sources (both height sites read the same carrier — see
@@ -2859,8 +2719,7 @@ pub fn PromptInput<'a>(
     let notification_row_count = {
         let debug = props.debug;
         let credential_status = props.credential_status.clone();
-        let auto_updater_result = props.auto_updater_result.clone();
-        let auto_updating = is_auto_updating.get();
+        let update_available = props.update_available.clone();
         let ide_selection = props.ide_selection.clone();
         use_app_state(&mut hooks, move |state| {
             notifications::direct_footer_row_count_from_app(
@@ -2869,8 +2728,7 @@ pub fn PromptInput<'a>(
                 debug,
                 &credential_status,
                 token_usage,
-                auto_updater_result.as_ref(),
-                auto_updating,
+                update_available.as_ref(),
                 ide_selection.as_ref(),
             )
         })
@@ -2995,7 +2853,6 @@ pub fn PromptInput<'a>(
             props.is_loading,
             props.permission_mode,
             notification_row_count,
-            status_indicator_count,
             prompt_input_footer::footer_has_items(
                 input_mode.get(),
                 show_vim_insert_footer,
@@ -3219,19 +3076,13 @@ pub fn PromptInput<'a>(
             } else {
                 element! {
                     // Narrow FooterLayoutWake provider: only the Footer
-                    // subtree (Footer / Notifications / MemoryUsageIndicator /
+                    // subtree (Footer / Notifications /
                     // SandboxPromptFooterHint) can reach the wake — layout
                     // flips wake PromptInput, not the whole tree.
                     ContextProvider(value: Context::owned(footer_layout_wake.clone())) {
-                        // Maps to: CC PromptInput.tsx:3046-3056 — PromptInputFooter
-                        // receives autoUpdaterResult/isAutoUpdating plus the
-                        // onAutoUpdaterResult/onChangeIsUpdating callbacks.
                         prompt_input_footer::Footer(
                             credential_status: props.credential_status.clone(),
-                            auto_updater_result: props.auto_updater_result.clone(),
-                            is_auto_updating: is_auto_updating.get(),
-                            on_auto_updater_result: props.on_auto_updater_result.clone(),
-                            on_change_is_updating: on_change_is_updating.clone(),
+                            update_available: props.update_available.clone(),
                             debug: props.debug,
                             // Maps to: CC PromptInput.tsx:3069 `ideSelection={ideSelection}`.
                             ide_selection: props.ide_selection.clone(),
@@ -3243,7 +3094,6 @@ pub fn PromptInput<'a>(
                             history_failed_match: history_failed_match,
                             is_loading: props.is_loading,
                             permission_mode: props.permission_mode,
-                            status_indicator_count: status_indicator_count,
                             // Maps to: CC BackgroundTaskStatus.tsx:199-208 —
                             // the pill renders getPillLabel(runningTasks);
                             // count and label come from the same
@@ -3254,7 +3104,6 @@ pub fn PromptInput<'a>(
                             // Maps to: CC PromptInput.tsx:3064-3066.
                             tasks_selected: tasks_selected,
                             teams_selected: teams_selected,
-                            bridge_selected: bridge_selected,
                             vim_mode: show_vim_insert_footer.then(|| "INSERT".to_string()),
                             mode: input_mode.get(),
                             is_pasting: false,
@@ -3281,13 +3130,54 @@ mod tests {
     use super::*;
     use crate::context::notifications::{Notification, NotificationPriority, NotificationsState};
     use crate::utils::cursor::Cursor;
-    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK};
+    use crate::utils::test_env::{EnvVarGuard, TEST_ENV_LOCK, TestEnvGuard};
     use crate::utils::theme;
     use futures::{StreamExt, stream};
     use std::collections::BTreeMap;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
+
+    /// Every mounted `PromptInput` reads process-global state: Up/Esc pop the
+    /// command queue, the footer and model picker read the settings cache, and
+    /// prompt history lives under the config home. Tests that mount it hold
+    /// this for their whole body so they neither see nor consume each other's
+    /// queue entries, and read an empty config home instead of the host's.
+    ///
+    /// Lock order is env, then queue, as in the other modules that hold both.
+    /// Fields drop in declaration order, so the env lock is released last.
+    struct PromptTestEnv {
+        config_dir: std::path::PathBuf,
+        _config_home: EnvVarGuard,
+        _queue: crate::utils::test_env::TestStateGuard<'static>,
+        _env: TestEnvGuard<'static>,
+    }
+
+    fn isolated_prompt_env() -> PromptTestEnv {
+        let env = TEST_ENV_LOCK.lock().unwrap();
+        let queue = crate::utils::message_queue_manager::TEST_QUEUE_LOCK
+            .lock()
+            .unwrap();
+        crate::utils::message_queue_manager::clear_command_queue();
+        let config_dir = std::env::temp_dir().join(format!(
+            "nyan-prompt-input-test-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&config_dir).expect("create prompt input config home");
+        PromptTestEnv {
+            _config_home: EnvVarGuard::set("NYAN_CONFIG_DIR", &config_dir),
+            config_dir,
+            _queue: queue,
+            _env: env,
+        }
+    }
+
+    impl Drop for PromptTestEnv {
+        fn drop(&mut self) {
+            crate::utils::message_queue_manager::clear_command_queue();
+            let _ = std::fs::remove_dir_all(&self.config_dir);
+        }
+    }
 
     fn key(code: KeyCode) -> TerminalEvent {
         TerminalEvent::Key(KeyEvent::new(KeyEventKind::Press, code))
@@ -3375,7 +3265,7 @@ mod tests {
     }
 
     #[test]
-    fn pill_tasks_project_items_and_apply_the_ant_panel_exclusion() {
+    fn pill_tasks_project_shell_and_agent_items() {
         use crate::tasks::pill_label::PillTask;
         fn agent_item(id: &str, agent_type: &str) -> BackgroundTasksDialogItem {
             BackgroundTasksDialogItem {
@@ -3412,34 +3302,9 @@ mod tests {
             pills[0],
             PillTask::LocalBash { is_monitor: false }
         ));
-        if cfg!(feature = "anthropic_internal") {
-            // CC BackgroundTaskStatus.tsx:49-57 — ant builds exclude panel
-            // agents (agentType !== 'main-session') from the pill only.
-            assert_eq!(pills.len(), 2);
-        } else {
-            assert_eq!(pills.len(), 3);
-        }
-
-        // Gate difference (CC useBackgroundTaskNavigation.ts:81-83): the
-        // dialog-open gate has NO panel-agent exclusion — it reads the raw
-        // item set (`has_background_tasks = !background_task_items.is_empty()`),
-        // so a panel-agent-only set still opens the dialog in ant builds even
-        // though the pill set is empty. In external builds the two sets are
-        // identical.
-        let panel_only = vec![agent_item("agent-panel", "worker")];
-        let panel_only_pills = prompt_pill_tasks(&panel_only);
-        if cfg!(feature = "anthropic_internal") {
-            assert!(
-                panel_only_pills.is_empty(),
-                "pill set applies the ant exclusion"
-            );
-        } else {
-            assert_eq!(panel_only_pills.len(), 1);
-        }
-        assert!(
-            !panel_only.is_empty(),
-            "the dialog-open gate's set is unexcluded in both builds"
-        );
+        assert_eq!(pills.len(), 3);
+        assert!(matches!(pills[1], PillTask::LocalAgent));
+        assert!(matches!(pills[2], PillTask::LocalAgent));
     }
 
     #[component]
@@ -3643,6 +3508,7 @@ mod tests {
 
     #[test]
     fn prompt_input_shift_tab_invokes_permission_mode_cycle_callback() {
+        let _env = isolated_prompt_env();
         let current_theme = *theme::current();
         let cycle_count = Arc::new(AtomicUsize::new(0));
         let cycle_count_for_handler = cycle_count.clone();
@@ -3924,6 +3790,7 @@ mod tests {
 
     #[test]
     fn empty_enter_accepts_shown_prompt_suggestion_and_resets_state() {
+        let _env = isolated_prompt_env();
         let mut initial = crate::state::app_state_store::AppState::default();
         initial.prompt_suggestion_enabled = true;
         initial.prompt_suggestion = crate::state::app_state_store::PromptSuggestionState {
@@ -3982,84 +3849,10 @@ mod tests {
         });
 
         assert_eq!(submitted.lock().unwrap().as_slice(), ["run the tests"]);
-        assert!(store.get().prompt_suggestion.text.is_none());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn normal_typing_aborts_active_speculation() {
-        let store = crate::state::store::AppStore::new(
-            crate::state::app_state_store::AppState::default(),
-            None,
+        assert_eq!(
+            store.get().prompt_suggestion,
+            crate::state::app_state_store::PromptSuggestionState::default()
         );
-        let context = crate::tool::ToolUseContext::default().with_app_store(store.clone());
-        let cache = Arc::new(crate::utils::forked_agent::CacheSafeParams {
-            system_prompt: Vec::new(),
-            user_context: Default::default(),
-            system_context: Default::default(),
-            tool_use_context: context,
-            fork_context_messages: Arc::new(Vec::new()),
-        });
-        let abort = crate::tool::AbortController::default();
-        store.replace_with(|state| {
-            state.speculation = crate::state::app_state_store::SpeculationState::Active(
-                crate::state::app_state_store::ActiveSpeculationState {
-                    id: uuid::Uuid::new_v4().simple().to_string(),
-                    abort_controller: abort.clone(),
-                    start_time: current_time_millis(),
-                    messages: Arc::new(std::sync::Mutex::new(Vec::new())),
-                    written_paths: Arc::new(std::sync::Mutex::new(Default::default())),
-                    boundary: None,
-                    suggestion_length: 4,
-                    tool_use_count: 0,
-                    is_pipelined: false,
-                    cache_safe_params: cache,
-                    pipelined_suggestion: None,
-                },
-            );
-        });
-        let mut app = element! {
-            ContextProvider(value: Context::owned(
-                crate::keybindings::keybinding_context::KeybindingRuntime::with_default_bindings()
-            )) {
-                ContextProvider(value: Context::owned(*theme::current())) {
-                    crate::state::app_state::AppStateProvider(
-                        prebuilt_store: Some(store.clone()),
-                        children: crate::state::app_state::ProviderChildren::new(|| element! {
-                            PromptInput(on_submit: move |_| {}, on_exit: move |_| {})
-                        }.into_any()),
-                    )
-                }
-            }
-        };
-        let events = stream::unfold(
-            vec![(key(KeyCode::Char('x')), 30), (key(KeyCode::Right), 80)].into_iter(),
-            |mut events| async move {
-                let (event, delay) = events.next()?;
-                tokio::time::sleep(Duration::from_millis(delay)).await;
-                Some((event, events))
-            },
-        );
-        let mut render_loop =
-            Box::pin(app.mock_terminal_render_loop(
-                MockTerminalConfig::with_events(events).with_size(90, 24),
-            ));
-        for _ in 0..12 {
-            if crate::utils::race(render_loop.next(), async {
-                tokio::time::sleep(Duration::from_millis(120)).await;
-                None
-            })
-            .await
-            .is_none()
-            {
-                break;
-            }
-        }
-
-        assert!(abort.is_aborted());
-        assert!(matches!(
-            store.get().speculation,
-            crate::state::app_state_store::SpeculationState::Idle
-        ));
     }
 
     fn install_prompt_profiles() {
@@ -4080,9 +3873,7 @@ mod tests {
 
     #[test]
     fn prompt_input_model_picker_switches_the_session_profile_and_effort() {
-        let _lock = TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _env = isolated_prompt_env();
         crate::utils::process_runtime::initialize_test_process_runtime();
         install_prompt_profiles();
         let store = crate::state::store::AppStore::new(
@@ -4111,6 +3902,7 @@ mod tests {
 
     #[test]
     fn prompt_input_alt_p_opens_the_model_picker_and_alt_t_alt_o_do_nothing() {
+        let _env = isolated_prompt_env();
         crate::utils::process_runtime::initialize_test_process_runtime();
         let model = prompt_after_events(
             false,
@@ -4132,6 +3924,7 @@ mod tests {
 
     #[test]
     fn prompt_input_image_paste_action_inserts_live_image_chip() {
+        let _env = isolated_prompt_env();
         let paste_key = if cfg!(windows) {
             key_with_modifiers(KeyCode::Char('v'), KeyModifiers::ALT)
         } else {
@@ -4148,6 +3941,7 @@ mod tests {
 
     #[test]
     fn prompt_input_applies_controlled_and_cursor_insertion_revisions_once() {
+        let _env = isolated_prompt_env();
         let text = prompt_with_initial_after_events(
             Some("draft".to_string()),
             Some(PromptInputTextUpdate {
@@ -4171,9 +3965,9 @@ mod tests {
     fn prompt_input_history_suppression_matches_official_navigation_and_reactivation() {
         // CC PromptInput.tsx:1245-1286,1508 and useTypeahead.tsx:684-688:
         // history suppresses the suggestion state, not just the dropdown.
-        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _env = isolated_prompt_env();
         let _write = EnvVarGuard::set("NYAN_WRITE_ENABLED", "1");
-        let _skip = EnvVarGuard::unset("CLAUDE_CODE_SKIP_PROMPT_HISTORY");
+        let _skip = EnvVarGuard::unset("NYAN_SKIP_PROMPT_HISTORY");
         prompt_history::add_to_history("/help");
         prompt_history::add_to_history("/resume");
         assert_eq!(prompt_history::get_history()[0].display, "/resume");
@@ -4224,6 +4018,7 @@ mod tests {
 
     #[test]
     fn prompt_input_arrows_matches_official_cursor_before_history() {
+        let _env = isolated_prompt_env();
         crate::utils::process_runtime::initialize_test_process_runtime();
         // CC useTextInput.ts:269-315 and Cursor.ts:353-407,511-551.
         // Use the real PromptInput + default keybinding runtime: the old
@@ -4277,6 +4072,7 @@ mod tests {
 
     #[test]
     fn prompt_input_vim_normal_mode_navigation_and_delete_are_live() {
+        let _env = isolated_prompt_env();
         let text = prompt_with_initial_after_events(
             Some("abc".to_string()),
             None,
@@ -4296,6 +4092,7 @@ mod tests {
 
     #[test]
     fn prompt_input_vim_delete_operator_removes_logical_line() {
+        let _env = isolated_prompt_env();
         crate::utils::process_runtime::initialize_test_process_runtime();
         let text = prompt_with_initial_after_events(
             Some("one\ntwo".to_string()),
@@ -4315,6 +4112,7 @@ mod tests {
 
     #[test]
     fn prompt_input_undo_action_restores_previous_edit_snapshot() {
+        let _env = isolated_prompt_env();
         let text = prompt_with_initial_after_events(
             Some("draft".to_string()),
             None,
@@ -4333,6 +4131,7 @@ mod tests {
 
     #[test]
     fn prompt_input_stash_action_stashes_and_restores_prompt() {
+        let _env = isolated_prompt_env();
         let stashed = prompt_with_initial_after_events(
             Some("draft".to_string()),
             None,
@@ -4372,6 +4171,7 @@ mod tests {
 
     #[test]
     fn prompt_input_search_keybindings_open_live_local_dialogs() {
+        let _env = isolated_prompt_env();
         let ctrl_shift = KeyModifiers::CONTROL | KeyModifiers::SHIFT;
 
         let quick = prompt_after_events(
@@ -4405,6 +4205,7 @@ mod tests {
 
     #[test]
     fn prompt_input_search_keybindings_are_suppressed_for_local_command_ui() {
+        let _env = isolated_prompt_env();
         let text = prompt_after_events(
             true,
             vec![key_with_modifiers(
@@ -4418,6 +4219,7 @@ mod tests {
 
     #[test]
     fn prompt_input_wires_footer_status_indicators_from_context() {
+        let _env = isolated_prompt_env();
         let text = element!(PromptWithStatusIndicators)
             .render(Some(80))
             .to_string();
@@ -4431,6 +4233,7 @@ mod tests {
 
     #[test]
     fn slash_highlights_matches_official_validity_in_prompt_and_bash() {
+        let _env = isolated_prompt_env();
         // CC PromptInput.tsx:768-776 and commands.ts:688-702: exact internal
         // name, display name or alias; no hidden, mode or dropdown gate.
         let current_theme = *theme::current();
@@ -4602,6 +4405,7 @@ mod tests {
 
     #[test]
     fn prompt_input_uses_full_width_border_box_like_official() {
+        let _env = isolated_prompt_env();
         let current_theme = *theme::current();
         let canvas = element! {
             ContextProvider(value: Context::owned(current_theme)) {
@@ -4642,6 +4446,7 @@ mod tests {
 
     #[test]
     fn prompt_input_renders_live_swarm_banner_projection() {
+        let _env = isolated_prompt_env();
         let current_theme = *theme::current();
         // `use_terminal_size` reads the OS terminal during a plain render;
         // drive the mock loop so the fixture's 80-column size is applied.
@@ -4688,6 +4493,7 @@ mod tests {
 
     #[test]
     fn prompt_input_color_only_banner_matches_official_empty_text_border() {
+        let _env = isolated_prompt_env();
         // CC useSwarmBanner.ts:127-133 preserves color-only metadata;
         // PromptInput.tsx:2990-3003 alone decides whether to render the tag.
         // A whitespace name is truthy in JS and must retain its padded tag.
@@ -4756,6 +4562,7 @@ mod tests {
 
     #[test]
     fn prompt_input_refreshes_suggestions_when_live_merged_commands_change() {
+        let _env = isolated_prompt_env();
         let canvases = futures::executor::block_on(
             element!(PromptWithLiveCommandProps)
                 .mock_terminal_render_loop(MockTerminalConfig::default().with_size(80, 20))
@@ -4809,6 +4616,7 @@ mod tests {
     // user types leaves a dim "Waiting for permission…" above the input box.
     #[test]
     fn prompt_input_says_it_is_waiting_while_dialogs_are_suppressed() {
+        let _env = isolated_prompt_env();
         let shown = element!(PromptSuppressedDialogsHarness(suppressed: true))
             .render(Some(80))
             .to_string();
@@ -4838,6 +4646,7 @@ mod tests {
 
     #[test]
     fn prompt_input_renders_notifications_in_native_document_flow() {
+        let _env = isolated_prompt_env();
         let text = element!(PromptWithNotification)
             .render(Some(80))
             .to_string();
@@ -4851,6 +4660,7 @@ mod tests {
 
     #[test]
     fn prompt_input_passes_repl_credential_status_through_footer() {
+        let _env = isolated_prompt_env();
         let text = element!(PromptWithMissingCredential)
             .render(Some(80))
             .to_string();
@@ -4863,6 +4673,7 @@ mod tests {
 
     #[test]
     fn prompt_input_suppresses_notifications_while_suggestions_own_footer() {
+        let _env = isolated_prompt_env();
         let text = prompt_with_notification_after_events(vec![key(KeyCode::Char('/'))]);
 
         assert!(
@@ -4877,10 +4688,7 @@ mod tests {
 
     #[test]
     fn prompt_input_escape_pops_all_editable_queued_commands() {
-        let _lock = crate::utils::message_queue_manager::TEST_QUEUE_LOCK
-            .lock()
-            .unwrap();
-        crate::utils::message_queue_manager::clear_command_queue();
+        let _env = isolated_prompt_env();
         crate::utils::message_queue_manager::enqueue(
             crate::utils::message_queue_manager::QueuedCommand::new("queued edit", "prompt"),
         );
@@ -4914,10 +4722,7 @@ mod tests {
         batches: Vec<Vec<TerminalEvent>>,
         queued_text: Option<&str>,
     ) -> (usize, Vec<String>) {
-        let _queue_lock = crate::utils::message_queue_manager::TEST_QUEUE_LOCK
-            .lock()
-            .unwrap();
-        crate::utils::message_queue_manager::clear_command_queue();
+        let _env = isolated_prompt_env();
         if let Some(text) = queued_text {
             crate::utils::message_queue_manager::enqueue(
                 crate::utils::message_queue_manager::QueuedCommand::new(text, "prompt"),
@@ -5161,7 +4966,7 @@ mod tests {
     #[test]
     fn prompt_input_queues_external_editor_hint_when_wrapped() {
         crate::utils::process_runtime::initialize_test_process_runtime();
-        let _env_guard = TEST_ENV_LOCK.lock().unwrap();
+        let _env = isolated_prompt_env();
         let _editor_guard = EnvVarGuard::set("EDITOR", "code --wait");
         let _visual_guard = EnvVarGuard::unset("VISUAL");
         let long_input = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -5179,6 +4984,7 @@ mod tests {
 
     #[test]
     fn prompt_help_question_mark_renders_in_prompt_footer_not_panel() {
+        let _env = isolated_prompt_env();
         let text = prompt_after_events(false, vec![key(KeyCode::Char('?'))]);
 
         assert!(text.contains("! for bash mode"), "canvas=\n{text}");
@@ -5192,6 +4998,7 @@ mod tests {
 
     #[test]
     fn prompt_help_esc_restores_normal_footer_hint() {
+        let _env = isolated_prompt_env();
         let text = prompt_after_events(false, vec![key(KeyCode::Char('?')), key(KeyCode::Esc)]);
 
         assert!(!text.contains("! for bash mode"), "canvas=\n{text}");
@@ -5200,6 +5007,7 @@ mod tests {
 
     #[test]
     fn prompt_input_stays_visible_but_unfocused_for_active_local_command_ui() {
+        let _env = isolated_prompt_env();
         let events = vec![key(KeyCode::Char('a')), key(KeyCode::Char('b'))];
         let focused = prompt_after_events(false, events.clone());
         let unfocused = prompt_after_events(true, events);
@@ -5259,6 +5067,14 @@ mod tests {
         store: crate::state::store::AppStore,
         events: Vec<TerminalEvent>,
     ) -> String {
+        drive_prompt_with_panel_store_rows(store, events, 30)
+    }
+
+    fn drive_prompt_with_panel_store_rows(
+        store: crate::state::store::AppStore,
+        events: Vec<TerminalEvent>,
+        rows: u16,
+    ) -> String {
         futures::executor::block_on(async move {
             let mut app = element! {
                 ContextProvider(value: Context::owned(
@@ -5283,7 +5099,7 @@ mod tests {
                 Some((event, events))
             });
             let mut render_loop = Box::pin(app.mock_terminal_render_loop(
-                MockTerminalConfig::with_events(delayed_events).with_size(90, 30),
+                MockTerminalConfig::with_events(delayed_events).with_size(90, rows),
             ));
             let mut last = String::new();
             for _ in 0..24 {
@@ -5323,24 +5139,19 @@ mod tests {
     }
 
     #[test]
-    fn agent_panel_footer_down_past_the_last_row_moves_to_the_next_footer_item() {
+    fn agent_panel_footer_down_past_the_last_row_stays_on_the_last_row() {
+        // With the Bridge pill gone the panel is the only footer item while it
+        // is visible, so `↓` on its last row has nowhere further to go.
         let store = panel_store(vec![
             ("a", crate::components::agent_panel::AgentKind::Shell),
             ("b", crate::components::agent_panel::AgentKind::Shell),
         ]);
-        store.replace_with(|state| {
-            state.repl_bridge_connected = true;
-            state.repl_bridge_explicit = true;
-        });
         drive_prompt_with_panel_store(
             store.clone(),
             vec![key(KeyCode::Down), key(KeyCode::Down), key(KeyCode::Down)],
         );
-        assert_eq!(
-            store.get().footer_selection,
-            Some(FooterItem::Bridge),
-            "one row past the last panel row reaches the next footer item"
-        );
+        assert_eq!(store.get().footer_selection, Some(FooterItem::AgentPanel));
+        assert_eq!(store.get().agent_panel_selected, 1);
     }
 
     #[test]
@@ -5480,25 +5291,21 @@ mod tests {
         // arms for AgentPanel. (`x` then falls through to the existing
         // type-into-prompt behavior, which clears the selection — unchanged
         // pre-E2 behavior, not this handler's doing.)
-        let id = format!("bridge-probe-{}", uuid::Uuid::new_v4().simple());
+        // With Bridge gone the only non-panel footer item is the Tasks pill,
+        // which returns below 16 terminal rows (§7) where the panel hides.
+        let id = format!("pill-probe-{}", uuid::Uuid::new_v4().simple());
         let mut state = crate::state::app_state_store::AppState::default();
         state.tasks = std::sync::Arc::new(std::collections::BTreeMap::from([(
             id.clone(),
             std::sync::Arc::new(live_shell_state(&id)),
         )]));
-        state.repl_bridge_enabled = true;
-        state.repl_bridge_explicit = true;
-        state.repl_bridge_connected = true;
         let store = crate::state::store::AppStore::new(state, None);
-        drive_prompt_with_panel_store(store.clone(), vec![key(KeyCode::Down), key(KeyCode::Down)]);
-        assert_eq!(store.get().footer_selection, Some(FooterItem::Bridge));
-        drive_prompt_with_panel_store(
+        drive_prompt_with_panel_store_rows(store.clone(), vec![key(KeyCode::Down)], 12);
+        assert_eq!(store.get().footer_selection, Some(FooterItem::Tasks));
+        drive_prompt_with_panel_store_rows(
             store.clone(),
-            vec![
-                key(KeyCode::Down),
-                key(KeyCode::Down),
-                key(KeyCode::Char('x')),
-            ],
+            vec![key(KeyCode::Down), key(KeyCode::Char('x'))],
+            12,
         );
         let status = match store.get().tasks.get(&id).map(|task| task.as_ref()) {
             Some(crate::state::app_state_store::TaskState::LocalShell(task)) => task.status.clone(),
@@ -5740,7 +5547,6 @@ mod tests {
                 true,
                 false,
                 crate::types::permissions::PermissionMode::Default,
-                0,
                 0,
                 false,
                 focused.total_lines(),
