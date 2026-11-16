@@ -1,6 +1,7 @@
 # TUI 呈现重构：内置信息行、todo 面板、agent 面板
 
-状态：定稿（2026-11-13 用户确认）。继续使用 iocraft / CometixTUI 与现有主题，不引入新配色、不依赖 Nerd Font。
+状态：已实现（2026-11-13 定稿；切片 A–E 与 E2 已合入 master，真实终端验收通过）。后续：agent 完整 transcript
+视图（Enter 切换并可继续对话）、模型生成的进度摘要、通用模型短名，均另开需求。继续使用 iocraft / CometixTUI 与现有主题，不引入新配色、不依赖 Nerd Font。
 
 ## 一、目标与范围
 
