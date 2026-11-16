@@ -1160,14 +1160,37 @@ pub fn PromptInput<'a>(
     // builds the two sets are identical.
     let has_background_tasks = !background_task_items.is_empty();
     // @nyan: the agent panel needs the terminal row count to decide whether it
-    // is visible (docs/nyan/tui.md §7). The same budget the panel uses gates
-    // the footer pill fallback, so the two can never disagree.
+    // is visible (docs/nyan/tui.md §7). The plan computed here is the exact
+    // one the panel draws with (same pure function, same published row /
+    // activity counts), so the footer height and the drawn panel cannot
+    // disagree.
     let (_, prompt_terminal_rows) = hooks.use_terminal_size();
     let agent_panel_items = use_app_state(&mut hooks, |state| state.agent_panel_items.clone());
-    let agent_panel_visible = crate::components::agent_panel::panel_shows_rows(
+    let agent_panel_live_row_count = use_app_state(&mut hooks, |state| state.agent_panel_row_count);
+    let agent_panel_selected = use_app_state(&mut hooks, |state| {
+        (state.footer_selection == Some(FooterItem::AgentPanel))
+            .then_some(state.agent_panel_selected)
+    });
+    let agent_panel_selected_activity_count = agent_panel_selected
+        .and_then(|selected| agent_panel_items.get(selected))
+        .map(|item| item.activity_count)
+        .unwrap_or(0);
+    // @nyan: `/tasks to see agents` shows for 30 s after a row completes
+    // (§6.1). The panel clears its own deadline on the next tick; comparing
+    // against the wall clock here also keeps a stale hint off screen when the
+    // panel is unmounted (e.g. while the suggestion list owns the footer).
+    let agent_panel_finished_hint_until_ms =
+        use_app_state(&mut hooks, |state| state.agent_panel_finished_hint_until_ms);
+    let agent_panel_finished_hint_active = agent_panel_finished_hint_until_ms
+        .is_some_and(|until| crate::utils::task::framework::now_ms() < until);
+    let agent_panel_plan = crate::components::agent_panel::plan_panel(
         prompt_terminal_rows as usize,
-        agent_panel_items.len(),
+        agent_panel_live_row_count,
+        agent_panel_selected,
+        agent_panel_selected_activity_count,
     );
+    let agent_panel_visible = agent_panel_plan.is_some();
+    let agent_panel_height = agent_panel_plan.map(|plan| plan.total_lines()).unwrap_or(0);
     // @nyan: while the panel shows the same tasks, the footer pills are
     // suppressed. Both the render gate and the height budget read these two
     // counts, so the body row and `footer_height_for` cannot diverge.
@@ -1225,7 +1248,9 @@ pub fn PromptInput<'a>(
     let teams_selected = footer_item_selected == Some(FooterItem::Teams);
     let bridge_selected = footer_item_selected == Some(FooterItem::Bridge);
     // @nyan: while the panel has focus, ↑/↓ walk its rows first and only step
-    // into the next footer item at the edge (docs/nyan/tui.md §6.2).
+    // into the next footer item at the edge (docs/nyan/tui.md §6.2). The
+    // published item list is the displayed (post-plan) row list, so its length
+    // is the navigation range.
     let agent_panel_row_count = agent_panel_items.len();
     let select_footer_item = {
         let store = app_store.clone();
@@ -1419,6 +1444,43 @@ pub fn PromptInput<'a>(
             },
             move || {
                 select(None);
+                true
+            },
+        );
+    }
+    {
+        let store = app_store.clone();
+        use_keybinding(
+            &mut hooks,
+            keybinding_runtime.clone(),
+            "footer:stopSelected",
+            ContextName::Footer,
+            {
+                let store = store.clone();
+                move || {
+                    store.as_ref().and_then(|s| s.get().footer_selection)
+                        == Some(FooterItem::AgentPanel)
+                        && !prompt_dialog_active
+                }
+            },
+            move || {
+                let Some(store) = store.as_ref() else {
+                    return false;
+                };
+                let state = store.get();
+                let Some(row) = crate::components::agent_panel::agent_panel_item_at(
+                    &state.agent_panel_items,
+                    state.agent_panel_selected,
+                ) else {
+                    return false;
+                };
+                // @nyan: `x` stops the selected row's task through the same
+                // dispatcher the background-tasks dialog uses (§6.2). A row
+                // that already finished is a no-op in every kill path.
+                crate::components::tasks::background_tasks_dialog::stop_background_task(
+                    &row.id,
+                    Some(store),
+                );
                 true
             },
         );
@@ -2909,6 +2971,8 @@ pub fn PromptInput<'a>(
     let footer_height = if render_has_suggestions {
         // Must be the same count SuggestionList renders (CC :199-201); a
         // reserved height that disagrees with the rows drawn leaves ghost rows.
+        // @nyan: suggestions and the help menu replace the Footer, so the
+        // agent panel disappears with it — the reserved height follows.
         render_suggestions
             .len()
             .min(prompt_input_footer_suggestions::max_visible_items(
@@ -2924,7 +2988,7 @@ pub fn PromptInput<'a>(
         // expressions at the Footer mount below) — the old local `.max(1)`
         // band-aid diverged (no bash mode, its own vim condition) and left the
         // tasks-pill row unbudgeted: the prompt input row collapsed.
-        prompt_input_footer::footer_height_for(
+        prompt_input_footer::footer_height_with_panel(
             exit_hint.is_some(),
             history_search_active,
             suppress_hint,
@@ -2938,6 +3002,7 @@ pub fn PromptInput<'a>(
                 footer_pill_task_count,
                 footer_pill_teammate_count,
             ),
+            agent_panel_height,
         )
     };
     // Match CC PromptInput's natural-height behavior. In iocraft inline
@@ -3196,6 +3261,11 @@ pub fn PromptInput<'a>(
                             // The info line degrades by terminal width; pass the
                             // same column count the input box measured against.
                             info_line_width: Some(columns as u32),
+                            // @nyan: agent-panel gates; `agent_panel_height`
+                            // above reserves exactly these lines (§6, §7).
+                            agent_panel_visible: agent_panel_visible,
+                            agent_panel_focused: agent_panel_selected.is_some(),
+                            finished_hint_active: agent_panel_finished_hint_active,
                         )
                     }
                 }.into_any()
@@ -5150,23 +5220,36 @@ mod tests {
 
     // -- @nyan: agent panel focus interaction (docs/nyan/tui.md §6.2) --------
 
-    /// Store whose agent panel publishes `rows` as displayed items, so the
-    /// footer navigation has a concrete row list to walk.
+    /// Store with real background tasks that the mounted agent panel will
+    /// project into `agent_panel_items`. The panel publishes from
+    /// `AppState.tasks` itself, so a handmade item list would be overwritten
+    /// on the first render.
     fn panel_store(
         rows: Vec<(&str, crate::components::agent_panel::AgentKind)>,
     ) -> crate::state::store::AppStore {
         use std::sync::Arc;
         let mut state = crate::state::app_state_store::AppState::default();
-        state.agent_panel_items = Arc::new(
-            rows.into_iter()
-                .map(
-                    |(id, kind)| crate::components::agent_panel::AgentPanelItem {
-                        id: id.to_string(),
-                        kind,
-                    },
-                )
-                .collect(),
-        );
+        let tasks = rows
+            .into_iter()
+            .map(|(id, kind)| {
+                let task = match kind {
+                    crate::components::agent_panel::AgentKind::Teammate => {
+                        crate::state::app_state_store::TaskState::InProcessTeammate(
+                            crate::components::spinner::teammate_tree::TeammateTaskSnapshot {
+                                id: id.to_string(),
+                                task_type: crate::components::spinner::teammate_tree::IN_PROCESS_TEAMMATE_TASK_TYPE.to_string(),
+                                status: "running".to_string(),
+                                agent_name: id.to_string(),
+                                ..Default::default()
+                            },
+                        )
+                    }
+                    _ => live_shell_state(id),
+                };
+                (id.to_string(), Arc::new(task))
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        state.tasks = Arc::new(tasks);
         crate::state::store::AppStore::new(state, None)
     }
 
@@ -5338,6 +5421,93 @@ mod tests {
     }
 
     #[test]
+    fn agent_panel_footer_x_stops_the_selected_shell_task() {
+        // @nyan: `x` on the focused panel dispatches through the same kill path
+        // as the background-tasks dialog (§6.2). The task flips to `killed` in
+        // the store the panel reads.
+        let id = format!("stop-probe-{}", uuid::Uuid::new_v4().simple());
+        let store = panel_store(vec![(
+            id.as_str(),
+            crate::components::agent_panel::AgentKind::Shell,
+        )]);
+        drive_prompt_with_panel_store(
+            store.clone(),
+            vec![key(KeyCode::Down), key(KeyCode::Char('x'))],
+        );
+        let state = store.get();
+        let status = match state.tasks.get(&id).map(|task| task.as_ref()) {
+            Some(crate::state::app_state_store::TaskState::LocalShell(task)) => task.status.clone(),
+            other => panic!("expected the shell task, got {other:?}"),
+        };
+        assert_eq!(status, "killed");
+        assert_eq!(
+            state.footer_selection,
+            Some(FooterItem::AgentPanel),
+            "stopping keeps the panel focused"
+        );
+    }
+
+    #[test]
+    fn agent_panel_footer_x_ignores_an_already_finished_row() {
+        let id = format!("done-probe-{}", uuid::Uuid::new_v4().simple());
+        let mut task = live_shell_state(&id);
+        if let crate::state::app_state_store::TaskState::LocalShell(shell) = &mut task {
+            shell.status = "completed".to_string();
+            shell.notified = true;
+        }
+        let mut state = crate::state::app_state_store::AppState::default();
+        state.tasks = std::sync::Arc::new(std::collections::BTreeMap::from([(
+            id.clone(),
+            std::sync::Arc::new(task),
+        )]));
+        let store = crate::state::store::AppStore::new(state, None);
+        // The completed row is first-seen-terminal, so the panel never shows
+        // it; `Down` finds no footer item. Pressing `x` must still leave the
+        // store untouched.
+        drive_prompt_with_panel_store(store.clone(), vec![key(KeyCode::Char('x'))]);
+        let state = store.get();
+        assert_eq!(state.footer_selection, None);
+        let status = match state.tasks.get(&id).map(|task| task.as_ref()) {
+            Some(crate::state::app_state_store::TaskState::LocalShell(task)) => task.status.clone(),
+            other => panic!("expected the shell task, got {other:?}"),
+        };
+        assert_eq!(status, "completed");
+    }
+
+    #[test]
+    fn agent_panel_footer_x_outside_the_panel_does_not_stop_anything() {
+        // On another footer item `x` is inert for tasks: the stop handler only
+        // arms for AgentPanel. (`x` then falls through to the existing
+        // type-into-prompt behavior, which clears the selection — unchanged
+        // pre-E2 behavior, not this handler's doing.)
+        let id = format!("bridge-probe-{}", uuid::Uuid::new_v4().simple());
+        let mut state = crate::state::app_state_store::AppState::default();
+        state.tasks = std::sync::Arc::new(std::collections::BTreeMap::from([(
+            id.clone(),
+            std::sync::Arc::new(live_shell_state(&id)),
+        )]));
+        state.repl_bridge_enabled = true;
+        state.repl_bridge_explicit = true;
+        state.repl_bridge_connected = true;
+        let store = crate::state::store::AppStore::new(state, None);
+        drive_prompt_with_panel_store(store.clone(), vec![key(KeyCode::Down), key(KeyCode::Down)]);
+        assert_eq!(store.get().footer_selection, Some(FooterItem::Bridge));
+        drive_prompt_with_panel_store(
+            store.clone(),
+            vec![
+                key(KeyCode::Down),
+                key(KeyCode::Down),
+                key(KeyCode::Char('x')),
+            ],
+        );
+        let status = match store.get().tasks.get(&id).map(|task| task.as_ref()) {
+            Some(crate::state::app_state_store::TaskState::LocalShell(task)) => task.status.clone(),
+            other => panic!("expected the shell task, got {other:?}"),
+        };
+        assert_eq!(status, "running");
+    }
+
+    #[test]
     fn agent_panel_footer_enter_opens_the_row_detail() {
         // A shell row backed by a live task opens the background-tasks dialog
         // straight on that task's detail (initial_detail_task_id).
@@ -5346,10 +5516,12 @@ mod tests {
             "shell-1".to_string(),
             std::sync::Arc::new(live_shell_state("shell-1")),
         )]));
+        state.agent_panel_row_count = 1;
         state.agent_panel_items =
             std::sync::Arc::new(vec![crate::components::agent_panel::AgentPanelItem {
                 id: "shell-1".to_string(),
                 kind: crate::components::agent_panel::AgentKind::Shell,
+                activity_count: 0,
             }]);
         let store = crate::state::store::AppStore::new(state, None);
         let text = drive_prompt_with_panel_store(
@@ -5443,10 +5615,12 @@ mod tests {
             std::sync::Arc::new(live_shell_state("shell-1")),
         )]));
         // The panel would show this one row above 16 terminal rows.
+        state.agent_panel_row_count = 1;
         state.agent_panel_items =
             std::sync::Arc::new(vec![crate::components::agent_panel::AgentPanelItem {
                 id: "shell-1".to_string(),
                 kind: crate::components::agent_panel::AgentKind::Shell,
+                activity_count: 0,
             }]);
         let label =
             crate::tasks::pill_label::get_pill_label(&[PillTask::LocalBash { is_monitor: false }]);
@@ -5466,24 +5640,28 @@ mod tests {
     #[test]
     fn agent_panel_height_budget_matches_the_pill_gate() {
         // The height budget and the render gate both go through
-        // `panel_shows_rows`: the pill row is budgeted exactly when it renders.
-        assert!(crate::components::agent_panel::panel_shows_rows(30, 1));
-        assert!(crate::components::agent_panel::panel_shows_rows(20, 1));
-        assert!(!crate::components::agent_panel::panel_shows_rows(12, 1));
-        assert!(!crate::components::agent_panel::panel_shows_rows(30, 0));
+        // `plan_panel`: the pill row is budgeted exactly when the panel
+        // renders (a row above the height tier).
+        let visible = |terminal_rows, row_count| {
+            crate::components::agent_panel::plan_panel(terminal_rows, row_count, None, 0).is_some()
+        };
+        assert!(visible(30, 1));
+        assert!(visible(20, 1));
+        assert!(!visible(12, 1));
+        assert!(!visible(30, 0));
         // Mirrors the production expressions: pill counts are suppressed
         // exactly while the panel shows rows.
         let with_pills = prompt_input_footer::footer_has_items(
             PromptInputMode::Prompt,
             false,
-            (!crate::components::agent_panel::panel_shows_rows(12, 1)) as usize,
-            (!crate::components::agent_panel::panel_shows_rows(12, 1)) as usize,
+            !visible(12, 1) as usize,
+            !visible(12, 1) as usize,
         );
         let panel_visible_pills = prompt_input_footer::footer_has_items(
             PromptInputMode::Prompt,
             false,
-            (!crate::components::agent_panel::panel_shows_rows(30, 1)) as usize,
-            (!crate::components::agent_panel::panel_shows_rows(30, 1)) as usize,
+            !visible(30, 1) as usize,
+            !visible(30, 1) as usize,
         );
         assert!(with_pills, "below the gate the pill row is budgeted");
         assert!(!panel_visible_pills, "with the panel the pill row is not");
@@ -5499,5 +5677,76 @@ mod tests {
         );
         drive_prompt_with_panel_store(store.clone(), vec![key(KeyCode::Down)]);
         assert_eq!(store.get().footer_selection, None);
+    }
+
+    #[test]
+    fn agent_panel_mode_row_hints_follow_visibility_and_the_finished_deadline() {
+        // One running shell: the panel shows and the mode row offers ↓ agents.
+        let mut state = crate::state::app_state_store::AppState::default();
+        state.tasks = std::sync::Arc::new(std::collections::BTreeMap::from([(
+            "shell-1".to_string(),
+            std::sync::Arc::new(live_shell_state("shell-1")),
+        )]));
+        let store = crate::state::store::AppStore::new(state, None);
+        let text = prompt_canvas_rows(store.clone(), 30);
+        assert!(text.contains("↓ agents"), "canvas=\n{text}");
+        assert!(!text.contains("/tasks to see agents"), "canvas=\n{text}");
+
+        // Below the height gate the panel hides and ↓ agents goes with it.
+        let text = prompt_canvas_rows(store.clone(), 12);
+        assert!(!text.contains("↓ agents"), "canvas=\n{text}");
+
+        // A live finished hint renders `/tasks to see agents`; an expired one
+        // does not (the panel's tick clears it).
+        let now = crate::utils::task::framework::now_ms();
+        for (deadline, expect) in [
+            (Some(now + 30_000), true),
+            (Some(now.saturating_sub(1)), false),
+            (None, false),
+        ] {
+            store.replace_with(|state| {
+                state.agent_panel_finished_hint_until_ms = deadline;
+            });
+            let text = prompt_canvas_rows(store.clone(), 30);
+            assert_eq!(
+                text.contains("/tasks to see agents"),
+                expect,
+                "deadline={deadline:?}; canvas=\n{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn agent_panel_height_budget_matches_the_rendered_panel() {
+        // The plan PromptInput budgets with is the panel's own (§7): a focused
+        // row with calls expands, the hint line is counted, and the 16-23 row
+        // tier never expands.
+        use crate::components::agent_panel::{PanelPlan, plan_panel};
+        let focused = plan_panel(30, 1, Some(0), 3).unwrap();
+        assert_eq!(focused.total_lines(), 5, "1 row + 3 calls + hint");
+        let medium = plan_panel(20, 1, Some(0), 3).unwrap();
+        assert_eq!(medium.total_lines(), 2, "1 row + hint, no expansion");
+        let unfocused = plan_panel(30, 1, None, 0).unwrap();
+        assert_eq!(unfocused.total_lines(), 1);
+        assert_eq!(
+            crate::components::agent_panel::plan_panel(12, 1, Some(0), 3),
+            None
+        );
+        // The footer's reserved rows are panel height + info line + body row.
+        assert_eq!(
+            prompt_input_footer::footer_height_with_panel(
+                false,
+                false,
+                true,
+                false,
+                crate::types::permissions::PermissionMode::Default,
+                0,
+                0,
+                false,
+                focused.total_lines(),
+            ),
+            6
+        );
+        let _: PanelPlan = focused;
     }
 }

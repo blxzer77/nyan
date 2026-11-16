@@ -29,19 +29,19 @@ inline 模式下，消息进 scrollback；只有底部"活动区"重绘。活动
      ◼ 重构页脚布局
      ◻ 删除 statusLine 机制
      ◻ 窄屏降级                                             3/7
-  ├ ⠋ explore   调研 TUI 结构              14 tools · 38k · 2m10s ← agent 面板
-  ├ ⠋ general   外部调研 tps                6 tools · 12k · 1m02s
-  └ $ cargo test                                             45s
 ╭──────────────────────────────────────────────────────────────╮
 │ >                                                            │ ← 输入框
 ╰──────────────────────────────────────────────────────────────╯
+  ⠋ explore   Read src/components/agent_panel.rs  14 tools · 38k · 2m10s ← agent 面板
+  ⠋ general   WebSearch "opencode subagent tui"    6 tools · 12k · 1m02s
+  ⠋ $ cargo test --lib                                             45s
   nyan  master ◇            Opus 4.6 high · 84k/200k · cache 91% · 52 t/s   ← 信息行
-  ⏵⏵ accept edits on (shift+tab to cycle)               ? for shortcuts    ← 模式行
+  ⏵⏵ accept edits on · ↓ agents                         ? for shortcuts    ← 模式行
 ```
 
-- 有 spinner 时：面板挂在 spinner 下方，todo 用 `⎿` 引出。
-- 空闲时（无 spinner）：面板移到输入框正上方，todo 改为带标题的独立块（见 4.2）。
-- 顺序固定：todo 在上，agent 在下。
+- todo 面板在输入框上方：有 spinner 时挂在 spinner 下方，用 `⎿` 引出；空闲时为带标题的独立块（见 4.2）。
+- agent 面板在输入框下方、信息行上方（Footer 内），与 Claude Code 一致（"a panel below the prompt input"），
+  所以 `↓` 进入、首行 `↑` 返回的方向是自然的。E 曾把它放在输入框上方，方向相反，已在 E2 改正。
 
 ## 三、页脚
 
@@ -213,35 +213,39 @@ cache = cache_read ÷ (uncached_input + cache_read + cache_write)
 
 - 来源：后台任务——异步 agent（local agent 注册表）、in-process teammate、后台 shell、dream（`AppState.tasks`）。
   remote session 运行时尚未移植，暂不接入。前台同步子 agent 与前台 shell 已在消息流中显示，不重复进面板。
-- 实现在 `components/agent_panel.rs`（投影、保留、布局为纯函数；`AgentPanel` 连接状态并把显示的行写入
-  `AppState.agent_panel_items`，供页脚导航与 Enter 路由读同一份列表）。
-- 有运行中行时 1 秒一次刷新（spinner 帧与耗时同步走），无行即停表，不做高频动画。
-- 行格式：
+- 实现在 `components/agent_panel.rs`（投影、生命周期、行数规划 `plan_panel`、布局为纯函数），挂在 Footer 内
+  信息行之上。`AgentPanel` 把显示的行写入 `AppState.agent_panel_items` / `agent_panel_row_count`，页脚导航、
+  Enter / `x` 路由与高度预算都读这一份。
+- 有可见行或完成提示未过期时 1 秒一次刷新（spinner 帧与耗时同步走），否则停表，不做高频动画。
+- 行格式（参照调研：Claude Code、opencode、gemini-cli、kimi-cli、crush）：
 
 ```
-  ├ ⠋ explore   调研 TUI 结构              14 tools · 38k · 2m10s
-  └ $ cargo test                                             45s
+  ⠋ explore   Read src/components/agent_panel.rs  14 tools · 38k · 2m10s
+  ⠋ $ cargo test --lib                                             45s
 ```
 
-  - 运行中图标用现有 spinner 字形；名字用该 agent 的 `agent_*` 色；活动描述 `inactive`；右侧统计 `inactive`。
-  - shell 行以 `$` 开头，显示命令（截断）与耗时。
-- 最多 4 行，超出 `… +N more`。
-- 结束：图标变 `✔`（`success`）或 `✘`（`error`），保留 3 秒后移除；全部结束后整块消失。任务结束后多数仍留在
-  `AppState.tasks`（只置 `notified`），所以保留由面板自己判定：首次看到即为终态的任务不显示；"见过运行中"
-  的记录全进程一份，生成中与空闲两个挂载点切换时不丢。
+  - 行首标记：运行中为 spinner 帧，完成 `✔`（`success`），失败 / 停止 `✘`（`error`）。名字用 `agent_*` 色。
+  - 活动列为**最近一次工具调用**（`activity_description`，无则工具名），不做模型生成的进度摘要（CC 那样每 ~30 s
+    额外一次请求，有成本；以后可单独加）。shell 为命令，dream 为阶段。统计 `inactive`、右对齐。
+- 生命周期（同 CC）：成功完成的行**立即移除**，模式行显示 30 秒 `/tasks to see agents`；失败 / 停止的行保留
+  30 秒。首次看到即为终态的任务不显示。"见过运行中"的记录全进程一份：PromptInput 按 generation 重挂，
+  组件内状态会丢。
 - 窄屏：先省右侧统计，再截断活动描述。
 
 ### 6.2 交互
 
 - 复用页脚选择机制：面板可见时 `FooterItem::AgentPanel` 是第一个 footer 项（取代 Tasks / Teams），
   `AppState.agent_panel_selected` 记面板内行号。
-- 面板可见且输入框为空时，`↓` 聚焦面板第一行；`↑` / `↓` 移动选中（选中行 `selection_bg`），末行再 `↓` 到下一个
-  footer 项；`Esc` 或在首行按 `↑` 回到输入框。行数变少时行号收拢，行全部消失时清除选择。
-- `Enter`：teammate 行打开 `TeamsDialog`（teammate 未接入后台任务对话框）；其他行打开 `BackgroundTasksDialog`
-  并以 `initial_detail_task_id` 直达该任务详情。
-- 停止、kill 等操作留在详情对话框内，面板只做导航。
+- 未聚焦时模式行提示 `↓ agents`（面板可见才有）。输入框为空时 `↓` 聚焦面板第一行；`↑` / `↓` 移动选中，
+  末行再 `↓` 到下一个 footer 项；`Esc` 或在首行按 `↑` 回到输入框。行数变少时行号收拢，行全部消失时清除选择。
+- 聚焦时：选中行前缀 `▶`（`claude`）+ `selection_bg`，其下展开最近 3 次工具调用（`⎿` 引出，`inactive`；
+  shell / dream 无历史不展开）；面板末行显示键位提示 `↑↓ select · enter details · x stop · esc back`（键名读实际绑定）。
+- `Enter`：teammate 行打开 `TeamsDialog`；其他行打开 `BackgroundTasksDialog` 并以 `initial_detail_task_id` 直达详情。
+  切换到 agent 完整 transcript 并继续对话（CC / opencode 的做法）另开切片。
+- `x`（Footer 上下文 `footer:stopSelected`）：停止选中任务，与对话框共用 `stop_background_task`
+  （dream / teammate / local agent / shell 分派）；已结束的行无效果。
 - 取代：spinner 下的 `TeammateSpinnerTree`（已删）与 `ExpandedView::Teammates`（已删）；面板可见时页脚不渲染
-  tasks / teammates pill，`footer_has_items` 与高度预算共用 `agent_panel::panel_shows_rows` 判定。
+  tasks / teammates pill。
 
 ## 七、高度降级
 
@@ -249,8 +253,8 @@ inline 模式下活动区过高会导致重绘闪烁，按终端行数限高：
 
 | 终端行数 | todo | agent |
 |---|---|---|
-| ≥ 24 | 最多 6 行条目 | 最多 4 行 |
-| 16–23 | 最多 3 行条目 | 最多 2 行 |
+| ≥ 24 | 最多 6 行条目 | 最多 4 条任务行，面板总高（含展开与键位提示）≤ 8 |
+| 16–23 | 最多 3 行条目 | 最多 2 条任务行，不展开，总高 ≤ 3 |
 | < 16 | 强制一行（收起形态） | 不显示面板，模式行恢复 `● N agents` pill（保留 `↓ to manage` 导航） |
 
 ## 八、statusLine 删除范围

@@ -8,6 +8,7 @@ use super::{
     input_modes::PromptInputMode, notifications,
     prompt_input_footer_left_side::PromptInputFooterLeftSide, prompt_input_info_line,
 };
+use crate::components::agent_panel;
 use crate::context::notifications::{NotificationColor, NotificationSegment};
 use crate::hooks::use_credential_status::CredentialStatus;
 use crate::state::app_state::use_app_state;
@@ -110,6 +111,15 @@ pub struct FooterProps {
     /// Terminal columns for the info line's narrow-screen degradation
     /// (`docs/nyan/tui.md` §3.2). `None` reads the process terminal.
     pub info_line_width: Option<u32>,
+    /// @nyan: the agent panel is mounted above the info line (§6). PromptInput
+    /// derives this from the same plan that feeds its height budget.
+    pub agent_panel_visible: bool,
+    /// @nyan: the panel owns the footer selection, so the mode row drops its
+    /// `↓ agents` hint (the panel's own key-hint line covers it).
+    pub agent_panel_focused: bool,
+    /// @nyan: a row completed within the last 30 s; the mode row shows
+    /// `/tasks to see agents` (§6.1).
+    pub finished_hint_active: bool,
 }
 
 /// Single source for "the left side renders a body row for footer pills"
@@ -172,12 +182,15 @@ fn footer_body_height_for(
     }
 }
 
-/// Total footer height: the built-in info line plus the body row(s).
+/// Total footer height: the agent panel (when visible), the built-in info line
+/// and the body row(s).
 ///
 /// @nyan: the info line is always present (docs/nyan/tui.md §3.1) and is NOT
 /// affected by `suppress_hint`, so it is added outside the body predicate.
 /// The component below mounts it on exactly the same condition.
-pub fn footer_height_for(
+/// `agent_panel_height` must come from [`agent_panel::PanelPlan::total_lines`]
+/// — the same value the panel renders.
+pub fn footer_height_with_panel(
     exit_hint_visible: bool,
     is_searching: bool,
     suppress_hint: bool,
@@ -186,8 +199,10 @@ pub fn footer_height_for(
     notification_row_count: usize,
     status_indicator_count: usize,
     has_footer_items: bool,
+    agent_panel_height: usize,
 ) -> usize {
-    prompt_input_info_line::INFO_LINE_HEIGHT
+    agent_panel_height
+        + prompt_input_info_line::INFO_LINE_HEIGHT
         + footer_body_height_for(
             exit_hint_visible,
             is_searching,
@@ -284,8 +299,14 @@ pub fn Footer(props: &FooterProps, mut hooks: Hooks) -> impl Into<AnyElement<'st
     }
     .into_any();
 
+    // @nyan: the agent panel sits between the prompt input and the info line
+    // (§6, §2). It renders nothing when it has no rows or the terminal is too
+    // short, and the footer height budget reserves exactly its line count.
+    let agent_panel = element! { agent_panel::AgentPanel }.into_any();
+
     element! {
         View(flex_direction: FlexDirection::Column, width: 100pct) {
+            #(Some(agent_panel))
             #(Some(info_line))
             #(if has_footer_row {
                 Some(element! {
@@ -322,6 +343,10 @@ pub fn Footer(props: &FooterProps, mut hooks: Hooks) -> impl Into<AnyElement<'st
                                 // formula when the panel lands.
                                 tasks_selected: props.tasks_selected,
                                 teams_selected: props.teams_selected,
+                                // @nyan: agent-panel hints (§6).
+                                agent_panel_visible: props.agent_panel_visible,
+                                agent_panel_focused: props.agent_panel_focused,
+                                finished_hint_active: props.finished_hint_active,
                             )
                         }
                         #(if has_right_side {
@@ -546,7 +571,7 @@ mod tests {
     fn footer_height_matches_hint_and_notification_rows() {
         // @nyan: +1 for the built-in info line, which is always present.
         assert_eq!(
-            footer_height_for(
+            footer_height_with_panel(
                 false,
                 false,
                 false,
@@ -555,17 +580,28 @@ mod tests {
                 1,
                 0,
                 false,
+                0,
             ),
             2,
             "loading hint and notification share the official footer row above the info line"
         );
         assert_eq!(
-            footer_height_for(false, false, true, false, PermissionMode::Plan, 0, 0, false,),
+            footer_height_with_panel(
+                false,
+                false,
+                true,
+                false,
+                PermissionMode::Plan,
+                0,
+                0,
+                false,
+                0
+            ),
             2,
             "active permission mode renders even when shortcut hints are suppressed"
         );
         assert_eq!(
-            footer_height_for(
+            footer_height_with_panel(
                 false,
                 false,
                 true,
@@ -574,6 +610,7 @@ mod tests {
                 0,
                 2,
                 false,
+                0,
             ),
             3,
             "right-side status indicators keep their official stacked footer rows"
@@ -581,9 +618,123 @@ mod tests {
     }
 
     #[test]
+    fn footer_height_adds_the_agent_panel_rows_above_the_info_line() {
+        // No body row: panel + info line exactly.
+        assert_eq!(
+            footer_height_with_panel(
+                false,
+                false,
+                true,
+                false,
+                PermissionMode::Default,
+                0,
+                0,
+                false,
+                5,
+            ),
+            6,
+            "agent panel rows precede the always-present info line"
+        );
+        // With a body row: panel + info line + body row.
+        assert_eq!(
+            footer_height_with_panel(
+                false,
+                false,
+                false,
+                false,
+                PermissionMode::Default,
+                0,
+                0,
+                true,
+                3,
+            ),
+            5
+        );
+    }
+
+    #[derive(Default, Props)]
+    struct FooterWithAgentPanelProps {
+        store: Option<crate::state::store::AppStore>,
+        agent_panel_visible: bool,
+    }
+
+    #[component]
+    fn FooterWithAgentPanel(
+        props: &FooterWithAgentPanelProps,
+        mut hooks: Hooks,
+    ) -> impl Into<AnyElement<'static>> {
+        let store = hooks.use_const(|| props.store.clone().expect("footer probe store"));
+        let agent_panel_visible = props.agent_panel_visible;
+        element! {
+            ContextProvider(value: Context::owned(*theme::current())) {
+                crate::state::app_state::AppStateProvider(
+                    prebuilt_store: Some(store),
+                    children: crate::state::app_state::ProviderChildren::new(move || element! {
+                        Footer(
+                            suppress_hint: false,
+                            agent_panel_visible: agent_panel_visible,
+                        )
+                    }.into_any()),
+                )
+            }
+        }
+    }
+
+    fn shell_task_store() -> crate::state::store::AppStore {
+        use crate::state::app_state_store::TaskState;
+        use std::sync::Arc;
+        let mut state = crate::state::app_state_store::AppState::default();
+        state.tasks = Arc::new(std::collections::BTreeMap::from([(
+            "shell-1".to_string(),
+            Arc::new(TaskState::LocalShell(
+                crate::tasks::local_shell_task::guards::LocalShellTaskState {
+                    id: "shell-1".into(),
+                    task_type: "local_bash".into(),
+                    status: "running".into(),
+                    description: "a local shell".into(),
+                    command: "cargo test --lib".into(),
+                    result: None,
+                    notified: false,
+                    shell_command: None,
+                    last_reported_total_lines: 0,
+                    is_backgrounded: true,
+                    agent_id: None,
+                    tool_use_id: None,
+                    kind: None,
+                    start_time_ms: 1,
+                    end_time_ms: None,
+                },
+            )),
+        )]));
+        crate::state::store::AppStore::new(state, None)
+    }
+
+    #[test]
+    fn footer_renders_the_agent_panel_above_the_info_line_and_mode_row() {
+        let canvas = element!(FooterWithAgentPanel(
+            store: Some(shell_task_store()),
+            agent_panel_visible: true,
+        ))
+        .render(Some(100));
+        let text = canvas.to_string();
+        let lines = text.lines().collect::<Vec<_>>();
+        assert_eq!(
+            lines.len(),
+            3,
+            "panel, info line, mode row; canvas=\n{text}"
+        );
+        assert!(lines[0].contains("cargo test --lib"), "canvas=\n{text}");
+        // The middle line is the always-present info line (directory/model
+        // segments vary with the environment).
+        assert!(!lines[1].contains("cargo test"), "canvas=\n{text}");
+        assert!(lines[2].contains("? for shortcuts"), "canvas=\n{text}");
+        assert!(lines[2].contains("↓ agents"), "canvas=\n{text}");
+    }
+
+    #[test]
     fn footer_height_budgets_the_pill_row() {
         assert_eq!(
-            footer_height_for(
+            footer_height_with_panel(
                 false,
                 false,
                 true,
@@ -592,6 +743,7 @@ mod tests {
                 0,
                 0,
                 true,
+                0,
             ),
             2,
             "footer pills own one body row plus the info line"
@@ -604,7 +756,7 @@ mod tests {
     #[test]
     fn footer_height_keeps_the_info_line_when_no_body_row_renders() {
         assert_eq!(
-            footer_height_for(
+            footer_height_with_panel(
                 false,
                 false,
                 true,
@@ -613,6 +765,7 @@ mod tests {
                 0,
                 0,
                 false,
+                0,
             ),
             1,
             "the info line survives a fully suppressed hint row"

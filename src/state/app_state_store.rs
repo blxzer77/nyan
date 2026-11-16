@@ -727,6 +727,15 @@ pub struct AppState {
     /// order. Published by the panel so footer navigation and Enter routing
     /// read the same list the user sees.
     pub agent_panel_items: Arc<Vec<crate::components::agent_panel::AgentPanelItem>>,
+    /// @nyan: number of rows that survived the panel's lifecycle, before the
+    /// height plan truncates them. PromptInput feeds it to the same
+    /// `agent_panel::plan_panel` the panel draws with, so the footer height
+    /// and the drawn panel agree (docs/nyan/tui.md §7).
+    pub agent_panel_row_count: usize,
+    /// @nyan: epoch-ms deadline for the mode-row `/tasks to see agents` hint.
+    /// Armed when a running row completes (docs/nyan/tui.md §6.1); the panel
+    /// clears it on its first tick after expiry.
+    pub agent_panel_finished_hint_until_ms: Option<u64>,
     // -- Always-on bridge (CC AppStateStore.ts:134-155) --
     // The CC `feature('BRIDGE_MODE')` build gate and `isBridgeEnabled()`
     // entitlement are NOT AppState (CC evaluates them at the read sites:
@@ -899,6 +908,8 @@ impl Default for AppState {
             footer_selection: None,
             agent_panel_selected: 0,
             agent_panel_items: Arc::new(Vec::new()),
+            agent_panel_row_count: 0,
+            agent_panel_finished_hint_until_ms: None,
             // Maps to: CC AppStateStore.ts:487-499 replBridge* /
             // showRemoteCallout defaults (all false / undefined).
             repl_bridge_enabled: false,
