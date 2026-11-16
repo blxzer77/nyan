@@ -6,6 +6,7 @@
 //!   CC components/LogSelector.tsx → components/log_selector.rs
 //!   CC components/BaseTextInput.tsx → components/base_text_input.rs
 
+pub mod agent_panel;
 pub mod agent_progress_line;
 pub mod agents;
 pub mod app;

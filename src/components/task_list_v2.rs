@@ -295,6 +295,16 @@ fn width(text: &str) -> usize {
     UnicodeWidthStr::width(text)
 }
 
+/// The bound key for the todo panel toggle, so a user remap is reflected in
+/// the panel's hint (same lookup as `screens/repl.rs`'s ctrl+o hint).
+pub fn toggle_todos_shortcut() -> String {
+    crate::keybindings::shortcut_format::get_shortcut_display(
+        "app:toggleTodos",
+        &crate::keybindings::types::ContextName::Global,
+        "ctrl+t",
+    )
+}
+
 /// Truncate `title` so the line fits `columns`. `fixed` is everything on the
 /// line except the title and the right-hand text; the right-hand text keeps a
 /// two-column gap and is dropped when it would squeeze the title too far.
@@ -447,7 +457,8 @@ pub fn layout_panel(data: &PanelData, theme: &Theme) -> Vec<PanelLine> {
             };
             let icon_text = format!("{icon} ");
             let tail = format!(" · {progress_text}");
-            let right = "ctrl+t";
+            let shortcut = toggle_todos_shortcut();
+            let right = shortcut.as_str();
             let fixed = width(SPINNER_FIRST_PREFIX) + width(&icon_text) + width(&tail);
             let (title, keep_right) = fit_title(&task.subject, columns, fixed, width(right));
             vec![PanelLine {
@@ -497,7 +508,10 @@ pub fn layout_panel(data: &PanelData, theme: &Theme) -> Vec<PanelLine> {
                         Span::plain("Tasks", None),
                         Span::plain(format!(" {progress_text}"), inactive),
                     ],
-                    right: Some(Span::plain("ctrl+t to collapse", inactive)),
+                    right: Some(Span::plain(
+                        format!("{} to collapse", toggle_todos_shortcut()),
+                        inactive,
+                    )),
                 }];
                 lines.extend(
                     entries
@@ -927,7 +941,7 @@ mod tests {
         assert_eq!(rows(20).len(), 1 + 3);
         let short = rows(12);
         assert_eq!(short.len(), 1, "forced to the one-line form");
-        assert!(short[0].text().contains("ctrl+t"));
+        assert!(short[0].text().contains(&toggle_todos_shortcut()));
     }
 
     #[test]
@@ -966,7 +980,9 @@ mod tests {
         let lines = text.lines().collect::<Vec<_>>();
         assert!(lines[0].starts_with("  Tasks 3/7"), "canvas=\n{text}");
         assert!(
-            lines[0].trim_end().ends_with("ctrl+t to collapse"),
+            lines[0]
+                .trim_end()
+                .ends_with(&format!("{} to collapse", toggle_todos_shortcut())),
             "canvas=\n{text}"
         );
         assert!(lines[1].starts_with("  ✔ Review  +2"), "canvas=\n{text}");
@@ -974,7 +990,7 @@ mod tests {
         assert!(!text.contains('⎿'), "canvas=\n{text}");
         let theme = *theme::current();
         assert_eq!(
-            style_at(&canvas, "ctrl+t to collapse").color,
+            style_at(&canvas, &format!("{} to collapse", toggle_todos_shortcut())).color,
             Some(theme.inactive)
         );
         assert_eq!(style_at(&canvas, "3/7").color, Some(theme.inactive));
@@ -989,9 +1005,15 @@ mod tests {
             text.starts_with("  ⎿  ◼ Build footer · 3/7"),
             "canvas=\n{text}"
         );
-        assert!(text.trim_end().ends_with("ctrl+t"), "canvas=\n{text}");
+        assert!(
+            text.trim_end().ends_with(&toggle_todos_shortcut()),
+            "canvas=\n{text}"
+        );
         let theme = *theme::current();
-        assert_eq!(style_at(&canvas, "ctrl+t").color, Some(theme.inactive));
+        assert_eq!(
+            style_at(&canvas, &toggle_todos_shortcut()).color,
+            Some(theme.inactive)
+        );
         assert_eq!(style_at(&canvas, "◼").color, Some(theme.claude));
 
         let pending_only = vec![

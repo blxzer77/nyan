@@ -404,11 +404,14 @@ pub fn BackgroundTasksDialog<'a>(
         None
     };
     let (source_items, foregrounded, spinner_tree) =
-        if let Some((tasks, foregrounded, view)) = live_state {
+        if let Some((tasks, foregrounded, _view)) = live_state {
             (
                 background_task_items(&tasks),
                 foregrounded,
-                view == crate::state::app_state_store::ExpandedView::Teammates,
+                // @nyan: `ExpandedView::Teammates` was removed in TUI slice E;
+                // the agent panel replaced the spinner tree, so this dialog no
+                // longer hides teammate rows on that condition.
+                false,
             )
         } else {
             (

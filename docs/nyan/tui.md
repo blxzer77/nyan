@@ -211,8 +211,11 @@ cache = cache_read ÷ (uncached_input + cache_read + cache_write)
 
 ### 6.1 内容
 
-- 来源：AppState 中运行中的后台任务——异步 agent、in-process teammate、后台 shell、remote session、dream。
-  前台同步子 agent 已在消息流中以工具行显示，不重复进面板。
+- 来源：后台任务——异步 agent（local agent 注册表）、in-process teammate、后台 shell、dream（`AppState.tasks`）。
+  remote session 运行时尚未移植，暂不接入。前台同步子 agent 与前台 shell 已在消息流中显示，不重复进面板。
+- 实现在 `components/agent_panel.rs`（投影、保留、布局为纯函数；`AgentPanel` 连接状态并把显示的行写入
+  `AppState.agent_panel_items`，供页脚导航与 Enter 路由读同一份列表）。
+- 有运行中行时 1 秒一次刷新（spinner 帧与耗时同步走），无行即停表，不做高频动画。
 - 行格式：
 
 ```
@@ -223,17 +226,22 @@ cache = cache_read ÷ (uncached_input + cache_read + cache_write)
   - 运行中图标用现有 spinner 字形；名字用该 agent 的 `agent_*` 色；活动描述 `inactive`；右侧统计 `inactive`。
   - shell 行以 `$` 开头，显示命令（截断）与耗时。
 - 最多 4 行，超出 `… +N more`。
-- 结束：图标变 `✔`（`success`）或 `✘`（`error`），保留 3 秒后移除；全部结束后整块消失。
+- 结束：图标变 `✔`（`success`）或 `✘`（`error`），保留 3 秒后移除；全部结束后整块消失。任务结束后多数仍留在
+  `AppState.tasks`（只置 `notified`），所以保留由面板自己判定：首次看到即为终态的任务不显示；"见过运行中"
+  的记录全进程一份，生成中与空闲两个挂载点切换时不丢。
 - 窄屏：先省右侧统计，再截断活动描述。
 
 ### 6.2 交互
 
-- 面板可见且输入框为空时，`↓` 聚焦面板第一行；`↑` / `↓` 移动选中（选中行反色或 `selection_bg`）；
-  `Enter` 打开该项详情（复用 `BackgroundTasksDialog` 的详情子对话框，`tasks/background_tasks_dialog.rs:604-612`）；
-  `Esc` 或在首行按 `↑` 回到输入框。
+- 复用页脚选择机制：面板可见时 `FooterItem::AgentPanel` 是第一个 footer 项（取代 Tasks / Teams），
+  `AppState.agent_panel_selected` 记面板内行号。
+- 面板可见且输入框为空时，`↓` 聚焦面板第一行；`↑` / `↓` 移动选中（选中行 `selection_bg`），末行再 `↓` 到下一个
+  footer 项；`Esc` 或在首行按 `↑` 回到输入框。行数变少时行号收拢，行全部消失时清除选择。
+- `Enter`：teammate 行打开 `TeamsDialog`（teammate 未接入后台任务对话框）；其他行打开 `BackgroundTasksDialog`
+  并以 `initial_detail_task_id` 直达该任务详情。
 - 停止、kill 等操作留在详情对话框内，面板只做导航。
-- 取代：spinner 下的 `TeammateSpinnerTree`（`spinner/mod.rs:731-734`）与页脚 tasks / teammates pill
-  （`prompt_input_footer_left_side.rs:159-185`）。Ctrl+T 不再循环到 Teammates（`use_global_keybindings.rs:27-47`）。
+- 取代：spinner 下的 `TeammateSpinnerTree`（已删）与 `ExpandedView::Teammates`（已删）；面板可见时页脚不渲染
+  tasks / teammates pill，`footer_has_items` 与高度预算共用 `agent_panel::panel_shows_rows` 判定。
 
 ## 七、高度降级
 

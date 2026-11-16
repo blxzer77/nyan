@@ -9712,6 +9712,15 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             } else {
                 None
             })
+            // @nyan: agent panel, generating form (docs/nyan/tui.md §6.1) —
+            // directly below the todo panel and above the spacer.
+            #(if show_spinner && screen.get() == Screen::Prompt {
+                Some(element! {
+                    crate::components::agent_panel::AgentPanel
+                })
+            } else {
+                None
+            })
             // Preserve the inline-mode gap that followed the old spinner row;
             // this is an iocraft transport spacer, not Messages ownership.
             #(if show_spinner && screen.get() == Screen::Prompt {
@@ -9974,6 +9983,16 @@ pub fn Repl(props: &ReplProps, mut hooks: Hooks) -> impl Into<AnyElement<'static
             #(if should_render_prompt_input && !show_spinner {
                 Some(element! {
                     crate::components::task_list_v2::TodoPanel(spinner_active: false)
+                })
+            } else {
+                None
+            })
+
+            // @nyan: agent panel, idle form — directly above PromptInput and
+            // below the todo panel (docs/nyan/tui.md §6.1).
+            #(if should_render_prompt_input && !show_spinner {
+                Some(element! {
+                    crate::components::agent_panel::AgentPanel
                 })
             } else {
                 None

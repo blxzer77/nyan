@@ -26,7 +26,6 @@ pub enum ExpandedView {
     #[default]
     None,
     Tasks,
-    Teammates,
 }
 
 /// Maps to: CC `AppStateStore.ts` `FooterItem` — which footer pill is focused
@@ -41,6 +40,10 @@ pub enum FooterItem {
     Teams,
     Bridge,
     Companion,
+    /// @nyan: the agent panel's footer stop (docs/nyan/tui.md §6.2). Distinct
+    /// from `Tasks` so the panel's row navigation and the height-degraded pill
+    /// fallback keep unambiguous Enter semantics.
+    AgentPanel,
 }
 
 impl FooterItem {
@@ -53,6 +56,7 @@ impl FooterItem {
             Self::Teams => "teams",
             Self::Bridge => "bridge",
             Self::Companion => "companion",
+            Self::AgentPanel => "agent-panel",
         }
     }
 }
@@ -715,6 +719,14 @@ pub struct AppState {
     /// Maps to: CC `AppState.footerSelection` — focused footer pill, or
     /// `None` when the prompt owns focus.
     pub footer_selection: Option<FooterItem>,
+    /// @nyan: selected row inside the agent panel while `footer_selection` is
+    /// `FooterItem::AgentPanel` (docs/nyan/tui.md §6.2). Clamped by the panel
+    /// whenever the row list shrinks.
+    pub agent_panel_selected: usize,
+    /// @nyan: the rows the agent panel is currently showing, in display
+    /// order. Published by the panel so footer navigation and Enter routing
+    /// read the same list the user sees.
+    pub agent_panel_items: Arc<Vec<crate::components::agent_panel::AgentPanelItem>>,
     // -- Always-on bridge (CC AppStateStore.ts:134-155) --
     // The CC `feature('BRIDGE_MODE')` build gate and `isBridgeEnabled()`
     // entitlement are NOT AppState (CC evaluates them at the read sites:
@@ -885,6 +897,8 @@ impl Default for AppState {
             speculation: SpeculationState::Idle,
             speculation_session_time_saved_ms: 0,
             footer_selection: None,
+            agent_panel_selected: 0,
+            agent_panel_items: Arc::new(Vec::new()),
             // Maps to: CC AppStateStore.ts:487-499 replBridge* /
             // showRemoteCallout defaults (all false / undefined).
             repl_bridge_enabled: false,

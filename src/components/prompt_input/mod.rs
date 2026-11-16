@@ -669,6 +669,9 @@ pub fn PromptInput<'a>(
     let mut show_global_search = hooks.use_state(|| false);
     let mut show_history_picker = hooks.use_state(|| false);
     let mut show_background_tasks = hooks.use_state(|| false);
+    // @nyan: the agent panel's Enter sets this so the dialog opens on the
+    // selected row's detail instead of the list (tui.md §6.2).
+    let mut background_tasks_initial_detail = hooks.use_state(|| Option::<String>::None);
     let mut show_teams_dialog = hooks.use_state(|| false);
     let mut show_bridge_dialog = hooks.use_state(|| false);
     // PromptInput-scoped footer layout wake (L1, PORTING.md): created before
@@ -1156,9 +1159,37 @@ pub fn PromptInput<'a>(
     // `background_task_count > 0` in the footer. In external (non-ant)
     // builds the two sets are identical.
     let has_background_tasks = !background_task_items.is_empty();
+    // @nyan: the agent panel needs the terminal row count to decide whether it
+    // is visible (docs/nyan/tui.md §7). The same budget the panel uses gates
+    // the footer pill fallback, so the two can never disagree.
+    let (_, prompt_terminal_rows) = hooks.use_terminal_size();
+    let agent_panel_items = use_app_state(&mut hooks, |state| state.agent_panel_items.clone());
+    let agent_panel_visible = crate::components::agent_panel::panel_shows_rows(
+        prompt_terminal_rows as usize,
+        agent_panel_items.len(),
+    );
+    // @nyan: while the panel shows the same tasks, the footer pills are
+    // suppressed. Both the render gate and the height budget read these two
+    // counts, so the body row and `footer_height_for` cannot diverge.
+    let footer_pill_task_count = if agent_panel_visible {
+        0
+    } else {
+        pill_tasks.len()
+    };
+    let footer_pill_teammate_count = if agent_panel_visible {
+        0
+    } else {
+        teams_dialog_data
+            .as_ref()
+            .map(|data| data.teammates.len())
+            .unwrap_or(0)
+    };
+    // @nyan: while the panel is visible its rows replace the tasks/teammates
+    // pills (docs/nyan/tui.md §3.4, §6.2); below 16 rows the pills return.
     let footer_items = [
-        has_background_tasks.then_some(FooterItem::Tasks),
-        teams_dialog_data.is_some().then_some(FooterItem::Teams),
+        agent_panel_visible.then_some(FooterItem::AgentPanel),
+        (!agent_panel_visible && has_background_tasks).then_some(FooterItem::Tasks),
+        (!agent_panel_visible && teams_dialog_data.is_some()).then_some(FooterItem::Teams),
         bridge_footer_visible.then_some(FooterItem::Bridge),
     ]
     .into_iter()
@@ -1193,6 +1224,9 @@ pub fn PromptInput<'a>(
     let tasks_selected = footer_item_selected == Some(FooterItem::Tasks);
     let teams_selected = footer_item_selected == Some(FooterItem::Teams);
     let bridge_selected = footer_item_selected == Some(FooterItem::Bridge);
+    // @nyan: while the panel has focus, ↑/↓ walk its rows first and only step
+    // into the next footer item at the edge (docs/nyan/tui.md §6.2).
+    let agent_panel_row_count = agent_panel_items.len();
     let select_footer_item = {
         let store = app_store.clone();
         move |item: Option<FooterItem>| {
@@ -1215,6 +1249,30 @@ pub fn PromptInput<'a>(
             }
         }
     };
+    // @nyan: writes `AppState.agent_panel_selected`; `Some(row)` clamps to the
+    // row list, `None` resets to 0 for the next entry into the panel.
+    let set_agent_panel_selected = {
+        let store = app_store.clone();
+        move |selected: Option<usize>| {
+            if let Some(store) = store.as_ref() {
+                store.set_state(|prev| {
+                    let next_value = crate::components::agent_panel::clamped_agent_selection(
+                        selected.unwrap_or(0),
+                        prev.agent_panel_items.len(),
+                    );
+                    if prev.agent_panel_selected == next_value {
+                        return crate::state::store::UpdateDecision::Same(());
+                    }
+                    let mut next = (**prev).clone();
+                    next.agent_panel_selected = next_value;
+                    crate::state::store::UpdateDecision::Replace {
+                        next: Arc::new(next),
+                        result: (),
+                    }
+                });
+            }
+        }
+    };
     for (action_name, delta) in [
         ("footer:up", -1isize),
         ("footer:previous", -1isize),
@@ -1224,6 +1282,7 @@ pub fn PromptInput<'a>(
         let items = footer_items.clone();
         let store = app_store.clone();
         let select = select_footer_item.clone();
+        let set_selected = set_agent_panel_selected.clone();
         use_keybinding(
             &mut hooks,
             keybinding_runtime.clone(),
@@ -1243,6 +1302,27 @@ pub fn PromptInput<'a>(
                 let Some(current) = store.as_ref().and_then(|s| s.get().footer_selection) else {
                     return false;
                 };
+                if current == FooterItem::AgentPanel && agent_panel_row_count > 0 {
+                    // @nyan: rows first; stepping past the edge falls through
+                    // to the regular footer-item walk below.
+                    let selected = store
+                        .as_ref()
+                        .map(|s| s.get().agent_panel_selected)
+                        .unwrap_or(0);
+                    if delta < 0 {
+                        if selected > 0 {
+                            set_selected(Some(selected - 1));
+                            return true;
+                        }
+                        // Top row: leave the panel for the input.
+                        select(None);
+                        return true;
+                    }
+                    if selected + 1 < agent_panel_row_count {
+                        set_selected(Some(selected + 1));
+                        return true;
+                    }
+                }
                 let index = items.iter().position(|item| *item == current).unwrap_or(0);
                 let next = if delta < 0 {
                     index.saturating_sub(delta.unsigned_abs())
@@ -1252,7 +1332,12 @@ pub fn PromptInput<'a>(
                         .min(items.len().saturating_sub(1))
                 };
                 if let Some(item) = items.get(next).copied() {
-                    select(Some(item));
+                    if item != current {
+                        select(Some(item));
+                        // Moving into the panel starts on its first row;
+                        // stepping to another footer item forgets the row.
+                        set_selected((item == FooterItem::AgentPanel).then_some(0));
+                    }
                 }
                 true
             },
@@ -1277,12 +1362,38 @@ pub fn PromptInput<'a>(
                 }
             },
             move || {
+                // @nyan: a focused agent-panel row opens its detail directly
+                // (docs/nyan/tui.md §6.2): teammates go to TeamsDialog, every
+                // other row to BackgroundTasksDialog with the row preselected.
+                let mut initial_detail_task_id = None;
                 match store.as_ref().and_then(|s| s.get().footer_selection) {
+                    Some(FooterItem::AgentPanel) => {
+                        let state = store.as_ref().expect("agent panel selection").get();
+                        let row = crate::components::agent_panel::agent_panel_item_at(
+                            &state.agent_panel_items,
+                            state.agent_panel_selected,
+                        )
+                        .cloned();
+                        match row {
+                            Some(item)
+                                if item.kind
+                                    == crate::components::agent_panel::AgentKind::Teammate =>
+                            {
+                                show_teams_dialog.set(true)
+                            }
+                            Some(item) => {
+                                initial_detail_task_id = Some(item.id);
+                                show_background_tasks.set(true);
+                            }
+                            None => return false,
+                        }
+                    }
                     Some(FooterItem::Tasks) => show_background_tasks.set(true),
                     Some(FooterItem::Teams) => show_teams_dialog.set(true),
                     Some(FooterItem::Bridge) => show_bridge_dialog.set(true),
                     Some(_) | None => return false,
                 }
+                background_tasks_initial_detail.set(initial_detail_task_id);
                 select(None);
                 true
             },
@@ -2295,6 +2406,11 @@ pub fn PromptInput<'a>(
                         }
                     };
                     select_footer_item(selected);
+                    // @nyan: entering the panel from the input starts on its
+                    // first row (tui.md §6.2).
+                    set_agent_panel_selected(
+                        (selected == Some(FooterItem::AgentPanel)).then_some(0),
+                    );
                 }
                 let selected = input.read().clone();
                 let history_mode = input_modes::get_mode_from_input(&selected);
@@ -2409,13 +2525,19 @@ pub fn PromptInput<'a>(
 
     if show_background_tasks.get() {
         let mut show_for_done = show_background_tasks;
+        let mut initial_detail_for_done = background_tasks_initial_detail;
         let app_store_for_tasks = hooks
             .try_use_context::<crate::state::store::AppStore>()
             .map(|store| store.clone());
+        let initial_detail_task_id = background_tasks_initial_detail.read().clone();
         return element! {
             BackgroundTasksDialog(
                 app_store: app_store_for_tasks,
-                on_done: move |_| show_for_done.set(false),
+                initial_detail_task_id: initial_detail_task_id,
+                on_done: move |_| {
+                    initial_detail_for_done.set(None);
+                    show_for_done.set(false);
+                },
             )
         }
         .into_any();
@@ -2813,11 +2935,8 @@ pub fn PromptInput<'a>(
             prompt_input_footer::footer_has_items(
                 input_mode.get(),
                 show_vim_insert_footer,
-                background_task_items.len(),
-                teams_dialog_data
-                    .as_ref()
-                    .map(|data| data.teammates.len())
-                    .unwrap_or(0),
+                footer_pill_task_count,
+                footer_pill_teammate_count,
             ),
         )
     };
@@ -3064,9 +3183,9 @@ pub fn PromptInput<'a>(
                             // the pill renders getPillLabel(runningTasks);
                             // count and label come from the same
                             // post-exclusion set.
-                            background_task_count: pill_tasks.len(),
+                            background_task_count: footer_pill_task_count,
                             background_tasks_label: crate::tasks::pill_label::get_pill_label(&pill_tasks),
-                            teammate_count: teams_dialog_data.as_ref().map(|data| data.teammates.len()).unwrap_or(0),
+                            teammate_count: footer_pill_teammate_count,
                             // Maps to: CC PromptInput.tsx:3064-3066.
                             tasks_selected: tasks_selected,
                             teams_selected: teams_selected,
@@ -5027,5 +5146,358 @@ mod tests {
             !unfocused.contains("ab"),
             "active local command UI should prevent PromptInput text editing; canvas=\n{unfocused}"
         );
+    }
+
+    // -- @nyan: agent panel focus interaction (docs/nyan/tui.md §6.2) --------
+
+    /// Store whose agent panel publishes `rows` as displayed items, so the
+    /// footer navigation has a concrete row list to walk.
+    fn panel_store(
+        rows: Vec<(&str, crate::components::agent_panel::AgentKind)>,
+    ) -> crate::state::store::AppStore {
+        use std::sync::Arc;
+        let mut state = crate::state::app_state_store::AppState::default();
+        state.agent_panel_items = Arc::new(
+            rows.into_iter()
+                .map(
+                    |(id, kind)| crate::components::agent_panel::AgentPanelItem {
+                        id: id.to_string(),
+                        kind,
+                    },
+                )
+                .collect(),
+        );
+        crate::state::store::AppStore::new(state, None)
+    }
+
+    /// Drives PromptInput with `events` against a prebuilt store and returns
+    /// the last canvas plus the store.
+    fn drive_prompt_with_panel_store(
+        store: crate::state::store::AppStore,
+        events: Vec<TerminalEvent>,
+    ) -> String {
+        futures::executor::block_on(async move {
+            let mut app = element! {
+                ContextProvider(value: Context::owned(
+                    crate::keybindings::keybinding_context::KeybindingRuntime::with_default_bindings()
+                )) {
+                    ContextProvider(value: Context::owned(*theme::current())) {
+                        crate::state::app_state::AppStateProvider(
+                            prebuilt_store: Some(store),
+                            children: crate::state::app_state::ProviderChildren::new(|| element! {
+                                PromptInput(
+                                    on_submit: move |_| {},
+                                    on_exit: move |_| {},
+                                )
+                            }.into_any()),
+                        )
+                    }
+                }
+            };
+            let delayed_events = stream::unfold(events.into_iter(), |mut events| async move {
+                let event = std::iter::Iterator::next(&mut events)?;
+                futures_timer::Delay::new(Duration::from_millis(30)).await;
+                Some((event, events))
+            });
+            let mut render_loop = Box::pin(app.mock_terminal_render_loop(
+                MockTerminalConfig::with_events(delayed_events).with_size(90, 30),
+            ));
+            let mut last = String::new();
+            for _ in 0..24 {
+                let next = crate::utils::race(render_loop.next(), async {
+                    futures_timer::Delay::new(Duration::from_millis(100)).await;
+                    None
+                })
+                .await;
+                let Some(canvas) = next else {
+                    break;
+                };
+                last = canvas_lines(&canvas).join("\n");
+            }
+            last
+        })
+    }
+
+    #[test]
+    fn agent_panel_footer_down_enters_rows_then_steps_to_the_next_item() {
+        // @nyan: empty input + ↓ selects the panel's first footer item, and
+        // the following ↓ walks the panel's rows (tui.md §6.2).
+        let store = panel_store(vec![
+            ("a", crate::components::agent_panel::AgentKind::Shell),
+            ("b", crate::components::agent_panel::AgentKind::Shell),
+        ]);
+        drive_prompt_with_panel_store(store.clone(), vec![key(KeyCode::Down)]);
+        assert_eq!(store.get().footer_selection, Some(FooterItem::AgentPanel));
+        assert_eq!(store.get().agent_panel_selected, 0);
+
+        let store = panel_store(vec![
+            ("a", crate::components::agent_panel::AgentKind::Shell),
+            ("b", crate::components::agent_panel::AgentKind::Shell),
+        ]);
+        drive_prompt_with_panel_store(store.clone(), vec![key(KeyCode::Down), key(KeyCode::Down)]);
+        assert_eq!(store.get().footer_selection, Some(FooterItem::AgentPanel));
+        assert_eq!(store.get().agent_panel_selected, 1);
+    }
+
+    #[test]
+    fn agent_panel_footer_down_past_the_last_row_moves_to_the_next_footer_item() {
+        let store = panel_store(vec![
+            ("a", crate::components::agent_panel::AgentKind::Shell),
+            ("b", crate::components::agent_panel::AgentKind::Shell),
+        ]);
+        store.replace_with(|state| {
+            state.repl_bridge_connected = true;
+            state.repl_bridge_explicit = true;
+        });
+        drive_prompt_with_panel_store(
+            store.clone(),
+            vec![key(KeyCode::Down), key(KeyCode::Down), key(KeyCode::Down)],
+        );
+        assert_eq!(
+            store.get().footer_selection,
+            Some(FooterItem::Bridge),
+            "one row past the last panel row reaches the next footer item"
+        );
+    }
+
+    #[test]
+    fn agent_panel_footer_up_on_the_first_row_returns_to_the_input() {
+        let store = panel_store(vec![
+            ("a", crate::components::agent_panel::AgentKind::Shell),
+            ("b", crate::components::agent_panel::AgentKind::Shell),
+        ]);
+        drive_prompt_with_panel_store(store.clone(), vec![key(KeyCode::Down), key(KeyCode::Down)]);
+        assert_eq!(
+            (
+                store.get().footer_selection,
+                store.get().agent_panel_selected
+            ),
+            (Some(FooterItem::AgentPanel), 1),
+            "after two downs"
+        );
+        drive_prompt_with_panel_store(store.clone(), vec![key(KeyCode::Up)]);
+        assert_eq!(
+            (
+                store.get().footer_selection,
+                store.get().agent_panel_selected
+            ),
+            (Some(FooterItem::AgentPanel), 0),
+            "after one up"
+        );
+        drive_prompt_with_panel_store(store.clone(), vec![key(KeyCode::Up)]);
+        assert_eq!(
+            (
+                store.get().footer_selection,
+                store.get().agent_panel_selected
+            ),
+            (None, 0),
+            "after two ups"
+        );
+
+        drive_prompt_with_panel_store(
+            store.clone(),
+            vec![
+                key(KeyCode::Down),
+                key(KeyCode::Down),
+                key(KeyCode::Up),
+                key(KeyCode::Up),
+            ],
+        );
+        assert_eq!(
+            (
+                store.get().footer_selection,
+                store.get().agent_panel_selected
+            ),
+            (None, 0),
+            "first row ↑ clears; got {:?}/{}",
+            store.get().footer_selection,
+            store.get().agent_panel_selected
+        );
+    }
+
+    fn live_shell_state(id: &str) -> crate::state::app_state_store::TaskState {
+        crate::state::app_state_store::TaskState::LocalShell(
+            crate::tasks::local_shell_task::guards::LocalShellTaskState {
+                id: id.into(),
+                task_type: "local_bash".into(),
+                status: "running".into(),
+                description: "a local shell".into(),
+                command: format!("command-{id}"),
+                result: None,
+                notified: false,
+                shell_command: None,
+                last_reported_total_lines: 0,
+                is_backgrounded: true,
+                agent_id: None,
+                tool_use_id: None,
+                kind: None,
+                start_time_ms: 1,
+                end_time_ms: None,
+            },
+        )
+    }
+
+    #[test]
+    fn agent_panel_footer_enter_opens_the_row_detail() {
+        // A shell row backed by a live task opens the background-tasks dialog
+        // straight on that task's detail (initial_detail_task_id).
+        let mut state = crate::state::app_state_store::AppState::default();
+        state.tasks = std::sync::Arc::new(std::collections::BTreeMap::from([(
+            "shell-1".to_string(),
+            std::sync::Arc::new(live_shell_state("shell-1")),
+        )]));
+        state.agent_panel_items =
+            std::sync::Arc::new(vec![crate::components::agent_panel::AgentPanelItem {
+                id: "shell-1".to_string(),
+                kind: crate::components::agent_panel::AgentKind::Shell,
+            }]);
+        let store = crate::state::store::AppStore::new(state, None);
+        let text = drive_prompt_with_panel_store(
+            store.clone(),
+            vec![key(KeyCode::Down), key(KeyCode::Enter)],
+        );
+        assert_eq!(store.get().footer_selection, None, "Enter clears selection");
+        assert!(text.contains("Shell details"), "canvas=\n{text}");
+        assert!(text.contains("command-shell-1"), "canvas=\n{text}");
+    }
+
+    #[test]
+    fn agent_panel_footer_enter_on_a_teammate_row_opens_the_teams_dialog() {
+        use crate::tasks::in_process_teammate_task::{
+            RegisterInProcessTeammateParams, TEST_IN_PROCESS_TEAMMATE_TASK_LOCK, TeammateIdentity,
+            clear_in_process_teammate_tasks_for_test, register_in_process_teammate_task,
+        };
+        let _lock = TEST_IN_PROCESS_TEAMMATE_TASK_LOCK.lock().unwrap();
+        clear_in_process_teammate_tasks_for_test();
+        let task_id = "teammate-dialog-probe".to_string();
+        register_in_process_teammate_task(RegisterInProcessTeammateParams {
+            task_id: task_id.clone(),
+            identity: TeammateIdentity {
+                agent_id: "alpha@team".to_string(),
+                agent_name: "alpha".to_string(),
+                team_name: "probe-team".to_string(),
+                color: Some("blue".to_string()),
+                plan_mode_required: false,
+                parent_session_id: "parent".to_string(),
+            },
+            description: "probe teammate".to_string(),
+            prompt: "help".to_string(),
+            selected_agent: None,
+            model: None,
+            permission_mode: crate::types::permissions::PermissionMode::Default,
+            tool_use_id: None,
+        });
+        let store = panel_store(vec![(
+            "teammate-dialog-probe",
+            crate::components::agent_panel::AgentKind::Teammate,
+        )]);
+        let text = drive_prompt_with_panel_store(
+            store.clone(),
+            vec![key(KeyCode::Down), key(KeyCode::Enter)],
+        );
+        assert_eq!(store.get().footer_selection, None, "Enter clears selection");
+        assert!(text.contains("Team probe-team"), "canvas=\n{text}");
+        clear_in_process_teammate_tasks_for_test();
+    }
+
+    /// The footer body row plus the info line; the PromptInput root sizes
+    /// itself from the same value.
+    fn prompt_canvas_rows(store: crate::state::store::AppStore, terminal_rows: u16) -> String {
+        futures::executor::block_on(async move {
+            let mut app = element! {
+                ContextProvider(value: Context::owned(
+                    crate::keybindings::keybinding_context::KeybindingRuntime::with_default_bindings()
+                )) {
+                    ContextProvider(value: Context::owned(*theme::current())) {
+                        crate::state::app_state::AppStateProvider(
+                            prebuilt_store: Some(store),
+                            children: crate::state::app_state::ProviderChildren::new(|| element! {
+                                PromptInput(
+                                    on_submit: move |_| {},
+                                    on_exit: move |_| {},
+                                )
+                            }.into_any()),
+                        )
+                    }
+                }
+            };
+            let mut render_loop = Box::pin(app.mock_terminal_render_loop(
+                MockTerminalConfig::default().with_size(90, terminal_rows),
+            ));
+            let canvas = crate::utils::race(render_loop.next(), async {
+                futures_timer::Delay::new(Duration::from_millis(500)).await;
+                None
+            })
+            .await
+            .expect("prompt should render");
+            canvas_lines(&canvas).join("\n")
+        })
+    }
+
+    #[test]
+    fn agent_panel_pills_hide_and_restore_with_the_panel_height_gate() {
+        use crate::tasks::pill_label::PillTask;
+        let mut state = crate::state::app_state_store::AppState::default();
+        state.tasks = std::sync::Arc::new(std::collections::BTreeMap::from([(
+            "shell-1".to_string(),
+            std::sync::Arc::new(live_shell_state("shell-1")),
+        )]));
+        // The panel would show this one row above 16 terminal rows.
+        state.agent_panel_items =
+            std::sync::Arc::new(vec![crate::components::agent_panel::AgentPanelItem {
+                id: "shell-1".to_string(),
+                kind: crate::components::agent_panel::AgentKind::Shell,
+            }]);
+        let label =
+            crate::tasks::pill_label::get_pill_label(&[PillTask::LocalBash { is_monitor: false }]);
+        let store = crate::state::store::AppStore::new(state, None);
+
+        // Tall terminal: the panel owns the row, no pill and no "↓ to manage".
+        let text = prompt_canvas_rows(store.clone(), 30);
+        assert!(!text.contains(&label), "canvas=\n{text}");
+        assert!(!text.contains("↓ to manage"), "canvas=\n{text}");
+
+        // Short terminal: the panel hides and the pill (with its hint) returns.
+        let text = prompt_canvas_rows(store.clone(), 12);
+        assert!(text.contains(&label), "canvas=\n{text}");
+        assert!(text.contains("↓ to manage"), "canvas=\n{text}");
+    }
+
+    #[test]
+    fn agent_panel_height_budget_matches_the_pill_gate() {
+        // The height budget and the render gate both go through
+        // `panel_shows_rows`: the pill row is budgeted exactly when it renders.
+        assert!(crate::components::agent_panel::panel_shows_rows(30, 1));
+        assert!(crate::components::agent_panel::panel_shows_rows(20, 1));
+        assert!(!crate::components::agent_panel::panel_shows_rows(12, 1));
+        assert!(!crate::components::agent_panel::panel_shows_rows(30, 0));
+        // Mirrors the production expressions: pill counts are suppressed
+        // exactly while the panel shows rows.
+        let with_pills = prompt_input_footer::footer_has_items(
+            PromptInputMode::Prompt,
+            false,
+            (!crate::components::agent_panel::panel_shows_rows(12, 1)) as usize,
+            (!crate::components::agent_panel::panel_shows_rows(12, 1)) as usize,
+        );
+        let panel_visible_pills = prompt_input_footer::footer_has_items(
+            PromptInputMode::Prompt,
+            false,
+            (!crate::components::agent_panel::panel_shows_rows(30, 1)) as usize,
+            (!crate::components::agent_panel::panel_shows_rows(30, 1)) as usize,
+        );
+        assert!(with_pills, "below the gate the pill row is budgeted");
+        assert!(!panel_visible_pills, "with the panel the pill row is not");
+    }
+
+    #[test]
+    fn agent_panel_footer_items_disappear_when_the_panel_is_not_visible() {
+        // No published rows -> the panel has no footer stop, and the legacy
+        // tasks pill is not resurrected by the panel gate.
+        let store = crate::state::store::AppStore::new(
+            crate::state::app_state_store::AppState::default(),
+            None,
+        );
+        drive_prompt_with_panel_store(store.clone(), vec![key(KeyCode::Down)]);
+        assert_eq!(store.get().footer_selection, None);
     }
 }
