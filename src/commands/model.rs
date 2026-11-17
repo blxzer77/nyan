@@ -276,6 +276,13 @@ mod tests {
         let keybinding_runtime =
             crate::keybindings::keybinding_context::KeybindingRuntime::with_default_bindings();
         let store = store.clone();
+        // Scripted keys are handled after their frame is drawn, and a handler
+        // can outlast an idle window under load (Ctrl+S writes settings, then
+        // the picker re-renders). So a quiet frame may end the run only when
+        // nothing was scripted; otherwise the run ends when the output lands,
+        // or at a ceiling that is generous rather than a race window.
+        let scripted = !events.is_empty();
+        let selected_for_wait = Arc::clone(&selected);
         let canvases = futures::executor::block_on(async move {
             let mut app = element! {
                 ContextProvider(value: Context::owned(keybinding_runtime)) {
@@ -301,18 +308,29 @@ mod tests {
                 MockTerminalConfig::with_events(delayed).with_size(110, 32),
             ));
             let mut canvases = Vec::new();
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
             loop {
-                let next = crate::utils::race(render_loop.next(), async {
+                let next = crate::utils::race(async { Some(render_loop.next().await) }, async {
                     futures_timer::Delay::new(Duration::from_millis(100)).await;
                     None
                 })
                 .await;
-                let Some(canvas) = next else {
-                    break;
-                };
-                canvases.push(canvas);
-                if canvases.len() >= 20 {
-                    break;
+                match next {
+                    Some(Some(canvas)) => {
+                        canvases.push(canvas);
+                        let answered = !selected_for_wait.lock().unwrap().is_empty();
+                        if canvases.len() >= 20 || answered {
+                            break;
+                        }
+                    }
+                    // The render loop itself ended.
+                    Some(None) => break,
+                    // Quiet window: stop only if no scripted key can still land.
+                    None => {
+                        if !scripted || std::time::Instant::now() >= deadline {
+                            break;
+                        }
+                    }
                 }
             }
             canvases
