@@ -4,11 +4,41 @@
 //! Stdout carries protocol messages only; any logs must go to stderr, or they
 //! corrupt the protocol stream.
 //!
-//! This is a skeleton: only `initialize` is implemented; other requests get a
-//! `Method not found` reply.
+//! Implements `initialize`, `session/new` and `session/prompt`; other requests get a
+//! `Method not found` reply. The engine is not wired in yet, so session requests fail
+//! with an internal error.
 
 mod server;
+mod session;
 mod transport;
+
+use session::{AcpHost, AcpSession, NewSession, TurnEnd};
+use transport::Outbound;
+
+/// Placeholder until the real engine is wired in: every session request fails.
+struct UnavailableHost;
+
+/// Never constructed: the placeholder host never starts a session.
+#[allow(dead_code)]
+struct UnavailableSession;
+
+impl AcpHost for UnavailableHost {
+    type Session = UnavailableSession;
+
+    async fn new_session(
+        &mut self,
+        _request: NewSession,
+        _outbound: Outbound,
+    ) -> Result<(String, UnavailableSession), String> {
+        Err("session support is not wired in yet".to_string())
+    }
+}
+
+impl AcpSession for UnavailableSession {
+    async fn prompt(&mut self, _text: String) -> Result<TurnEnd, String> {
+        Err("session support is not wired in yet".to_string())
+    }
+}
 
 /// Usage text for `nyan acp`.
 pub const HELP: &str = "\
@@ -65,6 +95,7 @@ pub fn run(config: &crate::cli::CliConfig) -> i32 {
     runtime.block_on(server::serve(
         tokio::io::BufReader::new(tokio::io::stdin()),
         tokio::io::stdout(),
+        UnavailableHost,
     ))
 }
 
