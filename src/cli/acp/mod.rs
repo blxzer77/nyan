@@ -12,6 +12,7 @@
 mod engine;
 mod server;
 mod session;
+mod tools;
 mod transport;
 
 /// Usage text for `nyan acp`.
