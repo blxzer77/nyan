@@ -1,5 +1,5 @@
-//! What the ACP server needs from the agent engine. The real engine implements
-//! these in a later change; tests drive the server with a fake.
+//! What the ACP server needs from the agent engine. The real engine (`engine.rs`)
+//! implements these; tests drive the server with a fake.
 
 use std::path::PathBuf;
 
@@ -11,18 +11,18 @@ use agent_client_protocol_schema::v1::{
 use super::transport::Outbound;
 
 /// Parameters for creating the one session this process serves.
-#[allow(dead_code)] // `cwd` is read by the engine once it is wired in.
 pub(crate) struct NewSession {
     pub cwd: PathBuf,
 }
 
 /// How a prompt turn ended. Mirrors ACP `StopReason`.
-#[allow(dead_code)] // The engine produces these once it is wired in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TurnEnd {
     EndTurn,
     MaxTokens,
     MaxTurnRequests,
+    // Not produced yet: the engine's refusals are not mapped to a turn end.
+    #[allow(dead_code)]
     Refusal,
     Cancelled,
 }
@@ -72,8 +72,6 @@ pub(crate) struct UpdateSink {
     session_id: SessionId,
 }
 
-// The engine uses this once it is wired in; until then only tests construct it.
-#[allow(dead_code)]
 impl UpdateSink {
     /// Creates a sink that reports updates for `session_id` through `outbound`.
     pub(crate) fn new(outbound: Outbound, session_id: impl Into<String>) -> Self {
@@ -104,8 +102,6 @@ impl UpdateSink {
     }
 }
 
-// Used only by `UpdateSink`, which is unused until the engine is wired in.
-#[allow(dead_code)]
 fn text_chunk(text: &str) -> ContentChunk {
     ContentChunk::new(ContentBlock::Text(TextContent::new(text)))
 }
