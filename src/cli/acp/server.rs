@@ -1,17 +1,19 @@
-//! ACP request dispatch: `initialize`, `session/new` and `session/prompt`. Other
-//! requests get Method not found.
+//! ACP request dispatch: `initialize`, `session/new` and `session/prompt`, plus the
+//! `session/cancel` notification while a prompt is running. Other requests get Method
+//! not found.
 
 use agent_client_protocol_schema::ProtocolVersion;
 use agent_client_protocol_schema::v1::{
-    AGENT_METHOD_NAMES, ContentBlock, Implementation, InitializeRequest, InitializeResponse,
-    NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse, SessionId,
+    AGENT_METHOD_NAMES, CancelNotification, ContentBlock, Implementation, InitializeRequest,
+    InitializeResponse, NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse,
+    SessionId,
 };
 use serde::Serialize;
 use serde_json::Value;
 use std::pin::pin;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, Lines};
 
-use super::session::{AcpHost, AcpSession, NewSession};
+use super::session::{AcpHost, AcpSession, Canceller, NewSession};
 use super::transport::{
     INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, Incoming, METHOD_NOT_FOUND, Outbound,
     RpcError, parse_line, write_loop,
@@ -179,16 +181,19 @@ where
             return None;
         }
     };
-    run_turn(lines, outbound, active, id, text).await
+    run_turn(lines, outbound, active, &request.session_id.0, id, text).await
 }
 
-/// Runs one prompt turn while still reading input. Requests read during the turn get a busy
-/// error; notifications and responses are ignored. When input ends or fails, reading stops,
-/// the turn still runs to completion and is answered, and `Some(code)` is returned.
+/// Runs one prompt turn while still reading input. A `session/cancel` for `session_id` asks
+/// the turn to stop; the turn then answers with its own stop reason. Requests read during the
+/// turn get a busy error; other notifications and responses are ignored. When input ends or
+/// fails, reading stops, the turn still runs to completion and is answered, and `Some(code)`
+/// is returned.
 async fn run_turn<R, S>(
     lines: &mut Lines<R>,
     outbound: &Outbound,
     session: &mut S,
+    session_id: &str,
     id: Value,
     text: String,
 ) -> Option<i32>
@@ -197,6 +202,8 @@ where
     S: AcpSession,
 {
     let mut input_ended: Option<i32> = None;
+    // Taken before the turn starts, because the turn borrows the session while it runs.
+    let cancel = session.canceller();
     let turn = session.prompt(text);
     let mut turn = pin!(turn);
     loop {
@@ -209,7 +216,7 @@ where
                 return input_ended;
             }
             line = lines.next_line(), if input_ended.is_none() => match line {
-                Ok(Some(line)) => reject_while_busy(outbound, &line),
+                Ok(Some(line)) => handle_line_during_turn(outbound, &line, session_id, &cancel),
                 Ok(None) => input_ended = Some(0),
                 Err(err) => {
                     eprintln!("nyan acp: failed to read stdin: {err}");
@@ -220,8 +227,11 @@ where
     }
 }
 
-/// Answers one line read while a prompt turn is running.
-fn reject_while_busy(outbound: &Outbound, line: &str) {
+/// Handles one line read while a prompt turn is running. A `session/cancel` naming
+/// `session_id` calls `cancel`; one naming another session, or with params that do not
+/// parse, is ignored. A request gets a busy error. Other notifications and responses are
+/// ignored, and a line that is not valid JSON-RPC gets a parse error.
+fn handle_line_during_turn(outbound: &Outbound, line: &str, session_id: &str, cancel: &Canceller) {
     if line.trim().is_empty() {
         return;
     }
@@ -229,9 +239,22 @@ fn reject_while_busy(outbound: &Outbound, line: &str) {
         Ok(Incoming::Request { id, .. }) => {
             outbound.respond_error(id, RpcError::new(BUSY, "A prompt is already in progress"));
         }
+        Ok(Incoming::Notification { method, params })
+            if method == AGENT_METHOD_NAMES.session_cancel =>
+        {
+            if cancel_names_session(params, session_id) {
+                cancel();
+            }
+        }
         Ok(Incoming::Notification { .. } | Incoming::Response { .. }) => {}
         Err(error) => outbound.respond_error(Value::Null, error),
     }
+}
+
+/// Whether the params of a `session/cancel` notification parse and name `session_id`.
+fn cancel_names_session(params: Value, session_id: &str) -> bool {
+    serde_json::from_value::<CancelNotification>(params)
+        .is_ok_and(|cancel| &*cancel.session_id.0 == session_id)
 }
 
 /// Flattens prompt content blocks into one string. Text blocks contribute their text and
@@ -267,10 +290,12 @@ fn reply<T: Serialize>(outbound: &Outbound, id: Value, response: T) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::acp::session::{TurnEnd, UpdateSink};
+    use crate::cli::acp::session::{Canceller, TurnEnd, UpdateSink};
     use serde_json::json;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
+    use tokio::sync::Notify;
 
     /// Scripted engine. Records every prompt, streams `chunks` as message chunks, then
     /// ends the turn with `end` (default `EndTurn`) or fails with `fail_prompt`.
@@ -287,6 +312,14 @@ mod tests {
         /// Delay before a prompt finishes, to keep it in flight.
         delay: Option<Duration>,
         end: Option<TurnEnd>,
+        /// When set, a prompt waits after its chunks until it is cancelled (or times out).
+        wait_for_cancel: bool,
+        /// Number of cancel requests the session has received.
+        cancels: Arc<AtomicUsize>,
+        /// Set by the canceller before it wakes a waiting turn.
+        cancelled: Arc<AtomicBool>,
+        /// Wakes a turn waiting for cancellation.
+        cancel_signal: Arc<Notify>,
     }
 
     struct FakeSession {
@@ -322,10 +355,39 @@ mod tests {
             if let Some(delay) = self.config.delay {
                 tokio::time::sleep(delay).await;
             }
+            if self.config.wait_for_cancel {
+                let cancelled = self.config.cancelled.clone();
+                let signal = self.config.cancel_signal.clone();
+                let wait = async move {
+                    // The flag is checked before every wait, so a cancel that fired
+                    // earlier is not missed.
+                    while !cancelled.load(Ordering::SeqCst) {
+                        signal.notified().await;
+                    }
+                };
+                if tokio::time::timeout(Duration::from_secs(5), wait)
+                    .await
+                    .is_err()
+                {
+                    return Err("fake turn was never cancelled".to_string());
+                }
+                return Ok(TurnEnd::Cancelled);
+            }
             match self.config.fail_prompt {
                 Some(msg) => Err(msg.to_string()),
                 None => Ok(self.config.end.unwrap_or(TurnEnd::EndTurn)),
             }
+        }
+
+        fn canceller(&self) -> Canceller {
+            let cancels = self.config.cancels.clone();
+            let cancelled = self.config.cancelled.clone();
+            let signal = self.config.cancel_signal.clone();
+            Arc::new(move || {
+                cancels.fetch_add(1, Ordering::SeqCst);
+                cancelled.store(true, Ordering::SeqCst);
+                signal.notify_one();
+            })
         }
     }
 
@@ -587,5 +649,125 @@ mod tests {
         .await;
         assert_eq!(code, 0);
         assert_eq!(lines[2]["result"]["stopReason"], json!("cancelled"));
+    }
+
+    /// A `session/cancel` notification for `session_id`.
+    fn cancel(session_id: &str) -> Value {
+        json!({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": session_id}})
+    }
+
+    #[tokio::test]
+    async fn acp_cancel_ends_the_running_turn_with_cancelled() {
+        let host = FakeHost {
+            chunks: vec!["working"],
+            wait_for_cancel: true,
+            ..Default::default()
+        };
+        let cancels = host.cancels.clone();
+        let (code, lines) = run_with(
+            &input(&[
+                initialize(),
+                new_session(2),
+                prompt(3, "sess-1", "hi"),
+                cancel("sess-1"),
+            ]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+        assert_eq!(cancels.load(Ordering::SeqCst), 1);
+        // initialize, session/new, one chunk and the prompt response. The cancel
+        // notification gets no reply of its own.
+        assert_eq!(lines.len(), 4);
+        assert_eq!(lines[1]["id"], json!(2));
+        assert_eq!(
+            lines[2]["params"]["update"]["content"]["text"],
+            json!("working")
+        );
+        assert!(lines.iter().all(|line| line.get("error").is_none()));
+        assert_eq!(lines[3]["id"], json!(3));
+        assert_eq!(lines[3]["result"]["stopReason"], json!("cancelled"));
+    }
+
+    #[tokio::test]
+    async fn acp_cancel_for_another_session_is_ignored() {
+        let host = FakeHost {
+            chunks: vec!["working"],
+            wait_for_cancel: true,
+            ..Default::default()
+        };
+        let cancels = host.cancels.clone();
+        let (code, lines) = run_with(
+            &input(&[
+                initialize(),
+                new_session(2),
+                prompt(3, "sess-1", "hi"),
+                cancel("other"),
+                cancel("sess-1"),
+            ]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+        // Only the cancel for the session in flight reaches the turn.
+        assert_eq!(cancels.load(Ordering::SeqCst), 1);
+        assert_eq!(lines.len(), 4);
+        assert!(lines.iter().all(|line| line.get("error").is_none()));
+        assert_eq!(lines[3]["id"], json!(3));
+        assert_eq!(lines[3]["result"]["stopReason"], json!("cancelled"));
+    }
+
+    #[tokio::test]
+    async fn acp_cancel_while_idle_is_ignored() {
+        let host = FakeHost {
+            chunks: vec!["hi"],
+            ..Default::default()
+        };
+        let cancels = host.cancels.clone();
+        let (code, lines) = run_with(
+            &input(&[
+                initialize(),
+                new_session(2),
+                cancel("sess-1"),
+                prompt(3, "sess-1", "hi"),
+            ]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+        assert_eq!(cancels.load(Ordering::SeqCst), 0);
+        // initialize, session/new, one chunk and the prompt response.
+        assert_eq!(lines.len(), 4);
+        assert!(lines.iter().all(|line| line.get("error").is_none()));
+        assert_eq!(lines[3]["id"], json!(3));
+        assert_eq!(lines[3]["result"]["stopReason"], json!("end_turn"));
+    }
+
+    #[tokio::test]
+    async fn acp_malformed_cancel_is_ignored() {
+        let host = FakeHost {
+            chunks: vec!["working"],
+            wait_for_cancel: true,
+            ..Default::default()
+        };
+        let cancels = host.cancels.clone();
+        let malformed = json!({"jsonrpc": "2.0", "method": "session/cancel", "params": {}});
+        let (code, lines) = run_with(
+            &input(&[
+                initialize(),
+                new_session(2),
+                prompt(3, "sess-1", "hi"),
+                malformed,
+                cancel("sess-1"),
+            ]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+        assert_eq!(cancels.load(Ordering::SeqCst), 1);
+        assert_eq!(lines.len(), 4);
+        assert!(lines.iter().all(|line| line.get("error").is_none()));
+        assert_eq!(lines[3]["id"], json!(3));
+        assert_eq!(lines[3]["result"]["stopReason"], json!("cancelled"));
     }
 }

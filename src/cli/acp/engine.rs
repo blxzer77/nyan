@@ -2,10 +2,11 @@
 //! through `query_engine::ask`, and engine output goes out as ACP session updates.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde_json::Value;
 
-use super::session::{AcpHost, AcpSession, NewSession, TurnEnd, UpdateSink};
+use super::session::{AcpHost, AcpSession, Canceller, NewSession, TurnEnd, UpdateSink};
 use super::transport::Outbound;
 use crate::cli::CliConfig;
 use crate::query_engine::{QueryEngine, QueryEngineConfig, QueryEngineOutcome};
@@ -92,6 +93,12 @@ impl AcpSession for EngineSession {
     async fn prompt(&mut self, text: String) -> Result<TurnEnd, String> {
         let outcome = crate::query_engine::ask(&mut self.engine, text, None).await?;
         turn_end(&outcome)
+    }
+
+    fn canceller(&self) -> Canceller {
+        // Interrupting while no query is running is a no-op on the engine side.
+        let control = self.engine.control_handle();
+        Arc::new(move || control.interrupt())
     }
 }
 

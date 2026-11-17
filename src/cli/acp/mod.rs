@@ -4,7 +4,8 @@
 //! Stdout carries protocol messages only; any logs must go to stderr, or they
 //! corrupt the protocol stream.
 //!
-//! Implements `initialize`, `session/new` and `session/prompt`; other requests get a
+//! Implements `initialize`, `session/new` and `session/prompt`, and handles the
+//! `session/cancel` notification while a prompt is running. Other requests get a
 //! `Method not found` reply. Sessions run on the real engine (see `engine`). One process
 //! serves one session, in the directory it was started in.
 

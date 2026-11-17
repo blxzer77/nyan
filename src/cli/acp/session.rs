@@ -2,6 +2,7 @@
 //! implements these; tests drive the server with a fake.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use agent_client_protocol_schema::v1::{
     CLIENT_METHOD_NAMES, ContentBlock, ContentChunk, SessionId, SessionNotification, SessionUpdate,
@@ -55,6 +56,9 @@ pub(crate) trait AcpHost {
     ) -> impl std::future::Future<Output = Result<(String, Self::Session), String>>;
 }
 
+/// Asks the turn in flight to stop; a no-op when none is running.
+pub(crate) type Canceller = Arc<dyn Fn() + Send + Sync>;
+
 /// One session on the engine.
 pub(crate) trait AcpSession {
     /// Runs one prompt turn to completion. Progress goes out through the engine's
@@ -63,6 +67,10 @@ pub(crate) trait AcpSession {
         &mut self,
         text: String,
     ) -> impl std::future::Future<Output = Result<TurnEnd, String>>;
+
+    /// A handle that asks the running turn to stop. Obtained before the turn
+    /// starts, because the turn borrows the session while it runs.
+    fn canceller(&self) -> Canceller;
 }
 
 /// Sends `session/update` notifications for one session.
