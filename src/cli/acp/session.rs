@@ -72,6 +72,12 @@ pub(crate) trait AcpSession {
     /// A handle that asks the running turn to stop. Obtained before the turn
     /// starts, because the turn borrows the session while it runs.
     fn canceller(&self) -> Canceller;
+
+    /// A handle that runs once the input has ended. A session uses it to stop waiting
+    /// for client answers, which can no longer arrive. The default does nothing.
+    fn on_input_closed(&self) -> Canceller {
+        Arc::new(|| {})
+    }
 }
 
 /// What the client is told when a tool call starts.

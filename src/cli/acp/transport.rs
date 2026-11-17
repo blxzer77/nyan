@@ -2,7 +2,10 @@
 //! messages as one JSON line each.
 
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::io;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
@@ -106,18 +109,40 @@ fn parse_rpc_error(value: &Value) -> Option<RpcError> {
     })
 }
 
+/// Called once with the client's answer to an agent-initiated request.
+pub(crate) type ResponseHandler = Box<dyn FnOnce(Result<Value, RpcError>) + Send>;
+
+/// Locks a table, ignoring poisoning: a handler that panicked leaves a table that is
+/// still usable.
+fn lock<T>(table: &Mutex<T>) -> MutexGuard<'_, T> {
+    table
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Ordered outbound queue. Cloneable and usable from sync code; a single
-/// writer task drains it so messages reach stdout in enqueue order.
+/// writer task drains it so messages reach stdout in enqueue order. It also
+/// holds the table of requests the agent sent and still waits on; every clone
+/// shares that table.
 #[derive(Clone)]
 pub(crate) struct Outbound {
     tx: UnboundedSender<Value>,
+    /// Handlers for agent-initiated requests, by request id.
+    pending: Arc<Mutex<HashMap<String, ResponseHandler>>>,
+    /// Number of the last agent-initiated request; shared so ids stay unique.
+    last_request: Arc<AtomicU64>,
 }
 
 impl Outbound {
     /// Creates a queue handle and the receiver that [`write_loop`] drains.
     pub(crate) fn channel() -> (Outbound, UnboundedReceiver<Value>) {
         let (tx, rx) = unbounded_channel();
-        (Outbound { tx }, rx)
+        let outbound = Outbound {
+            tx,
+            pending: Arc::default(),
+            last_request: Arc::default(),
+        };
+        (outbound, rx)
     }
 
     /// Queues a successful response to request `id`.
@@ -137,6 +162,47 @@ impl Outbound {
     /// Queues a notification, which carries no id.
     pub(crate) fn notify(&self, method: &str, params: Value) {
         self.enqueue(json!({"jsonrpc": "2.0", "method": method, "params": params}));
+    }
+
+    /// Sends a request to the client and registers `on_response` for its answer.
+    /// The handler is registered before the request is queued. Returns the request id.
+    pub(crate) fn request(
+        &self,
+        method: &str,
+        params: Value,
+        on_response: ResponseHandler,
+    ) -> String {
+        let number = self.last_request.fetch_add(1, Ordering::Relaxed) + 1;
+        let id = format!("nyan-{number}");
+        lock(&self.pending).insert(id.clone(), on_response);
+        self.enqueue(json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}));
+        id
+    }
+
+    /// Routes a response from the client to the handler registered for `id`. The handler
+    /// runs once, without the table lock held. Unknown ids and non-string ids are ignored.
+    pub(crate) fn resolve(&self, id: &Value, result: Result<Value, RpcError>) {
+        let Some(id) = id.as_str() else {
+            return;
+        };
+        let handler = lock(&self.pending).remove(id);
+        if let Some(handler) = handler {
+            handler(result);
+        }
+    }
+
+    /// Drops the handler for a request the agent no longer waits on.
+    pub(crate) fn forget(&self, id: &str) {
+        lock(&self.pending).remove(id);
+    }
+
+    /// Fails every pending request with `error`. Used when the input ends, because the
+    /// client can no longer answer.
+    pub(crate) fn fail_all(&self, error: RpcError) {
+        let handlers = std::mem::take(&mut *lock(&self.pending));
+        for (_, handler) in handlers {
+            handler(Err(error.clone()));
+        }
     }
 
     fn enqueue(&self, message: Value) {
@@ -237,6 +303,93 @@ mod tests {
             INVALID_REQUEST
         );
         assert_eq!(parse_line("[]").unwrap_err().code, INVALID_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn acp_outbound_request_routes_the_response_to_its_handler() {
+        let (out, mut rx) = Outbound::channel();
+        let (answers_tx, mut answers) = tokio::sync::mpsc::unbounded_channel();
+        let id = out.request(
+            "session/request_permission",
+            json!({"sessionId": "s1"}),
+            Box::new(move |answer: Result<Value, RpcError>| {
+                let _ = answers_tx.send(answer);
+            }),
+        );
+        assert_eq!(id, "nyan-1");
+
+        let message = rx.try_recv().unwrap();
+        assert_eq!(
+            message,
+            json!({
+                "jsonrpc": "2.0",
+                "id": "nyan-1",
+                "method": "session/request_permission",
+                "params": {"sessionId": "s1"}
+            })
+        );
+
+        out.resolve(&json!("nyan-1"), Ok(json!({"ok": true})));
+        assert_eq!(answers.try_recv().unwrap(), Ok(json!({"ok": true})));
+
+        // The handler runs once: a second answer for the same id reaches nothing.
+        out.resolve(&json!("nyan-1"), Ok(json!({"again": true})));
+        assert!(answers.try_recv().is_err());
+
+        // Unknown string ids and numeric ids are ignored.
+        let (other_tx, mut other) = tokio::sync::mpsc::unbounded_channel();
+        let _ = out.request(
+            "session/request_permission",
+            json!({}),
+            Box::new(move |answer: Result<Value, RpcError>| {
+                let _ = other_tx.send(answer);
+            }),
+        );
+        out.resolve(&json!("nyan-9"), Ok(Value::Null));
+        out.resolve(&json!(2), Ok(Value::Null));
+        assert!(other.try_recv().is_err());
+        out.resolve(&json!("nyan-2"), Ok(json!(1)));
+        assert_eq!(other.try_recv().unwrap(), Ok(json!(1)));
+    }
+
+    #[tokio::test]
+    async fn acp_outbound_forget_and_fail_all() {
+        let (out, _rx) = Outbound::channel();
+        let (tx, mut answers) = tokio::sync::mpsc::unbounded_channel::<Result<Value, RpcError>>();
+
+        let forgotten = {
+            let tx = tx.clone();
+            out.request(
+                "session/request_permission",
+                json!({}),
+                Box::new(move |answer| {
+                    let _ = tx.send(answer);
+                }),
+            )
+        };
+        out.forget(&forgotten);
+        out.resolve(&json!(forgotten), Ok(json!(1)));
+        assert!(answers.try_recv().is_err());
+
+        for _ in 0..2 {
+            let tx = tx.clone();
+            out.request(
+                "session/request_permission",
+                json!({}),
+                Box::new(move |answer| {
+                    let _ = tx.send(answer);
+                }),
+            );
+        }
+        out.fail_all(RpcError::new(INTERNAL_ERROR, "input closed"));
+        let expected = Err(RpcError::new(INTERNAL_ERROR, "input closed"));
+        assert_eq!(answers.try_recv().unwrap(), expected);
+        assert_eq!(answers.try_recv().unwrap(), expected);
+        assert!(answers.try_recv().is_err());
+
+        // The table is empty after fail_all, so a late answer reaches nothing.
+        out.resolve(&json!("nyan-3"), Ok(json!(1)));
+        assert!(answers.try_recv().is_err());
     }
 
     #[tokio::test]

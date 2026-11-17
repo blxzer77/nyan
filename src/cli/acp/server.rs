@@ -1,6 +1,7 @@
 //! ACP request dispatch: `initialize`, `session/new` and `session/prompt`, plus the
 //! `session/cancel` notification while a prompt is running. Other requests get Method
-//! not found.
+//! not found. Responses to requests the agent sent (`session/request_permission`) are
+//! routed back to them.
 
 use agent_client_protocol_schema::ProtocolVersion;
 use agent_client_protocol_schema::v1::{
@@ -50,9 +51,19 @@ where
     loop {
         let line = match lines.next_line().await {
             Ok(Some(line)) => line,
-            Ok(None) => return 0,
+            Ok(None) => {
+                end_input(
+                    &outbound,
+                    session.as_ref().map(|(_, active)| active.on_input_closed()),
+                );
+                return 0;
+            }
             Err(err) => {
                 eprintln!("nyan acp: failed to read stdin: {err}");
+                end_input(
+                    &outbound,
+                    session.as_ref().map(|(_, active)| active.on_input_closed()),
+                );
                 return 1;
             }
         };
@@ -72,7 +83,8 @@ where
             Ok(Incoming::Request { id, method, params }) => {
                 handle_request(&mut host, &outbound, &mut session, id, &method, params).await;
             }
-            Ok(Incoming::Notification { .. } | Incoming::Response { .. }) => {}
+            Ok(Incoming::Response { id, result }) => outbound.resolve(&id, result),
+            Ok(Incoming::Notification { .. }) => {}
             Err(error) => outbound.respond_error(Value::Null, error),
         }
     }
@@ -186,7 +198,8 @@ where
 
 /// Runs one prompt turn while still reading input. A `session/cancel` for `session_id` asks
 /// the turn to stop; the turn then answers with its own stop reason. Requests read during the
-/// turn get a busy error; other notifications and responses are ignored. When input ends or
+/// turn get a busy error; responses go to the requests they answer, and other notifications
+/// are ignored. When input ends or
 /// fails, reading stops, the turn still runs to completion and is answered, and `Some(code)`
 /// is returned.
 async fn run_turn<R, S>(
@@ -204,10 +217,14 @@ where
     let mut input_ended: Option<i32> = None;
     // Taken before the turn starts, because the turn borrows the session while it runs.
     let cancel = session.canceller();
+    let on_input_closed = session.on_input_closed();
     let turn = session.prompt(text);
     let mut turn = pin!(turn);
     loop {
         tokio::select! {
+            // The turn is polled first, so a request it sends is registered before any
+            // line that answers it is read.
+            biased;
             result = &mut turn => {
                 match result {
                     Ok(end) => reply(outbound, id, PromptResponse::new(end.stop_reason())),
@@ -217,9 +234,13 @@ where
             }
             line = lines.next_line(), if input_ended.is_none() => match line {
                 Ok(Some(line)) => handle_line_during_turn(outbound, &line, session_id, &cancel),
-                Ok(None) => input_ended = Some(0),
+                Ok(None) => {
+                    end_input(outbound, Some(on_input_closed.clone()));
+                    input_ended = Some(0);
+                }
                 Err(err) => {
                     eprintln!("nyan acp: failed to read stdin: {err}");
+                    end_input(outbound, Some(on_input_closed.clone()));
                     input_ended = Some(1);
                 }
             },
@@ -227,10 +248,21 @@ where
     }
 }
 
+/// Runs when stdin ends or fails. The session is told the input is closed first, so it
+/// stops waiting for answers. Then every request still waiting for the client fails, since
+/// the client can no longer answer.
+fn end_input(outbound: &Outbound, on_input_closed: Option<Canceller>) {
+    if let Some(on_input_closed) = on_input_closed {
+        on_input_closed();
+    }
+    outbound.fail_all(RpcError::new(INTERNAL_ERROR, "input closed"));
+}
+
 /// Handles one line read while a prompt turn is running. A `session/cancel` naming
 /// `session_id` calls `cancel`; one naming another session, or with params that do not
-/// parse, is ignored. A request gets a busy error. Other notifications and responses are
-/// ignored, and a line that is not valid JSON-RPC gets a parse error.
+/// parse, is ignored. A request gets a busy error. A response goes to the request it
+/// answers. Other notifications are ignored, and a line that is not valid JSON-RPC gets a
+/// parse error.
 fn handle_line_during_turn(outbound: &Outbound, line: &str, session_id: &str, cancel: &Canceller) {
     if line.trim().is_empty() {
         return;
@@ -246,7 +278,8 @@ fn handle_line_during_turn(outbound: &Outbound, line: &str, session_id: &str, ca
                 cancel();
             }
         }
-        Ok(Incoming::Notification { .. } | Incoming::Response { .. }) => {}
+        Ok(Incoming::Response { id, result }) => outbound.resolve(&id, result),
+        Ok(Incoming::Notification { .. }) => {}
         Err(error) => outbound.respond_error(Value::Null, error),
     }
 }
@@ -320,11 +353,16 @@ mod tests {
         cancelled: Arc<AtomicBool>,
         /// Wakes a turn waiting for cancellation.
         cancel_signal: Arc<Notify>,
+        /// When set, a prompt asks the client for permission first and waits for the answer.
+        ask_permission: bool,
+        /// Answers the session received to its permission request, in order.
+        answers: Arc<Mutex<Vec<Result<Value, RpcError>>>>,
     }
 
     struct FakeSession {
         config: FakeHost,
         updates: UpdateSink,
+        outbound: Outbound,
     }
 
     impl AcpHost for FakeHost {
@@ -340,7 +378,8 @@ mod tests {
             }
             let session = FakeSession {
                 config: self.clone(),
-                updates: UpdateSink::new(outbound, "sess-1"),
+                updates: UpdateSink::new(outbound.clone(), "sess-1"),
+                outbound,
             };
             Ok(("sess-1".to_string(), session))
         }
@@ -348,6 +387,21 @@ mod tests {
 
     impl AcpSession for FakeSession {
         async fn prompt(&mut self, text: String) -> Result<TurnEnd, String> {
+            if self.config.ask_permission {
+                let (answer_tx, answer_rx) = tokio::sync::oneshot::channel();
+                self.outbound.request(
+                    "session/request_permission",
+                    json!({"sessionId": "sess-1"}),
+                    Box::new(move |answer| {
+                        let _ = answer_tx.send(answer);
+                    }),
+                );
+                let answer = match tokio::time::timeout(Duration::from_secs(5), answer_rx).await {
+                    Ok(Ok(answer)) => answer,
+                    _ => return Err("permission answer never arrived".to_string()),
+                };
+                self.config.answers.lock().unwrap().push(answer);
+            }
             self.config.prompts.lock().unwrap().push(text);
             for chunk in &self.config.chunks {
                 self.updates.agent_message(chunk);
@@ -649,6 +703,72 @@ mod tests {
         .await;
         assert_eq!(code, 0);
         assert_eq!(lines[2]["result"]["stopReason"], json!("cancelled"));
+    }
+
+    #[tokio::test]
+    async fn acp_responses_are_routed_to_pending_requests() {
+        let host = FakeHost {
+            ask_permission: true,
+            ..Default::default()
+        };
+        let answers = host.answers.clone();
+        let answer = json!({"outcome": {"outcome": "selected", "optionId": "allow_once"}});
+        let (code, lines) = run_with(
+            &input(&[
+                initialize(),
+                new_session(2),
+                prompt(3, "sess-1", "hi"),
+                json!({"jsonrpc": "2.0", "id": "nyan-1", "result": answer.clone()}),
+            ]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+
+        let request = lines
+            .iter()
+            .find(|line| line["method"] == json!("session/request_permission"))
+            .unwrap();
+        assert_eq!(request["id"], json!("nyan-1"));
+        assert_eq!(request["params"]["sessionId"], json!("sess-1"));
+
+        assert_eq!(
+            *answers.lock().unwrap(),
+            vec![Ok::<Value, RpcError>(answer)]
+        );
+        let reply = lines.iter().find(|line| line["id"] == json!(3)).unwrap();
+        assert_eq!(reply["result"]["stopReason"], json!("end_turn"));
+    }
+
+    #[tokio::test]
+    async fn acp_input_end_fails_pending_requests() {
+        let host = FakeHost {
+            ask_permission: true,
+            ..Default::default()
+        };
+        let answers = host.answers.clone();
+        let (code, lines) = run_with(
+            &input(&[initialize(), new_session(2), prompt(3, "sess-1", "hi")]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+
+        assert!(
+            lines
+                .iter()
+                .any(|line| line["method"] == json!("session/request_permission")
+                    && line["id"] == json!("nyan-1"))
+        );
+        assert_eq!(
+            *answers.lock().unwrap(),
+            vec![Err::<Value, RpcError>(RpcError::new(
+                INTERNAL_ERROR,
+                "input closed"
+            ))]
+        );
+        let reply = lines.iter().find(|line| line["id"] == json!(3)).unwrap();
+        assert_eq!(reply["result"]["stopReason"], json!("end_turn"));
     }
 
     /// A `session/cancel` notification for `session_id`.

@@ -150,6 +150,23 @@ pub(super) struct SdkControlBridge {
     emit: std::sync::Arc<dyn Fn(serde_json::Value) + Send + Sync>,
 }
 
+impl SdkControlBridge {
+    /// Builds a bridge whose outbound messages go to `emit` instead of stdout. `pending`
+    /// is the map the caller also holds, so the caller can deliver answers to parked
+    /// requests. The ACP server builds its bridge this way; the stdio path keeps
+    /// [`Default`].
+    pub(super) fn with_emit(
+        pending: PendingControlResponses,
+        emit: std::sync::Arc<dyn Fn(serde_json::Value) + Send + Sync>,
+    ) -> Self {
+        SdkControlBridge {
+            pending,
+            input_closed: std::sync::Arc::default(),
+            emit,
+        }
+    }
+}
+
 impl Default for SdkControlBridge {
     fn default() -> Self {
         SdkControlBridge {
