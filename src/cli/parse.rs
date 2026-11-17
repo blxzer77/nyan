@@ -31,6 +31,7 @@ const SUBCOMMANDS: &[&str] = &[
     "self-hosted-runner",
     "daemon",
     "web",
+    "acp",
 ];
 
 fn take_value(args: &[String], index: &mut usize) -> Option<String> {
@@ -108,8 +109,8 @@ pub fn parse_cli_config(argv: &[String]) -> CliConfig {
                     }
                 }
             }
-            if *sub == "web" {
-                // `cli::web` owns its own grammar, including `--help`.
+            if matches!(*sub, "web" | "acp") {
+                // `cli::web` and `cli::acp` own their own argument grammar, including `--help`.
                 config.subcommand_args = args[index + 1..].to_vec();
             }
             // Other subcommands still consume remaining arguments as opaque.
@@ -715,6 +716,13 @@ mod tests {
         assert_eq!(config.mcp_config, vec!["one.json", "{\"mcpServers\":{}}"]);
         assert!(config.strict_mcp_config);
         assert!(config.unimplemented_reasons().is_empty());
+    }
+
+    #[test]
+    fn acp_subcommand_is_parsed() {
+        let c = parse_cli_config(&argv(&["acp"]));
+        assert_eq!(c.subcommand.as_deref(), Some("acp"));
+        assert!(c.unimplemented_reasons().is_empty());
     }
 
     #[test]

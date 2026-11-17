@@ -3,6 +3,7 @@
 //! All argv categories land in [`config::CliConfig`]. Incomplete paths short-
 //! circuit via [`dispatch`] with `Unimplemented: <name>` (stderr, exit 1).
 
+pub mod acp;
 pub mod config;
 pub mod dispatch;
 pub mod parse;
