@@ -1,27 +1,50 @@
-//! ACP request dispatch. Only `initialize` is implemented; other requests get Method not found.
+//! ACP request dispatch: `initialize`, `session/new` and `session/prompt`. Other
+//! requests get Method not found.
 
 use agent_client_protocol_schema::ProtocolVersion;
 use agent_client_protocol_schema::v1::{
-    AGENT_METHOD_NAMES, Implementation, InitializeRequest, InitializeResponse,
+    AGENT_METHOD_NAMES, ContentBlock, Implementation, InitializeRequest, InitializeResponse,
+    NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse, SessionId,
 };
+use serde::Serialize;
 use serde_json::Value;
-use std::io;
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite};
+use std::pin::pin;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, Lines};
 
+use super::session::{AcpHost, AcpSession, NewSession};
 use super::transport::{
-    INTERNAL_ERROR, INVALID_PARAMS, Incoming, METHOD_NOT_FOUND, Outbound, RpcError, parse_line,
+    INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, Incoming, METHOD_NOT_FOUND, Outbound,
+    RpcError, parse_line, write_loop,
 };
 use crate::constants::product::VERSION;
 
-/// Reads and handles ACP messages line by line. Returns 0 on end of input or when the output
-/// has closed; returns 1 on a read failure.
-pub(crate) async fn serve<R, W>(reader: R, writer: W) -> i32
+/// Error code for a request that arrives while a prompt turn is still running.
+pub(crate) const BUSY: i64 = -32000;
+
+/// Reads and handles ACP messages line by line. Returns 0 on end of input and 1 on a
+/// read failure. Output is written by a separate task that finishes once every queued
+/// message is out, so the exit code is always the input loop's.
+pub(crate) async fn serve<R, W, H>(reader: R, writer: W, host: H) -> i32
 where
     R: AsyncBufRead + Unpin,
-    W: AsyncWrite + Unpin + Send,
+    W: AsyncWrite + Unpin,
+    H: AcpHost,
 {
-    let outbound = Outbound::new(writer);
+    let (outbound, rx) = Outbound::channel();
+    // A write error means the client went away. It does not change the exit code.
+    let (code, _written) = tokio::join!(run_input(reader, host, outbound), write_loop(rx, writer));
+    code
+}
+
+/// The input loop. It owns the host, the session and the outbound queue; when it
+/// returns they are all dropped, which lets the writer drain and finish.
+async fn run_input<R, H>(reader: R, mut host: H, outbound: Outbound) -> i32
+where
+    R: AsyncBufRead + Unpin,
+    H: AcpHost,
+{
     let mut lines = reader.lines();
+    let mut session: Option<(String, H::Session)> = None;
     loop {
         let line = match lines.next_line().await {
             Ok(Some(line)) => line,
@@ -34,44 +57,209 @@ where
         if line.trim().is_empty() {
             continue;
         }
-        let written = match parse_line(&line) {
-            Ok(Incoming::Request { id, method, params }) => {
-                handle_request(&outbound, id, &method, params).await
+        match parse_line(&line) {
+            Ok(Incoming::Request { id, method, params })
+                if method == AGENT_METHOD_NAMES.session_prompt =>
+            {
+                if let Some(code) =
+                    handle_prompt(&mut lines, &outbound, &mut session, id, params).await
+                {
+                    return code;
+                }
             }
-            Ok(Incoming::Notification { .. } | Incoming::Response { .. }) => Ok(()),
-            Err(error) => outbound.respond_error(Value::Null, error).await,
-        };
-        if written.is_err() {
-            // The client has disconnected; exit normally.
-            return 0;
+            Ok(Incoming::Request { id, method, params }) => {
+                handle_request(&mut host, &outbound, &mut session, id, &method, params).await;
+            }
+            Ok(Incoming::Notification { .. } | Incoming::Response { .. }) => {}
+            Err(error) => outbound.respond_error(Value::Null, error),
         }
     }
 }
 
-async fn handle_request<W>(
-    outbound: &Outbound<W>,
+/// Dispatches every request except `session/prompt`, which needs the input reader.
+async fn handle_request<H: AcpHost>(
+    host: &mut H,
+    outbound: &Outbound,
+    session: &mut Option<(String, H::Session)>,
     id: Value,
     method: &str,
     params: Value,
-) -> io::Result<()>
-where
-    W: AsyncWrite + Unpin + Send,
-{
-    if method != AGENT_METHOD_NAMES.initialize {
+) {
+    if method == AGENT_METHOD_NAMES.initialize {
+        handle_initialize(outbound, id, params);
+    } else if method == AGENT_METHOD_NAMES.session_new {
+        handle_new_session(host, outbound, session, id, params).await;
+    } else {
         let error = RpcError::new(METHOD_NOT_FOUND, format!("Method not found: {method}"));
-        return outbound.respond_error(id, error).await;
+        outbound.respond_error(id, error);
     }
+}
+
+fn handle_initialize(outbound: &Outbound, id: Value, params: Value) {
     if let Err(err) = serde_json::from_value::<InitializeRequest>(params) {
         let error = RpcError::new(INVALID_PARAMS, format!("Invalid params: {err}"));
-        return outbound.respond_error(id, error).await;
+        outbound.respond_error(id, error);
+        return;
     }
     let response = InitializeResponse::new(ProtocolVersion::V1)
         .agent_info(Implementation::new("nyan", VERSION));
+    reply(outbound, id, response);
+}
+
+async fn handle_new_session<H: AcpHost>(
+    host: &mut H,
+    outbound: &Outbound,
+    session: &mut Option<(String, H::Session)>,
+    id: Value,
+    params: Value,
+) {
+    let request = match serde_json::from_value::<NewSessionRequest>(params) {
+        Ok(request) => request,
+        Err(err) => {
+            let error = RpcError::new(INVALID_PARAMS, format!("Invalid params: {err}"));
+            outbound.respond_error(id, error);
+            return;
+        }
+    };
+    if session.is_some() {
+        let error = RpcError::new(INVALID_REQUEST, "nyan acp serves one session per process");
+        outbound.respond_error(id, error);
+        return;
+    }
+    // `mcpServers` is ignored for now.
+    match host
+        .new_session(NewSession { cwd: request.cwd }, outbound.clone())
+        .await
+    {
+        Ok((session_id, active)) => {
+            reply(
+                outbound,
+                id,
+                NewSessionResponse::new(SessionId::new(session_id.as_str())),
+            );
+            *session = Some((session_id, active));
+        }
+        Err(msg) => outbound.respond_error(id, RpcError::new(INTERNAL_ERROR, msg)),
+    }
+}
+
+/// Handles `session/prompt`. Returns `Some(code)` when input ended during the turn; the
+/// caller then exits with that code after the turn has responded.
+async fn handle_prompt<R, S>(
+    lines: &mut Lines<R>,
+    outbound: &Outbound,
+    session: &mut Option<(String, S)>,
+    id: Value,
+    params: Value,
+) -> Option<i32>
+where
+    R: AsyncBufRead + Unpin,
+    S: AcpSession,
+{
+    let request = match serde_json::from_value::<PromptRequest>(params) {
+        Ok(request) => request,
+        Err(err) => {
+            let error = RpcError::new(INVALID_PARAMS, format!("Invalid params: {err}"));
+            outbound.respond_error(id, error);
+            return None;
+        }
+    };
+    let active = match session.as_mut() {
+        Some((session_id, active)) if session_id.as_str() == &*request.session_id.0 => active,
+        _ => {
+            let message = format!("Unknown session: {}", request.session_id.0);
+            outbound.respond_error(id, RpcError::new(INVALID_PARAMS, message));
+            return None;
+        }
+    };
+    let text = match prompt_text(&request.prompt) {
+        Ok(text) => text,
+        Err(error) => {
+            outbound.respond_error(id, error);
+            return None;
+        }
+    };
+    run_turn(lines, outbound, active, id, text).await
+}
+
+/// Runs one prompt turn while still reading input. Requests read during the turn get a busy
+/// error; notifications and responses are ignored. When input ends or fails, reading stops,
+/// the turn still runs to completion and is answered, and `Some(code)` is returned.
+async fn run_turn<R, S>(
+    lines: &mut Lines<R>,
+    outbound: &Outbound,
+    session: &mut S,
+    id: Value,
+    text: String,
+) -> Option<i32>
+where
+    R: AsyncBufRead + Unpin,
+    S: AcpSession,
+{
+    let mut input_ended: Option<i32> = None;
+    let turn = session.prompt(text);
+    let mut turn = pin!(turn);
+    loop {
+        tokio::select! {
+            result = &mut turn => {
+                match result {
+                    Ok(end) => reply(outbound, id, PromptResponse::new(end.stop_reason())),
+                    Err(msg) => outbound.respond_error(id, RpcError::new(INTERNAL_ERROR, msg)),
+                }
+                return input_ended;
+            }
+            line = lines.next_line(), if input_ended.is_none() => match line {
+                Ok(Some(line)) => reject_while_busy(outbound, &line),
+                Ok(None) => input_ended = Some(0),
+                Err(err) => {
+                    eprintln!("nyan acp: failed to read stdin: {err}");
+                    input_ended = Some(1);
+                }
+            },
+        }
+    }
+}
+
+/// Answers one line read while a prompt turn is running.
+fn reject_while_busy(outbound: &Outbound, line: &str) {
+    if line.trim().is_empty() {
+        return;
+    }
+    match parse_line(line) {
+        Ok(Incoming::Request { id, .. }) => {
+            outbound.respond_error(id, RpcError::new(BUSY, "A prompt is already in progress"));
+        }
+        Ok(Incoming::Notification { .. } | Incoming::Response { .. }) => {}
+        Err(error) => outbound.respond_error(Value::Null, error),
+    }
+}
+
+/// Flattens prompt content blocks into one string. Text blocks contribute their text and
+/// resource links their URI; blocks are joined with newlines. Any other block is rejected.
+pub(crate) fn prompt_text(blocks: &[ContentBlock]) -> Result<String, RpcError> {
+    let mut parts: Vec<&str> = Vec::with_capacity(blocks.len());
+    for block in blocks {
+        match block {
+            ContentBlock::Text(text) => parts.push(&text.text),
+            ContentBlock::ResourceLink(link) => parts.push(&link.uri),
+            _ => {
+                return Err(RpcError::new(
+                    INVALID_PARAMS,
+                    "Unsupported content block in prompt",
+                ));
+            }
+        }
+    }
+    Ok(parts.join("\n"))
+}
+
+/// Queues `response` as the result of request `id`.
+fn reply<T: Serialize>(outbound: &Outbound, id: Value, response: T) {
     match serde_json::to_value(response) {
-        Ok(result) => outbound.respond(id, result).await,
+        Ok(result) => outbound.respond(id, result),
         Err(err) => {
             let error = RpcError::new(INTERNAL_ERROR, format!("Internal error: {err}"));
-            outbound.respond_error(id, error).await
+            outbound.respond_error(id, error);
         }
     }
 }
@@ -79,12 +267,105 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::acp::session::{TurnEnd, UpdateSink};
     use serde_json::json;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    /// Scripted engine. Records every prompt, streams `chunks` as message chunks, then
+    /// ends the turn with `end` (default `EndTurn`) or fails with `fail_prompt`.
+    #[derive(Clone, Default)]
+    struct FakeHost {
+        /// Prompts received, in order.
+        prompts: Arc<Mutex<Vec<String>>>,
+        /// Chunks each prompt emits before finishing.
+        chunks: Vec<&'static str>,
+        /// When set, `new_session` fails with this message.
+        fail_new_session: Option<&'static str>,
+        /// When set, `prompt` fails with this message.
+        fail_prompt: Option<&'static str>,
+        /// Delay before a prompt finishes, to keep it in flight.
+        delay: Option<Duration>,
+        end: Option<TurnEnd>,
+    }
+
+    struct FakeSession {
+        config: FakeHost,
+        updates: UpdateSink,
+    }
+
+    impl AcpHost for FakeHost {
+        type Session = FakeSession;
+
+        async fn new_session(
+            &mut self,
+            _request: NewSession,
+            outbound: Outbound,
+        ) -> Result<(String, FakeSession), String> {
+            if let Some(msg) = self.fail_new_session {
+                return Err(msg.to_string());
+            }
+            let session = FakeSession {
+                config: self.clone(),
+                updates: UpdateSink::new(outbound, "sess-1"),
+            };
+            Ok(("sess-1".to_string(), session))
+        }
+    }
+
+    impl AcpSession for FakeSession {
+        async fn prompt(&mut self, text: String) -> Result<TurnEnd, String> {
+            self.config.prompts.lock().unwrap().push(text);
+            for chunk in &self.config.chunks {
+                self.updates.agent_message(chunk);
+            }
+            if let Some(delay) = self.config.delay {
+                tokio::time::sleep(delay).await;
+            }
+            match self.config.fail_prompt {
+                Some(msg) => Err(msg.to_string()),
+                None => Ok(self.config.end.unwrap_or(TurnEnd::EndTurn)),
+            }
+        }
+    }
+
+    fn request(id: u64, method: &str, params: Value) -> Value {
+        json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params})
+    }
+
+    fn initialize() -> Value {
+        request(
+            1,
+            "initialize",
+            json!({"protocolVersion": 1, "clientCapabilities": {}}),
+        )
+    }
+
+    fn new_session(id: u64) -> Value {
+        request(id, "session/new", json!({"cwd": "/tmp", "mcpServers": []}))
+    }
+
+    fn prompt(id: u64, session_id: &str, text: &str) -> Value {
+        request(
+            id,
+            "session/prompt",
+            json!({"sessionId": session_id, "prompt": [{"type": "text", "text": text}]}),
+        )
+    }
+
+    /// Joins messages into newline-terminated input.
+    fn input(messages: &[Value]) -> String {
+        messages.iter().map(|m| format!("{m}\n")).collect()
+    }
 
     /// Runs serve once on the given input, returning the exit code and each output line as JSON.
     async fn run_session(input: &str) -> (i32, Vec<Value>) {
+        run_with(input, FakeHost::default()).await
+    }
+
+    async fn run_with(input: &str, host: FakeHost) -> (i32, Vec<Value>) {
         let mut out: Vec<u8> = Vec::new();
-        let code = serve(tokio::io::BufReader::new(input.as_bytes()), &mut out).await;
+        let code = serve(tokio::io::BufReader::new(input.as_bytes()), &mut out, host).await;
         let text = String::from_utf8(out).unwrap();
         let lines: Vec<Value> = text
             .lines()
@@ -109,8 +390,9 @@ mod tests {
 
     #[tokio::test]
     async fn acp_unknown_method_returns_method_not_found() {
+        // `session/load` is not implemented, so it stands in for an unknown method.
         let (code, lines) = run_session(
-            "{\"jsonrpc\":\"2.0\",\"id\":\"req-7\",\"method\":\"session/new\",\"params\":{\"cwd\":\"/tmp\",\"mcpServers\":[]}}\n",
+            "{\"jsonrpc\":\"2.0\",\"id\":\"req-7\",\"method\":\"session/load\",\"params\":{\"sessionId\":\"s1\",\"cwd\":\"/tmp\",\"mcpServers\":[]}}\n",
         )
         .await;
         assert_eq!(code, 0);
@@ -143,5 +425,167 @@ mod tests {
         let (code, lines) = run_session("\n   \n").await;
         assert_eq!(code, 0);
         assert!(lines.is_empty());
+    }
+
+    #[tokio::test]
+    async fn acp_session_new_returns_session_id() {
+        let (code, lines) = run_session(&input(&[initialize(), new_session(2)])).await;
+        assert_eq!(code, 0);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[1]["id"], json!(2));
+        assert_eq!(lines[1]["result"]["sessionId"], json!("sess-1"));
+    }
+
+    #[tokio::test]
+    async fn acp_prompt_streams_chunks_then_responds() {
+        let host = FakeHost {
+            chunks: vec!["Hello", " world"],
+            ..Default::default()
+        };
+        let prompts = host.prompts.clone();
+        let (code, lines) = run_with(
+            &input(&[initialize(), new_session(2), prompt(3, "sess-1", "hi")]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+        assert_eq!(lines.len(), 5);
+
+        for (index, text) in [(2, "Hello"), (3, " world")] {
+            let note = &lines[index];
+            assert_eq!(note["method"], json!("session/update"));
+            assert_eq!(note["params"]["sessionId"], json!("sess-1"));
+            assert_eq!(
+                note["params"]["update"]["sessionUpdate"],
+                json!("agent_message_chunk")
+            );
+            assert_eq!(note["params"]["update"]["content"]["text"], json!(text));
+        }
+
+        assert_eq!(lines[4]["id"], json!(3));
+        assert_eq!(lines[4]["result"]["stopReason"], json!("end_turn"));
+        assert_eq!(*prompts.lock().unwrap(), vec!["hi".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn acp_second_session_new_is_rejected() {
+        let (code, lines) =
+            run_session(&input(&[initialize(), new_session(2), new_session(3)])).await;
+        assert_eq!(code, 0);
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[2]["id"], json!(3));
+        assert_eq!(lines[2]["error"]["code"], json!(-32600));
+    }
+
+    #[tokio::test]
+    async fn acp_prompt_with_unknown_session_is_rejected() {
+        let (code, lines) = run_session(&input(&[
+            initialize(),
+            new_session(2),
+            prompt(3, "other", "hi"),
+        ]))
+        .await;
+        assert_eq!(code, 0);
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[2]["error"]["code"], json!(-32602));
+        assert_eq!(
+            lines[2]["error"]["message"],
+            json!("Unknown session: other")
+        );
+    }
+
+    #[tokio::test]
+    async fn acp_prompt_before_session_new_is_rejected() {
+        let (code, lines) = run_session(&input(&[initialize(), prompt(2, "sess-1", "hi")])).await;
+        assert_eq!(code, 0);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[1]["error"]["code"], json!(-32602));
+    }
+
+    #[test]
+    fn acp_prompt_text_joins_text_and_resource_links() {
+        let blocks: Vec<ContentBlock> = serde_json::from_value(json!([
+            {"type": "text", "text": "look"},
+            {"type": "resource_link", "name": "a.rs", "uri": "file:///a.rs"}
+        ]))
+        .unwrap();
+        assert_eq!(prompt_text(&blocks).unwrap(), "look\nfile:///a.rs");
+
+        let image: Vec<ContentBlock> = serde_json::from_value(json!([
+            {"type": "image", "data": "AAAA", "mimeType": "image/png"}
+        ]))
+        .unwrap();
+        assert_eq!(prompt_text(&image).unwrap_err().code, INVALID_PARAMS);
+    }
+
+    #[tokio::test]
+    async fn acp_host_errors_become_internal_errors() {
+        let host = FakeHost {
+            fail_new_session: Some("boom"),
+            ..Default::default()
+        };
+        let (code, lines) = run_with(&input(&[initialize(), new_session(2)]), host).await;
+        assert_eq!(code, 0);
+        assert_eq!(lines[1]["error"]["code"], json!(-32603));
+        assert_eq!(lines[1]["error"]["message"], json!("boom"));
+
+        let host = FakeHost {
+            fail_prompt: Some("engine failed"),
+            ..Default::default()
+        };
+        let (code, lines) = run_with(
+            &input(&[initialize(), new_session(2), prompt(3, "sess-1", "hi")]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+        assert_eq!(lines[2]["id"], json!(3));
+        assert_eq!(lines[2]["error"]["code"], json!(-32603));
+        assert_eq!(lines[2]["error"]["message"], json!("engine failed"));
+    }
+
+    #[tokio::test]
+    async fn acp_requests_during_a_prompt_get_busy_error() {
+        let host = FakeHost {
+            delay: Some(Duration::from_millis(200)),
+            ..Default::default()
+        };
+        let (code, lines) = run_with(
+            &input(&[
+                initialize(),
+                new_session(2),
+                prompt(3, "sess-1", "hi"),
+                new_session(4),
+            ]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+        let busy = lines
+            .iter()
+            .position(|line| line["id"] == json!(4))
+            .unwrap();
+        let done = lines
+            .iter()
+            .position(|line| line["id"] == json!(3))
+            .unwrap();
+        assert_eq!(lines[busy]["error"]["code"], json!(-32000));
+        assert!(busy < done, "busy error must precede the prompt response");
+        assert_eq!(lines[done]["result"]["stopReason"], json!("end_turn"));
+    }
+
+    #[tokio::test]
+    async fn acp_stop_reason_follows_turn_end() {
+        let host = FakeHost {
+            end: Some(TurnEnd::Cancelled),
+            ..Default::default()
+        };
+        let (code, lines) = run_with(
+            &input(&[initialize(), new_session(2), prompt(3, "sess-1", "hi")]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+        assert_eq!(lines[2]["result"]["stopReason"], json!("cancelled"));
     }
 }

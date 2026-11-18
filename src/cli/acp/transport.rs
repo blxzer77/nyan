@@ -1,8 +1,10 @@
-//! Protocol-method-independent JSON-RPC 2.0 I/O: parsing and writing one message per line.
+//! Protocol-method-independent JSON-RPC 2.0 I/O: parsing inbound lines and writing outbound
+//! messages as one JSON line each.
 
 use serde_json::{Value, json};
 use std::io;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 pub(crate) const PARSE_ERROR: i64 = -32700;
 pub(crate) const INVALID_REQUEST: i64 = -32600;
@@ -11,7 +13,7 @@ pub(crate) const INVALID_PARAMS: i64 = -32602;
 pub(crate) const INTERNAL_ERROR: i64 = -32603;
 
 /// A parsed inbound message.
-// Fields of Notification / Response are ignored in this skeleton; later tasks will read them.
+// Fields of Notification / Response are not read yet; later tasks will use them.
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Incoming {
@@ -104,48 +106,58 @@ fn parse_rpc_error(value: &Value) -> Option<RpcError> {
     })
 }
 
-/// Outbound message writer. Each message is serialized as one JSON line and flushed; writes are
-/// serialized by a mutex.
-pub(crate) struct Outbound<W> {
-    writer: tokio::sync::Mutex<W>,
+/// Ordered outbound queue. Cloneable and usable from sync code; a single
+/// writer task drains it so messages reach stdout in enqueue order.
+#[derive(Clone)]
+pub(crate) struct Outbound {
+    tx: UnboundedSender<Value>,
 }
 
-impl<W: AsyncWrite + Unpin + Send> Outbound<W> {
-    pub(crate) fn new(writer: W) -> Self {
-        Self {
-            writer: tokio::sync::Mutex::new(writer),
-        }
+impl Outbound {
+    /// Creates a queue handle and the receiver that [`write_loop`] drains.
+    pub(crate) fn channel() -> (Outbound, UnboundedReceiver<Value>) {
+        let (tx, rx) = unbounded_channel();
+        (Outbound { tx }, rx)
     }
 
-    pub(crate) async fn respond(&self, id: Value, result: Value) -> io::Result<()> {
-        self.write_message(&json!({"jsonrpc": "2.0", "id": id, "result": result}))
-            .await
+    /// Queues a successful response to request `id`.
+    pub(crate) fn respond(&self, id: Value, result: Value) {
+        self.enqueue(json!({"jsonrpc": "2.0", "id": id, "result": result}));
     }
 
-    pub(crate) async fn respond_error(&self, id: Value, error: RpcError) -> io::Result<()> {
+    /// Queues an error response to request `id`. `data` is omitted when absent.
+    pub(crate) fn respond_error(&self, id: Value, error: RpcError) {
         let mut error_obj = json!({"code": error.code, "message": error.message});
         if let Some(data) = error.data {
             error_obj["data"] = data;
         }
-        self.write_message(&json!({"jsonrpc": "2.0", "id": id, "error": error_obj}))
-            .await
+        self.enqueue(json!({"jsonrpc": "2.0", "id": id, "error": error_obj}));
     }
 
-    // The skeleton does not send server-initiated notifications yet; reserved for later tasks
-    // such as session/update.
-    #[allow(dead_code)]
-    pub(crate) async fn notify(&self, method: &str, params: Value) -> io::Result<()> {
-        self.write_message(&json!({"jsonrpc": "2.0", "method": method, "params": params}))
-            .await
+    /// Queues a notification, which carries no id.
+    pub(crate) fn notify(&self, method: &str, params: Value) {
+        self.enqueue(json!({"jsonrpc": "2.0", "method": method, "params": params}));
     }
 
-    async fn write_message(&self, message: &Value) -> io::Result<()> {
-        let mut line = serde_json::to_vec(message).map_err(io::Error::other)?;
+    fn enqueue(&self, message: Value) {
+        // A closed receiver means the writer has stopped, so the message cannot be delivered.
+        let _ = self.tx.send(message);
+    }
+}
+
+/// Writes each queued message as one JSON line, flushing after each. Returns
+/// when every `Outbound` clone is dropped, or with the first write error.
+pub(crate) async fn write_loop<W: AsyncWrite + Unpin>(
+    mut rx: UnboundedReceiver<Value>,
+    mut writer: W,
+) -> io::Result<()> {
+    while let Some(message) = rx.recv().await {
+        let mut line = serde_json::to_vec(&message).map_err(io::Error::other)?;
         line.push(b'\n');
-        let mut writer = self.writer.lock().await;
         writer.write_all(&line).await?;
-        writer.flush().await
+        writer.flush().await?;
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -229,15 +241,14 @@ mod tests {
 
     #[tokio::test]
     async fn acp_outbound_writes_one_json_object_per_line() {
+        let (out, rx) = Outbound::channel();
+        out.respond(json!(1), json!({"ok": true}));
+        out.respond_error(Value::Null, RpcError::new(PARSE_ERROR, "bad"));
+        out.notify("session/update", json!({}));
+        drop(out);
+
         let mut buf: Vec<u8> = Vec::new();
-        {
-            let out = Outbound::new(&mut buf);
-            out.respond(json!(1), json!({"ok": true})).await.unwrap();
-            out.respond_error(Value::Null, RpcError::new(PARSE_ERROR, "bad"))
-                .await
-                .unwrap();
-            out.notify("session/update", json!({})).await.unwrap();
-        }
+        write_loop(rx, &mut buf).await.unwrap();
         let text = String::from_utf8(buf).unwrap();
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines.len(), 3);
