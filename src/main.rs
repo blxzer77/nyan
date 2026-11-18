@@ -222,6 +222,19 @@ pub fn build_initial_app_state(
     Ok(build_interactive_launch(settings, settings_errors, cli)?.initial_state)
 }
 
+/// Whether a session may run in, or later switch back into, `bypassPermissions`: it was
+/// launched in that mode (`--dangerously-skip-permissions`, `--permission-mode
+/// bypassPermissions` or `permissions.defaultMode`), and no policy or setting disables
+/// the mode. `launch_mode` is the mode startup resolved.
+pub(crate) fn bypass_permissions_available_at_launch(
+    dangerously_skip_permissions: bool,
+    launch_mode: crate::types::permissions::PermissionMode,
+) -> bool {
+    (dangerously_skip_permissions
+        || launch_mode == crate::types::permissions::PermissionMode::BypassPermissions)
+        && !crate::utils::permissions::permission_setup::is_bypass_permissions_mode_disabled()
+}
+
 /// The headless store's `AppState` (CC `main.tsx:3701-3731`
 /// `headlessInitialState`). It leaves the main-loop override alone: headless
 /// launch wrote it before `runHeadless` ([`apply_headless_launch_model`]),
@@ -399,9 +412,7 @@ fn build_initial_app_state_with_agents(
         }
     }
 
-    if cli.dangerously_skip_permissions
-        && !crate::utils::permissions::permission_setup::is_bypass_permissions_mode_disabled()
-    {
+    if bypass_permissions_available_at_launch(cli.dangerously_skip_permissions, cli_mode) {
         permission_ctx.is_bypass_permissions_mode_available = true;
     }
     // CC main.tsx:2630-2634: warnings are stderr output, not model context or

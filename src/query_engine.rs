@@ -381,6 +381,27 @@ impl QueryEngine {
         self.overrides.effort
     }
 
+    /// Whether the session may switch into `bypassPermissions`. Once the first query has
+    /// built the permission context, its flag decides (a policy can turn it off later);
+    /// before that, what startup will set from the launch flags.
+    pub(crate) fn bypass_permissions_available(&self) -> bool {
+        if let Some(store) = &self.app_store {
+            return store
+                .get()
+                .tool_permission_context
+                .is_bypass_permissions_mode_available;
+        }
+        let (launch_mode, _) =
+            crate::utils::permissions::permission_setup::initial_permission_mode_from_cli(
+                self.config.permission_mode.as_deref(),
+                self.config.dangerously_skip_permissions,
+            );
+        crate::main::bypass_permissions_available_at_launch(
+            self.config.dangerously_skip_permissions,
+            launch_mode,
+        )
+    }
+
     pub(crate) fn set_permission_mode(&mut self, mode: crate::types::permissions::PermissionMode) {
         self.overrides.permission_mode = Some(mode);
     }
@@ -2118,6 +2139,57 @@ mod tests {
             error,
             "Unknown tool(s) passed to --tools: NotAnOfficialTool"
         );
+    }
+
+    #[test]
+    fn bypass_permissions_is_available_only_when_the_launch_allows_it() {
+        let _lock = TEST_ENV_LOCK.lock().unwrap();
+        let _settings = IsolatedProjectSettings::pin();
+        let engine_with = |cli_config: CliConfig| {
+            QueryEngine::new(QueryEngineConfig {
+                cli_config,
+                schema: None,
+                resume_seed: None,
+                mcp_state: None,
+                output_sink: None,
+                permission_resolver: None,
+                handle_elicitation: crate::tool::HandleElicitationCallback::default(),
+            })
+        };
+        assert!(!engine_with(CliConfig::default()).bypass_permissions_available());
+        assert!(
+            !engine_with(CliConfig {
+                permission_mode: Some("acceptEdits".to_string()),
+                ..CliConfig::default()
+            })
+            .bypass_permissions_available()
+        );
+        assert!(
+            engine_with(CliConfig {
+                dangerously_skip_permissions: true,
+                ..CliConfig::default()
+            })
+            .bypass_permissions_available()
+        );
+        assert!(
+            engine_with(CliConfig {
+                permission_mode: Some("bypassPermissions".to_string()),
+                ..CliConfig::default()
+            })
+            .bypass_permissions_available()
+        );
+
+        // Once the first query built the permission context, its flag decides.
+        let mut engine = engine_with(CliConfig {
+            dangerously_skip_permissions: true,
+            ..CliConfig::default()
+        });
+        let store = crate::state::store::AppStore::new(
+            crate::state::app_state_store::AppState::default(),
+            None,
+        );
+        engine.app_store = Some(store);
+        assert!(!engine.bypass_permissions_available());
     }
 
     #[tokio::test]
