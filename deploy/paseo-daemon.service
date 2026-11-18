@@ -1,0 +1,29 @@
+# Paseo daemon hosting nyan sessions over ACP. See deploy/README.md.
+# Install as /etc/systemd/system/paseo-daemon.service on the server.
+[Unit]
+Description=Paseo daemon (nyan via ACP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paseo
+Group=paseo
+WorkingDirectory=/home/paseo
+Environment=HOME=/home/paseo
+Environment=PASEO_HOME=/home/paseo/.paseo
+# Agent shells see the ACP build of nyan first.
+Environment=PATH=/opt/paseo/node_modules/.bin:/opt/nyan-acp/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/opt/paseo/node_modules/.bin/paseo daemon run
+Restart=on-failure
+RestartSec=5
+# Agents run inside this unit's cgroup; size the limits for the host.
+CPUWeight=50
+IOWeight=50
+MemoryHigh=7G
+MemoryMax=8G
+MemorySwapMax=2G
+TasksMax=4096
+
+[Install]
+WantedBy=multi-user.target

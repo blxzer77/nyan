@@ -1,0 +1,23 @@
+{
+  "env": { "NYAN_DISABLE_NONESSENTIAL_TRAFFIC": "1" },
+  "includeCoAuthoredBy": false,
+  "permissions": { "defaultMode": "default" },
+  "nyan": {
+    "providers": {
+      "main": {
+        "kind": "anthropic",
+        "protocol": "anthropicMessages",
+        "baseUrl": "<model gateway URL reachable from the server>",
+        "credential": { "file": "~/.nyan/keys/main" }
+      }
+    },
+    "models": {
+      "sonnet": {
+        "provider": "main",
+        "model": "claude-sonnet-5-5",
+        "displayName": "Claude Sonnet 5.5"
+      }
+    },
+    "selection": { "main": "sonnet" }
+  }
+}
