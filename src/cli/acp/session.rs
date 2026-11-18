@@ -6,10 +6,10 @@ use std::sync::Arc;
 
 use agent_client_protocol_schema::v1::{
     AvailableCommand, AvailableCommandsUpdate, CLIENT_METHOD_NAMES, Content, ContentBlock,
-    ContentChunk, CurrentModeUpdate, Diff, MessageId, SessionConfigOption, SessionId,
+    ContentChunk, Cost, CurrentModeUpdate, Diff, MessageId, SessionConfigOption, SessionId,
     SessionModeState, SessionNotification, SessionUpdate, StopReason, TextContent, ToolCall,
     ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
-    ToolCallUpdateFields, ToolKind,
+    ToolCallUpdateFields, ToolKind, UsageUpdate,
 };
 
 use super::transport::Outbound;
@@ -186,6 +186,13 @@ impl UpdateSink {
         ));
     }
 
+    /// Emits a `usage_update`: `used` of the model's `size`-token context window, and the
+    /// session's cost so far in US dollars.
+    pub(crate) fn usage(&self, used: u64, size: u64, cost_usd: f64) {
+        let update = UsageUpdate::new(used, size).cost(Cost::new(cost_usd, "USD"));
+        self.send(SessionUpdate::UsageUpdate(update));
+    }
+
     /// Emits a `current_mode_update` naming the session's mode.
     pub(crate) fn current_mode(&self, mode_id: &str) {
         self.send(SessionUpdate::CurrentModeUpdate(CurrentModeUpdate::new(
@@ -296,6 +303,20 @@ mod tests {
         assert!(message["params"]["update"].get("messageId").is_none());
 
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn acp_update_sink_emits_usage() {
+        let (outbound, mut rx) = Outbound::channel();
+        let sink = UpdateSink::new(outbound, "sess-u");
+        sink.usage(1200, 200_000, 0.25);
+        drop(sink);
+        let message: Value = rx.try_recv().unwrap();
+        assert_eq!(
+            message["params"]["update"],
+            json!({"sessionUpdate": "usage_update", "used": 1200, "size": 200000,
+                   "cost": {"amount": 0.25, "currency": "USD"}})
+        );
     }
 
     #[test]

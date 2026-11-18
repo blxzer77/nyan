@@ -189,8 +189,30 @@ impl AcpSession for EngineSession {
                 self.engine.set_effort(Some(effort));
             }
         }
-        let outcome = crate::query_engine::ask(&mut self.engine, text, None).await?;
-        turn_end(&outcome)
+        let outcome = crate::query_engine::ask(&mut self.engine, text, None).await;
+        // The engine may have changed the mode itself during the turn (approving
+        // ExitPlanMode leaves plan mode); the client is told, as for its own switches.
+        if let Some(mode) = self.engine.permission_mode() {
+            let changed = lock_modes(&self.modes)
+                .follow_engine(mode)
+                .map(str::to_string);
+            if let Some(id) = changed {
+                self.sink.current_mode(&id);
+            }
+        }
+        // How full the context window is now, and what the session has cost so far (one
+        // session per process, so the process total).
+        if let Some(size) = current_context_window() {
+            let used = crate::utils::tokens::token_count_from_last_api_response(
+                self.engine.get_messages(),
+            );
+            self.sink.usage(
+                u64::try_from(used).unwrap_or(0),
+                size,
+                crate::cost_tracker::get_total_cost(),
+            );
+        }
+        turn_end(&outcome?)
     }
 
     fn modes(&self) -> Option<SessionModeState> {
@@ -253,16 +275,16 @@ fn replay_history(sink: &UpdateSink, history: &[crate::types::message::Message])
 }
 
 /// The slash commands a user can run in `cwd`: user-invocable and not hidden, as the
-/// headless `initialize` control response lists them, but without the terminal UI
-/// commands (`/theme`, `/keybindings`, ...), which do nothing without the TUI. A prompt
-/// starting with `/name` runs one; its output comes back as an ordinary message.
+/// headless `initialize` control response lists them, and runnable without the TUI:
+/// prompt commands, and local commands that declare `supports_non_interactive`. The
+/// rest (`/theme`, `/vim`, `/keybindings`, ...) do nothing here. A prompt starting with
+/// `/name` runs one; its output comes back as an ordinary message.
 fn slash_commands(cwd: &Path) -> Vec<AvailableCommand> {
     crate::commands::get_commands(cwd)
         .into_iter()
         .filter(|command| command.user_invocable && !command.is_hidden)
         .filter(|command| {
-            command.kind != crate::commands::CommandKind::LocalUi
-                || command.supports_non_interactive
+            command.kind == crate::commands::CommandKind::Prompt || command.supports_non_interactive
         })
         .map(|command| {
             let entry = AvailableCommand::new(
@@ -281,6 +303,21 @@ fn slash_commands(cwd: &Path) -> Vec<AvailableCommand> {
             }
         })
         .collect()
+}
+
+/// The context window, in tokens, of the profile the session runs on (its own, or
+/// `selection.main`). `None` when no profile resolves.
+fn current_context_window() -> Option<u64> {
+    let settings = crate::utils::settings::get_initial_settings();
+    let nyan = settings.nyan.as_deref()?;
+    let profile = crate::bootstrap::state::get_session_profile().or_else(|| {
+        nyan.selection
+            .as_ref()
+            .and_then(|selection| selection.main.clone())
+    })?;
+    crate::utils::model::profile::resolve_profile(nyan, &profile)
+        .ok()
+        .map(|resolved| u64::from(resolved.context_window))
 }
 
 /// The model and effort options for a new session, from `settings.nyan`: every profile in
