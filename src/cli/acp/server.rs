@@ -1,5 +1,6 @@
-//! ACP request dispatch: `initialize`, `session/new`, `session/prompt` and
-//! `session/set_mode`, plus the `session/cancel` notification while a prompt is running.
+//! ACP request dispatch: `initialize`, `session/new`, `session/prompt`, `session/set_mode`
+//! and `session/set_config_option`, plus the `session/cancel` notification while a prompt
+//! is running.
 //! Other requests get Method not found. Responses to requests the agent sent
 //! (`session/request_permission`) are routed back to them.
 
@@ -7,14 +8,15 @@ use agent_client_protocol_schema::ProtocolVersion;
 use agent_client_protocol_schema::v1::{
     AGENT_METHOD_NAMES, CancelNotification, ContentBlock, Implementation, InitializeRequest,
     InitializeResponse, NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse,
-    SessionId, SetSessionModeRequest, SetSessionModeResponse,
+    SessionId, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
+    SetSessionModeRequest, SetSessionModeResponse,
 };
 use serde::Serialize;
 use serde_json::Value;
 use std::pin::pin;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, Lines};
 
-use super::session::{AcpHost, AcpSession, Canceller, ModeSwitch, NewSession};
+use super::session::{AcpHost, AcpSession, Canceller, ConfigSwitch, ModeSwitch, NewSession};
 use super::transport::{
     INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, Incoming, METHOD_NOT_FOUND, Outbound,
     RpcError, parse_line, write_loop,
@@ -108,6 +110,11 @@ async fn handle_request<H: AcpHost>(
             .as_ref()
             .map(|(session_id, active)| (session_id.as_str(), active.mode_switch()));
         respond(outbound, id, set_mode(params, current));
+    } else if method == AGENT_METHOD_NAMES.session_set_config_option {
+        let current = session
+            .as_ref()
+            .map(|(session_id, active)| (session_id.as_str(), active.config_switch()));
+        respond(outbound, id, set_config_option(params, current));
     } else {
         let error = RpcError::new(METHOD_NOT_FOUND, format!("Method not found: {method}"));
         outbound.respond_error(id, error);
@@ -165,7 +172,9 @@ async fn handle_new_session<H: AcpHost>(
             reply(
                 outbound,
                 id,
-                NewSessionResponse::new(SessionId::new(session_id.as_str())).modes(active.modes()),
+                NewSessionResponse::new(SessionId::new(session_id.as_str()))
+                    .modes(active.modes())
+                    .config_options(active.config_options()),
             );
             *session = Some((session_id, active));
         }
@@ -234,7 +243,10 @@ where
     // Taken before the turn starts, because the turn borrows the session while it runs.
     let cancel = session.canceller();
     let on_input_closed = session.on_input_closed();
-    let mode_switch = session.mode_switch();
+    let switches = Switches {
+        mode: session.mode_switch(),
+        config: session.config_switch(),
+    };
     let turn = session.prompt(text);
     let mut turn = pin!(turn);
     loop {
@@ -251,7 +263,7 @@ where
             }
             line = lines.next_line(), if input_ended.is_none() => match line {
                 Ok(Some(line)) => {
-                    handle_line_during_turn(outbound, &line, session_id, &cancel, &mode_switch)
+                    handle_line_during_turn(outbound, &line, session_id, &cancel, &switches)
                 }
                 Ok(None) => {
                     end_input(outbound, Some(on_input_closed.clone()));
@@ -279,15 +291,16 @@ fn end_input(outbound: &Outbound, on_input_closed: Option<Canceller>) {
 
 /// Handles one line read while a prompt turn is running. A `session/cancel` naming
 /// `session_id` calls `cancel`; one naming another session, or with params that do not
-/// parse, is ignored. A `session/set_mode` is handled, for the next turn. Any other request
-/// gets a busy error. A response goes to the request it answers. Other notifications are
-/// ignored, and a line that is not valid JSON-RPC gets a parse error.
+/// parse, is ignored. A `session/set_mode` or `session/set_config_option` is handled, for
+/// the next turn. Any other request gets a busy error. A response goes to the request it
+/// answers. Other notifications are ignored, and a line that is not valid JSON-RPC gets a
+/// parse error.
 fn handle_line_during_turn(
     outbound: &Outbound,
     line: &str,
     session_id: &str,
     cancel: &Canceller,
-    mode_switch: &Option<ModeSwitch>,
+    switches: &Switches,
 ) {
     if line.trim().is_empty() {
         return;
@@ -296,7 +309,13 @@ fn handle_line_during_turn(
         Ok(Incoming::Request { id, method, params })
             if method == AGENT_METHOD_NAMES.session_set_mode =>
         {
-            let result = set_mode(params, Some((session_id, mode_switch.clone())));
+            let result = set_mode(params, Some((session_id, switches.mode.clone())));
+            respond(outbound, id, result);
+        }
+        Ok(Incoming::Request { id, method, params })
+            if method == AGENT_METHOD_NAMES.session_set_config_option =>
+        {
+            let result = set_config_option(params, Some((session_id, switches.config.clone())));
             respond(outbound, id, result);
         }
         Ok(Incoming::Request { id, .. }) => {
@@ -335,6 +354,45 @@ fn set_mode(params: Value, current: Option<(&str, Option<ModeSwitch>)>) -> Resul
     };
     switch(&request.mode_id.0).map_err(|message| RpcError::new(INVALID_PARAMS, message))?;
     serde_json::to_value(SetSessionModeResponse::new())
+        .map_err(|err| RpcError::new(INTERNAL_ERROR, format!("Internal error: {err}")))
+}
+
+/// The session's switch handles, taken before a turn borrows the session.
+struct Switches {
+    mode: Option<ModeSwitch>,
+    config: Option<ConfigSwitch>,
+}
+
+/// Handles `session/set_config_option`. `current` is the open session's id and config
+/// switch, if a session is open.
+fn set_config_option(
+    params: Value,
+    current: Option<(&str, Option<ConfigSwitch>)>,
+) -> Result<Value, RpcError> {
+    let request = serde_json::from_value::<SetSessionConfigOptionRequest>(params)
+        .map_err(|err| RpcError::new(INVALID_PARAMS, format!("Invalid params: {err}")))?;
+    let switch = match current {
+        Some((session_id, switch)) if session_id == &*request.session_id.0 => switch,
+        _ => {
+            let message = format!("Unknown session: {}", request.session_id.0);
+            return Err(RpcError::new(INVALID_PARAMS, message));
+        }
+    };
+    let Some(switch) = switch else {
+        return Err(RpcError::new(
+            METHOD_NOT_FOUND,
+            "Method not found: session/set_config_option",
+        ));
+    };
+    let Some(value) = request.value.as_value_id() else {
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            "Config option values are value ids",
+        ));
+    };
+    let options = switch(&request.config_id.0, &value.0)
+        .map_err(|message| RpcError::new(INVALID_PARAMS, message))?;
+    serde_json::to_value(SetSessionConfigOptionResponse::new(options))
         .map_err(|err| RpcError::new(INTERNAL_ERROR, format!("Internal error: {err}")))
 }
 
@@ -422,6 +480,9 @@ mod tests {
         /// When set, the session offers modes `default` and `plan`, and records each mode
         /// it is switched to here. Any other mode is refused.
         modes: Option<Arc<Mutex<Vec<String>>>>,
+        /// When set, the session has a `model` option (`a` or `b`) and records each
+        /// (option, value) it is set to here. Anything else is refused.
+        config: Option<Arc<Mutex<Vec<(String, String)>>>>,
     }
 
     struct FakeSession {
@@ -509,6 +570,32 @@ mod tests {
                     ],
                 )
             })
+        }
+
+        fn config_options(
+            &self,
+        ) -> Option<Vec<agent_client_protocol_schema::v1::SessionConfigOption>> {
+            let set = self.config.config.as_ref()?;
+            let current = set
+                .lock()
+                .unwrap()
+                .last()
+                .map(|(_, value)| value.clone())
+                .unwrap_or_else(|| "a".to_string());
+            Some(fake_model_option(&current))
+        }
+
+        fn config_switch(&self) -> Option<ConfigSwitch> {
+            let set = self.config.config.clone()?;
+            Some(Arc::new(move |config_id: &str, value: &str| {
+                if config_id != "model" || (value != "a" && value != "b") {
+                    return Err(format!("Unknown value {value} for {config_id}"));
+                }
+                set.lock()
+                    .unwrap()
+                    .push((config_id.to_string(), value.to_string()));
+                Ok(fake_model_option(value))
+            }))
         }
 
         fn mode_switch(&self) -> Option<ModeSwitch> {
@@ -777,6 +864,96 @@ mod tests {
         assert_eq!(lines[busy]["error"]["code"], json!(-32000));
         assert!(busy < done, "busy error must precede the prompt response");
         assert_eq!(lines[done]["result"]["stopReason"], json!("end_turn"));
+    }
+
+    fn fake_model_option(
+        current: &str,
+    ) -> Vec<agent_client_protocol_schema::v1::SessionConfigOption> {
+        use agent_client_protocol_schema::v1::{SessionConfigOption, SessionConfigSelectOption};
+        vec![SessionConfigOption::select(
+            "model",
+            "Model",
+            current.to_string(),
+            vec![
+                SessionConfigSelectOption::new("a", "A"),
+                SessionConfigSelectOption::new("b", "B"),
+            ],
+        )]
+    }
+
+    fn set_config(id: u64, session_id: &str, config_id: &str, value: &str) -> Value {
+        request(
+            id,
+            "session/set_config_option",
+            json!({"sessionId": session_id, "configId": config_id, "value": value}),
+        )
+    }
+
+    #[tokio::test]
+    async fn acp_session_new_reports_config_options_and_set_config_option_switches() {
+        let set = Arc::new(Mutex::new(Vec::new()));
+        let host = FakeHost {
+            config: Some(set.clone()),
+            delay: Some(Duration::from_millis(200)),
+            ..Default::default()
+        };
+        let (code, lines) = run_with(
+            &input(&[
+                initialize(),
+                new_session(2),
+                set_config(3, "sess-1", "model", "b"),
+                set_config(4, "sess-1", "model", "z"),
+                set_config(5, "other", "model", "a"),
+                prompt(6, "sess-1", "hi"),
+                set_config(7, "sess-1", "model", "a"),
+            ]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+        assert_eq!(
+            response(&lines, 2)["result"]["configOptions"][0]["currentValue"],
+            json!("a")
+        );
+        assert_eq!(
+            response(&lines, 3)["result"]["configOptions"][0]["currentValue"],
+            json!("b")
+        );
+        assert_eq!(response(&lines, 4)["error"]["code"], json!(-32602));
+        assert_eq!(response(&lines, 5)["error"]["code"], json!(-32602));
+        // During a turn the option is still set, and answered before the turn ends.
+        let switch = lines
+            .iter()
+            .position(|line| line["id"] == json!(7))
+            .unwrap();
+        let done = lines
+            .iter()
+            .position(|line| line["id"] == json!(6))
+            .unwrap();
+        assert!(switch < done);
+        assert_eq!(
+            lines[switch]["result"]["configOptions"][0]["currentValue"],
+            json!("a")
+        );
+        assert_eq!(
+            *set.lock().unwrap(),
+            vec![
+                ("model".to_string(), "b".to_string()),
+                ("model".to_string(), "a".to_string())
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn acp_set_config_option_without_options_is_method_not_found() {
+        let (_, lines) = run_session(&input(&[
+            initialize(),
+            new_session(2),
+            set_config(3, "sess-1", "model", "a"),
+        ]))
+        .await;
+        assert!(response(&lines, 2)["result"].get("configOptions").is_none());
+        assert_eq!(response(&lines, 3)["error"]["code"], json!(-32601));
     }
 
     fn set_mode(id: u64, session_id: &str, mode_id: &str) -> Value {

@@ -1527,7 +1527,10 @@ fn build_mcp_server_statuses(
 /// Switch the headless session to the profile `requested` names (`default` is
 /// `selection.main`) at its `:effort` (design §5.2). Every later submit routes
 /// through it.
-fn set_session_profile_from_ref(engine: &mut QueryEngine, requested: &str) -> Result<(), String> {
+pub(crate) fn set_session_profile_from_ref(
+    engine: &mut QueryEngine,
+    requested: &str,
+) -> Result<(), String> {
     let settings = crate::utils::settings::get_initial_settings();
     let (profile, effort) = if requested.trim() == "default" {
         (None, None)

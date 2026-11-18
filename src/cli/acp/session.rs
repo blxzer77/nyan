@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use agent_client_protocol_schema::v1::{
     CLIENT_METHOD_NAMES, Content, ContentBlock, ContentChunk, CurrentModeUpdate, Diff, MessageId,
-    SessionId, SessionModeState, SessionNotification, SessionUpdate, StopReason, TextContent,
-    ToolCall, ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
-    ToolCallUpdateFields, ToolKind,
+    SessionConfigOption, SessionId, SessionModeState, SessionNotification, SessionUpdate,
+    StopReason, TextContent, ToolCall, ToolCallContent, ToolCallId, ToolCallLocation,
+    ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 
 use super::transport::Outbound;
@@ -65,6 +65,11 @@ pub(crate) type Canceller = Arc<dyn Fn() + Send + Sync>;
 /// offer. Callable while a prompt turn runs.
 pub(crate) type ModeSwitch = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
+/// Sets config option `config_id` to `value` and returns every option as it now stands,
+/// failing for an unknown option or value. Callable while a prompt turn runs.
+pub(crate) type ConfigSwitch =
+    Arc<dyn Fn(&str, &str) -> Result<Vec<SessionConfigOption>, String> + Send + Sync>;
+
 /// One session on the engine.
 pub(crate) trait AcpSession {
     /// Runs one prompt turn to completion. Progress goes out through the engine's
@@ -92,6 +97,18 @@ pub(crate) trait AcpSession {
 
     /// The handle `session/set_mode` calls. `None` when the session has no modes.
     fn mode_switch(&self) -> Option<ModeSwitch> {
+        None
+    }
+
+    /// The session's config options, for the `session/new` response. `None` when it has
+    /// none.
+    fn config_options(&self) -> Option<Vec<SessionConfigOption>> {
+        None
+    }
+
+    /// The handle `session/set_config_option` calls. `None` when the session has no
+    /// config options.
+    fn config_switch(&self) -> Option<ConfigSwitch> {
         None
     }
 }

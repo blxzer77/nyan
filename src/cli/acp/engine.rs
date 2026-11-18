@@ -5,14 +5,17 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use agent_client_protocol_schema::v1::CLIENT_METHOD_NAMES;
+use agent_client_protocol_schema::v1::{
+    CLIENT_METHOD_NAMES, SessionConfigOption, SessionModeState,
+};
 use serde_json::Value;
 
-use agent_client_protocol_schema::v1::SessionModeState;
-
+use super::config_options::{ConfigOptions, Profile, SharedConfigOptions, lock_config};
 use super::modes::{Modes, SharedModes, lock_modes};
 use super::permission::{control_response_for, permission_request_params};
-use super::session::{AcpHost, AcpSession, Canceller, ModeSwitch, NewSession, TurnEnd, UpdateSink};
+use super::session::{
+    AcpHost, AcpSession, Canceller, ConfigSwitch, ModeSwitch, NewSession, TurnEnd, UpdateSink,
+};
 use super::tools::{describe_tool_call, tool_result_text};
 use super::transport::{Outbound, RpcError};
 use crate::cli::CliConfig;
@@ -77,6 +80,9 @@ pub(super) struct EngineSession {
     bridge: SdkControlBridge,
     /// The session's permission modes, shared with the switch `session/set_mode` calls.
     modes: SharedModes,
+    /// The model and effort options, shared with the switch `session/set_config_option`
+    /// calls. `None` when no model profiles are configured.
+    config: Option<SharedConfigOptions>,
     /// Reports mode switches to the client.
     sink: UpdateSink,
 }
@@ -110,6 +116,7 @@ impl AcpHost for EngineHost {
             .permissions
             .and_then(|permissions| permissions.default_mode);
         let modes = Arc::new(Mutex::new(Modes::new(default_mode.as_deref())));
+        let config = session_config_options().map(|options| Arc::new(Mutex::new(options)));
         let engine = QueryEngine::new(QueryEngineConfig {
             cli_config: self.config.clone(),
             schema: None,
@@ -126,6 +133,7 @@ impl AcpHost for EngineHost {
             engine,
             bridge,
             modes,
+            config,
             sink,
         };
         Ok((session_id, session))
@@ -134,10 +142,20 @@ impl AcpHost for EngineHost {
 
 impl AcpSession for EngineSession {
     async fn prompt(&mut self, text: String) -> Result<TurnEnd, String> {
-        // A mode switched since the last turn applies from this one on.
+        // A mode, model or effort picked since the last turn applies from this one on.
         let pending = lock_modes(&self.modes).take_pending();
         if let Some(mode) = pending {
             self.engine.set_permission_mode(mode);
+        }
+        if let Some(config) = &self.config {
+            let pending = lock_config(config).take_pending();
+            if let Some(profile) = pending.profile {
+                // Also resets the effort to the profile's own.
+                crate::cli::print::set_session_profile_from_ref(&mut self.engine, &profile)?;
+            }
+            if let Some(effort) = pending.effort {
+                self.engine.set_effort(Some(effort));
+            }
         }
         let outcome = crate::query_engine::ask(&mut self.engine, text, None).await?;
         turn_end(&outcome)
@@ -145,6 +163,21 @@ impl AcpSession for EngineSession {
 
     fn modes(&self) -> Option<SessionModeState> {
         Some(lock_modes(&self.modes).state())
+    }
+
+    fn config_options(&self) -> Option<Vec<SessionConfigOption>> {
+        self.config
+            .as_ref()
+            .map(|config| lock_config(config).options())
+    }
+
+    fn config_switch(&self) -> Option<ConfigSwitch> {
+        let config = self.config.clone()?;
+        Some(Arc::new(move |config_id: &str, value: &str| {
+            let mut options = lock_config(&config);
+            options.set(config_id, value)?;
+            Ok(options.options())
+        }))
     }
 
     fn mode_switch(&self) -> Option<ModeSwitch> {
@@ -168,6 +201,44 @@ impl AcpSession for EngineSession {
         let bridge = self.bridge.clone();
         Arc::new(move || bridge.close_input())
     }
+}
+
+/// The model and effort options for a new session, from `settings.nyan`: every profile in
+/// `models`, with the session's profile (or `selection.main`) and its effort current.
+/// `None` when no profiles are configured or none is selected.
+fn session_config_options() -> Option<ConfigOptions> {
+    use crate::utils::model::profile::{model_profile, profile_names, resolve_profile};
+
+    let settings = crate::utils::settings::get_initial_settings();
+    let nyan = settings.nyan.as_deref()?;
+    let profiles: Vec<Profile> = profile_names(Some(nyan))
+        .map(|name| {
+            let configured = model_profile(nyan, name);
+            Profile {
+                name: name.to_string(),
+                display_name: configured
+                    .and_then(|profile| profile.display_name.clone())
+                    .unwrap_or_else(|| name.to_string()),
+                model: configured
+                    .and_then(|profile| profile.model.clone())
+                    .unwrap_or_default(),
+                effort: resolve_profile(nyan, name)
+                    .ok()
+                    .and_then(|profile| profile.effort)
+                    .unwrap_or_default(),
+            }
+        })
+        .collect();
+    let current = crate::bootstrap::state::get_session_profile().or_else(|| {
+        nyan.selection
+            .as_ref()
+            .and_then(|selection| selection.main.clone())
+    })?;
+    let effort = profiles
+        .iter()
+        .find(|profile| profile.name == current)
+        .map(|profile| profile.effort)?;
+    ConfigOptions::new(profiles, &current, effort)
 }
 
 /// The SDK control bridge for one session. The engine's permission requests go through it,

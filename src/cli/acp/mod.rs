@@ -14,6 +14,7 @@
 //! wait for its choice (see `permission`). The client's answer is routed back to the
 //! request it answers. When input ends, requests still waiting for an answer fail.
 
+mod config_options;
 mod engine;
 mod modes;
 mod permission;
