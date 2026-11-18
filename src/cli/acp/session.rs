@@ -5,10 +5,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent_client_protocol_schema::v1::{
-    CLIENT_METHOD_NAMES, Content, ContentBlock, ContentChunk, CurrentModeUpdate, Diff, MessageId,
-    SessionConfigOption, SessionId, SessionModeState, SessionNotification, SessionUpdate,
-    StopReason, TextContent, ToolCall, ToolCallContent, ToolCallId, ToolCallLocation,
-    ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    AvailableCommand, AvailableCommandsUpdate, CLIENT_METHOD_NAMES, Content, ContentBlock,
+    ContentChunk, CurrentModeUpdate, Diff, MessageId, SessionConfigOption, SessionId,
+    SessionModeState, SessionNotification, SessionUpdate, StopReason, TextContent, ToolCall,
+    ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
+    ToolCallUpdateFields, ToolKind,
 };
 
 use super::transport::Outbound;
@@ -111,6 +112,12 @@ pub(crate) trait AcpSession {
     fn config_switch(&self) -> Option<ConfigSwitch> {
         None
     }
+
+    /// The slash commands a prompt may start with, announced right after `session/new`.
+    /// Empty when there are none.
+    fn available_commands(&self) -> Vec<AvailableCommand> {
+        Vec::new()
+    }
 }
 
 /// What the client is told when a tool call starts.
@@ -160,6 +167,13 @@ impl UpdateSink {
         self.send(SessionUpdate::AgentThoughtChunk(text_chunk(
             text, message_id,
         )));
+    }
+
+    /// Emits an `available_commands_update` listing the session's slash commands.
+    pub(crate) fn available_commands(&self, commands: Vec<AvailableCommand>) {
+        self.send(SessionUpdate::AvailableCommandsUpdate(
+            AvailableCommandsUpdate::new(commands),
+        ));
     }
 
     /// Emits a `current_mode_update` naming the session's mode.

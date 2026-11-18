@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use agent_client_protocol_schema::v1::{
-    CLIENT_METHOD_NAMES, SessionConfigOption, SessionModeState,
+    AvailableCommand, AvailableCommandInput, CLIENT_METHOD_NAMES, SessionConfigOption,
+    SessionModeState, UnstructuredCommandInput,
 };
 use serde_json::Value;
 
@@ -83,6 +84,8 @@ pub(super) struct EngineSession {
     /// The model and effort options, shared with the switch `session/set_config_option`
     /// calls. `None` when no model profiles are configured.
     config: Option<SharedConfigOptions>,
+    /// The slash commands, announced after `session/new`.
+    commands: Vec<AvailableCommand>,
     /// Reports mode switches to the client.
     sink: UpdateSink,
 }
@@ -117,6 +120,12 @@ impl AcpHost for EngineHost {
             .and_then(|permissions| permissions.default_mode);
         let modes = Arc::new(Mutex::new(Modes::new(default_mode.as_deref())));
         let config = session_config_options().map(|options| Arc::new(Mutex::new(options)));
+        // Loading commands reads files and may wait on plugins, so it runs off the runtime
+        // thread, as in `print::initialize_control_response`.
+        let commands_cwd = self.launch_cwd.clone();
+        let commands = tokio::task::spawn_blocking(move || slash_commands(&commands_cwd))
+            .await
+            .map_err(|error| error.to_string())?;
         let engine = QueryEngine::new(QueryEngineConfig {
             cli_config: self.config.clone(),
             schema: None,
@@ -134,6 +143,7 @@ impl AcpHost for EngineHost {
             bridge,
             modes,
             config,
+            commands,
             sink,
         };
         Ok((session_id, session))
@@ -163,6 +173,10 @@ impl AcpSession for EngineSession {
 
     fn modes(&self) -> Option<SessionModeState> {
         Some(lock_modes(&self.modes).state())
+    }
+
+    fn available_commands(&self) -> Vec<AvailableCommand> {
+        self.commands.clone()
     }
 
     fn config_options(&self) -> Option<Vec<SessionConfigOption>> {
@@ -201,6 +215,37 @@ impl AcpSession for EngineSession {
         let bridge = self.bridge.clone();
         Arc::new(move || bridge.close_input())
     }
+}
+
+/// The slash commands a user can run in `cwd`: user-invocable and not hidden, as the
+/// headless `initialize` control response lists them, but without the terminal UI
+/// commands (`/theme`, `/keybindings`, ...), which do nothing without the TUI. A prompt
+/// starting with `/name` runs one; its output comes back as an ordinary message.
+fn slash_commands(cwd: &Path) -> Vec<AvailableCommand> {
+    crate::commands::get_commands(cwd)
+        .into_iter()
+        .filter(|command| command.user_invocable && !command.is_hidden)
+        .filter(|command| {
+            command.kind != crate::commands::CommandKind::LocalUi
+                || command.supports_non_interactive
+        })
+        .map(|command| {
+            let entry = AvailableCommand::new(
+                crate::commands::get_command_name(&command),
+                crate::commands::format_description_with_source(&command),
+            );
+            match command
+                .argument_hint
+                .as_deref()
+                .filter(|hint| !hint.is_empty())
+            {
+                Some(hint) => entry.input(AvailableCommandInput::Unstructured(
+                    UnstructuredCommandInput::new(hint),
+                )),
+                None => entry,
+            }
+        })
+        .collect()
 }
 
 /// The model and effort options for a new session, from `settings.nyan`: every profile in
