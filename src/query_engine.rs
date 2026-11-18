@@ -24,6 +24,11 @@ pub(crate) struct QueryEngineResumeSeed {
 }
 
 impl QueryEngineResumeSeed {
+    /// The conversation the session resumes from.
+    pub(crate) fn history(&self) -> &[Message] {
+        &self.history
+    }
+
     pub(crate) fn new(
         history: Vec<Message>,
         processed: Option<crate::utils::session_restore::ProcessedResume>,

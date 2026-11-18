@@ -4,14 +4,14 @@
 //! runtime exists. The client names the working directory only in `session/new`, and
 //! starts the agent wherever it likes (Paseo starts it in its own directory). So until
 //! a `session/new` arrives, the process answers on the main thread, without a runtime:
-//! `initialize` gets its usual reply and other requests get an error. The first
-//! `session/new` with a usable `cwd` moves the process there and ends this phase; the
-//! server then answers that request.
+//! `initialize` and `session/list` get their usual replies and other requests get an
+//! error. The first `session/new` or `session/load` with a usable `cwd` moves the process
+//! there and ends this phase; the server then answers that request.
 
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
-use agent_client_protocol_schema::v1::{AGENT_METHOD_NAMES, NewSessionRequest};
+use agent_client_protocol_schema::v1::{AGENT_METHOD_NAMES, LoadSessionRequest, NewSessionRequest};
 use serde_json::Value;
 
 use super::server::initialize_result;
@@ -23,16 +23,16 @@ use super::transport::{
 /// How the phase before the first session ended.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Startup {
-    /// A `session/new` arrived and the process now works in its `cwd`. `line` is that
-    /// request, not answered yet, and `id` its request id.
+    /// A `session/new` or `session/load` arrived and the process now works in its `cwd`.
+    /// `line` is that request, not answered yet, and `id` its request id.
     Session { id: Value, line: String },
     /// Input ended (0) or could not be read (1) before any session.
     Ended(i32),
 }
 
-/// Answers requests from `reader` until a `session/new` names a directory that `enter`
-/// accepts. `enter` moves the process there; when it fails, the request gets the error
-/// and the phase goes on.
+/// Answers requests from `reader` until a `session/new` or `session/load` names a
+/// directory that `enter` accepts. `enter` moves the process there; when it fails, the
+/// request gets the error and the phase goes on.
 pub(super) fn await_first_session<R, W, E>(mut reader: R, writer: &mut W, mut enter: E) -> Startup
 where
     R: BufRead,
@@ -56,8 +56,10 @@ where
         }
         let (id, result) = match parse_line(line) {
             Ok(Incoming::Request { id, method, params }) => {
-                if method == AGENT_METHOD_NAMES.session_new {
-                    match session_cwd(params).and_then(|cwd| {
+                if method == AGENT_METHOD_NAMES.session_new
+                    || method == AGENT_METHOD_NAMES.session_load
+                {
+                    match session_cwd(&method, params).and_then(|cwd| {
                         enter(&cwd).map_err(|message| RpcError::new(INTERNAL_ERROR, message))
                     }) {
                         Ok(()) => {
@@ -84,10 +86,13 @@ where
     }
 }
 
-/// The reply to a request other than `session/new` while there is no session.
+/// The reply to a request other than `session/new` or `session/load` while there is no
+/// session.
 fn sessionless_result(method: &str, params: Value) -> Result<Value, RpcError> {
     if method == AGENT_METHOD_NAMES.initialize {
         initialize_result(params)
+    } else if method == AGENT_METHOD_NAMES.session_list {
+        super::history::list_sessions_result(params)
     } else if method == AGENT_METHOD_NAMES.session_prompt {
         Err(RpcError::new(
             INVALID_PARAMS,
@@ -101,17 +106,27 @@ fn sessionless_result(method: &str, params: Value) -> Result<Value, RpcError> {
     }
 }
 
-/// The `cwd` of a `session/new` request. ACP requires it to be absolute.
-fn session_cwd(params: Value) -> Result<PathBuf, RpcError> {
-    let request = serde_json::from_value::<NewSessionRequest>(params)
-        .map_err(|err| RpcError::new(INVALID_PARAMS, format!("Invalid params: {err}")))?;
-    if !request.cwd.is_absolute() {
+/// The `cwd` of a `session/new` or `session/load` request (`method`). ACP requires it to
+/// be absolute.
+fn session_cwd(method: &str, params: Value) -> Result<PathBuf, RpcError> {
+    let invalid =
+        |err: serde_json::Error| RpcError::new(INVALID_PARAMS, format!("Invalid params: {err}"));
+    let cwd = if method == AGENT_METHOD_NAMES.session_load {
+        serde_json::from_value::<LoadSessionRequest>(params)
+            .map_err(invalid)?
+            .cwd
+    } else {
+        serde_json::from_value::<NewSessionRequest>(params)
+            .map_err(invalid)?
+            .cwd
+    };
+    if !cwd.is_absolute() {
         return Err(RpcError::new(
             INVALID_PARAMS,
-            format!("cwd must be an absolute path: {}", request.cwd.display()),
+            format!("cwd must be an absolute path: {}", cwd.display()),
         ));
     }
-    Ok(request.cwd)
+    Ok(cwd)
 }
 
 /// Writes one message as a JSON line and flushes it.
@@ -195,7 +210,7 @@ mod tests {
     #[test]
     fn acp_startup_refuses_other_requests_before_a_session() {
         let reader = input(&[
-            json!({"jsonrpc": "2.0", "id": 1, "method": "session/list", "params": {}}),
+            json!({"jsonrpc": "2.0", "id": 1, "method": "session/delete", "params": {"sessionId": "s"}}),
             json!({"jsonrpc": "2.0", "id": 2, "method": "session/prompt",
                    "params": {"sessionId": "s", "prompt": []}}),
             json!({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": "s"}}),
@@ -211,6 +226,36 @@ mod tests {
         assert_eq!(replies[0]["error"]["code"], METHOD_NOT_FOUND);
         assert_eq!(replies[1]["id"], 2);
         assert_eq!(replies[1]["error"]["code"], INVALID_PARAMS);
+    }
+
+    #[test]
+    fn acp_startup_hands_over_session_load_and_answers_session_list() {
+        let dir = crate::utils::node_os::tmpdir()
+            .join(format!("nyan-acp-startup-list-{}", uuid::Uuid::new_v4()));
+        let load = json!({"jsonrpc": "2.0", "id": 3, "method": "session/load",
+                          "params": {"sessionId": "old", "cwd": "/work/project", "mcpServers": []}});
+        let reader = input(&[
+            json!({"jsonrpc": "2.0", "id": 2, "method": "session/list",
+                   "params": {"cwd": dir.to_string_lossy()}}),
+            load.clone(),
+        ]);
+        let mut written = Vec::new();
+        let mut entered = Vec::new();
+        let outcome = await_first_session(reader, &mut written, |cwd: &Path| {
+            entered.push(cwd.to_path_buf());
+            Ok(())
+        });
+
+        let Startup::Session { id, line } = outcome else {
+            panic!("expected a session, got {outcome:?}");
+        };
+        assert_eq!(id, json!(3));
+        assert_eq!(serde_json::from_str::<Value>(&line).unwrap(), load);
+        assert_eq!(entered, vec![PathBuf::from("/work/project")]);
+        let replies = output(&written);
+        assert_eq!(replies.len(), 1);
+        // A directory with no recorded sessions lists none.
+        assert_eq!(replies[0]["result"]["sessions"], json!([]));
     }
 
     #[test]
