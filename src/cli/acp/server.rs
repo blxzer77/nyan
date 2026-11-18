@@ -16,7 +16,9 @@ use serde_json::Value;
 use std::pin::pin;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, Lines};
 
-use super::session::{AcpHost, AcpSession, Canceller, ConfigSwitch, ModeSwitch, NewSession};
+use super::session::{
+    AcpHost, AcpSession, Canceller, ConfigSwitch, ModeSwitch, NewSession, UpdateSink,
+};
 use super::transport::{
     INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, Incoming, METHOD_NOT_FOUND, Outbound,
     RpcError, parse_line, write_loop,
@@ -176,6 +178,11 @@ async fn handle_new_session<H: AcpHost>(
                     .modes(active.modes())
                     .config_options(active.config_options()),
             );
+            // Announced after the response, so the client knows the session id.
+            let commands = active.available_commands();
+            if !commands.is_empty() {
+                UpdateSink::new(outbound.clone(), session_id.as_str()).available_commands(commands);
+            }
             *session = Some((session_id, active));
         }
         Err(msg) => outbound.respond_error(id, RpcError::new(INTERNAL_ERROR, msg)),
@@ -483,6 +490,8 @@ mod tests {
         /// When set, the session has a `model` option (`a` or `b`) and records each
         /// (option, value) it is set to here. Anything else is refused.
         config: Option<Arc<Mutex<Vec<(String, String)>>>>,
+        /// Slash commands the session announces, as (name, description).
+        commands: Vec<(&'static str, &'static str)>,
     }
 
     struct FakeSession {
@@ -583,6 +592,16 @@ mod tests {
                 .map(|(_, value)| value.clone())
                 .unwrap_or_else(|| "a".to_string());
             Some(fake_model_option(&current))
+        }
+
+        fn available_commands(&self) -> Vec<agent_client_protocol_schema::v1::AvailableCommand> {
+            self.config
+                .commands
+                .iter()
+                .map(|(name, description)| {
+                    agent_client_protocol_schema::v1::AvailableCommand::new(*name, *description)
+                })
+                .collect()
         }
 
         fn config_switch(&self) -> Option<ConfigSwitch> {
@@ -941,6 +960,42 @@ mod tests {
                 ("model".to_string(), "b".to_string()),
                 ("model".to_string(), "a".to_string())
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn acp_session_new_announces_slash_commands_after_the_response() {
+        let host = FakeHost {
+            commands: vec![("review", "Review the diff"), ("cost", "Show cost")],
+            ..Default::default()
+        };
+        let (_, lines) = run_with(&input(&[initialize(), new_session(2)]), host).await;
+        let reply = lines
+            .iter()
+            .position(|line| line["id"] == json!(2))
+            .unwrap();
+        let update = lines
+            .iter()
+            .position(|line| {
+                line["params"]["update"]["sessionUpdate"] == json!("available_commands_update")
+            })
+            .unwrap();
+        assert!(reply < update, "the session id is known before the update");
+        let commands = &lines[update]["params"]["update"]["availableCommands"];
+        assert_eq!(lines[update]["params"]["sessionId"], json!("sess-1"));
+        assert_eq!(
+            commands[0],
+            json!({"name": "review", "description": "Review the diff"})
+        );
+        assert_eq!(commands.as_array().unwrap().len(), 2);
+
+        // Without commands there is no update.
+        let (_, lines) = run_session(&input(&[initialize(), new_session(2)])).await;
+        assert!(
+            lines
+                .iter()
+                .all(|line| line["params"]["update"]["sessionUpdate"]
+                    != json!("available_commands_update"))
         );
     }
 
