@@ -62,7 +62,11 @@ enum StructuredInput {
     History(Message),
 }
 
-pub fn run(config: &CliConfig) -> i32 {
+/// Process-level startup shared by every headless entry point (`-p` and `acp`):
+/// TLS provider, debug logging, keychain prefetch, bundled plugins, startup
+/// flags, settings environment, sinks, the launch model override, workload and
+/// session-persistence state. Must run once, before any query runtime exists.
+pub(crate) fn init_headless_process(config: &CliConfig) -> Result<(), String> {
     crate::utils::tls_provider::install_crypto_provider();
     crate::utils::debug::init_from_parts(
         config.debug || config.mcp_debug,
@@ -73,7 +77,7 @@ pub fn run(config: &CliConfig) -> i32 {
     crate::utils::secure_storage::keychain_prefetch::start_keychain_prefetch();
     crate::plugins::bundled::init_builtin_plugins();
     if let Err(error) = crate::main::apply_live_startup_flags(&config.argv) {
-        return fail(&error);
+        return Err(error);
     }
     crate::utils::secure_storage::keychain_prefetch::ensure_keychain_prefetch_completed();
     crate::utils::managed_env::apply_safe_config_environment_variables();
@@ -87,7 +91,7 @@ pub fn run(config: &CliConfig) -> i32 {
     // Maps to CC main.tsx:1273-1274 / setup.ts:371. This headless launcher
     // bypasses main::run, so it must attach the same sink before tool work.
     if let Err(error) = crate::utils::sinks::init_sinks() {
-        return fail(&error.to_string());
+        return Err(error.to_string());
     }
     // Print mode bypasses the trust dialog and is documented as trusted, so
     // the FULL merged settings env (including project-scoped sources) applies
@@ -106,12 +110,19 @@ pub fn run(config: &CliConfig) -> i32 {
         &crate::utils::settings::get_initial_settings(),
         config,
     ) {
-        return fail(&error.to_string());
+        return Err(error.to_string());
     }
     crate::utils::workload_context::set_process_workload(config.workload.clone());
     crate::bootstrap::state::set_session_persistence_disabled(
         config.session_persistence == Some(false),
     );
+    Ok(())
+}
+
+pub fn run(config: &CliConfig) -> i32 {
+    if let Err(error) = init_headless_process(config) {
+        return fail(&error);
+    }
 
     let format = effective_output_format(config);
     let input_format = config.input_format.as_deref().unwrap_or("text");
@@ -208,7 +219,7 @@ pub fn run(config: &CliConfig) -> i32 {
     finish_outcome(&format, schema.is_some(), &outcome, started.elapsed())
 }
 
-fn load_headless_resume(
+pub(crate) fn load_headless_resume(
     config: &CliConfig,
     cwd: &std::path::Path,
 ) -> Result<Option<QueryEngineResumeSeed>, String> {
@@ -268,7 +279,7 @@ fn load_headless_resume(
     )))
 }
 
-async fn resolve_headless_mcp(
+pub(crate) async fn resolve_headless_mcp(
     config: &CliConfig,
     cwd: &std::path::Path,
 ) -> Result<crate::state::app_state_store::McpState, String> {
