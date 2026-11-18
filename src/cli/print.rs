@@ -796,6 +796,19 @@ async fn handle_control_request(
                 control_error(&control.request_id, "Invalid permission mode");
                 return false;
             };
+            // A client must not lift every permission check on a session whose launch
+            // did not allow it.
+            if mode == crate::types::permissions::PermissionMode::BypassPermissions
+                && !engine.bypass_permissions_available()
+            {
+                control_error(
+                    &control.request_id,
+                    "Cannot set permission mode to bypassPermissions: the session was not \
+                     started with --dangerously-skip-permissions or in bypassPermissions \
+                     mode, or the mode is disabled",
+                );
+                return false;
+            }
             engine.set_permission_mode(mode);
             control_success(&control.request_id, None);
             json_line(serde_json::json!({
