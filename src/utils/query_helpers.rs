@@ -263,7 +263,9 @@ fn timestamp_ms(message: &Value) -> Option<i64> {
         .map(|value| value.timestamp_millis())
 }
 
-fn strip_system_reminders(content: &str) -> String {
+/// Removes every `<system-reminder>…</system-reminder>` block, wherever it sits. An
+/// unclosed block is kept as is.
+pub(crate) fn strip_system_reminders(content: &str) -> String {
     let mut output = String::new();
     let mut rest = content;
     loop {
