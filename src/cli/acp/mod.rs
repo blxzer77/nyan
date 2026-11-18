@@ -16,6 +16,7 @@
 
 mod config_options;
 mod engine;
+mod history;
 mod modes;
 mod permission;
 mod server;

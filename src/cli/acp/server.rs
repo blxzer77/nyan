@@ -1,15 +1,16 @@
-//! ACP request dispatch: `initialize`, `session/new`, `session/prompt`, `session/set_mode`
-//! and `session/set_config_option`, plus the `session/cancel` notification while a prompt
-//! is running.
+//! ACP request dispatch: `initialize`, `session/new`, `session/load`, `session/list`,
+//! `session/prompt`, `session/set_mode` and `session/set_config_option`, plus the
+//! `session/cancel` notification while a prompt is running.
 //! Other requests get Method not found. Responses to requests the agent sent
 //! (`session/request_permission`) are routed back to them.
 
 use agent_client_protocol_schema::ProtocolVersion;
 use agent_client_protocol_schema::v1::{
-    AGENT_METHOD_NAMES, CancelNotification, ContentBlock, Implementation, InitializeRequest,
-    InitializeResponse, NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse,
-    SessionId, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
-    SetSessionModeRequest, SetSessionModeResponse,
+    AGENT_METHOD_NAMES, AgentCapabilities, CancelNotification, ContentBlock, Implementation,
+    InitializeRequest, InitializeResponse, LoadSessionRequest, LoadSessionResponse,
+    NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse, SessionCapabilities,
+    SessionId, SessionListCapabilities, SetSessionConfigOptionRequest,
+    SetSessionConfigOptionResponse, SetSessionModeRequest, SetSessionModeResponse,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -105,8 +106,12 @@ async fn handle_request<H: AcpHost>(
 ) {
     if method == AGENT_METHOD_NAMES.initialize {
         handle_initialize(outbound, id, params);
-    } else if method == AGENT_METHOD_NAMES.session_new {
-        handle_new_session(host, outbound, session, id, params).await;
+    } else if method == AGENT_METHOD_NAMES.session_new || method == AGENT_METHOD_NAMES.session_load
+    {
+        let load = method == AGENT_METHOD_NAMES.session_load;
+        handle_open_session(host, outbound, session, id, params, load).await;
+    } else if method == AGENT_METHOD_NAMES.session_list {
+        respond(outbound, id, super::history::list_sessions_result(params));
     } else if method == AGENT_METHOD_NAMES.session_set_mode {
         let current = session
             .as_ref()
@@ -140,19 +145,40 @@ pub(super) fn initialize_result(params: Value) -> Result<Value, RpcError> {
         ));
     }
     let response = InitializeResponse::new(ProtocolVersion::V1)
+        .agent_capabilities(
+            AgentCapabilities::new()
+                .load_session(true)
+                .session_capabilities(
+                    SessionCapabilities::new().list(SessionListCapabilities::new()),
+                ),
+        )
         .agent_info(Implementation::new("nyan", VERSION));
     serde_json::to_value(response)
         .map_err(|err| RpcError::new(INTERNAL_ERROR, format!("Internal error: {err}")))
 }
 
-async fn handle_new_session<H: AcpHost>(
+/// Handles `session/new`, or `session/load` when `load` is set. A load replays the earlier
+/// session's history as session updates before it is answered.
+async fn handle_open_session<H: AcpHost>(
     host: &mut H,
     outbound: &Outbound,
     session: &mut Option<(String, H::Session)>,
     id: Value,
     params: Value,
+    load: bool,
 ) {
-    let request = match serde_json::from_value::<NewSessionRequest>(params) {
+    let parsed = if load {
+        serde_json::from_value::<LoadSessionRequest>(params).map(|request| NewSession {
+            cwd: request.cwd,
+            load: Some(request.session_id.0.to_string()),
+        })
+    } else {
+        serde_json::from_value::<NewSessionRequest>(params).map(|request| NewSession {
+            cwd: request.cwd,
+            load: None,
+        })
+    };
+    let request = match parsed {
         Ok(request) => request,
         Err(err) => {
             let error = RpcError::new(INVALID_PARAMS, format!("Invalid params: {err}"));
@@ -166,18 +192,25 @@ async fn handle_new_session<H: AcpHost>(
         return;
     }
     // `mcpServers` is ignored for now.
-    match host
-        .new_session(NewSession { cwd: request.cwd }, outbound.clone())
-        .await
-    {
+    match host.new_session(request, outbound.clone()).await {
         Ok((session_id, active)) => {
-            reply(
-                outbound,
-                id,
-                NewSessionResponse::new(SessionId::new(session_id.as_str()))
-                    .modes(active.modes())
-                    .config_options(active.config_options()),
-            );
+            if load {
+                reply(
+                    outbound,
+                    id,
+                    LoadSessionResponse::new()
+                        .modes(active.modes())
+                        .config_options(active.config_options()),
+                );
+            } else {
+                reply(
+                    outbound,
+                    id,
+                    NewSessionResponse::new(SessionId::new(session_id.as_str()))
+                        .modes(active.modes())
+                        .config_options(active.config_options()),
+                );
+            }
             // Announced after the response, so the client knows the session id.
             let commands = active.available_commands();
             if !commands.is_empty() {
@@ -701,9 +734,9 @@ mod tests {
 
     #[tokio::test]
     async fn acp_unknown_method_returns_method_not_found() {
-        // `session/load` is not implemented, so it stands in for an unknown method.
+        // `session/delete` is not implemented, so it stands in for an unknown method.
         let (code, lines) = run_session(
-            "{\"jsonrpc\":\"2.0\",\"id\":\"req-7\",\"method\":\"session/load\",\"params\":{\"sessionId\":\"s1\",\"cwd\":\"/tmp\",\"mcpServers\":[]}}\n",
+            "{\"jsonrpc\":\"2.0\",\"id\":\"req-7\",\"method\":\"session/delete\",\"params\":{\"sessionId\":\"s1\"}}\n",
         )
         .await;
         assert_eq!(code, 0);
@@ -961,6 +994,36 @@ mod tests {
                 ("model".to_string(), "a".to_string())
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn acp_initialize_offers_load_and_list_and_session_load_answers_without_id() {
+        let host = FakeHost {
+            modes: Some(Arc::new(Mutex::new(Vec::new()))),
+            ..Default::default()
+        };
+        let (code, lines) = run_with(
+            &input(&[
+                initialize(),
+                request(
+                    2,
+                    "session/load",
+                    json!({"sessionId": "old-1", "cwd": "/tmp", "mcpServers": []}),
+                ),
+                request(3, "session/load", json!({"cwd": "/tmp"})),
+            ]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+        let capabilities = &response(&lines, 1)["result"]["agentCapabilities"];
+        assert_eq!(capabilities["loadSession"], json!(true));
+        assert_eq!(capabilities["sessionCapabilities"]["list"], json!({}));
+        let loaded = &response(&lines, 2)["result"];
+        assert!(loaded.get("sessionId").is_none());
+        assert_eq!(loaded["modes"]["currentModeId"], json!("default"));
+        // A load without a session id is invalid.
+        assert_eq!(response(&lines, 3)["error"]["code"], json!(-32602));
     }
 
     #[tokio::test]

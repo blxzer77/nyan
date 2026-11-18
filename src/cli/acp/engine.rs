@@ -111,9 +111,31 @@ impl AcpHost for EngineHost {
         let mcp_state =
             crate::cli::print::resolve_headless_mcp(&self.config, &self.launch_cwd).await?;
 
-        let session_id = crate::bootstrap::state::get_session_id();
+        // `session/load` resumes the earlier session as `--resume <id>` does, which also
+        // makes its id this process's session id. Reading the transcript runs off the
+        // runtime thread.
+        let resume_seed = match request.load.clone() {
+            Some(load_id) => {
+                let mut config = self.config.clone();
+                config.resume = Some(load_id);
+                let cwd = self.launch_cwd.clone();
+                tokio::task::spawn_blocking(move || {
+                    crate::cli::print::load_headless_resume(&config, &cwd)
+                })
+                .await
+                .map_err(|error| error.to_string())??
+            }
+            None => None,
+        };
+        let session_id = match &request.load {
+            Some(load_id) => load_id.clone(),
+            None => crate::bootstrap::state::get_session_id(),
+        };
         let bridge = permission_bridge(outbound.clone(), session_id.clone());
         let sink = UpdateSink::new(outbound, session_id.clone());
+        if let Some(seed) = &resume_seed {
+            replay_history(&sink, seed.history());
+        }
         // The mode the engine starts in comes from the same setting.
         let default_mode = crate::utils::settings::get_initial_settings()
             .permissions
@@ -129,7 +151,7 @@ impl AcpHost for EngineHost {
         let engine = QueryEngine::new(QueryEngineConfig {
             cli_config: self.config.clone(),
             schema: None,
-            resume_seed: None,
+            resume_seed,
             mcp_state: Some(mcp_state),
             output_sink: Some(QueryEngine::output_sink({
                 let forwarder = Mutex::new(EngineForwarder::new(sink.clone()));
@@ -214,6 +236,19 @@ impl AcpSession for EngineSession {
         // Parked permission requests are dropped, so the engine stops waiting for them.
         let bridge = self.bridge.clone();
         Arc::new(move || bridge.close_input())
+    }
+}
+
+/// Replays a resumed session's history to the client, as `session/load` requires: the
+/// user's own messages as `user_message_chunk`, and the agent's messages, tool calls and
+/// results as they went out live. Messages the user did not write (reminders, meta
+/// rows) are skipped.
+fn replay_history(sink: &UpdateSink, history: &[crate::types::message::Message]) {
+    let mut forwarder = EngineForwarder::new(sink.clone());
+    for message in history {
+        if let Some(value) = crate::query_engine::stream_message_value(message) {
+            forwarder.replay(&value);
+        }
     }
 }
 
@@ -456,6 +491,37 @@ impl EngineForwarder {
         }
     }
 
+    /// Replays one message of a resumed session's history. Unlike live output, a user
+    /// message the user wrote goes out as `user_message_chunk`, tagged with its uuid.
+    fn replay(&mut self, value: &Value) {
+        if value.get("type").and_then(Value::as_str) != Some("user") {
+            self.forward(value);
+            return;
+        }
+        let synthetic = value
+            .get("isSynthetic")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let message_id = value.get("uuid").and_then(Value::as_str);
+        let content = value.pointer("/message/content");
+        let blocks: Vec<Value> = match content {
+            Some(Value::Array(blocks)) => blocks.clone(),
+            Some(Value::String(text)) => vec![serde_json::json!({"type": "text", "text": text})],
+            _ => return,
+        };
+        for block in &blocks {
+            match block.get("type").and_then(Value::as_str) {
+                Some("tool_result") => forward_tool_result(&self.sink, block),
+                Some("text") if !synthetic => {
+                    if let Some(text) = block.get("text").and_then(Value::as_str) {
+                        replay_user_text(&self.sink, text, message_id);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Forwards one raw API stream event: a `message_start` names the message, and text
     /// and thinking deltas go out as chunks of it. Other events are ignored.
     fn forward_stream_event(&mut self, event: &Value) {
@@ -485,6 +551,43 @@ impl EngineForwarder {
             _ => {}
         }
     }
+}
+
+/// Replays the text of a user message. A slash command, recorded with command tags, shows
+/// as the `/name args` the user typed, and its recorded output as an agent message.
+/// Reminders are dropped, and so is a message left empty.
+fn replay_user_text(sink: &UpdateSink, text: &str, message_id: Option<&str>) {
+    let text = crate::utils::query_helpers::strip_system_reminders(text);
+    let text = text.trim();
+    if text.is_empty() {
+        return;
+    }
+    if let Some(output) = tag_content(text, "local-command-stdout") {
+        if !output.trim().is_empty() {
+            sink.agent_message(output.trim(), message_id);
+        }
+        return;
+    }
+    if let Some(name) = tag_content(text, "command-name") {
+        let args = tag_content(text, "command-args").unwrap_or_default();
+        let typed = if args.trim().is_empty() {
+            name.trim().to_string()
+        } else {
+            format!("{} {}", name.trim(), args.trim())
+        };
+        sink.user_message(&typed, message_id);
+        return;
+    }
+    sink.user_message(text, message_id);
+}
+
+/// The text between `<tag>` and `</tag>`, if both are present.
+fn tag_content<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = text.find(&open)? + open.len();
+    let end = text[start..].find(&close)? + start;
+    Some(&text[start..end])
 }
 
 /// The string at `key`, when present and not empty.
@@ -591,6 +694,73 @@ mod tests {
         assert!(config.prompt.is_none());
         assert!(config.include_partial_messages);
         assert_eq!(config.disallowed_tools, vec!["AskUserQuestion".to_string()]);
+    }
+
+    #[test]
+    fn acp_replay_sends_user_text_commands_and_tool_results() {
+        let (outbound, mut rx) = Outbound::channel();
+        let mut forwarder = EngineForwarder::new(UpdateSink::new(outbound, "sess-4"));
+        let user = |uuid: &str, synthetic: bool, content: Value| {
+            json!({"type": "user", "uuid": uuid, "isSynthetic": synthetic,
+                   "message": {"role": "user", "content": content}})
+        };
+        forwarder.replay(&user("u1", false, json!("fix the bug")));
+        forwarder.replay(&user(
+            "u2",
+            true,
+            json!([{"type": "text", "text": "meta note"}]),
+        ));
+        forwarder.replay(
+            &json!({"type": "assistant", "message": {"id": "msg_1", "content": [
+            {"type": "text", "text": "on it"},
+            {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}]}}),
+        );
+        forwarder.replay(&user(
+            "u3",
+            false,
+            json!([
+            {"type": "tool_result", "tool_use_id": "t1", "content": "a.txt"}]),
+        ));
+        forwarder.replay(&user("u4", false, json!([{"type": "text", "text":
+            "<command-name>/compact</command-name>\n<command-message>compact</command-message>\n<command-args>keep tests</command-args>"}])));
+        forwarder.replay(&user(
+            "u5",
+            false,
+            json!([{"type": "text", "text":
+            "<local-command-stdout>Compacted.</local-command-stdout>"}]),
+        ));
+        forwarder.replay(&user(
+            "u6",
+            false,
+            json!([{"type": "text", "text":
+            "<system-reminder>only for the model</system-reminder>"}]),
+        ));
+        drop(forwarder);
+
+        let mut updates = Vec::new();
+        while let Ok(message) = rx.try_recv() {
+            let update = &message["params"]["update"];
+            updates.push(format!(
+                "{} {} {}",
+                update["sessionUpdate"].as_str().unwrap(),
+                update["content"]["text"]
+                    .as_str()
+                    .or(update["toolCallId"].as_str())
+                    .unwrap_or_default(),
+                update["messageId"].as_str().unwrap_or("-"),
+            ));
+        }
+        assert_eq!(
+            updates,
+            [
+                "user_message_chunk fix the bug u1",
+                "agent_message_chunk on it msg_1",
+                "tool_call t1 -",
+                "tool_call_update t1 -",
+                "user_message_chunk /compact keep tests u4",
+                "agent_message_chunk Compacted. u5",
+            ]
+        );
     }
 
     #[test]

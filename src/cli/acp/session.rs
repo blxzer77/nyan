@@ -17,6 +17,9 @@ use super::transport::Outbound;
 /// Parameters for creating the one session this process serves.
 pub(crate) struct NewSession {
     pub cwd: PathBuf,
+    /// For `session/load`: the earlier session to replay and continue. `None` starts a
+    /// new one.
+    pub load: Option<String>,
 }
 
 /// How a prompt turn ended. Mirrors ACP `StopReason`.
@@ -157,6 +160,13 @@ impl UpdateSink {
     /// message share its `message_id`, so the client joins them.
     pub(crate) fn agent_message(&self, text: &str, message_id: Option<&str>) {
         self.send(SessionUpdate::AgentMessageChunk(text_chunk(
+            text, message_id,
+        )));
+    }
+
+    /// Emits a `user_message_chunk` with a text content block, for replaying history.
+    pub(crate) fn user_message(&self, text: &str, message_id: Option<&str>) {
+        self.send(SessionUpdate::UserMessageChunk(text_chunk(
             text, message_id,
         )));
     }
