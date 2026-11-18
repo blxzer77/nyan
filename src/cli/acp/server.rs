@@ -110,14 +110,25 @@ async fn handle_request<H: AcpHost>(
 }
 
 fn handle_initialize(outbound: &Outbound, id: Value, params: Value) {
+    match initialize_result(params) {
+        Ok(result) => outbound.respond(id, result),
+        Err(error) => outbound.respond_error(id, error),
+    }
+}
+
+/// The reply to `initialize`. It needs no session, so the phase before the first
+/// session (see `startup`) answers with it too.
+pub(super) fn initialize_result(params: Value) -> Result<Value, RpcError> {
     if let Err(err) = serde_json::from_value::<InitializeRequest>(params) {
-        let error = RpcError::new(INVALID_PARAMS, format!("Invalid params: {err}"));
-        outbound.respond_error(id, error);
-        return;
+        return Err(RpcError::new(
+            INVALID_PARAMS,
+            format!("Invalid params: {err}"),
+        ));
     }
     let response = InitializeResponse::new(ProtocolVersion::V1)
         .agent_info(Implementation::new("nyan", VERSION));
-    reply(outbound, id, response);
+    serde_json::to_value(response)
+        .map_err(|err| RpcError::new(INTERNAL_ERROR, format!("Internal error: {err}")))
 }
 
 async fn handle_new_session<H: AcpHost>(
