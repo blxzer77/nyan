@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent_client_protocol_schema::v1::{
-    CLIENT_METHOD_NAMES, Content, ContentBlock, ContentChunk, Diff, SessionId, SessionNotification,
-    SessionUpdate, StopReason, TextContent, ToolCall, ToolCallContent, ToolCallId,
-    ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    CLIENT_METHOD_NAMES, Content, ContentBlock, ContentChunk, Diff, MessageId, SessionId,
+    SessionNotification, SessionUpdate, StopReason, TextContent, ToolCall, ToolCallContent,
+    ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 
 use super::transport::Outbound;
@@ -113,14 +113,20 @@ impl UpdateSink {
         }
     }
 
-    /// Emits an `agent_message_chunk` with a text content block.
-    pub(crate) fn agent_message(&self, text: &str) {
-        self.send(SessionUpdate::AgentMessageChunk(text_chunk(text)));
+    /// Emits an `agent_message_chunk` with a text content block. Chunks of one model
+    /// message share its `message_id`, so the client joins them.
+    pub(crate) fn agent_message(&self, text: &str, message_id: Option<&str>) {
+        self.send(SessionUpdate::AgentMessageChunk(text_chunk(
+            text, message_id,
+        )));
     }
 
-    /// Emits an `agent_thought_chunk` with a text content block.
-    pub(crate) fn agent_thought(&self, text: &str) {
-        self.send(SessionUpdate::AgentThoughtChunk(text_chunk(text)));
+    /// Emits an `agent_thought_chunk` with a text content block, tagged like
+    /// [`UpdateSink::agent_message`].
+    pub(crate) fn agent_thought(&self, text: &str, message_id: Option<&str>) {
+        self.send(SessionUpdate::AgentThoughtChunk(text_chunk(
+            text, message_id,
+        )));
     }
 
     /// Emits a `tool_call` announcing a tool call that is now in progress.
@@ -181,8 +187,9 @@ impl UpdateSink {
     }
 }
 
-fn text_chunk(text: &str) -> ContentChunk {
+fn text_chunk(text: &str, message_id: Option<&str>) -> ContentChunk {
     ContentChunk::new(ContentBlock::Text(TextContent::new(text)))
+        .message_id(message_id.map(MessageId::new))
 }
 
 #[cfg(test)]
@@ -194,8 +201,8 @@ mod tests {
     fn acp_update_sink_emits_message_and_thought_chunks() {
         let (outbound, mut rx) = Outbound::channel();
         let sink = UpdateSink::new(outbound, "sess-9");
-        sink.agent_message("hi");
-        sink.agent_thought("hmm");
+        sink.agent_message("hi", None);
+        sink.agent_thought("hmm", Some("msg_1"));
         drop(sink);
 
         let message: Value = rx.try_recv().unwrap();
@@ -221,6 +228,8 @@ mod tests {
             thought["params"]["update"]["content"],
             json!({"type": "text", "text": "hmm"})
         );
+        assert_eq!(thought["params"]["update"]["messageId"], json!("msg_1"));
+        assert!(message["params"]["update"].get("messageId").is_none());
 
         assert!(rx.try_recv().is_err());
     }

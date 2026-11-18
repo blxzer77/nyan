@@ -415,7 +415,7 @@ mod tests {
             }
             self.config.prompts.lock().unwrap().push(text);
             for chunk in &self.config.chunks {
-                self.updates.agent_message(chunk);
+                self.updates.agent_message(chunk, None);
             }
             if let Some(delay) = self.config.delay {
                 tokio::time::sleep(delay).await;
