@@ -224,7 +224,7 @@ impl CliConfig {
         }
 
         if let Some(sub) = &self.subcommand {
-            if !matches!(sub.as_str(), "doctor" | "update" | "web") {
+            if !matches!(sub.as_str(), "doctor" | "update" | "web" | "acp") {
                 reasons.push(sub.clone());
             }
         }

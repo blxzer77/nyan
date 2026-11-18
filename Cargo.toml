@@ -49,6 +49,8 @@ futures-timer = "3"
 # Runtime-agnostic async channel — replaces smol::channel.
 async-channel = "2"
 
+# ACP (Agent Client Protocol) data types only; serde structs, no transport.
+agent-client-protocol-schema = { version = "=1.18.0", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 # ECMAScript-compatible JSON number formatting for NotebookEdit JSON.stringify parity.
