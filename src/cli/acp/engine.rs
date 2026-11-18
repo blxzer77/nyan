@@ -1,16 +1,27 @@
 //! The real engine behind `nyan acp`: sessions are `QueryEngine`s, prompt turns run
 //! through `query_engine::ask`, and engine output goes out as ACP session updates.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
+use agent_client_protocol_schema::v1::CLIENT_METHOD_NAMES;
 use serde_json::Value;
 
+use super::permission::{control_response_for, permission_request_params};
 use super::session::{AcpHost, AcpSession, Canceller, NewSession, TurnEnd, UpdateSink};
 use super::tools::{describe_tool_call, tool_result_text};
-use super::transport::Outbound;
+use super::transport::{Outbound, RpcError};
 use crate::cli::CliConfig;
-use crate::query_engine::{QueryEngine, QueryEngineConfig, QueryEngineOutcome};
+use crate::cli::print::ControlResponseInput;
+use crate::cli::structured_io::{
+    PendingControlResponses, SdkControlBridge, request_sdk_tool_permission,
+};
+use crate::query_engine::{
+    QueryEngine, QueryEngineConfig, QueryEngineOutcome, QueryEnginePermissionResolver,
+};
+use crate::tool::{AbortController, AppStoreRef};
+use crate::types::permissions::{PermissionPromptResponse, PermissionRequest};
 
 /// The headless configuration the engine runs with under ACP: what
 /// `nyan -p --output-format stream-json --input-format stream-json --verbose`
@@ -49,6 +60,9 @@ impl EngineHost {
 /// One session on the real engine.
 pub(super) struct EngineSession {
     engine: QueryEngine,
+    /// Carries the engine's permission requests to the client. Its input-closed hook is
+    /// [`AcpSession::on_input_closed`].
+    bridge: SdkControlBridge,
 }
 
 impl AcpHost for EngineHost {
@@ -73,6 +87,7 @@ impl AcpHost for EngineHost {
             crate::cli::print::resolve_headless_mcp(&self.config, &self.launch_cwd).await?;
 
         let session_id = crate::bootstrap::state::get_session_id();
+        let bridge = permission_bridge(outbound.clone(), session_id.clone());
         let sink = UpdateSink::new(outbound, session_id.clone());
         let engine = QueryEngine::new(QueryEngineConfig {
             cli_config: self.config.clone(),
@@ -82,11 +97,10 @@ impl AcpHost for EngineHost {
             output_sink: Some(QueryEngine::output_sink(move |value| {
                 forward_engine_message(&sink, &value);
             })),
-            // No permission resolver: tool calls that need approval are denied for now.
-            permission_resolver: None,
+            permission_resolver: Some(permission_resolver(bridge.clone())),
             handle_elicitation: crate::tool::HandleElicitationCallback::default(),
         });
-        Ok((session_id, EngineSession { engine }))
+        Ok((session_id, EngineSession { engine, bridge }))
     }
 }
 
@@ -101,6 +115,119 @@ impl AcpSession for EngineSession {
         let control = self.engine.control_handle();
         Arc::new(move || control.interrupt())
     }
+
+    fn on_input_closed(&self) -> Canceller {
+        // Parked permission requests are dropped, so the engine stops waiting for them.
+        let bridge = self.bridge.clone();
+        Arc::new(move || bridge.close_input())
+    }
+}
+
+/// The SDK control bridge for one session. The engine's permission requests go through it,
+/// as they do for `--permission-prompt-tool stdio`. This function translates the bridge's
+/// `can_use_tool` control requests into `session/request_permission`, and carries the
+/// client's answers back to the bridge. Other control messages are dropped.
+fn permission_bridge(outbound: Outbound, session_id: String) -> SdkControlBridge {
+    let pending = PendingControlResponses::default();
+    // Bridge request id -> ACP request id, for the requests the agent still waits on.
+    let acp_requests: Arc<Mutex<HashMap<String, String>>> = Arc::default();
+    let answers_to = pending.clone();
+    let emit = Arc::new(move |message: Value| {
+        let kind = message
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let request_id = message
+            .get("request_id")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let subtype = message.pointer("/request/subtype").and_then(Value::as_str);
+        if kind == "control_request" && subtype == Some("can_use_tool") {
+            let (Some(request_id), Some(request)) = (request_id, message.get("request").cloned())
+            else {
+                return;
+            };
+            let params = permission_request_params(&session_id, &request);
+            let answers_to = answers_to.clone();
+            let requests = acp_requests.clone();
+            let bridge_id = request_id.clone();
+            let acp_id = outbound.request(
+                CLIENT_METHOD_NAMES.session_request_permission,
+                params,
+                Box::new(move |answer: Result<Value, RpcError>| {
+                    lock(&requests).remove(&bridge_id);
+                    let payload = control_response_for(&request, answer);
+                    let response = bridge_response(&bridge_id, &payload);
+                    // Taken out of the table first, so no lock is held while answering.
+                    let sender = lock(&answers_to).remove(&bridge_id);
+                    if let Some(sender) = sender {
+                        let _ = sender.try_send(response);
+                    }
+                }),
+            );
+            lock(&acp_requests).insert(request_id, acp_id);
+        } else if kind == "control_cancel_request" {
+            // The bridge stopped waiting for this answer, so the client's reply is unwanted.
+            let acp_id = request_id.and_then(|id| lock(&acp_requests).remove(&id));
+            if let Some(acp_id) = acp_id {
+                outbound.forget(&acp_id);
+            }
+        } else {
+            eprintln!("nyan acp: dropped SDK control message {kind:?}; ACP does not support it");
+        }
+    });
+    SdkControlBridge::with_emit(pending, emit)
+}
+
+/// The `control_response` the bridge reads for `request_id`, built from the payload
+/// [`control_response_for`] produced.
+fn bridge_response(request_id: &str, payload: &Value) -> ControlResponseInput {
+    ControlResponseInput {
+        request_id: request_id.to_string(),
+        subtype: payload
+            .get("subtype")
+            .and_then(Value::as_str)
+            .unwrap_or("error")
+            .to_string(),
+        response: payload.get("response").cloned(),
+        error: payload
+            .get("error")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    }
+}
+
+/// The engine's permission resolver under ACP. Each tool call that needs approval goes
+/// through the bridge, the same path `print::run_stream_json` takes for stdio prompts.
+fn permission_resolver(bridge: SdkControlBridge) -> QueryEnginePermissionResolver {
+    Arc::new(
+        move |request: PermissionRequest,
+              abort: AbortController,
+              agent_id: Option<String>,
+              app_store: AppStoreRef| {
+            let bridge = bridge.clone();
+            Box::pin(async move {
+                request_sdk_tool_permission(
+                    &bridge,
+                    &request,
+                    &abort,
+                    agent_id.as_deref(),
+                    &app_store,
+                )
+                .await
+            })
+                as std::pin::Pin<
+                    Box<dyn std::future::Future<Output = PermissionPromptResponse> + Send>,
+                >
+        },
+    )
+}
+
+/// Locks a table, ignoring poisoning.
+fn lock<T>(table: &Mutex<T>) -> MutexGuard<'_, T> {
+    table
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Whether two paths name the same directory. Both are canonicalized first; a path that

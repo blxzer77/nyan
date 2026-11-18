@@ -8,8 +8,13 @@
 //! `session/cancel` notification while a prompt is running. Other requests get a
 //! `Method not found` reply. Sessions run on the real engine (see `engine`). One process
 //! serves one session, in the directory it was started in.
+//!
+//! Tool calls that need approval ask the client with `session/request_permission` and
+//! wait for its choice (see `permission`). The client's answer is routed back to the
+//! request it answers. When input ends, requests still waiting for an answer fail.
 
 mod engine;
+mod permission;
 mod server;
 mod session;
 mod tools;
