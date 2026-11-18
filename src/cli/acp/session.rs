@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent_client_protocol_schema::v1::{
-    CLIENT_METHOD_NAMES, ContentBlock, ContentChunk, SessionId, SessionNotification, SessionUpdate,
-    StopReason, TextContent,
+    CLIENT_METHOD_NAMES, Content, ContentBlock, ContentChunk, Diff, SessionId, SessionNotification,
+    SessionUpdate, StopReason, TextContent, ToolCall, ToolCallContent, ToolCallId,
+    ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 
 use super::transport::Outbound;
@@ -73,6 +74,23 @@ pub(crate) trait AcpSession {
     fn canceller(&self) -> Canceller;
 }
 
+/// What the client is told when a tool call starts.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ToolCallStart {
+    /// Id the agent gave the tool call. The later result refers to it.
+    pub id: String,
+    /// Human-readable title shown for the call.
+    pub title: String,
+    /// Category of the tool, used for icons and grouping.
+    pub kind: ToolKind,
+    /// Files the call touches.
+    pub locations: Vec<PathBuf>,
+    /// File change to show as a diff, as (path, old text, new text).
+    pub diff: Option<(PathBuf, Option<String>, String)>,
+    /// The tool's input, as the model sent it.
+    pub raw_input: serde_json::Value,
+}
+
 /// Sends `session/update` notifications for one session.
 #[derive(Clone)]
 pub(crate) struct UpdateSink {
@@ -97,6 +115,53 @@ impl UpdateSink {
     /// Emits an `agent_thought_chunk` with a text content block.
     pub(crate) fn agent_thought(&self, text: &str) {
         self.send(SessionUpdate::AgentThoughtChunk(text_chunk(text)));
+    }
+
+    /// Emits a `tool_call` announcing a tool call that is now in progress.
+    pub(crate) fn tool_call(&self, call: ToolCallStart) {
+        let mut tool_call = ToolCall::new(ToolCallId::new(call.id), call.title)
+            .kind(call.kind)
+            .status(ToolCallStatus::InProgress)
+            .locations(
+                call.locations
+                    .into_iter()
+                    .map(ToolCallLocation::new)
+                    .collect(),
+            )
+            .raw_input(Some(call.raw_input));
+        if let Some((path, old_text, new_text)) = call.diff {
+            let diff = Diff::new(path, new_text).old_text(old_text);
+            tool_call = tool_call.content(vec![ToolCallContent::Diff(diff)]);
+        }
+        self.send(SessionUpdate::ToolCall(tool_call));
+    }
+
+    /// Emits a `tool_call_update` with the outcome of a tool call announced earlier.
+    /// Only the changed fields are set: the status, the raw output and, when there is
+    /// text, the content.
+    pub(crate) fn tool_call_result(
+        &self,
+        id: &str,
+        failed: bool,
+        text: Option<String>,
+        raw_output: serde_json::Value,
+    ) {
+        let status = if failed {
+            ToolCallStatus::Failed
+        } else {
+            ToolCallStatus::Completed
+        };
+        let mut fields = ToolCallUpdateFields::new()
+            .status(Some(status))
+            .raw_output(Some(raw_output));
+        if let Some(text) = text.filter(|text| !text.is_empty()) {
+            let block = ContentBlock::Text(TextContent::new(text));
+            fields = fields.content(Some(vec![ToolCallContent::Content(Content::new(block))]));
+        }
+        self.send(SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+            ToolCallId::new(id),
+            fields,
+        )));
     }
 
     fn send(&self, update: SessionUpdate) {
@@ -150,6 +215,63 @@ mod tests {
             thought["params"]["update"]["content"],
             json!({"type": "text", "text": "hmm"})
         );
+
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn acp_update_sink_emits_tool_call_and_result() {
+        let (outbound, mut rx) = Outbound::channel();
+        let sink = UpdateSink::new(outbound, "sess-7");
+        sink.tool_call(ToolCallStart {
+            id: "call-1".to_string(),
+            title: "Edit /src/lib.rs".to_string(),
+            kind: ToolKind::Edit,
+            locations: vec![PathBuf::from("/src/lib.rs")],
+            diff: Some((
+                PathBuf::from("/src/lib.rs"),
+                Some("old".to_string()),
+                "new".to_string(),
+            )),
+            raw_input: json!({"file_path": "/src/lib.rs"}),
+        });
+        sink.tool_call_result("call-1", true, Some("boom".to_string()), json!("boom"));
+        drop(sink);
+
+        let call: Value = rx.try_recv().unwrap();
+        assert_eq!(call["method"], json!("session/update"));
+        assert_eq!(call["params"]["sessionId"], json!("sess-7"));
+        let update = &call["params"]["update"];
+        assert_eq!(update["sessionUpdate"], json!("tool_call"));
+        assert_eq!(update["toolCallId"], json!("call-1"));
+        assert_eq!(update["title"], json!("Edit /src/lib.rs"));
+        assert_eq!(update["kind"], json!("edit"));
+        assert_eq!(update["status"], json!("in_progress"));
+        assert_eq!(update["locations"][0]["path"], json!("/src/lib.rs"));
+        assert_eq!(
+            update["content"][0],
+            json!({
+                "type": "diff",
+                "path": "/src/lib.rs",
+                "oldText": "old",
+                "newText": "new"
+            })
+        );
+        assert_eq!(update["rawInput"], json!({"file_path": "/src/lib.rs"}));
+
+        let result: Value = rx.try_recv().unwrap();
+        assert_eq!(result["method"], json!("session/update"));
+        assert_eq!(result["params"]["sessionId"], json!("sess-7"));
+        let update = &result["params"]["update"];
+        assert_eq!(update["sessionUpdate"], json!("tool_call_update"));
+        assert_eq!(update["toolCallId"], json!("call-1"));
+        assert_eq!(update["status"], json!("failed"));
+        assert_eq!(
+            update["content"][0],
+            json!({"type": "content", "content": {"type": "text", "text": "boom"}})
+        );
+        assert_eq!(update["rawOutput"], json!("boom"));
+        assert!(update.get("title").is_none());
 
         assert!(rx.try_recv().is_err());
     }

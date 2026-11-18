@@ -7,6 +7,7 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use super::session::{AcpHost, AcpSession, Canceller, NewSession, TurnEnd, UpdateSink};
+use super::tools::{describe_tool_call, tool_result_text};
 use super::transport::Outbound;
 use crate::cli::CliConfig;
 use crate::query_engine::{QueryEngine, QueryEngineConfig, QueryEngineOutcome};
@@ -111,38 +112,78 @@ fn same_dir(a: &Path, b: &Path) -> bool {
 }
 
 /// Forwards one engine output value as ACP session updates. Assistant text becomes
-/// `agent_message_chunk`, thinking becomes `agent_thought_chunk`; everything else is
-/// ignored for now.
+/// `agent_message_chunk`, thinking becomes `agent_thought_chunk`, and a tool use becomes
+/// `tool_call`. A tool result in a user message becomes `tool_call_update`. Everything
+/// else is ignored for now.
 fn forward_engine_message(sink: &UpdateSink, value: &Value) {
-    if value.get("type").and_then(Value::as_str) != Some("assistant") {
-        return;
-    }
     let Some(blocks) = value.pointer("/message/content").and_then(Value::as_array) else {
         return;
     };
-    for block in blocks {
-        match block.get("type").and_then(Value::as_str) {
-            Some("text") => {
-                if let Some(text) = block
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .filter(|text| !text.is_empty())
-                {
-                    sink.agent_message(text);
-                }
+    match value.get("type").and_then(Value::as_str) {
+        Some("assistant") => {
+            for block in blocks {
+                forward_assistant_block(sink, block);
             }
-            Some("thinking") => {
-                if let Some(text) = block
-                    .get("thinking")
-                    .and_then(Value::as_str)
-                    .filter(|text| !text.is_empty())
-                {
-                    sink.agent_thought(text);
-                }
-            }
-            _ => {}
         }
+        Some("user") => {
+            for block in blocks {
+                forward_tool_result(sink, block);
+            }
+        }
+        _ => {}
     }
+}
+
+/// Forwards one content block of an assistant message.
+fn forward_assistant_block(sink: &UpdateSink, block: &Value) {
+    match block.get("type").and_then(Value::as_str) {
+        Some("text") => {
+            if let Some(text) = block
+                .get("text")
+                .and_then(Value::as_str)
+                .filter(|text| !text.is_empty())
+            {
+                sink.agent_message(text);
+            }
+        }
+        Some("thinking") => {
+            if let Some(text) = block
+                .get("thinking")
+                .and_then(Value::as_str)
+                .filter(|text| !text.is_empty())
+            {
+                sink.agent_thought(text);
+            }
+        }
+        Some("tool_use") => {
+            let (Some(id), Some(name)) = (
+                block.get("id").and_then(Value::as_str),
+                block.get("name").and_then(Value::as_str),
+            ) else {
+                return;
+            };
+            let input = block.get("input").cloned().unwrap_or(Value::Null);
+            sink.tool_call(describe_tool_call(id, name, &input));
+        }
+        _ => {}
+    }
+}
+
+/// Forwards one content block of a user message when it is a tool result. Other blocks
+/// are ignored.
+fn forward_tool_result(sink: &UpdateSink, block: &Value) {
+    if block.get("type").and_then(Value::as_str) != Some("tool_result") {
+        return;
+    }
+    let Some(id) = block.get("tool_use_id").and_then(Value::as_str) else {
+        return;
+    };
+    let failed = block
+        .get("is_error")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let content = block.get("content").cloned().unwrap_or(Value::Null);
+    sink.tool_call_result(id, failed, tool_result_text(&content), content);
 }
 
 /// Maps the engine's outcome for one turn onto an ACP turn end, or an error message when
@@ -260,6 +301,79 @@ mod tests {
         assert_eq!(
             thought["params"]["update"]["content"],
             json!({"type": "text", "text": "hmm"})
+        );
+
+        // The tool_use block announces a tool call; the empty text block after it is skipped.
+        let tool: Value = rx.try_recv().unwrap();
+        assert_eq!(
+            tool["params"]["update"]["sessionUpdate"],
+            json!("tool_call")
+        );
+        assert_eq!(tool["params"]["update"]["toolCallId"], json!("t1"));
+        assert_eq!(tool["params"]["update"]["title"], json!("Bash"));
+        assert_eq!(tool["params"]["update"]["kind"], json!("execute"));
+
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn acp_forward_engine_message_maps_tool_use_and_tool_result() {
+        let (outbound, mut rx) = Outbound::channel();
+        let sink = UpdateSink::new(outbound, "sess-2");
+        forward_engine_message(
+            &sink,
+            &json!({
+                "type": "assistant",
+                "message": {"content": [
+                    {"type": "text", "text": "reading"},
+                    {"type": "tool_use", "id": "toolu_1", "name": "Read",
+                     "input": {"file_path": "/a.txt"}},
+                ]},
+            }),
+        );
+        forward_engine_message(
+            &sink,
+            &json!({
+                "type": "user",
+                "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": "toolu_1",
+                     "content": "nope", "is_error": true},
+                ]},
+            }),
+        );
+        forward_engine_message(
+            &sink,
+            &json!({"type": "user", "message": {"content": "plain string"}}),
+        );
+        drop(sink);
+
+        let message: Value = rx.try_recv().unwrap();
+        assert_eq!(
+            message["params"]["update"]["sessionUpdate"],
+            json!("agent_message_chunk")
+        );
+
+        let call: Value = rx.try_recv().unwrap();
+        assert_eq!(call["params"]["sessionId"], json!("sess-2"));
+        assert_eq!(
+            call["params"]["update"]["sessionUpdate"],
+            json!("tool_call")
+        );
+        assert_eq!(call["params"]["update"]["toolCallId"], json!("toolu_1"));
+        assert_eq!(call["params"]["update"]["title"], json!("Read /a.txt"));
+        assert_eq!(call["params"]["update"]["kind"], json!("read"));
+        assert_eq!(call["params"]["update"]["status"], json!("in_progress"));
+
+        let update: Value = rx.try_recv().unwrap();
+        assert_eq!(
+            update["params"]["update"]["sessionUpdate"],
+            json!("tool_call_update")
+        );
+        assert_eq!(update["params"]["update"]["toolCallId"], json!("toolu_1"));
+        assert_eq!(update["params"]["update"]["status"], json!("failed"));
+        assert_eq!(
+            update["params"]["update"]["content"][0]["content"]["text"],
+            json!("nope")
         );
 
         assert!(rx.try_recv().is_err());
