@@ -120,6 +120,21 @@ fn lock<T>(table: &Mutex<T>) -> MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// The JSON-RPC response to request `id`: `result` on success, else `error`, whose
+/// `data` is omitted when absent.
+pub(crate) fn response_message(id: Value, result: Result<Value, RpcError>) -> Value {
+    match result {
+        Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
+        Err(error) => {
+            let mut error_obj = json!({"code": error.code, "message": error.message});
+            if let Some(data) = error.data {
+                error_obj["data"] = data;
+            }
+            json!({"jsonrpc": "2.0", "id": id, "error": error_obj})
+        }
+    }
+}
+
 /// Ordered outbound queue. Cloneable and usable from sync code; a single
 /// writer task drains it so messages reach stdout in enqueue order. It also
 /// holds the table of requests the agent sent and still waits on; every clone
@@ -147,16 +162,12 @@ impl Outbound {
 
     /// Queues a successful response to request `id`.
     pub(crate) fn respond(&self, id: Value, result: Value) {
-        self.enqueue(json!({"jsonrpc": "2.0", "id": id, "result": result}));
+        self.enqueue(response_message(id, Ok(result)));
     }
 
     /// Queues an error response to request `id`. `data` is omitted when absent.
     pub(crate) fn respond_error(&self, id: Value, error: RpcError) {
-        let mut error_obj = json!({"code": error.code, "message": error.message});
-        if let Some(data) = error.data {
-            error_obj["data"] = data;
-        }
-        self.enqueue(json!({"jsonrpc": "2.0", "id": id, "error": error_obj}));
+        self.enqueue(response_message(id, Err(error)));
     }
 
     /// Queues a notification, which carries no id.

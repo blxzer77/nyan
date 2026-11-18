@@ -7,7 +7,8 @@
 //! Implements `initialize`, `session/new` and `session/prompt`, and handles the
 //! `session/cancel` notification while a prompt is running. Other requests get a
 //! `Method not found` reply. Sessions run on the real engine (see `engine`). One process
-//! serves one session, in the directory it was started in.
+//! serves one session, in the `cwd` its `session/new` names: the process waits for that
+//! request before it initializes (see `startup`).
 //!
 //! Tool calls that need approval ask the client with `session/request_permission` and
 //! wait for its choice (see `permission`). The client's answer is routed back to the
@@ -17,6 +18,7 @@ mod engine;
 mod permission;
 mod server;
 mod session;
+mod startup;
 mod tools;
 mod transport;
 
@@ -27,7 +29,7 @@ Usage: nyan acp
 Run nyan as an ACP (Agent Client Protocol) agent over stdio.
 Reads JSON-RPC 2.0 messages from stdin, one per line, and writes responses
 to stdout. Takes no arguments. Logs go to stderr only.
-The process serves one session, in the directory it was started in.
+The process serves one session, in the directory its session/new names.
 ";
 
 /// Outcome of parsing `nyan acp` arguments.
@@ -64,9 +66,24 @@ pub fn run(config: &crate::cli::CliConfig) -> i32 {
     }
 
     let engine_config = engine::engine_cli_config();
+    // Process init reads settings from the working directory, so it waits for the
+    // directory `session/new` names. Until then the main thread answers on its own.
+    let first_session = {
+        let stdin = std::io::stdin();
+        let mut stdout = std::io::stdout();
+        startup::await_first_session(stdin.lock(), &mut stdout, startup::enter_session_dir)
+    };
+    let (session_id, session_request) = match first_session {
+        startup::Startup::Session { id, line } => (id, line),
+        startup::Startup::Ended(code) => return code,
+    };
     // Process-level startup must run before the runtime exists, as in `print::run`.
     if let Err(error) = crate::cli::print::init_headless_process(&engine_config) {
         eprintln!("nyan acp: {error}");
+        // Answer the waiting `session/new` before exiting, so the client sees why.
+        let failure = transport::RpcError::new(transport::INTERNAL_ERROR, error);
+        let message = transport::response_message(session_id, Err(failure));
+        let _ = startup::write_message(&mut std::io::stdout(), &message);
         return 1;
     }
     let launch_cwd = match std::env::current_dir() {
@@ -88,8 +105,12 @@ pub fn run(config: &crate::cli::CliConfig) -> i32 {
     };
     // Publish this runtime as the process runtime, as `print::run` does.
     crate::utils::process_runtime::set_process_runtime_handle(runtime.handle().clone());
+    // The `session/new` read above comes first, then the rest of stdin. Both readers
+    // share std's stdin buffer, so nothing read ahead is lost.
+    let first = std::io::Cursor::new(format!("{session_request}\n").into_bytes());
+    let input = tokio::io::AsyncReadExt::chain(first, tokio::io::stdin());
     runtime.block_on(server::serve(
-        tokio::io::BufReader::new(tokio::io::stdin()),
+        tokio::io::BufReader::new(input),
         tokio::io::stdout(),
         engine::EngineHost::new(engine_config, launch_cwd),
     ))
