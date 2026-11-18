@@ -24,8 +24,12 @@ use crate::tool::{AbortController, AppStoreRef};
 use crate::types::permissions::{PermissionPromptResponse, PermissionRequest};
 
 /// The headless configuration the engine runs with under ACP: what
-/// `nyan -p --output-format stream-json --input-format stream-json --verbose`
-/// parses to. ACP has no flags of its own yet.
+/// `nyan -p --output-format stream-json --input-format stream-json --verbose
+/// --disallowedTools AskUserQuestion` parses to. ACP has no flags of its own yet.
+///
+/// AskUserQuestion gets its answers through the permission response's updated input,
+/// which an ACP permission answer (an option id) cannot carry, so the client could
+/// neither see nor answer the questions. Without the tool the model asks in its reply.
 pub(super) fn engine_cli_config() -> crate::cli::CliConfig {
     // `parse_cli_config` takes the full argv, program name first.
     let argv: Vec<String> = [
@@ -36,6 +40,9 @@ pub(super) fn engine_cli_config() -> crate::cli::CliConfig {
         "--input-format",
         "stream-json",
         "--verbose",
+        // Takes several values, so it stays last.
+        "--disallowedTools",
+        "AskUserQuestion",
     ]
     .iter()
     .map(|arg| (*arg).to_string())
@@ -349,6 +356,16 @@ fn turn_end(outcome: &QueryEngineOutcome) -> Result<TurnEnd, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn acp_engine_config_is_headless_stream_json_without_ask_user_question() {
+        let config = engine_cli_config();
+        assert!(config.print);
+        assert_eq!(config.output_format.as_deref(), Some("stream-json"));
+        assert_eq!(config.input_format.as_deref(), Some("stream-json"));
+        assert!(config.prompt.is_none());
+        assert_eq!(config.disallowed_tools, vec!["AskUserQuestion".to_string()]);
+    }
 
     fn outcome(reason: &str, stop_reason: Option<&str>, errors: &[&str]) -> QueryEngineOutcome {
         // `carry` is private to `query_engine`, so the outcome is built by assignment.

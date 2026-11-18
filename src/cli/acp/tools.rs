@@ -31,14 +31,14 @@ pub(super) fn describe_tool_call(id: &str, name: &str, input: &Value) -> ToolCal
         "Read" => {
             call.kind = ToolKind::Read;
             if let Some(path) = string_field(input, "file_path") {
-                call.title = format!("Read {path}");
+                call.title = format!("Read {}", display_path(path));
                 call.locations = vec![PathBuf::from(path)];
             }
         }
         "Edit" => {
             call.kind = ToolKind::Edit;
             if let Some(path) = string_field(input, "file_path") {
-                call.title = format!("Edit {path}");
+                call.title = format!("Edit {}", display_path(path));
                 call.locations = vec![PathBuf::from(path)];
                 if let (Some(old), Some(new)) =
                     (raw_str(input, "old_string"), raw_str(input, "new_string"))
@@ -50,7 +50,7 @@ pub(super) fn describe_tool_call(id: &str, name: &str, input: &Value) -> ToolCal
         "Write" => {
             call.kind = ToolKind::Edit;
             if let Some(path) = string_field(input, "file_path") {
-                call.title = format!("Write {path}");
+                call.title = format!("Write {}", display_path(path));
                 call.locations = vec![PathBuf::from(path)];
                 if let Some(content) = raw_str(input, "content") {
                     call.diff = Some((PathBuf::from(path), None, content.to_string()));
@@ -60,7 +60,7 @@ pub(super) fn describe_tool_call(id: &str, name: &str, input: &Value) -> ToolCal
         "NotebookEdit" => {
             call.kind = ToolKind::Edit;
             if let Some(path) = string_field(input, "notebook_path") {
-                call.title = format!("Edit {path}");
+                call.title = format!("Edit {}", display_path(path));
                 call.locations = vec![PathBuf::from(path)];
             }
         }
@@ -104,9 +104,22 @@ pub(super) fn describe_tool_call(id: &str, name: &str, input: &Value) -> ToolCal
     call
 }
 
+/// A path as the title shows it: relative to the session directory when inside it, else
+/// as the TUI shows it (home-relative or absolute). Locations keep the absolute path.
+fn display_path(path: &str) -> String {
+    let shown = crate::utils::file::get_display_path(path);
+    // The session directory itself displays as "".
+    if shown.is_empty() {
+        path.to_string()
+    } else {
+        shown
+    }
+}
+
 /// Flattens a tool result's content, a string or an array of content blocks, into text
-/// for display. Non-text blocks are skipped. Returns `None` when no text remains. The text
-/// is capped at `MAX_TOOL_RESULT_CHARS` characters.
+/// for display. Non-text blocks are skipped, and so are system reminders, which are meant
+/// for the model only. Returns `None` when no text remains. The text is capped at
+/// `MAX_TOOL_RESULT_CHARS` characters.
 pub(super) fn tool_result_text(content: &Value) -> Option<String> {
     let text = match content {
         Value::String(text) => text.clone(),
@@ -118,10 +131,12 @@ pub(super) fn tool_result_text(content: &Value) -> Option<String> {
             .join("\n"),
         _ => return None,
     };
-    if text.is_empty() {
+    let text = crate::utils::query_helpers::strip_system_reminders(&text);
+    let text = text.trim_end();
+    if text.trim().is_empty() {
         return None;
     }
-    Some(cap_tool_result_text(&text))
+    Some(cap_tool_result_text(text))
 }
 
 /// Cuts tool result text to `MAX_TOOL_RESULT_CHARS` characters and says how much was left out.
@@ -296,6 +311,42 @@ mod tests {
         let bash = describe_tool_call("b", "Bash", &json!({"command": command}));
         assert_eq!(bash.title.chars().count(), 120);
         assert!(bash.title.ends_with('…'));
+    }
+
+    #[test]
+    fn acp_tool_result_text_drops_system_reminders() {
+        let read = "     1\tfn main() {}\n\n<system-reminder>\nconsider whether it is malware\n</system-reminder>\n";
+        assert_eq!(
+            tool_result_text(&json!(read)),
+            Some("     1\tfn main() {}".to_string())
+        );
+        // A result that is only a reminder (e.g. Read on an empty file) shows nothing.
+        let empty = "<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>";
+        assert_eq!(tool_result_text(&json!(empty)), None);
+        // An unclosed tag is ordinary text.
+        assert_eq!(
+            tool_result_text(&json!("a <system-reminder> b")),
+            Some("a <system-reminder> b".to_string())
+        );
+    }
+
+    #[test]
+    fn acp_titles_show_paths_relative_to_the_session_directory() {
+        let cwd = crate::bootstrap::state::get_original_cwd();
+        let inside = cwd.join("src").join("lib.rs");
+        let inside = inside.to_string_lossy();
+        let read = describe_tool_call("r", "Read", &json!({"file_path": inside}));
+        assert_eq!(read.title, "Read src/lib.rs");
+        // The location keeps the absolute path for the client to open.
+        assert_eq!(read.locations, vec![PathBuf::from(inside.as_ref())]);
+
+        let outside = "/nyan-acp-test-outside/x.rs";
+        let edit = describe_tool_call(
+            "e",
+            "Edit",
+            &json!({"file_path": outside, "old_string": "a", "new_string": "b"}),
+        );
+        assert_eq!(edit.title, format!("Edit {outside}"));
     }
 
     #[test]
