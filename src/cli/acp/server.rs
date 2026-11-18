@@ -1,20 +1,20 @@
-//! ACP request dispatch: `initialize`, `session/new` and `session/prompt`, plus the
-//! `session/cancel` notification while a prompt is running. Other requests get Method
-//! not found. Responses to requests the agent sent (`session/request_permission`) are
-//! routed back to them.
+//! ACP request dispatch: `initialize`, `session/new`, `session/prompt` and
+//! `session/set_mode`, plus the `session/cancel` notification while a prompt is running.
+//! Other requests get Method not found. Responses to requests the agent sent
+//! (`session/request_permission`) are routed back to them.
 
 use agent_client_protocol_schema::ProtocolVersion;
 use agent_client_protocol_schema::v1::{
     AGENT_METHOD_NAMES, CancelNotification, ContentBlock, Implementation, InitializeRequest,
     InitializeResponse, NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse,
-    SessionId,
+    SessionId, SetSessionModeRequest, SetSessionModeResponse,
 };
 use serde::Serialize;
 use serde_json::Value;
 use std::pin::pin;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, Lines};
 
-use super::session::{AcpHost, AcpSession, Canceller, NewSession};
+use super::session::{AcpHost, AcpSession, Canceller, ModeSwitch, NewSession};
 use super::transport::{
     INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, Incoming, METHOD_NOT_FOUND, Outbound,
     RpcError, parse_line, write_loop,
@@ -103,6 +103,11 @@ async fn handle_request<H: AcpHost>(
         handle_initialize(outbound, id, params);
     } else if method == AGENT_METHOD_NAMES.session_new {
         handle_new_session(host, outbound, session, id, params).await;
+    } else if method == AGENT_METHOD_NAMES.session_set_mode {
+        let current = session
+            .as_ref()
+            .map(|(session_id, active)| (session_id.as_str(), active.mode_switch()));
+        respond(outbound, id, set_mode(params, current));
     } else {
         let error = RpcError::new(METHOD_NOT_FOUND, format!("Method not found: {method}"));
         outbound.respond_error(id, error);
@@ -160,7 +165,7 @@ async fn handle_new_session<H: AcpHost>(
             reply(
                 outbound,
                 id,
-                NewSessionResponse::new(SessionId::new(session_id.as_str())),
+                NewSessionResponse::new(SessionId::new(session_id.as_str())).modes(active.modes()),
             );
             *session = Some((session_id, active));
         }
@@ -229,6 +234,7 @@ where
     // Taken before the turn starts, because the turn borrows the session while it runs.
     let cancel = session.canceller();
     let on_input_closed = session.on_input_closed();
+    let mode_switch = session.mode_switch();
     let turn = session.prompt(text);
     let mut turn = pin!(turn);
     loop {
@@ -244,7 +250,9 @@ where
                 return input_ended;
             }
             line = lines.next_line(), if input_ended.is_none() => match line {
-                Ok(Some(line)) => handle_line_during_turn(outbound, &line, session_id, &cancel),
+                Ok(Some(line)) => {
+                    handle_line_during_turn(outbound, &line, session_id, &cancel, &mode_switch)
+                }
                 Ok(None) => {
                     end_input(outbound, Some(on_input_closed.clone()));
                     input_ended = Some(0);
@@ -271,14 +279,26 @@ fn end_input(outbound: &Outbound, on_input_closed: Option<Canceller>) {
 
 /// Handles one line read while a prompt turn is running. A `session/cancel` naming
 /// `session_id` calls `cancel`; one naming another session, or with params that do not
-/// parse, is ignored. A request gets a busy error. A response goes to the request it
-/// answers. Other notifications are ignored, and a line that is not valid JSON-RPC gets a
-/// parse error.
-fn handle_line_during_turn(outbound: &Outbound, line: &str, session_id: &str, cancel: &Canceller) {
+/// parse, is ignored. A `session/set_mode` is handled, for the next turn. Any other request
+/// gets a busy error. A response goes to the request it answers. Other notifications are
+/// ignored, and a line that is not valid JSON-RPC gets a parse error.
+fn handle_line_during_turn(
+    outbound: &Outbound,
+    line: &str,
+    session_id: &str,
+    cancel: &Canceller,
+    mode_switch: &Option<ModeSwitch>,
+) {
     if line.trim().is_empty() {
         return;
     }
     match parse_line(line) {
+        Ok(Incoming::Request { id, method, params })
+            if method == AGENT_METHOD_NAMES.session_set_mode =>
+        {
+            let result = set_mode(params, Some((session_id, mode_switch.clone())));
+            respond(outbound, id, result);
+        }
         Ok(Incoming::Request { id, .. }) => {
             outbound.respond_error(id, RpcError::new(BUSY, "A prompt is already in progress"));
         }
@@ -292,6 +312,37 @@ fn handle_line_during_turn(outbound: &Outbound, line: &str, session_id: &str, ca
         Ok(Incoming::Response { id, result }) => outbound.resolve(&id, result),
         Ok(Incoming::Notification { .. }) => {}
         Err(error) => outbound.respond_error(Value::Null, error),
+    }
+}
+
+/// Handles `session/set_mode`. `current` is the open session's id and mode switch, if a
+/// session is open.
+fn set_mode(params: Value, current: Option<(&str, Option<ModeSwitch>)>) -> Result<Value, RpcError> {
+    let request = serde_json::from_value::<SetSessionModeRequest>(params)
+        .map_err(|err| RpcError::new(INVALID_PARAMS, format!("Invalid params: {err}")))?;
+    let switch = match current {
+        Some((session_id, switch)) if session_id == &*request.session_id.0 => switch,
+        _ => {
+            let message = format!("Unknown session: {}", request.session_id.0);
+            return Err(RpcError::new(INVALID_PARAMS, message));
+        }
+    };
+    let Some(switch) = switch else {
+        return Err(RpcError::new(
+            METHOD_NOT_FOUND,
+            "Method not found: session/set_mode",
+        ));
+    };
+    switch(&request.mode_id.0).map_err(|message| RpcError::new(INVALID_PARAMS, message))?;
+    serde_json::to_value(SetSessionModeResponse::new())
+        .map_err(|err| RpcError::new(INTERNAL_ERROR, format!("Internal error: {err}")))
+}
+
+/// Sends `result` as the response to request `id`.
+fn respond(outbound: &Outbound, id: Value, result: Result<Value, RpcError>) {
+    match result {
+        Ok(result) => outbound.respond(id, result),
+        Err(error) => outbound.respond_error(id, error),
     }
 }
 
@@ -368,6 +419,9 @@ mod tests {
         ask_permission: bool,
         /// Answers the session received to its permission request, in order.
         answers: Arc<Mutex<Vec<Result<Value, RpcError>>>>,
+        /// When set, the session offers modes `default` and `plan`, and records each mode
+        /// it is switched to here. Any other mode is refused.
+        modes: Option<Arc<Mutex<Vec<String>>>>,
     }
 
     struct FakeSession {
@@ -442,6 +496,30 @@ mod tests {
                 Some(msg) => Err(msg.to_string()),
                 None => Ok(self.config.end.unwrap_or(TurnEnd::EndTurn)),
             }
+        }
+
+        fn modes(&self) -> Option<agent_client_protocol_schema::v1::SessionModeState> {
+            use agent_client_protocol_schema::v1::{SessionMode, SessionModeState};
+            self.config.modes.as_ref().map(|_| {
+                SessionModeState::new(
+                    "default",
+                    vec![
+                        SessionMode::new("default", "Default"),
+                        SessionMode::new("plan", "Plan"),
+                    ],
+                )
+            })
+        }
+
+        fn mode_switch(&self) -> Option<ModeSwitch> {
+            let switched = self.config.modes.clone()?;
+            Some(Arc::new(move |id: &str| {
+                if id != "default" && id != "plan" {
+                    return Err(format!("Unknown mode: {id}"));
+                }
+                switched.lock().unwrap().push(id.to_string());
+                Ok(())
+            }))
         }
 
         fn canceller(&self) -> Canceller {
@@ -699,6 +777,102 @@ mod tests {
         assert_eq!(lines[busy]["error"]["code"], json!(-32000));
         assert!(busy < done, "busy error must precede the prompt response");
         assert_eq!(lines[done]["result"]["stopReason"], json!("end_turn"));
+    }
+
+    fn set_mode(id: u64, session_id: &str, mode_id: &str) -> Value {
+        request(
+            id,
+            "session/set_mode",
+            json!({"sessionId": session_id, "modeId": mode_id}),
+        )
+    }
+
+    fn response(lines: &[Value], id: u64) -> &Value {
+        lines
+            .iter()
+            .find(|line| line["id"] == json!(id))
+            .unwrap_or_else(|| panic!("no response to request {id}: {lines:?}"))
+    }
+
+    #[tokio::test]
+    async fn acp_session_new_reports_modes_and_set_mode_switches() {
+        let switched = Arc::new(Mutex::new(Vec::new()));
+        let host = FakeHost {
+            modes: Some(switched.clone()),
+            ..Default::default()
+        };
+        let (code, lines) = run_with(
+            &input(&[
+                initialize(),
+                set_mode(2, "sess-1", "plan"),
+                new_session(3),
+                set_mode(4, "sess-1", "plan"),
+                set_mode(5, "sess-1", "nope"),
+                set_mode(6, "other", "plan"),
+                request(7, "session/set_mode", json!({"sessionId": "sess-1"})),
+            ]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+        // Before any session there is nothing to switch.
+        assert_eq!(response(&lines, 2)["error"]["code"], json!(-32602));
+        let modes = &response(&lines, 3)["result"]["modes"];
+        assert_eq!(modes["currentModeId"], json!("default"));
+        assert_eq!(modes["availableModes"][1]["id"], json!("plan"));
+        assert_eq!(response(&lines, 4)["result"], json!({}));
+        assert_eq!(response(&lines, 5)["error"]["code"], json!(-32602));
+        assert_eq!(
+            response(&lines, 5)["error"]["message"],
+            json!("Unknown mode: nope")
+        );
+        assert_eq!(response(&lines, 6)["error"]["code"], json!(-32602));
+        assert_eq!(response(&lines, 7)["error"]["code"], json!(-32602));
+        assert_eq!(*switched.lock().unwrap(), vec!["plan".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn acp_set_mode_is_handled_during_a_prompt() {
+        let switched = Arc::new(Mutex::new(Vec::new()));
+        let host = FakeHost {
+            modes: Some(switched.clone()),
+            delay: Some(Duration::from_millis(200)),
+            ..Default::default()
+        };
+        let (code, lines) = run_with(
+            &input(&[
+                initialize(),
+                new_session(2),
+                prompt(3, "sess-1", "hi"),
+                set_mode(4, "sess-1", "plan"),
+            ]),
+            host,
+        )
+        .await;
+        assert_eq!(code, 0);
+        let switch = lines
+            .iter()
+            .position(|line| line["id"] == json!(4))
+            .unwrap();
+        let done = lines
+            .iter()
+            .position(|line| line["id"] == json!(3))
+            .unwrap();
+        assert_eq!(lines[switch]["result"], json!({}));
+        assert!(switch < done, "set_mode is answered while the turn runs");
+        assert_eq!(*switched.lock().unwrap(), vec!["plan".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn acp_set_mode_without_modes_is_method_not_found() {
+        let (_, lines) = run_session(&input(&[
+            initialize(),
+            new_session(2),
+            set_mode(3, "sess-1", "plan"),
+        ]))
+        .await;
+        assert!(response(&lines, 2)["result"].get("modes").is_none());
+        assert_eq!(response(&lines, 3)["error"]["code"], json!(-32601));
     }
 
     #[tokio::test]
