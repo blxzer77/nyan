@@ -402,6 +402,14 @@ impl QueryEngine {
         )
     }
 
+    /// The permission mode the session runs in, once the first query has built the
+    /// permission context. A tool such as ExitPlanMode can change it during a turn.
+    pub(crate) fn permission_mode(&self) -> Option<crate::types::permissions::PermissionMode> {
+        self.app_store
+            .as_ref()
+            .map(|store| store.get().tool_permission_context.mode)
+    }
+
     pub(crate) fn set_permission_mode(&mut self, mode: crate::types::permissions::PermissionMode) {
         self.overrides.permission_mode = Some(mode);
     }

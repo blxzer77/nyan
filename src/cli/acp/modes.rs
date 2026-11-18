@@ -98,6 +98,21 @@ impl Modes {
     pub(super) fn take_pending(&mut self) -> Option<PermissionMode> {
         self.pending.take()
     }
+
+    /// Records a mode the engine moved to by itself (leaving plan mode, say). Returns
+    /// the new mode id when it differs from the current one and the session offers it.
+    /// A switch the client asked for and the next turn has not applied yet wins.
+    pub(super) fn follow_engine(&mut self, mode: PermissionMode) -> Option<&str> {
+        if self.pending.is_some() {
+            return None;
+        }
+        let id = to_external_permission_mode(mode);
+        if id == self.current || !self.available.iter().any(|offered| &*offered.id.0 == id) {
+            return None;
+        }
+        self.current = id.to_string();
+        Some(&self.current)
+    }
 }
 
 /// Locks the modes, recovering from a poisoned lock.
@@ -163,5 +178,27 @@ mod tests {
         assert!(modes.switch("auto").is_err());
         assert_eq!(&*modes.state().current_mode_id.0, "plan");
         assert!(modes.take_pending().is_none());
+    }
+
+    #[test]
+    fn acp_modes_follow_the_engine_unless_a_switch_waits() {
+        let mut modes = Modes::new(Some("plan"));
+        // The engine leaving plan mode (ExitPlanMode) is reported.
+        assert_eq!(
+            modes.follow_engine(PermissionMode::AcceptEdits),
+            Some("acceptEdits")
+        );
+        assert_eq!(&*modes.state().current_mode_id.0, "acceptEdits");
+        // No change, nothing to report.
+        assert_eq!(modes.follow_engine(PermissionMode::AcceptEdits), None);
+        // Internal auto shows as default.
+        assert_eq!(modes.follow_engine(PermissionMode::Auto), Some("default"));
+        // A mode the session does not offer is not adopted.
+        assert_eq!(modes.follow_engine(PermissionMode::BypassPermissions), None);
+        assert_eq!(&*modes.state().current_mode_id.0, "default");
+        // A switch the client asked for wins until the next turn applies it.
+        modes.switch("plan").unwrap();
+        assert_eq!(modes.follow_engine(PermissionMode::Default), None);
+        assert_eq!(&*modes.state().current_mode_id.0, "plan");
     }
 }
