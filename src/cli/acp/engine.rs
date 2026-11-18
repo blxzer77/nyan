@@ -1,7 +1,7 @@
 //! The real engine behind `nyan acp`: sessions are `QueryEngine`s, prompt turns run
 //! through `query_engine::ask`, and engine output goes out as ACP session updates.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -25,7 +25,8 @@ use crate::types::permissions::{PermissionPromptResponse, PermissionRequest};
 
 /// The headless configuration the engine runs with under ACP: what
 /// `nyan -p --output-format stream-json --input-format stream-json --verbose
-/// --disallowedTools AskUserQuestion` parses to. ACP has no flags of its own yet.
+/// --include-partial-messages --disallowedTools AskUserQuestion` parses to. ACP has no
+/// flags of its own yet. Partial messages let text and thinking stream to the client.
 ///
 /// AskUserQuestion gets its answers through the permission response's updated input,
 /// which an ACP permission answer (an option id) cannot carry, so the client could
@@ -40,6 +41,7 @@ pub(super) fn engine_cli_config() -> crate::cli::CliConfig {
         "--input-format",
         "stream-json",
         "--verbose",
+        "--include-partial-messages",
         // Takes several values, so it stays last.
         "--disallowedTools",
         "AskUserQuestion",
@@ -101,8 +103,9 @@ impl AcpHost for EngineHost {
             schema: None,
             resume_seed: None,
             mcp_state: Some(mcp_state),
-            output_sink: Some(QueryEngine::output_sink(move |value| {
-                forward_engine_message(&sink, &value);
+            output_sink: Some(QueryEngine::output_sink({
+                let forwarder = Mutex::new(EngineForwarder::new(sink));
+                move |value| lock(&forwarder).forward(&value)
             })),
             permission_resolver: Some(permission_resolver(bridge.clone())),
             handle_elicitation: crate::tool::HandleElicitationCallback::default(),
@@ -245,48 +248,117 @@ fn same_dir(a: &Path, b: &Path) -> bool {
     canonical(a) == canonical(b)
 }
 
-/// Forwards one engine output value as ACP session updates. Assistant text becomes
-/// `agent_message_chunk`, thinking becomes `agent_thought_chunk`, and a tool use becomes
-/// `tool_call`. A tool result in a user message becomes `tool_call_update`. Everything
-/// else is ignored for now.
-fn forward_engine_message(sink: &UpdateSink, value: &Value) {
-    let Some(blocks) = value.pointer("/message/content").and_then(Value::as_array) else {
-        return;
-    };
-    match value.get("type").and_then(Value::as_str) {
-        Some("assistant") => {
-            for block in blocks {
-                forward_assistant_block(sink, block);
-            }
+/// Turns the engine's output into ACP session updates for one session.
+///
+/// Assistant text becomes `agent_message_chunk`, thinking becomes `agent_thought_chunk`,
+/// and a tool use becomes `tool_call`. A tool result in a user message becomes
+/// `tool_call_update`. Everything else is ignored for now.
+///
+/// With partial messages on, text and thinking go out as their deltas stream in, each
+/// chunk tagged with the API message id. The whole message the engine emits after each
+/// block then adds only its tool calls, so nothing is sent twice.
+struct EngineForwarder {
+    sink: UpdateSink,
+    /// Id of the model message being streamed, from its `message_start`.
+    streaming: Option<String>,
+    /// Ids of messages whose text or thinking already went out as deltas.
+    streamed: HashSet<String>,
+}
+
+impl EngineForwarder {
+    fn new(sink: UpdateSink) -> Self {
+        Self {
+            sink,
+            streaming: None,
+            streamed: HashSet::new(),
         }
-        Some("user") => {
-            for block in blocks {
-                forward_tool_result(sink, block);
+    }
+
+    /// Forwards one engine output value.
+    fn forward(&mut self, value: &Value) {
+        let kind = value.get("type").and_then(Value::as_str);
+        if kind == Some("stream_event") {
+            if let Some(event) = value.get("event") {
+                self.forward_stream_event(event);
             }
+            return;
         }
-        _ => {}
+        let Some(blocks) = value.pointer("/message/content").and_then(Value::as_array) else {
+            return;
+        };
+        match kind {
+            Some("assistant") => {
+                let message_id = value.pointer("/message/id").and_then(Value::as_str);
+                let streamed = message_id.is_some_and(|id| self.streamed.contains(id));
+                for block in blocks {
+                    forward_assistant_block(&self.sink, block, message_id, streamed);
+                }
+            }
+            Some("user") => {
+                for block in blocks {
+                    forward_tool_result(&self.sink, block);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Forwards one raw API stream event: a `message_start` names the message, and text
+    /// and thinking deltas go out as chunks of it. Other events are ignored.
+    fn forward_stream_event(&mut self, event: &Value) {
+        match event.get("type").and_then(Value::as_str) {
+            Some("message_start") => {
+                self.streaming = event
+                    .pointer("/message/id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+            }
+            Some("content_block_delta") => {
+                let Some(delta) = event.get("delta") else {
+                    return;
+                };
+                let message_id = self.streaming.as_deref();
+                let sent = match delta.get("type").and_then(Value::as_str) {
+                    Some("text_delta") => non_empty(delta, "text")
+                        .map(|text| self.sink.agent_message(text, message_id)),
+                    Some("thinking_delta") => non_empty(delta, "thinking")
+                        .map(|text| self.sink.agent_thought(text, message_id)),
+                    _ => None,
+                };
+                if let (Some(()), Some(id)) = (sent, &self.streaming) {
+                    self.streamed.insert(id.clone());
+                }
+            }
+            _ => {}
+        }
     }
 }
 
-/// Forwards one content block of an assistant message.
-fn forward_assistant_block(sink: &UpdateSink, block: &Value) {
+/// The string at `key`, when present and not empty.
+fn non_empty<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+}
+
+/// Forwards one content block of an assistant message. When the message's text and
+/// thinking already streamed, only a tool use goes out.
+fn forward_assistant_block(
+    sink: &UpdateSink,
+    block: &Value,
+    message_id: Option<&str>,
+    streamed: bool,
+) {
     match block.get("type").and_then(Value::as_str) {
-        Some("text") => {
-            if let Some(text) = block
-                .get("text")
-                .and_then(Value::as_str)
-                .filter(|text| !text.is_empty())
-            {
-                sink.agent_message(text);
+        Some("text") if !streamed => {
+            if let Some(text) = non_empty(block, "text") {
+                sink.agent_message(text, message_id);
             }
         }
-        Some("thinking") => {
-            if let Some(text) = block
-                .get("thinking")
-                .and_then(Value::as_str)
-                .filter(|text| !text.is_empty())
-            {
-                sink.agent_thought(text);
+        Some("thinking") if !streamed => {
+            if let Some(text) = non_empty(block, "thinking") {
+                sink.agent_thought(text, message_id);
             }
         }
         Some("tool_use") => {
@@ -364,7 +436,75 @@ mod tests {
         assert_eq!(config.output_format.as_deref(), Some("stream-json"));
         assert_eq!(config.input_format.as_deref(), Some("stream-json"));
         assert!(config.prompt.is_none());
+        assert!(config.include_partial_messages);
         assert_eq!(config.disallowed_tools, vec!["AskUserQuestion".to_string()]);
+    }
+
+    #[test]
+    fn acp_forwarder_streams_deltas_and_skips_the_repeated_text() {
+        let (outbound, mut rx) = Outbound::channel();
+        let mut forwarder = EngineForwarder::new(UpdateSink::new(outbound, "sess-3"));
+        let event = |event: Value| json!({"type": "stream_event", "event": event});
+        forwarder.forward(&event(
+            json!({"type": "message_start", "message": {"id": "msg_a"}}),
+        ));
+        forwarder.forward(&event(json!({"type": "content_block_start", "index": 0,
+            "content_block": {"type": "thinking", "thinking": ""}})));
+        forwarder.forward(&event(json!({"type": "content_block_delta", "index": 0,
+            "delta": {"type": "thinking_delta", "thinking": "let me see"}})));
+        forwarder.forward(&event(json!({"type": "content_block_delta", "index": 0,
+            "delta": {"type": "signature_delta", "signature": "sig"}})));
+        forwarder.forward(&event(json!({"type": "content_block_delta", "index": 1,
+            "delta": {"type": "text_delta", "text": "Hel"}})));
+        forwarder.forward(&event(json!({"type": "content_block_delta", "index": 1,
+            "delta": {"type": "text_delta", "text": "lo"}})));
+        // The engine then emits the whole message, one block at a time.
+        forwarder.forward(
+            &json!({"type": "assistant", "message": {"id": "msg_a", "content": [
+            {"type": "thinking", "thinking": "let me see", "signature": "sig"}]}}),
+        );
+        forwarder.forward(
+            &json!({"type": "assistant", "message": {"id": "msg_a", "content": [
+            {"type": "text", "text": "Hello"}]}}),
+        );
+        forwarder.forward(&event(json!({"type": "content_block_delta", "index": 2,
+            "delta": {"type": "input_json_delta", "partial_json": "{\"command\""}})));
+        forwarder.forward(
+            &json!({"type": "assistant", "message": {"id": "msg_a", "content": [
+            {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}]}}),
+        );
+        // A message that did not stream (no deltas) still goes out whole.
+        forwarder.forward(
+            &json!({"type": "assistant", "message": {"id": "msg_b", "content": [
+            {"type": "text", "text": "whole"}]}}),
+        );
+        drop(forwarder);
+
+        let mut updates = Vec::new();
+        while let Ok(message) = rx.try_recv() {
+            let update = &message["params"]["update"];
+            updates.push((
+                update["sessionUpdate"].as_str().unwrap().to_string(),
+                update["content"]["text"]
+                    .as_str()
+                    .or(update["toolCallId"].as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                update["messageId"].as_str().unwrap_or_default().to_string(),
+            ));
+        }
+        let expected = [
+            ("agent_thought_chunk", "let me see", "msg_a"),
+            ("agent_message_chunk", "Hel", "msg_a"),
+            ("agent_message_chunk", "lo", "msg_a"),
+            ("tool_call", "t1", ""),
+            ("agent_message_chunk", "whole", "msg_b"),
+        ];
+        let expected: Vec<(String, String, String)> = expected
+            .iter()
+            .map(|(a, b, c)| (a.to_string(), b.to_string(), c.to_string()))
+            .collect();
+        assert_eq!(updates, expected);
     }
 
     fn outcome(reason: &str, stop_reason: Option<&str>, errors: &[&str]) -> QueryEngineOutcome {
@@ -405,26 +545,22 @@ mod tests {
     #[test]
     fn acp_forward_engine_message_maps_text_and_thinking() {
         let (outbound, mut rx) = Outbound::channel();
-        let sink = UpdateSink::new(outbound, "sess-1");
-        forward_engine_message(
-            &sink,
-            &json!({
-                "type": "assistant",
-                "message": {"content": [
-                    {"type": "text", "text": "hi"},
-                    {"type": "thinking", "thinking": "hmm", "signature": "sig"},
-                    {"type": "tool_use", "id": "t1", "name": "Bash", "input": {}},
-                    {"type": "text", "text": ""},
-                ]},
-            }),
-        );
-        forward_engine_message(
-            &sink,
+        let mut forwarder = EngineForwarder::new(UpdateSink::new(outbound, "sess-1"));
+        forwarder.forward(&json!({
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "text", "text": "hi"},
+                {"type": "thinking", "thinking": "hmm", "signature": "sig"},
+                {"type": "tool_use", "id": "t1", "name": "Bash", "input": {}},
+                {"type": "text", "text": ""},
+            ]},
+        }));
+        forwarder.forward(
             &json!({"type": "user", "message": {"content": [{"type": "text", "text": "x"}]}}),
         );
-        forward_engine_message(&sink, &json!({"type": "system", "subtype": "init"}));
-        forward_engine_message(&sink, &json!({"type": "result", "result": "done"}));
-        drop(sink);
+        forwarder.forward(&json!({"type": "system", "subtype": "init"}));
+        forwarder.forward(&json!({"type": "result", "result": "done"}));
+        drop(forwarder);
 
         let message: Value = rx.try_recv().unwrap();
         assert_eq!(message["params"]["sessionId"], json!("sess-1"));
@@ -463,33 +599,24 @@ mod tests {
     #[test]
     fn acp_forward_engine_message_maps_tool_use_and_tool_result() {
         let (outbound, mut rx) = Outbound::channel();
-        let sink = UpdateSink::new(outbound, "sess-2");
-        forward_engine_message(
-            &sink,
-            &json!({
-                "type": "assistant",
-                "message": {"content": [
-                    {"type": "text", "text": "reading"},
-                    {"type": "tool_use", "id": "toolu_1", "name": "Read",
-                     "input": {"file_path": "/a.txt"}},
-                ]},
-            }),
-        );
-        forward_engine_message(
-            &sink,
-            &json!({
-                "type": "user",
-                "message": {"content": [
-                    {"type": "tool_result", "tool_use_id": "toolu_1",
-                     "content": "nope", "is_error": true},
-                ]},
-            }),
-        );
-        forward_engine_message(
-            &sink,
-            &json!({"type": "user", "message": {"content": "plain string"}}),
-        );
-        drop(sink);
+        let mut forwarder = EngineForwarder::new(UpdateSink::new(outbound, "sess-2"));
+        forwarder.forward(&json!({
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "text", "text": "reading"},
+                {"type": "tool_use", "id": "toolu_1", "name": "Read",
+                 "input": {"file_path": "/a.txt"}},
+            ]},
+        }));
+        forwarder.forward(&json!({
+            "type": "user",
+            "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "toolu_1",
+                 "content": "nope", "is_error": true},
+            ]},
+        }));
+        forwarder.forward(&json!({"type": "user", "message": {"content": "plain string"}}));
+        drop(forwarder);
 
         let message: Value = rx.try_recv().unwrap();
         assert_eq!(
