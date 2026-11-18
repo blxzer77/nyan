@@ -5,9 +5,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use agent_client_protocol_schema::v1::{
-    CLIENT_METHOD_NAMES, Content, ContentBlock, ContentChunk, Diff, MessageId, SessionId,
-    SessionNotification, SessionUpdate, StopReason, TextContent, ToolCall, ToolCallContent,
-    ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    CLIENT_METHOD_NAMES, Content, ContentBlock, ContentChunk, CurrentModeUpdate, Diff, MessageId,
+    SessionId, SessionModeState, SessionNotification, SessionUpdate, StopReason, TextContent,
+    ToolCall, ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
+    ToolCallUpdateFields, ToolKind,
 };
 
 use super::transport::Outbound;
@@ -60,6 +61,10 @@ pub(crate) trait AcpHost {
 /// Asks the turn in flight to stop; a no-op when none is running.
 pub(crate) type Canceller = Arc<dyn Fn() + Send + Sync>;
 
+/// Switches the session to the mode with the given id, failing for a mode it does not
+/// offer. Callable while a prompt turn runs.
+pub(crate) type ModeSwitch = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
 /// One session on the engine.
 pub(crate) trait AcpSession {
     /// Runs one prompt turn to completion. Progress goes out through the engine's
@@ -77,6 +82,17 @@ pub(crate) trait AcpSession {
     /// for client answers, which can no longer arrive. The default does nothing.
     fn on_input_closed(&self) -> Canceller {
         Arc::new(|| {})
+    }
+
+    /// The modes the session offers and the current one, for the `session/new` response.
+    /// `None` when the session has no modes.
+    fn modes(&self) -> Option<SessionModeState> {
+        None
+    }
+
+    /// The handle `session/set_mode` calls. `None` when the session has no modes.
+    fn mode_switch(&self) -> Option<ModeSwitch> {
+        None
     }
 }
 
@@ -126,6 +142,13 @@ impl UpdateSink {
     pub(crate) fn agent_thought(&self, text: &str, message_id: Option<&str>) {
         self.send(SessionUpdate::AgentThoughtChunk(text_chunk(
             text, message_id,
+        )));
+    }
+
+    /// Emits a `current_mode_update` naming the session's mode.
+    pub(crate) fn current_mode(&self, mode_id: &str) {
+        self.send(SessionUpdate::CurrentModeUpdate(CurrentModeUpdate::new(
+            mode_id.to_string(),
         )));
     }
 

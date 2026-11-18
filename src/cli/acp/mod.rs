@@ -15,6 +15,7 @@
 //! request it answers. When input ends, requests still waiting for an answer fail.
 
 mod engine;
+mod modes;
 mod permission;
 mod server;
 mod session;

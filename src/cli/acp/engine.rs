@@ -8,8 +8,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use agent_client_protocol_schema::v1::CLIENT_METHOD_NAMES;
 use serde_json::Value;
 
+use agent_client_protocol_schema::v1::SessionModeState;
+
+use super::modes::{Modes, SharedModes, lock_modes};
 use super::permission::{control_response_for, permission_request_params};
-use super::session::{AcpHost, AcpSession, Canceller, NewSession, TurnEnd, UpdateSink};
+use super::session::{AcpHost, AcpSession, Canceller, ModeSwitch, NewSession, TurnEnd, UpdateSink};
 use super::tools::{describe_tool_call, tool_result_text};
 use super::transport::{Outbound, RpcError};
 use crate::cli::CliConfig;
@@ -72,6 +75,10 @@ pub(super) struct EngineSession {
     /// Carries the engine's permission requests to the client. Its input-closed hook is
     /// [`AcpSession::on_input_closed`].
     bridge: SdkControlBridge,
+    /// The session's permission modes, shared with the switch `session/set_mode` calls.
+    modes: SharedModes,
+    /// Reports mode switches to the client.
+    sink: UpdateSink,
 }
 
 impl AcpHost for EngineHost {
@@ -98,26 +105,56 @@ impl AcpHost for EngineHost {
         let session_id = crate::bootstrap::state::get_session_id();
         let bridge = permission_bridge(outbound.clone(), session_id.clone());
         let sink = UpdateSink::new(outbound, session_id.clone());
+        // The mode the engine starts in comes from the same setting.
+        let default_mode = crate::utils::settings::get_initial_settings()
+            .permissions
+            .and_then(|permissions| permissions.default_mode);
+        let modes = Arc::new(Mutex::new(Modes::new(default_mode.as_deref())));
         let engine = QueryEngine::new(QueryEngineConfig {
             cli_config: self.config.clone(),
             schema: None,
             resume_seed: None,
             mcp_state: Some(mcp_state),
             output_sink: Some(QueryEngine::output_sink({
-                let forwarder = Mutex::new(EngineForwarder::new(sink));
+                let forwarder = Mutex::new(EngineForwarder::new(sink.clone()));
                 move |value| lock(&forwarder).forward(&value)
             })),
             permission_resolver: Some(permission_resolver(bridge.clone())),
             handle_elicitation: crate::tool::HandleElicitationCallback::default(),
         });
-        Ok((session_id, EngineSession { engine, bridge }))
+        let session = EngineSession {
+            engine,
+            bridge,
+            modes,
+            sink,
+        };
+        Ok((session_id, session))
     }
 }
 
 impl AcpSession for EngineSession {
     async fn prompt(&mut self, text: String) -> Result<TurnEnd, String> {
+        // A mode switched since the last turn applies from this one on.
+        let pending = lock_modes(&self.modes).take_pending();
+        if let Some(mode) = pending {
+            self.engine.set_permission_mode(mode);
+        }
         let outcome = crate::query_engine::ask(&mut self.engine, text, None).await?;
         turn_end(&outcome)
+    }
+
+    fn modes(&self) -> Option<SessionModeState> {
+        Some(lock_modes(&self.modes).state())
+    }
+
+    fn mode_switch(&self) -> Option<ModeSwitch> {
+        let modes = self.modes.clone();
+        let sink = self.sink.clone();
+        Some(Arc::new(move |id: &str| {
+            lock_modes(&modes).switch(id)?;
+            sink.current_mode(id);
+            Ok(())
+        }))
     }
 
     fn canceller(&self) -> Canceller {
